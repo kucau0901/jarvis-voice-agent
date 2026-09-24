@@ -1,0 +1,30 @@
+{
+  "name": "jarvis-voice-agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite dev",
+    "build": "vite build",
+    "preview": "npm run build && vite preview",
+    "deploy": "npm run build && wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "cf-typegen": "wrangler types",
+    "test": "node test/history.test.ts && node test/memory.test.ts && node test/device-api.test.ts && node test/gmail.test.ts && node test/calendar.test.ts && node test/places.test.ts && node test/client.test.ts && node test/router-model.test.ts && node test/tessie.test.ts && node test/mcp-config.test.ts && node test/state.test.ts && node test/glasses.test.ts && node test/assist.test.ts && node test/settings.test.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/client": "^2.0.0",
+    "openai": "^7.17.0",
+    "qrcode-generator": "^2.0.4",
+    "three": "^0.186.0"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "^1.54.11",
+    "@types/three": "^0.186.0",
+    "typescript": "^5.9.0",
+    "vite": "^8.3.0",
+    "wrangler": "^4.133.0"
+  },
+  "license": "MIT",
+  "description": "A hands-free voice agent for the car, the desk and the phone: GPT-Live voice, your house, your car, your mail and your own agents."
+}

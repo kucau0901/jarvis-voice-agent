@@ -1,0 +1,661 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Jarvis Car Probe</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html,body { margin:0; padding:0; background:#07090d; color:#e8edf5;
+    font: 16px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
+  body { padding: 18px 16px 64px; }
+  h1 { font-size: 22px; margin: 0 0 2px; letter-spacing:.2px; }
+  .sub { color:#7d8798; font-size:13px; margin-bottom:16px; }
+  .bar { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:18px; }
+  button { font:600 16px/1 inherit; color:#07090d; background:#4fd1e0; border:0;
+    border-radius:10px; padding:16px 20px; min-height:56px; min-width:120px; cursor:pointer; }
+  button.alt { background:#232a36; color:#e8edf5; }
+  button:disabled { opacity:.4; }
+  .row { border:1px solid #1b2230; border-radius:10px; padding:12px 14px; margin-bottom:8px; background:#0c1018; }
+  .row h2 { font-size:15px; margin:0 0 4px; display:flex; align-items:center; gap:8px; }
+  .tag { font-size:11px; font-weight:700; padding:3px 7px; border-radius:5px; letter-spacing:.4px; }
+  .pass { background:#12341f; color:#5ee08a; } .fail { background:#3a1517; color:#ff7b81; }
+  .warn { background:#3a2e10; color:#ffc65c; } .idle { background:#1b2230; color:#7d8798; }
+  .det { font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; color:#9aa6b8;
+    white-space:pre-wrap; word-break:break-word; margin-top:4px; }
+  .big { font-size:19px; font-weight:700; color:#fff; }
+  #out { width:100%; height:130px; background:#0c1018; color:#7d8798; border:1px solid #1b2230;
+    border-radius:8px; font:11px/1.4 ui-monospace,monospace; padding:8px; margin-top:12px; }
+  .note { background:#13203a; border:1px solid #23406e; border-radius:10px; padding:12px 14px;
+    margin-bottom:16px; font-size:14px; color:#bcd2f5; }
+</style>
+</head>
+<body>
+<h1>Jarvis — Car Probe</h1>
+<div class="sub" id="stamp"></div>
+
+<div class="note">
+  <b>Run this twice.</b> Once in <b>Park</b>, then again in <b>Drive</b> (safely — as a passenger, or
+  stationary in gear). Check&nbsp;1 is the one that matters: sources disagree on whether the mic
+  works while driving.<br><br>
+  First enable <b>Wi-Fi &rarr; Remain connected in Drive</b>, or the car drops to LTE when you shift.
+</div>
+
+<div class="bar">
+  <button id="run">Run all checks</button>
+  <button id="runD" class="alt">Run — tag as DRIVE</button>
+  <button id="send" class="alt">Upload results</button>
+  <button id="copy" class="alt">Copy JSON</button>
+</div>
+
+<div id="rows"></div>
+<textarea id="out" readonly placeholder="Raw JSON appears here"></textarea>
+
+<script>
+/* Plain ES5-safe script on purpose: no modules, no bundler, no dependencies.
+   The probe must survive the failure of anything it is testing. */
+(function () {
+  var R = {};                       // results
+  var rowsEl = document.getElementById('rows');
+  var els = {};
+  var gear = 'PARK';
+
+  /* Auth key for /api/probe. Bookmark the page as  …/probe.html#key=<secret>
+     and it is remembered from then on. Every other check works without it. */
+  function jarvisKey() {
+    try {
+      var m = (location.hash || '').match(/key=([^&]+)/);
+      if (m) { localStorage.setItem('jarvis.key', decodeURIComponent(m[1])); }
+      return (localStorage.getItem('jarvis.key') || '').toUpperCase().replace(/[^0-9A-Z]/g, '');
+    } catch (e) { return (location.hash.match(/key=([^&]+)/) || ['', ''])[1]; }
+  }
+
+  document.getElementById('stamp').textContent =
+    new Date().toString() + '  ·  build ' + '2026-09-17';
+
+  function row(id, title) {
+    var d = document.createElement('div');
+    d.className = 'row';
+    d.innerHTML = '<h2>' + title + ' <span class="tag idle" id="t_' + id + '">…</span></h2>' +
+                  '<div class="det" id="d_' + id + '"></div>';
+    rowsEl.appendChild(d);
+    els[id] = { tag: d.querySelector('#t_' + id), det: d.querySelector('#d_' + id) };
+  }
+  function set(id, state, detail, big) {
+    var e = els[id]; if (!e) return;
+    e.tag.className = 'tag ' + state;
+    e.tag.textContent = state.toUpperCase();
+    e.det.innerHTML = big ? '<span class="big">' + big + '</span>\n' + (detail || '') : (detail || '');
+    R[id] = { state: state, detail: detail, big: big || null };
+    dump();
+  }
+  function dump() {
+    R._meta = { gear: gear, at: new Date().toISOString(), ua: navigator.userAgent };
+    var j = JSON.stringify(R, null, 1);
+    document.getElementById('out').value = j;
+    try { localStorage.setItem('jarvis.probe.' + gear, j); } catch (e) {}
+  }
+
+  var CHECKS = [
+    ['mic',    '1 · Microphone (getUserMedia)'],
+    ['gearx',  '2 · Gear state for this run'],
+    ['view',   '3 · Viewport &amp; pixel ratio'],
+    ['ua',     '4 · User agent'],
+    ['rtc',    '5 · WebRTC data channel'],
+    ['audio',  '6 · AudioContext &amp; AudioWorklet'],
+    ['gl',     '7 · WebGL2 &amp; orb benchmark'],
+    ['life',   '8 · Page lifecycle (hide vs kill)'],
+    ['store',  '9 · localStorage persistence'],
+    ['play',   '10 · Autoplay without gesture'],
+    ['misc',   '11 · Modern JS &amp; APIs']
+  ];
+  for (var i = 0; i < CHECKS.length; i++) row(CHECKS[i][0], CHECKS[i][1]);
+
+  /* ---- 1. microphone ------------------------------------------------- */
+  function checkMic() {
+    set('mic', 'idle', 'requesting…');
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      set('mic', 'fail', 'navigator.mediaDevices.getUserMedia is undefined.\n' +
+        (location.protocol !== 'https:' ? 'Page is not HTTPS — that alone disables it.' : ''),
+        'NO getUserMedia');
+      return Promise.resolve();
+    }
+    return navigator.mediaDevices.getUserMedia({ audio: true }).then(function (s) {
+      var t = s.getAudioTracks()[0];
+      var st = t && t.getSettings ? t.getSettings() : {};
+      // Keep the stream for the level test, stop it after.
+      window.__micStream = s;
+      set('mic', 'pass',
+        'label: ' + (t ? (t.label || '(blank)') : 'none') +
+        '\nsettings: ' + JSON.stringify(st),
+        'MIC WORKS in ' + gear);
+    }).catch(function (e) {
+      set('mic', 'fail', e.name + ': ' + e.message, 'MIC BLOCKED in ' + gear);
+    });
+  }
+
+  /* ---- 3. viewport --------------------------------------------------- */
+  function checkView() {
+    var d = {
+      innerWidth: window.innerWidth, innerHeight: window.innerHeight,
+      devicePixelRatio: window.devicePixelRatio,
+      screenW: screen.width, screenH: screen.height,
+      availW: screen.availWidth, availH: screen.availHeight,
+      orientation: (screen.orientation || {}).type || 'n/a',
+      // Chromium 148 in-car reports pointer:fine / hover:hover — a touchscreen
+      // claiming to be a mouse. Tap targets sized off pointer:coarse silently shrink.
+      pointerFine: matchMedia('(pointer: fine)').matches,
+      pointerCoarse: matchMedia('(pointer: coarse)').matches,
+      anyPointerCoarse: matchMedia('(any-pointer: coarse)').matches,
+      hover: matchMedia('(hover: hover)').matches,
+      prefersDark: matchMedia('(prefers-color-scheme: dark)').matches,
+      prefersReducedMotion: matchMedia('(prefers-reduced-motion: reduce)').matches
+    };
+    set('view', 'pass', JSON.stringify(d, null, 1),
+      d.innerWidth + ' x ' + d.innerHeight + ' @ DPR ' + d.devicePixelRatio);
+  }
+
+  /* ---- 4. UA --------------------------------------------------------- */
+  function checkUA() {
+    var ua = navigator.userAgent;
+    var m = ua.match(/Tesla\/([^\s)]+)/);
+    var c = ua.match(/Chrome\/(\d+)/);
+    set('ua', m ? 'pass' : 'warn',
+      ua + '\n\nplatform: ' + navigator.platform +
+      '\nhardwareConcurrency: ' + navigator.hardwareConcurrency +
+      '\ndeviceMemory: ' + (navigator.deviceMemory || 'n/a'),
+      m ? ('Tesla ' + m[1] + ' · Chrome ' + (c ? c[1] : '?'))
+        : ('NOT a Tesla browser · Chrome ' + (c ? c[1] : '?')));
+  }
+
+  /* ---- 5. WebRTC data channel ---------------------------------------- */
+  function checkRTC() {
+    set('rtc', 'idle', 'negotiating loopback…');
+    return new Promise(function (resolve) {
+      if (typeof RTCPeerConnection === 'undefined') {
+        set('rtc', 'fail', 'RTCPeerConnection undefined'); return resolve();
+      }
+      var a, b, done = false;
+      var finish = function (state, detail, big) {
+        if (done) return; done = true;
+        set('rtc', state, detail, big);
+        try { a.close(); b.close(); } catch (e) {}
+        resolve();
+      };
+      var timer = setTimeout(function () {
+        finish('fail', 'timed out after 12s — data channel never opened.\n' +
+          'candidates seen: ' + cands.join(', '), 'DATA CHANNEL TIMEOUT');
+      }, 12000);
+      var cands = [];
+      try {
+        a = new RTCPeerConnection(); b = new RTCPeerConnection();
+        // GPT-Live carries all events on a data channel labelled "oai-events",
+        // so a data channel — not just media — has to work in this browser.
+        var dc = a.createDataChannel('oai-events');
+        dc.onopen = function () { dc.send('ping'); };
+        b.ondatachannel = function (ev) {
+          ev.channel.onmessage = function (m) {
+            clearTimeout(timer);
+            finish('pass', 'echo: ' + m.data + '\ncandidate types: ' + cands.join(', '),
+              'DATA CHANNEL OK');
+          };
+        };
+        a.onicecandidate = function (e) {
+          if (e.candidate) { cands.push((e.candidate.type || '?')); b.addIceCandidate(e.candidate); }
+        };
+        b.onicecandidate = function (e) { if (e.candidate) a.addIceCandidate(e.candidate); };
+        a.createOffer().then(function (o) { return a.setLocalDescription(o); })
+          .then(function () { return b.setRemoteDescription(a.localDescription); })
+          .then(function () { return b.createAnswer(); })
+          .then(function (ans) { return b.setLocalDescription(ans); })
+          .then(function () { return a.setRemoteDescription(b.localDescription); })
+          .catch(function (e) { clearTimeout(timer); finish('fail', String(e)); });
+      } catch (e) { clearTimeout(timer); finish('fail', String(e)); }
+    });
+  }
+
+  /* ---- 6. audio ------------------------------------------------------ */
+  function checkAudio() {
+    var AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) { set('audio', 'fail', 'No AudioContext'); return Promise.resolve(); }
+    var ctx = new AC();
+    window.__ctx = ctx;
+    var info = 'state: ' + ctx.state + '\nsampleRate: ' + ctx.sampleRate +
+               '\nbaseLatency: ' + (ctx.baseLatency || 'n/a') +
+               '\noutputLatency: ' + (ctx.outputLatency || 'n/a');
+    if (!ctx.audioWorklet) {
+      set('audio', 'warn', info + '\naudioWorklet: MISSING (fall back to AnalyserNode)',
+        'AudioContext OK, no Worklet');
+      return Promise.resolve();
+    }
+    // Load a trivial worklet from a blob to prove addModule works here.
+    var src = 'class P extends AudioWorkletProcessor{process(){return true}}' +
+              'registerProcessor("probe-p",P)';
+    var url = URL.createObjectURL(new Blob([src], { type: 'application/javascript' }));
+    return ctx.audioWorklet.addModule(url).then(function () {
+      new AudioWorkletNode(ctx, 'probe-p');
+      set('audio', 'pass', info + '\naudioWorklet.addModule: OK', 'AudioContext + Worklet OK');
+    }).catch(function (e) {
+      set('audio', 'warn', info + '\naudioWorklet.addModule FAILED: ' + e.message,
+        'Worklet blocked — use AnalyserNode');
+    }).then(function () { URL.revokeObjectURL(url); });
+  }
+
+  /* ---- 7. WebGL2 + orb benchmark ------------------------------------- */
+  function icosphere(detail) {
+    var t = (1 + Math.sqrt(5)) / 2;
+    var v = [[-1,t,0],[1,t,0],[-1,-t,0],[1,-t,0],[0,-1,t],[0,1,t],
+             [0,-1,-t],[0,1,-t],[t,0,-1],[t,0,1],[-t,0,-1],[-t,0,1]];
+    var f = [[0,11,5],[0,5,1],[0,1,7],[0,7,10],[0,10,11],[1,5,9],[5,11,4],[11,10,2],
+             [10,7,6],[7,1,8],[3,9,4],[3,4,2],[3,2,6],[3,6,8],[3,8,9],[4,9,5],
+             [2,4,11],[6,2,10],[8,6,7],[9,8,1]];
+    var tris = f.map(function (x) { return [v[x[0]], v[x[1]], v[x[2]]]; });
+    var mid = function (a, b) { return [(a[0]+b[0])/2, (a[1]+b[1])/2, (a[2]+b[2])/2]; };
+    for (var d = 0; d < detail; d++) {
+      var next = [];
+      for (var i = 0; i < tris.length; i++) {
+        var A = tris[i][0], B = tris[i][1], C = tris[i][2];
+        var ab = mid(A,B), bc = mid(B,C), ca = mid(C,A);
+        next.push([A,ab,ca],[ab,B,bc],[ca,bc,C],[ab,bc,ca]);
+      }
+      tris = next;
+    }
+    var out = new Float32Array(tris.length * 9), k = 0;
+    for (var i2 = 0; i2 < tris.length; i2++) {
+      for (var j = 0; j < 3; j++) {
+        var p = tris[i2][j];
+        var L = Math.sqrt(p[0]*p[0] + p[1]*p[1] + p[2]*p[2]);
+        out[k++] = p[0]/L; out[k++] = p[1]/L; out[k++] = p[2]/L;
+      }
+    }
+    return out;
+  }
+
+  var VS = [
+    '#version 300 es',
+    'in vec3 pos; uniform mat4 mvp; uniform float t; out vec3 n; out vec3 wp;',
+    // Cheap 3-octave value-ish noise: same order of vertex cost as the simplex
+    // displacement the real orb uses, without the 100 lines of Ashima.
+    'float h(vec3 p){return fract(sin(dot(p,vec3(12.9898,78.233,37.719)))*43758.5453);}',
+    'float nz(vec3 p){vec3 i=floor(p),f=fract(p);f=f*f*(3.0-2.0*f);',
+    ' float a=mix(mix(mix(h(i),h(i+vec3(1,0,0)),f.x),mix(h(i+vec3(0,1,0)),h(i+vec3(1,1,0)),f.x),f.y),',
+    '  mix(mix(h(i+vec3(0,0,1)),h(i+vec3(1,0,1)),f.x),mix(h(i+vec3(0,1,1)),h(i+vec3(1,1,1)),f.x),f.y),f.z);',
+    ' return a;}',
+    'void main(){ float d = nz(pos*3.0+t)*0.5 + nz(pos*6.0-t*0.7)*0.25 + nz(pos*12.0+t*1.3)*0.125;',
+    ' vec3 p = pos * (1.0 + d*0.28); n = normalize(pos); wp = p;',
+    ' gl_Position = mvp * vec4(p,1.0); }'
+  ].join('\n');
+
+  var FS = [
+    '#version 300 es', 'precision highp float;',
+    'in vec3 n; in vec3 wp; out vec4 o;',
+    'void main(){ vec3 V = normalize(vec3(0.0,0.0,3.0) - wp);',
+    ' float fres = pow(1.0 - max(dot(normalize(n), V), 0.0), 2.5);',
+    ' vec3 c = mix(vec3(0.05,0.35,0.5), vec3(0.4,0.95,1.0), fres);',
+    ' o = vec4(c, 1.0); }'
+  ].join('\n');
+
+  /**
+   * Measure real frame pacing on an on-screen canvas.
+   *
+   * The first version of this drew to a detached canvas and reported ~38,000 fps,
+   * which is nonsense: a canvas outside the document is never rasterized and
+   * gl.finish() is a no-op on several drivers. rAF on a visible canvas is capped
+   * at the display refresh, so the honest question is not "how many fps" but
+   * "does it hold the refresh rate, and how much headroom is left" — which is
+   * what drawsPerFrame probes.
+   */
+  function benchRAF(detail, ms, drawsPerFrame) {
+    return new Promise(function (resolve) {
+      var cv = document.createElement('canvas');
+      cv.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;z-index:9999';
+      var tag = document.createElement('div');
+      tag.style.cssText = 'position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);' +
+        'z-index:10000;font:600 18px sans-serif;color:#4fd1e0;text-align:center;pointer-events:none';
+      tag.textContent = 'benchmarking · detail ' + detail +
+        (drawsPerFrame > 1 ? ' · ' + drawsPerFrame + '× stress' : '');
+      document.body.appendChild(cv); document.body.appendChild(tag);
+
+      // Match the app's own policy: cap DPR at 1. Honouring the car's 1.53
+      // would cost ~2.3x the fragment work for no visible gain on a dash screen.
+      var dpr = Math.min(window.devicePixelRatio || 1, 1);
+      cv.width = Math.max(1, Math.round(cv.clientWidth * dpr));
+      cv.height = Math.max(1, Math.round(cv.clientHeight * dpr));
+
+      var cleanup = function () { try { cv.remove(); tag.remove(); } catch (e) {} };
+      var gl = cv.getContext('webgl2', { antialias: false, powerPreference: 'high-performance' });
+      if (!gl) { cleanup(); return resolve(null); }
+
+      try {
+        var sh = function (type, src) {
+          var x = gl.createShader(type); gl.shaderSource(x, src); gl.compileShader(x);
+          if (!gl.getShaderParameter(x, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(x));
+          return x;
+        };
+        var pr = gl.createProgram();
+        gl.attachShader(pr, sh(gl.VERTEX_SHADER, VS));
+        gl.attachShader(pr, sh(gl.FRAGMENT_SHADER, FS));
+        gl.linkProgram(pr);
+        if (!gl.getProgramParameter(pr, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(pr));
+        gl.useProgram(pr);
+
+        var data = icosphere(detail);
+        var vb = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, vb);
+        gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
+        var loc = gl.getAttribLocation(pr, 'pos');
+        gl.enableVertexAttribArray(loc);
+        gl.vertexAttribPointer(loc, 3, gl.FLOAT, false, 0, 0);
+        var uMvp = gl.getUniformLocation(pr, 'mvp'), uT = gl.getUniformLocation(pr, 't');
+        gl.enable(gl.DEPTH_TEST);
+        gl.viewport(0, 0, cv.width, cv.height);
+        var aspect = cv.width / cv.height;
+        gl.uniformMatrix4fv(uMvp, false, new Float32Array([
+          1.6 / aspect, 0, 0, 0,  0, 1.6, 0, 0,  0, 0, -1.002, -1,  0, 0, 2.0, 3.0
+        ]));
+
+        var dbg = gl.getExtension('WEBGL_debug_renderer_info');
+        var renderer = dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : 'hidden';
+        var vendor = dbg ? gl.getParameter(dbg.UNMASKED_VENDOR_WEBGL) : 'hidden';
+
+        var wantFrames = 100;
+        var stamps = [], cpu = [], t0 = performance.now(), end = t0 + ms;
+        var verts = data.length / 3;
+
+        // Deliberately ignore the timestamp rAF passes in. Its epoch is not
+        // guaranteed to match performance.now() — in at least one Chromium build
+        // it does not, which made the first comparison against `end` true
+        // immediately and produced a 1-frame, 0 fps run. performance.now() inside
+        // the callback is the portable choice.
+        var frame = function () {
+          var c0 = performance.now();
+          gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+          for (var i = 0; i < drawsPerFrame; i++) {
+            gl.uniform1f(uT, (c0 - t0) / 1000 + i * 0.13);
+            gl.drawArrays(gl.TRIANGLES, 0, verts);
+          }
+          var c1 = performance.now();
+          cpu.push(c1 - c0);
+          stamps.push(c0);
+          if (stamps.length < wantFrames && c1 < end) { requestAnimationFrame(frame); return; }
+
+          // Drop the first few frames: shader/pipeline warm-up is not steady state.
+          if (stamps.length < 12) {
+            cleanup();
+            resolve({ inconclusive: true, frames: stamps.length, detail: detail,
+                      draws: drawsPerFrame, tris: data.length / 9,
+                      renderer: renderer, vendor: vendor });
+            return;
+          }
+          var s = stamps.slice(3);
+          var iv = [];
+          for (var j = 1; j < s.length; j++) iv.push(s[j] - s[j - 1]);
+          var sorted = iv.slice().sort(function (a, b) { return a - b; });
+          var q = function (f) { return sorted.length ? sorted[Math.min(sorted.length - 1,
+                                    Math.floor(sorted.length * f))] : 0; };
+          var med = q(0.5), p95 = q(0.95), worst = sorted.length ? sorted[sorted.length - 1] : 0;
+          // Median interval, not mean fps: a single warm-up or GC stall would
+          // otherwise drag a genuinely smooth run down to a false "TOO SLOW".
+          var fps = med > 0 ? Math.round(1000 / med) : 0;
+          var stalls = 0;
+          for (var k = 0; k < iv.length; k++) if (iv[k] > 50) stalls++;
+          var meanCpu = cpu.slice(3).reduce(function (a, b) { return a + b; }, 0) /
+                        Math.max(1, cpu.length - 3);
+          cleanup();
+          resolve({
+            detail: detail, draws: drawsPerFrame, tris: data.length / 9, fps: fps,
+            frames: s.length, medianMs: +med.toFixed(2), p95Ms: +p95.toFixed(2),
+            worstMs: +worst.toFixed(1), stalls: stalls,
+            cpuPerFrameMs: +meanCpu.toFixed(2),
+            canvas: cv.width + 'x' + cv.height, dpr: dpr,
+            renderer: renderer, vendor: vendor
+          });
+        };
+        requestAnimationFrame(frame);
+      } catch (e) { cleanup(); resolve({ error: String(e && e.message || e) }); }
+    });
+  }
+
+  function checkGL() {
+    if (!document.createElement('canvas').getContext('webgl2')) {
+      set('gl', 'fail', 'webgl2 context unavailable', 'NO WEBGL2');
+      return Promise.resolve();
+    }
+    set('gl', 'idle', 'benchmarking — the screen goes dark for up to ~8s…');
+    var a, b;
+    return benchRAF(5, 4000, 1).then(function (r) {
+      a = r;
+      // 4x the draw load. If it still holds the refresh rate there is real headroom
+      // for bloom and a higher mesh detail; if it collapses, budget tightly.
+      return benchRAF(5, 4000, 4);
+    }).then(function (r) {
+      b = r;
+      if (!a || a.error) {
+        set('gl', 'fail', (a && a.error) || 'benchmark failed'); return;
+      }
+      if (a.inconclusive) {
+        set('gl', 'warn',
+          'Only ' + a.frames + ' frames rendered in 4s — requestAnimationFrame is\n' +
+          'being throttled, so this says nothing about GPU speed.\n\n' +
+          'Re-run with the page in the foreground and the screen awake.\n\n' +
+          'renderer: ' + a.renderer + '\nvendor: ' + a.vendor,
+          'INCONCLUSIVE — rAF throttled');
+        return;
+      }
+      var refresh = a.fps >= 100 ? 120 : a.fps >= 50 ? 60 : a.fps;
+      var b4 = (b && !b.error && !b.inconclusive) ? b.fps : 0;
+      var tier = b4 >= 55 ? 'HIGH' : a.fps >= 55 ? 'MEDIUM'
+               : a.fps >= 28 ? 'LOW' : 'TOO SLOW';
+      var advice = {
+        'HIGH': 'detail 6 + bloom is affordable.',
+        'MEDIUM': 'detail 5, fresnel glow only, no post-processing.',
+        'LOW': 'detail 5, cap the loop at 30fps, no post-processing.',
+        'TOO SLOW': 'drop to a 2D canvas orb.'
+      }[tier];
+      // A run can hold a 60fps median and still look terrible if it stalls
+      // repeatedly. The tier alone hides that, so call it out explicitly.
+      var jank = a.stalls > 3
+        ? '\n\n\u26a0 ' + a.stalls + ' stalls over 50ms (worst ' + a.worstMs + 'ms).\n' +
+          'The median looks fine but this reads as visible stutter — prefer the\n' +
+          'next tier down, and re-check after a long drive for thermal throttling.'
+        : '';
+      set('gl', (a.fps >= 28 && a.stalls <= 3) ? 'pass' : 'warn',
+        '1x draw · ' + a.tris + ' tris → ' + a.fps + ' fps from median frame\n' +
+        '           median ' + a.medianMs + 'ms · p95 ' + a.p95Ms + 'ms · worst ' +
+        a.worstMs + 'ms · ' + a.stalls + ' stalls >50ms · ' + a.frames + ' frames\n' +
+        '           js submit cost ' + a.cpuPerFrameMs + 'ms/frame\n' +
+        '4x draw · ' + (b && !b.error && !b.inconclusive
+          ? b.fps + ' fps (median ' + b.medianMs + 'ms · worst ' + b.worstMs + 'ms)'
+          : 'inconclusive') + '\n\n' +
+        'canvas: ' + a.canvas + ' @ capped DPR ' + a.dpr + '\n' +
+        'renderer: ' + a.renderer + '\nvendor: ' + a.vendor + '\n\n' +
+        'rAF is capped at the display refresh (~' + refresh + 'Hz), so fps cannot\n' +
+        'exceed it. The 4x run is what reveals headroom.\n\n' +
+        '→ ' + advice + jank,
+        'Tier ' + tier + ' · ' + a.fps + ' fps (1x) · ' + (b4 || '?') + ' fps (4x)');
+    });
+  }
+
+  /* ---- 8. lifecycle -------------------------------------------------- */
+  var life = [];
+  function logLife(n) {
+    life.push(n + ' @ ' + new Date().toISOString().substr(11, 12));
+    try { localStorage.setItem('jarvis.probe.life', JSON.stringify(life)); } catch (e) {}
+    set('life', 'pass',
+      'Shift to Drive, wait, shift back, then reopen this page.\n' +
+      'If events resume with no reload, the page was HIDDEN.\n' +
+      'If the log is empty after "restored", it was KILLED.\n\n' +
+      'this session:\n  ' + life.join('\n  ') + '\n\nprevious session:\n  ' +
+      ((localStorage.getItem('jarvis.probe.life.prev') || '(none)')),
+      life.length + ' lifecycle events');
+  }
+  function checkLife() {
+    try {
+      var prev = localStorage.getItem('jarvis.probe.life');
+      if (prev) localStorage.setItem('jarvis.probe.life.prev', prev);
+    } catch (e) {}
+    life = [];
+    document.addEventListener('visibilitychange', function () {
+      logLife('visibilitychange → ' + document.visibilityState);
+    });
+    window.addEventListener('pagehide', function (e) { logLife('pagehide persisted=' + e.persisted); });
+    window.addEventListener('pageshow', function (e) { logLife('pageshow persisted=' + e.persisted); });
+    window.addEventListener('freeze', function () { logLife('freeze'); });
+    window.addEventListener('resume', function () { logLife('resume'); });
+    logLife('probe started');
+  }
+
+  /* ---- 9. localStorage ----------------------------------------------- */
+  function checkStore() {
+    try {
+      var k = 'jarvis.probe.persist';
+      var was = localStorage.getItem(k);
+      var now = new Date().toISOString();
+      localStorage.setItem(k, now);
+      var ok = localStorage.getItem(k) === now;
+      set('store', ok ? 'pass' : 'fail',
+        'previous value: ' + (was || '(none — first run, or it was cleared)') +
+        '\nwritten now:    ' + now +
+        '\n\nRe-run after a sleep/wake cycle. If "previous value" survives,\n' +
+        'the auth key can live in localStorage.',
+        ok ? (was ? 'PERSISTED' : 'writable (first run)') : 'WRITE FAILED');
+    } catch (e) {
+      set('store', 'fail', String(e), 'localStorage BLOCKED');
+    }
+  }
+
+  /* ---- 10. autoplay -------------------------------------------------- */
+  function checkPlay() {
+    // Called outside any gesture handler on the auto-run path.
+    try {
+      var AC = window.AudioContext || window.webkitAudioContext;
+      var c = new AC();
+      var o = c.createOscillator(), g = c.createGain();
+      g.gain.value = 0.0001;              // effectively silent; we only want the state
+      o.connect(g); g.connect(c.destination); o.start();
+      setTimeout(function () {
+        set('play', c.state === 'running' ? 'pass' : 'warn',
+          'AudioContext.state after unprompted start: ' + c.state +
+          '\n\n"suspended" means a user gesture is required — expected, and fine:\n' +
+          'the app gates on a tap anyway, and a getUserMedia grant usually unblocks it.',
+          c.state === 'running' ? 'AUTOPLAY ALLOWED' : 'GESTURE REQUIRED');
+        try { o.stop(); c.close(); } catch (e) {}
+      }, 400);
+    } catch (e) { set('play', 'fail', String(e)); }
+  }
+
+  /* ---- 11. misc modern APIs ------------------------------------------ */
+  function checkMisc() {
+    var f = {};
+    f.secureContext = window.isSecureContext;
+    f.protocol = location.protocol;
+    f.fetch = typeof fetch === 'function';
+    f.WebSocket = typeof WebSocket === 'function';
+    f.EventSource = typeof EventSource === 'function';   // SSE — the delegate stream
+    f.AbortController = typeof AbortController === 'function';
+    f.ResizeObserver = typeof ResizeObserver === 'function';
+    f.structuredClone = typeof structuredClone === 'function';
+    f.WebGL2 = !!document.createElement('canvas').getContext('webgl2');
+    f.OffscreenCanvas = typeof OffscreenCanvas === 'function';
+    f.wakeLock = !!navigator.wakeLock;
+    try { f.optionalChaining = (new Function('return ({a:1})?.a === 1'))(); }
+    catch (e) { f.optionalChaining = false; }
+    try { new Function('return import("data:text/javascript,export default 1")')(); f.dynamicImport = true; }
+    catch (e) { f.dynamicImport = false; }
+    var bad = [];
+    if (!f.secureContext) bad.push('not a secure context — getUserMedia cannot work');
+    if (!f.EventSource) bad.push('no EventSource — the SSE delegate stream needs a fallback');
+    if (!f.WebGL2) bad.push('no WebGL2');
+    set('misc', bad.length ? 'warn' : 'pass',
+      JSON.stringify(f, null, 1) + (bad.length ? '\n\nissues:\n  - ' + bad.join('\n  - ') : ''),
+      bad.length ? bad.length + ' issue(s)' : 'all present');
+  }
+
+  /* ---- runner -------------------------------------------------------- */
+  function runAll(g) {
+    gear = g;
+    set('gearx', 'pass', 'Tag this run as ' + g + '. Re-run with the other button to compare.', g);
+    checkLife(); checkUA(); checkStore(); checkMisc(); checkPlay(); checkView();
+
+    // getUserMedia must be called from the user gesture, so start it now — but the
+    // permission prompt is modal and may never be answered. Everything else runs
+    // while it is up; we only rejoin it at the end, with a cap. Otherwise one
+    // dismissed prompt in the car means no results at all.
+    var micP = checkMic();
+    var micCap = new Promise(function (res) {
+      setTimeout(function () {
+        if (R.mic && R.mic.state === 'idle') {
+          set('mic', 'warn',
+            'No answer within 30s — the prompt was ignored or dismissed.\n' +
+            'Re-run and tap Allow. Every other check below is still valid.',
+            'NO ANSWER');
+        }
+        res();
+      }, 30000);
+    });
+
+    return checkAudio().then(checkRTC).then(checkGL)
+      .then(function () { return Promise.race([micP, micCap]); })
+      .then(function () {
+      dump();
+      // Release the mic — holding it shows a recording indicator.
+      try {
+        if (window.__micStream) {
+          window.__micStream.getTracks().forEach(function (t) { t.stop(); });
+          window.__micStream = null;
+        }
+      } catch (e) {}
+    });
+  }
+
+  document.getElementById('run').onclick = function () { runAll('PARK'); };
+  document.getElementById('runD').onclick = function () { runAll('DRIVE'); };
+  document.getElementById('copy').onclick = function () {
+    var ta = document.getElementById('out');
+    ta.removeAttribute('readonly'); ta.select();
+    try { document.execCommand('copy'); } catch (e) {}
+    ta.setAttribute('readonly', '');
+  };
+  document.getElementById('send').onclick = function () {
+    var btn = this; btn.disabled = true; btn.textContent = 'Uploading…';
+    var k = jarvisKey();
+    if (!k) {
+      // Typing a key beats retyping the whole URL with a fragment on the car keyboard.
+      var typed = window.prompt('Access key (once only — it is remembered after this):');
+      if (typed) {
+        k = typed.toUpperCase().replace(/[^0-9A-Z]/g, '');
+        try { localStorage.setItem('jarvis.key', k); } catch (e) {}
+      }
+      if (!k) {
+        btn.textContent = 'No key';
+        setTimeout(function () { btn.disabled = false; btn.textContent = 'Upload results'; }, 2500);
+        return;
+      }
+    }
+    fetch('/api/probe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Jarvis-Key': k },
+      body: document.getElementById('out').value
+    }).then(function (r) {
+      btn.textContent = r.ok ? 'Uploaded ✓' : (r.status === 401 ? 'Bad key' : 'Failed ' + r.status);
+    })
+      .catch(function (e) { btn.textContent = 'Failed'; })
+      .then(function () { setTimeout(function () { btn.disabled = false; btn.textContent = 'Upload results'; }, 2500); });
+  };
+
+  // Everything except the mic runs without a gesture, so the page is useful
+  // the moment it loads. The mic deliberately waits for a tap.
+  checkLife(); checkUA(); checkStore(); checkMisc(); checkPlay();
+  // Defer the viewport read: on first paint innerWidth/innerHeight can still be 0.
+  if (document.readyState === 'complete') requestAnimationFrame(checkView);
+  else window.addEventListener('load', function () { requestAnimationFrame(checkView); });
+  set('mic', 'idle', 'Tap "Run all checks" — the mic prompt needs a user gesture.');
+  set('gearx', 'idle', 'Not yet tagged.');
+  set('rtc', 'idle', 'Tap to run.');
+  set('audio', 'idle', 'Tap to run.');
+  set('gl', 'idle', 'Tap to run (benchmark takes ~3s).');
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+node_modules
+dist
+.wrangler
+.git
+.github
+# Never bake a deployment's own config or any secret into an image.
+wrangler.jsonc
+worker-configuration.d.ts
+.dev.vars
+.dev.vars.*
+.env
+.env.*
+*.log

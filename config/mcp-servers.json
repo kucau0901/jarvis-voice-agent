@@ -1,0 +1,26 @@
+{
+  "servers": [
+    {
+      "label": "home-assistant",
+      "url": "${HA_MCP_URL}",
+      "headers": {},
+      "_comment": "Nabu Casa Webhook Proxy for HA MCP. The URL is the credential, so it lives in a Worker secret. 86 tools are offered; only these are allowed - the rest are config, file and system administration that has no business being reachable from a car.",
+      "allowedTools": [
+        "ha_get_overview",
+        "ha_search",
+        "ha_get_state",
+        "ha_get_history",
+        "ha_list_floors_areas",
+        "ha_config_get_calendar_events",
+        "ha_call_service",
+        "ha_bulk_control",
+        "ha_eval_template",
+        "ha_get_todo",
+        "ha_set_todo_item"
+      ],
+      "enabled": true,
+      "hint": "Direct and fast (about a second), and can see the whole house, the car's basic state, and the calendar. Use for reading any state or operating any device.",
+      "spokenAs": "the house"
+    }
+  ]
+}

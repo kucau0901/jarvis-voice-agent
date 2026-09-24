@@ -1,0 +1,65 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # A fresh clone has only the template, exactly like a new user.
+      - run: cp wrangler.example.jsonc wrangler.jsonc
+      - run: npx wrangler types
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the image
+        run: docker build -t jarvis-ci .
+
+      - name: Refuses to start without an owner key
+        run: |
+          if docker run --rm jarvis-ci; then echo "started with no key"; exit 1; fi
+
+      - name: Starts, keeps data across a restart, and checks the key
+        run: |
+          set -eu
+          KEY=CITESTKEY1234567
+          wait_up() {
+            for i in $(seq 1 60); do
+              curl -fs http://127.0.0.1:8787/ >/dev/null && return 0
+              sleep 2
+            done
+            docker logs jarvis; return 1
+          }
+          docker volume create jarvis-ci-data
+          docker run -d --name jarvis -p 8787:8787 -e JARVIS_SHARED_SECRET=$KEY -v jarvis-ci-data:/data jarvis-ci
+          wait_up
+
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8787/api/health -H 'X-Jarvis-Key: WRONGKEY')" = 401
+          curl -fs http://127.0.0.1:8787/api/health -H "X-Jarvis-Key: $KEY"
+
+          curl -fs -X PUT http://127.0.0.1:8787/api/settings -H "X-Jarvis-Key: $KEY" \
+            -H 'Content-Type: application/json' -d '{"changes":{"TIMEZONE":"Europe/London"}}' >/dev/null
+
+          docker rm -f jarvis
+          docker run -d --name jarvis -p 8787:8787 -e JARVIS_SHARED_SECRET=$KEY -v jarvis-ci-data:/data jarvis-ci
+          wait_up
+
+          curl -fs http://127.0.0.1:8787/api/settings -H "X-Jarvis-Key: $KEY" \
+            | node -e "const d=JSON.parse(require('fs').readFileSync(0,'utf8'));const t=d.settings.find(s=>s.name==='TIMEZONE');if(t.display!=='Europe/London'||t.source!=='saved'){console.error('lost across restart',t);process.exit(1)}console.log('setting survived the restart:',t.display)"
+          docker rm -f jarvis

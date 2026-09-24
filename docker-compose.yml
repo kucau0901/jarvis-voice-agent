@@ -1,0 +1,39 @@
+# docker compose up -d                   Jarvis on http://localhost:8787
+# docker compose --profile https up -d   plus automatic HTTPS for JARVIS_DOMAIN
+#
+# Put JARVIS_SHARED_SECRET (and, for https, JARVIS_DOMAIN) in a .env file next
+# to this one. Browsers only allow the microphone over HTTPS — or on localhost —
+# so anything beyond this machine needs the https profile, or a tunnel such as
+# Cloudflare Tunnel or Tailscale in front.
+services:
+  jarvis:
+    build: .
+    image: jarvis-voice-agent
+    restart: unless-stopped
+    environment:
+      JARVIS_SHARED_SECRET: ${JARVIS_SHARED_SECRET:?set JARVIS_SHARED_SECRET in .env}
+      # Behind the https profile, Google and Spotify sign-in must return to the
+      # public address, not the proxy's plain http hop.
+      PUBLIC_URL: ${PUBLIC_URL:-}
+    ports:
+      - "${JARVIS_PORT:-8787}:8787"
+    volumes:
+      - jarvis-data:/data
+
+  caddy:
+    image: caddy:2
+    profiles: ["https"]
+    restart: unless-stopped
+    depends_on: [jarvis]
+    environment:
+      JARVIS_DOMAIN: ${JARVIS_DOMAIN:-}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+
+volumes:
+  jarvis-data:
+  caddy-data:

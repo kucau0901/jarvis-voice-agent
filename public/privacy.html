@@ -1,0 +1,127 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Jarvis — Privacy</title>
+<!--
+  Referenced from the Google OAuth consent screen as the application privacy
+  policy. Google requires the link to resolve; more to the point, requesting a
+  RESTRICTED scope (gmail.modify) means there has to be an honest answer to
+  "where does my mail go", and the answer is not "nowhere" — it goes to a model.
+
+  KEEP THIS IN STEP WITH lib/google.ts SCOPES. If a scope is added there and not
+  described here, this page is understating what the app reaches, which is the
+  worst direction for a privacy policy to be wrong in.
+
+  Plain HTML in public/, copied verbatim like probe.html rather than bundled,
+  so it still resolves if the app bundle is broken.
+-->
+<style>
+  :root { color-scheme: dark; }
+  body {
+    background: #0b0d11; color: #e8ecf3; margin: 0; padding: 40px 24px;
+    font: 16px/1.65 system-ui, -apple-system, sans-serif;
+  }
+  main { max-width: 42rem; margin: 0 auto; }
+  h1 { font-size: 1.6rem; margin: 0 0 .2rem; }
+  h2 { font-size: 1.05rem; margin: 2rem 0 .4rem; color: #cbd5e1; }
+  p, li { color: #9aa6b8; }
+  a { color: #7dd3fc; }
+  .sub { color: #64748b; font-size: .9rem; margin: 0 0 1.5rem; }
+  strong { color: #e8ecf3; }
+  code { color: #e8ecf3; font-size: .92em; }
+</style>
+<main>
+  <h1>Privacy</h1>
+  <p class="sub">Jarvis — last updated 21 September 2026</p>
+
+  <p>
+    Jarvis is a private, single-user voice assistant that runs in one car. It is
+    not a product, it has no other users, and it collects nothing for analytics,
+    advertising or resale.
+  </p>
+
+  <h2>What Google data it uses</h2>
+  <p>With your permission it requests four OAuth scopes, and no others:</p>
+  <ul>
+    <li>
+      <strong><code>gmail.modify</code></strong> — to read your mail when you ask
+      what you have, and to reply, send, save drafts, move messages to the trash,
+      archive them and change their labels when you ask for those.
+    </li>
+    <li>
+      <strong><code>calendar.events</code></strong> — to read events in your
+      calendar and to create new ones when you ask.
+    </li>
+    <li>
+      <strong><code>contacts.readonly</code></strong> — to look up which email
+      address a name refers to, so that "email Sam" can work. Read-only, and
+      used for nothing else.
+    </li>
+    <li>
+      <strong><code>userinfo.email</code></strong> — to confirm which account is
+      linked.
+    </li>
+  </ul>
+
+  <h2>What it deliberately cannot do</h2>
+  <p>
+    These scopes are <em>not</em> requested, and each absence removes a specific
+    capability:
+  </p>
+  <ul>
+    <li>
+      <code>mail.google.com</code> — so <strong>nothing can be deleted
+      permanently.</strong> The worst case is the trash, where Gmail keeps a
+      message for 30 days and the app can restore it.
+    </li>
+    <li>
+      <code>gmail.settings.*</code> — so it cannot create filters or
+      auto-forwarding rules. This is the permission that would turn one bad
+      instruction into ongoing exfiltration.
+    </li>
+    <li>
+      the full <code>calendar</code> scope — so it can add and read events but
+      cannot delete a calendar.
+    </li>
+    <li>
+      any contacts <em>write</em> scope, and any Drive, Docs or Sheets scope at
+      all.
+    </li>
+  </ul>
+
+  <h2>Where your data goes</h2>
+  <p>
+    Mail, calendar events and contact lookups are fetched only at the moment you
+    ask a question, and are <strong>not stored, logged or retained</strong> by
+    this application.
+  </p>
+  <p>
+    They are, however, <strong>sent to OpenAI's API</strong> as part of the
+    request that produces a spoken answer — that is how the summary you hear is
+    written. Message bodies, subjects, senders, event titles and locations, and
+    any contact name and address resolved for a message are therefore processed
+    by OpenAI under their own terms. If that is not acceptable to you, do not
+    link a Google account.
+  </p>
+
+  <h2>What is stored, and where</h2>
+  <p>
+    Only the Google refresh token, held in Cloudflare Workers KV so the link
+    survives between drives. It is never sent to the browser or the car. No mail,
+    no events, no contacts, no addresses and no attachments are written to
+    storage.
+  </p>
+
+  <h2>Removing access</h2>
+  <p>
+    Unlink from within the app, or revoke it directly at
+    <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a>.
+    Revoking takes effect immediately and deletes nothing else, because there is
+    nothing else to delete.
+  </p>
+
+  <h2>Contact</h2>
+  <p>The person who runs this Jarvis deployment. <!-- Operators: put your own contact address here. --></p>
+
+  <p style="margin-top:2rem"><a href="/">← Jarvis</a> · <a href="/terms">Terms</a></p>
+</main>

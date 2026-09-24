@@ -1,0 +1,6 @@
+# Automatic HTTPS for Jarvis. JARVIS_DOMAIN must point at this machine, with
+# ports 80 and 443 reachable, so Let's Encrypt can issue a certificate.
+{$JARVIS_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy jarvis:8787
+}
