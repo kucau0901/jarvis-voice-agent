@@ -242,8 +242,8 @@ expensive tier.
 
 Jarvis remembers across drives. Until now the only durable memory was Hermes's,
 reached through `X-Hermes-Session-Key` — which meant every memory question took
-the slow path. It is now local: one KV document, BM25-lite retrieval, no
-embeddings.
+the slow path. It is now local: one document in the Durable Object (KV on a
+deployment without one), BM25-lite retrieval, no embeddings.
 
 The important facts are **injected** into every delegation rather than fetched
 with a `recall` call, because *"how long to get home"* carries no signal that
@@ -263,9 +263,18 @@ Places are typed (`slug` + `address`) and upserted by name, so two contradicting
 copies of "home" are structurally impossible — and so `directions` can resolve
 "home" in code with no model in the path.
 
-Inspect and edit at `GET/PUT /api/memory`; probe the retriever with
-`POST /api/memory/search` — a lexical scorer is only debuggable by trying queries
-against it.
+The **memory** panel lists every fact by kind, shows the profile block and how
+much of its budget is used, adds a fact and forgets one. It writes through
+`POST` and `DELETE /api/memory`, one fact per request, using the same changesets
+the voice tools use — never the replace-all `PUT`, which from a page left open
+would delete anything saved by voice in the meantime. A forgotten fact goes to
+the trash, except reference facts, which have none. *Test recall* runs a query
+through `POST /api/memory/search`, which ranks without counting a use: a lexical
+scorer is only debuggable by trying queries against it.
+
+`PROFILE_BUDGET` (1,500 characters) bounds the fact lines in the profile block;
+a fixed header of about 460 characters sits on top. Facts that do not fit are
+still saved and reached through `recall`, and the panel says how many there are.
 
 > **The delegation runs inside `ctx.waitUntil()`, and that is load-bearing.**
 > Without it the runtime may tear the Worker down the moment the client

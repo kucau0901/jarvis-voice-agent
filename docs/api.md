@@ -151,7 +151,8 @@ available — not an error. `tools` will be empty.
 > named scopes to anything you would not want to widen silently.
 
 Everything to do with administration — `/api/v1/devices`, `/api/mcp/*`,
-`/api/spotify/*`, `/api/google/*`, `/api/diag`, `/api/probe`, `PUT /api/memory` —
+`/api/spotify/*`, `/api/google/*`, `/api/diag`, `/api/probe`, and adding, editing
+or forgetting through `/api/memory` (`POST`, `PUT`, `DELETE`) —
 is reachable **only with the owner's key**, whatever scopes a device holds. A
 device can never mint its own successor.
 

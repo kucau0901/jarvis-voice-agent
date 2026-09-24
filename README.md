@@ -14,7 +14,8 @@ enough) or run it yourself with **Docker**.
   right tool: your car (Tessie), your house (Home Assistant, over MCP), Gmail,
   Google Calendar and Contacts, Spotify, Google Maps and Places, web search.
 - **Memory** — it remembers what you tell it: people, places, preferences,
-  directories. Stored in your own deployment, applied atomically.
+  directories. Stored in your own deployment, applied atomically, and shown in
+  the app's **memory** panel, where you can add a fact or forget one.
 - **Your own agents** — any MCP server, and optionally a
   [Hermes](https://github.com/NousResearch/hermes-agent) agent at home.
 - **Other devices** — an ESP32, smart glasses (Even Realities G2) or anything
@@ -66,6 +67,13 @@ like.
 > in a Durable Object, and Cloudflare will not create one until your account has
 > a workers.dev subdomain. Open **Workers & Pages** in the Cloudflare dashboard
 > once — that creates it — and deploy again.
+
+> **Keep the `durable_objects` block in `wrangler.jsonc`.** Memory and the
+> settings you save in the panel live in that object. A config without it still
+> deploys, but Jarvis quietly keeps memory in KV instead — on a deployment that
+> already had the object, an out-of-date copy — and the settings panel cannot
+> save. After a deploy, `env.STATE (JarvisState)` should be in the list of
+> bindings wrangler prints.
 
 **Your own domain:** uncomment `routes` in `wrangler.jsonc` and set
 `workers_dev` to `false`, so Jarvis is served only there, behind your zone's
