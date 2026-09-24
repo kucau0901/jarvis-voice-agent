@@ -8,6 +8,13 @@ It runs in any modern browser, including the Tesla's, and was built first for a
 Tesla Model 3 Highland. Deploy it to **Cloudflare Workers** (the free plan is
 enough) or run it yourself with **Docker**.
 
+> **In a Tesla:** the car's browser lets websites use the microphone from
+> software 2026.26, which Tesla lists for cars with the AMD infotainment
+> computer. Some countries block the browser while the car is moving
+> (Australia, for one); there, Jarvis on the car's screen works only in Park, so
+> use it from your phone instead. [docs/DESIGN.md](docs/DESIGN.md#the-in-car-probe)
+> has a probe page to check your own car.
+
 - **Voice** — OpenAI GPT‑Live, speaking and listening in real time, in whatever
   language you speak (and mixing two in one sentence, which it handles).
 - **A router with tools** — each request goes to a fast model that picks the
@@ -145,7 +152,8 @@ including an ESP32 example and the setup for Even Realities G2 glasses.
 
 ## Security
 
-- Every `/api/*` route needs the owner key or a device token. Device tokens are
+- Every `/api/*` route needs the owner key or a device token, except the Google
+  and Spotify sign-in callbacks, which carry a single-use code instead. Device tokens are
   scoped (`car.read`, `home`, `mail`, …), rate-limited and individually
   revocable; administration is owner-only.
 - Credentials stay on the server. Text written by other people — email bodies,

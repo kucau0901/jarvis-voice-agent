@@ -8,9 +8,11 @@ import { stateStub } from "./state-client.ts";
  * `X-Hermes-Session-Key` — which meant every memory question took the 30-230
  * second path. This is the local replacement.
  *
- * One KV document rather than a key per fact: at 300 facts it is roughly 45 KB,
- * so retrieval is a single `get` followed by pure in-Worker computation with no
- * further latency. A key per fact would need `list()` plus N reads.
+ * One document rather than a key per fact: at 300 facts it is roughly 45 KB,
+ * so retrieval is a single read followed by pure in-Worker computation with no
+ * further latency. A key per fact would need `list()` plus N reads. The
+ * document lives in the Durable Object (lib/state-host.ts); KV holds it only on
+ * a deployment without the STATE binding, and in tests.
  */
 
 export type Kind =

@@ -32,10 +32,11 @@
 </style>
 <main>
   <h1>Privacy</h1>
-  <p class="sub">Jarvis — last updated 21 September 2026</p>
+  <p class="sub">Jarvis — last updated 24 September 2026</p>
 
   <p>
-    Jarvis is a private, single-user voice assistant that runs in one car. It is
+    Jarvis is a private, single-user voice assistant, used from its owner's car,
+    phone and computer and from devices the owner issues a credential to. It is
     not a product, it has no other users, and it collects nothing for analytics,
     advertising or resale.
   </p>
@@ -92,8 +93,9 @@
   <h2>Where your data goes</h2>
   <p>
     Mail, calendar events and contact lookups are fetched only at the moment you
-    ask a question, and are <strong>not stored, logged or retained</strong> by
-    this application.
+    ask a question, and the mail, calendar and contacts tools do
+    <strong>not store, log or retain</strong> them. The two exceptions are
+    described below.
   </p>
   <p>
     They are, however, <strong>sent to OpenAI's API</strong> as part of the
@@ -106,18 +108,38 @@
 
   <h2>What is stored, and where</h2>
   <p>
-    Only the Google refresh token, held in Cloudflare Workers KV so the link
-    survives between drives. It is never sent to the browser or the car. No mail,
-    no events, no contacts, no addresses and no attachments are written to
-    storage.
+    The Google refresh token, held in Cloudflare Workers KV so the link survives
+    between drives, and the short-lived access token it produces, cached there
+    until it expires (within about an hour). Neither is ever sent to the browser
+    or the car. The mail, calendar and contacts tools write no mail, events,
+    contacts, addresses or attachments to storage.
   </p>
+  <p>
+    Two things can hold text derived from them, both in this deployment's own
+    storage:
+  </p>
+  <ul>
+    <li>
+      <strong>Glasses follow-ups.</strong> For devices using the smart-glasses
+      route, the last six questions and answers are kept so that a follow-up
+      like "reply to it" knows what "it" is. An answer can summarise an email.
+      The record is replaced when a conversation starts after five minutes
+      without one.
+    </li>
+    <li>
+      <strong>Memory.</strong> Anything you explicitly ask Jarvis to remember is
+      saved until you forget it, which you can do by voice or in the app's
+      memory panel.
+    </li>
+  </ul>
 
   <h2>Removing access</h2>
   <p>
-    Unlink from within the app, or revoke it directly at
-    <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a>.
-    Revoking takes effect immediately and deletes nothing else, because there is
-    nothing else to delete.
+    Revoke it at
+    <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a>,
+    or have the owner call <code>/api/google/unlink</code>, which deletes the
+    stored token. Revoking takes effect immediately. It does not touch the
+    app's own memory or glasses follow-ups, described above.
   </p>
 
   <h2>Contact</h2>

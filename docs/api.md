@@ -362,9 +362,11 @@ The OpenAI key never leaves the Worker. Requires `voice`.
 
 The session is created with `delegation: {type:"client"}`, which means **your
 client must close the loop itself**: listen on the `oai-events` data channel, and
-when a `session.delegation.created` arrives, POST the transcript to
-`/api/v1/ask` and feed the answer back with `session.commentary.append`. The
-Worker does not do this for you.
+when a `session.delegation.created` arrives, send the conversation to
+`/api/v1/stream` as `{"transcript":[…]}` — or the latest question to
+`/api/v1/ask` as `text`, with earlier turns as `context` — and feed the answer
+back with `session.commentary.append`. The event carries no task text, which is
+why the conversation has to be sent. The Worker does not do this for you.
 
 Permitted client events: `session.commentary.append`,
 `session.thinking.append`, `session.input_audio.mute`,

@@ -7,7 +7,7 @@ the [README](../README.md); for the device API, [api.md](api.md).
 
 ## Debugging from the car
 
-The Tesla browser has no devtools, so the app carries its own. Tap **show events**
+The Tesla browser has no devtools, so the app carries its own. Tap **events**
 for the raw server-event stream, and `window.__jarvis` exposes a live session:
 
 ```js
@@ -52,25 +52,40 @@ transcript so far, which the API supports via `input` (128 messages / 8,192 toke
   (`pc.connectionState`, then `datachannel.close`), and without that guard each
   one would start its own session — every orphan billing at $0.05/min.
 
-## Phase 0 — run this in the car first
+## The in-car probe
 
-Open **https://jarvis.example.com/probe** on the car screen and tap *Run all checks*.
-Run it twice: once in **Park**, then again tagged **Drive**.
+Open **https://jarvis.example.com/probe** on the car screen and tap *Run all checks*
+in **Park**, then *Run — tag as DRIVE* while moving (as a passenger). Before you
+start, enable **Wi-Fi → Remain connected in Drive**, or the car drops to LTE the
+moment you shift out of Park.
 
-Before you start, enable **Wi-Fi → Remain connected in Drive**, or the car drops to LTE
-the moment you shift out of Park.
+It answers what the public record does not: whether the microphone opens, whether
+WebRTC works including a **data channel** (GPT‑Live carries all its events on one
+labelled `oai-events` — media support alone is not enough), whether audio plays,
+the WebGL budget that decides the orb's quality tier, storage, and what the
+browser says about itself.
 
-The probe answers eleven questions that the public record does not, most importantly:
+One run, on 21 September 2026, settled how to recognise the car: its user agent
+has **no `Tesla` token** (it reads as Chrome on Linux) and the window is only
+about 773 CSS pixels wide, so neither identifies it. `src/app/client.ts` uses the
+pointer pair instead — a fine primary pointer *with* a coarse one is the car.
 
-> **Does the microphone work while driving?** Tesla's own 2026.26 release notes restrict
-> only the *camera* to Park and pointedly do not mention the mic; codriver.io says both
-> are Park-only. Nobody has published a first-hand `getUserMedia` test. If the mic turns
-> out to be Park-only, Jarvis is a parked-car toy rather than a driving assistant — so
-> this is worth five minutes before any more code gets written.
+It was written for one question: **does the microphone work while driving?**
+In the author's Model 3 in Malaysia, it does. That matches Tesla's 2026.26
+release notes, which opened the cabin microphone and camera to the browser and
+restrict only the *camera* to Park. The notes list the feature for cars with the
+**AMD** infotainment computer; on an older Intel car, expect the browser to have
+no microphone, and run the probe to be sure.
 
-It also measures the WebGL budget that decides the orb's quality tier, and confirms that
-a WebRTC **data channel** works (GPT‑Live carries all its events on one labelled
-`oai-events` — media support alone is not enough).
+Whether the *browser itself* can be used on the move is a separate question, and
+the answer depends on the country. Tesla publishes no list. An owner in
+**Australia** reports that the browser is unavailable while driving there, and
+coverage of the same feature says driver access while moving "varies by
+jurisdiction". Where it is blocked, Jarvis on the car's screen is Park-only; use
+it from a phone instead, with the phone's audio going to the car over Bluetooth.
+
+So it is still worth running on a new car, in a new country, or after a software
+update.
 
 Tap *Upload results* to push them to the Worker (it asks for the access key once,
 then remembers it), and read them back with:
@@ -87,7 +102,8 @@ it is testing. It lives in `public/` and is copied verbatim, never compiled.
 
 `session.delegation.created` carries only an id and a timeline offset — **never
 the task text** — so the browser sends the whole transcript to `/api/delegate`
-and a router model (`gpt-5.6-terra`) works out what was wanted and picks a tool.
+and a router model (`gpt-5.6-terra` unless another is chosen in the settings
+panel) works out what was wanted and picks a tool.
 That router is also what makes third-party MCP servers usable at all.
 
 The reply streams back over SSE. Progress notes arrive as *silent* context, so
@@ -144,6 +160,9 @@ length.
 | "what's my next meeting" | Calendar REST, direct | **~2s** |
 | "when do I need to leave" | calendar + Tessie + Routes | **~4s** |
 | anything else | Hermes | 30–230s |
+
+Times were measured in September 2026 and move with the router model, the
+network and how long Hermes thinks.
 
 ## The car
 
@@ -225,8 +244,8 @@ legacy Directions API because it returns `duration` *and* `staticDuration`, so t
 answer can separate the journey from the traffic.
 
 The origin is **the car's live position from Tessie**, which sidesteps browser
-geolocation entirely — untested in the Tesla browser, and never covered by the
-Phase 0 probe. The destination resolves through memory, so "home" works without
+geolocation entirely — untested in the Tesla browser, and not something the probe
+checks. The destination resolves through memory, so "home" works without
 repeating the address.
 
 > **An unresolved place is never passed to Google.** Handed a bare "the office",
@@ -240,10 +259,16 @@ expensive tier.
 
 ## Memory
 
-Jarvis remembers across drives. Until now the only durable memory was Hermes's,
+Jarvis remembers across drives. The only durable memory used to be Hermes's,
 reached through `X-Hermes-Session-Key` — which meant every memory question took
-the slow path. It is now local: one document in the Durable Object (KV on a
-deployment without one), BM25-lite retrieval, no embeddings.
+the slow path. Memory is now local: one document in the Durable Object, plus a
+second for reference material, BM25-lite retrieval, no embeddings.
+
+It lived in KV until 23 September 2026. On first use the object copies `mem:v1`
+and `mem:ref:v1` out of KV and leaves them there untouched as a backup, so the KV
+copy is stale by design. A deployment without the `STATE` binding still runs, on
+KV — which is how the author's deployment spent a day serving that stale copy. Check that
+`env.STATE (JarvisState)` is in the bindings wrangler prints on deploy.
 
 The important facts are **injected** into every delegation rather than fetched
 with a `recall` call, because *"how long to get home"* carries no signal that
@@ -278,18 +303,20 @@ still saved and reached through `recall`, and the panel says how many there are.
 
 > **The delegation runs inside `ctx.waitUntil()`, and that is load-bearing.**
 > Without it the runtime may tear the Worker down the moment the client
-> disconnects — and ending a session aborts the in-flight delegation. The KV
-> write would start and then be killed, so a fact learned during a drive was
-> gone by the next one. It looked like KV eventual consistency and was not:
-> read-after-write here lands in under two seconds, and a fact survives the
+> disconnects — and ending a session aborts the in-flight delegation. The
+> memory write would start and then be killed, so a fact learned during a drive
+> was gone by the next one. At the time memory was in KV, and it looked like
+> KV's eventual consistency; it was not. With `waitUntil`, a fact survives the
 > connection being cut three seconds in.
 
 Web search is OpenAI's built-in tool on the Responses API the router already
 uses, so it runs server-side: no extra credential, and no function call for the
 Worker to dispatch. Set `DISABLE_WEB_SEARCH=1` to withhold it.
 
-Answers are spoken in metric and local conventions — the car is in Malaysia, and
-the first version cheerfully led with Fahrenheit.
+Answers follow the **Where you are** settings — time zone, country, language and
+units (metric unless set to imperial) — which drive times, directions, address
+lookups and distances. Until September 2026 that was Malaysia, hard-coded in
+nine places; the first version cheerfully led with Fahrenheit.
 
 ## Mail
 
@@ -403,7 +430,9 @@ The router is told the difference and picks:
 | reads a state, operates a device | yes | yes |
 | reasoning, memory, survey of the house | no | yes |
 
-So state and control go direct to HA; judgement goes to Hermes. If Jarvis cannot see a device, the cause is almost never the token, and it is
+So state and control go direct to HA; judgement goes to Hermes.
+
+If Jarvis cannot see a device, the cause is almost never the token, and it is
 also **not** Home Assistant's "expose to Assist" setting. The MCP server
 integration keeps its **own read/control scope**, and it answers plainly when
 something is outside it:
@@ -417,9 +446,10 @@ MCP servers are configured in `config/mcp-servers.json` and overridden at runtim
 from KV, so one can be added without a redeploy — there is a **settings** panel in
 the app for exactly that, with a per-server *Test* button that connects, lists
 tools and reports the transport and latency. Use it from a phone or laptop rather
-than the car; typing a URL and a token on the Tesla keyboard is miserable. Header values written as
-`${NAME}` are filled from Worker secrets at call time and never stored in KV or
-the repo.
+than the car; typing a URL and a token on the Tesla keyboard is miserable. A URL
+or header value written as `${NAME}` is filled at call time from a Worker secret
+or a value saved in the settings panel, so the secret itself is never written
+into the server list or the repo.
 
 MCP tools are registered **non-strict**. Strict mode demands
 `additionalProperties: false` and a full `required` list on every nested object,
@@ -428,16 +458,26 @@ it means — the server validates its own arguments anyway.
 
 ## Architecture
 
-One Cloudflare Worker serves both the SPA and `/api/*`, so there is no CORS and one deploy.
+One Cloudflare Worker serves both the app and `/api/*`, so the app needs no CORS
+and ships in one deploy.
 
 ```
-Tesla browser ──WebRTC(media + "oai-events" datachannel)──> OpenAI gpt-live-1
-      │                                                          │
-      │                                          session.delegation.created
-      └──────────── HTTPS ────────────> Cloudflare Worker <───────┘
-                                          ├─> Hermes @ home (CF Access)
-                                          └─> 3rd-party MCP servers
+Browser (car, phone, laptop) ──WebRTC: audio + "oai-events" data channel──> OpenAI gpt-live-1
+      │                                 session.delegation.created comes back on the channel
+      │
+      └── HTTPS /api/* (owner key or device token) ──> Cloudflare Worker
+             /api/session   relays the SDP offer to OpenAI and returns the answer
+             /api/delegate  router model + tools: Tessie, Gmail, Calendar, Contacts,
+                            Maps, Spotify, web search, Home Assistant and other MCP
+                            servers, Hermes at home (through Cloudflare Access)
+             storage        Durable Object STATE: memory, panel settings, device
+                            counters, follow-up threads
+                            KV CONFIG: device tokens, Google and Spotify tokens,
+                            MCP server list, router model choice
 ```
+
+OpenAI never calls the Worker. The delegation event reaches the browser, and the
+browser posts the transcript to `/api/delegate`.
 
 GPT‑Live has **no ephemeral client secret**: the browser posts its SDP offer to the Worker,
 the Worker calls `live.create()` with the offer inline and returns the answer. The OpenAI
@@ -466,7 +506,7 @@ rather than being typed into. Every token carries scopes, and the agent is only
 ever shown the tools its scopes allow: a tool a caller lacks is not in the prompt
 to be argued around.
 
-[docs/api.md](docs/api.md) is the reference, including a complete ESP32 sketch and
+[api.md](api.md) is the reference, including a complete ESP32 sketch and
 the two TLS traps that otherwise cost a weekend.
 
 The page itself is a PWA. Open it on a phone, add to home screen, and it launches
@@ -475,8 +515,11 @@ there is live state, and a cached one is a wrong one.
 
 ## Security
 
-Every `/api/*` route is gated by a shared secret. Enter it once on the unlock
-screen (or pass `#key=…` once) and it is remembered in `localStorage`.
+Every `/api/*` route is gated by the owner key or a device token. The two
+exceptions are the Google and Spotify sign-in callbacks, which a third party
+redirects to and which carry a single-use `state` value instead. Enter the owner
+key once on the unlock screen (or pass `#key=…` once) and it is remembered in
+`localStorage`.
 
 The key is 16 characters from a Crockford-style base32 alphabet with I, L, O and U
 removed — 80 bits, so brute force is infeasible, but nothing in it can be misread
@@ -494,6 +537,6 @@ touching the car. The shared secret above remains the owner's credential and is
 the only thing that can mint or revoke.
 
 This gate is not decoration. The Hermes API server's own documentation warns that it grants
-*"full access to hermes-agent's toolset, including terminal commands"*, so once Phase 2
-lands, anyone who can reach `/api/*` can reach a shell at home. Secrets stay in the Worker,
-and the perimeter carries the weight.
+*"full access to hermes-agent's toolset, including terminal commands"*, and Jarvis is
+connected to it, so anyone who can reach `/api/*` can reach a shell at home. Secrets stay
+in the Worker, and the perimeter carries the weight.
