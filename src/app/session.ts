@@ -20,6 +20,40 @@ export interface SessionHandlers {
 export type SessionState =
   | "idle" | "requesting-mic" | "connecting" | "live" | "closed" | "error";
 
+/**
+ * The microphone, or an error that says what to do about it.
+ *
+ * The browser's own messages name the exception, not the fix: a Mac mini has
+ * no microphone at all, and Chrome reports that as "Requested device not
+ * found" under the orb, which reads like a fault in Jarvis.
+ */
+async function openMic(): Promise<MediaStream> {
+  if (!navigator.mediaDevices?.getUserMedia) {
+    throw new Error("this browser cannot use a microphone here — it needs HTTPS or localhost");
+  }
+  try {
+    return await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      },
+    });
+  } catch (e) {
+    const name = e instanceof DOMException ? e.name : "";
+    if (name === "NotFoundError" || name === "OverconstrainedError") {
+      throw new Error("no microphone found — plug one in (a headset or USB mic) and tap again");
+    }
+    if (name === "NotAllowedError" || name === "SecurityError") {
+      throw new Error("microphone blocked — allow it for this site in the address bar, then tap again");
+    }
+    if (name === "NotReadableError" || name === "AbortError") {
+      throw new Error("the microphone is busy or unavailable — close other apps using it and tap again");
+    }
+    throw e;
+  }
+}
+
 export class JarvisSession {
   private pc: RTCPeerConnection | null = null;
   private dc: RTCDataChannel | null = null;
@@ -40,13 +74,7 @@ export class JarvisSession {
     try {
       this.h.onState("requesting-mic");
       // Must be called from the user gesture that started this.
-      this.local = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
-      });
+      this.local = await openMic();
       this.h.onLocalStream(this.local);
 
       this.h.onState("connecting");
