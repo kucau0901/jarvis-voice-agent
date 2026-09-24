@@ -42,9 +42,10 @@ jobs:
           set -eu
           KEY=CITESTKEY1234567
           c() { curl --max-time 10 "$@"; }
+          probe() { curl --max-time 3 "$@"; }
           wait_up() {
-            for i in $(seq 1 60); do
-              c -fs http://127.0.0.1:8787/ >/dev/null && { echo "up after $((i * 2))s"; return 0; }
+            for i in $(seq 1 45); do
+              probe -fs http://127.0.0.1:8787/ >/dev/null && { echo "up after about $((i * 2))s"; return 0; }
               sleep 2
             done
             docker logs jarvis; return 1

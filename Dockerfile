@@ -28,8 +28,13 @@ RUN npm install -g "wrangler@$(node -p "require('./package-lock.json').packages[
  && npm cache clean --force
 COPY --from=build /app/dist ./dist
 COPY docker/entrypoint.sh /usr/local/bin/jarvis-entrypoint
+# The runtime writes scratch files next to its config (dist/*/.wrangler) and in
+# the working directory, and it runs as the unprivileged `node` user — so both,
+# and the data directory, belong to that user. Found by CI: owned by root, it
+# failed with EACCES and never started.
 RUN chmod +x /usr/local/bin/jarvis-entrypoint \
- && mkdir -p /data && chown node:node /data
+ && mkdir -p /data \
+ && chown -R node:node /app /data
 
 ENV PORT=8787 \
     WRANGLER_SEND_METRICS=false \
