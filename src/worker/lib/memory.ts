@@ -758,9 +758,13 @@ export class MemoryStore {
    * Capped hard, because this rides on every request including the ones that
    * never touch memory.
    */
-  buildProfile(): string {
+  /**
+   * The fact lines the profile block carries, within PROFILE_BUDGET. Facts that
+   * do not fit are still saved; they are found only through recall.
+   */
+  profileLines(): string[] {
     const facts = this.facts;
-    if (!facts.length) return "";
+    if (!facts.length) return [];
 
     const now = Date.now();
     const priority = (f: Fact) =>
@@ -784,6 +788,11 @@ export class MemoryStore {
       lines.push(line);
       used += line.length;
     }
+    return lines;
+  }
+
+  buildProfile(): string {
+    const lines = this.profileLines();
     if (!lines.length) return "";
 
     return (

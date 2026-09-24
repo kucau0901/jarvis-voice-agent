@@ -31,7 +31,7 @@ interface Loaded {
   trash: Fact[];
   count: number;
   cap: number;
-  profile: { chars: number; budget: number; text: string };
+  profile: { chars: number; used: number; budget: number; listed: number; text: string };
 }
 
 interface Hit {
@@ -283,10 +283,14 @@ export class Memory {
     const hot = d.facts.filter((f) => f.kind !== "reference").length;
     this.$(".count").textContent = `${hot} of ${d.cap} saved` +
       (d.facts.length > hot ? ` · ${d.facts.length - hot} reference` : "");
-    const pct = Math.min(100, Math.round((d.profile.chars / d.profile.budget) * 100));
+    // The budget bounds the fact lines, not the block's fixed header.
+    const pct = Math.min(100, Math.round((d.profile.used / d.profile.budget) * 100));
+    const left = hot - d.profile.listed;
     this.$<HTMLElement>(".bar i").style.width = `${pct}%`;
-    this.$(".bar").classList.toggle("full", pct >= 100);
-    this.$(".budget").textContent = `${d.profile.chars} / ${d.profile.budget} characters per request`;
+    this.$(".bar").classList.toggle("full", left > 0);
+    this.$(".budget").textContent =
+      `${d.profile.listed} of ${hot} in the summary · ${d.profile.used} / ${d.profile.budget} characters` +
+      (left > 0 ? ` · ${left} found only by searching` : "");
     this.$(".profile pre").textContent = d.profile.text || "(nothing yet)";
 
     const byId = new Map(d.facts.map((f) => [f.id, f]));

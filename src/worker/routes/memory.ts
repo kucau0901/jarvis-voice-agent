@@ -55,13 +55,21 @@ export async function handleMemory(req: Request, env: Env): Promise<Response> {
 
   if (req.method === "GET") {
     const profile = store.buildProfile();
+    const lines = store.profileLines();
     return json({
       facts: await store.allFacts(),
       trash: store.trash,
       count: (await store.allFacts()).length,
       cap: 300,
-      // What actually rides on every delegation, so its size is visible.
-      profile: { chars: profile.length, budget: PROFILE_BUDGET, text: profile },
+      // What actually rides on every delegation, so its size is visible. The
+      // budget bounds the fact lines; the block's fixed header sits on top.
+      profile: {
+        chars: profile.length,
+        used: lines.reduce((n, l) => n + l.length, 0),
+        budget: PROFILE_BUDGET,
+        listed: lines.length,
+        text: profile,
+      },
     });
   }
 

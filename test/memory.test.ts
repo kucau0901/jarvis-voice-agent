@@ -547,5 +547,21 @@ console.log("\nthe panel's routes — one fact at a time");
   check("the forgotten reference fact is gone", !got.facts.some((f) => f.id === refId), texts);
 }
 
+console.log("\nthe profile gauge — the budget bounds the fact lines, not the header");
+{
+  const env = fakeEnv();
+  const m = new MemoryStore(env); await m.load();
+  for (let i = 0; i < 30; i++) {
+    m.add({ text: `Fact number ${i} about something distinct like topic${i} and detail${i * 7}`, kind: "note" });
+  }
+  await m.save();
+  const res = await handleMemory(new Request("https://j.test/api/memory"), env);
+  const p = ((await res.json()) as { profile: { chars: number; used: number; budget: number; listed: number } }).profile;
+  check("fact lines stay within the budget", p.used <= p.budget, p);
+  check("the whole block is larger than the lines it carries", p.chars > p.used, p);
+  check("not every fact fits, and the count says so", p.listed > 0 && p.listed < 30, p);
+  check("buildProfile carries exactly profileLines", m.profileLines().every((l) => m.buildProfile().includes(l)));
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
