@@ -1,6 +1,17 @@
 import type { Env } from "../types";
-import { json, err } from "../lib/http";
-import { MemoryStore, sane, PROFILE_BUDGET } from "../lib/memory";
+import { json, err } from "../lib/http.ts";
+import { MemoryStore, sane, sanitise, search, PROFILE_BUDGET, type Kind } from "../lib/memory.ts";
+
+const KINDS: readonly Kind[] = ["place", "person", "preference", "vehicle", "routine", "note", "reference"];
+
+async function body(req: Request): Promise<Record<string, unknown> | null> {
+  try {
+    const b = await req.json();
+    return b && typeof b === "object" ? (b as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Read, edit and probe what Jarvis has saved.
@@ -28,7 +39,6 @@ export async function handleMemory(req: Request, env: Env): Promise<Response> {
 
     // Deliberately not store.search(): probing from the UI must not inflate
     // useCount and quietly change what the profile block prioritises.
-    const { search } = await import("../lib/memory");
     const hits = search(await store.allFacts(), query, 10);
     return json({
       query,
@@ -53,6 +63,51 @@ export async function handleMemory(req: Request, env: Env): Promise<Response> {
       // What actually rides on every delegation, so its size is visible.
       profile: { chars: profile.length, budget: PROFILE_BUDGET, text: profile },
     });
+  }
+
+  /*
+   * One fact at a time, for the memory panel.
+   *
+   * The panel could have used PUT, but replace-all from a page that has been
+   * open a while writes back what it loaded: a fact saved by voice in the
+   * meantime would be silently deleted. These go through the same changeset
+   * path the voice tools use, so they touch only the fact they name.
+   */
+  if (req.method === "POST") {
+    const b = await body(req);
+    if (!b) return err(400, "body is not valid JSON");
+    // Same validator as the voice path: the panel is no more trusted than speech.
+    const clean = sanitise(b.text);
+    if (!clean.ok) return err(400, clean.why);
+    const kind = KINDS.includes(b.kind as Kind) ? (b.kind as Kind) : "note";
+    const named = kind === "place" || kind === "person";
+    const name = named && typeof b.name === "string" && b.name.trim() ? b.name.trim().slice(0, 60) : undefined;
+    const address =
+      kind === "place" && typeof b.address === "string" && b.address.trim()
+        ? b.address.trim().slice(0, 300)
+        : undefined;
+
+    const { fact, replaced } = store.add({
+      text: clean.text,
+      kind,
+      slug: name,
+      address,
+      pinned: kind !== "reference" && b.pinned === true ? true : undefined,
+      source: "ui",
+    });
+    await store.save();
+    return json({ ok: true, fact, replaced: replaced ?? null });
+  }
+
+  if (req.method === "DELETE") {
+    const b = await body(req);
+    const id = typeof b?.id === "string" ? b.id : "";
+    if (!id) return err(400, "id is required");
+    // Hot facts go to the trash, exactly as `forget` does; reference has none.
+    const gone = store.remove(id) ?? (await store.removeReference(id));
+    if (!gone) return err(404, "no saved fact with that id");
+    await store.save();
+    return json({ ok: true, removed: gone });
   }
 
   if (req.method === "PUT") {

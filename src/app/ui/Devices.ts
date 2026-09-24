@@ -1,5 +1,6 @@
 import qrcode from "qrcode-generator";
 import { authHeaders } from "../key";
+import { ago, arm, esc } from "./util";
 
 /**
  * Minting and killing device credentials.
@@ -23,18 +24,6 @@ interface Device {
   lastSeenAt?: number;
   revokedAt?: number;
 }
-
-const esc = (s: string) =>
-  s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
-
-const ago = (t?: number) => {
-  if (!t) return "never";
-  const m = Math.round((Date.now() - t) / 60000);
-  if (m < 2) return "just now";
-  if (m < 90) return `${m}m ago`;
-  const h = Math.round(m / 60);
-  return h < 36 ? `${h}h ago` : `${Math.round(h / 24)}d ago`;
-};
 
 /** What each scope actually lets a device do, in the words the panel shows. */
 const MEANING: Record<string, string> = {
@@ -248,43 +237,12 @@ export class Devices {
       const rev = row.querySelector<HTMLButtonElement>(".revoke");
       const del = row.querySelector<HTMLButtonElement>(".del");
       if (rev) {
-        this.arm(rev, "Revoke", () =>
+        arm(rev, "Revoke for good?", () =>
           this.mutate("PATCH", { id, revoked: true }, `Revoked ${name}.`),
         );
       }
-      if (del) this.arm(del, "Delete", () => this.mutate("DELETE", { id }, `Deleted ${name}.`));
+      if (del) arm(del, "Delete for good?", () => this.mutate("DELETE", { id }, `Deleted ${name}.`));
     }
-  }
-
-  /**
-   * Two taps instead of a native confirm().
-   *
-   * confirm() halts the renderer until it is answered — it froze an automated
-   * click outright — and a modal dialog is a poor thing to put in front of
-   * someone sitting in a car. Arming the button in place asks the same question
-   * without stopping everything, and it disarms itself after a few seconds so a
-   * stray tap cannot sit there loaded.
-   */
-  private arm(btn: HTMLButtonElement, label: string, go: () => Promise<void>): void {
-    let armed = false;
-    let timer = 0;
-    const reset = () => {
-      armed = false;
-      btn.textContent = label;
-      btn.classList.remove("armed");
-    };
-    btn.addEventListener("click", () => {
-      if (armed) {
-        clearTimeout(timer);
-        reset();
-        void go();
-        return;
-      }
-      armed = true;
-      btn.textContent = label === "Delete" ? "Delete for good?" : "Revoke for good?";
-      btn.classList.add("armed");
-      timer = setTimeout(reset, 4000) as unknown as number;
-    });
   }
 
   private async mutate(method: string, body: unknown, ok: string): Promise<void> {

@@ -123,7 +123,7 @@
   .ln .t.e { color: var(--red); }
   .ln .j { color: #5d6b7d; word-break: break-all; }
 
-  /* The sheets: settings and devices. Both are phone-or-laptop jobs rather than
+  /* The sheets: settings, devices and memory. Both are phone-or-laptop jobs rather than
      driving ones — each means typing something the Tesla keyboard makes
      miserable. One shared class, because two id selectors per rule is how you
      end up with `#settings, #devices .sheet` styling the whole overlay. */
@@ -227,6 +227,38 @@
   #devices .qr { background: #fff; padding: 10px; border-radius: 8px;
     width: max-content; margin: 12px 0; }
   #devices .qr svg { display: block; width: 190px; height: 190px; }
+  /* Memory (src/app/ui/Memory.ts): every fact Jarvis carries, and a way to add or forget one. */
+  #memory [hidden] { display: none !important; }
+  #memory .gauge { display: grid; grid-template-columns: auto minmax(60px, 1fr) auto; gap: 10px;
+    align-items: center; font-size: 13px; color: var(--dim); }
+  #memory .bar { height: 6px; border-radius: 3px; background: #141d28; overflow: hidden; }
+  #memory .bar i { display: block; height: 100%; width: 0; background: var(--cyan); }
+  #memory .bar.full i { background: var(--red); }
+  #memory details summary { cursor: pointer; font-size: 13px; color: var(--dim); padding: 10px 0; }
+  #memory .profile pre { white-space: pre-wrap; word-break: break-word; margin: 0;
+    font: 12px/1.5 ui-monospace, Menlo, monospace; color: #cbd5e3; background: #070b11;
+    border: 1px solid #16202c; border-radius: 10px; padding: 12px; }
+  #memory .add { display: grid; gap: 10px; padding: 14px; margin: 14px 0;
+    border: 1px solid #16202c; border-radius: 10px; background: #070b11; }
+  #memory .addrow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; }
+  #memory .fpin input { min-width: 18px; min-height: 18px; }
+  #memory .named { display: grid; gap: 10px; }
+  #memory .find { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+  #memory .list h3, #memory .ref summary { margin: 22px 0 8px; font-size: 14px; font-weight: 500; color: var(--fg); }
+  #memory .fact { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px;
+    align-items: center; padding: 12px; margin-bottom: 8px;
+    border: 1px solid #16202c; border-radius: 10px; background: #070b11; }
+  #memory .ftxt { font-size: 15px; line-height: 1.4; overflow-wrap: anywhere; }
+  #memory .meta { grid-column: 1; font-size: 12px; color: #5d6b7d; overflow-wrap: anywhere; }
+  #memory .forget { grid-column: 2; grid-row: 1 / span 2; }
+  #memory .pin { color: var(--cyan); }
+  #memory .dim { color: #5d6b7d; font-size: 12px; }
+  #memory .gone { font-size: 13px; color: var(--dim); padding: 6px 0; border-top: 1px solid #111a24; }
+  #memory button.armed { background: var(--red); border-color: var(--red); color: #fff; font-weight: 600; }
+  @media (max-width: 520px) {
+    #memory .gauge { grid-template-columns: minmax(0, 1fr); }
+  }
+
   /* The stage: a map or a street-level photo, filling the main view. */
   #stage { position: fixed; inset: 0; display: none; align-items: center;
     justify-content: center; z-index: 55; pointer-events: none;
@@ -313,6 +345,7 @@
 <body>
   <h1>JARVIS</h1>
   <div id="topbtns">
+    <button id="openMemory">memory</button>
     <button id="openDevices">devices</button>
     <button id="openSettings">settings</button>
     <button id="toggleLog">events</button>

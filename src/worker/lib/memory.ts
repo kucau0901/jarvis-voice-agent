@@ -267,6 +267,8 @@ export interface Changeset {
 export interface RefChangeset {
   replaceAll?: Fact[];
   added: Fact[];
+  /** Ids forgotten one at a time. Reference has no trash: it is a filing cabinet. */
+  removed?: string[];
   used: Usage;
 }
 
@@ -311,7 +313,9 @@ export function applyChanges(base: MemoryDoc, cs: Changeset): MemoryDoc {
 /** Apply a changeset to the reference document as it is now. */
 export function applyRefChanges(base: RefDoc, cs: RefChangeset): RefDoc {
   const used = new Map(cs.used);
-  const existing = cs.replaceAll ? [...cs.replaceAll] : base.facts.map((f) => withUse(f, used.get(f.id)));
+  const removed = new Set(cs.removed ?? []);
+  const existing = (cs.replaceAll ? [...cs.replaceAll] : base.facts.map((f) => withUse(f, used.get(f.id))))
+    .filter((f) => !removed.has(f.id));
   const byText = new Map(existing.map((f) => [f.text.toLowerCase(), f]));
 
   for (const f of cs.added) {
@@ -368,6 +372,7 @@ export class MemoryStore {
   private refDirty = false;
   /** Reference facts added this turn, merged on save so `add` can stay sync. */
   private pendingRef: Fact[] = [];
+  private refRemoved = new Set<string>();
   /** What this store changed — see "changes" above. */
   private changed = new Set<string>();
   private removed = new Set<string>();
@@ -442,7 +447,7 @@ export class MemoryStore {
   private refChangeset(): RefChangeset | null {
     if (!this.refDirty && !this.pendingRef.length) return null;
     if (this.refReplacedAll) return { replaceAll: this.refDoc?.facts ?? [], added: [], used: [] };
-    return { added: this.pendingRef, used: [...this.refUsed] };
+    return { added: this.pendingRef, removed: [...this.refRemoved], used: [...this.refUsed] };
   }
 
   /**
@@ -470,6 +475,7 @@ export class MemoryStore {
 
     this.dirty = this.refDirty = this.replacedAll = this.refReplacedAll = false;
     this.pendingRef = [];
+    this.refRemoved.clear();
     this.changed.clear();
     this.removed.clear();
     this.used.clear();
@@ -631,6 +637,28 @@ export class MemoryStore {
   }
 
   /**
+   * Forget one reference fact.
+   *
+   * Async where `remove` is not, because the reference store is only read when
+   * something needs it. Recorded as an id, like `remove`, so a roster saved by
+   * voice while the panel was open is not lost when this one is written.
+   */
+  async removeReference(id: string): Promise<Fact | undefined> {
+    const pending = this.pendingRef.find((x) => x.id === id);
+    if (pending) {
+      this.pendingRef = this.pendingRef.filter((x) => x.id !== id);
+      return pending;
+    }
+    const cold = await this.loadReference();
+    const f = cold.find((x) => x.id === id);
+    if (!f) return undefined;
+    this.refDoc!.facts = cold.filter((x) => x.id !== id);
+    this.refRemoved.add(id);
+    this.refDirty = true;
+    return f;
+  }
+
+  /**
    * Replace everything, routing each fact to the store its kind belongs in.
    *
    * The editor is the one place a fact's kind can be changed, so this has to
@@ -650,6 +678,7 @@ export class MemoryStore {
     await this.loadReference();
     this.refDoc!.facts = cold.slice(0, MAX_REF);
     this.pendingRef = [];
+    this.refRemoved.clear();
     this.refDirty = true;
   }
 

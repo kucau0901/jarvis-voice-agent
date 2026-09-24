@@ -3,6 +3,7 @@ import { loadKey, saveKey, clearKey, authHeaders } from "./key";
 import { History } from "./history";
 import { Settings } from "./ui/Settings";
 import { Devices } from "./ui/Devices";
+import { Memory } from "./ui/Memory";
 import { Stage, type DisplayPayload } from "./ui/Stage";
 import { Orb } from "./orb/Orb";
 import { VoiceLevels } from "./audio";
@@ -436,12 +437,19 @@ function requireKey() {
 }
 
 let devices: Devices | null = null;
+let memory: Memory | null = null;
 let settings: Settings | null = null;
 let stage: Stage | null = null;
 $("openSettings").addEventListener("click", () => {
   if (!key) { requireKey(); return; }
   settings ??= new Settings(key);
   void settings.show();
+});
+
+$("openMemory").addEventListener("click", () => {
+  if (!key) { requireKey(); return; }
+  memory ??= new Memory(key);
+  void memory.show();
 });
 
 $("openDevices").addEventListener("click", () => {
