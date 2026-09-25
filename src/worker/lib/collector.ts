@@ -11,6 +11,8 @@ export interface Collected {
   tools: string[];
   /** The router model that produced this, after any fallback. */
   model?: string;
+  /** Tokens across every hop: input, cached (read), written to cache, output. */
+  usage?: { input: number; cached: number; written: number; output: number; hops: number };
 }
 
 /**
@@ -48,7 +50,10 @@ export class Collector implements EventSink {
 
   finish(): Collected {
     const t = this.terminal;
-    const model = typeof t?.model === "string" ? { model: t.model } : {};
+    const model = {
+      ...(typeof t?.model === "string" ? { model: t.model } : {}),
+      ...(t?.usage && typeof t.usage === "object" ? { usage: t.usage as Collected["usage"] } : {}),
+    };
 
     /*
      * One path through the loop genuinely ends without saying anything: the

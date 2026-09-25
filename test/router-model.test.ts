@@ -1,6 +1,7 @@
 import {
   DEFAULT_ROUTER_MODEL,
   builtinTools,
+  explicitCache,
   isRouterCandidate,
   orderCandidates,
   pick,
@@ -75,7 +76,7 @@ console.log("\nprecedence: settings panel, then the secret, then the default");
   check("a malformed stored value falls through to the secret",
     pick({ model: "not a model" }, "gpt-5").source === "env");
   check("a stored value of the wrong shape falls through", pick("gpt-6-sol", undefined).source === "default");
-  check("the default is still gpt-5.6-terra", DEFAULT_ROUTER_MODEL === "gpt-5.6-terra");
+  check("the default is gpt-6-luna", DEFAULT_ROUTER_MODEL === "gpt-6-luna");
 }
 
 console.log("\nstorage");
@@ -184,6 +185,16 @@ console.log("\nonly the owner chooses the model");
     check(`/api/router ${m} is owner-only`, requiredScope("/api/router", m) === "owner");
   }
   check("/api/router/test is owner-only", requiredScope("/api/router/test", "POST") === "owner");
+}
+
+console.log("\nexplicit prompt caching only where the model takes it");
+{
+  for (const m of ["gpt-6-luna", "gpt-6-sol", "gpt-5.6", "gpt-5.6-mini", "gpt-5.12", "gpt-7", "gpt-10"]) {
+    check(`${m} takes cache breakpoints`, explicitCache(m));
+  }
+  for (const m of ["gpt-5.5", "gpt-5", "gpt-5-mini", "gpt-4.1", "gpt-4o", "o3", "gpt-5.5-pro", "chatgpt-6"]) {
+    check(`${m} does not`, !explicitCache(m));
+  }
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

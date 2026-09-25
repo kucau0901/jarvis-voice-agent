@@ -19,8 +19,18 @@ import type { Env } from "../types";
  * Deliberately free of the `openai` import, so the tests can load it.
  */
 
-/** What the router ran on before this was a setting, and what it falls back to. */
-export const DEFAULT_ROUTER_MODEL = "gpt-5.6-terra";
+/**
+ * The default router, and what a rejected choice falls back to.
+ *
+ * GPT-6 Luna since 25 September 2026: about 1/20 the price of GPT-6 Sol ($0.10
+ * vs $2 per million input tokens). On eight real Jarvis questions — car,
+ * memory, the staff roster, calendar, web, Malay, the house, and a planted
+ * made-up fact — Luna matched Sol on every one and did better on one: Sol
+ * spent all six steps searching for a porch light and gave up, Luna said
+ * plainly it could not find one. No slower. A router mostly picks a tool and
+ * writes a sentence; that does not need the dearer model.
+ */
+export const DEFAULT_ROUTER_MODEL = "gpt-6-luna";
 
 const KV_KEY = "config:router-model";
 const KV_FALLBACK_KEY = "config:router-model:fallback";
@@ -115,6 +125,17 @@ export function shouldFallBack(e: unknown, model: string, step: number, aborted:
   if (step !== 0 || aborted || model === DEFAULT_ROUTER_MODEL) return false;
   const status = (e as { status?: unknown } | null)?.status;
   return status === 400 || status === 404;
+}
+
+/**
+ * Models that take explicit prompt-cache breakpoints: GPT-5.6 and later.
+ *
+ * Sending the breakpoint or `prompt_cache_options` to an older model risks a
+ * 400 — which the first-hop fallback would then read as the model being
+ * rejected — so they are sent only where supported.
+ */
+export function explicitCache(model: string): boolean {
+  return /^gpt-(5\.([6-9]|[1-9]\d)|[6-9]|[1-9]\d)(?![0-9])/.test(model);
 }
 
 /** OpenAI-executed tools the router always offers. Shared with the probe so it tests the same request. */

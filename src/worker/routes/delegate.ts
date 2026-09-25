@@ -12,6 +12,7 @@ import { DEFAULT_CHAR_BUDGET, glassesInstructions } from "../lib/glasses";
 import {
   DEFAULT_ROUTER_MODEL,
   builtinTools,
+  explicitCache,
   recordFallback,
   resolveRouterModel,
   shouldFallBack,
@@ -415,9 +416,22 @@ export async function run(
   // Resolved once per delegation, not per hop: a multi-step turn should not
   // watch the clock move underneath it mid-answer.
   const noScreen = !allows(grants, "screen");
-  const instructions =
-    ROUTER_PROMPT +
-    nowLine(env) +
+  /*
+   * Prompt caching. The router prompt and the tool list are ~20k tokens and
+   * identical on every question; only the clock, a few per-caller notes, the
+   * memory profile and the conversation change. The clock used to be appended
+   * to `instructions`, so no two requests shared a prefix: measured on 25 Sep
+   * 2026, every question WROTE all ~21k tokens to the cache at 1.25x the input
+   * price and read back none — worse than no cache at all.
+   *
+   * So `instructions` is now the fixed prompt alone, a fixed separator carries
+   * an explicit cache breakpoint, and everything that varies comes after it.
+   * The prefix (instructions + tools + separator) is written once per 30
+   * minutes and read at a tenth of the price after that.
+   */
+  const instructions = ROUTER_PROMPT;
+  const context =
+    nowLine(env).trim() +
     (noScreen
       ? "\n\nTHIS REQUEST HAS NO SCREEN\n" +
         "The caller is a device that can only receive text — there is nothing to " +
@@ -449,12 +463,30 @@ export async function run(
    * reach a shell at home.
    */
   const profile = memory.buildProfile();
+  const cacheable = explicitCache(model);
   const input: OpenAI.Responses.ResponseInput = [
+    {
+      role: "developer" as const,
+      content: [
+        {
+          type: "input_text" as const,
+          text: "The standing instructions end here. What follows is this request's own context.",
+          ...(cacheable ? { prompt_cache_breakpoint: { mode: "explicit" as const } } : {}),
+        },
+      ],
+    },
+    { role: "developer" as const, content: context },
     ...(profile ? [{ role: "user" as const, content: profile }] : []),
     { role: "user" as const, content: `Conversation so far:\n\n${conversation}` },
   ];
   let turn: OpenAI.Responses.ResponseInput = input;
   let previousResponseId: string | undefined;
+  /*
+   * What this question cost, summed over every hop, and reported with the
+   * answer. Without it there is no way to see whether the prompt cache is
+   * being read — and after the voice itself, the router prompt IS the bill.
+   */
+  const usage = { input: 0, cached: 0, written: 0, output: 0, hops: 0 };
 
   try {
     for (let step = 0; step < MAX_STEPS; step++) {
@@ -475,6 +507,7 @@ export async function run(
             ],
             tool_choice: "auto",
             ...(previousResponseId ? { previous_response_id: previousResponseId } : {}),
+            ...(explicitCache(m) ? { prompt_cache_options: { mode: "explicit" as const, ttl: "30m" as const } } : {}),
             store: true,
           },
           { signal },
@@ -500,6 +533,18 @@ export async function run(
         res = await ask(model);
       }
       previousResponseId = res.id;
+      const u = res.usage as
+        | {
+            input_tokens?: number;
+            output_tokens?: number;
+            input_tokens_details?: { cached_tokens?: number; cache_write_tokens?: number };
+          }
+        | undefined;
+      usage.input += u?.input_tokens ?? 0;
+      usage.cached += u?.input_tokens_details?.cached_tokens ?? 0;
+      usage.written += u?.input_tokens_details?.cache_write_tokens ?? 0;
+      usage.output += u?.output_tokens ?? 0;
+      usage.hops += 1;
 
       const calls = res.output.filter(
         (o): o is OpenAI.Responses.ResponseFunctionToolCall => o.type === "function_call",
@@ -510,8 +555,8 @@ export async function run(
         if (used.length) sse.send({ type: "used", tools: used });
         sse.send(
           text
-            ? { type: "result", text, model }
-            : { type: "error", text: "I could not work out an answer to that.", model },
+            ? { type: "result", text, model, usage }
+            : { type: "error", text: "I could not work out an answer to that.", model, usage },
         );
         return;
       }
@@ -563,6 +608,8 @@ export async function run(
     sse.send({
       type: "error",
       text: "I got stuck working that one out. Ask me again in a moment.",
+      model,
+      usage,
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -579,6 +626,7 @@ export async function run(
         detail: msg.slice(0, 300),
         aborted: signal.aborted,
         model,
+        usage,
       });
     }
   } finally {

@@ -102,7 +102,7 @@ it is testing. It lives in `public/` and is copied verbatim, never compiled.
 
 `session.delegation.created` carries only an id and a timeline offset — **never
 the task text** — so the browser sends the whole transcript to `/api/delegate`
-and a router model (`gpt-5.6-terra` unless another is chosen in the settings
+and a router model (`gpt-6-luna` unless another is chosen in the settings
 panel) works out what was wanted and picks a tool.
 That router is also what makes third-party MCP servers usable at all.
 
