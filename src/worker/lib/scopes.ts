@@ -141,6 +141,12 @@ export function requiredScope(pathname: string, method: string): RouteRequiremen
     case "/api/v1/routines/run":
     case "/api/v1/trigger":
       return "routines";
+
+    // Background jobs. A job asks things, so `ask`; one for Hermes also needs
+    // `home`, checked in the route. Each runs with its creator's grants.
+    case "/api/v1/jobs":
+    case "/api/v1/jobs/cancel":
+      return "ask";
     case "/api/camera":
       return "home";
 

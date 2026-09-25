@@ -5,6 +5,7 @@ import { Settings } from "./ui/Settings";
 import { Devices } from "./ui/Devices";
 import { Memory } from "./ui/Memory";
 import { Routines } from "./ui/Routines";
+import { Jobs } from "./ui/Jobs";
 import { Stage, type DisplayPayload } from "./ui/Stage";
 import { Orb } from "./orb/Orb";
 import { VoiceLevels } from "./audio";
@@ -448,9 +449,11 @@ function showAlert(a: Alert): HTMLElement {
 
 function onAlert(a: Alert) {
   const card = showAlert(a);
+  // Into the conversation either way: "yes, do that" after Hermes asks a
+  // question in an alert must have the question to refer to.
+  history.add("assistant", a.title !== "Jarvis" ? `${a.title}: ${a.text}` : a.text);
   if (session?.live) {
     session.commentary(a.title !== "Jarvis" ? `${a.title}: ${a.text}` : a.text);
-    history.add("assistant", a.text);
     return;
   }
   if (!a.speak || !speakHere()) return;
@@ -540,6 +543,13 @@ $("openMemory").addEventListener("click", () => {
   if (!key) { requireKey(); return; }
   memory ??= new Memory(key);
   void memory.show();
+});
+
+let jobs: Jobs | null = null;
+$("openJobs").addEventListener("click", () => {
+  if (!key) { requireKey(); return; }
+  jobs ??= new Jobs(key);
+  void jobs.show();
 });
 
 let routines: Routines | null = null;

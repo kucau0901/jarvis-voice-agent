@@ -597,6 +597,39 @@ with an internal error while Deepgram Aura worked. Every Workers AI call
 therefore falls back to OpenAI, and the settings panel's Test speaks a
 sentence and hears it back, saying which provider did each half.
 
+## Background jobs
+
+Everything else here has to finish while a screen waits: Cloudflare ends the
+work about thirty seconds after the reply, and the router has six steps. A job
+does not (`lib/jobs.ts`, `routes/jobs.ts`).
+
+**Each step runs at OpenAI, between steps the object runs the tools.** A
+router job uses the Responses API's background mode: the step runs on
+OpenAI's side with nobody connected, and the Durable Object's alarm looks at it
+— after 4 seconds, then less often as it runs. When a step asks for tools, the
+object runs them (the same `runCalls` a live question uses, sharing
+`prepareRouter` for the prompt and tools) and starts the next step. The alarm
+is the same one routines use, pointed at whichever is due first. Nothing is
+held open for minutes, so a redeploy in the middle loses nothing: the step
+carries on at OpenAI and the next alarm picks it up.
+
+**Read, never act.** A job runs with nobody watching and reads text written by
+others — web pages, mail — so it is offered only reading tools: Jarvis's own by
+name, MCP tools by what their names say (`ha_get_state` in, `ha_call_service`
+out; an unknown name is out). It cannot be talked into sending, deleting or
+unlocking, because it has nothing that could. It says what it would do instead.
+
+**Hermes, the same way.** A question to Hermes takes one to four minutes, and
+used to hold the car's tab open for the answer; closed, the answer was lost.
+`ask_hermes` now starts a Hermes job and returns at once; the answer arrives as
+an alert, and alerts join the conversation, so "yes, do that" after Hermes asks
+something still has the question to refer to.
+
+Measured on production in September 2026: a three-dashcam comparison with web
+search, 57 seconds and about $0.004; a question to Hermes, 12 seconds; "look
+into EV-charging cashback and let me know", said aloud, became a job the router
+started itself and finished in under four minutes.
+
 ## Routines
 
 A routine is a trigger — a moment, a time of day, an event from outside, or

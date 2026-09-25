@@ -417,6 +417,10 @@
     padding: 10px 12px; font: inherit; font-size: 14px; width: 100%; }
   .panel .rform .rdays { display: flex; flex-wrap: wrap; gap: 10px; }
   .panel .rform input[type=number] { width: 90px; }
+  .panel .jobresult { border-top: 1px solid #1d2835; padding-top: 8px; display: grid; gap: 8px; }
+  .panel .jobtext { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; line-height: 1.5; color: #cbd5e3; }
+  .panel .jobtext a { color: var(--cyan); }
+  .panel .jobresult details summary { cursor: pointer; font-size: 12px; color: var(--dim); }
   .panel .hookhelp { margin-top: 18px; font-size: 13px; color: var(--dim); }
   .panel .hookhelp summary { cursor: pointer; }
   .panel .hookhelp pre { background: #0e151d; border: 1px solid #1d2835; border-radius: 8px; padding: 10px;
@@ -428,6 +432,7 @@
   <div id="topbtns">
     <button id="openMemory">memory</button>
     <button id="openRoutines">routines</button>
+    <button id="openJobs">jobs</button>
     <button id="openDevices">devices</button>
     <button id="openSettings">settings</button>
     <button id="toggleLog">events</button>

@@ -124,8 +124,12 @@ WHAT EACH ROUTE COVERS, FASTEST FIRST
                             lights, switches, doors, climate and scenes in about
                             eight seconds. Use this only when home-assistant has
                             already failed or plainly cannot express the action.
-  ask_hermes       1-4 min  Last resort. Reaches things nothing else can, but the
-                            driver will notice the wait.
+  ask_hermes       1-4 min  Last resort. Reaches things nothing else can. Runs in
+                            the background: its answer reaches the user as a
+                            message, so tell them it is coming and move on.
+  start_job        minutes  Anything needing many steps: research, comparisons,
+                            a lot of mail, planning. Runs in the background and
+                            reads but never acts; the result arrives as a message.
 
 Take the fastest route that can actually answer. Never use a slow route to check
 a fast one. Do not use the web for anything about the user's own home or data.
@@ -156,11 +160,11 @@ Five rules override that order:
    no "if you are on day 59, that leaves 31". Working from an invented number
    still hands the user an invented answer. Ask them for the real one instead.
 
-4. WHEN HERMES ASKS INSTEAD OF ANSWERING, RELAY THE QUESTION AND STOP.
+4. WHEN HERMES ASKS INSTEAD OF ANSWERING, THE USER MUST ANSWER.
    Hermes sometimes replies with a question of its own — "there are 21 of
    these, trash them or just label them?" — or asks permission before acting.
-   That is not an answer and it is not a failure. Pass the question on in the
-   user's own language, do nothing else, and call no further tool.
+   Its answers reach the user as messages, which appear in the conversation as
+   Jarvis's turns. That is not an answer and it is not a failure.
    - Do not choose for them, even when one option looks obviously right.
    - Do not soften it into a statement. If Hermes asked, the user must answer.
    When the user then replies, send Hermes a request that RESTATES what is
@@ -374,7 +378,7 @@ export interface RunOptions {
    * "glasses": shown as text on Even Realities G2 glasses and never spoken, so
    * nothing rephrases the answer on its way to the user (routes/v1.ts).
    */
-  surface?: "glasses" | "routine" | "voice";
+  surface?: "glasses" | "routine" | "voice" | "job";
   /** Characters the glasses show before cutting off. */
   charBudget?: number;
   /** For a routine: its name, so the answer knows what it is answering. */
@@ -385,16 +389,29 @@ export interface RunOptions {
    * sees — "add this to my calendar" with a poster in the photo.
    */
   images?: string[];
+  /** Only these tools are offered (background jobs: reading, not acting — routes/jobs.ts). */
+  toolFilter?: (t: Tool) => boolean;
 }
 
-export async function run(
+/** Everything a router request is built from, shared by run() and background jobs. */
+export interface Prepared {
+  client: OpenAI;
+  /** The model chosen in settings, before any fallback. */
+  model: string;
+  instructions: string;
+  input: OpenAI.Responses.ResponseInput;
+  tools: Tool[];
+  byName: Map<string, Tool>;
+  memory: MemoryStore;
+}
+
+export async function prepareRouter(
   env: Env,
   turns: Turn[],
-  sse: EventSink,
   signal: AbortSignal,
   grants: readonly Grant[] = ["*"],
   opts: RunOptions = {},
-) {
+): Promise<Prepared> {
   // MCP failures must never take the local tools down with them, so the two are
   // gathered independently and a broken server simply contributes no tools.
   // Memory is a KV read, not an outbound connection, so it costs no wall clock
@@ -419,12 +436,17 @@ export async function run(
     resolveRouterModel(env),
   ]);
   tools.push(...mcp);
+  if (opts.toolFilter) {
+    const keep = tools.filter(opts.toolFilter);
+    tools.length = 0;
+    tools.push(...keep);
+  }
 
 
   const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
   // Chosen in settings (lib/router-model.ts). `let`, because a first hop the
   // chosen model rejects is retried on the default and the rest follows it.
-  let model = chosen.model;
+  const model = chosen.model;
   // Resolved once per delegation, not per hop: a multi-step turn should not
   // watch the clock move underneath it mid-answer.
   const noScreen = !allows(grants, "screen");
@@ -455,6 +477,7 @@ export async function run(
       ? glassesInstructions(opts.charBudget ?? DEFAULT_CHAR_BUDGET)
       : "") +
     (opts.surface === "voice" ? spokenReplyInstructions() : "") +
+    (opts.surface === "job" ? JOB_INSTRUCTIONS : "") +
     (opts.surface === "routine"
       ? "\n\nTHIS IS A ROUTINE, NOT A CONVERSATION\n" +
         `The user set this up to run by itself${opts.routineName ? ` ("${opts.routineName.replace(/"/g, "'")}")` : ""}. ` +
@@ -463,7 +486,6 @@ export async function run(
         "notification or read aloud. No greeting, no questions, no offers of more help."
       : "");
   const byName = new Map(tools.map((t) => [t.name, t]));
-  const used: string[] = [];
 
   const conversation = turns
     .map((t) => `${t.role === "user" ? "User" : "Jarvis"}: ${t.text}`)
@@ -516,6 +538,23 @@ export async function run(
         ]
       : []),
   ];
+  return { client, model, instructions, input, tools, byName, memory };
+}
+
+export async function run(
+  env: Env,
+  turns: Turn[],
+  sse: EventSink,
+  signal: AbortSignal,
+  grants: readonly Grant[] = ["*"],
+  opts: RunOptions = {},
+) {
+  const p = await prepareRouter(env, turns, signal, grants, opts);
+  const { client, instructions, input, tools, byName, memory } = p;
+  // `let`, because a first hop the chosen model rejects is retried on the
+  // default and the rest follows it.
+  let model = p.model;
+  const used: string[] = [];
   let turn: OpenAI.Responses.ResponseInput = input;
   let previousResponseId: string | undefined;
   /*
@@ -609,48 +648,7 @@ export async function run(
        * order the model asked in. callTool never throws, so one failure cannot
        * take the others down.
        */
-      const next: OpenAI.Responses.ResponseInput = await Promise.all(
-        calls.map(async (call) => {
-          const tool = byName.get(call.name);
-          sse.send({ type: "tool", name: call.name, phase: "start" });
-
-          const output = tool
-            ? await callTool(tool, call.arguments, {
-              env,
-              signal,
-              memory,
-              grants,
-              progress: (t) => sse.send({ type: "progress", text: t }),
-              display: (payload) => sse.send({ type: "display", ...payload }),
-            }, sse)
-            : `No such tool: ${call.name}`;
-
-          // Echo what the tool was asked and what it said. Without this, a tool
-          // that returns something useless is indistinguishable from one that
-          // failed, and both just surface as Jarvis saying he could not find out.
-          sse.send({
-            type: "tool",
-            name: call.name,
-            phase: "done",
-            args: call.arguments.slice(0, 300),
-            preview: outputText(output).slice(0, 400),
-            ...(typeof output === "string" ? {} : { images: output.images.length }),
-          });
-
-          return {
-            type: "function_call_output" as const,
-            call_id: call.call_id,
-            // A picture goes to the model as a picture, beside the words.
-            output:
-              typeof output === "string"
-                ? output
-                : [
-                    { type: "input_text" as const, text: output.text },
-                    ...output.images.map((i) => ({ type: "input_image" as const, image_url: i.url, detail: i.detail ?? "auto" })),
-                  ],
-          };
-        }),
-      );
+      const next = await runCalls(calls, byName, { env, signal, memory, grants }, sse);
 
       turn = next;
     }
@@ -702,6 +700,80 @@ export async function run(
  * instruction was that Jarvis waits rather than giving up. So the silence is
  * filled instead of cut short.
  */
+/**
+ * Run the tools a response asked for and hand back their outputs, in order.
+ * Shared by run() and background jobs (routes/jobs.ts).
+ *
+ * Together, not one after another. Calls issued in one response cannot
+ * depend on each other — the model has none of their results yet — so
+ * awaiting them in turn only made the driver wait for the SUM: a Nabu
+ * Casa round trip of 6-15s stacked on top of the car's. Results keep the
+ * order the model asked in. callTool never throws, so one failure cannot
+ * take the others down.
+ */
+export async function runCalls(
+  calls: OpenAI.Responses.ResponseFunctionToolCall[],
+  byName: Map<string, Tool>,
+  base: { env: Env; signal: AbortSignal; memory: MemoryStore; grants: readonly Grant[] },
+  sse: EventSink,
+): Promise<OpenAI.Responses.ResponseInput> {
+  return Promise.all(
+    calls.map(async (call) => {
+      const tool = byName.get(call.name);
+      sse.send({ type: "tool", name: call.name, phase: "start" });
+
+      const output = tool
+        ? await callTool(tool, call.arguments, {
+          ...base,
+          progress: (t) => sse.send({ type: "progress", text: t }),
+          display: (payload) => sse.send({ type: "display", ...payload }),
+        }, sse)
+        : `No such tool: ${call.name}`;
+
+      // Echo what the tool was asked and what it said. Without this, a tool
+      // that returns something useless is indistinguishable from one that
+      // failed, and both just surface as Jarvis saying he could not find out.
+      sse.send({
+        type: "tool",
+        name: call.name,
+        phase: "done",
+        args: call.arguments.slice(0, 300),
+        preview: outputText(output).slice(0, 400),
+        ...(typeof output === "string" ? {} : { images: output.images.length }),
+      });
+
+      return {
+        type: "function_call_output" as const,
+        call_id: call.call_id,
+        // A picture goes to the model as a picture, beside the words.
+        output:
+          typeof output === "string"
+            ? output
+            : [
+                { type: "input_text" as const, text: output.text },
+                ...output.images.map((i) => ({ type: "input_image" as const, image_url: i.url, detail: i.detail ?? "auto" })),
+              ],
+      };
+    }),
+  );
+}
+
+/**
+ * For a background job (routes/jobs.ts): nobody is waiting, the result is
+ * read later, and the job may read but not act.
+ */
+const JOB_INSTRUCTIONS =
+  "\n\nTHIS IS A BACKGROUND JOB\n" +
+  "The user asked for this to be worked on in the background and will read the result " +
+  "later. Nobody is waiting and nobody can answer a question, so take the steps it " +
+  "needs and do it properly. You can READ — search the web, mail, the calendar, memory, " +
+  "the car, cameras — but you cannot ACT: nothing is sent, booked, bought, deleted, " +
+  "unlocked or switched. If the task needs an action, do everything else and end by " +
+  "saying exactly what you would do, so the user can ask for it.\n" +
+  "Your final answer starts with one line: SUMMARY: then one or two sentences that can " +
+  "be read aloud on their own. Then the full result, organised and complete, in plain " +
+  "text; short headings and \"- \" lists are fine, tables are not.";
+
 async function callTool(
   tool: Tool,
   rawArgs: string,

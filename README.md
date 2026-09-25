@@ -42,6 +42,11 @@ enough) or run it yourself with **Docker**.
   answers from what it sees, showing you the frame. Take a photo on your phone
   and ask "what am I looking at?" or "add this to my calendar". Routines can
   look too: "every night at eleven, tell me if the garage door is open".
+- **Background jobs** — "look into the best dashcams under RM800 and let me
+  know": work that takes minutes runs on its own, even with every screen
+  closed, and the result arrives as an alert and waits in the **jobs** panel.
+  Jobs read (web, mail, calendar, memory, car, cameras) but never act. A
+  question for Hermes runs the same way, so its answer is never lost.
 - **Routines** — "remind me at five to call Mum", "every weekday at 7:30 tell
   me my first meeting and the traffic", "tell me when to leave for my
   appointments" (from your calendar, the car's position and live traffic), or

@@ -20,6 +20,7 @@ import { cosine, fromB64, type Near } from "./embeddings.ts";
 import type { Alert, Delivery, LiveResult, PushTarget } from "./alerts.ts";
 import type { LiveClient } from "./live.ts";
 import type { Routine, RoutineInput } from "./routines.ts";
+import type { Job } from "./jobs.ts";
 import type { Grant } from "./scopes.ts";
 
 /**
@@ -405,6 +406,15 @@ export interface RoutineApi {
   fireEvent(event: string, data?: string): Promise<string[]>;
 }
 
+/** Background jobs, which the object runs from the same alarm (lib/jobs.ts). */
+export interface JobApi {
+  listJobs(): Promise<Job[]>;
+  getJob(id: string): Promise<Job | undefined>;
+  createJob(input: { title?: unknown; task?: unknown; engine?: unknown }, by: { who: string; grants: readonly Grant[] }): Promise<Job | string>;
+  cancelJob(id: string): Promise<Job | string>;
+  removeJob(id: string): Promise<boolean>;
+}
+
 /** What the object adds itself, because it holds the sockets (state.ts). */
 export interface LiveApi {
   broadcast(alert: Alert, waitMs: number): Promise<LiveResult>;
@@ -438,4 +448,5 @@ export type StateApi = Pick<
   | "mintTicket"
 > &
   LiveApi &
-  RoutineApi;
+  RoutineApi &
+  JobApi;

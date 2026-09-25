@@ -15,6 +15,8 @@ import { Scheduler, type SchedulerDeps } from "./lib/scheduler";
 import type { RoutineInput } from "./lib/routines";
 import type { Grant } from "./lib/scopes";
 import { askForRoutine, travelFor } from "./routes/routines";
+import { Jobs } from "./lib/jobs";
+import { jobEngine } from "./routes/jobs";
 
 /**
  * The Durable Object. Deliberately thin: everything it does lives in
@@ -27,11 +29,16 @@ export class JarvisState extends DurableObject<Env> {
   private host: StateHost;
   private hub = new LiveHub();
   private scheduler: Scheduler;
+  private jobs: Jobs;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.host = new StateHost(ctx.storage, env);
     this.scheduler = new Scheduler(ctx.storage, () => this.schedulerDeps());
+    this.jobs = new Jobs(ctx.storage, async () => {
+      const env = await this.localEnv();
+      return jobEngine(env, (alert) => deliver(env, this, alert));
+    });
     // Screens ping to keep their socket open through proxies. The runtime
     // answers these itself, so a hibernating object is not woken to say pong.
     ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair("ping", "pong"));
@@ -173,17 +180,48 @@ export class JarvisState extends DurableObject<Env> {
     };
   }
 
-  /** Point the one alarm at whatever is due first. */
-  private async rearm(next?: number | null): Promise<void> {
-    const at = next === undefined ? await this.scheduler.nextWake() : next;
+  /** Point the one alarm at whatever is due first: a routine or a job. */
+  private async rearm(): Promise<void> {
+    const [a, b] = await Promise.all([this.scheduler.nextWake(), this.jobs.nextWake()]);
+    const at = a === null ? b : b === null ? a : Math.min(a, b);
     if (at === null) await this.ctx.storage.deleteAlarm();
     else await this.ctx.storage.setAlarm(at);
   }
 
   async alarm() {
-    // The scheduler catches per routine, so this only throws on a storage
-    // failure — and then the runtime retries, which is what is wanted.
-    await this.rearm(await this.scheduler.tick());
+    // Both catch per item, so this only throws on a storage failure — and then
+    // the runtime retries, which is what is wanted.
+    await this.scheduler.tick();
+    await this.jobs.tick();
+    await this.rearm();
+  }
+
+  /* ---------- background jobs (lib/jobs.ts) ------------------------------------- */
+
+  listJobs() {
+    return this.jobs.list();
+  }
+
+  getJob(id: string) {
+    return this.jobs.get(id);
+  }
+
+  async createJob(input: { title?: unknown; task?: unknown; engine?: unknown }, by: { who: string; grants: readonly Grant[] }) {
+    const j = await this.jobs.create(input, by);
+    await this.rearm();
+    return j;
+  }
+
+  async cancelJob(id: string) {
+    const j = await this.jobs.cancel(id);
+    await this.rearm();
+    return j;
+  }
+
+  async removeJob(id: string) {
+    const ok = await this.jobs.remove(id);
+    await this.rearm();
+    return ok;
   }
 
   listRoutines() {

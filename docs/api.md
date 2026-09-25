@@ -140,6 +140,7 @@ existence, or argued around.
 | `calendar` | Google Calendar: `calendar_check`, `calendar_add`. Reads the diary **and creates events**. |
 | `screen` | `show_place`, `hide_display`, `/api/map`. |
 | `voice` | `/api/session`, `/api/tts`, `/api/voices`, and push-to-talk `/api/v1/voice` (which also needs `ask`). |
+| `ask` (jobs) | `/api/v1/jobs`, `/api/v1/jobs/cancel`, `start_job`. A job for Hermes also needs `home`. Each job runs with its creator's grants, and only their reading tools. |
 | `routines` | `/api/v1/routines`, `/api/v1/routines/run`, `/api/v1/trigger`; `routine_add`, `routine_list`, `routine_remove`. A routine's question runs with **its creator's** grants, never more. |
 | `alerts` | Receiving alerts (`/api/v1/events`, `/api/v1/push`, `/api/v1/alerts`), raising one (`/api/v1/notify`), and `send_note`. The same scope both ways: a device that may be told things may ask to be told something. |
 
@@ -411,6 +412,31 @@ if (!crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(req.headers["x-ja
 ```
 
 `at` is in the signed body, so a receiver can refuse old replays.
+
+## Background jobs
+
+Work that takes minutes — research, comparisons, going through mail, a
+question for Hermes — started now and answered later, whatever screens are
+open. The result arrives as an alert (a summary, or all of it when it is short)
+and stays readable in full.
+
+```
+POST /api/v1/jobs
+{"title": "Dashcams", "task": "Compare three dashcams under RM800 …", "engine": "jarvis"}
+```
+
+`engine` is `jarvis` (default: the router, many steps, in OpenAI's background
+mode) or `hermes` (one question to the Hermes agent; needs `home`). `task` must
+be complete on its own: a job never sees a conversation. `GET /api/v1/jobs`
+lists them (a device sees its own); `GET ?id=` returns one with its whole
+result; `POST /api/v1/jobs/cancel {id}` stops one; `DELETE ?id=` removes it.
+
+A job may READ — web search, mail, calendar, memory, contacts, the car,
+cameras, and the reading tools of MCP servers (judged by name: `get`, `list`,
+`search`… in, `set`, `call`, `control`… out) — and nothing else. It cannot
+send, book, delete, unlock or switch anything; when the work leads to an
+action, it says what it would do. At most 3 run at once and 30 are started a
+day; one is stopped after 25 steps or 20 minutes.
 
 ## Routines
 

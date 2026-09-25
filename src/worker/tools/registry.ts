@@ -13,6 +13,8 @@ import { gmailTools } from "./gmail";
 import { calendarTools } from "./calendar";
 import { sendNote } from "./notes";
 import { routineTools } from "./routines";
+import { jobTools } from "./jobs";
+import { stateStub } from "../lib/state-client.ts";
 
 /**
  * The tools the delegation router may call.
@@ -93,12 +95,14 @@ export const askHermes: Tool = {
   name: "ask_hermes",
   scope: "home",
   available: (env) => !!hermes.hermesConfig(env),
-  pace: "slow",
+  pace: "fast",
   description:
     "Last resort. The user's own agent at home — reaches things nothing else here can, " +
-    "but takes one to four minutes, which the driver notices. Use it only when no other " +
-    "tool can answer, or when the user explicitly asks for Hermes. It does NOT have the " +
-    "user's saved facts; those are in the profile block and in recall.",
+    "but takes one to four minutes. Use it only when no other tool can answer, or when the " +
+    "user explicitly asks for Hermes. The question goes to Hermes as a background job and " +
+    "this returns at once: Hermes's answer reaches the user as a message when it is ready, " +
+    "even if the screen is closed — tell them that, and do not wait for it or guess it. It " +
+    "does NOT have the user's saved facts; those are in the profile block and in recall.",
   parameters: {
     type: "object",
     properties: {
@@ -115,8 +119,23 @@ export const askHermes: Tool = {
   async run(args, ctx) {
     const question = str(args.question);
     if (!question) return "No question was supplied.";
-    ctx.progress("asking home");
-    return hermes.ask(ctx.env, question, { signal: ctx.signal });
+    /*
+     * A job, not a wait: Hermes takes minutes, and waiting meant the car's tab
+     * had to stay open for the answer — close it and the answer was gone. As a
+     * job it runs from the Durable Object and arrives as an alert: spoken on
+     * the screen if one is open, a notification if not.
+     */
+    const state = stateStub(ctx.env);
+    if (!state) {
+      ctx.progress("asking home");
+      return hermes.ask(ctx.env, question, { signal: ctx.signal });
+    }
+    const j = await state.createJob(
+      { title: `Hermes: ${question.slice(0, 60)}`, task: question, engine: "hermes" },
+      { who: "voice", grants: ctx.grants },
+    );
+    if (typeof j === "string") return `Hermes was not asked: ${j}.`;
+    return "Asked Hermes. It usually takes one to four minutes; the answer will reach the user as a message when it is ready. Tell them so, briefly.";
   },
 };
 
@@ -171,6 +190,7 @@ const ALL: Tool[] = [
   ...calendarTools,
   sendNote,
   ...routineTools,
+  ...jobTools,
   askHermes,
   controlHome,
 ];

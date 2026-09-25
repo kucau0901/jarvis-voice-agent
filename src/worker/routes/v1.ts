@@ -11,6 +11,7 @@ import { allows, saneGrants, SCOPES, WILDCARD, type Grant } from "../lib/scopes"
 import { handleAlertApi } from "./alerts";
 import { handleRoutines } from "./routines";
 import { handleVoice } from "./voice";
+import { handleJobs } from "./jobs";
 
 /** Everything a wildcard grant covers, minus the screen this route does not have. */
 const SCREENLESS: Grant[] = SCOPES.filter((s) => s !== "screen");
@@ -392,6 +393,10 @@ export async function handleV1(
   // Routines: things Jarvis does by itself, and the events that set them off.
   const routines = await handleRoutines(req, env, url, principal);
   if (routines) return routines;
+
+  // Background jobs: minutes of work, answered later.
+  const jobs = await handleJobs(req, env, url, principal);
+  if (jobs) return jobs;
 
   return err(404, `no route for ${url.pathname}`);
 }

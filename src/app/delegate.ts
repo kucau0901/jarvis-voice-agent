@@ -14,7 +14,9 @@ import type { Turn } from "./history";
  * Only Hermes qualifies: everything else here answers inside about eight
  * seconds, which is not worth tearing a session down for.
  */
-const SLOW_TOOLS = new Set(["ask_hermes", "control_home"]);
+// ask_hermes is no longer here: it starts a background job and returns at once,
+// and its answer arrives later as an alert (src/worker/lib/jobs.ts).
+const SLOW_TOOLS = new Set(["control_home"]);
 
 export interface DelegateHandlers {
   /** Something to look at, rather than something to say. */

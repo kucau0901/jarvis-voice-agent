@@ -37,7 +37,7 @@ export interface Alert {
   /** Every channel, not the first that works. */
   urgent: boolean;
   /** What raised it — shown in the panel, and useful in a webhook. */
-  source: "test" | "api" | "note" | "routine";
+  source: "test" | "api" | "note" | "routine" | "job";
 }
 
 export interface Attempt {
