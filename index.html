@@ -374,6 +374,40 @@
   body.staged #talkrow { display: none; }
   #talkrow { position: relative; z-index: 2; display: flex; gap: 10px; align-items: center; }
 
+  /* Type: a chat. The orb steps into the corner, the conversation fills the
+     screen, and a message box sits at the bottom. */
+  #typebar { display: none; }
+  body.typing { justify-content: flex-start; gap: 12px; --orb: clamp(48px, 9vmin, 72px);
+    padding: calc(var(--orb) + 26px) 16px calc(88px + env(safe-area-inset-bottom)); }
+  body.typing h1 { display: none; }
+  body.typing #orbWrap { position: fixed; top: 10px; left: 12px; z-index: 3; width: var(--orb); margin: 0; }
+  body.typing #status, body.typing #hint { position: fixed; z-index: 3; text-align: left;
+    left: calc(var(--orb) * 1.44 + 18px); max-width: calc(100vw - var(--orb) * 1.44 - 100px);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  body.typing #status { top: calc(10px + var(--orb) / 2 - 12px); font-size: 15px; }
+  body.typing #hint { top: calc(10px + var(--orb) / 2 + 10px); font-size: 11px; }
+  body.typing #transcript { flex: 1; min-height: 0; max-height: none; width: min(820px, 100%);
+    padding-bottom: 8px; }
+  body.typing #transcript .row { font-size: 16px; }
+  body.typing #transcript .row .txt { white-space: pre-wrap; overflow-wrap: anywhere; }
+  body.typing #transcript .row .txt a { color: var(--cyan); }
+  #transcript .row.bad .txt { color: var(--red); }
+  body.typing #typebar { display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
+    justify-content: center; gap: 8px; align-items: flex-end;
+    padding: 10px max(14px, calc((100vw - 820px) / 2)) calc(12px + env(safe-area-inset-bottom));
+    background: linear-gradient(transparent, var(--bg) 22%); }
+  #typebar textarea { flex: 1; resize: none; min-height: 50px; max-height: 30vh; border-radius: 14px;
+    padding: 13px 14px; background: #0e151d; color: var(--fg); border: 1px solid #1d2835;
+    font: inherit; font-size: 16px; line-height: 1.4; }
+  #typebar textarea:focus { outline: none; border-color: #2c4a5a; }
+  #typebar button { min-width: 50px; min-height: 50px; border-radius: 14px; border: 1px solid #1e2937;
+    background: #131b26; color: var(--fg); font-size: 18px; cursor: pointer; }
+  #typebar #send { background: var(--cyan); color: #05070b; border-color: var(--cyan); }
+  #typebar #send:disabled { opacity: .45; cursor: default; }
+  #typebar #readAloud[aria-pressed="true"] { border-color: var(--cyan); }
+  /* A picture on the stage while typing: the conversation sits above the box. */
+  body.typing.staged #transcript { bottom: calc(80px + env(safe-area-inset-bottom)); }
+
   /* Alerts: Jarvis speaking first. Above everything, including an open panel,
      because the settings panel's Test is one of the ways they arrive. */
   #alerts { position: fixed; z-index: 80; top: calc(64px + env(safe-area-inset-top));
@@ -484,9 +518,15 @@
     <div id="modes" role="group" aria-label="How to talk">
       <button type="button" data-mode="live">Live</button>
       <button type="button" data-mode="ptt">Push-to-talk</button>
+      <button type="button" data-mode="type">Type</button>
     </div>
   </div>
   <div id="transcript"></div>
+  <form id="typebar" autocomplete="off">
+    <textarea id="typed" rows="1" placeholder="Message Jarvis…" aria-label="Message Jarvis" enterkeyhint="send"></textarea>
+    <button id="readAloud" type="button" aria-pressed="false" title="Read replies aloud" aria-label="Read replies aloud">🔈</button>
+    <button id="send" type="submit" aria-label="Send">➤</button>
+  </form>
 
   <div id="unlock">
     <h2 style="margin:0;font-weight:300;letter-spacing:8px;font-size:22px">JARVIS</h2>

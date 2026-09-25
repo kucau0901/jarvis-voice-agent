@@ -311,7 +311,7 @@ export async function handleDelegate(
   if (req.method !== "POST") return err(405, "method not allowed");
   if (!env.OPENAI_API_KEY) return err(503, "OPENAI_API_KEY is not configured");
 
-  let body: { transcript?: unknown; delegationId?: unknown; images?: unknown };
+  let body: { transcript?: unknown; delegationId?: unknown; images?: unknown; surface?: unknown };
   try {
     body = await req.json();
   } catch {
@@ -356,7 +356,12 @@ export async function handleDelegate(
    */
   // A photo the user took with the phone to ask about, in a live session.
   const images = photosFrom(body.images);
-  ctx.waitUntil(run(env, turns, sse, ac.signal, grants, images.length ? { images } : {}).finally(() => sse.close()));
+  const opts: RunOptions = {
+    ...(images.length ? { images } : {}),
+    // Typed chat (src/app/chat.ts): written for reading, not for GPT-Live to say.
+    ...(body.surface === "chat" ? { surface: "chat" as const } : {}),
+  };
+  ctx.waitUntil(run(env, turns, sse, ac.signal, grants, opts).finally(() => sse.close()));
 
   return sse.response();
 }
@@ -378,7 +383,7 @@ export interface RunOptions {
    * "glasses": shown as text on Even Realities G2 glasses and never spoken, so
    * nothing rephrases the answer on its way to the user (routes/v1.ts).
    */
-  surface?: "glasses" | "routine" | "voice" | "job";
+  surface?: "glasses" | "routine" | "voice" | "job" | "chat";
   /** Characters the glasses show before cutting off. */
   charBudget?: number;
   /** For a routine: its name, so the answer knows what it is answering. */
@@ -478,6 +483,7 @@ export async function prepareRouter(
       : "") +
     (opts.surface === "voice" ? spokenReplyInstructions() : "") +
     (opts.surface === "job" ? JOB_INSTRUCTIONS : "") +
+    (opts.surface === "chat" ? CHAT_INSTRUCTIONS : "") +
     (opts.surface === "routine"
       ? "\n\nTHIS IS A ROUTINE, NOT A CONVERSATION\n" +
         `The user set this up to run by itself${opts.routineName ? ` ("${opts.routineName.replace(/"/g, "'")}")` : ""}. ` +
@@ -757,6 +763,18 @@ export async function runCalls(
     }),
   );
 }
+
+/**
+ * For typed chat (src/app/chat.ts): the answer is read on a screen, not
+ * heard, so it can carry what a voice cannot — exact figures, a number to
+ * copy, a link — in light markdown the app renders.
+ */
+const CHAT_INSTRUCTIONS =
+  "\n\nTHIS CAME FROM A TEXT BOX: THE ANSWER IS READ, NOT HEARD\n" +
+  "The user typed this and will read your answer. Lead with the answer and keep it " +
+  "short. Exact figures, addresses, phone numbers and links are useful here — include " +
+  "them when they help. A short list is fine for several items. Light markdown only: " +
+  "**bold**, [label](https://…) links, and \"- \" lists; no headings or tables.";
 
 /**
  * For a background job (routes/jobs.ts): nobody is waiting, the result is

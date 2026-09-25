@@ -10,7 +10,9 @@ import { Stage, type DisplayPayload } from "./ui/Stage";
 import { Orb } from "./orb/Orb";
 import { VoiceLevels } from "./audio";
 import { runDelegation } from "./delegate";
-import { LiveLink, speakAlert, speakHere, type Alert } from "./alerts";
+import { LiveLink, speakAlert, speakHere, speakText, type Alert } from "./alerts";
+import { askTyped } from "./chat";
+import { richText } from "./ui/util";
 import { PushToTalk } from "./ptt";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -450,6 +452,8 @@ function showAlert(a: Alert): HTMLElement {
 
 function onAlert(a: Alert) {
   const card = showAlert(a);
+  // While typing, it belongs in the chat as well as on the card.
+  if (mode === "type") addRow("jarvis", a.title !== "Jarvis" ? `${a.title}: ${a.text}` : a.text);
   // Into the conversation either way: "yes, do that" after Hermes asks a
   // question in an alert must have the question to refer to.
   history.add("assistant", a.title !== "Jarvis" ? `${a.title}: ${a.text}` : a.text);
@@ -573,11 +577,12 @@ $("openDevices").addEventListener("click", () => {
  * router and spoken back — a fraction of a cent a question (ptt.ts). Chosen
  * per screen, and remembered.
  */
-type Mode = "live" | "ptt";
+type Mode = "live" | "ptt" | "type";
 const MODE_KEY = "jarvis.mode";
+const asMode = (v: string | null | undefined): Mode => (v === "ptt" || v === "type" ? v : "live");
 let mode: Mode = (() => {
   try {
-    return localStorage.getItem(MODE_KEY) === "ptt" ? "ptt" : "live";
+    return asMode(localStorage.getItem(MODE_KEY));
   } catch {
     return "live";
   }
@@ -618,9 +623,16 @@ function setMode(m: Mode) {
     b.classList.toggle("on", b.dataset.mode === m);
     b.setAttribute("aria-pressed", String(b.dataset.mode === m));
   }
-  if (m === "ptt") {
-    // Switching away from a live session ends it: it is the thing that bills.
-    if (session || userWantsSession) void toggle();
+  document.body.classList.toggle("typing", m === "type");
+  // Switching away from a live session ends it: it is the thing that bills.
+  if (m !== "live" && (session || userWantsSession)) void toggle();
+  if (m === "type") {
+    ptt?.stop();
+    status(key ? "type a message" : "");
+    els.hint.textContent = "or tap the orb to ask aloud";
+    // A keyboard only where one is not a screen-full of glass.
+    if (!matchMedia("(pointer: coarse)").matches) typed.focus();
+  } else if (m === "ptt") {
     status(key ? "tap and ask" : "");
     els.hint.textContent = "push-to-talk · a fraction of a cent a question";
   } else {
@@ -631,16 +643,118 @@ function setMode(m: Mode) {
 }
 
 for (const b of document.querySelectorAll<HTMLButtonElement>("#modes button")) {
-  b.addEventListener("click", () => setMode(b.dataset.mode === "ptt" ? "ptt" : "live"));
+  b.addEventListener("click", () => setMode(asMode(b.dataset.mode)));
 }
 
 els.orb.addEventListener("click", () => {
   if (mode === "live") return void toggle();
+  // Typing too: the orb still takes one spoken question, answered aloud.
   if (!key) return requireKey();
   const p = pushToTalk();
   p.setKey(key);
   void p.press();
 });
+/* ---------- typing ------------------------------------------------------ */
+/*
+ * The conversation so far goes to the router as text and the answer comes
+ * back as text (chat.ts) — no speech either way. It shares the history with
+ * the voice modes, so a typed question can be followed by a spoken one.
+ */
+const typebar = $<HTMLFormElement>("typebar");
+const typed = $<HTMLTextAreaElement>("typed");
+const sendBtn = $<HTMLButtonElement>("send");
+const readAloudBtn = $<HTMLButtonElement>("readAloud");
+const READ_KEY = "jarvis.readReplies";
+let readAloud = (() => {
+  try {
+    return localStorage.getItem(READ_KEY) === "1";
+  } catch {
+    return false;
+  }
+})();
+function showReadAloud() {
+  readAloudBtn.setAttribute("aria-pressed", String(readAloud));
+  readAloudBtn.textContent = readAloud ? "🔊" : "🔈";
+  readAloudBtn.title = readAloud ? "Replies are read aloud" : "Read replies aloud";
+}
+showReadAloud();
+readAloudBtn.addEventListener("click", () => {
+  readAloud = !readAloud;
+  try {
+    localStorage.setItem(READ_KEY, readAloud ? "1" : "0");
+  } catch {
+    // remembered for this page only
+  }
+  showReadAloud();
+});
+
+/** A finished row of its own, with links and bold made real. */
+function addRow(who: "you" | "jarvis", text: string, cls = "") {
+  current = {};
+  const el = document.createElement("div");
+  el.className = `row ${who}${cls ? ` ${cls}` : ""}`;
+  const w = document.createElement("span");
+  w.className = "who";
+  w.textContent = who === "you" ? "You" : "Jarvis";
+  el.appendChild(w);
+  el.appendChild(who === "jarvis" ? richText(text) : Object.assign(document.createElement("span"), { className: "txt", textContent: text }));
+  els.transcript.appendChild(el);
+  els.transcript.scrollTop = els.transcript.scrollHeight;
+  return el;
+}
+
+let typedAbort: AbortController | null = null;
+async function sendTyped() {
+  const text = typed.value.trim();
+  if (!text || typedAbort) return;
+  if (!key) return requireKey();
+  typed.value = "";
+  fitTyped();
+  addRow("you", text);
+  history.add("user", text);
+  typedAbort = new AbortController();
+  sendBtn.disabled = true;
+  thinking = true;
+  status("thinking…");
+  await askTyped(key, history.snapshot(), {
+    progress: (t) => status(`${t}…`),
+    display: (payload) => {
+      stage ??= new Stage(key);
+      void stage.show(payload as unknown as DisplayPayload);
+    },
+    answer: (reply, ok) => {
+      addRow("jarvis", reply, ok ? "" : "bad");
+      history.add("assistant", reply);
+      if (!ok) errorFlash = 1;
+      if (ok && readAloud) void speakText(key, reply);
+    },
+  }, typedAbort.signal);
+  typedAbort = null;
+  sendBtn.disabled = false;
+  thinking = false;
+  if (mode === "type") status("type a message");
+}
+
+/** The box grows with what is typed, up to a limit. */
+function fitTyped() {
+  typed.style.height = "auto";
+  typed.style.height = `${Math.min(typed.scrollHeight, innerHeight * 0.3)}px`;
+}
+typed.addEventListener("input", fitTyped);
+// Enter sends; Shift+Enter is a new line. Escape stops a question in flight.
+typed.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
+    e.preventDefault();
+    void sendTyped();
+  } else if (e.key === "Escape" && typedAbort) {
+    typedAbort.abort();
+  }
+});
+typebar.addEventListener("submit", (e) => {
+  e.preventDefault();
+  void sendTyped();
+});
+
 /* ---------- the menu, and focus mode ------------------------------------ */
 const menuBtn = $<HTMLButtonElement>("menuBtn");
 const menu = $("topbtns");

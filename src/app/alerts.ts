@@ -244,7 +244,11 @@ export function setSpeakHere(on: boolean): void {
  * page), so the card can offer a button instead.
  */
 export async function speakAlert(key: string, a: Alert): Promise<boolean> {
-  const text = a.title && a.title !== "Jarvis" ? `${a.title}. ${a.text}` : a.text;
+  return speakText(key, a.title && a.title !== "Jarvis" ? `${a.title}. ${a.text}` : a.text);
+}
+
+/** One short clip of any text, as for an alert: typed chat's read-aloud option uses it too. */
+export async function speakText(key: string, text: string): Promise<boolean> {
   try {
     const r = await fetch("/api/tts", {
       method: "POST",

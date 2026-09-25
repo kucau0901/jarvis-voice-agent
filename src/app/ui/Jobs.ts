@@ -1,4 +1,5 @@
 import { authHeaders } from "../key";
+import { richText } from "./util";
 
 /**
  * Background jobs (src/worker/lib/jobs.ts): what is running, what came back,
@@ -175,7 +176,7 @@ export class Jobs {
     try {
       const j = ((await this.api("GET", `/api/v1/jobs?id=${encodeURIComponent(id)}`)) as { job: JobView }).job;
       box.replaceChildren();
-      if (j.result) box.appendChild(linked(j.result));
+      if (j.result) box.appendChild(richText(j.result, "jobtext"));
       const asked = el("details", "");
       asked.appendChild(el("summary", "", "What was asked"));
       asked.appendChild(el("div", "jobtext", j.task));
@@ -184,37 +185,6 @@ export class Jobs {
       box.textContent = e instanceof Error ? e.message : String(e);
     }
   }
-}
-
-/**
- * A result's text with its sources as links. Web answers cite as markdown —
- * "([example.com](https://…))" — which reads as noise left raw. Built as
- * text and anchors, never as HTML, and only for https addresses: the text
- * came from web pages.
- */
-function linked(text: string): HTMLElement {
-  const box = el("div", "jobtext");
-  const re = /\(?\[([^\]\n]{1,120})\]\((https:\/\/[^\s)]{1,2000})\)\)?/g;
-  let last = 0;
-  for (const m of text.matchAll(re)) {
-    box.appendChild(document.createTextNode(text.slice(last, m.index)));
-    const a = el("a", "", m[1]);
-    try {
-      const u = new URL(m[2]!);
-      u.searchParams.delete("utm_source");
-      a.href = u.toString();
-    } catch {
-      a.href = "about:blank";
-    }
-    a.target = "_blank";
-    a.rel = "noopener noreferrer";
-    box.appendChild(document.createTextNode(m[0].startsWith("(") ? "(" : ""));
-    box.appendChild(a);
-    box.appendChild(document.createTextNode(m[0].startsWith("(") ? ")" : ""));
-    last = m.index! + m[0].length;
-  }
-  box.appendChild(document.createTextNode(text.slice(last)));
-  return box;
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls = "", text?: string): HTMLElementTagNameMap[K] {

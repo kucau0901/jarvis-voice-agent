@@ -31,12 +31,14 @@ enough) or run it yourself with **Docker**.
   your phone. Telegram, ntfy, a signed webhook and Home Assistant are optional
   extra routes. "Send that to my phone" works from the car. Nothing to set up
   beyond the OpenAI key.
-- **Two ways to talk** — *Live* is GPT‑Live, a real conversation at $0.05 a
+- **Three ways to talk** — *Live* is GPT‑Live, a real conversation at $0.05 a
   minute while it is open. *Push‑to‑talk* is one question at a time:
   transcribed, answered by the same router with the same tools, and spoken
-  back, for a fraction of a cent a question. Chosen per screen under the orb.
-  Hearing and speaking can use OpenAI, Cloudflare Workers AI, or the device
-  itself.
+  back, for a fraction of a cent a question. *Type* is a chat, for noisy or
+  quiet places: answers are written to be read, with exact figures and links,
+  and cost the least of all. Chosen per screen under the orb, one conversation
+  across all three. Hearing and speaking can use OpenAI, Cloudflare Workers AI,
+  or the device itself.
 - **It can see** — "is the gate open?", "did the parcel arrive?": Jarvis looks
   at a camera (Home Assistant's, or any camera with a snapshot address) and
   answers from what it sees, showing you the frame. Routines can look too:
