@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,interactive-widget=resizes-content">
 <title>Jarvis</title>
 <link rel="manifest" href="/manifest.webmanifest">
 <meta name="theme-color" content="#05070b">
@@ -377,7 +377,10 @@
   /* Type: a chat. The orb steps into the corner, the conversation fills the
      screen, and a message box sits at the bottom. */
   #typebar { display: none; }
+  /* --kb is the height the on-screen keyboard takes where the browser does not
+     shrink the page for it (Safari); 0 elsewhere. See keyboardSpace() in main.ts. */
   body.typing { justify-content: flex-start; gap: 12px; --orb: clamp(48px, 9vmin, 72px);
+    height: calc(100dvh - var(--kb, 0px));
     padding: calc(var(--orb) + 26px) 16px calc(88px + env(safe-area-inset-bottom)); }
   body.typing h1 { display: none; }
   body.typing #orbWrap { position: fixed; top: 10px; left: 12px; z-index: 3; width: var(--orb); margin: 0; }
@@ -392,7 +395,7 @@
   body.typing #transcript .row .txt { white-space: pre-wrap; overflow-wrap: anywhere; }
   body.typing #transcript .row .txt a { color: var(--cyan); }
   #transcript .row.bad .txt { color: var(--red); }
-  body.typing #typebar { display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
+  body.typing #typebar { display: flex; position: fixed; left: 0; right: 0; bottom: var(--kb, 0px); z-index: 20;
     justify-content: center; gap: 8px; align-items: flex-end;
     padding: 10px max(14px, calc((100vw - 820px) / 2)) calc(12px + env(safe-area-inset-bottom));
     background: linear-gradient(transparent, var(--bg) 22%); }

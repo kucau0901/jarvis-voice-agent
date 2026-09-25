@@ -755,6 +755,31 @@ typebar.addEventListener("submit", (e) => {
   void sendTyped();
 });
 
+/*
+ * The on-screen keyboard. By default a phone's browser does not shrink the
+ * page for it: it slides the view down to the box, which is pinned to the
+ * bottom of the full-height page, so the chat vanished above and the box sat
+ * half under the keyboard. Chrome is told to shrink the page instead
+ * (interactive-widget in the viewport meta). Safari ignores that, so there
+ * the space the keyboard takes is measured and the box and the chat are
+ * lifted above it; everywhere else this measures nothing.
+ */
+const vv = window.visualViewport;
+function keyboardSpace() {
+  if (!vv) return;
+  const kb = Math.max(0, Math.round(innerHeight - vv.height - vv.offsetTop));
+  document.documentElement.style.setProperty("--kb", `${kb}px`);
+}
+vv?.addEventListener("resize", keyboardSpace);
+vv?.addEventListener("scroll", keyboardSpace);
+// Once the keyboard is up, the newest message should be in view above it.
+typed.addEventListener("focus", () => {
+  setTimeout(() => {
+    keyboardSpace();
+    els.transcript.scrollTop = els.transcript.scrollHeight;
+  }, 350);
+});
+
 /* ---------- the menu, and focus mode ------------------------------------ */
 const menuBtn = $<HTMLButtonElement>("menuBtn");
 const menu = $("topbtns");
