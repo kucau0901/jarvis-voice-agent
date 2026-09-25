@@ -69,7 +69,8 @@
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   body.staged #status { top: calc(10px + var(--orb) / 2 - 12px); }
   body.staged #hint { top: calc(10px + var(--orb) / 2 + 8px); font-size: 11px; }
-  body.staged #transcript { position: fixed; left: 0; right: 0; bottom: 6px;
+  /* Centred under the picture on a wide screen, rather than pinned left. */
+  body.staged #transcript { position: fixed; left: 0; right: 0; margin-inline: auto; bottom: 6px;
     max-height: 16vh; z-index: 61; padding: 0 14px; }
   body.staged #transcript .row { font-size: clamp(12px, 1.7vmin, 15px); }
 
@@ -272,9 +273,19 @@
     animation: stageIn .45s cubic-bezier(.22,.9,.28,1) both; }
   /* The static image is 1280x800 (640x400 at scale 2). Letting it fill a wide
      viewport upscales past its own resolution and looks soft, so cap it at
-     roughly its natural size and let the panel shrink around it instead. */
-  #stage img { display: block; max-width: min(100%, 980px); max-height: 100%;
-    width: auto; object-fit: contain; background: #0a0f16; }
+     roughly its natural size and let the panel shrink around it instead.
+     Sized against the VIEWPORT, not the panel: a percentage here refers back to
+     the panel, which sizes itself from the image, so the browser cannot shrink
+     the panel to fit — a 1920px camera frame left the panel full width with the
+     picture in its left half. --stageH is the height left between the orb row
+     and the transcript (the padding on #stage). */
+  #stage { --stageW: calc(100vw - 24px);
+    --stageH: calc(100dvh - var(--orbSpan, 138px) - 14px - 19vh); }
+  #stage img { display: block; width: auto; height: auto;
+    max-width: min(var(--stageW), 980px); max-height: var(--stageH);
+    object-fit: contain; background: #0a0f16; }
+  /* A camera frame is full HD, and seeing it large is the point. */
+  #stage .frame.camera img { max-width: min(var(--stageW), 1600px); }
   #stage iframe { display: block; border: 0; background: #0a0f16;
     width: min(1000px, 92vw); height: min(560px, 58vh); }
   #stage .frame { width: auto; }

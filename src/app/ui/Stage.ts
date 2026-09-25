@@ -70,6 +70,7 @@ export class Stage {
 
     clearInterval(this.refreshTimer);
     this.armDismiss();
+    this.el.querySelector(".frame")!.classList.toggle("camera", p.kind === "camera");
 
     if (p.kind === "camera") {
       await this.showCamera(p, mine);
