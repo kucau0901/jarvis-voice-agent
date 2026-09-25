@@ -1,5 +1,5 @@
 /*
- * Just enough service worker to be installable and to start fast.
+ * Just enough service worker to be installable, to start fast, and to show alerts.
  *
  * Deliberately NOT an offline app. Jarvis is a voice agent that talks to a
  * Worker, OpenAI and a house; with no network there is nothing for it to do, and
@@ -81,6 +81,50 @@ self.addEventListener("fetch", (event) => {
       })(),
     );
   }
+});
+
+/*
+ * Alerts, when no Jarvis screen is open (src/worker/lib/alerts.ts).
+ *
+ * The payload arrives encrypted to this browser and already decrypted here.
+ * Every push must show a notification — the browser requires it — so there is
+ * no quiet path. A tap brings Jarvis forward on that alert; the notification
+ * carries only its id, and the page fetches the text itself.
+ */
+self.addEventListener("push", (event) => {
+  let a = {};
+  try {
+    a = event.data ? event.data.json() : {};
+  } catch {
+    a = { text: event.data ? event.data.text() : "" };
+  }
+  event.waitUntil(
+    self.registration.showNotification(a.title || "Jarvis", {
+      body: a.text || "",
+      tag: a.id || undefined,
+      data: { id: a.id || "" },
+      icon: "/icons/icon-192.png",
+      timestamp: typeof a.at === "number" ? a.at : Date.now(),
+    }),
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const id = event.notification.data?.id || "";
+  event.waitUntil(
+    (async () => {
+      const wins = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+      const win = wins.find((w) => new URL(w.url).origin === self.location.origin);
+      if (win) {
+        await win.focus();
+        win.postMessage({ type: "alert-open", id });
+        return;
+      }
+      // Only the id in the address: the text stays out of history and logs.
+      await self.clients.openWindow(id ? `/?alert=${encodeURIComponent(id)}` : "/");
+    })(),
+  );
 });
 
 /**

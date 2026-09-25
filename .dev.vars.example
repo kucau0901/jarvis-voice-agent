@@ -77,3 +77,16 @@ SPOTIFY_CLIENT_SECRET=
 # The refresh token is NOT set here — the OAuth callback writes it to KV.
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
+
+# Alerts: how Jarvis reaches you when it speaks first. All optional — an open
+# Jarvis screen and browser notifications need nothing set. Easier in the
+# settings panel (Alerts), where Test sends one message down every channel.
+# ALERT_ORDER="live,push,telegram,ntfy,webhook,homeassistant"
+TELEGRAM_BOT_TOKEN=""        # from @BotFather
+TELEGRAM_CHAT_ID=""          # your chat id; negative for a group
+NTFY_URL=""                  # e.g. https://ntfy.sh/a-long-random-topic-name
+NTFY_TOKEN=""                # only for a protected topic
+ALERT_WEBHOOK_URL=""         # gets each alert as a JSON POST
+ALERT_WEBHOOK_SECRET=""      # signs it: X-Jarvis-Signature: sha256=HMAC(body)
+HA_NOTIFY_SERVICE=""         # e.g. mobile_app_pixel_9 (uses HA_BASE_URL + HA_TOKEN)
+# HA_NOTIFY_SPEAK="0"        # "1": the Android Companion app reads alerts aloud

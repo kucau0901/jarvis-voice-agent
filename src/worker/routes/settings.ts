@@ -20,6 +20,7 @@ import * as google from "../lib/google";
 import * as spotify from "../lib/spotify";
 import { loadServers } from "../lib/config-store";
 import { probe as mcpProbe } from "./mcp";
+import { deliver, makeAlert, summarise } from "../lib/alerts";
 
 /**
  * The settings panel's API. Owner-only (lib/scopes.ts).
@@ -158,7 +159,7 @@ function scrub(text: string, eff: Env): string {
     const v = raw[def.name];
     if (def.kind === "secret" && typeof v === "string" && v.length >= 8) out = out.split(v).join("***");
   }
-  return out.slice(0, 400);
+  return out.slice(0, 800);
 }
 
 const timeout = () => AbortSignal.timeout(15_000);
@@ -255,6 +256,18 @@ const TESTS: Partial<Record<Group, (eff: Env, origin: string) => Promise<TestRes
     return r.status === "OK"
       ? { ok: true, detail: `Server key works.${embed}` }
       : { ok: false, detail: `Google said ${r.status}${r.error_message ? `: ${r.error_message}` : ""}.` };
+  },
+
+  async alerts(eff) {
+    const state = stateStub(eff);
+    if (!state) return { ok: false, detail: "Alerts need the STATE Durable Object." };
+    const alert = makeAlert(
+      { title: "Jarvis test", text: "This is a test alert from Jarvis. If you can read this, this channel works." },
+      "test",
+    )!;
+    // Every channel, each reported — not the first that works.
+    const d = await deliver(eff, state, alert, { every: true });
+    return { ok: !!d.deliveredBy, detail: summarise(d) };
   },
 
   async locale(eff) {

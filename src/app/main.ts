@@ -8,6 +8,7 @@ import { Stage, type DisplayPayload } from "./ui/Stage";
 import { Orb } from "./orb/Orb";
 import { VoiceLevels } from "./audio";
 import { runDelegation } from "./delegate";
+import { LiveLink, speakAlert, speakHere, type Alert } from "./alerts";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -398,6 +399,90 @@ async function openSession(seed?: ReturnType<History["snapshot"]>, gapSec = 0) {
   }
 }
 
+/* ---------- alerts: Jarvis speaking first --------------------------------- */
+/*
+ * An alert arrives over the live socket (alerts.ts). It is always shown. If a
+ * session happens to be open, the session says it — no extra cost. Otherwise
+ * a short clip says it, which never opens GPT-Live: nothing automatic may
+ * start the $0.05-a-minute meter.
+ */
+const alertsBox = $("alerts");
+const MAX_CARDS = 3;
+const CARD_MS = 5 * 60_000;
+
+function showAlert(a: Alert): HTMLElement {
+  alertsBox.querySelector(`[data-id="${CSS.escape(a.id)}"]`)?.remove();
+  const card = document.createElement("div");
+  card.className = `alert${a.urgent ? " urgent" : ""}`;
+  card.dataset.id = a.id;
+  const head = document.createElement("div");
+  head.className = "ahead";
+  const title = document.createElement("b");
+  title.textContent = a.title;
+  const when = document.createElement("span");
+  when.textContent = new Date(a.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const hear = document.createElement("button");
+  hear.className = "hear";
+  hear.textContent = "▶";
+  hear.setAttribute("aria-label", "Hear it");
+  hear.addEventListener("click", () => void speakAlert(key, a));
+  const close = document.createElement("button");
+  close.textContent = "✕";
+  close.setAttribute("aria-label", "Dismiss");
+  close.addEventListener("click", () => card.remove());
+  for (const n of [title, when, hear, close]) head.appendChild(n);
+  const body = document.createElement("div");
+  body.className = "atext";
+  body.textContent = a.text;
+  card.appendChild(head);
+  card.appendChild(body);
+  alertsBox.insertBefore(card, alertsBox.firstChild);
+  while (alertsBox.children.length > MAX_CARDS) alertsBox.lastElementChild?.remove();
+  setTimeout(() => card.remove(), CARD_MS);
+  return card;
+}
+
+function onAlert(a: Alert) {
+  const card = showAlert(a);
+  if (session?.live) {
+    session.commentary(a.title !== "Jarvis" ? `${a.title}: ${a.text}` : a.text);
+    history.add("assistant", a.text);
+    return;
+  }
+  if (!a.speak || !speakHere()) return;
+  // The browser may refuse sound before the first tap on this page; the ▶ is then the way.
+  void speakAlert(key, a).then((played) => card.classList.toggle("unplayed", !played));
+}
+
+const live = new LiveLink(key, onAlert);
+if (key) live.start();
+
+/** A tapped notification: it carries only an id, so the text is fetched. */
+async function openAlert(id: string) {
+  if (!key || !id) return;
+  try {
+    const r = await fetch(`/api/v1/alerts?id=${encodeURIComponent(id)}`, { headers: authHeaders(key) });
+    if (!r.ok) return;
+    onAlert((await r.json() as { alert: Alert }).alert);
+  } catch {
+    // an alert that cannot be fetched is not worth an error on screen
+  }
+}
+
+{
+  const url = new URL(location.href);
+  const id = url.searchParams.get("alert");
+  if (id) {
+    url.searchParams.delete("alert");
+    window.history.replaceState(null, "", url);
+    void openAlert(id);
+  }
+}
+navigator.serviceWorker?.addEventListener("message", (e) => {
+  const m = e.data as { type?: string; id?: string } | null;
+  if (m?.type === "alert-open" && m.id) void openAlert(m.id);
+});
+
 /* ---------- unlock ------------------------------------------------------ */
 // Verify the key against the Worker before storing it. Discovering a bad key
 // only when the orb fails to start would be a miserable way to find out.
@@ -409,6 +494,7 @@ async function tryKey(candidate: string) {
     const res = await fetch("/api/health", { headers: authHeaders(candidate) });
     if (res.ok) {
       key = saveKey(candidate);
+      live.start(key);
       unlock.wrap.classList.remove("show");
       status("tap to start");
       return;

@@ -340,6 +340,37 @@
     #orbWrap { width: min(46vh, 380px); }
     #status { font-size: 19px; }
   }
+
+  /* Alerts: Jarvis speaking first. Above everything, including an open panel,
+     because the settings panel's Test is one of the ways they arrive. */
+  #alerts { position: fixed; z-index: 80; top: calc(64px + env(safe-area-inset-top));
+    left: 50%; transform: translateX(-50%); width: min(560px, calc(100vw - 32px));
+    display: grid; gap: 8px; pointer-events: none; }
+  #alerts .alert { pointer-events: auto; background: #0e1822; border: 1px solid #1f3a48;
+    border-left: 3px solid var(--cyan); border-radius: 10px; padding: 10px 12px;
+    box-shadow: 0 8px 30px rgba(0,0,0,.45); animation: alertIn .25s ease-out; }
+  #alerts .alert.urgent { border-left-color: var(--red); }
+  #alerts .ahead { display: flex; align-items: center; gap: 10px; }
+  #alerts .ahead b { font-weight: 600; font-size: 14px; flex: 1; min-width: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #alerts .ahead span { color: var(--dim); font-size: 12px; font-variant-numeric: tabular-nums; }
+  #alerts .ahead button { background: #16232f; color: var(--fg); border: 1px solid #243140;
+    border-radius: 8px; min-width: 40px; min-height: 36px; font: 14px inherit; cursor: pointer; }
+  #alerts .alert.unplayed .hear { border-color: var(--cyan); color: var(--cyan); }
+  #alerts .atext { margin-top: 6px; font-size: 15px; color: #cbd5e3; white-space: pre-wrap;
+    overflow-wrap: anywhere; max-height: 30vh; overflow-y: auto; }
+  @keyframes alertIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+
+  /* Settings → Alerts: this device, and where alerts have gone. */
+  .panel .alertbox { display: grid; gap: 10px; padding: 12px; border: 1px solid #1d2835;
+    border-radius: 10px; background: #0b1219; }
+  .panel .alertbox h4 { margin: 4px 0 0; font-size: 13px; font-weight: 500; color: var(--dim); }
+  .panel .alertbox ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+  .panel .alertbox li { display: flex; gap: 10px; align-items: baseline; justify-content: space-between;
+    font-size: 13px; color: #cbd5e3; flex-wrap: wrap; }
+  .panel .alertbox li small { color: var(--dim); }
+  .panel .alertbox li.empty { color: var(--dim); }
+  .panel .alertbox .thisdev { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: 14px; }
 </style>
 </head>
 <body>
@@ -369,6 +400,7 @@
     <div id="keyErr"></div>
   </div>
 
+  <div id="alerts" aria-live="polite"></div>
   <div id="logWrap"><div id="log"></div></div>
   <audio id="remote" autoplay playsinline></audio>
 

@@ -23,6 +23,11 @@ enough) or run it yourself with **Docker**.
 - **Memory** — it remembers what you tell it: people, places, preferences,
   directories. Stored in your own deployment, applied atomically, and shown in
   the app's **memory** panel, where you can add a fact or forget one.
+- **It speaks first** — alerts reach an open Jarvis screen and are said aloud
+  there without opening a paid voice session, or arrive as a notification on
+  your phone. Telegram, ntfy, a signed webhook and Home Assistant are optional
+  extra routes. "Send that to my phone" works from the car. Nothing to set up
+  beyond the OpenAI key.
 - **Your own agents** — any MCP server, and optionally a
   [Hermes](https://github.com/NousResearch/hermes-agent) agent at home.
 - **Other devices** — an ESP32, smart glasses (Even Realities G2) or anything

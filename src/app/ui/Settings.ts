@@ -1,5 +1,6 @@
 import { authHeaders } from "../key";
 import { Services } from "./Services";
+import { AlertsPanel } from "./AlertsPanel";
 
 interface RouterState {
   model: string;
@@ -90,7 +91,10 @@ export class Settings {
     document.body.appendChild(this.el);
     this.list = this.el.querySelector(".list")!;
     this.router = this.el.querySelector(".router")!;
-    this.services = new Services(key, this.el.querySelector<HTMLElement>(".services")!);
+    const alerts = new AlertsPanel(key);
+    this.services = new Services(key, this.el.querySelector<HTMLElement>(".services")!, {
+      alerts: () => alerts.render(),
+    });
     this.router.querySelector(".rtest")!.addEventListener("click", () => void this.testModel());
     this.router.querySelector(".use")!.addEventListener("click", () => void this.useModel());
     this.router.querySelector(".reset")!.addEventListener("click", () => void this.resetModel());

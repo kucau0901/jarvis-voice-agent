@@ -7,7 +7,8 @@ import type { Principal } from "../lib/auth";
 import { stateStub } from "../lib/state-client";
 import { assistConfig, tryAssist } from "../lib/assist";
 import { charBudget, forGlasses, latestUserText, toChatCompletion, waitSeconds } from "../lib/glasses";
-import { saneGrants, SCOPES, WILDCARD, type Grant } from "../lib/scopes";
+import { allows, saneGrants, SCOPES, WILDCARD, type Grant } from "../lib/scopes";
+import { handleAlertApi } from "./alerts";
 
 /** Everything a wildcard grant covers, minus the screen this route does not have. */
 const SCREENLESS: Grant[] = SCOPES.filter((s) => s !== "screen");
@@ -325,13 +326,19 @@ async function handleDevices(req: Request, env: Env): Promise<Response> {
     if (typeof body.revoked === "boolean") patch.revoked = body.revoked;
 
     const updated = await devices.update(env, id, patch);
+    // Its open screens and its notifications go with the grant.
+    if (updated && (patch.revoked === true || (patch.scopes && !allows(patch.scopes, "alerts")))) {
+      await stateStub(env)?.forgetDevice(id).catch(() => {});
+    }
     return updated ? json(updated) : err(404, `no device ${id}`);
   }
 
   if (req.method === "DELETE") {
     const id = typeof body.id === "string" ? body.id : url.searchParams.get("id") ?? "";
     if (!id) return err(400, "id is required");
-    return (await devices.remove(env, id)) ? json({ ok: true, id }) : err(404, `no device ${id}`);
+    if (!(await devices.remove(env, id))) return err(404, `no device ${id}`);
+    await stateStub(env)?.forgetDevice(id).catch(() => {});
+    return json({ ok: true, id });
   }
 
   return err(405, "method not allowed");
@@ -372,6 +379,10 @@ export async function handleV1(
     if (principal.kind !== "owner") return err(403, "owner credential required");
     return handleDevices(req, env);
   }
+
+  // Alerts: open screens, notifications, and asking Jarvis to tell you something.
+  const alerts = await handleAlertApi(req, env, url, principal);
+  if (alerts) return alerts;
 
   return err(404, `no route for ${url.pathname}`);
 }

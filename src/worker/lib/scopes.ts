@@ -21,6 +21,7 @@ export const SCOPES = [
   "calendar",
   "screen",
   "voice",
+  "alerts",
 ] as const;
 
 export type Scope = (typeof SCOPES)[number];
@@ -98,6 +99,8 @@ export function requiredScope(pathname: string, method: string): RouteRequiremen
   // Every credential Jarvis holds. Covered by the default too; stated so it is
   // never mistaken for something a device may read or change.
   if (pathname.startsWith("/api/settings")) return "owner";
+  // Which devices get notifications, and every recent alert's text.
+  if (pathname.startsWith("/api/alerts")) return "owner";
 
   switch (pathname) {
     // How any client checks a credential, so it cannot itself need a scope.
@@ -118,6 +121,15 @@ export function requiredScope(pathname: string, method: string): RouteRequiremen
 
     case "/api/map":
       return "screen";
+
+    // Receiving alerts, and raising one. The same scope for both: a device
+    // that may be told things may also ask to be told something.
+    case "/api/v1/events":
+    case "/api/v1/events/ticket":
+    case "/api/v1/push":
+    case "/api/v1/notify":
+    case "/api/v1/alerts":
+      return "alerts";
     case "/api/camera":
       return "home";
 

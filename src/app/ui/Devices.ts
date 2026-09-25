@@ -37,6 +37,7 @@ const MEANING: Record<string, string> = {
   media: "Spotify",
   screen: "maps on the screen",
   voice: "live voice sessions",
+  alerts: "receive alerts and notifications; send notes",
 };
 
 export class Devices {

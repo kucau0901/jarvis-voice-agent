@@ -1,4 +1,5 @@
 import type { Env } from "../types";
+import { DEFAULT_ORDER, validateOrder } from "./alerts.ts";
 
 /**
  * Every setting Jarvis reads, in one list.
@@ -15,7 +16,7 @@ import type { Env } from "../types";
  * the forty-odd places that read `env.X` did not change. Precedence: saved in
  * the panel, then the deployment (Worker secret or var), then the default here.
  *
- * Kept free of runtime imports so Node can test it directly.
+ * Kept free of Cloudflare imports so Node can test it directly.
  */
 
 export type Group =
@@ -27,6 +28,7 @@ export type Group =
   | "spotify"
   | "maps"
   | "locale"
+  | "alerts"
   | "devices"
   | "advanced";
 
@@ -176,6 +178,14 @@ export const GROUPS: readonly GroupDef[] = [
     testable: true,
   },
   {
+    id: "alerts",
+    title: "Alerts",
+    intro:
+      "How Jarvis reaches you when it speaks first. An open Jarvis screen gets it first, then notifications on any device where you turned them on below — neither needs setting up. The rest are optional extra ways through; Test sends one message down every channel that is set up.",
+    needs: [],
+    testable: true,
+  },
+  {
     id: "devices",
     title: "Devices and glasses",
     intro: "Limits for device tokens, and tuning for Even Realities G2 glasses.",
@@ -312,6 +322,55 @@ export const SETTINGS: readonly SettingDef[] = [
   {
     name: "UNITS", group: "locale", kind: "enum", default: "metric", options: ["metric", "imperial"],
     label: "Units", help: "Kilometres and Celsius, or miles.",
+  },
+
+  // --- Alerts
+  {
+    name: "ALERT_ORDER", group: "alerts", kind: "text", default: DEFAULT_ORDER,
+    label: "Order to try",
+    help: "Stops at the first that gets through; an urgent alert goes to all. Leave one out to never use it.",
+    validate: validateOrder,
+  },
+  {
+    name: "TELEGRAM_BOT_TOKEN", group: "alerts", kind: "secret",
+    label: "Telegram bot token", help: "Message @BotFather, /newbot. Looks like 123456:ABC-DEF…",
+    validate: (v) => (/^\d{5,}:[A-Za-z0-9_-]{30,}$/.test(v) ? null : "should look like 123456789:AA… (digits, a colon, then letters)"),
+  },
+  {
+    name: "TELEGRAM_CHAT_ID", group: "alerts", kind: "text",
+    label: "Telegram chat ID", help: "Send your bot a message, then open api.telegram.org/bot<token>/getUpdates and copy chat.id.",
+    validate: (v) => (/^-?\d{3,20}$/.test(v) ? null : "is a number, negative for a group"),
+  },
+  {
+    name: "NTFY_URL", group: "alerts", kind: "secret",
+    label: "ntfy topic address", help: "e.g. https://ntfy.sh/a-long-random-name. On ntfy.sh anyone who knows the name can read it, so make it long.",
+    validate: all(httpsUrl, (v) => (/^https:\/\/[^/]+\/[^/?#]+\/?$/.test(v) ? null : "must be a server and one topic name, nothing more")),
+    bindsTo: ["NTFY_TOKEN"],
+  },
+  {
+    name: "NTFY_TOKEN", group: "alerts", kind: "secret",
+    label: "ntfy access token", help: "Only for a protected topic. Starts with tk_.",
+    validate: all(noSpaces, minLen(8)),
+  },
+  {
+    name: "ALERT_WEBHOOK_URL", group: "alerts", kind: "secret",
+    label: "Webhook URL", help: "Receives each alert as JSON: Node-RED, n8n, IFTTT, a Home Assistant webhook, your own code.",
+    validate: httpsUrl, bindsTo: ["ALERT_WEBHOOK_SECRET"],
+  },
+  {
+    name: "ALERT_WEBHOOK_SECRET", group: "alerts", kind: "secret",
+    label: "Webhook signing secret", help: "Optional. Each POST then carries X-Jarvis-Signature: sha256=HMAC of the body.",
+    validate: minLen(16),
+  },
+  {
+    name: "HA_NOTIFY_SERVICE", group: "alerts", kind: "text",
+    label: "Home Assistant notify service",
+    help: "Without \"notify.\" — e.g. mobile_app_pixel_9. Uses the Home section's base URL and token.",
+    validate: (v) => (/^[a-z0-9_]+$/.test(v) ? null : "is lower-case letters, digits and underscores, without notify."),
+  },
+  {
+    name: "HA_NOTIFY_SPEAK", group: "alerts", kind: "bool", default: "0",
+    label: "Home Assistant: read aloud", help: "Android Companion app only: speaks the alert instead of showing it.",
   },
 
   // --- Devices and glasses

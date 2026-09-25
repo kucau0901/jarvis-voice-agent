@@ -15,6 +15,9 @@ import {
   type RefChangeset,
   type RefDoc,
 } from "./memory.ts";
+import { generateVapid, type VapidKeys } from "./webpush.ts";
+import type { Alert, Delivery, LiveResult, PushTarget } from "./alerts.ts";
+import type { LiveClient } from "./live.ts";
 
 /**
  * Everything behind the one Durable Object, as plain code.
@@ -36,6 +39,8 @@ import {
 export interface Storage {
   get<T = unknown>(key: string): Promise<T | undefined>;
   put(key: string, value: unknown): Promise<void>;
+  delete(key: string): Promise<boolean>;
+  list<T = unknown>(options: { prefix: string }): Promise<Map<string, T>>;
 }
 
 const MEM = "mem";
@@ -58,6 +63,44 @@ export const THREAD_IDLE_MS = 5 * 60_000;
 const threadKey = (key: string) => `thread:${key}`;
 /** Everything saved in the settings panel (lib/settings.ts). */
 const SETTINGS = "settings:v1";
+
+/*
+ * Alerts (lib/alerts.ts): the key pair push services know Jarvis by, the
+ * devices that turned notifications on, the last few alerts and where each
+ * went, and one-time tickets for opening a live socket.
+ */
+const VAPID = "vapid:v1";
+const PUSH = "push:";
+const DELIVERIES = "alerts:log";
+const TICKET = "ticket:";
+/** Long enough to open a socket after asking for one; short enough that a ticket seen in a log is useless. */
+export const TICKET_MS = 60_000;
+export const DELIVERY_LOG_MAX = 30;
+/** Each is one push per alert. Beyond this the least recently working is dropped. */
+export const MAX_PUSH_SUBS = 20;
+/** In a row. A subscription refused this often is not coming back. */
+const PUSH_GIVE_UP = 10;
+
+export interface PushRecord extends PushTarget {
+  /** "owner" or the device id that subscribed, so revoking the device ends its notifications. */
+  who: string;
+  createdAt: number;
+  okAt?: number;
+  failures: number;
+}
+
+const ALPHABET = "0123456789abcdefghjkmnpqrstvwxyz";
+const randomId = (n: number) => {
+  let s = "";
+  for (const b of crypto.getRandomValues(new Uint8Array(n))) s += ALPHABET[b & 31];
+  return s;
+};
+export const TICKET_SHAPE = /^[0-9a-hjkmnp-tv-z]{32}$/;
+
+async function endpointId(endpoint: string): Promise<string> {
+  const d = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(endpoint)));
+  return [...d.slice(0, 8)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
 
 interface ThreadRecord {
   turns: Turn[];
@@ -192,6 +235,121 @@ export class StateHost {
     await this.storage.put(threadKey(key), { turns: next, at: now });
     return next;
   }
+
+  /* ---------- alerts ------------------------------------------------------- */
+
+  /** Made on first use and kept: a new pair would orphan every existing subscription. */
+  async vapid(): Promise<VapidKeys> {
+    const have = await this.storage.get<VapidKeys>(VAPID);
+    if (have) return have;
+    const made = await generateVapid();
+    await this.storage.put(VAPID, made);
+    return made;
+  }
+
+  async vapidPublicKey(): Promise<string> {
+    return (await this.vapid()).publicKey;
+  }
+
+  async listPushSubs(): Promise<PushRecord[]> {
+    return [...(await this.storage.list<PushRecord>({ prefix: PUSH })).values()];
+  }
+
+  /** Subscribing again from the same browser replaces its record rather than adding one. */
+  async addPushSub(
+    input: Omit<PushRecord, "id" | "createdAt" | "failures" | "okAt">,
+    now = Date.now(),
+  ): Promise<PushRecord> {
+    const id = await endpointId(input.endpoint);
+    const all = await this.listPushSubs();
+    if (!all.some((s) => s.id === id) && all.length >= MAX_PUSH_SUBS) {
+      const stalest = all.sort((a, b) => (a.okAt ?? a.createdAt) - (b.okAt ?? b.createdAt))[0]!;
+      await this.storage.delete(PUSH + stalest.id);
+    }
+    const rec: PushRecord = { ...input, id, createdAt: now, failures: 0 };
+    await this.storage.put(PUSH + id, rec);
+    return rec;
+  }
+
+  /** By id (the panel) or by endpoint (the browser that owns it, turning notifications off). */
+  async removePushSub(idOrEndpoint: string): Promise<boolean> {
+    const id = idOrEndpoint.startsWith("https:") ? await endpointId(idOrEndpoint) : idOrEndpoint;
+    return this.storage.delete(PUSH + id);
+  }
+
+  async pushTargets(): Promise<{ vapid: VapidKeys; subs: PushTarget[] }> {
+    const subs = await this.listPushSubs();
+    if (!subs.length) return { vapid: { publicKey: "", privateJwk: {} }, subs: [] };
+    return {
+      vapid: await this.vapid(),
+      subs: subs.map(({ id, endpoint, p256dh, auth, subject, label }) => ({ id, endpoint, p256dh, auth, subject, label })),
+    };
+  }
+
+  async pushResults(results: { id: string; ok: boolean; gone: boolean }[], now = Date.now()): Promise<void> {
+    for (const r of results) {
+      const rec = await this.storage.get<PushRecord>(PUSH + r.id);
+      if (!rec) continue;
+      if (r.gone || (!r.ok && rec.failures + 1 >= PUSH_GIVE_UP)) {
+        await this.storage.delete(PUSH + r.id);
+        continue;
+      }
+      await this.storage.put(PUSH + r.id, r.ok ? { ...rec, okAt: now, failures: 0 } : { ...rec, failures: rec.failures + 1 });
+    }
+  }
+
+  /** A revoked device stops getting notifications along with everything else. */
+  async forgetPushFor(who: string): Promise<number> {
+    let n = 0;
+    for (const s of await this.listPushSubs()) {
+      if (s.who === who && (await this.storage.delete(PUSH + s.id))) n++;
+    }
+    return n;
+  }
+
+  async logDelivery(d: Delivery): Promise<void> {
+    const log = (await this.storage.get<Delivery[]>(DELIVERIES)) ?? [];
+    await this.storage.put(DELIVERIES, [d, ...log].slice(0, DELIVERY_LOG_MAX));
+  }
+
+  async deliveries(): Promise<Delivery[]> {
+    return (await this.storage.get<Delivery[]>(DELIVERIES)) ?? [];
+  }
+
+  /** For a notification that was tapped: it carries only the id. */
+  async findAlert(id: string): Promise<Alert | null> {
+    return (await this.deliveries()).find((d) => d.alert.id === id)?.alert ?? null;
+  }
+
+  /**
+   * A browser cannot put a header on a WebSocket, so it asks for a ticket over
+   * an authenticated request and opens the socket with that. Single use, and
+   * short-lived, because it travels in a URL.
+   */
+  async mintTicket(client: Pick<LiveClient, "who" | "label">, now = Date.now()): Promise<string> {
+    for (const [k, t] of await this.storage.list<{ exp: number }>({ prefix: TICKET })) {
+      if (t.exp < now) await this.storage.delete(k);
+    }
+    const id = randomId(32);
+    await this.storage.put(TICKET + id, { who: client.who, label: client.label, exp: now + TICKET_MS });
+    return id;
+  }
+
+  async takeTicket(id: string, now = Date.now()): Promise<Pick<LiveClient, "who" | "label"> | null> {
+    if (!TICKET_SHAPE.test(id)) return null;
+    const t = await this.storage.get<{ who: string; label: string; exp: number }>(TICKET + id);
+    if (!t) return null;
+    await this.storage.delete(TICKET + id);
+    return t.exp >= now ? { who: t.who, label: t.label } : null;
+  }
+}
+
+/** What the object adds itself, because it holds the sockets (state.ts). */
+export interface LiveApi {
+  broadcast(alert: Alert, waitMs: number): Promise<LiveResult>;
+  liveClients(): Promise<LiveClient[]>;
+  /** Close a device's open screens and drop its notifications, when it is revoked or narrowed. */
+  forgetDevice(who: string): Promise<void>;
 }
 
 /** What a Worker can call on the object. */
@@ -205,4 +363,15 @@ export type StateApi = Pick<
   | "appendThread"
   | "getSettings"
   | "putSettings"
->;
+  | "vapidPublicKey"
+  | "listPushSubs"
+  | "addPushSub"
+  | "removePushSub"
+  | "pushTargets"
+  | "pushResults"
+  | "logDelivery"
+  | "deliveries"
+  | "findAlert"
+  | "mintTicket"
+> &
+  LiveApi;

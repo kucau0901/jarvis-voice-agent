@@ -14,3 +14,13 @@ export function stateStub(env: Env): StateApi | null {
   if (!ns) return null;
   return ns.get(ns.idFromName("jarvis")) as unknown as StateApi;
 }
+
+/**
+ * Hand a request to the object's own fetch handler: only used to open a live
+ * screen's WebSocket, which has to be accepted where the sockets are held.
+ */
+export function stateFetch(env: Env, req: Request): Promise<Response> {
+  const ns = env.STATE;
+  if (!ns) return Promise.resolve(new Response(JSON.stringify({ error: "live screens need the STATE Durable Object" }), { status: 503 }));
+  return ns.get(ns.idFromName("jarvis")).fetch(req);
+}

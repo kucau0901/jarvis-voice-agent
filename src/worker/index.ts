@@ -19,6 +19,7 @@ import { handleV1 } from "./routes/v1";
 import { handleRouter } from "./routes/router";
 import { handleSettings } from "./routes/settings";
 import { withSettings } from "./lib/settings-store";
+import { handleAlertsAdmin, isTicketedSocket, openTicketedSocket } from "./routes/alerts";
 
 // The Durable Object class must be exported from the entry for the runtime to find it.
 export { JarvisState } from "./state";
@@ -58,6 +59,10 @@ export default {
     if (url.pathname === "/api/google/callback") {
       return withCors(await handleGoogle(req, env), origin, env);
     }
+    // A browser cannot put a header on a WebSocket, so an open screen presents
+    // a one-time ticket it was issued over an authenticated request instead.
+    // The Durable Object checks and spends it (routes/alerts.ts).
+    if (isTicketedSocket(req, url)) return openTicketedSocket(req, env);
 
     const auth = await authorize(req, env, ctx);
     if (!auth.ok) return withCors(auth.response, origin, env);
@@ -160,6 +165,8 @@ async function route(
     case "/api/router":
     case "/api/router/test":
       return await handleRouter(req, env);
+    case "/api/alerts":
+      return await handleAlertsAdmin(req, env);
     case "/api/health":
       return new Response(JSON.stringify({ ok: true, ts: Date.now() }), {
         headers: { "content-type": "application/json" },

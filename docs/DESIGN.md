@@ -456,6 +456,56 @@ MCP tools are registered **non-strict**. Strict mode demands
 and rewriting a third-party server's schema to satisfy that risks changing what
 it means — the server validates its own arguments anyway.
 
+## Speaking first
+
+Everything else here answers a question. An alert is Jarvis starting the
+conversation, which meets three hard facts: the car's tab cannot run in the
+background, a GPT-Live session bills $0.05 for every minute it is open (and an
+open one stops the car's own Spotify), and the repo is public, so nothing can
+assume Home Assistant, a Tesla or a particular phone. Hence:
+
+- **Always-on is server-side only.** Screens come and go; the Worker and its
+  Durable Object are what is always there.
+- **Nothing automatic opens GPT-Live.** A screen with no session open says an
+  alert with one short text-to-speech clip (about a quarter of a cent). If a
+  session happens to be open already, the session says it at no extra cost.
+- **An ordered list of channels, not one** (`lib/alerts.ts`). Only the first
+  two are built in, and both need nothing but the OpenAI key: an open screen,
+  and browser notifications. Telegram, ntfy, a webhook and Home Assistant are
+  optional, each one setting.
+
+**Open screens use hibernating WebSockets** (`lib/live.ts`, `state.ts`). An SSE
+stream or an ordinary socket keeps the Durable Object in memory for as long as
+it is open, and one screen left open all day would use most of the free plan's
+daily duration allowance. With the hibernation API the object leaves memory
+while the socket stays connected, and keep-alive pings are answered by the
+runtime itself, so an idle screen costs nothing.
+
+**"Open" is not "seen".** A desktop tab behind other windows is open. Each
+screen reports whether it is visible and acknowledges alerts only when it is,
+and an alert counts as delivered live only on that acknowledgement, within
+four seconds. Otherwise it goes on to the phone. Without this, a forgotten tab
+would swallow every alert.
+
+**Notifications are Web Push written on WebCrypto** (`lib/webpush.ts`): VAPID
+signing and RFC 8291 payload encryption, about 150 lines. The usual library is
+built on Node's crypto module; this runs unchanged on Cloudflare, in the Docker
+image and under the tests, which check it byte for byte against the RFC's
+worked example. The key pair is made on first use and kept in the Durable
+Object, so there is nothing to generate or paste. Subscriptions are accepted
+only for the real push services, or a device token could turn Jarvis into a
+relay that POSTs anywhere.
+
+**Browsers cannot put a header on a WebSocket**, so a screen asks for a
+one-time ticket over an ordinary authenticated request and opens the socket
+with it. Tickets live for a minute and are spent by the Durable Object, which
+is also where the socket is accepted.
+
+`send_note` ("send that to my phone") is the one alert the user raises
+themselves. It skips open screens on purpose: the screen in front of them is
+where they asked. Routines — alerts Jarvis raises on its own, from the clock,
+the calendar or the car — build on the same `deliver()`.
+
 ## Architecture
 
 One Cloudflare Worker serves both the app and `/api/*`, so the app needs no CORS

@@ -11,6 +11,7 @@ import { cameraTools } from "./camera";
 import { spotifyTools } from "./spotify";
 import { gmailTools } from "./gmail";
 import { calendarTools } from "./calendar";
+import { sendNote } from "./notes";
 
 /**
  * The tools the delegation router may call.
@@ -147,6 +148,7 @@ const ALL: Tool[] = [
   ...spotifyTools,
   ...gmailTools,
   ...calendarTools,
+  sendNote,
   askHermes,
   controlHome,
 ];

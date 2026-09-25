@@ -84,6 +84,9 @@ export function preflight(req: Request, env: Env): Response | null {
 
 /** Attach the response-side headers, leaving the body and status untouched. */
 export function withCors(res: Response, origin: string | null, env: Env): Response {
+  // A WebSocket upgrade cannot be rebuilt — the socket would be lost — and
+  // CORS does not apply to WebSockets anyway.
+  if (res.status === 101) return res;
   const extra = corsHeaders(origin, env.JARVIS_ALLOWED_ORIGINS);
   if (!Object.keys(extra).length) return res;
   const headers = new Headers(res.headers);

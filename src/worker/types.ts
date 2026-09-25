@@ -126,4 +126,28 @@ export interface Env {
    * redirects (lib/http.ts publicOrigin).
    */
   PUBLIC_URL?: string;
+
+  /*
+   * Alerts: how Jarvis reaches you when it speaks first (lib/alerts.ts). An
+   * open screen and browser notifications need none of these; each of the
+   * rest adds one more way through.
+   */
+  /** Channels to try, in order, comma-separated. Defaults to all of them. */
+  ALERT_ORDER?: string;
+  /** From @BotFather. */
+  TELEGRAM_BOT_TOKEN?: string;
+  /** Who the bot writes to: your own chat id, or a group's. */
+  TELEGRAM_CHAT_ID?: string;
+  /** An ntfy topic's full address. On a public server the topic name is the only secret. */
+  NTFY_URL?: string;
+  /** For a topic that needs one. */
+  NTFY_TOKEN?: string;
+  /** Receives every alert as a JSON POST. May carry a credential in its path, so secret. */
+  ALERT_WEBHOOK_URL?: string;
+  /** Signs each POST: X-Jarvis-Signature: sha256=HMAC(secret, body). */
+  ALERT_WEBHOOK_SECRET?: string;
+  /** A Home Assistant notify service, without "notify.": e.g. mobile_app_pixel_9. */
+  HA_NOTIFY_SERVICE?: string;
+  /** "1": ask the Android Companion app to read alerts aloud. */
+  HA_NOTIFY_SPEAK?: string;
 }

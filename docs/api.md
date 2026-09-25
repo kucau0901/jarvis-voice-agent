@@ -140,6 +140,7 @@ existence, or argued around.
 | `calendar` | Google Calendar: `calendar_check`, `calendar_add`. Reads the diary **and creates events**. |
 | `screen` | `show_place`, `hide_display`, `/api/map`. |
 | `voice` | `/api/session`, `/api/tts`, `/api/voices`. |
+| `alerts` | Receiving alerts (`/api/v1/events`, `/api/v1/push`, `/api/v1/alerts`), raising one (`/api/v1/notify`), and `send_note`. The same scope both ways: a device that may be told things may ask to be told something. |
 
 Ask for something out of reach and you get a normal answer explaining it is not
 available — not an error. `tools` will be empty.
@@ -150,7 +151,7 @@ available — not an error. `tools` will be empty.
 > mail or reach a shell, that device can too, from the day it is added. Grant
 > named scopes to anything you would not want to widen silently.
 
-Everything to do with administration — `/api/v1/devices`, `/api/mcp/*`,
+Everything to do with administration — `/api/v1/devices`, `/api/alerts`, `/api/mcp/*`,
 `/api/spotify/*`, `/api/google/*`, `/api/diag`, `/api/probe`, and adding, editing
 or forgetting through `/api/memory` (`POST`, `PUT`, `DELETE`) —
 is reachable **only with the owner's key**, whatever scopes a device holds. A
@@ -281,6 +282,81 @@ void loop() {
   delay(60000);   // never hammer it: 20 requests a minute is the ceiling
 }
 ```
+
+## Alerts
+
+Jarvis can speak first. An alert walks an ordered list of channels and stops
+at the first that reaches you: an **open Jarvis screen that someone is looking
+at**, then **notifications** on each browser where they were turned on, then
+the optional channels set in Settings → Alerts (Telegram, ntfy, a webhook,
+Home Assistant). An urgent alert goes to all of them. The order is the
+`ALERT_ORDER` setting.
+
+### Raising one
+
+```
+POST /api/v1/notify
+{"text": "Leave in ten minutes.", "title": "Office", "urgent": false, "speak": true}
+```
+
+`text` is required (up to 1,500 characters); `title` defaults to "Jarvis";
+`speak: false` shows it without saying it. The answer says where it went:
+
+```json
+{"id": "k3v…", "deliveredBy": "push",
+ "attempts": [{"channel": "live", "ok": false, "detail": "1 screen open, none in front of anyone"},
+              {"channel": "push", "ok": true, "detail": "1 of 1 device accepted"}]}
+```
+
+`502` means no channel took it — the body still lists what was tried. Home
+Assistant, Node-RED or IFTTT can raise alerts this way with a device token
+holding only `alerts`.
+
+### Receiving them on a socket
+
+`GET /api/v1/events` is a WebSocket. A client that can send a header connects
+with its token as usual. A browser cannot, so it first asks
+`POST /api/v1/events/ticket` (`{"label": "phone"}` → `{"ticket", "expiresIn": 60}`)
+and connects to `/api/v1/events?ticket=…`. A ticket works once.
+
+| Direction | Message |
+|---|---|
+| ← | `{"type":"hello","label":…}` on connecting |
+| ← | `{"type":"alert","alert":{id, at, title, text, speak, urgent, source}}` |
+| → | `{"type":"presence","visible":true}` whenever the screen is shown or hidden |
+| → | `{"type":"ack","id":…,"visible":true}` on each alert, if someone can see it |
+| → / ← | `ping` / `pong`, every 25 seconds or so, to keep proxies from closing it |
+
+An alert counts as delivered live only when a **visible** screen acknowledges
+it within four seconds; otherwise the next channel is tried. A device that
+always shows what it receives (a display, a speaker) can simply report itself
+visible. Close code `4001` means the token was revoked: stop reconnecting.
+
+The socket costs nothing while quiet. The Durable Object holding it hibernates,
+and the runtime answers the pings itself.
+
+### Notifications
+
+`GET /api/v1/push` returns the VAPID `publicKey` to subscribe with;
+`POST /api/v1/push` with `{"subscription": PushSubscription.toJSON(), "label"}`
+registers the browser, `DELETE` with `{"endpoint"}` removes it. Only the push
+services browsers use (Google, Apple, Mozilla, Microsoft) are accepted as
+endpoints. A tapped notification carries only the alert's id; the text is
+`GET /api/v1/alerts?id=…` for about the last thirty alerts. On iPhone and
+iPad, notifications need the app added to the Home Screen first.
+
+### The webhook
+
+Each alert is POSTed as JSON: `{"event":"alert", id, at, title, text, speak,
+urgent, source}`. With a signing secret set, `X-Jarvis-Signature` is
+`sha256=` and the hex HMAC-SHA256 of the raw body:
+
+```js
+const expected = "sha256=" + crypto.createHmac("sha256", SECRET).update(rawBody).digest("hex");
+if (!crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(req.headers["x-jarvis-signature"] ?? ""))) reject();
+```
+
+`at` is in the signed body, so a receiver can refuse old replays.
 
 ## Streaming, if you want progress
 

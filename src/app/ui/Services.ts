@@ -55,14 +55,19 @@ const REDIRECT: Record<string, string> = {
   spotify: "/api/spotify/callback",
 };
 
+/** A section's own content beyond its settings, drawn under its intro. */
+export type Extras = Partial<Record<string, () => HTMLElement>>;
+
 export class Services {
   private key: string;
   private root: HTMLElement;
+  private extras: Extras;
   private data: SettingsResponse | null = null;
 
-  constructor(key: string, root: HTMLElement) {
+  constructor(key: string, root: HTMLElement, extras: Extras = {}) {
     this.key = key;
     this.root = root;
+    this.extras = extras;
   }
 
   async load(): Promise<void> {
@@ -130,6 +135,8 @@ export class Services {
     head.appendChild(el("span", `chip ${g.configured ? "on" : "off"}`, g.configured ? "configured" : "not set up"));
     box.appendChild(head);
     box.appendChild(el("p", "note", g.intro));
+    const extra = this.extras[g.id]?.();
+    if (extra) box.appendChild(extra);
 
     if (REDIRECT[g.id]) {
       const uri = location.origin + REDIRECT[g.id];
@@ -254,6 +261,8 @@ export class Services {
       });
       const body = (await r.json()) as { ok: boolean; detail?: string; error?: string };
       say(res, body.detail ?? body.error ?? `server said ${r.status}`, !body.ok);
+      // A section whose Test changes what it shows (Alerts: the recent list) redraws that part.
+      this.extras[group]?.();
     } catch (e) {
       say(res, message(e), true);
     }
