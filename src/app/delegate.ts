@@ -61,15 +61,13 @@ export async function runDelegation(
   transcript: Turn[],
   h: DelegateHandlers,
   signal?: AbortSignal,
-  /** A photo the user took to ask about (photo.ts), as a data: URL. */
-  photo?: string | null,
 ): Promise<void> {
   const started = Date.now();
   try {
     const res = await fetch("/api/delegate", {
       method: "POST",
       headers: authHeaders(key),
-      body: JSON.stringify({ delegationId, transcript, ...(photo ? { images: [photo] } : {}) }),
+      body: JSON.stringify({ delegationId, transcript }),
       signal,
     });
 

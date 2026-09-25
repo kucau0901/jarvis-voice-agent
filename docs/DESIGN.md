@@ -548,12 +548,14 @@ addresses in the CAMERAS setting (`lib/cameras.ts`), so it works without
 Home Assistant; a password in the address is sent as Basic authentication,
 because a fetch refuses one inside a URL.
 
-A photo from the phone rides on the next question, in push-to-talk or a live
-session, and goes to the router beside the conversation. GPT-Live never sees
-it, so a live session is told a photo exists, or it may answer "I can't see
-anything" instead of handing the question on. The phone's own camera app is
-used, through a file input, rather than a viewfinder of our own, and the
-photo is shrunk to 1024 pixels on the phone before it is sent.
+A device can also send a photo with its question (docs/api.md, Photos): the
+router sees it beside the conversation. The app had a camera button for this
+and it was taken out after trying it. In a live session GPT-Live, which cannot
+see, answered "I don't see anything" itself rather than handing the question
+on, even when told a photo was waiting; and a photo from the phone was not what
+Jarvis is for — its point is reaching the user's own systems, and "is the gate
+open?" already looks at the gate. The API stays for devices with cameras of
+their own, such as glasses.
 
 Measured in September 2026 on GPT-6 Luna with real home cameras: correct on
 whether someone was at the door, whether a parcel had arrived, the car and

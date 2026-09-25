@@ -287,7 +287,8 @@ void loop() {
 
 ## Photos
 
-A question can carry a photo to ask about. On `/api/v1/voice`, add up to two
+A question from a device can carry a photo to ask about — glasses with a
+camera, say. On `/api/v1/voice`, add up to two
 as `image` files in the form, or as `images` (data: URLs) in JSON; on
 `/api/v1/stream` (and the app's `/api/delegate`), as `images`. JPEG, PNG or
 WebP, up to about 2 MB each — shrink them to about 1024 pixels first; the

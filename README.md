@@ -39,9 +39,8 @@ enough) or run it yourself with **Docker**.
   itself.
 - **It can see** — "is the gate open?", "did the parcel arrive?": Jarvis looks
   at a camera (Home Assistant's, or any camera with a snapshot address) and
-  answers from what it sees, showing you the frame. Take a photo on your phone
-  and ask "what am I looking at?" or "add this to my calendar". Routines can
-  look too: "every night at eleven, tell me if the garage door is open".
+  answers from what it sees, showing you the frame. Routines can look too:
+  "every night at eleven, tell me if the garage door is open".
 - **Background jobs** — "look into the best dashcams under RM800 and let me
   know": work that takes minutes runs on its own, even with every screen
   closed, and the result arrives as an alert and waits in the **jobs** panel.

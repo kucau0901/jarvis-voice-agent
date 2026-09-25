@@ -1,7 +1,6 @@
 import { authHeaders } from "./key";
 import type { VoiceLevels } from "./audio";
 import type { Turn } from "./history";
-import { photoBlob } from "./photo";
 
 /**
  * Push-to-talk: the cheap way to talk to Jarvis.
@@ -23,8 +22,6 @@ export interface PttHooks {
   display(payload: Record<string, unknown>): void;
   thinking(on: boolean): void;
   history(): Turn[];
-  /** A photo waiting to be asked about, handed over once (photo.ts). */
-  photo(): string | null;
 }
 
 interface VoiceConfig {
@@ -271,8 +268,6 @@ export class PushToTalk {
 
     const form = new FormData();
     if (q.audio) form.append("audio", q.audio, "question");
-    const snap = this.hooks.photo();
-    if (snap) form.append("image", photoBlob(snap), "photo.jpg");
     if (q.text) form.append("text", q.text);
     const speakHere = cfg.tts === "browser" && "speechSynthesis" in window;
     form.append("options", JSON.stringify({ context: this.hooks.history(), reply: speakHere ? "text" : "audio", screen: true }));
