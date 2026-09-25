@@ -779,6 +779,17 @@ typed.addEventListener("focus", () => {
     els.transcript.scrollTop = els.transcript.scrollHeight;
   }, 350);
 });
+// Likewise when a picture opens above the chat, or its first frame arrives and
+// takes more room — unless you had scrolled up to read. Judged against the
+// height before it shrank: a scroll event in the same frame already sees the
+// new one, and takes the lost room for scrolling up.
+let chatH = 0;
+new ResizeObserver(() => {
+  const t = els.transcript;
+  const shrunk = chatH - t.clientHeight;
+  chatH = t.clientHeight;
+  if (shrunk > 0 && t.scrollHeight - t.scrollTop - t.clientHeight - shrunk < 40) t.scrollTop = t.scrollHeight;
+}).observe(els.transcript);
 
 /* ---------- the menu, and focus mode ------------------------------------ */
 const menuBtn = $<HTMLButtonElement>("menuBtn");

@@ -301,6 +301,9 @@
     object-fit: contain; background: #0a0f16; }
   /* A camera frame is full HD, and seeing it large is the point. */
   #stage .frame.camera img { max-width: min(var(--stageW), 1600px); }
+  /* Until the first frame arrives — seconds, over a slow link home — a
+     picture-shaped space rather than a sliver with a Close button on it. */
+  #stage .frame.camera img:not([src]) { width: min(var(--stageW), 640px); aspect-ratio: 16 / 9; }
   #stage iframe { display: block; border: 0; background: #0a0f16;
     width: min(1000px, 92vw); height: min(560px, 58vh); }
   #stage .frame { width: auto; }
@@ -408,8 +411,17 @@
   #typebar #send { background: var(--cyan); color: #05070b; border-color: var(--cyan); }
   #typebar #send:disabled { opacity: .45; cursor: default; }
   #typebar #readAloud[aria-pressed="true"] { border-color: var(--cyan); }
-  /* A picture on the stage while typing: the conversation sits above the box. */
-  body.typing.staged #transcript { bottom: calc(80px + env(safe-area-inset-bottom)); }
+  /* A picture while typing sits at the top of the chat, not over it. The
+     staged rules above float the conversation over a dashboard; with typing's
+     unlimited height that layer covered the picture, the orb and the menu.
+     The picture takes up to 42% of what the keyboard leaves, the chat the rest. */
+  body.typing #stage { position: relative; inset: auto; order: -1; flex: none; z-index: 2;
+    width: min(820px, 100%); padding: 0;
+    --stageW: min(820px, calc(100vw - 32px)); --stageH: calc((100dvh - var(--kb, 0px)) * .42); }
+  body.typing #stage iframe { width: var(--stageW); height: var(--stageH); }
+  body.typing.staged #transcript { position: relative; inset: auto; margin-inline: 0;
+    max-height: none; padding: 0 4px 8px; z-index: 2; }
+  body.typing.staged .row .who { width: 52px; font-size: 11px; }
 
   /* Alerts: Jarvis speaking first. Above everything, including an open panel,
      because the settings panel's Test is one of the ways they arrive. */

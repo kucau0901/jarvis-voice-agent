@@ -32,6 +32,8 @@ export class Stage {
   private embedTimer = 0;
   private refreshTimer = 0;
   private dismissTimer = 0;
+  /** What the picture is of, so a different one starts blank rather than showing the last. */
+  private shown = "";
   private key: string;
 
   constructor(key: string) {
@@ -65,6 +67,9 @@ export class Stage {
 
     const mine = ++this.token;
     this.caption.textContent = p.label ?? "";
+    const what = p.kind === "camera" ? `camera:${p.entity}` : "";
+    if (what !== this.shown) this.img.removeAttribute("src");
+    this.shown = what;
     document.body.classList.add("staged");
     this.el.classList.add("open");
 
@@ -96,6 +101,7 @@ export class Stage {
     this.frame.style.display = "none";
     this.frame.src = "about:blank";
     this.img.style.display = "block";
+    if (!this.img.getAttribute("src")) this.caption.textContent = `${p.label ?? "Camera"} — getting the picture…`;
 
     const GIVE_UP = 3;
     let failures = 0;
@@ -153,11 +159,12 @@ export class Stage {
    * meant to solve, not a feature. The narrow viewport is the driving split, so
    * it gets a much shorter fuse than the parked one — the driver is not going to
    * study a map at speed, and anything still up is a distraction rather than
-   * information.
+   * information. Nobody types while driving, so a picture in the chat gets the
+   * long one.
    */
   private armDismiss(): void {
     clearTimeout(this.dismissTimer);
-    const driving = window.innerWidth < 900;
+    const driving = window.innerWidth < 900 && !document.body.classList.contains("typing");
     this.dismissTimer = setTimeout(
       () => this.hide(),
       driving ? 45_000 : 180_000,
@@ -226,6 +233,9 @@ export class Stage {
     this.frame.src = "about:blank";
     this.frame.style.display = "none";
     this.revoke();
+    // The object URL is gone: left in place it would show as a broken image next time.
+    this.img.removeAttribute("src");
+    this.shown = "";
   }
 
   private revoke(): void {
