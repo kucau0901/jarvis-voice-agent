@@ -246,6 +246,9 @@ function onEvent(ev: ServerEvent) {
 function status(text: string, bad = false) {
   els.status.textContent = text;
   els.status.classList.toggle("bad", bad);
+  // Every state change of a live session and of push-to-talk passes through
+  // here, so this is where focus mode follows whether anyone is talking.
+  document.body.classList.toggle("focus", !!(session || userWantsSession || ptt?.busy));
 }
 
 function onState(s: SessionState, detail?: string) {
@@ -658,9 +661,36 @@ els.orb.addEventListener("click", () => {
   p.setKey(key);
   void p.press();
 });
+/* ---------- the menu, and focus mode ------------------------------------ */
+const menuBtn = $<HTMLButtonElement>("menuBtn");
+const menu = $("topbtns");
+function setMenu(open: boolean) {
+  menu.classList.toggle("open", open);
+  menuBtn.setAttribute("aria-expanded", String(open));
+}
+menuBtn.addEventListener("click", (e) => {
+  e.stopPropagation();
+  setMenu(!menu.classList.contains("open"));
+});
+// Choosing an item, or tapping anywhere else, closes it.
+menu.addEventListener("click", (e) => {
+  if ((e.target as HTMLElement).closest("button")) setMenu(false);
+});
+let peekTimer = 0;
+document.addEventListener("click", (e) => {
+  const t = e.target as HTMLElement;
+  if (!menu.contains(t) && t !== menuBtn) setMenu(false);
+  // In focus mode, a tap on empty space shows the controls for a few seconds.
+  if (!document.body.classList.contains("focus")) return;
+  if (t.closest("button, a, input, select, textarea, label, #orbWrap, .panel, #stage, #alerts, #transcript, #logWrap")) return;
+  document.body.classList.add("peek");
+  clearTimeout(peekTimer);
+  peekTimer = setTimeout(() => document.body.classList.remove("peek"), 6000) as unknown as number;
+});
+
 els.toggleLog.addEventListener("click", () => {
   const open = els.logWrap.classList.toggle("open");
-  els.toggleLog.textContent = open ? "hide" : "events";
+  els.toggleLog.textContent = open ? "Hide events" : "Events";
   if (open) {
     const top = [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8);
     console.table(Object.fromEntries(top));

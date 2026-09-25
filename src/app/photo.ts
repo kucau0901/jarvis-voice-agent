@@ -34,7 +34,20 @@ export class Photo {
     document.body.appendChild(this.input);
     this.input.addEventListener("change", () => void this.picked());
     button.addEventListener("click", () => this.input.click());
-    if (/Tesla/i.test(navigator.userAgent)) button.hidden = true;
+    /*
+     * Offered only where there is a camera. The car's browser reports no
+     * "Tesla" in its name and blocks the camera and local files alike ("Access
+     * to local files on your machine is disabled by your administrator"), so
+     * asking the device is the check that works; it also hides the button on a
+     * desktop with no webcam. Device kinds are listed without any permission.
+     */
+    button.hidden = true;
+    void navigator.mediaDevices
+      ?.enumerateDevices?.()
+      .then((devices) => {
+        button.hidden = /Tesla/i.test(navigator.userAgent) || !devices.some((d) => d.kind === "videoinput");
+      })
+      .catch(() => {});
   }
 
   /** The photo waiting to be asked about, handed over once. */
