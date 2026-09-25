@@ -1,6 +1,6 @@
 import type { Env } from "../types";
 import { json, err } from "../lib/http.ts";
-import { MemoryStore, sane, sanitise, search, PROFILE_BUDGET, type Kind } from "../lib/memory.ts";
+import { MemoryStore, sane, sanitise, PROFILE_BUDGET, type Kind } from "../lib/memory.ts";
 
 const KINDS: readonly Kind[] = ["place", "person", "preference", "vehicle", "routine", "note", "reference"];
 
@@ -39,17 +39,23 @@ export async function handleMemory(req: Request, env: Env): Promise<Response> {
 
     // Deliberately not store.search(): probing from the UI must not inflate
     // useCount and quietly change what the profile block prioritises.
-    const hits = search(await store.allFacts(), query, 10);
+    const { hits, meaning, all } = await store.probe(query, 10);
+    const byId = new Map(all.map((f) => [f.id, f]));
     return json({
       query,
-      total: (await store.allFacts()).length,
+      total: all.length,
+      // Whether meaning took part: false with no OpenAI key, or if it failed.
+      byMeaning: !!meaning,
       hits: hits.map((h) => ({
         id: h.fact.id,
         text: h.fact.text,
         kind: h.fact.kind,
         address: h.fact.address,
-        score: +h.score.toFixed(2),
+        score: +h.score.toFixed(3),
+        via: h.via,
       })),
+      // The raw closeness of the nearest facts, for seeing why something was or was not found.
+      nearest: (meaning ?? []).slice(0, 5).map((n) => ({ id: n.id, text: byId.get(n.id)?.text, closeness: +n.score.toFixed(3) })),
     });
   }
 

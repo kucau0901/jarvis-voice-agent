@@ -107,9 +107,20 @@ export const remember: Tool = {
       saved.push(ctx.memory.add({ text: one.text, kind }).fact.text);
     }
 
-    const head = replaced
+    let head = replaced
       ? `Updated what I had. It now reads: ${fact.text} [${fact.id}]`
       : `Saved: ${fact.text} [${fact.id}]`;
+    // Different words, same meaning: "my sister lives in Shah Alam" after "Aina
+    // stays in Shah Alam". Pointed out rather than merged, because two facts that
+    // look alike are sometimes both true.
+    if (!replaced && typeof args.replaces !== "string") {
+      const close = await ctx.memory.closest(fact.text, kind, fact.id).catch(() => null);
+      if (close) {
+        head +=
+          `\nNote: this is very close to something already saved: [${close.fact.id}] ${close.fact.text}. ` +
+          `If the new one replaces it, forget [${close.fact.id}]; if both are true, leave them both.`;
+      }
+    }
     if (!extra.length) return head;
 
     // Say how many landed, so a partial save cannot be reported as a whole one.

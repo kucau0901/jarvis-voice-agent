@@ -1,5 +1,6 @@
 import type { Env } from "../types";
 import { stateStub } from "./state-client.ts";
+import { DUPLICATE_MIN, embed, embedText, factHash, fuse, MAX_BACKFILL, toB64, type Found, type Near } from "./embeddings.ts";
 
 /**
  * What Jarvis knows about the user, across drives.
@@ -159,9 +160,10 @@ export interface Hit {
 }
 
 /**
- * BM25-lite. No embeddings: a network hop and a per-turn bill on the latency
- * path, for a corpus of a few hundred personal facts, is a bad trade. Revisit
- * past ~1000 facts.
+ * BM25-lite: recall by words. No network hop, so it is also what runs when
+ * meaning cannot (lib/embeddings.ts) — no key, OpenAI down, no Durable
+ * Object — and the two are merged by MemoryStore.search when both do.
+ * Embeddings stay off the everyday path: only an explicit search uses them.
  */
 export function search(facts: Fact[], query: string, limit = 6): Hit[] {
   const terms = tokenise(query);
@@ -182,7 +184,10 @@ export function search(facts: Fact[], query: string, limit = 6): Hit[] {
     for (const t of terms) {
       if (f.keys.includes(t)) score += idf(t);
       // Half credit for a substring, which catches what speech recognition mangles.
-      else if (t.length >= 4 && f.keys.some((k) => k.includes(t) || t.includes(k))) {
+      // Both sides at least four letters: names like "Ma'ruf" and "So'od" leave
+      // two-letter keys ("ma", "so") that sat inside "nama", "mana" and "some",
+      // so a staff member turned up for "play some jazz" and pushed real answers down.
+      else if (t.length >= 4 && f.keys.some((k) => k.length >= 4 && (k.includes(t) || t.includes(k)))) {
         score += idf(t) * 0.5;
       }
     }
@@ -384,6 +389,8 @@ export class MemoryStore {
   private refReplacedAll = false;
   /** load() fell back to empty, so this copy must never be written as the base. */
   private loadFailed = false;
+  /** loadReference() fell back to empty: the reference store's facts are unknown, not gone. */
+  private refLoadFailed = false;
   // An explicit field rather than a constructor parameter property: Node's
   // type-stripping cannot handle the latter, and these tests run with no build.
   private env: Env;
@@ -428,6 +435,7 @@ export class MemoryStore {
       this.refDoc = state ? await state.loadReference() : readRefDoc(await this.env.CONFIG.get(KV_REF_KEY, "json"));
     } catch {
       /* a storage blip must not take the delegation down */
+      this.refLoadFailed = true;
       this.refDoc = readRefDoc(null);
     }
     return this.refDoc.facts;
@@ -691,9 +699,8 @@ export class MemoryStore {
    * — which is the entire reason it is a separate document. The cost lands on
    * the question that needed it rather than on every question.
    */
-  async search(query: string, limit = 6): Promise<Hit[]> {
-    const cold = await this.loadReference();
-    const hits = search([...this.facts, ...cold], query, limit);
+  async search(query: string, limit = 6): Promise<Found[]> {
+    const { hits } = await this.rank(query, limit);
     if (hits.length) {
       const now = Date.now();
       let touchedHot = false;
@@ -713,6 +720,64 @@ export class MemoryStore {
       if (touchedCold) this.refDirty = true;
     }
     return hits;
+  }
+
+  /** Words and meaning, merged; meaning is left out wherever it cannot be done. */
+  private async rank(query: string, limit: number): Promise<{ hits: Found[]; meaning: Near[] | null; all: Fact[] }> {
+    await this.load(); // a no-op once loaded; searching an unloaded store must not see an empty memory
+    const cold = await this.loadReference();
+    const all = [...this.facts, ...cold];
+    const words = search(all, query, limit);
+    const meaning = await this.byMeaning(all, query, limit * 2).catch((e) => {
+      console.warn("recall by meaning unavailable:", e instanceof Error ? e.message : String(e));
+      return null;
+    });
+    const hits: Found[] = meaning
+      ? fuse(words, meaning, new Map(all.map((f) => [f.id, f])), limit)
+      : words.map((h) => ({ ...h, via: "words" as const }));
+    return { hits, meaning, all };
+  }
+
+  /**
+   * The same ranking as `search`, for the panel's probe: nothing is marked as
+   * used, so trying queries cannot change what the profile block favours.
+   */
+  async probe(query: string, limit = 10): Promise<{ hits: Found[]; meaning: Near[] | null; all: Fact[] }> {
+    return this.rank(query, limit);
+  }
+
+  /**
+   * Facts ranked by closeness of meaning to `text`, or null where that cannot
+   * be done. Embeds any fact that has no vector yet (or whose text changed)
+   * in the same call as the question, up to MAX_BACKFILL at a time.
+   */
+  private async byMeaning(all: Fact[], text: string, k: number): Promise<Near[] | null> {
+    const state = this.state;
+    if (!state || !this.env.OPENAI_API_KEY || !all.length || !text.trim()) return null;
+    const hashes = new Map(all.map((f) => [f.id, factHash(f)]));
+    const missing = new Set(await state.vectorsNeeded(all.map((f) => ({ id: f.id, hash: hashes.get(f.id)! }))));
+    const todo = all.filter((f) => missing.has(f.id)).slice(0, MAX_BACKFILL);
+    const vecs = await embed(this.env, [text, ...todo.map(embedText)]);
+    if (!vecs) return null;
+    const put = todo.map((f, i) => ({ id: f.id, hash: hashes.get(f.id)!, v: toB64(vecs[i + 1]!) }));
+    return state.searchVectors(toB64(vecs[0]!), put, all.map((f) => f.id), k, !this.loadFailed && !this.refLoadFailed);
+  }
+
+  /**
+   * The saved fact closest in meaning to `text`, of the same kind, if one is
+   * very close — for noticing that "remember X" restates something already
+   * kept. Null when nothing is close, or meaning is unavailable.
+   */
+  async closest(text: string, kind: Kind, except?: string): Promise<{ fact: Fact; score: number } | null> {
+    await this.load();
+    const all = await this.allFacts();
+    const near = await this.byMeaning(all, text, 5).catch(() => null);
+    const byId = new Map(all.map((f) => [f.id, f]));
+    for (const n of near ?? []) {
+      const f = byId.get(n.id);
+      if (f && f.id !== except && f.kind === kind && n.score >= DUPLICATE_MIN) return { fact: f, score: n.score };
+    }
+    return null;
   }
 
   /** Hot and cold together, for the editor. Loads the cold store. */

@@ -262,7 +262,38 @@ expensive tier.
 Jarvis remembers across drives. The only durable memory used to be Hermes's,
 reached through `X-Hermes-Session-Key` — which meant every memory question took
 the slow path. Memory is now local: one document in the Durable Object, plus a
-second for reference material, BM25-lite retrieval, no embeddings.
+second for reference material, and retrieval by words (BM25-lite) and by
+meaning (embeddings), merged.
+
+**Recall by meaning, only when searching.** The facts that matter everywhere
+travel with every question, so an ordinary question makes no extra call. Only
+an explicit search (`recall`) embeds the question, with OpenAI's
+text-embedding-3-large at 1024 dimensions, and ranks facts by closeness in the
+Durable Object, where the vectors live beside memory and never travel. The
+word ranking and the meaning ranking are merged by reciprocal rank fusion, so a
+fact near the top of both wins and exact names and numbers still count. A fact
+is embedded on the first search after it is saved, and again if its text
+changes; a forgotten fact's vector goes with it, but only after a complete read
+of memory, so a storage blip cannot wipe good vectors. With no key, or OpenAI
+down, recall is words alone, as before.
+
+Measured on real memory in September 2026: the small embedding model missed
+short Malay questions about English facts ("isteri saya siapa?" did not find
+"The user's wife is called Sara"); the large one put the right fact first for
+all nine test questions in either language, and nothing for unrelated ones
+("play some jazz"). True matches scored 0.39–0.50, unrelated questions 0.17 at
+most, so the cut-off is 0.35. The search adds 0.2–0.3 s to a recall, and costs
+about a hundred-thousandth of a cent.
+
+Measuring this also found an old word-search bug: names like "Ma'ruf" and
+"So'od" left two-letter keys that matched inside "nama", "mana" and "some", so a
+staff member turned up for "play some jazz". Partial matches now need four
+letters on both sides.
+
+"Remember" checks for a fact already saying the same thing in other words and
+tells the router, rather than merging: a restatement scored 0.82 against the
+saved fact, while different facts that sound alike ("My sister is called
+Sara") scored up to 0.63, so the note appears above 0.75 and never merges.
 
 It lived in KV until 23 September 2026. On first use the object copies `mem:v1`
 and `mem:ref:v1` out of KV and leaves them there untouched as a backup, so the KV

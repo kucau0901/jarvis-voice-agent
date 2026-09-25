@@ -21,8 +21,11 @@ enough) or run it yourself with **Docker**.
   right tool: your car (Tessie), your house (Home Assistant, over MCP), Gmail,
   Google Calendar and Contacts, Spotify, Google Maps and Places, web search.
 - **Memory** — it remembers what you tell it: people, places, preferences,
-  directories. Stored in your own deployment, applied atomically, and shown in
-  the app's **memory** panel, where you can add a fact or forget one.
+  directories. Found again by meaning as well as by words, so "who's the
+  pharmacist?" finds the "Assistant Pharmacy Officer", and a Malay question
+  finds a fact saved in English. Stored in your own deployment, applied
+  atomically, and shown in the app's **memory** panel, where you can add a
+  fact or forget one.
 - **It speaks first** — alerts reach an open Jarvis screen and are said aloud
   there without opening a paid voice session, or arrive as a notification on
   your phone. Telegram, ntfy, a signed webhook and Home Assistant are optional

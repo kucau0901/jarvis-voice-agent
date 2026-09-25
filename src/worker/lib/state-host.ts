@@ -16,6 +16,7 @@ import {
   type RefDoc,
 } from "./memory.ts";
 import { generateVapid, type VapidKeys } from "./webpush.ts";
+import { cosine, fromB64, type Near } from "./embeddings.ts";
 import type { Alert, Delivery, LiveResult, PushTarget } from "./alerts.ts";
 import type { LiveClient } from "./live.ts";
 import type { Routine, RoutineInput } from "./routines.ts";
@@ -89,6 +90,17 @@ export interface PushRecord extends PushTarget {
   createdAt: number;
   okAt?: number;
   failures: number;
+}
+
+/**
+ * Meaning vectors, one per fact (lib/embeddings.ts): kept here beside memory
+ * and compared here, so a search never ships them anywhere. `h` says which
+ * text and model made the vector, so an edited fact is embedded again.
+ */
+const VEC = "vec:";
+interface StoredVec {
+  h: string;
+  v: string;
 }
 
 const ALPHABET = "0123456789abcdefghjkmnpqrstvwxyz";
@@ -238,6 +250,43 @@ export class StateHost {
     return next;
   }
 
+  /* ---------- meaning (lib/embeddings.ts) ---------------------------------- */
+
+  /** Which of these facts have no vector, or one made from different text. */
+  async vectorsNeeded(items: { id: string; hash: string }[]): Promise<string[]> {
+    const have = await this.storage.list<StoredVec>({ prefix: VEC });
+    return items.filter((i) => have.get(VEC + i.id)?.h !== i.hash).map((i) => i.id);
+  }
+
+  /**
+   * Store any new vectors, then rank facts by closeness to the question.
+   *
+   * `ids` is every fact there is. When the caller read all of memory
+   * successfully, `prune` removes the vectors of facts no longer in it; it is
+   * off after a failed read, or a storage blip would wipe good vectors.
+   */
+  async searchVectors(
+    query: string,
+    put: { id: string; hash: string; v: string }[],
+    ids: string[],
+    k: number,
+    prune: boolean,
+  ): Promise<Near[]> {
+    for (const p of put) await this.storage.put(VEC + p.id, { h: p.hash, v: p.v } satisfies StoredVec);
+    const keep = new Set(ids);
+    const q = fromB64(query);
+    const out: Near[] = [];
+    for (const [key, s] of await this.storage.list<StoredVec>({ prefix: VEC })) {
+      const id = key.slice(VEC.length);
+      if (!keep.has(id)) {
+        if (prune) await this.storage.delete(key);
+        continue;
+      }
+      out.push({ id, score: cosine(q, fromB64(s.v)) });
+    }
+    return out.sort((a, b) => b.score - a.score).slice(0, Math.max(1, Math.min(50, k)));
+  }
+
   /* ---------- alerts ------------------------------------------------------- */
 
   /** Made on first use and kept: a new pair would orphan every existing subscription. */
@@ -375,6 +424,8 @@ export type StateApi = Pick<
   | "appendThread"
   | "getSettings"
   | "putSettings"
+  | "vectorsNeeded"
+  | "searchVectors"
   | "vapidPublicKey"
   | "listPushSubs"
   | "addPushSub"

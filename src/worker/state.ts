@@ -72,6 +72,14 @@ export class JarvisState extends DurableObject<Env> {
     return this.host.putSettings(changes);
   }
 
+  vectorsNeeded(items: { id: string; hash: string }[]) {
+    return this.host.vectorsNeeded(items);
+  }
+
+  searchVectors(query: string, put: { id: string; hash: string; v: string }[], ids: string[], k: number, prune: boolean) {
+    return this.host.searchVectors(query, put, ids, k, prune);
+  }
+
   /* ---------- live screens (lib/live.ts) ------------------------------------ */
 
   /**
