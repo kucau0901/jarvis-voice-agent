@@ -339,6 +339,12 @@ Deepgram Aura), or the device itself. Anything unavailable falls back to
 OpenAI. People and places saved in memory are passed to the recogniser as
 hints, so names are heard right.
 
+When the device has `home` and Home Assistant is set up, what was heard goes
+to Home Assistant's Assist first, as for the glasses: "open the gate" is done
+in under a second with no model call, and anything Assist does not understand
+goes on to the router. The answer then says `"model": "home-assistant"`.
+Switch this off with `HA_ASSIST=0`.
+
 ## Alerts
 
 Jarvis can speak first. An alert walks an ordered list of channels and stops
@@ -547,7 +553,7 @@ Suggested scopes for the glasses: `ask`, `home`, `memory.read`, `memory.write`,
    understand goes to the router as if this step had not happened. Gates, doors
    and locks included: what Assist may do is decided in Home Assistant, by what
    you expose to it (Settings → Voice assistants → Expose), so set the house's
-   limits there. Switch this off with `G2_FASTPATH=0`.
+   limits there. Switch this off with `HA_ASSIST=0` (formerly `G2_FASTPATH`).
 2. **Follow-ups.** The last six turns per device are kept for five minutes in the
    Durable Object, so "turn it off" knows what "it" is.
 3. **Length.** The router is told the answer is going to the glasses, and the

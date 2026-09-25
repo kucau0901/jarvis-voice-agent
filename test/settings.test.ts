@@ -11,6 +11,7 @@ import {
   ownerFingerprint,
   settingDef,
   validateChanges,
+  RENAMED,
   type SavedSettings,
 } from "../src/worker/lib/settings.ts";
 import { localeOf, utcOffset, countryName } from "../src/worker/lib/locale.ts";
@@ -109,8 +110,8 @@ console.log("\nvalidation");
   check("the owner key is refused, with the reason", !nope.ok && /deploy-time/.test(nope.errors.JARVIS_SHARED_SECRET!));
   check("an unknown name is refused", !validateChanges({ NOT_A_THING: "x" }).ok);
   check("empty is refused — Clear is the way to remove", !validateChanges({ HERMES_MODEL: "  " }).ok);
-  const b = validateChanges({ DISABLE_WEB_SEARCH: "on", G2_FASTPATH: "off" });
-  check("booleans are normalised to 1/0", b.ok && b.changes.DISABLE_WEB_SEARCH === "1" && b.changes.G2_FASTPATH === "0");
+  const b = validateChanges({ DISABLE_WEB_SEARCH: "on", HA_ASSIST: "off" });
+  check("booleans are normalised to 1/0", b.ok && b.changes.DISABLE_WEB_SEARCH === "1" && b.changes.HA_ASSIST === "0");
   check("an enum must be one of its options", !validateChanges({ UNITS: "furlongs" }).ok);
   check("a swapped Access pair is caught", !validateChanges({ CF_ACCESS_CLIENT_SECRET: "abc123.access" }).ok);
   check("a bad time zone is caught", !validateChanges({ TIMEZONE: "Mars/Olympus" }).ok);
@@ -170,6 +171,22 @@ console.log("\nstored in the Durable Object");
   _resetSettingsCache();
   const noStore = (await withSettings(env())) as unknown as Record<string, string>;
   check("with no Durable Object, the deployment values stand", noStore.HA_BASE_URL === "https://home.example");
+}
+
+console.log("\na setting saved under an old name");
+{
+  // What an older version stored: the glasses-only names for the Assist settings.
+  const m = new Map<string, unknown>([["settings:v1", { G2_FASTPATH: { v: "0", at: 50 }, G2_HA_LANGUAGE: { v: "ms", at: 50 } }]]);
+  const storage = { get: async (k: string) => structuredClone(m.get(k)) as never, put: async (k: string, v: unknown) => void m.set(k, structuredClone(v)) };
+  const host = new StateHost(storage, env() as never);
+  const got = await host.getSettings();
+  check("is read under its new name", got.HA_ASSIST?.v === "0" && got.HA_ASSIST_LANGUAGE?.v === "ms", got);
+  const eff = effectiveEnv(env() as never, got) as unknown as Record<string, string>;
+  check("and takes effect", eff.HA_ASSIST === "0" && eff.HA_ASSIST_LANGUAGE === "ms");
+  await host.putSettings({ HA_ASSIST: "1" }, 60);
+  const after = await host.getSettings();
+  check("until it is saved again under the new one", after.HA_ASSIST?.v === "1" && after.HA_ASSIST_LANGUAGE?.v === "ms", after);
+  check("every renamed setting exists under its new name", Object.values(RENAMED).every((n) => settingDef(n)));
 }
 
 console.log("\nlocale instead of Malaysia");

@@ -2,6 +2,7 @@ import type { Env } from "../types";
 import type { Turn } from "./history.ts";
 import {
   applyChanges as applySettingChanges,
+  withRenames,
   type Changes,
   type SavedSettings,
 } from "./settings.ts";
@@ -233,7 +234,8 @@ export class StateHost {
    * nothing to do with memory, and every request reads them.
    */
   async getSettings(): Promise<SavedSettings> {
-    return (await this.storage.get<SavedSettings>(SETTINGS)) ?? {};
+    // Read under today's names, whatever an older version saved them as.
+    return withRenames((await this.storage.get<SavedSettings>(SETTINGS)) ?? {});
   }
 
   /** Apply validated changes atomically, and return the result. */

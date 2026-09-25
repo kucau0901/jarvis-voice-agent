@@ -31,11 +31,15 @@ export interface Env {
 
   /**
    * Home Assistant long-lived access token, used for REST calls: the camera
-   * tools and the glasses' Assist fast path (lib/assist.ts).
+   * tools and the Assist fast path (lib/assist.ts).
    */
   HA_TOKEN?: string;
-  /** Home Assistant origin, for the camera proxy and the glasses' Assist fast path. */
+  /** Home Assistant origin, for the camera proxy and the Assist fast path. */
   HA_BASE_URL?: string;
+  /** "0" stops house requests trying Home Assistant's Assist before the router. */
+  HA_ASSIST?: string;
+  /** Language Assist is asked in. Defaults to "en". */
+  HA_ASSIST_LANGUAGE?: string;
 
   /** HA MCP endpoint. Held as a secret because the webhook URL IS the credential. */
   HA_MCP_URL?: string;
@@ -102,9 +106,9 @@ export interface Env {
   G2_CHAR_BUDGET?: string;
   /** Seconds to wait for an answer. The Even app hangs up at 300. Defaults to 240. */
   G2_WAIT_S?: string;
-  /** "0" turns off the Home Assistant Assist fast path. */
+  /** Old name of HA_ASSIST, still read. */
   G2_FASTPATH?: string;
-  /** Language Assist is asked in. Defaults to "en". */
+  /** Old name of HA_ASSIST_LANGUAGE, still read. */
   G2_HA_LANGUAGE?: string;
 
   /*

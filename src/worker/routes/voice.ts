@@ -208,6 +208,7 @@ async function pipeline(
   };
   await run(env, [...prior, { role: "user", text: transcript }], tee, signal, grants, {
     surface: "voice",
+    assist: true,
     ...(input.photos?.length ? { images: input.photos } : {}),
   });
   const reply = collector.finish();

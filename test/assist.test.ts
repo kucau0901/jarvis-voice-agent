@@ -1,4 +1,4 @@
-import { ASSIST_AGENT, assistConfig, tryAssist, type AssistConfig } from "../src/worker/lib/assist.ts";
+import { ASSIST_AGENT, assistConfig, lastAsk, tryAssist, type AssistConfig } from "../src/worker/lib/assist.ts";
 
 let pass = 0;
 let fail = 0;
@@ -42,9 +42,20 @@ console.log("when the fast path is available");
   check("not without the home scope", assistConfig(env, ["ask", "mail"]) === null);
   check("not without a token", assistConfig({ HA_BASE_URL: "https://ha.example" } as never, ["home"]) === null);
   check("not without a base url", assistConfig({ HA_TOKEN: "t" } as never, ["home"]) === null);
-  check("switched off by G2_FASTPATH=0", assistConfig({ HA_BASE_URL: "https://h", HA_TOKEN: "t", G2_FASTPATH: "0" } as never, ["home"]) === null);
-  check("language from G2_HA_LANGUAGE",
-    assistConfig({ HA_BASE_URL: "https://h", HA_TOKEN: "t", G2_HA_LANGUAGE: "ms" } as never, ["home"])?.language === "ms");
+  check("switched off by HA_ASSIST=0", assistConfig({ HA_BASE_URL: "https://h", HA_TOKEN: "t", HA_ASSIST: "0" } as never, ["home"]) === null);
+  check("language from HA_ASSIST_LANGUAGE",
+    assistConfig({ HA_BASE_URL: "https://h", HA_TOKEN: "t", HA_ASSIST_LANGUAGE: "ms" } as never, ["home"])?.language === "ms");
+  check("the old G2_FASTPATH=0 still switches it off",
+    assistConfig({ HA_BASE_URL: "https://h", HA_TOKEN: "t", G2_FASTPATH: "0" } as never, ["home"]) === null);
+  check("the new name wins over the old",
+    assistConfig({ HA_BASE_URL: "https://h", HA_TOKEN: "t", G2_FASTPATH: "0", HA_ASSIST: "1" } as never, ["home"]) !== null);
+}
+
+console.log("\nwhat is put to Assist");
+{
+  check("the user's latest words", lastAsk([{ role: "user", text: "hi" }, { role: "assistant", text: "Hello" }, { role: "user", text: " open the gate " }]) === "open the gate");
+  check("nothing when Jarvis spoke last", lastAsk([{ role: "user", text: "hi" }, { role: "assistant", text: "Hello" }]) === null);
+  check("nothing for an empty conversation", lastAsk([]) === null);
 }
 
 console.log("\nasking Assist");

@@ -5,7 +5,6 @@ import { buildHistory, type Turn } from "../lib/history";
 import { run, handleDelegate, type RunOptions } from "./delegate";
 import type { Principal } from "../lib/auth";
 import { stateStub } from "../lib/state-client";
-import { assistConfig, tryAssist } from "../lib/assist";
 import { charBudget, forGlasses, latestUserText, toChatCompletion, waitSeconds } from "../lib/glasses";
 import { allows, saneGrants, SCOPES, WILDCARD, type Grant } from "../lib/scopes";
 import { handleAlertApi } from "./alerts";
@@ -219,29 +218,11 @@ async function handleChatCompletions(
   const thread = threadOf(principal);
   const reply = (answer: string, model?: string) => json(toChatCompletion(answer, model));
 
-  // Read alongside Assist rather than after it: if Assist hands over, the
-  // router should not then wait on a second round trip before starting.
-  const prior = priorTurns(env, thread);
-
-  const assist = assistConfig(env, grants);
-  if (assist) {
-    const a = await tryAssist(assist, text);
-    console.log(`g2 assist: ${a.handled ? a.kind : a.reason} ${a.ms}ms`);
-    if (a.handled) {
-      const answer = forGlasses(a.text, budget);
-      ctx.waitUntil(recordTurns(env, thread, text, answer));
-      return reply(answer, "home-assistant");
-    }
-  }
-
-  if (!env.OPENAI_API_KEY) {
-    return reply("Jarvis has no OpenAI key configured, so only the house can answer right now.");
-  }
-
-  const turns: Turn[] = [...(await prior), { role: "user", text }];
+  const turns: Turn[] = [...(await priorTurns(env, thread)), { role: "user", text }];
+  // Assist first (RunOptions.assist): the house answers what it understands.
   const d = await collectWithDeadline(
     req, env, ctx, turns, grants, waitSeconds(env.G2_WAIT_S), "v1/chat/completions",
-    { surface: "glasses", charBudget: budget },
+    { surface: "glasses", charBudget: budget, assist: true },
   );
 
   if (d.timedOut) {
@@ -250,7 +231,7 @@ async function handleChatCompletions(
   }
 
   const r = d.result;
-  console.log(`g2 router: ${r.ok ? "ok" : r.error} ${d.ms}ms tools=${r.tools.join(",") || "-"}`);
+  console.log(`g2: ${r.model ?? "-"} ${r.ok ? "ok" : r.error} ${d.ms}ms tools=${r.tools.join(",") || "-"}`);
   const answer = forGlasses(r.text || (r.ok ? "Done." : "Something went wrong."), budget);
   // A failed turn is not context worth carrying: the user will ask again.
   if (r.ok) ctx.waitUntil(recordTurns(env, thread, text, answer));

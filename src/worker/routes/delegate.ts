@@ -5,6 +5,7 @@ import { SseStream, type EventSink } from "../lib/sse";
 import { buildHistory, type Turn } from "../lib/history";
 import { baseTools, outputText, toToolSchema, type Tool, type ToolContext, type ToolOutput } from "../tools/registry";
 import { mcpSessions, mcpTools } from "../tools/mcp";
+import { assistConfig, lastAsk, tryAssist } from "../lib/assist";
 import { MemoryStore } from "../lib/memory";
 import { allows, type Grant } from "../lib/scopes";
 import { countryName, localeOf, utcOffset } from "../lib/locale.ts";
@@ -359,7 +360,7 @@ export async function handleDelegate(
   const opts: RunOptions = {
     ...(images.length ? { images } : {}),
     // Typed chat (src/app/chat.ts): written for reading, not for GPT-Live to say.
-    ...(body.surface === "chat" ? { surface: "chat" as const } : {}),
+    ...(body.surface === "chat" ? { surface: "chat" as const, assist: true } : {}),
     waitUntil: (p) => ctx.waitUntil(p),
   };
   ctx.waitUntil(run(env, turns, sse, ac.signal, grants, opts).finally(() => sse.close()));
@@ -402,6 +403,14 @@ export interface RunOptions {
    * until after the answer, such as refreshing a tool catalog, is done there.
    */
   waitUntil?: (p: Promise<unknown>) => void;
+  /**
+   * Put the user's latest words to Home Assistant's Assist before the router
+   * (lib/assist.ts). What it understands is done in under a second with no
+   * model call; anything else reaches the router as though it had not been
+   * tried. For people waiting on an answer: the glasses, typed chat and
+   * push-to-talk. Not with a photo, which Assist cannot see.
+   */
+  assist?: boolean;
 }
 
 /** Everything a router request is built from, shared by run() and background jobs. */
@@ -564,6 +573,22 @@ export async function run(
   opts: RunOptions = {},
 ) {
   const started = Date.now();
+  const assist = opts.assist && !opts.images?.length ? assistConfig(env, grants) : null;
+  const ask = assist ? lastAsk(turns) : null;
+  if (assist && ask) {
+    const a = await tryAssist(assist, ask);
+    console.log(`assist (${opts.surface ?? "app"}): ${a.handled ? a.kind : a.reason} ${a.ms}ms`);
+    if (a.handled) {
+      sse.send({ type: "result", text: a.text, model: "home-assistant", usage: { input: 0, cached: 0, written: 0, output: 0, hops: 0 } });
+      return;
+    }
+  }
+  if (!env.OPENAI_API_KEY) {
+    // The house may still answer without one (above); everything else needs it.
+    sse.send({ type: "error", text: "Jarvis has no OpenAI key configured, so only the house can answer right now." });
+    return;
+  }
+
   const sessions = mcpSessions();
   let p: Prepared;
   try {

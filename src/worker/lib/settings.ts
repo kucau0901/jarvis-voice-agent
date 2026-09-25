@@ -257,6 +257,16 @@ export const SETTINGS: readonly SettingDef[] = [
     label: "Long-lived token", help: "Home Assistant → your profile → Security → Long-lived access tokens.",
     validate: all(noSpaces, minLen(20)),
   },
+  {
+    name: "HA_ASSIST", group: "home", kind: "bool", default: "1",
+    label: "Try Assist first",
+    help: "House requests from the glasses, Type and push-to-talk go to Home Assistant's Assist before the AI: under a second and no model cost. What it may do is what you expose to Assist in Home Assistant.",
+  },
+  {
+    name: "HA_ASSIST_LANGUAGE", group: "home", kind: "text", default: "en",
+    label: "Assist language", help: "The language Assist is asked in.",
+    validate: locale,
+  },
 
   // --- Hermes
   {
@@ -443,15 +453,6 @@ export const SETTINGS: readonly SettingDef[] = [
     label: "Glasses: seconds to wait", help: "The Even app hangs up at 300.",
     validate: intIn(10, 290),
   },
-  {
-    name: "G2_FASTPATH", group: "devices", kind: "bool", default: "1",
-    label: "Glasses: Home Assistant fast path", help: "Send simple house commands straight to Assist.",
-  },
-  {
-    name: "G2_HA_LANGUAGE", group: "devices", kind: "text", default: "en",
-    label: "Glasses: Assist language", help: "The language Assist is asked in.",
-    validate: locale,
-  },
 
   // --- Advanced
   {
@@ -479,6 +480,8 @@ export const NOT_SETTINGS: Readonly<Record<string, string>> = {
   AI: "a binding (Workers AI), added in wrangler.jsonc",
   JARVIS_SHARED_SECRET: "the owner key: deploy-time only, so login never depends on storage",
   ROUTER_MODEL: "has its own section, with a live probe before saving",
+  G2_FASTPATH: "renamed HA_ASSIST; the old name is still read",
+  G2_HA_LANGUAGE: "renamed HA_ASSIST_LANGUAGE; the old name is still read",
 };
 
 const BY_NAME = new Map(SETTINGS.map((s) => [s.name, s]));
@@ -492,6 +495,27 @@ export interface Saved {
   at: number;
 }
 export type SavedSettings = Record<string, Saved>;
+
+/**
+ * Settings saved under a name they no longer have, and the name they have now.
+ * A value saved under the old name is read under the new one until it is saved
+ * again, so an update never quietly undoes a choice made in the panel.
+ */
+export const RENAMED: Readonly<Record<string, string>> = {
+  G2_FASTPATH: "HA_ASSIST",
+  G2_HA_LANGUAGE: "HA_ASSIST_LANGUAGE",
+};
+
+export function withRenames(saved: SavedSettings): SavedSettings {
+  let out = saved;
+  for (const [old, now] of Object.entries(RENAMED)) {
+    if (saved[old] && !saved[now]) {
+      if (out === saved) out = { ...saved };
+      out[now] = saved[old]!;
+    }
+  }
+  return out;
+}
 
 /* ---------- validation ----------------------------------------------------- */
 

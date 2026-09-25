@@ -2,7 +2,8 @@ import type { Env } from "../types";
 import { allows, type Grant } from "./scopes.ts";
 
 /**
- * Home Assistant's own Assist pipeline, tried before the router.
+ * Home Assistant's own Assist pipeline, tried before the router: for the
+ * glasses, typed chat and push-to-talk (RunOptions.assist in routes/delegate.ts).
  *
  * Assist is local intent matching, not a language model. For the things it
  * understands (switching lights, reading a sensor, asking whether a door is
@@ -29,20 +30,38 @@ import { allows, type Grant } from "./scopes.ts";
 export const ASSIST_AGENT = "conversation.home_assistant";
 const TIMEOUT_MS = 3000;
 
+/**
+ * What to put to Assist: the user's latest words, if the conversation ends with
+ * them. Assist sees only that one line, so a follow-up that needs what came
+ * before ("turn it off") simply does not match and goes to the router.
+ */
+export function lastAsk(turns: readonly { role: string; text: string }[]): string | null {
+  const last = turns[turns.length - 1];
+  const text = last?.role === "user" ? last.text.trim() : "";
+  return text || null;
+}
+
 export interface AssistConfig {
   base: string;
   token: string;
   language: string;
 }
 
-/** Null when the fast path must not run: switched off, not configured, or not permitted. */
+/**
+ * Null when the fast path must not run: switched off, not configured, or not permitted.
+ *
+ * HA_ASSIST and HA_ASSIST_LANGUAGE were G2_FASTPATH and G2_HA_LANGUAGE while
+ * only the glasses used this. The old names are still read, so a setting saved
+ * under them keeps working.
+ */
 export function assistConfig(env: Env, grants: readonly Grant[]): AssistConfig | null {
-  if (env.G2_FASTPATH === "0") return null;
+  if ((env.HA_ASSIST ?? env.G2_FASTPATH) === "0") return null;
   if (!allows(grants, "home")) return null;
   const base = env.HA_BASE_URL?.replace(/\/+$/, "");
   const token = env.HA_TOKEN;
   if (!base || !token) return null;
-  return { base, token, language: env.G2_HA_LANGUAGE?.trim() || "en" };
+  const language = (env.HA_ASSIST_LANGUAGE ?? env.G2_HA_LANGUAGE)?.trim() || "en";
+  return { base, token, language };
 }
 
 export type AssistOutcome =

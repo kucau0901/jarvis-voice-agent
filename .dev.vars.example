@@ -43,19 +43,22 @@ TESSIE_VIN=""
 HA_MCP_URL=""
 HA_TOKEN=""
 
-# Home Assistant origin, for the camera proxy and the glasses' Assist fast path.
+# Home Assistant origin, for the camera proxy and the Assist fast path.
 # Must be reachable from Cloudflare, so a Nabu Casa or tunnel URL, not a LAN IP.
 HA_BASE_URL="https://home.example.com"
+
+# House requests from the glasses, Type and push-to-talk try Home Assistant's
+# Assist before the AI. Optional; also in the settings panel under Home.
+# HA_ASSIST: "0" always uses the AI instead (default 1).
+# HA_ASSIST_LANGUAGE: language Assist is asked in (default en).
+# HA_ASSIST="1"
+# HA_ASSIST_LANGUAGE="en"
 
 # Even Realities G2 glasses (POST /api/v1/chat/completions). All optional.
 # G2_CHAR_BUDGET: characters the glasses show before cutting off (default 350).
 # G2_WAIT_S: seconds to wait for an answer; the Even app hangs up at 300 (default 240).
-# G2_FASTPATH: "0" skips Home Assistant Assist and always uses the router.
-# G2_HA_LANGUAGE: language Assist is asked in (default en).
 # G2_CHAR_BUDGET="350"
 # G2_WAIT_S="240"
-# G2_FASTPATH="1"
-# G2_HA_LANGUAGE="en"
 
 # Spotify app credentials (developer.spotify.com/dashboard).
 # Redirect URI must be exactly: https://jarvis.example.com/api/spotify/callback
