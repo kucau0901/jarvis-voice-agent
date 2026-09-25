@@ -3,13 +3,14 @@ import type { Env } from "../types";
 import { err, redact } from "../lib/http";
 import { SseStream, type EventSink } from "../lib/sse";
 import { buildHistory, type Turn } from "../lib/history";
-import { baseTools, toToolSchema, type Tool, type ToolContext } from "../tools/registry";
+import { baseTools, outputText, toToolSchema, type Tool, type ToolContext, type ToolOutput } from "../tools/registry";
 import { mcpTools } from "../tools/mcp";
 import { MemoryStore } from "../lib/memory";
 import { allows, type Grant } from "../lib/scopes";
 import { countryName, localeOf, utcOffset } from "../lib/locale.ts";
 import { DEFAULT_CHAR_BUDGET, glassesInstructions } from "../lib/glasses";
 import { spokenReplyInstructions } from "../lib/prompt";
+import { photosFrom } from "../lib/photos";
 import {
   DEFAULT_ROUTER_MODEL,
   builtinTools,
@@ -306,7 +307,7 @@ export async function handleDelegate(
   if (req.method !== "POST") return err(405, "method not allowed");
   if (!env.OPENAI_API_KEY) return err(503, "OPENAI_API_KEY is not configured");
 
-  let body: { transcript?: unknown; delegationId?: unknown };
+  let body: { transcript?: unknown; delegationId?: unknown; images?: unknown };
   try {
     body = await req.json();
   } catch {
@@ -349,7 +350,9 @@ export async function handleDelegate(
    * the isolate alive until the work finishes, whether or not anyone is still
    * listening.
    */
-  ctx.waitUntil(run(env, turns, sse, ac.signal, grants).finally(() => sse.close()));
+  // A photo the user took with the phone to ask about, in a live session.
+  const images = photosFrom(body.images);
+  ctx.waitUntil(run(env, turns, sse, ac.signal, grants, images.length ? { images } : {}).finally(() => sse.close()));
 
   return sse.response();
 }
@@ -376,6 +379,12 @@ export interface RunOptions {
   charBudget?: number;
   /** For a routine: its name, so the answer knows what it is answering. */
   routineName?: string;
+  /**
+   * Photos the user just took and is asking about (data: URLs). They go to the
+   * router beside the conversation, so it can look and use tools on what it
+   * sees — "add this to my calendar" with a poster in the photo.
+   */
+  images?: string[];
 }
 
 export async function run(
@@ -489,6 +498,23 @@ export async function run(
     { role: "developer" as const, content: context },
     ...(profile ? [{ role: "user" as const, content: profile }] : []),
     { role: "user" as const, content: `Conversation so far:\n\n${conversation}` },
+    ...(opts.images?.length
+      ? [
+          {
+            role: "user" as const,
+            content: [
+              {
+                type: "input_text" as const,
+                text:
+                  opts.images.length === 1
+                    ? "The user took this photo just now, with their phone, and their latest message is about it."
+                    : "The user took these photos just now, with their phone, and their latest message is about them.",
+              },
+              ...opts.images.map((url) => ({ type: "input_image" as const, image_url: url, detail: "auto" as const })),
+            ],
+          },
+        ]
+      : []),
   ];
   let turn: OpenAI.Responses.ResponseInput = input;
   let previousResponseId: string | undefined;
@@ -607,10 +633,22 @@ export async function run(
             name: call.name,
             phase: "done",
             args: call.arguments.slice(0, 300),
-            preview: output.slice(0, 400),
+            preview: outputText(output).slice(0, 400),
+            ...(typeof output === "string" ? {} : { images: output.images.length }),
           });
 
-          return { type: "function_call_output" as const, call_id: call.call_id, output };
+          return {
+            type: "function_call_output" as const,
+            call_id: call.call_id,
+            // A picture goes to the model as a picture, beside the words.
+            output:
+              typeof output === "string"
+                ? output
+                : [
+                    { type: "input_text" as const, text: output.text },
+                    ...output.images.map((i) => ({ type: "input_image" as const, image_url: i.url, detail: i.detail ?? "auto" })),
+                  ],
+          };
         }),
       );
 
@@ -669,7 +707,7 @@ async function callTool(
   rawArgs: string,
   ctx: ToolContext,
   sse: EventSink,
-): Promise<string> {
+): Promise<ToolOutput> {
   let args: Record<string, unknown> = {};
   try {
     args = JSON.parse(rawArgs || "{}");

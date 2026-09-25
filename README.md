@@ -34,6 +34,11 @@ enough) or run it yourself with **Docker**.
   back, for a fraction of a cent a question. Chosen per screen under the orb.
   Hearing and speaking can use OpenAI, Cloudflare Workers AI, or the device
   itself.
+- **It can see** — "is the gate open?", "did the parcel arrive?": Jarvis looks
+  at a camera (Home Assistant's, or any camera with a snapshot address) and
+  answers from what it sees, showing you the frame. Take a photo on your phone
+  and ask "what am I looking at?" or "add this to my calendar". Routines can
+  look too: "every night at eleven, tell me if the garage door is open".
 - **Routines** — "remind me at five to call Mum", "every weekday at 7:30 tell
   me my first meeting and the traffic", "tell me when to leave for my
   appointments" (from your calendar, the car's position and live traffic), or

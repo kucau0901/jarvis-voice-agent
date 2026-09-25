@@ -1,5 +1,6 @@
 import type { Env } from "../types";
 import { DEFAULT_ORDER, validateOrder } from "./alerts.ts";
+import { validateCameraList } from "./cameras.ts";
 import { DEFAULT_STYLE, DEFAULT_VOICE, STT_PROVIDERS, TTS_PROVIDERS, TTS_VOICES } from "./speech.ts";
 
 /**
@@ -30,6 +31,7 @@ export type Group =
   | "maps"
   | "locale"
   | "alerts"
+  | "cameras"
   | "voice"
   | "devices"
   | "advanced";
@@ -184,6 +186,14 @@ export const GROUPS: readonly GroupDef[] = [
     title: "Alerts",
     intro:
       "How Jarvis reaches you when it speaks first. An open Jarvis screen gets it first, then notifications on any device where you turned them on below — neither needs setting up. The rest are optional extra ways through; Test sends one message down every channel that is set up.",
+    needs: [],
+    testable: true,
+  },
+  {
+    id: "cameras",
+    title: "Cameras",
+    intro:
+      "Cameras Jarvis can look at to answer \"is the gate open?\" or \"is there a car in the driveway?\" — and show you. Home Assistant's cameras appear on their own once the Home section is set up. Add any other camera by the address of its snapshot picture. Test fetches a frame from each.",
     needs: [],
     testable: true,
   },
@@ -381,6 +391,14 @@ export const SETTINGS: readonly SettingDef[] = [
   {
     name: "HA_NOTIFY_SPEAK", group: "alerts", kind: "bool", default: "0",
     label: "Home Assistant: read aloud", help: "Android Companion app only: speaks the alert instead of showing it.",
+  },
+
+  // --- Cameras
+  {
+    name: "CAMERAS", group: "cameras", kind: "secret",
+    label: "Snapshot addresses",
+    help: "Name = address, separated by ; — e.g. Front gate = https://cam.example.com/snap.jpg; Driveway = http://user:pass@192.168.1.20/snap.jpg. A home (LAN) address only works when Jarvis runs at home in Docker.",
+    validate: validateCameraList,
   },
 
   // --- Push-to-talk

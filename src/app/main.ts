@@ -11,6 +11,7 @@ import { VoiceLevels } from "./audio";
 import { runDelegation } from "./delegate";
 import { LiveLink, speakAlert, speakHere, type Alert } from "./alerts";
 import { PushToTalk } from "./ptt";
+import { Photo } from "./photo";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -222,6 +223,7 @@ function onEvent(ev: ServerEvent) {
           done: () => { thinking = false; },
         },
         delegateAbort.signal,
+        photo.take(),
       );
       break;
     }
@@ -591,8 +593,26 @@ function pushToTalk(): PushToTalk {
     },
     thinking: (on) => { thinking = on; },
     history: () => history.snapshot(),
+    photo: () => photo.take(),
   }));
 }
+
+/*
+ * A photo to ask about. GPT-Live cannot see it — only the router can — so a
+ * live session is told it exists, or it may answer "I can't see anything"
+ * instead of handing the question on.
+ */
+const photo = new Photo($("snap"), $("photoChip"), () => {
+  if (session?.live) {
+    session.thinking(
+      "The user has just taken a photo with their phone. You cannot see it, but your " +
+        "backend can: hand any question about it on, however it is phrased, and never " +
+        "say you cannot see it.",
+    );
+  } else {
+    status(mode === "ptt" ? "photo ready — tap and ask about it" : "photo ready — tap to start and ask about it");
+  }
+});
 
 function setMode(m: Mode) {
   mode = m;

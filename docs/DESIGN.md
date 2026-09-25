@@ -506,6 +506,36 @@ themselves. It skips open screens on purpose: the screen in front of them is
 where they asked. Routines — alerts Jarvis raises on its own, from the clock,
 the calendar or the car — build on the same `deliver()`.
 
+## Seeing
+
+`look_at_camera` fetches one frame and returns it inside the tool's result:
+the Responses API takes pictures in a function call's output, so the router
+model itself looks and answers in the same loop — no second model, no extra
+call — and can go on to use other tools on what it saw. The frame is also put
+on screen, as the evidence. Cameras are Home Assistant's, or plain snapshot
+addresses in the CAMERAS setting (`lib/cameras.ts`), so it works without
+Home Assistant; a password in the address is sent as Basic authentication,
+because a fetch refuses one inside a URL.
+
+A photo from the phone rides on the next question, in push-to-talk or a live
+session, and goes to the router beside the conversation. GPT-Live never sees
+it, so a live session is told a photo exists, or it may answer "I can't see
+anything" instead of handing the question on. The phone's own camera app is
+used, through a file input, rather than a viewfinder of our own, and the
+photo is shrunk to 1024 pixels on the phone before it is sent.
+
+Measured in September 2026 on GPT-6 Luna with real home cameras: correct on
+whether someone was at the door, whether a parcel had arrived, the car and
+its colour, whether the charging cable was plugged in, and whether two doors
+were open — hedging rather than guessing on the car's make. A camera question
+takes about ten seconds; a photo question about five. Home Assistant ignored
+the requested width for these cameras and sent 1080p frames, which the model
+scales itself; the cost stays a fraction of a cent.
+
+Because routines can ask anything, they can look too — "every night at eleven,
+tell me if the garage door is open", or a motion event from Home Assistant
+answered with a description of who is there.
+
 ## Two ways to talk
 
 GPT-Live is the premium voice: full duplex, interruptible, and billed at $0.05

@@ -22,6 +22,7 @@ import { loadServers } from "../lib/config-store";
 import { probe as mcpProbe } from "./mcp";
 import { deliver, makeAlert, summarise } from "../lib/alerts";
 import { recognitionHints, speechConfig, synthesize, transcribe } from "../lib/speech";
+import { listCameras, snapshot } from "../lib/cameras";
 
 /**
  * The settings panel's API. Owner-only (lib/scopes.ts).
@@ -269,6 +270,28 @@ const TESTS: Partial<Record<Group, (eff: Env, origin: string) => Promise<TestRes
     // Every channel, each reported — not the first that works.
     const d = await deliver(eff, state, alert, { every: true });
     return { ok: !!d.deliveredBy, detail: summarise(d) };
+  },
+
+  async cameras(eff) {
+    const list = await listCameras(eff);
+    if (!list.length) {
+      return {
+        ok: false,
+        detail: eff.HA_BASE_URL || eff.CAMERAS
+          ? "No cameras found: Home Assistant listed none, and none are added here."
+          : "No cameras yet: set up the Home section for Home Assistant's, or add snapshot addresses here.",
+      };
+    }
+    // A small frame from each: proves the address, the password and that it is a picture.
+    const shown = list.slice(0, 8);
+    const results = await Promise.all(
+      shown.map(async (c) => {
+        const s = await snapshot(eff, c.id, 320);
+        return s.ok ? `✓ ${c.name} (${Math.max(1, Math.round(s.bytes.byteLength / 1024))} KB)` : `✗ ${c.name}: ${s.error}`;
+      }),
+    );
+    const more = list.length > shown.length ? `; and ${list.length - shown.length} more not tried` : "";
+    return { ok: results.every((r) => r.startsWith("✓")), detail: results.join("; ") + more };
   },
 
   async voice(eff) {

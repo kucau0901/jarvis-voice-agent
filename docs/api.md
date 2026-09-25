@@ -134,7 +134,7 @@ existence, or argued around.
 | `memory.write` | `remember`, `forget`. |
 | `car.read` | `car_state`, `directions`. |
 | `car.control` | `car_command` — including unlock and sending a destination. |
-| `home` | Home Assistant, `control_home`, `ask_hermes`, `show_camera`, `/api/camera`. |
+| `home` | Home Assistant, `control_home`, `ask_hermes`, `show_camera`, `look_at_camera`, `/api/camera`. |
 | `media` | Spotify. |
 | `mail` | Gmail: `mail_check`, `mail_search`, `mail_send`, `mail_manage`, `contacts_lookup`. Reads, sends, replies, drafts, trashes and archives — there is no read-only half. Also reads Google Contacts to turn a name into an address. |
 | `calendar` | Google Calendar: `calendar_check`, `calendar_add`. Reads the diary **and creates events**. |
@@ -282,6 +282,20 @@ void loop() {
   Serial.println(ask("how much charge is left in the car?"));
   delay(60000);   // never hammer it: 20 requests a minute is the ceiling
 }
+```
+
+## Photos
+
+A question can carry a photo to ask about. On `/api/v1/voice`, add up to two
+as `image` files in the form, or as `images` (data: URLs) in JSON; on
+`/api/v1/stream` (and the app's `/api/delegate`), as `images`. JPEG, PNG or
+WebP, up to about 2 MB each — shrink them to about 1024 pixels first; the
+model sees no more in a larger one. They go to the router beside the
+question and are never stored.
+
+```
+POST /api/v1/voice
+{"text": "What am I looking at?", "images": ["data:image/jpeg;base64,…"], "reply": "text"}
 ```
 
 ## Push-to-talk voice

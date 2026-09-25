@@ -163,6 +163,12 @@ export interface Env {
   VOICE_TTS_VOICE?: string;
   /** How the voice should sound, for gpt-4o-mini-tts. */
   VOICE_STYLE?: string;
+  /**
+   * Cameras by snapshot address, for anyone without Home Assistant (or for
+   * cameras it does not have): "Front gate = https://…/snap.jpg; Driveway = …".
+   * Secret: an address often carries the camera's password.
+   */
+  CAMERAS?: string;
   /** Workers AI, for the cheapest hearing and speaking. Cloudflare only; add "ai": {"binding": "AI"}. */
   AI?: { run(model: string, input: unknown): Promise<unknown> };
 }

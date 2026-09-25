@@ -1,121 +1,101 @@
-import type { Tool, ToolContext } from "./registry";
+import type { Tool } from "./registry";
+import { localeOf } from "../lib/locale.ts";
+import { camerasConfigured, dataUrl, listCameras, pickCamera, snapshot } from "../lib/cameras.ts";
 
 /**
- * Put a camera on the screen.
+ * The user's cameras: Home Assistant's, and any listed by snapshot address
+ * (lib/cameras.ts).
  *
- * Home Assistant is already reachable over MCP, but that path returns text and
- * this needs a picture — so the entity is resolved through MCP and the frame
- * itself comes from the Worker's camera proxy, keeping the Home Assistant token
- * server-side.
+ * show_camera puts one on the screen. look_at_camera is Jarvis actually
+ * looking: the frame goes to the router model as a picture, beside the
+ * question, and it answers from what it sees — "is the gate open?". The frame
+ * is also shown on screen where there is one, as the evidence.
  */
 
-interface Cam {
-  entity: string;
-  name: string;
-}
-
-/** Cached briefly: the camera list changes far less often than it is asked for. */
-const CACHE_KEY = "cams:v1";
-const CACHE_TTL_S = 900;
-
-async function cameras(ctx: ToolContext): Promise<Cam[]> {
-  try {
-    const hit = (await ctx.env.CONFIG.get(CACHE_KEY, "json")) as Cam[] | null;
-    if (hit?.length) return hit;
-  } catch {
-    /* a cache miss is not a failure */
-  }
-
-  const base = ctx.env.HA_BASE_URL?.replace(/\/+$/, "");
-  const token = ctx.env.HA_TOKEN;
-  if (!base || !token) return [];
-
-  const res = await fetch(`${base}/api/states`, {
-    headers: { Authorization: `Bearer ${token}` },
-    signal: AbortSignal.timeout(12_000),
-  });
-  if (!res.ok) return [];
-
-  const states = (await res.json()) as {
-    entity_id: string;
-    attributes?: { friendly_name?: string };
-  }[];
-  const list = states
-    .filter((s) => s.entity_id.startsWith("camera."))
-    .map((s) => ({
-      entity: s.entity_id,
-      name: s.attributes?.friendly_name ?? s.entity_id.replace("camera.", "").replace(/_/g, " "),
-    }));
-
-  if (list.length) {
-    // A cache: failing to write it must not fail the camera (see tools/mcp.ts).
-    await ctx.env.CONFIG.put(CACHE_KEY, JSON.stringify(list), { expirationTtl: CACHE_TTL_S })
-      .catch(() => {});
-  }
-  return list;
-}
-
-/** Spoken names are loose — "the gate", "front door" — so match generously. */
-function pick(list: Cam[], want: string): Cam | undefined {
-  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
-  const q = norm(want);
-  if (!q) return undefined;
-
-  const exact = list.find((c) => norm(c.name) === q || norm(c.entity) === q);
-  if (exact) return exact;
-
-  const words = q.split(" ").filter((w) => w.length > 2);
-  let best: { cam: Cam; score: number } | undefined;
-  for (const c of list) {
-    const hay = norm(c.name + " " + c.entity);
-    const score = words.reduce((n, w) => n + (hay.includes(w) ? 1 : 0), 0);
-    if (score && (!best || score > best.score)) best = { cam: c, score };
-  }
-  return best?.cam;
-}
+const unknownCamera = (want: string, names: string[]) =>
+  // Naming what exists is more useful than refusing, and stops the model
+  // inventing a camera that does not.
+  `There is no camera matching "${want}". There is: ${names.join(", ")}.`;
 
 export const showCamera: Tool = {
   name: "show_camera",
   scope: "home",
   pace: "fast",
-  available: (env) => !!(env.HA_BASE_URL && env.HA_TOKEN),
+  available: camerasConfigured,
   description:
-    "Put a camera from the user's home on the car's screen — the gate, the porch, the " +
-    "doorbell, the back garden. Use when they ask to SEE what a camera shows. The view " +
-    "refreshes on its own, so say one short sentence and stop. To list what cameras " +
-    "exist, call it with an empty name.",
+    "Put one of the user's cameras on the screen — the gate, the porch, the doorbell, " +
+    "the back garden. Use when they ask to SEE a camera. The view refreshes on its own, " +
+    "so say one short sentence and stop. To answer a question about what a camera shows, " +
+    "use look_at_camera instead. To list what cameras exist, call it with an empty name.",
   parameters: {
     type: "object",
     properties: {
       camera: {
         type: "string",
-        description:
-          "Which camera, in the user's own words — 'the gate', 'front porch'. " +
-          "Empty string lists what is available.",
+        description: "Which camera, in the user's own words — 'the gate', 'front porch'. Empty string lists what is available.",
       },
     },
     required: ["camera"],
     additionalProperties: false,
   },
   async run(args, ctx) {
-    const list = await cameras(ctx);
-    if (!list.length) return "I cannot reach the cameras at the moment.";
-
+    const list = await listCameras(ctx.env);
+    if (!list.length) return "I cannot reach any cameras at the moment.";
     const want = String(args.camera ?? "").trim();
     if (!want) return `Cameras available: ${list.map((c) => c.name).join(", ")}.`;
-
-    const cam = pick(list, want);
-    if (!cam) {
-      // Naming what exists is more useful than refusing, and stops the model
-      // inventing a camera that does not.
-      return `There is no camera matching "${want}". There is: ${list
-        .map((c) => c.name)
-        .join(", ")}.`;
-    }
-
-    ctx.display({ kind: "camera", entity: cam.entity, label: cam.name });
+    const cam = pickCamera(list, want);
+    if (!cam) return unknownCamera(want, list.map((c) => c.name));
+    ctx.display({ kind: "camera", entity: cam.id, label: cam.name });
     return `Showing the ${cam.name} camera.`;
   },
 };
 
-export const cameraTools: Tool[] = [showCamera];
+export const lookAtCamera: Tool = {
+  name: "look_at_camera",
+  scope: "home",
+  pace: "fast",
+  available: camerasConfigured,
+  description:
+    "Look at one of the user's cameras right now and answer from what it shows: 'is the " +
+    "gate open', 'is there a car in the driveway', 'did the parcel arrive', 'who is at the " +
+    "door', 'is the garage door shut'. You are given the current picture. Say only what " +
+    "is actually visible; if it is too dark, blurred or blocked to tell, say so rather than " +
+    "guess. For several cameras, call it once for each. To list cameras, call with an empty camera.",
+  parameters: {
+    type: "object",
+    properties: {
+      camera: { type: "string", description: "Which camera, in the user's own words. Empty string lists them." },
+      question: { type: "string", description: "What to find out from the picture, as the user asked it." },
+    },
+    required: ["camera", "question"],
+    additionalProperties: false,
+  },
+  async run(args, ctx) {
+    const list = await listCameras(ctx.env);
+    if (!list.length) return "I cannot reach any cameras at the moment.";
+    const want = String(args.camera ?? "").trim();
+    if (!want) return `Cameras available: ${list.map((c) => c.name).join(", ")}.`;
+    const cam = pickCamera(list, want);
+    if (!cam) return unknownCamera(want, list.map((c) => c.name));
+
+    ctx.progress(`looking at the ${cam.name}`);
+    // 1024 pixels wide: enough to read a number plate or a parcel label, a
+    // fraction of what a 4K frame would cost to look at.
+    const snap = await snapshot(ctx.env, cam.id, 1024);
+    if (!snap.ok) return `I could not get a picture from the ${cam.name} camera: ${snap.error}.`;
+
+    ctx.display({ kind: "camera", entity: cam.id, label: cam.name });
+    const at = new Intl.DateTimeFormat("en-GB", {
+      timeZone: localeOf(ctx.env).timeZone, hour: "2-digit", minute: "2-digit", hour12: false,
+    }).format(new Date());
+    const question = String(args.question ?? "").trim() || "What does it show?";
+    return {
+      text:
+        `This is the ${cam.name} camera, just now (${at}). Answer "${question}" from what you ` +
+        `can see in it. Only what is visible: if it is too dark, blurred or blocked to tell, say so.`,
+      images: [{ url: dataUrl(snap.bytes, snap.mime), detail: "auto" }],
+    };
+  },
+};
+
+export const cameraTools: Tool[] = [showCamera, lookAtCamera];

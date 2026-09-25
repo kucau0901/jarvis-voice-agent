@@ -21,6 +21,8 @@ import {
   type Spoken,
 } from "../lib/speech";
 import { run } from "./delegate";
+import { MAX_PHOTOS, MAX_PHOTO_CHARS, photosFrom } from "../lib/photos";
+import { dataUrl } from "../lib/cameras";
 
 /**
  * Push-to-talk: one spoken question in, one spoken answer out, paid per
@@ -57,6 +59,8 @@ interface Options {
 interface Input {
   audio?: { buf: ArrayBuffer; mime: string };
   text?: string;
+  /** Photos taken to ask about, as data: URLs (lib/photos.ts). */
+  photos?: string[];
   opts: Options;
 }
 
@@ -77,7 +81,8 @@ function options(raw: Record<string, unknown>): Options {
 async function readInput(req: Request, url: URL): Promise<Input | Response> {
   const type = (req.headers.get("content-type") ?? "").toLowerCase();
   const len = Number(req.headers.get("content-length") ?? "0");
-  if (Number.isFinite(len) && len > MAX_AUDIO_BYTES + 64 * 1024) return err(413, "that recording is too long for push-to-talk");
+  // A recording, plus room for a couple of photos alongside it.
+  if (Number.isFinite(len) && len > MAX_AUDIO_BYTES + 2 * MAX_PHOTO_CHARS) return err(413, "that is too much for push-to-talk");
 
   if (type.startsWith("audio/")) {
     if (!audioExtension(type)) return err(415, `${type.split(";")[0]} is not a recording format Jarvis takes`);
@@ -112,19 +117,27 @@ async function readInput(req: Request, url: URL): Promise<Input | Response> {
     }
     const text = form.get("text");
     if (typeof text === "string" && text.trim()) input.text = text.trim().slice(0, 2000);
+    const photos: string[] = [];
+    for (const f of form.getAll("image")) {
+      if (typeof f === "string" || !/^image\/(jpeg|png|webp)$/.test(f.type) || f.size > MAX_PHOTO_CHARS * 0.75) continue;
+      photos.push(dataUrl(await f.arrayBuffer(), f.type));
+    }
+    if (photos.length) input.photos = photosFrom(photos);
     return input;
   }
 
   let body: Record<string, unknown>;
   try {
     const raw = await req.text();
-    if (raw.length > 64 * 1024) return err(413, "body too large");
+    // The words and a conversation, plus room for a couple of photos.
+    if (raw.length > 64 * 1024 + MAX_PHOTOS * MAX_PHOTO_CHARS) return err(413, "body too large");
     body = JSON.parse(raw);
   } catch {
     return err(400, "send a recording (audio/*), a form with an audio file, or JSON with text");
   }
   const text = typeof body.text === "string" ? body.text.trim().slice(0, 2000) : "";
-  return { ...(text ? { text } : {}), opts: options(body) };
+  const photos = photosFrom(body.images);
+  return { ...(text ? { text } : {}), ...(photos.length ? { photos } : {}), opts: options(body) };
 }
 
 function contextTurns(raw: unknown): Turn[] {
@@ -193,7 +206,10 @@ async function pipeline(
       return collector.isClosed;
     },
   };
-  await run(env, [...prior, { role: "user", text: transcript }], tee, signal, grants, { surface: "voice" });
+  await run(env, [...prior, { role: "user", text: transcript }], tee, signal, grants, {
+    surface: "voice",
+    ...(input.photos?.length ? { images: input.photos } : {}),
+  });
   const reply = collector.finish();
 
   if (threadKey && state) {

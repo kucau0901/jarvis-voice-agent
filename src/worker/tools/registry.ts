@@ -37,6 +37,21 @@ export interface ToolContext {
   grants: readonly Grant[];
 }
 
+/** A picture for the router to look at, as a data: URL. */
+export interface ToolImage {
+  url: string;
+  detail?: "low" | "high" | "auto";
+}
+
+/**
+ * What a tool hands back: words, or words and pictures. A picture goes to the
+ * router model itself, which looks at it and answers in the same loop — no
+ * second model call — and can still use other tools on what it saw.
+ */
+export type ToolOutput = string | { text: string; images: ToolImage[] };
+
+export const outputText = (o: ToolOutput): string => (typeof o === "string" ? o : o.text);
+
 export interface Tool {
   name: string;
   description: string;
@@ -68,7 +83,7 @@ export interface Tool {
    * changing what it means. The MCP server validates its own arguments anyway.
    */
   strict?: boolean;
-  run(args: Record<string, unknown>, ctx: ToolContext): Promise<string>;
+  run(args: Record<string, unknown>, ctx: ToolContext): Promise<ToolOutput>;
 }
 
 const str = (v: unknown, fallback = ""): string =>
