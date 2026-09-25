@@ -544,11 +544,10 @@ Suggested scopes for the glasses: `ask`, `home`, `memory.read`, `memory.write`,
    Assistant's own Assist (`conversation.home_assistant`) with a 3s limit. If it
    switches a light or reads a sensor, that answer comes straight back, in well
    under a second where the router takes 8–17. Anything Assist does not
-   understand goes to the router as if this step had not happened. For locks,
-   doors, gates, the garage and the alarm, only closing, locking or arming them,
-   or a question about them ("is the main gate closed?"), tries Assist. Anything
-   that would open one, or does not say which way, skips Assist and still passes
-   the router's tool allowlist. Switch this off with `G2_FASTPATH=0`.
+   understand goes to the router as if this step had not happened. Gates, doors
+   and locks included: what Assist may do is decided in Home Assistant, by what
+   you expose to it (Settings → Voice assistants → Expose), so set the house's
+   limits there. Switch this off with `G2_FASTPATH=0`.
 2. **Follow-ups.** The last six turns per device are kept for five minutes in the
    Durable Object, so "turn it off" knows what "it" is.
 3. **Length.** The router is told the answer is going to the glasses, and the
