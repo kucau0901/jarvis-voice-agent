@@ -68,7 +68,7 @@ export class Stage {
     document.body.classList.add("staged");
     this.el.classList.add("open");
 
-    clearInterval(this.refreshTimer);
+    clearTimeout(this.refreshTimer);
     this.armDismiss();
     this.el.querySelector(".frame")!.classList.toggle("camera", p.kind === "camera");
 
@@ -97,8 +97,12 @@ export class Stage {
     this.frame.src = "about:blank";
     this.img.style.display = "block";
 
-    const draw = async () => {
-      if (mine !== this.token || document.hidden) return;
+    const GIVE_UP = 3;
+    let failures = 0;
+    /** True while the camera is answering; a failure pauses the refreshing. */
+    const draw = async (): Promise<boolean> => {
+      if (mine !== this.token) return false;
+      if (document.hidden) return true;
       try {
         const res = await fetch(`/api/camera?entity=${encodeURIComponent(p.entity!)}`, {
           headers: authHeaders(this.key),
@@ -106,22 +110,38 @@ export class Stage {
         });
         if (!res.ok) throw new Error(`camera ${res.status}`);
         const blob = await res.blob();
-        if (mine !== this.token) return;
+        if (mine !== this.token) return false;
         this.revoke();
         this.objectUrl = URL.createObjectURL(blob);
         this.img.src = this.objectUrl;
         this.caption.textContent = p.label ?? "";
+        failures = 0;
+        return true;
       } catch (e) {
-        if (mine !== this.token) return;
-        clearInterval(this.refreshTimer);
-        this.caption.textContent = `Camera unavailable: ${
-          e instanceof Error ? e.message : String(e)
-        }`;
+        if (mine !== this.token) return false;
+        failures++;
+        this.caption.textContent =
+          failures < GIVE_UP
+            ? `${p.label ?? "Camera"} — slow to answer, trying again…`
+            : `Camera unavailable: ${e instanceof Error ? e.message : String(e)}`;
+        return false;
       }
     };
 
-    await draw();
-    this.refreshTimer = setInterval(draw, 1100) as unknown as number;
+    // One frame at a time: the next is asked for only once the last has come.
+    // A fixed interval stacked requests up behind a slow camera — measured at
+    // 2–5 s a frame — until Jarvis looking at the same camera timed out.
+    // A camera that stalls on one frame usually answers the next, so a failure
+    // waits a little and tries again; only a camera that keeps failing is given up on.
+    const loop = async () => {
+      if (mine !== this.token) return;
+      const started = Date.now();
+      const ok = await draw();
+      if (mine !== this.token || failures >= GIVE_UP) return;
+      const wait = ok ? Math.max(500, 1100 - (Date.now() - started)) : 3000;
+      this.refreshTimer = setTimeout(loop, wait) as unknown as number;
+    };
+    await loop();
   }
 
   /**
@@ -197,7 +217,7 @@ export class Stage {
     this.token++;
     clearTimeout(this.embedTimer);
     clearTimeout(this.dismissTimer);
-    clearInterval(this.refreshTimer);
+    clearTimeout(this.refreshTimer);
     this.el.classList.remove("open");
     document.body.classList.remove("staged");
     // Stop the embed doing work behind a closed panel.

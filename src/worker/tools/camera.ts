@@ -58,9 +58,10 @@ export const lookAtCamera: Tool = {
   description:
     "Look at one of the user's cameras right now and answer from what it shows: 'is the " +
     "gate open', 'is there a car in the driveway', 'did the parcel arrive', 'who is at the " +
-    "door', 'is the garage door shut'. You are given the current picture. Say only what " +
-    "is actually visible; if it is too dark, blurred or blocked to tell, say so rather than " +
-    "guess. For several cameras, call it once for each. To list cameras, call with an empty camera.",
+    "door', 'is the garage door shut'. You are given the current picture, and it is put on " +
+    "the screen too — so do not call show_camera as well. Say only what is actually " +
+    "visible; if it is too dark, blurred or blocked to tell, say so rather than guess. For " +
+    "several cameras, call it once for each. To list cameras, call with an empty camera.",
   parameters: {
     type: "object",
     properties: {
@@ -81,7 +82,14 @@ export const lookAtCamera: Tool = {
     ctx.progress(`looking at the ${cam.name}`);
     // 1024 pixels wide: enough to read a number plate or a parcel label, a
     // fraction of what a 4K frame would cost to look at.
-    const snap = await snapshot(ctx.env, cam.id, 1024);
+    let snap = await snapshot(ctx.env, cam.id, 1024);
+    // Cameras behind Home Assistant now and then stall on one frame (about one
+    // in thirty, measured) and answer the next at once. One more try, so a
+    // single hiccup is not reported as the camera being down.
+    if (!snap.ok && /took too long/.test(snap.error)) {
+      ctx.progress(`the ${cam.name} is slow, trying again`);
+      snap = await snapshot(ctx.env, cam.id, 1024);
+    }
     if (!snap.ok) return `I could not get a picture from the ${cam.name} camera: ${snap.error}.`;
 
     ctx.display({ kind: "camera", entity: cam.id, label: cam.name });

@@ -132,11 +132,42 @@ const IMAGE = /^image\/(jpeg|png|webp|gif)/;
 export type Snapshot = { ok: true; bytes: ArrayBuffer; mime: string } | { ok: false; error: string };
 
 /**
+ * A frame fetched in the last moment, or on its way, per camera.
+ *
+ * Cameras behind Home Assistant are slow and get slower when asked in
+ * parallel — measured in September 2026: 2.1 s for one frame, 5.4 s for the
+ * fifth in a row, and 12-second timeouts once the screen's refresh and Jarvis
+ * looking were both asking. So a request for a camera that already has a
+ * frame on its way, or one under FRESH_MS old, gets that frame instead of
+ * asking the camera again. In this isolate only; that covers the screen and
+ * the router asking at the same moment, which is the case that jammed.
+ */
+const FRESH_MS = 2_000;
+const recent = new Map<string, { at: number; frame: Promise<Snapshot> }>();
+
+/**
  * One frame, now. `width` asks Home Assistant to scale it down first: a
  * 640-pixel frame is plenty to tell whether a gate is open, and costs a
  * fraction of a 4K one to look at.
  */
-export async function snapshot(env: Env, id: string, width?: number): Promise<Snapshot> {
+export function snapshot(env: Env, id: string, width?: number, now = Date.now()): Promise<Snapshot> {
+  const hit = recent.get(id);
+  if (hit && now - hit.at < FRESH_MS) return hit.frame;
+  const frame = fetchFrame(env, id, width);
+  recent.set(id, { at: now, frame });
+  // A failure is not kept: the next ask should really ask.
+  void frame.then((f) => {
+    if (!f.ok && recent.get(id)?.frame === frame) recent.delete(id);
+  });
+  return frame;
+}
+
+/** For tests: forget recent frames. */
+export function _forgetFrames(): void {
+  recent.clear();
+}
+
+async function fetchFrame(env: Env, id: string, width?: number): Promise<Snapshot> {
   let url: string;
   const headers: Record<string, string> = {};
   if (id.startsWith("url:")) {
@@ -163,7 +194,8 @@ export async function snapshot(env: Env, id: string, width?: number): Promise<Sn
   try {
     res = await fetch(url, { headers, signal: AbortSignal.timeout(12_000) });
   } catch (e) {
-    return { ok: false, error: `the camera did not answer (${e instanceof Error ? e.message : String(e)})` };
+    const slow = e instanceof Error && (e.name === "TimeoutError" || /timeout|aborted/i.test(e.message));
+    return { ok: false, error: slow ? "the camera took too long to answer" : `the camera did not answer (${e instanceof Error ? e.message : String(e)})` };
   }
   if (!res.ok) {
     await res.body?.cancel().catch(() => {});
@@ -179,7 +211,14 @@ export async function snapshot(env: Env, id: string, width?: number): Promise<Sn
     await res.body?.cancel().catch(() => {});
     return { ok: false, error: "the picture is too large" };
   }
-  const bytes = await res.arrayBuffer();
+  // The timeout covers the body too: a camera can answer at once and then
+  // trickle the picture. That used to throw out of here as an unexplained failure.
+  let bytes: ArrayBuffer;
+  try {
+    bytes = await res.arrayBuffer();
+  } catch {
+    return { ok: false, error: "the camera took too long to send the picture" };
+  }
   if (bytes.byteLength > MAX_SNAPSHOT_BYTES) return { ok: false, error: "the picture is too large" };
   return { ok: true, bytes, mime };
 }
