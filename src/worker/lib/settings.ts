@@ -193,7 +193,7 @@ export const GROUPS: readonly GroupDef[] = [
     id: "cameras",
     title: "Cameras",
     intro:
-      "Cameras Jarvis can look at to answer \"is the gate open?\" or \"is there a car in the driveway?\" — and show you. Home Assistant's cameras appear on their own once the Home section is set up. Add any other camera by the address of its snapshot picture. Test fetches a frame from each.",
+      "Cameras Jarvis can look at to answer \"is there a car in the driveway?\" or \"did the parcel arrive?\" — and show you. Home Assistant's cameras appear on their own once the Home section is set up. Add any other camera by the address of its snapshot picture. Test fetches a frame from each.",
     needs: [],
     testable: true,
   },

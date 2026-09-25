@@ -4,7 +4,7 @@ import { err, redact } from "../lib/http";
 import { SseStream, type EventSink } from "../lib/sse";
 import { buildHistory, type Turn } from "../lib/history";
 import { baseTools, outputText, toToolSchema, type Tool, type ToolContext, type ToolOutput } from "../tools/registry";
-import { mcpTools } from "../tools/mcp";
+import { mcpSessions, mcpTools } from "../tools/mcp";
 import { MemoryStore } from "../lib/memory";
 import { allows, type Grant } from "../lib/scopes";
 import { countryName, localeOf, utcOffset } from "../lib/locale.ts";
@@ -360,6 +360,7 @@ export async function handleDelegate(
     ...(images.length ? { images } : {}),
     // Typed chat (src/app/chat.ts): written for reading, not for GPT-Live to say.
     ...(body.surface === "chat" ? { surface: "chat" as const } : {}),
+    waitUntil: (p) => ctx.waitUntil(p),
   };
   ctx.waitUntil(run(env, turns, sse, ac.signal, grants, opts).finally(() => sse.close()));
 
@@ -396,6 +397,11 @@ export interface RunOptions {
   images?: string[];
   /** Only these tools are offered (background jobs: reading, not acting — routes/jobs.ts). */
   toolFilter?: (t: Tool) => boolean;
+  /**
+   * The request's ctx.waitUntil, where there is one: housekeeping that can wait
+   * until after the answer, such as refreshing a tool catalog, is done there.
+   */
+  waitUntil?: (p: Promise<unknown>) => void;
 }
 
 /** Everything a router request is built from, shared by run() and background jobs. */
@@ -416,6 +422,8 @@ export async function prepareRouter(
   signal: AbortSignal,
   grants: readonly Grant[] = ["*"],
   opts: RunOptions = {},
+  /** Connections held for this question; without it each house call connects on its own. */
+  sessions?: ReturnType<typeof mcpSessions>,
 ): Promise<Prepared> {
   // MCP failures must never take the local tools down with them, so the two are
   // gathered independently and a broken server simply contributes no tools.
@@ -434,7 +442,7 @@ export async function prepareRouter(
     memory.load().catch((e) => {
       console.warn("memory unavailable:", e instanceof Error ? e.message : String(e));
     }),
-    (wantsMcp ? mcpTools(env, signal) : Promise.resolve([] as Tool[])).catch((e) => {
+    (wantsMcp ? mcpTools(env, signal, sessions, opts.waitUntil) : Promise.resolve([] as Tool[])).catch((e) => {
       console.warn("mcp tools unavailable:", e instanceof Error ? e.message : String(e));
       return [] as typeof tools;
     }),
@@ -555,8 +563,21 @@ export async function run(
   grants: readonly Grant[] = ["*"],
   opts: RunOptions = {},
 ) {
-  const p = await prepareRouter(env, turns, signal, grants, opts);
+  const started = Date.now();
+  const sessions = mcpSessions();
+  let p: Prepared;
+  try {
+    p = await prepareRouter(env, turns, signal, grants, opts, sessions);
+  } catch (e) {
+    await sessions.close();
+    throw e;
+  }
   const { client, instructions, input, tools, byName, memory } = p;
+  // Where a slow answer spent its time: getting ready, each model hop, each
+  // round of tools. One line per question, in the Worker's log.
+  const timing = { prep: Date.now() - started, hops: [] as number[], tools: [] as number[] };
+  const logTiming = () =>
+    console.log(`router timing: prep ${timing.prep}ms, model ${timing.hops.join("+")}ms, tools ${timing.tools.join("+") || "-"}ms`);
   // `let`, because a first hop the chosen model rejects is retried on the
   // default and the rest follows it.
   let model = p.model;
@@ -596,6 +617,7 @@ export async function run(
         );
 
       let res: OpenAI.Responses.Response;
+      const hopStart = Date.now();
       try {
         res = await ask(model);
       } catch (e) {
@@ -614,6 +636,7 @@ export async function run(
         model = DEFAULT_ROUTER_MODEL;
         res = await ask(model);
       }
+      timing.hops.push(Date.now() - hopStart);
       previousResponseId = res.id;
       const u = res.usage as
         | {
@@ -633,6 +656,7 @@ export async function run(
       );
 
       if (!calls.length) {
+        logTiming();
         const text = res.output_text?.trim();
         if (used.length) sse.send({ type: "used", tools: used });
         sse.send(
@@ -654,7 +678,9 @@ export async function run(
        * order the model asked in. callTool never throws, so one failure cannot
        * take the others down.
        */
+      const toolStart = Date.now();
       const next = await runCalls(calls, byName, { env, signal, memory, grants }, sse);
+      timing.tools.push(Date.now() - toolStart);
 
       turn = next;
     }
@@ -684,6 +710,7 @@ export async function run(
       });
     }
   } finally {
+    const closing = sessions.close();
     // Persist once, at the end. Saving inside each tool would mean a KV write
     // per hop, and a turn that saves three facts should cost one write, not
     // three. A failed save must not turn a good answer into an error, so it is
@@ -696,6 +723,7 @@ export async function run(
     } catch (e) {
       console.error("memory save failed:", e instanceof Error ? e.message : String(e));
     }
+    await closing;
   }
 }
 

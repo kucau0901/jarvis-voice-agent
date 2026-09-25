@@ -2,6 +2,7 @@ import { Client, StreamableHTTPClientTransport, SSEClientTransport } from "@mode
 import type { Env } from "../types";
 import { loadServers, type McpServerConfig } from "../lib/config-store";
 import type { Tool, ToolContext } from "./registry";
+import { McpSessions } from "../lib/mcp-sessions";
 
 /**
  * Third-party MCP servers, exposed to the delegation router as ordinary tools.
@@ -14,21 +15,39 @@ import type { Tool, ToolContext } from "./registry";
 /** Workers allow 6 concurrent outbound connections; leave headroom for Hermes. */
 const MAX_PARALLEL = 4;
 const CONNECT_TIMEOUT_MS = 8_000;
-const CATALOG_TTL_S = 600;
+/**
+ * How long a tool catalog is trusted. Listing Home Assistant's tools sends every
+ * description and schema, and over a slow link home that took about 10 s
+ * (measured 26 Sep 2026). When the copy lasted only ten minutes, most questions
+ * asked now and then paid it before Jarvis could start.
+ *
+ * Now: fresh for ten minutes; after that still used at once, and a new copy
+ * fetched after the answer where the caller can wait for it (waitUntil); where
+ * nothing can, refetched first only once it is a day old. Kept a week, so a
+ * server taken out of settings does not linger for ever. Changing the servers
+ * in settings clears it outright (routes/mcp.ts).
+ */
+const CATALOG_FRESH_MS = 10 * 60_000;
+const CATALOG_STALE_MS = 24 * 3_600_000;
+const CATALOG_KEEP_S = 7 * 24 * 3_600;
 
 async function connect(server: McpServerConfig, signal?: AbortSignal): Promise<Client> {
   const client = new Client({ name: "jarvis", version: "1.0.0" });
   const opts = { requestInit: { headers: server.headers ?? {} } };
 
+  const t0 = Date.now();
   try {
     await client.connect(new StreamableHTTPClientTransport(new URL(server.url), opts));
+    console.log(`mcp: ${server.label} connected (http) ${Date.now() - t0}ms`);
     return client;
   } catch (e) {
     // Home Assistant's MCP Server integration still speaks the older SSE
     // transport, so falling back is not optional here.
     void e;
+    const failedAfter = Date.now() - t0;
     const fallback = new Client({ name: "jarvis", version: "1.0.0" });
     await fallback.connect(new SSEClientTransport(new URL(server.url), opts));
+    console.log(`mcp: ${server.label} connected (sse, http failed after ${failedAfter}ms) ${Date.now() - t0}ms`);
     return fallback;
   }
   void signal;
@@ -40,13 +59,46 @@ interface CatalogEntry {
   inputSchema?: Record<string, unknown>;
 }
 
-/** Tool catalogs are cached: re-listing on every turn costs latency and CPU. */
-async function listTools(env: Env, server: McpServerConfig): Promise<CatalogEntry[]> {
-  const key = `mcp:catalog:${server.label}`;
-  const cached = await env.CONFIG.get(key, "json").catch(() => null);
-  if (cached) return cached as CatalogEntry[];
+/** A question's connections, one per server (lib/mcp-sessions.ts). */
+export const mcpSessions = () =>
+  new McpSessions<McpServerConfig, Client>((server) =>
+    withTimeout(connect(server), CONNECT_TIMEOUT_MS, `connect to ${server.label}`));
 
-  const client = await withTimeout(connect(server), CONNECT_TIMEOUT_MS, `connect to ${server.label}`);
+/** Tool catalogs are cached: re-listing on every turn costs latency and CPU. See CATALOG_FRESH_MS. */
+async function listTools(
+  env: Env,
+  server: McpServerConfig,
+  sessions?: McpSessions<McpServerConfig, Client>,
+  waitUntil?: (p: Promise<unknown>) => void,
+): Promise<CatalogEntry[]> {
+  const hit = await env.CONFIG
+    .getWithMetadata<CatalogEntry[], { at?: number }>(catalogKey(server), "json")
+    .catch(() => null);
+  if (hit?.value) {
+    const age = Date.now() - (hit.metadata?.at ?? 0);
+    if (age < CATALOG_FRESH_MS) return hit.value;
+    if (waitUntil) {
+      // Its own connection: this question's are closed when it has answered.
+      waitUntil(fetchCatalog(env, server).catch((e) =>
+        console.warn("mcp: catalog not refreshed:", e instanceof Error ? e.message : String(e))));
+      return hit.value;
+    }
+    if (age < CATALOG_STALE_MS) return hit.value;
+  }
+  return fetchCatalog(env, server, sessions);
+}
+
+const catalogKey = (server: McpServerConfig) => `mcp:catalog:${server.label}`;
+
+async function fetchCatalog(
+  env: Env,
+  server: McpServerConfig,
+  sessions?: McpSessions<McpServerConfig, Client>,
+): Promise<CatalogEntry[]> {
+  const t0 = Date.now();
+  const client = sessions
+    ? await sessions.client(server)
+    : await withTimeout(connect(server), CONNECT_TIMEOUT_MS, `connect to ${server.label}`);
   try {
     const { tools } = await client.listTools();
     const catalog: CatalogEntry[] = tools.map((t) => ({
@@ -57,11 +109,17 @@ async function listTools(env: Env, server: McpServerConfig): Promise<CatalogEntr
     // A cache, so a failed write costs a repeat fetch, never the tools. On the
     // free plan KV allows 1,000 writes a day; once they ran out this put threw,
     // and every house tool vanished until the quota reset at 08:00 Malaysia time.
-    await env.CONFIG.put(key, JSON.stringify(catalog), { expirationTtl: CATALOG_TTL_S })
-      .catch((e) => console.warn("mcp: catalog not cached:", e instanceof Error ? e.message : String(e)));
+    await env.CONFIG.put(catalogKey(server), JSON.stringify(catalog), {
+      expirationTtl: CATALOG_KEEP_S,
+      metadata: { at: Date.now() },
+    }).catch((e) => console.warn("mcp: catalog not cached:", e instanceof Error ? e.message : String(e)));
+    console.log(`mcp: ${server.label} catalog fetched ${Date.now() - t0}ms`);
     return catalog;
+  } catch (e) {
+    sessions?.forget(server);
+    throw e;
   } finally {
-    await client.close().catch(() => {});
+    if (!sessions) await client.close().catch(() => {});
   }
 }
 
@@ -121,7 +179,17 @@ function refuseIfForbidden(tool: string, args: Record<string, unknown>): string 
 const toolName = (label: string, name: string) =>
   `${label}__${name}`.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 64);
 
-export async function mcpTools(env: Env, signal: AbortSignal): Promise<Tool[]> {
+/**
+ * With `sessions`, calls share one connection per server and it starts opening
+ * now (lib/mcp-sessions.ts). With `waitUntil`, an old catalog is refreshed after
+ * the answer rather than before it.
+ */
+export async function mcpTools(
+  env: Env,
+  signal: AbortSignal,
+  sessions?: McpSessions<McpServerConfig, Client>,
+  waitUntil?: (p: Promise<unknown>) => void,
+): Promise<Tool[]> {
   const servers = await loadServers(env);
   if (!servers.length) return [];
 
@@ -129,7 +197,7 @@ export async function mcpTools(env: Env, signal: AbortSignal): Promise<Tool[]> {
   for (let i = 0; i < servers.length; i += MAX_PARALLEL) {
     const batch = servers.slice(i, i + MAX_PARALLEL);
     const results = await Promise.allSettled(
-      batch.map(async (server) => ({ server, catalog: await listTools(env, server) })),
+      batch.map(async (server) => ({ server, catalog: await listTools(env, server, sessions, waitUntil) })),
     );
 
     for (const r of results) {
@@ -140,6 +208,7 @@ export async function mcpTools(env: Env, signal: AbortSignal): Promise<Tool[]> {
       }
       const { server, catalog } = r.value;
       const allowed = server.allowedTools?.length ? new Set(server.allowedTools) : null;
+      sessions?.warm(server);
 
       for (const entry of catalog) {
         if (allowed && !allowed.has(entry.name)) continue;
@@ -150,7 +219,7 @@ export async function mcpTools(env: Env, signal: AbortSignal): Promise<Tool[]> {
             (server.hint ? ` — ${server.hint}` : ""),
           parameters: normaliseSchema(entry.inputSchema),
           strict: false,
-          run: (args, ctx) => callRemote(server, entry.name, args, ctx),
+          run: (args, ctx) => callRemote(server, entry.name, args, ctx, sessions),
         });
       }
     }
@@ -177,6 +246,7 @@ async function callRemote(
   name: string,
   args: Record<string, unknown>,
   ctx: ToolContext,
+  sessions?: McpSessions<McpServerConfig, Client>,
 ): Promise<string> {
   const refusal = refuseIfForbidden(name, args);
   if (refusal) {
@@ -188,9 +258,13 @@ async function callRemote(
   // integration's. The prompt forbids naming the system; handing it the label
   // and asking it to relay the note was undoing that instruction at the source.
   ctx.progress(`checking ${server.spokenAs ?? server.label}`);
-  const client = await withTimeout(connect(server), CONNECT_TIMEOUT_MS, `connect to ${server.label}`);
+  const client = sessions
+    ? await sessions.client(server)
+    : await withTimeout(connect(server), CONNECT_TIMEOUT_MS, `connect to ${server.label}`);
+  const t0 = Date.now();
   try {
     const result = await client.callTool({ name, arguments: args });
+    console.log(`mcp: ${server.label} ${name} ${Date.now() - t0}ms`);
     const content = (result.content ?? []) as { type: string; text?: string }[];
     const text = content
       .filter((c) => c.type === "text" && c.text)
@@ -199,7 +273,11 @@ async function callRemote(
       .trim();
     if (result.isError) return `${server.label} reported an error: ${text || "no detail"}`;
     return text || "That returned nothing.";
+  } catch (e) {
+    // Not retried here: the call may already have acted. The next call connects afresh.
+    sessions?.forget(server);
+    throw e;
   } finally {
-    await client.close().catch(() => {});
+    if (!sessions) await client.close().catch(() => {});
   }
 }

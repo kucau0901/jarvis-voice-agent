@@ -1,4 +1,4 @@
-import { ASSIST_AGENT, SENSITIVE, assistConfig, tryAssist, type AssistConfig } from "../src/worker/lib/assist.ts";
+import { ASSIST_AGENT, SENSITIVE, assistConfig, fastPathAllowed, tryAssist, type AssistConfig } from "../src/worker/lib/assist.ts";
 
 let pass = 0;
 let fail = 0;
@@ -32,7 +32,7 @@ const envelope = (response_type: string, speech: string, data: unknown = { succe
   continue_conversation: false,
 });
 
-console.log("what never takes the fast path");
+console.log("the doors, gates and alarm");
 {
   for (const q of [
     "unlock the front door",
@@ -55,6 +55,48 @@ console.log("what never takes the fast path");
     "dim the doorway light",
   ]) {
     check(`not sensitive: "${q}"`, !SENSITIVE.test(q));
+  }
+}
+
+console.log("\nwhich of them may take the fast path");
+{
+  // Toward a safer house, or only asking: Assist, as the glasses had it directly.
+  for (const q of [
+    "close the main gate",
+    "Close my main gate.",
+    "shut the garage door",
+    "lock the back door",
+    "arm the security system",
+    "is the main gate closed?",
+    "Is the gate open",
+    "did the garage door close",
+    "what's the front door lock status",
+    "tutup pagar",
+    "kunci pintu depan",
+    "turn on the study light",
+  ]) {
+    check(`fast path: "${q}"`, fastPathAllowed(q));
+  }
+  // Anything that lets someone in, or does not say which way, stays with the router.
+  for (const q of [
+    "open the main gate",
+    "Open main gate.",
+    "unlock the front door",
+    "disarm the alarm",
+    "turn on the gate",
+    "press the gate button",
+    "trigger the garage",
+    "toggle the main gate",
+    "close the gate then open the garage",
+    "let the car in through the gate",
+    "can you open the gate",
+    "have the gate opened",
+    "the main gate",
+    "gate",
+    "buka pintu pagar",
+    "buka kunci pintu",
+  ]) {
+    check(`router: "${q}"`, !fastPathAllowed(q));
   }
 }
 
@@ -131,7 +173,11 @@ console.log("\nasking Assist");
 {
   const { f, calls } = fakeFetch(envelope("action_done", "Unlocked"));
   const r = await tryAssist(CFG, "unlock the front door", f);
-  check("a sensitive request never reaches Assist", !r.handled && r.reason === "sensitive" && calls.length === 0, r);
+  check("a request that opens never reaches Assist", !r.handled && r.reason === "sensitive" && calls.length === 0, r);
+
+  const shut = fakeFetch(envelope("action_done", "Closed the gate"));
+  const s = await tryAssist(CFG, "close the main gate", shut.f);
+  check("closing the gate is done by Assist", s.handled && s.text === "Closed the gate" && shut.calls.length === 1, s);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

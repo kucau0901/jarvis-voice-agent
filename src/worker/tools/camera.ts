@@ -8,7 +8,7 @@ import { camerasConfigured, dataUrl, listCameras, pickCamera, snapshot } from ".
  *
  * show_camera puts one on the screen. look_at_camera is Jarvis actually
  * looking: the frame goes to the router model as a picture, beside the
- * question, and it answers from what it sees — "is the gate open?". The frame
+ * question, and it answers from what it sees — "did the parcel arrive?". The frame
  * is also shown on screen where there is one, as the evidence.
  */
 
@@ -56,9 +56,14 @@ export const lookAtCamera: Tool = {
   pace: "fast",
   available: camerasConfigured,
   description:
-    "Look at one of the user's cameras right now and answer from what it shows: 'is the " +
-    "gate open', 'is there a car in the driveway', 'did the parcel arrive', 'who is at the " +
-    "door', 'is the garage door shut'. You are given the current picture, and it is put on " +
+    // Not "is the gate open": given that as an example, the router looked at a
+    // picture of a gate that has a sensor, and read it differently twice running.
+    "Look at one of the user's cameras right now and answer from what it shows: 'is there " +
+    "a car in the driveway', 'did the parcel arrive', 'who is at the door', 'how many cars " +
+    "are outside'. Whether a gate, door or garage is open or closed, or a lock locked, is " +
+    "read from the house's own state when it has a device for it — certain, and faster " +
+    "than a picture; look only when there is no such device or the user asks to see. " +
+    "You are given the current picture, and it is put on " +
     "the screen too — so do not call show_camera as well. Say only what is actually " +
     "visible; if it is too dark, blurred or blocked to tell, say so rather than guess. For " +
     "several cameras, call it once for each. To list cameras, call with an empty camera.",

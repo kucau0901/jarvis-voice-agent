@@ -102,7 +102,7 @@ async function collectWithDeadline(
   const ac = new AbortController();
   req.signal.addEventListener("abort", () => ac.abort());
 
-  const work = run(env, turns, sink, ac.signal, grants, opts).catch((e) => {
+  const work = run(env, turns, sink, ac.signal, grants, { ...opts, waitUntil: (p) => ctx.waitUntil(p) }).catch((e) => {
     console.error(`${label} failed:`, e instanceof Error ? e.message : String(e));
   });
 

@@ -39,10 +39,10 @@ enough) or run it yourself with **Docker**.
   and cost the least of all. Chosen per screen under the orb, one conversation
   across all three. Hearing and speaking can use OpenAI, Cloudflare Workers AI,
   or the device itself.
-- **It can see** — "is the gate open?", "did the parcel arrive?": Jarvis looks
-  at a camera (Home Assistant's, or any camera with a snapshot address) and
-  answers from what it sees, showing you the frame. Routines can look too:
-  "every night at eleven, tell me if the garage door is open".
+- **It can see** — "is there a car in the driveway?", "did the parcel arrive?":
+  Jarvis looks at a camera (Home Assistant's, or any camera with a snapshot
+  address) and answers from what it sees, showing you the frame. Routines can
+  look too: "every evening at seven, tell me if a parcel is at the door".
 - **Background jobs** — "look into the best dashcams under RM800 and let me
   know": work that takes minutes runs on its own, even with every screen
   closed, and the result arrives as an alert and waits in the **jobs** panel.

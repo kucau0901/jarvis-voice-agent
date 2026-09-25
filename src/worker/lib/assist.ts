@@ -23,14 +23,15 @@ export const ASSIST_AGENT = "conversation.home_assistant";
 const TIMEOUT_MS = 3000;
 
 /**
- * Anything touching locks, doors, gates, garages or the alarm skips Assist.
+ * Locks, doors, gates, garages and the alarm: the things a way into the house
+ * is made of.
  *
- * Not because Assist would get these wrong, but because the router's path to
- * the house has guards this one does not: an allowlist of tools and a hard
- * FORBIDDEN_SERVICES list in tools/mcp.ts. Assist acts on whatever the house
- * has exposed to it, and "unlock the front door" would simply happen. Sending
- * these through the router keeps this path from ever being the weaker way into
- * the house. The cost is a few seconds on a question about a door.
+ * Requests that would OPEN one skip Assist (see fastPathAllowed). Not because
+ * Assist would get them wrong, but because the router's path to the house has
+ * guards this one does not: an allowlist of tools and a hard FORBIDDEN_SERVICES
+ * list in tools/mcp.ts. Assist acts on whatever the house has exposed to it,
+ * and "unlock the front door" would simply happen. Sending these through the
+ * router keeps this path from ever being the weaker way into the house.
  *
  * Malay is included because the user speaks it and the phone transcribes it.
  */
@@ -45,6 +46,49 @@ export const SENSITIVE = new RegExp(
     ")\\b",
   "i",
 );
+
+/**
+ * Words that would let someone in: opening, unlocking, disarming, and switching
+ * or pressing something "on" — many gate openers are a relay that opens on "on".
+ */
+const OPENS = new RegExp(
+  "\\b(" +
+    [
+      "open\\w*", "unlock\\w*", "unlatch\\w*", "disarm\\w*", "turn(s|ed|ing)?\\s+on",
+      "switch(es|ed|ing)?\\s+on", "activat\\w*", "trigger\\w*", "press\\w*", "push\\w*",
+      "toggl\\w*", "start\\w*", "rais\\w*", "lift\\w*", "releas\\w*", "let",
+      // Malay: open.
+      "buka\\w*",
+    ].join("|") +
+    ")\\b",
+  "i",
+);
+
+/** Closing, shutting, locking, arming; Malay close and lock. */
+const SECURES = /\b(close|shut|lock|arm|tutup|kunci)\b/i;
+
+/**
+ * A question reads the house rather than acting on it. Only words that cannot
+ * start a command: not "can", "could" or "have", which begin polite ones.
+ */
+const ASKS = /^\s*(is|are|was|were|has|did|does|what|what's|whats|which|who|when|where|why|how|adakah|apakah)\b/i;
+
+/**
+ * Whether a request may try Assist first.
+ *
+ * The guard on the doors and gates is about letting people IN. Closing the
+ * gate, locking a door or arming the alarm points the other way, and asking
+ * whether the gate is shut changes nothing, so those take the fast path like
+ * anything else. That is what the glasses did when they spoke to Home
+ * Assistant directly: "close the main gate" was done in under a second, where
+ * the router took 8 to 17 (measured 26 Sep 2026). Anything that opens, or
+ * that says neither which way nor that it is a question, stays with the router.
+ */
+export function fastPathAllowed(text: string): boolean {
+  if (!SENSITIVE.test(text)) return true;
+  if (ASKS.test(text)) return true;
+  return SECURES.test(text) && !OPENS.test(text);
+}
 
 export interface AssistConfig {
   base: string;
@@ -95,7 +139,7 @@ export async function tryAssist(
 ): Promise<AssistOutcome> {
   const t0 = Date.now();
   const ms = () => Date.now() - t0;
-  if (SENSITIVE.test(text)) return { handled: false, reason: "sensitive", ms: 0 };
+  if (!fastPathAllowed(text)) return { handled: false, reason: "sensitive", ms: 0 };
 
   let res: Response;
   try {
