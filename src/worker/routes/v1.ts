@@ -9,6 +9,7 @@ import { assistConfig, tryAssist } from "../lib/assist";
 import { charBudget, forGlasses, latestUserText, toChatCompletion, waitSeconds } from "../lib/glasses";
 import { allows, saneGrants, SCOPES, WILDCARD, type Grant } from "../lib/scopes";
 import { handleAlertApi } from "./alerts";
+import { handleRoutines } from "./routines";
 
 /** Everything a wildcard grant covers, minus the screen this route does not have. */
 const SCREENLESS: Grant[] = SCOPES.filter((s) => s !== "screen");
@@ -383,6 +384,10 @@ export async function handleV1(
   // Alerts: open screens, notifications, and asking Jarvis to tell you something.
   const alerts = await handleAlertApi(req, env, url, principal);
   if (alerts) return alerts;
+
+  // Routines: things Jarvis does by itself, and the events that set them off.
+  const routines = await handleRoutines(req, env, url, principal);
+  if (routines) return routines;
 
   return err(404, `no route for ${url.pathname}`);
 }

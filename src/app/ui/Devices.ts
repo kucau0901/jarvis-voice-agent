@@ -38,6 +38,7 @@ const MEANING: Record<string, string> = {
   screen: "maps on the screen",
   voice: "live voice sessions",
   alerts: "receive alerts and notifications; send notes",
+  routines: "make and change routines; send the events that set them off",
 };
 
 export class Devices {

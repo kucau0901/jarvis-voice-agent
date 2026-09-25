@@ -506,6 +506,47 @@ themselves. It skips open screens on purpose: the screen in front of them is
 where they asked. Routines — alerts Jarvis raises on its own, from the clock,
 the calendar or the car — build on the same `deliver()`.
 
+## Routines
+
+A routine is a trigger — a moment, a time of day, an event from outside, or
+"when to leave" for calendar events — and an action: a fixed message, or a
+request Jarvis carries out then, with the answer sent as an alert. Shapes and
+time zones are in `lib/routines.ts`, the running in `lib/scheduler.ts`, "leave
+now" in `lib/leave.ts`.
+
+**One alarm, pointed at the earliest thing due.** A Durable Object has a single
+alarm. After every change and every run it is set to the earliest due moment;
+the handler runs what is due and sets it again. Alarms survive restarts and
+redeploys, run on the free plan, and work the same in Docker's workerd. No cron
+is needed: the calendar is re-read every 15 minutes by the same alarm, only
+while a leave routine is on.
+
+**Handled before it runs.** An alarm handler that throws is retried, so each
+routine's next time (or its "done") is written before its action runs. A retry
+can skip a message; it can never send one twice.
+
+**Late is not the same as never.** If Jarvis was down, a 7:30 briefing that
+wakes at noon is skipped and recorded as missed, but "call Mum at five" given
+at six is still worth giving — marked with when it was due.
+
+**A routine never outgrows whoever made it.** It keeps its creator's grants,
+and a request it makes at the time runs with exactly those. A device allowed
+only the house cannot schedule a question that reads the mailbox. Text arriving
+with an outside event reaches the router fenced as data.
+
+**Running a request from the object without calling itself.** A routine's
+request runs the ordinary router (`run()` in routes/delegate.ts) inside the
+object. Anything in there that reaches state through `stateStub(env)` — memory,
+alerts — is handed the object itself rather than a stub, so it is a plain
+method call, not a request from the object to itself.
+
+**"Leave now" uses what is there.** The car's position if Tessie is set up,
+else the saved home; live traffic if Google Maps is set up; otherwise a plain
+reminder a fixed time ahead. Routes are billed per call, so drive times are
+fetched only within two hours of an event, at most every 30 minutes, and once
+more at the moment of warning. If the road has cleared by then the warning
+moves later, once.
+
 ## Architecture
 
 One Cloudflare Worker serves both the app and `/api/*`, so the app needs no CORS

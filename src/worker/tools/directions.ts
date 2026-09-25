@@ -1,52 +1,11 @@
-import type { Tool, ToolContext } from "./registry";
+import type { Tool } from "./registry";
 import { localeOf } from "../lib/locale.ts";
-import { tessieConfig } from "./tessie";
+import { carWaypoint, drive, type Waypoint } from "../lib/travel.ts";
 
 /**
- * Travel time and traffic, via the Google Routes API.
- *
- * Routes rather than the legacy Directions API, because it returns `duration`
- * (with traffic) and `staticDuration` (without) in the same response — which is
- * the difference between "twenty-four minutes" and "twenty-four minutes, about
- * five of that traffic". It also geocodes a free-text address inline, so a saved
- * address needs no separate lookup call.
+ * Travel time and traffic. The Routes API call and the car's position live in
+ * lib/travel.ts, shared with "leave now" routines.
  */
-
-const ENDPOINT = "https://routes.googleapis.com/directions/v2:computeRoutes";
-const TIMEOUT_MS = 8_000;
-
-/**
- * The Routes API bills by requested fields, so this mask is a cost decision as
- * much as a size one. Adding routes.polyline for debugging moves the call to a
- * materially more expensive SKU.
- */
-const FIELD_MASK =
-  "routes.duration,routes.staticDuration,routes.distanceMeters,routes.description";
-
-interface Waypoint {
-  location?: { latLng: { latitude: number; longitude: number } };
-  address?: string;
-}
-
-/** Where the car is now. Tessie knows precisely; the browser was never asked. */
-async function carPosition(ctx: ToolContext): Promise<Waypoint | null> {
-  const cfg = tessieConfig(ctx.env);
-  if (!cfg) return null;
-  try {
-    const res = await fetch(`https://api.tessie.com/${cfg.vin}/location`, {
-      headers: { Authorization: `Bearer ${cfg.token}` },
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-    });
-    if (!res.ok) return null;
-    const loc = (await res.json()) as { latitude?: number; longitude?: number };
-    if (!Number.isFinite(loc.latitude) || !Number.isFinite(loc.longitude)) return null;
-    return {
-      location: { latLng: { latitude: loc.latitude!, longitude: loc.longitude! } },
-    };
-  } catch {
-    return null;
-  }
-}
 
 /**
  * Only a resolved place or something that actually looks like an address goes to
@@ -58,9 +17,6 @@ function looksLikeAddress(v: string): boolean {
   if (/^-?\d{1,3}(\.\d+)?\s*,\s*-?\d{1,3}(\.\d+)?$/.test(s)) return true;
   return /\d/.test(s) || s.split(/\s+/).length >= 3 || s.includes(",");
 }
-
-const minutes = (iso: string | undefined): number =>
-  Math.round(Number(String(iso ?? "0s").replace("s", "")) / 60);
 
 export const directions: Tool = {
   name: "directions",
@@ -126,7 +82,7 @@ export const directions: Tool = {
       origin = o.wp;
       originLabel = o.label;
     } else {
-      origin = await carPosition(ctx);
+      origin = await carWaypoint(ctx.env);
       if (!origin) {
         return "I could not work out where the car is, so ask the user where they are setting off from.";
       }
@@ -134,42 +90,17 @@ export const directions: Tool = {
 
     ctx.progress("checking the route");
 
-    const res = await fetch(ENDPOINT, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Goog-Api-Key": key,
-        "X-Goog-FieldMask": FIELD_MASK,
-      },
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-      body: JSON.stringify({
-        origin,
-        destination: dest.wp,
-        travelMode: "DRIVE",
-        routingPreference: "TRAFFIC_AWARE",
-        // From the settings panel (lib/locale.ts); was "MY" and METRIC always.
-        ...(localeOf(ctx.env).country ? { regionCode: localeOf(ctx.env).country } : {}),
-        units: localeOf(ctx.env).units === "imperial" ? "IMPERIAL" : "METRIC",
-      }),
-    });
-
-    if (!res.ok) {
-      const body = await res.text().catch(() => "");
-      return `Maps returned ${res.status}${body ? `: ${body.slice(0, 200)}` : ""}`;
+    const route = await drive(ctx.env, origin, dest.wp);
+    if (typeof route === "string") {
+      return route.startsWith("No driving route") ? `No driving route was found to ${dest.label}.` : route;
     }
 
-    const j = (await res.json()) as {
-      routes?: { duration?: string; staticDuration?: string; distanceMeters?: number; description?: string }[];
-    };
-    const route = j.routes?.[0];
-    if (!route) return `No driving route was found to ${dest.label}.`;
-
-    const withTraffic = minutes(route.duration);
-    const without = minutes(route.staticDuration);
+    const withTraffic = route.withTraffic;
+    const without = route.without;
     const imperial = localeOf(ctx.env).units === "imperial";
     const distance = imperial
-      ? ((route.distanceMeters ?? 0) / 1609.344).toFixed(1)
-      : ((route.distanceMeters ?? 0) / 1000).toFixed(1);
+      ? (route.distanceMeters / 1609.344).toFixed(1)
+      : (route.distanceMeters / 1000).toFixed(1);
     const delay = withTraffic - without;
 
     return [

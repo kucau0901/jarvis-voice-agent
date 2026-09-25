@@ -12,6 +12,7 @@ import { spotifyTools } from "./spotify";
 import { gmailTools } from "./gmail";
 import { calendarTools } from "./calendar";
 import { sendNote } from "./notes";
+import { routineTools } from "./routines";
 
 /**
  * The tools the delegation router may call.
@@ -29,6 +30,11 @@ export interface ToolContext {
   memory: MemoryStore;
   /** Put something on the car's screen. Separate from what Jarvis says aloud. */
   display(payload: Record<string, unknown>): void;
+  /**
+   * What the caller may reach. A routine made by voice keeps these, so it can
+   * never later do more than the person or device that asked for it.
+   */
+  grants: readonly Grant[];
 }
 
 export interface Tool {
@@ -149,6 +155,7 @@ const ALL: Tool[] = [
   ...gmailTools,
   ...calendarTools,
   sendNote,
+  ...routineTools,
   askHermes,
   controlHome,
 ];

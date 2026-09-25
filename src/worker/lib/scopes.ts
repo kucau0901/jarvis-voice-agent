@@ -22,6 +22,7 @@ export const SCOPES = [
   "screen",
   "voice",
   "alerts",
+  "routines",
 ] as const;
 
 export type Scope = (typeof SCOPES)[number];
@@ -130,6 +131,14 @@ export function requiredScope(pathname: string, method: string): RouteRequiremen
     case "/api/v1/notify":
     case "/api/v1/alerts":
       return "alerts";
+
+    // Routines: listing, making and changing them, and sending the events
+    // that set them off. A routine's question runs with its creator's grants,
+    // so this does not widen what a device can reach.
+    case "/api/v1/routines":
+    case "/api/v1/routines/run":
+    case "/api/v1/trigger":
+      return "routines";
     case "/api/camera":
       return "home";
 

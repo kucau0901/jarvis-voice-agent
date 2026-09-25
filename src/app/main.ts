@@ -4,6 +4,7 @@ import { History } from "./history";
 import { Settings } from "./ui/Settings";
 import { Devices } from "./ui/Devices";
 import { Memory } from "./ui/Memory";
+import { Routines } from "./ui/Routines";
 import { Stage, type DisplayPayload } from "./ui/Stage";
 import { Orb } from "./orb/Orb";
 import { VoiceLevels } from "./audio";
@@ -536,6 +537,13 @@ $("openMemory").addEventListener("click", () => {
   if (!key) { requireKey(); return; }
   memory ??= new Memory(key);
   void memory.show();
+});
+
+let routines: Routines | null = null;
+$("openRoutines").addEventListener("click", () => {
+  if (!key) { requireKey(); return; }
+  routines ??= new Routines(key);
+  void routines.show();
 });
 
 $("openDevices").addEventListener("click", () => {

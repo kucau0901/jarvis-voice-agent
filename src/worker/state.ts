@@ -7,6 +7,14 @@ import type { Changes } from "./lib/settings";
 import { LiveHub, type LiveClient, type LiveSocket } from "./lib/live";
 import type { Alert, Delivery } from "./lib/alerts";
 import type { PushRecord } from "./lib/state-host";
+import { deliver } from "./lib/alerts";
+import { effectiveEnv } from "./lib/settings";
+import { localeOf } from "./lib/locale";
+import { upcomingEvents } from "./lib/leave";
+import { Scheduler, type SchedulerDeps } from "./lib/scheduler";
+import type { RoutineInput } from "./lib/routines";
+import type { Grant } from "./lib/scopes";
+import { askForRoutine, travelFor } from "./routes/routines";
 
 /**
  * The Durable Object. Deliberately thin: everything it does lives in
@@ -18,10 +26,12 @@ import type { PushRecord } from "./lib/state-host";
 export class JarvisState extends DurableObject<Env> {
   private host: StateHost;
   private hub = new LiveHub();
+  private scheduler: Scheduler;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.host = new StateHost(ctx.storage, env);
+    this.scheduler = new Scheduler(ctx.storage, () => this.schedulerDeps());
     // Screens ping to keep their socket open through proxies. The runtime
     // answers these itself, so a hibernating object is not woken to say pong.
     ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair("ping", "pong"));
@@ -128,6 +138,78 @@ export class JarvisState extends DurableObject<Env> {
       }
     }
     await this.host.forgetPushFor(who);
+  }
+
+  /* ---------- routines (lib/scheduler.ts) ------------------------------------- */
+
+  /**
+   * The Worker's environment as the panel has configured it, for work the
+   * object does on its own. Anything that reaches the object through
+   * stateStub(env) — memory, alerts — gets this object itself: a plain call,
+   * not a request from the object to itself.
+   */
+  private async localEnv(): Promise<Env> {
+    const eff = effectiveEnv(this.env, await this.host.getSettings());
+    const self = this;
+    return { ...eff, STATE: { idFromName: () => ({}), get: () => self } as unknown as DurableObjectNamespace };
+  }
+
+  private async schedulerDeps(): Promise<SchedulerDeps> {
+    const env = await this.localEnv();
+    return {
+      timeZone: localeOf(env).timeZone,
+      deliver: (alert) => deliver(env, this, alert),
+      ask: (prompt, grants, routine) => askForRoutine(env, prompt, grants, routine),
+      events: (now) => upcomingEvents(env, now),
+      travel: (destination) => travelFor(env, destination),
+    };
+  }
+
+  /** Point the one alarm at whatever is due first. */
+  private async rearm(next?: number | null): Promise<void> {
+    const at = next === undefined ? await this.scheduler.nextWake() : next;
+    if (at === null) await this.ctx.storage.deleteAlarm();
+    else await this.ctx.storage.setAlarm(at);
+  }
+
+  async alarm() {
+    // The scheduler catches per routine, so this only throws on a storage
+    // failure — and then the runtime retries, which is what is wanted.
+    await this.rearm(await this.scheduler.tick());
+  }
+
+  listRoutines() {
+    return this.scheduler.list();
+  }
+
+  async addRoutine(input: RoutineInput, by: { who: string; grants: readonly Grant[] }) {
+    const r = await this.scheduler.add(input, by);
+    await this.rearm();
+    return r;
+  }
+
+  async updateRoutine(id: string, patch: { enabled?: boolean; name?: string }) {
+    const r = await this.scheduler.update(id, patch);
+    await this.rearm();
+    return r;
+  }
+
+  async removeRoutine(id: string) {
+    const ok = await this.scheduler.remove(id);
+    await this.rearm();
+    return ok;
+  }
+
+  async runRoutine(id: string) {
+    const r = await this.scheduler.queue(id);
+    await this.rearm();
+    return r;
+  }
+
+  async fireEvent(event: string, data?: string) {
+    const started = await this.scheduler.fireEvent(event, data);
+    if (started.length) await this.rearm();
+    return started;
   }
 
   /* ---------- alerts' storage (lib/state-host.ts) ---------------------------- */

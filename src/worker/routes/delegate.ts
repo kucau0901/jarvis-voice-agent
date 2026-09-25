@@ -370,9 +370,11 @@ export interface RunOptions {
    * "glasses": shown as text on Even Realities G2 glasses and never spoken, so
    * nothing rephrases the answer on its way to the user (routes/v1.ts).
    */
-  surface?: "glasses";
+  surface?: "glasses" | "routine";
   /** Characters the glasses show before cutting off. */
   charBudget?: number;
+  /** For a routine: its name, so the answer knows what it is answering. */
+  routineName?: string;
 }
 
 export async function run(
@@ -441,6 +443,13 @@ export async function run(
       : "") +
     (opts.surface === "glasses"
       ? glassesInstructions(opts.charBudget ?? DEFAULT_CHAR_BUDGET)
+      : "") +
+    (opts.surface === "routine"
+      ? "\n\nTHIS IS A ROUTINE, NOT A CONVERSATION\n" +
+        `The user set this up to run by itself${opts.routineName ? ` ("${opts.routineName.replace(/"/g, "'")}")` : ""}. ` +
+        "Nobody is listening right now and nobody can answer a question back. Do what it " +
+        "asks, then write the result as one short message to the user: it is sent as a " +
+        "notification or read aloud. No greeting, no questions, no offers of more help."
       : "");
   const byName = new Map(tools.map((t) => [t.name, t]));
   const used: string[] = [];
@@ -582,6 +591,7 @@ export async function run(
               env,
               signal,
               memory,
+              grants,
               progress: (t) => sse.send({ type: "progress", text: t }),
               display: (payload) => sse.send({ type: "display", ...payload }),
             }, sse)

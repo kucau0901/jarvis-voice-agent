@@ -140,6 +140,7 @@ existence, or argued around.
 | `calendar` | Google Calendar: `calendar_check`, `calendar_add`. Reads the diary **and creates events**. |
 | `screen` | `show_place`, `hide_display`, `/api/map`. |
 | `voice` | `/api/session`, `/api/tts`, `/api/voices`. |
+| `routines` | `/api/v1/routines`, `/api/v1/routines/run`, `/api/v1/trigger`; `routine_add`, `routine_list`, `routine_remove`. A routine's question runs with **its creator's** grants, never more. |
 | `alerts` | Receiving alerts (`/api/v1/events`, `/api/v1/push`, `/api/v1/alerts`), raising one (`/api/v1/notify`), and `send_note`. The same scope both ways: a device that may be told things may ask to be told something. |
 
 Ask for something out of reach and you get a normal answer explaining it is not
@@ -357,6 +358,58 @@ if (!crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(req.headers["x-ja
 ```
 
 `at` is in the signed body, so a receiver can refuse old replays.
+
+## Routines
+
+Things Jarvis does by itself, with the result sent as an alert (above). They
+live in the Durable Object and run from its alarm, so they survive restarts and
+redeploys and need no screen open.
+
+```
+POST /api/v1/routines
+{"when": "daily", "time": "07:30", "days": ["mon","tue","wed","thu","fri"],
+ "ask": "What's my first meeting, and the traffic to work?", "name": "Briefing"}
+```
+
+| `when` | Also needs |
+|---|---|
+| `once` | `localTime` (`"2026-09-26T17:00"`, in the time zone set in Settings), or `inMinutes`, or `at` (ms since the epoch) |
+| `daily` | `time` (`"HH:MM"`), optional `days` (`"mon"`…`"sun"` or 0–6, Sunday first; absent = every day) |
+| `event` | `event`: a name like `arrived_home` |
+| `leave` | optional `bufferMin` (default 10). No message: it warns before each calendar event with a place |
+
+Every kind but `leave` takes exactly one of `say` (a fixed message) or `ask`
+(a request for Jarvis, answered at the time with the creator's grants and sent).
+`GET /api/v1/routines` lists them with plain-English `when` and `does`, the
+next run and the last result; `PATCH` takes `{id, enabled?, name?}`; `DELETE
+?id=` removes one; `POST /api/v1/routines/run {id}` runs one now.
+
+A daily routine more than 30 minutes late (Jarvis was not running) is skipped
+rather than sent at the wrong time; a one-off reminder up to 12 hours late is
+still given, marked with when it was due.
+
+### Setting one off from outside
+
+```
+POST /api/v1/trigger
+{"event": "arrived_home", "text": "optional detail, passed along"}
+```
+
+Every enabled `event` routine waiting for that name runs, each at most once a
+minute however often the event arrives. The answer lists the routines it
+started. Give the sender a device token holding only `routines`. `text` reaches
+an `ask` fenced as data, never as instructions.
+
+### Leave now
+
+With a `leave` routine on, the calendar is read every 15 minutes for the next
+four hours. For each timed event with a place (not a video call, not declined),
+the warning comes at *start − drive time − spare minutes*. The drive time is
+from the car's position (Tessie) or else the place saved as "home", in live
+traffic (Google Maps), fetched at most every 30 minutes inside two hours of the
+event and once more at the moment of warning. Without Maps or a starting point
+it is a plain reminder 30 minutes plus the spare before the start. Without
+Google Calendar it cannot work, and the routine's last result says so.
 
 ## Streaming, if you want progress
 

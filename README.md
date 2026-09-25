@@ -28,6 +28,12 @@ enough) or run it yourself with **Docker**.
   your phone. Telegram, ntfy, a signed webhook and Home Assistant are optional
   extra routes. "Send that to my phone" works from the car. Nothing to set up
   beyond the OpenAI key.
+- **Routines** — "remind me at five to call Mum", "every weekday at 7:30 tell
+  me my first meeting and the traffic", "tell me when to leave for my
+  appointments" (from your calendar, the car's position and live traffic), or
+  anything set off by an event your home automation or phone sends. Said aloud
+  or set up in the **routines** panel; run by the server, so no screen has to
+  be open.
 - **Your own agents** — any MCP server, and optionally a
   [Hermes](https://github.com/NousResearch/hermes-agent) agent at home.
 - **Other devices** — an ESP32, smart glasses (Even Realities G2) or anything

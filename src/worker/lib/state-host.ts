@@ -18,6 +18,8 @@ import {
 import { generateVapid, type VapidKeys } from "./webpush.ts";
 import type { Alert, Delivery, LiveResult, PushTarget } from "./alerts.ts";
 import type { LiveClient } from "./live.ts";
+import type { Routine, RoutineInput } from "./routines.ts";
+import type { Grant } from "./scopes.ts";
 
 /**
  * Everything behind the one Durable Object, as plain code.
@@ -344,6 +346,16 @@ export class StateHost {
   }
 }
 
+/** Routines, which the object runs from its alarm (lib/scheduler.ts, state.ts). */
+export interface RoutineApi {
+  listRoutines(): Promise<Routine[]>;
+  addRoutine(input: RoutineInput, by: { who: string; grants: readonly Grant[] }): Promise<Routine | string>;
+  updateRoutine(id: string, patch: { enabled?: boolean; name?: string }): Promise<Routine | string>;
+  removeRoutine(id: string): Promise<boolean>;
+  runRoutine(id: string): Promise<Routine | string>;
+  fireEvent(event: string, data?: string): Promise<string[]>;
+}
+
 /** What the object adds itself, because it holds the sockets (state.ts). */
 export interface LiveApi {
   broadcast(alert: Alert, waitMs: number): Promise<LiveResult>;
@@ -374,4 +386,5 @@ export type StateApi = Pick<
   | "findAlert"
   | "mintTicket"
 > &
-  LiveApi;
+  LiveApi &
+  RoutineApi;
