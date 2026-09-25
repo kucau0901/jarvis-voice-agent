@@ -15,8 +15,12 @@ curl -i https://jarvis.example.com/api/health \
 ```
 
 ```json
-{ "ok": true, "ts": 1789718254426 }
+{ "ok": true, "ts": 1789718254426, "version": "1.0.0" }
 ```
+
+`version` is the Jarvis release the server runs ([CHANGELOG.md](../CHANGELOG.md)).
+This API changes only in step with it: a field added is a minor release, and
+anything existing devices would break on is a major one.
 
 ## Asking it something
 

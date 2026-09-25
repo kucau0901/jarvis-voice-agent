@@ -151,6 +151,32 @@ return to the right address.
 docker run --rm -v jarvis-voice-agent_jarvis-data:/data -v "$PWD":/b busybox tar czf /b/jarvis-backup.tgz -C /data .
 ```
 
+## Updating
+
+Jarvis is released in numbered versions, each with notes in
+[CHANGELOG.md](CHANGELOG.md) and on the
+[releases page](https://github.com/kucau0901/jarvis-voice-agent/releases).
+The number says what an update asks of you:
+
+- **1.0.1** — a fix. Update when convenient.
+- **1.1.0** — new features. Nothing to do but update.
+- **2.0.0** — updating needs a step from you (a new secret, a changed
+  setting), listed under **Action needed** in its notes. Read them first.
+
+The version you are running is at the foot of the menu in **Settings**, which
+also says when a newer one is out, with a link to what changed. To be told by
+GitHub, choose **Watch → Custom → Releases** on the repository.
+
+```bash
+git pull                              # or: git checkout v1.1.0, to pick a version
+npm ci && npm run deploy              # Cloudflare
+docker compose up -d --build          # Docker
+```
+
+Your memory, settings and devices are kept across updates. A fork can point
+the check at its own releases with the `UPDATE_REPO` setting (Settings →
+Advanced), or turn it off.
+
 ## Settings
 
 Everything lives in the settings panel, grouped by service, each with a short
@@ -201,10 +227,14 @@ rather than a public issue.
 ```bash
 npm install
 cp wrangler.example.jsonc wrangler.jsonc && npx wrangler types
-npm test            # ~700 tests, no framework, Node runs the TypeScript directly
+npm test            # ~1,200 tests, no framework, Node runs the TypeScript directly
 npm run typecheck
 npm run dev         # Vite, with the Worker in workerd
 ```
+
+Every change that someone running a copy would notice gets a line under
+**[Unreleased]** in [CHANGELOG.md](CHANGELOG.md). How versions are numbered
+and released: [docs/RELEASING.md](docs/RELEASING.md).
 
 ## Licence
 

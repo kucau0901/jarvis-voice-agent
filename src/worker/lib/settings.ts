@@ -462,6 +462,12 @@ export const SETTINGS: readonly SettingDef[] = [
     validate: httpsUrl,
   },
   {
+    name: "UPDATE_REPO", group: "advanced", kind: "text",
+    label: "Check for new versions at",
+    help: "A GitHub repository, owner/name, whose releases the settings panel checks. Empty: the project this copy came from. \"off\": never check.",
+    validate: (v: string) => (/^(off|[\w.-]+\/[\w.-]+)$/i.test(v.trim()) ? null : "should be owner/name, or off"),
+  },
+  {
     name: "DISABLE_WEB_SEARCH", group: "advanced", kind: "bool", default: "0",
     label: "Withhold web search", help: "Stop the router searching the web.",
   },

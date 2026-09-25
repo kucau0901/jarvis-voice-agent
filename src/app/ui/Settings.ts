@@ -60,6 +60,8 @@ export class Settings {
   private servers: ServerRow[] = [];
   private routerState: RouterState | null = null;
   private services: Services;
+  /** The version line under the menu, filled by loadVersion(). */
+  private versionLine = node("p", "");
 
   constructor(private key: string) {
     this.el = document.createElement("div");
@@ -137,6 +139,42 @@ export class Settings {
     });
   }
 
+  /**
+   * Which version is running, and whether a newer one is out (GET /api/version).
+   * A newer release links to its notes, which say whether updating needs
+   * anything doing (docs/RELEASING.md).
+   */
+  private async loadVersion(): Promise<void> {
+    const line = this.versionLine;
+    line.className = "navver";
+    try {
+      const r = await fetch("/api/version", { headers: authHeaders(this.key) });
+      if (!r.ok) throw new Error(String(r.status));
+      const v = (await r.json()) as {
+        version: string;
+        repo: string | null;
+        latest: { version: string; url: string } | null;
+        update: boolean;
+        error?: string;
+      };
+      line.replaceChildren(node("span", `Jarvis ${v.version}`));
+      if (v.update && v.latest) {
+        const a = document.createElement("a");
+        a.href = v.latest.url;
+        a.target = "_blank";
+        a.rel = "noopener";
+        a.textContent = `${v.latest.version} is out — what changed`;
+        line.appendChild(document.createTextNode(" · "));
+        line.appendChild(a);
+        line.classList.add("update");
+      } else if (v.repo && v.latest && !v.error) {
+        line.appendChild(document.createTextNode(" · up to date"));
+      }
+    } catch {
+      line.textContent = "";
+    }
+  }
+
   /* ---------- the menu of sections ------------------------------------------ */
 
   private get sheet(): HTMLElement {
@@ -178,7 +216,7 @@ export class Settings {
     });
     const note = node("p", "Only OpenAI is required. Everything else is optional, and switches its tools on once set up.");
     note.className = "navnote";
-    parts.push(note);
+    parts.push(note, this.versionLine);
     nav.replaceChildren(...parts);
     this.choose(this.current ?? this.firstChoice(sections), false);
   }
@@ -222,6 +260,7 @@ export class Settings {
     // Independent: a slow MCP server must not hold the other sections hostage.
     void this.services.load();
     void this.loadRouter();
+    void this.loadVersion();
     try {
       const res = await fetch("/api/mcp", { headers: authHeaders(this.key) });
       const data = (await res.json()) as {

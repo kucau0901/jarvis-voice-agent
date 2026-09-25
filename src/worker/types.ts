@@ -36,6 +36,8 @@ export interface Env {
   HA_TOKEN?: string;
   /** Home Assistant origin, for the camera proxy and the Assist fast path. */
   HA_BASE_URL?: string;
+  /** Where to look for new releases: owner/name on GitHub, "off", or empty for this project's own. */
+  UPDATE_REPO?: string;
   /** "0" stops house requests trying Home Assistant's Assist before the router. */
   HA_ASSIST?: string;
   /** Language Assist is asked in. Defaults to "en". */

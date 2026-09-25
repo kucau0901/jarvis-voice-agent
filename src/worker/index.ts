@@ -19,6 +19,7 @@ import { handleV1 } from "./routes/v1";
 import { handleRouter } from "./routes/router";
 import { handleSettings } from "./routes/settings";
 import { withSettings } from "./lib/settings-store";
+import { JARVIS_VERSION, handleVersion } from "./routes/version";
 import { handleAlertsAdmin, isTicketedSocket, openTicketedSocket } from "./routes/alerts";
 
 // The Durable Object class must be exported from the entry for the runtime to find it.
@@ -168,9 +169,11 @@ async function route(
     case "/api/alerts":
       return await handleAlertsAdmin(req, env);
     case "/api/health":
-      return new Response(JSON.stringify({ ok: true, ts: Date.now() }), {
+      return new Response(JSON.stringify({ ok: true, ts: Date.now(), version: JARVIS_VERSION }), {
         headers: { "content-type": "application/json" },
       });
+    case "/api/version":
+      return await handleVersion(env);
     default:
       return err(404, `no route for ${url.pathname}`);
   }
