@@ -1,0 +1,79 @@
+# Copy to .dev.vars for local dev. NEVER commit the real file.
+#
+# Only JARVIS_SHARED_SECRET is required. Everything below it can instead be set
+# in the app's settings panel, which is the easier way; a value here is the
+# fallback when the panel has none.
+
+# OpenAI — used by the Worker only; never reaches the browser.
+OPENAI_API_KEY="sk-..."
+
+# Shared secret gating /api/*. 16 chars of Crockford-style base32 (no I/L/O/U),
+# so it can be typed on the Tesla keyboard without misreading a character:
+#   LC_ALL=C tr -dc '0-9A-HJKMNP-TV-Z' </dev/urandom | head -c16; echo
+JARVIS_SHARED_SECRET=""
+
+# Hermes agent (Nous Research hermes-agent api_server)
+HERMES_BASE_URL="https://hermes.example.com"
+HERMES_API_KEY=""            # = API_SERVER_KEY on the Hermes box
+HERMES_MODEL=""              # optional; defaults to "hermes"
+
+# Backend model that routes delegations. Usually left empty and chosen in the
+# app's settings panel instead, which wins over this. Empty means gpt-6-luna.
+ROUTER_MODEL=""
+
+# Cloudflare Access service token fronting Hermes.
+# The Access policy action MUST be "Service Auth", or you get an IdP login page.
+CF_ACCESS_CLIENT_ID=""
+CF_ACCESS_CLIENT_SECRET=""
+
+# Google Maps, server-side (Routes, Static Maps, Street View, Geocoding).
+# Must NOT be referrer-restricted: a Worker sends no referrer.
+GOOGLE_MAPS_API_KEY=""
+
+# Separate key for the interactive embed, which runs in the browser.
+# Restrict this one BY REFERRER to the app's hostname, and to the Maps Embed API.
+# Without it the app falls back to static, proxied imagery.
+GOOGLE_MAPS_EMBED_KEY=""
+
+# Tessie, from dash.tessie.com/settings/api. VIN is discovered from GET /vehicles.
+TESSIE_TOKEN=""
+TESSIE_VIN=""
+
+# Home Assistant MCP. The webhook URL IS the credential, hence a secret.
+HA_MCP_URL=""
+HA_TOKEN=""
+
+# Home Assistant origin, for the camera proxy and the glasses' Assist fast path.
+# Must be reachable from Cloudflare, so a Nabu Casa or tunnel URL, not a LAN IP.
+HA_BASE_URL="https://home.example.com"
+
+# Even Realities G2 glasses (POST /api/v1/chat/completions). All optional.
+# G2_CHAR_BUDGET: characters the glasses show before cutting off (default 350).
+# G2_WAIT_S: seconds to wait for an answer; the Even app hangs up at 300 (default 240).
+# G2_FASTPATH: "0" skips Home Assistant Assist and always uses the router.
+# G2_HA_LANGUAGE: language Assist is asked in (default en).
+# G2_CHAR_BUDGET="350"
+# G2_WAIT_S="240"
+# G2_FASTPATH="1"
+# G2_HA_LANGUAGE="en"
+
+# Spotify app credentials (developer.spotify.com/dashboard).
+# Redirect URI must be exactly: https://jarvis.example.com/api/spotify/callback
+# The refresh token is NOT set here — the OAuth callback writes it to KV.
+SPOTIFY_CLIENT_ID=
+SPOTIFY_CLIENT_SECRET=
+
+# Google OAuth client for Gmail (console.cloud.google.com → Credentials →
+# OAuth client ID → Web application).
+# Redirect URI must be exactly: https://jarvis.example.com/api/google/callback
+# Scopes requested: gmail.modify, userinfo.email. NOT mail.google.com —
+# withholding it is what makes permanent deletion impossible by construction.
+#
+# PUBLISH THE CONSENT SCREEN TO "IN PRODUCTION". While it sits in "Testing",
+# Google expires every refresh token after exactly 7 days and Gmail breaks
+# weekly with invalid_grant. Publishing is self-service; it does not require
+# passing verification, it only adds an "unverified app" screen at consent.
+#
+# The refresh token is NOT set here — the OAuth callback writes it to KV.
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
