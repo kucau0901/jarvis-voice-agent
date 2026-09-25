@@ -104,7 +104,9 @@ export class Stage {
       if (mine !== this.token) return false;
       if (document.hidden) return true;
       try {
-        const res = await fetch(`/api/camera?entity=${encodeURIComponent(p.entity!)}`, {
+        // 540p (960×540): sharp enough on any screen here, and a third of a full
+        // frame over a slow link home, so it refreshes several times as often.
+        const res = await fetch(`/api/camera?entity=${encodeURIComponent(p.entity!)}&h=540`, {
           headers: authHeaders(this.key),
           cache: "no-store",
         });

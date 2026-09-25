@@ -80,15 +80,15 @@ export const lookAtCamera: Tool = {
     if (!cam) return unknownCamera(want, list.map((c) => c.name));
 
     ctx.progress(`looking at the ${cam.name}`);
-    // 1024 pixels wide: enough to read a number plate or a parcel label, a
-    // fraction of what a 4K frame would cost to look at.
-    let snap = await snapshot(ctx.env, cam.id, 1024);
-    // Cameras behind Home Assistant now and then stall on one frame (about one
-    // in thirty, measured) and answer the next at once. One more try, so a
-    // single hiccup is not reported as the camera being down.
-    if (!snap.ok && /took too long/.test(snap.error)) {
-      ctx.progress(`the ${cam.name} is slow, trying again`);
-      snap = await snapshot(ctx.env, cam.id, 1024);
+    // 540 pixels high: enough to count cars or read a gate, and small enough
+    // to arrive quickly over a slow link into the house (lib/cameras.ts).
+    let snap = await snapshot(ctx.env, cam.id, 540);
+    // A quick failure — the camera or Home Assistant hiccuping — gets one more
+    // try. A timeout does not: after twenty seconds a second wait only doubles
+    // the delay before saying the camera is too slow.
+    if (!snap.ok && !/took too long/.test(snap.error)) {
+      ctx.progress(`the ${cam.name} did not answer, trying again`);
+      snap = await snapshot(ctx.env, cam.id, 540);
     }
     if (!snap.ok) return `I could not get a picture from the ${cam.name} camera: ${snap.error}.`;
 

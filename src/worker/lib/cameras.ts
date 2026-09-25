@@ -69,9 +69,20 @@ const urlCameras = (env: Env): UrlCamera[] => {
   return typeof r === "string" ? [] : r;
 };
 
-/** Cached briefly in KV: the camera list changes far less often than it is asked for. */
-const CACHE_KEY = "cams:v1";
-const CACHE_TTL_S = 900;
+/**
+ * Cached in KV for an hour: cameras are added about as often as walls are.
+ * v2 since the list began coming from a template (below).
+ */
+const CACHE_KEY = "cams:v2";
+const CACHE_TTL_S = 3600;
+
+/**
+ * Only the cameras, as "entity|name" lines, rendered by Home Assistant
+ * itself. Listing them used to fetch /api/states — the state of every device
+ * in the house — which over a slow link into the house took most of half a
+ * minute; this is a few hundred bytes.
+ */
+const CAMERA_TEMPLATE = "{% for s in states.camera %}{{ s.entity_id }}|{{ s.name }}\n{% endfor %}";
 
 async function haCameras(env: Env): Promise<Camera[]> {
   const base = env.HA_BASE_URL?.replace(/\/+$/, "");
@@ -83,18 +94,36 @@ async function haCameras(env: Env): Promise<Camera[]> {
   } catch {
     // a cache miss is not a failure
   }
-  const res = await fetch(`${base}/api/states`, {
-    headers: { Authorization: `Bearer ${token}` },
-    signal: AbortSignal.timeout(12_000),
+  const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+  let list: { entity: string; name: string }[] = [];
+  const t = await fetch(`${base}/api/template`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ template: CAMERA_TEMPLATE }),
+    signal: AbortSignal.timeout(15_000),
   }).catch(() => null);
-  if (!res?.ok) return [];
-  const states = (await res.json()) as { entity_id: string; attributes?: { friendly_name?: string } }[];
-  const list = states
-    .filter((s) => s.entity_id.startsWith("camera."))
-    .map((s) => ({
-      entity: s.entity_id,
-      name: s.attributes?.friendly_name ?? s.entity_id.replace("camera.", "").replace(/_/g, " "),
-    }));
+  if (t?.ok) {
+    list = (await t.text())
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => /^camera\.[a-z0-9_]+\|/.test(l))
+      .map((l) => {
+        const [entity, ...name] = l.split("|");
+        return { entity: entity!, name: name.join("|").trim() || entity!.replace("camera.", "").replace(/_/g, " ") };
+      });
+  } else {
+    // A token without template access: every state, filtered here, as before.
+    await t?.body?.cancel().catch(() => {});
+    const res = await fetch(`${base}/api/states`, { headers, signal: AbortSignal.timeout(20_000) }).catch(() => null);
+    if (!res?.ok) return [];
+    const states = (await res.json()) as { entity_id: string; attributes?: { friendly_name?: string } }[];
+    list = states
+      .filter((s) => s.entity_id.startsWith("camera."))
+      .map((s) => ({
+        entity: s.entity_id,
+        name: s.attributes?.friendly_name ?? s.entity_id.replace("camera.", "").replace(/_/g, " "),
+      }));
+  }
   if (list.length) {
     await env.CONFIG.put(CACHE_KEY, JSON.stringify(list), { expirationTtl: CACHE_TTL_S }).catch(() => {});
   }
@@ -146,14 +175,21 @@ const FRESH_MS = 2_000;
 const recent = new Map<string, { at: number; frame: Promise<Snapshot> }>();
 
 /**
- * One frame, now. `width` asks Home Assistant to scale it down first: a
- * 640-pixel frame is plenty to tell whether a gate is open, and costs a
- * fraction of a 4K one to look at.
+ * One frame, now. `height` asks Home Assistant to scale it down first.
+ *
+ * Home Assistant only scales when given BOTH a width and a height — sent
+ * width alone, it returned full-size frames. That mattered in September 2026,
+ * when the link into the house ran at about 50 KB/s: Frigate's 1080p frames
+ * (240–660 KB) took 5–20 s and often missed the timeout, while a 27 KB
+ * doorbell frame took under a second. Asked for 540 pixels, Home Assistant
+ * halves a 1080p frame to 960×540, about 85 KB, in 2–3 s — still plenty to
+ * count cars, see a door or read a gate. (Asked for 720 it kept 170–210 KB,
+ * and at 360 detail starts to go.)
  */
-export function snapshot(env: Env, id: string, width?: number, now = Date.now()): Promise<Snapshot> {
+export function snapshot(env: Env, id: string, height?: number, now = Date.now()): Promise<Snapshot> {
   const hit = recent.get(id);
   if (hit && now - hit.at < FRESH_MS) return hit.frame;
-  const frame = fetchFrame(env, id, width);
+  const frame = fetchFrame(env, id, height);
   recent.set(id, { at: now, frame });
   // A failure is not kept: the next ask should really ask.
   void frame.then((f) => {
@@ -167,7 +203,10 @@ export function _forgetFrames(): void {
   recent.clear();
 }
 
-async function fetchFrame(env: Env, id: string, width?: number): Promise<Snapshot> {
+/** Long enough for a full frame over a slow link; a stall beyond it is reported, not waited out. */
+export const FRAME_TIMEOUT_MS = 20_000;
+
+async function fetchFrame(env: Env, id: string, height?: number): Promise<Snapshot> {
   let url: string;
   const headers: Record<string, string> = {};
   if (id.startsWith("url:")) {
@@ -186,13 +225,14 @@ async function fetchFrame(env: Env, id: string, width?: number): Promise<Snapsho
     if (!/^camera\.[a-z0-9_]{1,64}$/.test(id)) return { ok: false, error: "not a camera id" };
     const base = env.HA_BASE_URL?.replace(/\/+$/, "");
     if (!base || !env.HA_TOKEN) return { ok: false, error: "the cameras at home are not configured" };
-    url = `${base}/api/camera_proxy/${id}${width ? `?width=${width}` : ""}`;
+    const h = height ? Math.round(height) : 0;
+    url = `${base}/api/camera_proxy/${id}${h ? `?width=${Math.round((h * 16) / 9)}&height=${h}` : ""}`;
     headers.Authorization = `Bearer ${env.HA_TOKEN}`;
   }
 
   let res: Response;
   try {
-    res = await fetch(url, { headers, signal: AbortSignal.timeout(12_000) });
+    res = await fetch(url, { headers, signal: AbortSignal.timeout(FRAME_TIMEOUT_MS) });
   } catch (e) {
     const slow = e instanceof Error && (e.name === "TimeoutError" || /timeout|aborted/i.test(e.message));
     return { ok: false, error: slow ? "the camera took too long to answer" : `the camera did not answer (${e instanceof Error ? e.message : String(e)})` };

@@ -65,16 +65,28 @@ console.log("\nfinding the camera meant");
 console.log("\nevery camera, from both places");
 {
   answer = (u) =>
-    u.endsWith("/api/states")
-      ? Response.json([{ entity_id: "camera.porch", attributes: { friendly_name: "Porch" } }, { entity_id: "light.hall" }])
-      : new Response("x");
+    u.endsWith("/api/template")
+      ? new Response("camera.porch|Porch\n")
+      : u.endsWith("/api/states")
+        ? Response.json([{ entity_id: "camera.porch", attributes: { friendly_name: "Porch" } }, { entity_id: "light.hall" }])
+        : new Response("x");
   calls = [];
   const e = env({ HA_BASE_URL: "https://ha.example.com", HA_TOKEN: "t", CAMERAS: "Gate = https://cam.example.com/g.jpg" });
   const all = await listCameras(e);
   check("listed ones first, then Home Assistant's; lights are not cameras", all.map((c) => c.id).join() === "url:gate,camera.porch", all);
   await listCameras(e);
-  check("Home Assistant's list is cached", calls.filter((c) => c.url.endsWith("/api/states")).length === 1);
+  check("only the cameras are asked for, not every state in the house", calls.some((c) => c.url.endsWith("/api/template")) && !calls.some((c) => c.url.endsWith("/api/states")));
+  check("Home Assistant's list is cached", calls.filter((c) => c.url.endsWith("/api/template")).length === 1);
   check("no Home Assistant, no listed cameras: none, no calls", (await listCameras(env())).length === 0);
+  // A token that may not render templates: every state, filtered, as before.
+  answer = (u) =>
+    u.endsWith("/api/template")
+      ? new Response("forbidden", { status: 403 })
+      : u.endsWith("/api/states")
+        ? Response.json([{ entity_id: "camera.gate", attributes: { friendly_name: "Gate" } }, { entity_id: "light.hall" }])
+        : new Response("x");
+  const fb = await listCameras(env({ HA_BASE_URL: "https://ha.example.com", HA_TOKEN: "t" }));
+  check("no template access: falls back to the full list", fb.map((c) => c.id).join() === "camera.gate", fb);
 }
 
 console.log("\none frame");
@@ -87,8 +99,8 @@ console.log("\none frame");
   check("a picture", s.ok && s.mime === "image/jpeg" && s.bytes.byteLength === 4);
   check("the password goes as Basic auth, not in the address", calls[0]!.url === "http://192.168.1.20/snap.jpg" && calls[0]!.headers.Authorization === `Basic ${btoa("admin:p@ss")}`, calls[0]);
   calls = [];
-  await snapshot(e, "camera.porch", 1024);
-  check("Home Assistant: its proxy, scaled, with the token", calls[0]!.url === "https://ha.example.com/api/camera_proxy/camera.porch?width=1024" && calls[0]!.headers.Authorization === "Bearer tok", calls[0]);
+  await snapshot(e, "camera.porch", 540);
+  check("Home Assistant: its proxy, scaled by width AND height (it ignores width alone), with the token", calls[0]!.url === "https://ha.example.com/api/camera_proxy/camera.porch?width=960&height=540" && calls[0]!.headers.Authorization === "Bearer tok", calls[0]);
   calls = [];
   check("a crafted id is refused before any call", !(await snapshot(e, "camera.porch/../../api/states")).ok && calls.length === 0);
   check("an unknown listed camera is refused", !(await snapshot(e, "url:nope")).ok);
@@ -142,9 +154,11 @@ console.log("\nthe tools");
 {
   _forgetFrames();
   answer = (u) =>
-    u.endsWith("/api/states")
-      ? Response.json([{ entity_id: "camera.porch", attributes: { friendly_name: "Porch" } }])
-      : new Response(new Uint8Array([0xff, 0xd8]), { headers: { "content-type": "image/jpeg" } });
+    u.endsWith("/api/template")
+      ? new Response("camera.porch|Porch\n")
+      : u.endsWith("/api/states")
+        ? Response.json([{ entity_id: "camera.porch", attributes: { friendly_name: "Porch" } }])
+        : new Response(new Uint8Array([0xff, 0xd8]), { headers: { "content-type": "image/jpeg" } });
   const shown: Record<string, unknown>[] = [];
   const progress: string[] = [];
   const ctx = {
@@ -163,20 +177,33 @@ console.log("\nthe tools");
   check("show_camera with no name lists them", list === "Cameras available: Porch.");
   check("available with only a listed camera, no Home Assistant", lookAtCamera.available!(env({ CAMERAS: "Gate = https://a/g.jpg" })) && !lookAtCamera.available!(env()));
 
-  // One stalled frame, then an answer at once: looked at, not reported down.
+  // A quick failure, then an answer: looked at, not reported down.
   _forgetFrames();
   let n = 0;
   answer = (u) => {
+    if (u.endsWith("/api/template")) return new Response("camera.porch|Porch\n");
     if (u.endsWith("/api/states")) return Response.json([{ entity_id: "camera.porch", attributes: { friendly_name: "Porch" } }]);
     n++;
-    if (n === 1) throw new DOMException("The operation was aborted due to timeout", "TimeoutError");
+    if (n === 1) return new Response("busy", { status: 503 });
     return new Response(new Uint8Array([0xff, 0xd8]), { headers: { "content-type": "image/jpeg" } });
   };
   progress.length = 0;
   const retried = await lookAtCamera.run({ camera: "porch", question: "Is the car there?" }, ctx);
-  check("a stalled camera is tried once more, and seen", typeof retried !== "string" && n === 2 && progress.includes("the Porch is slow, trying again"), { n, progress, retried: typeof retried });
+  check("a camera that fails quickly is tried once more, and seen", typeof retried !== "string" && n === 2 && progress.includes("the Porch did not answer, trying again"), { n, progress, retried: typeof retried });
+  // A timeout is not retried: a second twenty-second wait only doubles the delay.
+  _forgetFrames();
+  n = 0;
+  answer = (u) => {
+    if (u.endsWith("/api/template")) return new Response("camera.porch|Porch\n");
+    if (u.endsWith("/api/states")) return Response.json([{ entity_id: "camera.porch", attributes: { friendly_name: "Porch" } }]);
+    n++;
+    throw new DOMException("The operation was aborted due to timeout", "TimeoutError");
+  };
+  await lookAtCamera.run({ camera: "porch", question: "Is the car there?" }, ctx);
+  check("a timeout is reported after one wait, not two", n === 1, n);
   _forgetFrames();
   answer = (u) => {
+    if (u.endsWith("/api/template")) return new Response("camera.porch|Porch\n");
     if (u.endsWith("/api/states")) return Response.json([{ entity_id: "camera.porch", attributes: { friendly_name: "Porch" } }]);
     throw new DOMException("The operation was aborted due to timeout", "TimeoutError");
   };

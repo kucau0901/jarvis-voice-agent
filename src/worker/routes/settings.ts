@@ -286,7 +286,7 @@ const TESTS: Partial<Record<Group, (eff: Env, origin: string) => Promise<TestRes
     const shown = list.slice(0, 8);
     const results = await Promise.all(
       shown.map(async (c) => {
-        const s = await snapshot(eff, c.id, 320);
+        const s = await snapshot(eff, c.id, 240);
         return s.ok ? `✓ ${c.name} (${Math.max(1, Math.round(s.bytes.byteLength / 1024))} KB)` : `✗ ${c.name}: ${s.error}`;
       }),
     );

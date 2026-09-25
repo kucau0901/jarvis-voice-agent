@@ -13,9 +13,13 @@ import { camerasConfigured, snapshot } from "../lib/cameras";
 export async function handleCamera(req: Request, env: Env): Promise<Response> {
   // "camera.front_gate" (Home Assistant) or "url:front-gate" (a listed snapshot
   // address); lib/cameras.ts pins the shape of both before anything is fetched.
-  const id = new URL(req.url).searchParams.get("entity") ?? "";
+  const params = new URL(req.url).searchParams;
+  const id = params.get("entity") ?? "";
+  // The screen asks for a size it can use; full size is the default only for other callers.
+  const h = Number(params.get("h"));
+  const height = Number.isInteger(h) && h >= 120 && h <= 1440 ? h : undefined;
   if (!camerasConfigured(env)) return err(503, "no cameras are configured");
-  const snap = await snapshot(env, id);
+  const snap = await snapshot(env, id, height);
   if (!snap.ok) return err(snap.error === "no such camera" || snap.error === "not a camera id" ? 400 : 502, "camera image unavailable", { detail: snap.error });
   return new Response(snap.bytes, {
     headers: {
