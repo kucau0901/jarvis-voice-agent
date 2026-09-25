@@ -62,12 +62,14 @@ export class Services {
   private key: string;
   private root: HTMLElement;
   private extras: Extras;
+  private onRender: () => void;
   private data: SettingsResponse | null = null;
 
-  constructor(key: string, root: HTMLElement, extras: Extras = {}) {
+  constructor(key: string, root: HTMLElement, extras: Extras = {}, onRender: () => void = () => {}) {
     this.key = key;
     this.root = root;
     this.extras = extras;
+    this.onRender = onRender;
   }
 
   async load(): Promise<void> {
@@ -81,38 +83,38 @@ export class Services {
     }
   }
 
+  /**
+   * Every section, each tagged for the settings menu (Settings.ts) with its
+   * id, title and state: "on" set up, "need" required and missing, "off"
+   * optional and not set up. The menu shows one at a time.
+   */
   private render(data: SettingsResponse): void {
     this.data = data;
-    this.root.replaceChildren(this.checklist(data), this.owner(data));
+    this.root.replaceChildren(this.owner(data));
     if (!data.storage) {
-      this.root.appendChild(el("p", "warn", "Settings storage (the STATE Durable Object) is not bound, so nothing can be saved here."));
+      // Untagged, so it shows above whichever section is open.
+      this.root.insertBefore(el("p", "warn", "Settings storage (the STATE Durable Object) is not bound, so nothing can be saved here."), this.root.firstChild);
     }
-    for (const g of data.groups) this.root.appendChild(this.section(g, data.settings.filter((s) => s.group === g.id)));
-  }
-
-  /* ---------- the top of the sheet ---------------------------------------- */
-
-  private checklist(data: SettingsResponse): HTMLElement {
-    const box = el("section", "svc checklist");
-    box.appendChild(el("h3", "", "Setup"));
-    const list = el("div", "checks");
+    const has = (name: string) => data.settings.some((s) => s.name === name && (s.source === "saved" || s.source === "deployment"));
     for (const g of data.groups) {
-      const required = data.settings.some((s) => s.group === g.id && s.required);
-      const needsNothing = !g.testable && !required;
-      if (needsNothing) continue;
-      const row = el("button", `check ${g.configured ? "on" : required ? "need" : "off"}`);
-      row.type = "button";
-      row.textContent = `${g.configured ? "✓" : required ? "!" : "○"} ${g.title}`;
-      row.addEventListener("click", () => this.root.querySelector(`[data-group="${g.id}"]`)?.scrollIntoView({ behavior: "smooth" }));
-      list.appendChild(row);
+      const settings = data.settings.filter((s) => s.group === g.id);
+      const required = settings.some((s) => s.required);
+      // A section with nothing required counts as set up — right for alerts and
+      // voice, which work out of the box, but Cameras has nothing to show until
+      // there is Home Assistant or a snapshot address.
+      const ready = g.id === "cameras" ? has("CAMERAS") || (has("HA_BASE_URL") && has("HA_TOKEN")) : g.configured;
+      const box = this.section(g, settings, ready);
+      tag(box, g.id, g.title, ready ? "on" : required ? "need" : "off");
+      this.root.appendChild(box);
     }
-    box.appendChild(list);
-    box.appendChild(el("p", "note", "Only OpenAI is required. Each other service switches its tools on once it is filled in."));
-    return box;
+    this.onRender();
   }
+
+  /* ---------- the owner key ------------------------------------------------ */
 
   private owner(data: SettingsResponse): HTMLElement {
     const box = el("section", "svc");
+    tag(box, "owner", "Owner key", data.owner.fingerprint ? "on" : "need");
     box.appendChild(el("h3", "", "Owner key"));
     const line = el("div", "inforce");
     line.appendChild(el("span", "", "In force: "));
@@ -126,13 +128,13 @@ export class Services {
 
   /* ---------- one service ------------------------------------------------- */
 
-  private section(g: GroupView, settings: SettingView[]): HTMLElement {
+  private section(g: GroupView, settings: SettingView[], ready = g.configured): HTMLElement {
     const box = el("section", "svc");
     box.dataset.group = g.id;
 
     const head = el("div", "svchead");
     head.appendChild(el("h3", "", g.title));
-    head.appendChild(el("span", `chip ${g.configured ? "on" : "off"}`, g.configured ? "configured" : "not set up"));
+    head.appendChild(el("span", `chip ${ready ? "on" : "off"}`, ready ? "configured" : "not set up"));
     box.appendChild(head);
     box.appendChild(el("p", "note", g.intro));
     const extra = this.extras[g.id]?.();
@@ -287,6 +289,12 @@ export class Services {
 }
 
 /* ---------- small DOM helpers ---------------------------------------------- */
+
+function tag(box: HTMLElement, id: string, title: string, state: "on" | "need" | "off"): void {
+  box.dataset.section = id;
+  box.dataset.title = title;
+  box.dataset.state = state;
+}
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls = "", text?: string): HTMLElementTagNameMap[K] {
   const e = document.createElement(tag);

@@ -83,12 +83,13 @@
      the moment the viewport is a phone rather than a dashboard. */
   /* One button in the corner, not a row of six: the row wrapped over the orb
      in the car's narrow driving layout. Its list opens underneath it. */
-  #menuBtn { position: fixed; z-index: 62; top: calc(12px + env(safe-area-inset-top));
+  /* Under an open panel (60), over the picture on the stage (55). */
+  #menuBtn { position: fixed; z-index: 58; top: calc(12px + env(safe-area-inset-top));
     right: calc(14px + env(safe-area-inset-right)); width: 52px; height: 52px;
     border-radius: 14px; background: #131b26; color: var(--fg); border: 1px solid #1e2937;
     font-size: 22px; line-height: 1; cursor: pointer; }
   #menuBtn[aria-expanded="true"] { border-color: var(--cyan); }
-  #topbtns { position: fixed; z-index: 63; display: none; flex-direction: column; gap: 6px;
+  #topbtns { position: fixed; z-index: 59; display: none; flex-direction: column; gap: 6px;
     top: calc(72px + env(safe-area-inset-top)); right: calc(14px + env(safe-area-inset-right));
     min-width: 210px; padding: 8px; border-radius: 14px; background: #0e1520;
     border: 1px solid #1e2937; box-shadow: 0 18px 50px rgba(0,0,0,.55); }
@@ -403,6 +404,38 @@
   .panel .alertbox li small { color: var(--dim); }
   .panel .alertbox li.empty { color: var(--dim); }
   .panel .alertbox .thisdev { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: 14px; }
+
+  /* Settings: a menu of sections, one open at a time, instead of every
+     section of every service one after another down a very long sheet. */
+  #settings .sheet.setsheet { width: min(1040px, 100%); }
+  .panel .setwrap { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 20px;
+    align-items: start; margin-top: 12px; }
+  .panel .setnav { display: grid; gap: 4px; position: sticky; top: 0; }
+  .panel .setnav h4 { margin: 14px 10px 4px; font-size: 11px; font-weight: 600; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--dim); }
+  .panel .setnav h4:first-child { margin-top: 0; }
+  .panel .setnav button { display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    text-align: left; background: transparent; border: 1px solid transparent; border-radius: 10px;
+    padding: 10px 12px; min-height: 46px; font: inherit; font-size: 14px; color: #cbd5e3; cursor: pointer; }
+  .panel .setnav button:hover { background: #111a24; }
+  .panel .setnav button.on { background: #16232f; border-color: #243140; color: var(--fg); }
+  .panel .setnav .st { font-size: 13px; font-weight: 700; flex: none; }
+  .panel .setnav .st.on { color: #5ee29a; }
+  .panel .setnav .st.need { color: var(--red); }
+  .panel .setnav .st.off { color: #4a5563; }
+  .panel .setnav .navnote { font-size: 12px; color: var(--dim); margin: 14px 10px 0; line-height: 1.45; }
+  .panel .setbody [data-section]:not(.active) { display: none; }
+  .panel .setbody .svc.active { margin-top: 0; }
+  .panel .setsheet .back { display: none; }
+  /* Narrow — a phone, the car's driving layout: the list, then one section in its place. */
+  @media (max-width: 860px) {
+    .panel .setwrap { grid-template-columns: minmax(0, 1fr); }
+    .panel .setnav { position: static; }
+    .panel .setsheet:not(.detail) .setbody { display: none; }
+    .panel .setsheet.detail .setnav { display: none; }
+    .panel .setsheet.detail .back { display: inline-flex; }
+    .panel .setsheet.detail h2 { display: none; }
+  }
 
   /* Routines. */
   .panel .rlist { display: grid; gap: 10px; margin-top: 12px; }

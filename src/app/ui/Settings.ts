@@ -2,6 +2,20 @@ import { authHeaders } from "../key";
 import { Services } from "./Services";
 import { AlertsPanel } from "./AlertsPanel";
 
+/** The settings menu: groups, and the sections in each, by id. */
+const NAV: [string, string[]][] = [
+  ["Connections", ["openai", "car", "home", "hermes", "google", "spotify", "maps", "cameras", "mcp"]],
+  ["How Jarvis behaves", ["router", "voice", "alerts", "locale"]],
+  ["Access and advanced", ["owner", "devices", "advanced"]],
+];
+const SECTION_KEY = "jarvis.settings.section";
+
+function node<K extends keyof HTMLElementTagNameMap>(tag: K, text: string): HTMLElementTagNameMap[K] {
+  const e = document.createElement(tag);
+  if (text) e.textContent = text;
+  return e;
+}
+
 interface RouterState {
   model: string;
   source: "ui" | "env" | "default";
@@ -52,13 +66,17 @@ export class Settings {
     this.el.id = "settings";
     this.el.className = "panel";
     this.el.innerHTML = `
-      <div class="sheet">
+      <div class="sheet setsheet">
         <header>
+          <button class="back" type="button">‹ All settings</button>
           <h2>Settings</h2>
           <button class="close" aria-label="Close">Done</button>
         </header>
+        <div class="setwrap">
+        <nav class="setnav" aria-label="Settings sections"></nav>
+        <div class="setbody">
         <div class="services"></div>
-        <section class="router">
+        <section class="router svc" data-section="router" data-title="Router model" data-state="on">
           <h3>Router model</h3>
           <p class="note">
             Decides what each question needs — which tool, which system. The voice
@@ -75,6 +93,7 @@ export class Settings {
           </div>
           <div class="res"></div>
         </section>
+        <section class="svc mcp" data-section="mcp" data-title="MCP servers" data-state="off">
         <h3>MCP servers</h3>
         <p class="note">
           Tools Jarvis can call directly. A header written as
@@ -87,14 +106,22 @@ export class Settings {
           <button class="save primary">Save</button>
         </div>
         <div class="msg"></div>
+        </section>
+        </div>
+        </div>
       </div>`;
     document.body.appendChild(this.el);
     this.list = this.el.querySelector(".list")!;
     this.router = this.el.querySelector(".router")!;
     const alerts = new AlertsPanel(key);
-    this.services = new Services(key, this.el.querySelector<HTMLElement>(".services")!, {
-      alerts: () => alerts.render(),
-    });
+    this.services = new Services(
+      key,
+      this.el.querySelector<HTMLElement>(".services")!,
+      { alerts: () => alerts.render() },
+      () => this.buildNav(),
+    );
+    this.el.querySelector(".back")!.addEventListener("click", () => this.sheet.classList.remove("detail"));
+    this.buildNav();
     this.router.querySelector(".rtest")!.addEventListener("click", () => void this.testModel());
     this.router.querySelector(".use")!.addEventListener("click", () => void this.useModel());
     this.router.querySelector(".reset")!.addEventListener("click", () => void this.resetModel());
@@ -110,8 +137,87 @@ export class Settings {
     });
   }
 
+  /* ---------- the menu of sections ------------------------------------------ */
+
+  private get sheet(): HTMLElement {
+    return this.el.querySelector(".sheet")!;
+  }
+
+  /**
+   * The list on the left (or on its own, on a narrow screen): every section,
+   * grouped, each with its state. Rebuilt whenever the sections are, so a
+   * save that sets something up turns its mark green.
+   */
+  private buildNav(): void {
+    const nav = this.el.querySelector<HTMLElement>(".setnav")!;
+    const sections = [...this.el.querySelectorAll<HTMLElement>(".setbody [data-section]")];
+    const byId = new Map(sections.map((s) => [s.dataset.section!, s]));
+    const placed = new Set<string>();
+    const parts: HTMLElement[] = [];
+    NAV.forEach(([heading, ids], i) => {
+      const here = ids.filter((id) => byId.has(id));
+      // Anything the menu does not know yet goes in the last group.
+      if (i === NAV.length - 1) for (const id of byId.keys()) if (!NAV.some(([, l]) => l.includes(id))) here.push(id);
+      if (!here.length) return;
+      parts.push(node("h4", heading));
+      for (const id of here) {
+        placed.add(id);
+        const s = byId.get(id)!;
+        const b = node("button", "");
+        b.type = "button";
+        b.dataset.for = id;
+        b.appendChild(node("span", s.dataset.title ?? id));
+        const state = s.dataset.state ?? "off";
+        const mark = node("span", state === "on" ? "✓" : state === "need" ? "!" : "○");
+        mark.className = `st ${state}`;
+        mark.title = state === "on" ? "set up" : state === "need" ? "needs setting up" : "optional, not set up";
+        b.appendChild(mark);
+        b.addEventListener("click", () => this.choose(id, true));
+        parts.push(b);
+      }
+    });
+    const note = node("p", "Only OpenAI is required. Everything else is optional, and switches its tools on once set up.");
+    note.className = "navnote";
+    parts.push(note);
+    nav.replaceChildren(...parts);
+    this.choose(this.current ?? this.firstChoice(sections), false);
+  }
+
+  private current: string | null = (() => {
+    try {
+      return sessionStorage.getItem(SECTION_KEY);
+    } catch {
+      return null;
+    }
+  })();
+
+  /** Something that needs setting up, else OpenAI. */
+  private firstChoice(sections: HTMLElement[]): string {
+    return sections.find((s) => s.dataset.state === "need")?.dataset.section ?? "openai";
+  }
+
+  private choose(id: string, open: boolean): void {
+    const sections = [...this.el.querySelectorAll<HTMLElement>(".setbody [data-section]")];
+    if (!sections.some((s) => s.dataset.section === id)) id = this.firstChoice(sections);
+    this.current = id;
+    try {
+      sessionStorage.setItem(SECTION_KEY, id);
+    } catch {
+      // the choice is just not remembered
+    }
+    for (const s of sections) s.classList.toggle("active", s.dataset.section === id);
+    for (const b of this.el.querySelectorAll<HTMLElement>(".setnav button")) b.classList.toggle("on", b.dataset.for === id);
+    // On a narrow screen, choosing opens the section in place of the list.
+    if (open) {
+      this.sheet.classList.add("detail");
+      this.sheet.scrollTop = 0;
+    }
+  }
+
   async show() {
     this.el.classList.add("open");
+    // A narrow screen starts on the list; a wide one shows the list and a section together.
+    this.sheet.classList.remove("detail");
     this.msg("loading…");
     // Independent: a slow MCP server must not hold the other sections hostage.
     void this.services.load();
@@ -125,6 +231,9 @@ export class Settings {
         liveError: string | null;
       };
       this.servers = data.servers ?? [];
+      const mcp = this.el.querySelector<HTMLElement>('[data-section="mcp"]')!;
+      mcp.dataset.state = this.servers.some((s) => s.enabled !== false && s.url) ? "on" : "off";
+      this.buildNav();
       // Said plainly, because an empty save does not remove the defaults and
       // nothing else on this screen would explain why they came back.
       this.el.querySelector<HTMLElement>(".src")!.textContent =
