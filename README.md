@@ -28,6 +28,12 @@ enough) or run it yourself with **Docker**.
   your phone. Telegram, ntfy, a signed webhook and Home Assistant are optional
   extra routes. "Send that to my phone" works from the car. Nothing to set up
   beyond the OpenAI key.
+- **Two ways to talk** — *Live* is GPT‑Live, a real conversation at $0.05 a
+  minute while it is open. *Push‑to‑talk* is one question at a time:
+  transcribed, answered by the same router with the same tools, and spoken
+  back, for a fraction of a cent a question. Chosen per screen under the orb.
+  Hearing and speaking can use OpenAI, Cloudflare Workers AI, or the device
+  itself.
 - **Routines** — "remind me at five to call Mum", "every weekday at 7:30 tell
   me my first meeting and the traffic", "tell me when to leave for my
   appointments" (from your calendar, the car's position and live traffic), or

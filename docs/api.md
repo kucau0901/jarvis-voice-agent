@@ -139,7 +139,7 @@ existence, or argued around.
 | `mail` | Gmail: `mail_check`, `mail_search`, `mail_send`, `mail_manage`, `contacts_lookup`. Reads, sends, replies, drafts, trashes and archives — there is no read-only half. Also reads Google Contacts to turn a name into an address. |
 | `calendar` | Google Calendar: `calendar_check`, `calendar_add`. Reads the diary **and creates events**. |
 | `screen` | `show_place`, `hide_display`, `/api/map`. |
-| `voice` | `/api/session`, `/api/tts`, `/api/voices`. |
+| `voice` | `/api/session`, `/api/tts`, `/api/voices`, and push-to-talk `/api/v1/voice` (which also needs `ask`). |
 | `routines` | `/api/v1/routines`, `/api/v1/routines/run`, `/api/v1/trigger`; `routine_add`, `routine_list`, `routine_remove`. A routine's question runs with **its creator's** grants, never more. |
 | `alerts` | Receiving alerts (`/api/v1/events`, `/api/v1/push`, `/api/v1/alerts`), raising one (`/api/v1/notify`), and `send_note`. The same scope both ways: a device that may be told things may ask to be told something. |
 
@@ -283,6 +283,45 @@ void loop() {
   delay(60000);   // never hammer it: 20 requests a minute is the ceiling
 }
 ```
+
+## Push-to-talk voice
+
+`POST /api/v1/voice` takes one spoken question and gives back a spoken answer —
+no live session, paid per question. It is what a $10 microphone-and-speaker
+board should use.
+
+```
+POST /api/v1/voice?format=wav&thread=kitchen
+Content-Type: audio/wav            (or audio/webm, audio/ogg, audio/mpeg, audio/mp4…)
+Accept: audio/wav
+X-Jarvis-Key: <device token with voice and ask>
+
+<the recording, up to 3 MB>
+```
+
+With `Accept: audio/*` the body is just the answer's audio — `format=wav` is
+24 kHz, 16-bit mono; `pcm` is the same without a header; `mp3` and `opus`
+too — and the words come in headers, URI-encoded: `X-Jarvis-Transcript` (what
+was heard), `X-Jarvis-Text` (what was said), `X-Jarvis-Ok`. `thread` is any
+short id: questions on the same thread within five minutes are understood as
+a conversation, so "and tomorrow?" works.
+
+Without that `Accept`, the answer is JSON:
+`{ok, transcript, text, tools, heardBy, audio: {format, mime, by, data}}`,
+`data` being base64. `{"text": "…"}` as JSON instead of a recording skips the
+hearing, for a device that recognised the speech itself; `reply=text` skips
+the speaking. The app sends `multipart/form-data` — an `audio` file and an
+`options` JSON field — with `Accept: text/event-stream`, and gets `transcript`,
+`progress`, `display`, `result`, then the answer's speech sentence by sentence
+as `audio` events, so it starts talking about a second after the words are
+ready.
+
+How it hears and speaks is set in Settings → Push-to-talk voice: OpenAI
+(default; any language, mixed ones too), Cloudflare Workers AI (cheapest;
+needs `"ai": {"binding": "AI"}` in wrangler.jsonc; English speech only, via
+Deepgram Aura), or the device itself. Anything unavailable falls back to
+OpenAI. People and places saved in memory are passed to the recogniser as
+hints, so names are heard right.
 
 ## Alerts
 

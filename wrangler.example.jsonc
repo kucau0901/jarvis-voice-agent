@@ -32,6 +32,11 @@
   "kv_namespaces": [
     { "binding": "CONFIG", "id": "REPLACE_WITH_YOUR_KV_NAMESPACE_ID" }  // npx wrangler kv namespace create CONFIG
   ],
+  // Optional, Cloudflare only: Workers AI for the cheapest push-to-talk hearing
+  // (Whisper) and speaking (Deepgram Aura), chosen in Settings → Push-to-talk
+  // voice. Without it, OpenAI does both. Leave it out for Docker.
+  // "ai": { "binding": "AI" },
+
   // Memory and the daily device counter (src/worker/state.ts). SQLite-backed,
   // because that is the only kind of Durable Object the Workers free plan
   // allows; `new_classes` would be the key-value kind and fail to deploy.

@@ -21,6 +21,7 @@ import * as spotify from "../lib/spotify";
 import { loadServers } from "../lib/config-store";
 import { probe as mcpProbe } from "./mcp";
 import { deliver, makeAlert, summarise } from "../lib/alerts";
+import { recognitionHints, speechConfig, synthesize, transcribe } from "../lib/speech";
 
 /**
  * The settings panel's API. Owner-only (lib/scopes.ts).
@@ -268,6 +269,28 @@ const TESTS: Partial<Record<Group, (eff: Env, origin: string) => Promise<TestRes
     // Every channel, each reported — not the first that works.
     const d = await deliver(eff, state, alert, { every: true });
     return { ok: !!d.deliveredBy, detail: summarise(d) };
+  },
+
+  async voice(eff) {
+    // A round trip: say a sentence, then hear it back. Both halves in one press.
+    const cfg = speechConfig(eff);
+    const said = "Jarvis here, testing one, two, three.";
+    const s = await synthesize(eff, said, "mp3");
+    if (!s.ok) return { ok: false, detail: `Speaking failed: ${s.error}` };
+    const h = await transcribe(eff, s.audio, "audio/mpeg", recognitionHints(null));
+    if (!h.ok) return { ok: false, detail: `Spoke it (${s.by}), but hearing it back failed: ${h.error}` };
+    const notes: string[] = [];
+    if ((cfg.stt === "workers-ai" || cfg.tts === "workers-ai") && !cfg.workersAi) {
+      notes.push("Workers AI is not bound on this deployment, so OpenAI stood in.");
+    }
+    if (cfg.stt === "browser" || cfg.tts === "browser") {
+      notes.push("\"browser\" happens on each device; this tested the OpenAI fallback it uses where a device has none.");
+    }
+    const ok = /testing/i.test(h.text) && /three|3/i.test(h.text);
+    return {
+      ok,
+      detail: `Spoke "${said}" with ${s.by}${s.by === "openai" ? ` (${cfg.voice})` : ""}; heard back with ${h.by}: "${h.text}".${notes.length ? " " + notes.join(" ") : ""}`,
+    };
   },
 
   async locale(eff) {

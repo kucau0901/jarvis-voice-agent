@@ -6,7 +6,8 @@
  * connection, and the car would just see the conversation stall.
  */
 export interface SseEvent {
-  type: "progress" | "result" | "error" | "tool" | "used" | "display";
+  /** transcript and audio are push-to-talk's (routes/voice.ts); the rest are the router's. */
+  type: "progress" | "result" | "error" | "tool" | "used" | "display" | "transcript" | "audio";
   [k: string]: unknown;
 }
 

@@ -506,6 +506,36 @@ themselves. It skips open screens on purpose: the screen in front of them is
 where they asked. Routines — alerts Jarvis raises on its own, from the clock,
 the calendar or the car — build on the same `deliver()`.
 
+## Two ways to talk
+
+GPT-Live is the premium voice: full duplex, interruptible, and billed at $0.05
+for every minute a session is open, whether anyone is speaking or not.
+Push-to-talk (`routes/voice.ts`, `lib/speech.ts`, `src/app/ptt.ts`) is the
+economy one: speech to text, the same router, text to speech — about $0.003 a
+question with OpenAI for both, less with Workers AI or the device's own
+recognition and voice. Nothing automatic ever opens a GPT-Live session; the
+choice is made per screen, and switching to push-to-talk ends a live session.
+
+**The router has to be Jarvis.** With GPT-Live, the live voice re-says what
+the router found in its own words and manner. Push-to-talk has nothing in
+between: text-to-speech reads the router's reply word for word. So a
+push-to-talk request adds the persona's manner and language rules to the
+router's instructions (`spokenReplyInstructions`), and links, citations and
+markdown are stripped from what is spoken (`speakable`).
+
+**Measured, not assumed.** On production in September 2026: hearing 0.9 s,
+the router about 6 s (two model hops around a tool), speaking 1.4 s for a
+five-second answer. Speech is made sentence by sentence, all at once, and
+streamed as each piece is ready, so the voice starts about a second after the
+words are known rather than after the whole answer is rendered. What remains
+is the router; its reasoning effort is the obvious next lever.
+
+**Workers AI is optional and can fail.** It needs a binding only Cloudflare
+has, so Docker never sees it, and in testing MeloTTS answered every request
+with an internal error while Deepgram Aura worked. Every Workers AI call
+therefore falls back to OpenAI, and the settings panel's Test speaks a
+sentence and hears it back, saying which provider did each half.
+
 ## Routines
 
 A routine is a trigger — a moment, a time of day, an event from outside, or

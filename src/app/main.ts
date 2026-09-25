@@ -10,6 +10,7 @@ import { Orb } from "./orb/Orb";
 import { VoiceLevels } from "./audio";
 import { runDelegation } from "./delegate";
 import { LiveLink, speakAlert, speakHere, type Alert } from "./alerts";
+import { PushToTalk } from "./ptt";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -125,8 +126,8 @@ function tick() {
   if (orb) {
     orb.set(
       orbOverride ?? {
-        user: session?.live ? levels.read("user") : 0,
-        agent: session?.live ? levels.read("agent") : 0,
+        user: session?.live || ptt?.active ? levels.read("user") : 0,
+        agent: session?.live || ptt?.active ? levels.read("agent") : 0,
         think: thinking ? 1 : 0,
         error: errorFlash,
       },
@@ -497,7 +498,7 @@ async function tryKey(candidate: string) {
       key = saveKey(candidate);
       live.start(key);
       unlock.wrap.classList.remove("show");
-      status("tap to start");
+      setMode(mode);
       return;
     }
     unlock.err.textContent =
@@ -552,7 +553,81 @@ $("openDevices").addEventListener("click", () => {
   void devices.show();
 });
 
-els.orb.addEventListener("click", toggle);
+/* ---------- two ways to talk ----------------------------------------------- */
+/*
+ * Live: GPT-Live, a real conversation, $0.05 for every minute it is open.
+ * Push-to-talk: one question at a time, transcribed, answered by the same
+ * router and spoken back — a fraction of a cent a question (ptt.ts). Chosen
+ * per screen, and remembered.
+ */
+type Mode = "live" | "ptt";
+const MODE_KEY = "jarvis.mode";
+let mode: Mode = (() => {
+  try {
+    return localStorage.getItem(MODE_KEY) === "ptt" ? "ptt" : "live";
+  } catch {
+    return "live";
+  }
+})();
+let ptt: PushToTalk | null = null;
+
+function pushToTalk(): PushToTalk {
+  return (ptt ??= new PushToTalk(key, levels, {
+    status,
+    heard: (text) => {
+      current = {};
+      append("you", text);
+      history.add("user", text);
+    },
+    answered: (text, ok) => {
+      append("jarvis", text);
+      history.add("assistant", text);
+      if (!ok) errorFlash = 1;
+    },
+    display: (payload) => {
+      if (!key) return;
+      stage ??= new Stage(key);
+      void stage.show(payload as unknown as DisplayPayload);
+    },
+    thinking: (on) => { thinking = on; },
+    history: () => history.snapshot(),
+  }));
+}
+
+function setMode(m: Mode) {
+  mode = m;
+  try {
+    localStorage.setItem(MODE_KEY, m);
+  } catch {
+    // private mode: this screen forgets, which is harmless
+  }
+  for (const b of document.querySelectorAll<HTMLButtonElement>("#modes button")) {
+    b.classList.toggle("on", b.dataset.mode === m);
+    b.setAttribute("aria-pressed", String(b.dataset.mode === m));
+  }
+  if (m === "ptt") {
+    // Switching away from a live session ends it: it is the thing that bills.
+    if (session || userWantsSession) void toggle();
+    status(key ? "tap and ask" : "");
+    els.hint.textContent = "push-to-talk · a fraction of a cent a question";
+  } else {
+    ptt?.stop();
+    status(key ? "tap to start" : "");
+    els.hint.textContent = "live conversation · $0.05 a minute while open";
+  }
+}
+
+for (const b of document.querySelectorAll<HTMLButtonElement>("#modes button")) {
+  b.addEventListener("click", () => setMode(b.dataset.mode === "ptt" ? "ptt" : "live"));
+}
+
+els.orb.addEventListener("click", () => {
+  if (mode === "live") return void toggle();
+  if (!key) return requireKey();
+  const p = pushToTalk();
+  p.setKey(key);
+  void p.press();
+});
 els.toggleLog.addEventListener("click", () => {
   const open = els.logWrap.classList.toggle("open");
   els.toggleLog.textContent = open ? "hide" : "events";
@@ -662,7 +737,7 @@ window.__jarvis = {
 };
 
 if (key) {
-  status("tap to start");
+  setMode(mode);
 } else {
   status("");
   requireKey();

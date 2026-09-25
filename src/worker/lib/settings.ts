@@ -1,5 +1,6 @@
 import type { Env } from "../types";
 import { DEFAULT_ORDER, validateOrder } from "./alerts.ts";
+import { DEFAULT_STYLE, DEFAULT_VOICE, STT_PROVIDERS, TTS_PROVIDERS, TTS_VOICES } from "./speech.ts";
 
 /**
  * Every setting Jarvis reads, in one list.
@@ -29,6 +30,7 @@ export type Group =
   | "maps"
   | "locale"
   | "alerts"
+  | "voice"
   | "devices"
   | "advanced";
 
@@ -182,6 +184,14 @@ export const GROUPS: readonly GroupDef[] = [
     title: "Alerts",
     intro:
       "How Jarvis reaches you when it speaks first. An open Jarvis screen gets it first, then notifications on any device where you turned them on below — neither needs setting up. The rest are optional extra ways through; Test sends one message down every channel that is set up.",
+    needs: [],
+    testable: true,
+  },
+  {
+    id: "voice",
+    title: "Push-to-talk voice",
+    intro:
+      "The cheap way to talk to Jarvis: one question at a time, transcribed, answered and spoken back, for a fraction of a cent — no live session. GPT-Live stays for proper conversations. Choose it per screen under the orb. Test speaks a sentence and hears it back.",
     needs: [],
     testable: true,
   },
@@ -373,6 +383,27 @@ export const SETTINGS: readonly SettingDef[] = [
     label: "Home Assistant: read aloud", help: "Android Companion app only: speaks the alert instead of showing it.",
   },
 
+  // --- Push-to-talk
+  {
+    name: "VOICE_STT", group: "voice", kind: "enum", default: "openai", options: STT_PROVIDERS,
+    label: "Hearing",
+    help: "openai: any language, mixed ones too, ~$0.003/min. workers-ai: Whisper, ~$0.0005/min, needs the AI binding (Cloudflare only). browser: the device's own, free, where it has one.",
+  },
+  {
+    name: "VOICE_TTS", group: "voice", kind: "enum", default: "openai", options: TTS_PROVIDERS,
+    label: "Speaking",
+    help: "openai: the same voices as GPT-Live, ~$0.015 per minute of speech. workers-ai: Deepgram Aura for English, MeloTTS for a few others; anything else falls back to OpenAI. browser: the device's own voice, free.",
+  },
+  {
+    name: "VOICE_TTS_VOICE", group: "voice", kind: "enum", default: DEFAULT_VOICE, options: TTS_VOICES,
+    label: "Voice", help: "For OpenAI speaking. cedar and marin are GPT-Live's own.",
+  },
+  {
+    name: "VOICE_STYLE", group: "voice", kind: "text", default: DEFAULT_STYLE,
+    label: "How it sounds", help: "A line of direction for the OpenAI voice: tone, pace, accent.",
+    validate: (v) => (v.length > 300 ? "keep it under 300 characters" : null),
+  },
+
   // --- Devices and glasses
   {
     name: "DEVICE_DAILY_LIMIT", group: "devices", kind: "number", default: "500",
@@ -427,6 +458,7 @@ export const NOT_SETTINGS: Readonly<Record<string, string>> = {
   CONFIG: "a binding",
   STATE: "a binding",
   DEVICE_LIMIT: "a binding",
+  AI: "a binding (Workers AI), added in wrangler.jsonc",
   JARVIS_SHARED_SECRET: "the owner key: deploy-time only, so login never depends on storage",
   ROUTER_MODEL: "has its own section, with a live probe before saving",
 };

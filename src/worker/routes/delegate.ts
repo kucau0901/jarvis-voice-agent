@@ -9,6 +9,7 @@ import { MemoryStore } from "../lib/memory";
 import { allows, type Grant } from "../lib/scopes";
 import { countryName, localeOf, utcOffset } from "../lib/locale.ts";
 import { DEFAULT_CHAR_BUDGET, glassesInstructions } from "../lib/glasses";
+import { spokenReplyInstructions } from "../lib/prompt";
 import {
   DEFAULT_ROUTER_MODEL,
   builtinTools,
@@ -370,7 +371,7 @@ export interface RunOptions {
    * "glasses": shown as text on Even Realities G2 glasses and never spoken, so
    * nothing rephrases the answer on its way to the user (routes/v1.ts).
    */
-  surface?: "glasses" | "routine";
+  surface?: "glasses" | "routine" | "voice";
   /** Characters the glasses show before cutting off. */
   charBudget?: number;
   /** For a routine: its name, so the answer knows what it is answering. */
@@ -444,6 +445,7 @@ export async function run(
     (opts.surface === "glasses"
       ? glassesInstructions(opts.charBudget ?? DEFAULT_CHAR_BUDGET)
       : "") +
+    (opts.surface === "voice" ? spokenReplyInstructions() : "") +
     (opts.surface === "routine"
       ? "\n\nTHIS IS A ROUTINE, NOT A CONVERSATION\n" +
         `The user set this up to run by itself${opts.routineName ? ` ("${opts.routineName.replace(/"/g, "'")}")` : ""}. ` +

@@ -10,6 +10,7 @@ import { charBudget, forGlasses, latestUserText, toChatCompletion, waitSeconds }
 import { allows, saneGrants, SCOPES, WILDCARD, type Grant } from "../lib/scopes";
 import { handleAlertApi } from "./alerts";
 import { handleRoutines } from "./routines";
+import { handleVoice } from "./voice";
 
 /** Everything a wildcard grant covers, minus the screen this route does not have. */
 const SCREENLESS: Grant[] = SCOPES.filter((s) => s !== "screen");
@@ -375,6 +376,9 @@ export async function handleV1(
   // tool runs. Identical contract to /api/delegate — this is just the versioned
   // name, so firmware never has to reference the browser's internal route.
   if (url.pathname === "/api/v1/stream") return handleDelegate(req, env, ctx, grants);
+
+  // Push-to-talk: a spoken question in, a spoken answer out, never a live session.
+  if (url.pathname === "/api/v1/voice") return handleVoice(req, env, ctx, principal, grants);
 
   if (url.pathname === "/api/v1/devices") {
     if (principal.kind !== "owner") return err(403, "owner credential required");

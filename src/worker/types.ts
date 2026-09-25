@@ -150,4 +150,19 @@ export interface Env {
   HA_NOTIFY_SERVICE?: string;
   /** "1": ask the Android Companion app to read alerts aloud. */
   HA_NOTIFY_SPEAK?: string;
+
+  /*
+   * Push-to-talk (lib/speech.ts): hearing and speaking one question at a
+   * time, without GPT-Live. All optional; OpenAI is the default for both.
+   */
+  /** "openai", "workers-ai" or "browser". */
+  VOICE_STT?: string;
+  /** "openai", "workers-ai" or "browser". */
+  VOICE_TTS?: string;
+  /** An OpenAI voice: cedar, marin, alloy… */
+  VOICE_TTS_VOICE?: string;
+  /** How the voice should sound, for gpt-4o-mini-tts. */
+  VOICE_STYLE?: string;
+  /** Workers AI, for the cheapest hearing and speaking. Cloudflare only; add "ai": {"binding": "AI"}. */
+  AI?: { run(model: string, input: unknown): Promise<unknown> };
 }

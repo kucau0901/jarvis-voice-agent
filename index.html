@@ -341,6 +341,14 @@
     #status { font-size: 19px; }
   }
 
+  /* Live or push-to-talk, per screen. Out of the way while a picture is up. */
+  #modes { position: relative; z-index: 2; display: flex; gap: 0; border: 1px solid #1e2937;
+    border-radius: 999px; overflow: hidden; }
+  #modes button { background: transparent; color: var(--dim); border: 0; padding: 10px 16px;
+    min-height: 40px; font: inherit; font-size: 13px; cursor: pointer; }
+  #modes button.on { background: #16232f; color: var(--fg); }
+  body.staged #modes { display: none; }
+
   /* Alerts: Jarvis speaking first. Above everything, including an open panel,
      because the settings panel's Test is one of the ways they arrive. */
   #alerts { position: fixed; z-index: 80; top: calc(64px + env(safe-area-inset-top));
@@ -409,6 +417,10 @@
   </div>
   <div id="status">loading…</div>
   <div id="hint"></div>
+  <div id="modes" role="group" aria-label="How to talk">
+    <button type="button" data-mode="live">Live</button>
+    <button type="button" data-mode="ptt">Push-to-talk</button>
+  </div>
   <div id="transcript"></div>
 
   <div id="unlock">
