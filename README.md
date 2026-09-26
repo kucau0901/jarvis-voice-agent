@@ -58,7 +58,10 @@ enough) or run it yourself with **Docker**.
   [Hermes](https://github.com/NousResearch/hermes-agent) agent at home.
 - **Smart glasses** — on Even Realities G2, say *"Hi Even"* and ask: Jarvis
   takes the place of the glasses' built-in assistant, so there is no app to
-  open, hands-free. [Setup guide](docs/even-g2.md).
+  open, hands-free. Unlike an agent such as OpenClaw or Hermes connected
+  directly, house commands take about a second, answers are written to fit the
+  display, and slow work runs as a background job, with Hermes still a question
+  away. [Setup guide](docs/even-g2.md).
 - **Other devices** — an ESP32 or anything else can use it through a small
   [device API](docs/api.md) with per-device, revocable, scoped tokens.
 - **Set up in the browser** — every key and setting is entered, tested and

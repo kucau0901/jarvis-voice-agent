@@ -21,7 +21,9 @@ of every release, and in the [README](README.md#updating).
 
 - A setup guide for Even Realities G2 glasses: say "Hi Even" and ask, with
   Jarvis in place of the glasses' built-in assistant, so there is no app to
-  open. [docs/even-g2.md](docs/even-g2.md).
+  open. It explains why Jarvis beats connecting OpenClaw or Hermes directly:
+  faster, answers that fit the display, and background jobs for slow work.
+  [docs/even-g2.md](docs/even-g2.md).
 
 ## [1.0.0] - 2026-09-26
 

@@ -28,6 +28,39 @@ Your Jarvis
 Setting it up takes about ten minutes: a token in Jarvis, an agent in the
 Even app, and optionally Home Assistant.
 
+## Why Jarvis, and not an agent connected directly
+
+The Even app will take any agent that speaks the OpenAI chat API, and before
+Jarvis, people connected OpenClaw or a Hermes agent to it directly. That works,
+with two problems:
+
+- **It is slow.** A general-purpose agent works its way through every
+  question, even "turn off the study light". A question to Hermes takes from
+  half a minute to four minutes; "how warm is the master bedroom?" took 74
+  seconds through Hermes and 11 through Home Assistant directly. Meanwhile the
+  glasses wait, and the Even app gives up on an answer that takes too long.
+- **The answer does not fit.** Such an agent writes as it would in a chat
+  window: at length, with headings and lists. The G2 display draws 400 to 500
+  characters, then shows "Struggling to render more...", and its font drops
+  formatting and emoji, leaving gaps in the text.
+
+Jarvis sits between the glasses and everything else, and takes the quickest
+route to each answer:
+
+| "Hi Even, …" | An agent connected directly | Jarvis |
+|---|---|---|
+| "open the main gate" | the agent's whole loop, often a minute or more | Home Assistant's Assist: about a second |
+| "how much charge has the car got?", "what's my next meeting?" | through the agent | Jarvis's own tools, straight to the car and Google: seconds |
+| "what's Aisha's number?" | the agent's memory, on the slow path | Jarvis's own memory, on hand for every question |
+| any answer | as long as the agent writes it | written for the display: the point first, under 350 characters, plain text, cut at a sentence |
+| "compare the three cheapest EV chargers and let me know" | the glasses wait, and the app may give up | a background job: Jarvis says it has started, and the result arrives as an alert when ready |
+
+**Your agent is still there.** With Hermes set up in Jarvis (**Settings →
+Hermes**), say "Hi Even, ask Hermes to …". Jarvis hands the question over as a
+background job and answers at once, and Hermes's reply arrives as an alert
+when it is ready, however long it takes (see [What to expect](#what-to-expect)).
+And any MCP server you add in Jarvis's settings is a tool Jarvis can use too.
+
 ## Before you start
 
 - **Jarvis running, and reachable from your phone over HTTPS.** Deployed to
