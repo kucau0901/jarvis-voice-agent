@@ -7,6 +7,7 @@ import {
   type SavedSettings,
 } from "./settings.ts";
 import { addToDay, emptyDay, report, type DayTotals, type UsageEntry, type UsageReport } from "./usage.ts";
+import { fromOthers, keep, type SharedTurn } from "./shared.ts";
 import {
   applyChanges,
   applyRefChanges,
@@ -83,6 +84,8 @@ const PUSH = "push:";
  * it straight back; turning notifications on again on that browser clears it.
  */
 const PUSH_REMOVED = "pushoff:";
+/** The conversation shared across the user's devices (lib/shared.ts). */
+const SHARED = "convo:shared";
 /** Usage (lib/usage.ts): a day's totals under its date, and the last questions. */
 const USAGE_DAY = "usage:day:";
 const USAGE_RECENT = "usage:recent";
@@ -362,6 +365,17 @@ export class StateHost {
     return this.storage.delete(PUSH + id);
   }
 
+  /** A question and its answer, into the conversation shared across devices. */
+  async appendShared(turns: SharedTurn[], now = Date.now()): Promise<void> {
+    const log = (await this.storage.get<SharedTurn[]>(SHARED)) ?? [];
+    await this.storage.put(SHARED, keep([...log, ...turns], now));
+  }
+
+  /** What the user's other devices said recently, for a question from this one. */
+  async recentShared(origin: string, now = Date.now()): Promise<SharedTurn[]> {
+    return fromOthers((await this.storage.get<SharedTurn[]>(SHARED)) ?? [], origin, now);
+  }
+
   /** One question, job or live session, added to its day and to the recent list. */
   async recordUsage(e: UsageEntry, day: string): Promise<void> {
     const key = USAGE_DAY + day;
@@ -501,6 +515,8 @@ export type StateApi = Pick<
   | "mintTicket"
   | "recordUsage"
   | "usageReport"
+  | "appendShared"
+  | "recentShared"
 > &
   LiveApi &
   RoutineApi &

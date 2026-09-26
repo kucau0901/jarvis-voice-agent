@@ -16,6 +16,7 @@ import { handleJobs } from "./jobs";
 const SCREENLESS: Grant[] = SCOPES.filter((s) => s !== "screen");
 import * as devices from "../lib/devices";
 import { handleLiveUsage } from "./usage";
+import { originOf } from "../lib/shared";
 
 /**
  * The versioned surface other things talk to.
@@ -145,6 +146,7 @@ async function handleAsk(
   env: Env,
   ctx: ExecutionContext,
   grants: readonly Grant[],
+  principal: Principal,
 ): Promise<Response> {
   if (req.method !== "POST") return err(405, "method not allowed");
   if (!env.OPENAI_API_KEY) return err(503, "OPENAI_API_KEY is not configured");
@@ -160,7 +162,8 @@ async function handleAsk(
   const clientRef = typeof body.clientRef === "string" ? body.clientRef.slice(0, 64) : undefined;
   const requestId = "r_" + crypto.randomUUID().replace(/-/g, "").slice(0, 8);
 
-  const d = await collectWithDeadline(req, env, ctx, turns, grants, waitS, "v1/ask");
+  const origin = originOf(principal, body.origin);
+  const d = await collectWithDeadline(req, env, ctx, turns, grants, waitS, "v1/ask", origin ? { origin } : undefined);
 
   if (d.timedOut) {
     return json({
@@ -223,7 +226,11 @@ async function handleChatCompletions(
   // Assist first (RunOptions.assist): the house answers what it understands.
   const d = await collectWithDeadline(
     req, env, ctx, turns, grants, waitSeconds(env.G2_WAIT_S), "v1/chat/completions",
-    { surface: "glasses", charBudget: budget, assist: true },
+    {
+      surface: "glasses", charBudget: budget, assist: true,
+      // One conversation across devices (lib/shared.ts); the owner key on glasses is "glasses".
+      origin: originOf(principal, null) ?? { id: "owner-glasses", label: "glasses" },
+    },
   );
 
   if (d.timedOut) {
@@ -344,7 +351,7 @@ export async function handleV1(
   // rather than offered and silently discarded.
   const noScreen = grants.filter((g) => g !== "screen");
   if (url.pathname === "/api/v1/ask") {
-    return handleAsk(req, env, ctx, grants.includes(WILDCARD) ? SCREENLESS : noScreen);
+    return handleAsk(req, env, ctx, grants.includes(WILDCARD) ? SCREENLESS : noScreen, principal);
   }
 
   // Even Realities G2 glasses. Text only, like /ask: the glasses draw text but
@@ -358,7 +365,7 @@ export async function handleV1(
   // The same delegation, streamed, for clients that want progress while a slow
   // tool runs. Identical contract to /api/delegate — this is just the versioned
   // name, so firmware never has to reference the browser's internal route.
-  if (url.pathname === "/api/v1/stream") return handleDelegate(req, env, ctx, grants);
+  if (url.pathname === "/api/v1/stream") return handleDelegate(req, env, ctx, grants, principal);
 
   // Push-to-talk: a spoken question in, a spoken answer out, never a live session.
   if (url.pathname === "/api/v1/voice") return handleVoice(req, env, ctx, principal, grants);

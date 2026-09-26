@@ -43,8 +43,10 @@ enough) or run it yourself with **Docker**.
   back, for a fraction of a cent a question. *Type* is a chat, for noisy or
   quiet places: answers are written to be read, with exact figures and links,
   and cost the least of all. Chosen per screen under the orb, one conversation
-  across all three. Hearing and speaking can use OpenAI, Cloudflare Workers AI,
-  or the device itself.
+  across all three — and across your devices: ask in the car, and "what was
+  that address again?" works on the phone or the glasses for half an hour.
+  Hearing and speaking can use OpenAI, Cloudflare Workers AI, or the device
+  itself.
 - **It can see** — "is there a car in the driveway?", "did the parcel arrive?":
   Jarvis looks at a camera (Home Assistant's, or any camera with a snapshot
   address) and answers from what it sees, showing you the frame. Routines can

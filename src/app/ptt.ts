@@ -2,6 +2,7 @@ import { VoiceChain } from "./loud";
 import { authHeaders } from "./key";
 import type { VoiceLevels } from "./audio";
 import type { Turn } from "./history";
+import { originHere } from "./alerts";
 
 /**
  * Push-to-talk: the cheap way to talk to Jarvis.
@@ -274,7 +275,7 @@ export class PushToTalk {
     if (q.audio) form.append("audio", q.audio, "question");
     if (q.text) form.append("text", q.text);
     const speakHere = cfg.tts === "browser" && "speechSynthesis" in window;
-    form.append("options", JSON.stringify({ context: this.hooks.history(), reply: speakHere ? "text" : "audio", screen: true }));
+    form.append("options", JSON.stringify({ context: this.hooks.history(), reply: speakHere ? "text" : "audio", screen: true, origin: originHere() }));
 
     this.abort = new AbortController();
     const headers = authHeaders(this.key);

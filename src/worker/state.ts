@@ -18,6 +18,7 @@ import { askForRoutine, travelFor } from "./routes/routines";
 import { Jobs } from "./lib/jobs";
 import { jobEngine } from "./routes/jobs";
 import type { UsageEntry } from "./lib/usage.ts";
+import type { SharedTurn } from "./lib/shared.ts";
 import { haConfig, renderTemplate } from "./lib/ha.ts";
 
 /**
@@ -298,6 +299,14 @@ export class JarvisState extends DurableObject<Env> {
 
   findAlert(id: string) {
     return this.host.findAlert(id);
+  }
+
+  appendShared(turns: SharedTurn[], now = Date.now()) {
+    return this.host.appendShared(turns, now);
+  }
+
+  recentShared(origin: string, now = Date.now()) {
+    return this.host.recentShared(origin, now);
   }
 
   recordUsage(e: UsageEntry, day: string) {

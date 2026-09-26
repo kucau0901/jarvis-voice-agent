@@ -23,6 +23,7 @@ import {
 import { run } from "./delegate";
 import { MAX_PHOTOS, MAX_PHOTO_CHARS, photosFrom } from "../lib/photos";
 import { dataUrl } from "../lib/cameras";
+import { originOf, type Origin } from "../lib/shared";
 
 /**
  * Push-to-talk: one spoken question in, one spoken answer out, paid per
@@ -54,6 +55,8 @@ interface Options {
   thread?: string;
   context?: unknown;
   screen: boolean;
+  /** Which screen asked, for the conversation shared across devices (lib/shared.ts). */
+  origin?: unknown;
 }
 
 interface Input {
@@ -62,6 +65,8 @@ interface Input {
   /** Photos taken to ask about, as data: URLs (lib/photos.ts). */
   photos?: string[];
   opts: Options;
+  /** The asking device, once known (handleVoice). */
+  origin?: Origin;
 }
 
 const THREAD = /^[A-Za-z0-9_-]{1,40}$/;
@@ -75,6 +80,7 @@ function options(raw: Record<string, unknown>): Options {
     ...(thread ? { thread } : {}),
     ...(raw.context !== undefined ? { context: raw.context } : {}),
     screen: raw.screen === true || raw.screen === "1" || raw.screen === "true",
+    ...(raw.origin !== undefined ? { origin: raw.origin } : {}),
   };
 }
 
@@ -209,6 +215,7 @@ async function pipeline(
   await run(env, [...prior, { role: "user", text: transcript }], tee, signal, grants, {
     surface: "voice",
     assist: true,
+    ...(input.origin ? { origin: input.origin } : {}),
     ...(input.photos?.length ? { images: input.photos } : {}),
   });
   const reply = collector.finish();
@@ -270,6 +277,7 @@ export async function handleVoice(
   const input = await readInput(req, url);
   if (input instanceof Response) return input;
   if (!input.audio && !input.text) return err(400, "nothing to answer: send a recording or text");
+  input.origin = originOf(principal, input.opts.origin) ?? undefined;
 
   // A screen only when the caller has one to show a map on, and may use it.
   const scoped: readonly Grant[] = input.opts.screen

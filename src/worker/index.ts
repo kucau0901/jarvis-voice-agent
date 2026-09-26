@@ -155,7 +155,7 @@ async function route(
         headers: { "content-type": "application/json" },
       });
     case "/api/delegate":
-      return await handleDelegate(req, env, ctx, grantsOf(principal));
+      return await handleDelegate(req, env, ctx, grantsOf(principal), principal);
     case "/api/tts":
       return await handleTts(req, env);
     case "/api/camera":

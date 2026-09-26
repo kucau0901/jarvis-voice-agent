@@ -19,6 +19,9 @@ of every release, and in the [README](README.md#updating).
 
 ### Added
 
+- **One conversation across your devices**: ask in the car, and "what was
+  that address again?" works on the phone or the glasses for the next half
+  hour. Only devices allowed to read memory take part.
 - **Watches**: "tell me if the gate stays open ten minutes", "let me know when
   the car has finished charging", "tell me when the washer is done". Jarvis
   checks Home Assistant itself every minute, with no AI cost per check, and

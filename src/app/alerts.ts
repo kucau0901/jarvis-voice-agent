@@ -34,6 +34,28 @@ export function screenLabel(): string {
   return "a browser";
 }
 
+const ORIGIN_KEY = "jarvis.origin";
+
+/**
+ * This screen, for the conversation shared across the user's devices
+ * (src/worker/lib/shared.ts): a random id made once and kept, and the label
+ * the model hears it by ("the car", "iPhone").
+ */
+export function originHere(): { id: string; label: string } {
+  let id = "";
+  try {
+    id = localStorage.getItem(ORIGIN_KEY) ?? "";
+    if (!/^[A-Za-z0-9_-]{6,64}$/.test(id)) {
+      id = `s_${crypto.getRandomValues(new Uint32Array(3)).reduce((a, n) => a + n.toString(36), "")}`;
+      localStorage.setItem(ORIGIN_KEY, id);
+    }
+  } catch {
+    // private mode: one id for this page's life
+    id ||= `s_${Math.random().toString(36).slice(2, 14)}`;
+  }
+  return { id, label: screenLabel() };
+}
+
 const BACKOFF_S = [1, 2, 5, 10, 30, 60];
 /** Under the idle timeouts of the proxies in between. The runtime answers without waking anything. */
 const PING_MS = 25_000;

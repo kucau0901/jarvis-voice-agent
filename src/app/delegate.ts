@@ -1,5 +1,6 @@
 import { authHeaders } from "./key";
 import type { Turn } from "./history";
+import { originHere } from "./alerts";
 
 /**
  * Drive one delegation from GPT-Live to the Worker and back.
@@ -67,7 +68,7 @@ export async function runDelegation(
     const res = await fetch("/api/delegate", {
       method: "POST",
       headers: authHeaders(key),
-      body: JSON.stringify({ delegationId, transcript }),
+      body: JSON.stringify({ delegationId, transcript, origin: originHere() }),
       signal,
     });
 

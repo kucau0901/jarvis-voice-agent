@@ -1,4 +1,5 @@
 import { authHeaders } from "./key";
+import { originHere } from "./alerts";
 import type { Turn } from "./history";
 
 /**
@@ -21,7 +22,7 @@ export async function askTyped(key: string, transcript: Turn[], hooks: ChatHooks
       method: "POST",
       headers: authHeaders(key),
       // "chat": the router writes for reading — exact figures, links, short lists.
-      body: JSON.stringify({ delegationId: "typed", transcript, surface: "chat" }),
+      body: JSON.stringify({ delegationId: "typed", transcript, surface: "chat", origin: originHere() }),
       signal,
     });
     if (!res.ok || !res.body) {

@@ -8,6 +8,9 @@ import { mcpSessions, mcpTools } from "../tools/mcp";
 import { assistConfig, lastAsk, tryAssist } from "../lib/assist";
 import { routerLoop } from "../lib/router-loop";
 import { recordUsage } from "./usage";
+import { originOf, sharedBlock, type Origin, type SharedTurn } from "../lib/shared";
+import type { Principal } from "../lib/auth";
+import { stateStub } from "../lib/state-client";
 import { MemoryStore } from "../lib/memory";
 import { allows, type Grant } from "../lib/scopes";
 import { countryName, localeOf, utcOffset } from "../lib/locale.ts";
@@ -308,11 +311,12 @@ export async function handleDelegate(
   env: Env,
   ctx: ExecutionContext,
   grants: readonly Grant[] = ["*"],
+  principal: Principal = { kind: "owner" },
 ): Promise<Response> {
   if (req.method !== "POST") return err(405, "method not allowed");
   if (!env.OPENAI_API_KEY) return err(503, "OPENAI_API_KEY is not configured");
 
-  let body: { transcript?: unknown; delegationId?: unknown; images?: unknown; surface?: unknown };
+  let body: { transcript?: unknown; delegationId?: unknown; images?: unknown; surface?: unknown; origin?: unknown };
   try {
     body = await req.json();
   } catch {
@@ -357,10 +361,13 @@ export async function handleDelegate(
    */
   // A photo the user took with the phone to ask about, in a live session.
   const images = photosFrom(body.images);
+  const origin = originOf(principal, body.origin);
   const opts: RunOptions = {
     ...(images.length ? { images } : {}),
     // Typed chat (src/app/chat.ts): written for reading, not for GPT-Live to say.
     ...(body.surface === "chat" ? { surface: "chat" as const, assist: true } : {}),
+    // One conversation across the user's devices (lib/shared.ts).
+    ...(origin ? { origin } : {}),
     waitUntil: (p) => ctx.waitUntil(p),
   };
   ctx.waitUntil(run(env, turns, sse, ac.signal, grants, opts).finally(() => sse.close()));
@@ -398,6 +405,11 @@ export interface RunOptions {
   images?: string[];
   /** Only these tools are offered (background jobs: reading, not acting — routes/jobs.ts). */
   toolFilter?: (t: Tool) => boolean;
+  /**
+   * Which device asked (lib/shared.ts). With it, and memory.read, the other
+   * devices' recent turns go with the question, and this one's are kept.
+   */
+  origin?: Origin;
   /**
    * The request's ctx.waitUntil, where there is one: housekeeping that can wait
    * until after the answer, such as refreshing a tool catalog, is done there.
@@ -447,7 +459,9 @@ export async function prepareRouter(
   const wantsMcp = allows(grants, "home");
   // The model choice is a KV read too, so it rides along rather than adding a
   // round trip of its own before the first hop.
-  const [, mcp, chosen] = await Promise.all([
+  // The user's other devices, when this one may see the conversation (lib/shared.ts).
+  const shares = !!opts.origin && allows(grants, "memory.read");
+  const [, mcp, chosen, shared] = await Promise.all([
     memory.load().catch((e) => {
       console.warn("memory unavailable:", e instanceof Error ? e.message : String(e));
     }),
@@ -456,7 +470,11 @@ export async function prepareRouter(
       return [] as typeof tools;
     }),
     resolveRouterModel(env),
+    shares
+      ? (stateStub(env)?.recentShared(opts.origin!.id) ?? Promise.resolve([] as SharedTurn[])).catch(() => [] as SharedTurn[])
+      : Promise.resolve([] as SharedTurn[]),
   ]);
+  const elsewhere = sharedBlock(shared, Date.now());
   tools.push(...mcp);
   if (opts.toolFilter) {
     const keep = tools.filter(opts.toolFilter);
@@ -543,6 +561,8 @@ export async function prepareRouter(
     },
     { role: "developer" as const, content: context },
     ...(profile ? [{ role: "user" as const, content: profile }] : []),
+    // What was said, like the profile: a user message, never an instruction.
+    ...(elsewhere ? [{ role: "user" as const, content: elsewhere }] : []),
     { role: "user" as const, content: `Conversation so far:\n\n${conversation}` },
     ...(opts.images?.length
       ? [
@@ -627,7 +647,20 @@ export async function run(
     // Settings → Usage: after the answer, where the request allows, so the
     // glasses and push-to-talk do not wait on the write.
     record(r) {
-      const write = recordUsage(env, {
+      const writes: Promise<void>[] = [];
+      // One conversation across devices (lib/shared.ts): what was asked here, and answered.
+      const asked = lastAsk(turns);
+      if (opts.origin && allows(grants, "memory.read") && r.ok && asked) {
+        const at = Date.now();
+        const o = opts.origin;
+        writes.push(
+          (stateStub(env)?.appendShared([
+            { at: at - r.ms, origin: o.id, label: o.label, role: "user", text: asked.slice(0, 1000) },
+            { at, origin: o.id, label: o.label, role: "assistant", text: r.text.slice(0, 1000) },
+          ]) ?? Promise.resolve()).catch(() => {}),
+        );
+      }
+      writes.push(recordUsage(env, {
         at: Date.now() - r.ms,
         surface: opts.surface ?? "app",
         by: r.by,
@@ -635,8 +668,9 @@ export async function run(
         ms: r.ms,
         ...r.usage,
         tools: r.tools,
-        ask: (lastAsk(turns) ?? "").slice(0, 80),
-      });
+        ask: (asked ?? "").slice(0, 80),
+      }));
+      const write = Promise.all(writes).then(() => {});
       if (!opts.waitUntil) return write;
       opts.waitUntil(write);
     },

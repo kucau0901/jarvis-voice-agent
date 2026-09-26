@@ -16,7 +16,7 @@
     "deploy": "npm run build && wrangler deploy",
     "typecheck": "tsc --noEmit",
     "cf-typegen": "wrangler types",
-    "test": "node test/history.test.ts && node test/memory.test.ts && node test/device-api.test.ts && node test/gmail.test.ts && node test/calendar.test.ts && node test/places.test.ts && node test/client.test.ts && node test/router-model.test.ts && node test/tessie.test.ts && node test/mcp-config.test.ts && node test/mcp-sessions.test.ts && node test/state.test.ts && node test/glasses.test.ts && node test/assist.test.ts && node test/settings.test.ts && node test/webpush.test.ts && node test/alerts.test.ts && node test/routines.test.ts && node test/voice.test.ts && node test/vision.test.ts && node test/semantic.test.ts && node test/jobs.test.ts && node test/version.test.ts && node test/router-loop.test.ts && node test/usage.test.ts",
+    "test": "node test/history.test.ts && node test/memory.test.ts && node test/device-api.test.ts && node test/gmail.test.ts && node test/calendar.test.ts && node test/places.test.ts && node test/client.test.ts && node test/router-model.test.ts && node test/tessie.test.ts && node test/mcp-config.test.ts && node test/mcp-sessions.test.ts && node test/state.test.ts && node test/glasses.test.ts && node test/assist.test.ts && node test/settings.test.ts && node test/webpush.test.ts && node test/alerts.test.ts && node test/routines.test.ts && node test/voice.test.ts && node test/vision.test.ts && node test/semantic.test.ts && node test/jobs.test.ts && node test/version.test.ts && node test/router-loop.test.ts && node test/usage.test.ts && node test/shared.test.ts",
     "release": "node scripts/release.mjs"
   },
   "dependencies": {

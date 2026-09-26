@@ -47,6 +47,7 @@ curl -X POST https://jarvis.example.com/api/v1/ask \
 |---|---|---|
 | `text` | string | **Required.** The question, as a person would say it. |
 | `context` | array | Optional prior turns, `{"role":"user"\|"assistant","text":"…"}`. Last 100 items, 4 000 chars each, 20 000 total; the excess is dropped silently. |
+| `origin` | object | Owner key only, optional: `{"id", "label"}` for which screen is asking, so the conversation is shared across the user's devices (below). A device token is always itself. |
 | `timeout` | number | Seconds to wait. Default `60`, maximum `120`. |
 | `clientRef` | string | Echoed back untouched, for your own logs. 64 chars. |
 
@@ -72,6 +73,13 @@ deliberate — firmware should not have to branch before it has something to say
 | `timeout` | Still working when your `timeout` expired. The work gets about 20 more seconds to finish on its own, then is stopped; anything it had already learned is saved, but whatever it was still waiting on — typically a slow answer from home — is lost, and nobody will see it. For questions that may take longer than your `timeout`, use `/api/v1/stream`. |
 | `failed` | It tried and could not. `detail` carries a truncated reason. |
 | `aborted` | The connection dropped, or the turn was cut off partway. |
+
+**One conversation across devices.** A question from a device that may read
+memory (`memory.read`, or the owner) carries what the user's other devices
+asked and were told in the last half hour, as reference, and adds its own
+question and answer to that. So "what was that address again?" asked on the
+glasses knows the answer given in the car. Devices without `memory.read`
+neither add to it nor see it.
 
 ### Status codes
 
