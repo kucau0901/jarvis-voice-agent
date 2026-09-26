@@ -1,7 +1,8 @@
 # Jarvis on Even Realities G2 glasses
 
-Ask Jarvis from your glasses and read the answer on their display. The Even
-app on your phone turns what you say into text and sends it to your Jarvis;
+Ask Jarvis from your glasses and read the answer on their display. Say
+"Hi Even" and ask: the Even app on your phone turns what you say into text and
+sends it to your Jarvis;
 the answer comes back as text on the glasses. House commands go straight to
 Home Assistant and are done in about a second. Everything else goes to
 Jarvis's AI, with the same tools as in the car: calendar, mail, memory, the
@@ -86,7 +87,7 @@ app.
 
 ## 3. Try it
 
-Ask Even AI on the glasses the way you normally do, and try:
+Say **"Hi Even"** to the glasses, then ask. Try:
 
 - "What's on my calendar today?"
 - "What's the weather tomorrow?"
