@@ -17,6 +17,8 @@ of every release, and in the [README](README.md#updating).
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-09-26
+
 ### Added
 
 - Jarvis's voice is louder, to match music: about 8 dB, with a limiter so it
@@ -97,5 +99,6 @@ updating to this one needs nothing doing.
 - A camera picture in Type mode was drawn under the chat; the chat now keeps
   its newest message in view above the phone's keyboard.
 
-[Unreleased]: https://github.com/kucau0901/jarvis-voice-agent/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/kucau0901/jarvis-voice-agent/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/kucau0901/jarvis-voice-agent/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/kucau0901/jarvis-voice-agent/releases/tag/v1.0.0
