@@ -6,6 +6,7 @@ import { buildHistory, type Turn } from "../lib/history";
 import { baseTools, outputText, toToolSchema, type Tool, type ToolContext, type ToolOutput } from "../tools/registry";
 import { mcpSessions, mcpTools } from "../tools/mcp";
 import { assistConfig, lastAsk, tryAssist } from "../lib/assist";
+import { routerLoop } from "../lib/router-loop";
 import { MemoryStore } from "../lib/memory";
 import { allows, type Grant } from "../lib/scopes";
 import { countryName, localeOf, utcOffset } from "../lib/locale.ts";
@@ -18,7 +19,6 @@ import {
   explicitCache,
   recordFallback,
   resolveRouterModel,
-  shouldFallBack,
 } from "../lib/router-model";
 
 const ROUTER_PROMPT = `You are the backend behind Jarvis, a voice assistant. It usually
@@ -278,9 +278,6 @@ function nowLine(env: Env): string {
     `date or a time, and never guess one.`
   );
 }
-
-/** Hard ceiling on tool hops, so a confused router cannot loop forever. */
-const MAX_STEPS = 6;
 
 /**
  * Escalating notes while a tool is still working.
@@ -572,184 +569,55 @@ export async function run(
   grants: readonly Grant[] = ["*"],
   opts: RunOptions = {},
 ) {
-  const started = Date.now();
   const assist = opts.assist && !opts.images?.length ? assistConfig(env, grants) : null;
   const ask = assist ? lastAsk(turns) : null;
-  if (assist && ask) {
-    const a = await tryAssist(assist, ask);
-    console.log(`assist (${opts.surface ?? "app"}): ${a.handled ? a.kind : a.reason} ${a.ms}ms`);
-    if (a.handled) {
-      sse.send({ type: "result", text: a.text, model: "home-assistant", usage: { input: 0, cached: 0, written: 0, output: 0, hops: 0 } });
-      return;
-    }
-  }
-  if (!env.OPENAI_API_KEY) {
-    // The house may still answer without one (above); everything else needs it.
-    sse.send({ type: "error", text: "Jarvis has no OpenAI key configured, so only the house can answer right now." });
-    return;
-  }
-
   const sessions = mcpSessions();
-  let p: Prepared;
-  try {
-    p = await prepareRouter(env, turns, signal, grants, opts, sessions);
-  } catch (e) {
-    await sessions.close();
-    throw e;
-  }
-  const { client, instructions, input, tools, byName, memory } = p;
-  // Where a slow answer spent its time: getting ready, each model hop, each
-  // round of tools. One line per question, in the Worker's log.
-  const timing = { prep: Date.now() - started, hops: [] as number[], tools: [] as number[] };
-  const logTiming = () =>
-    console.log(`router timing: prep ${timing.prep}ms, model ${timing.hops.join("+")}ms, tools ${timing.tools.join("+") || "-"}ms`);
-  // `let`, because a first hop the chosen model rejects is retried on the
-  // default and the rest follows it.
-  let model = p.model;
-  const used: string[] = [];
-  let turn: OpenAI.Responses.ResponseInput = input;
-  let previousResponseId: string | undefined;
-  /*
-   * What this question cost, summed over every hop, and reported with the
-   * answer. Without it there is no way to see whether the prompt cache is
-   * being read — and after the voice itself, the router prompt IS the bill.
-   */
-  const usage = { input: 0, cached: 0, written: 0, output: 0, hops: 0 };
+  let p: Prepared | null = null;
 
-  try {
-    for (let step = 0; step < MAX_STEPS; step++) {
-      if (signal.aborted) return;
-
-      const ask = (m: string) =>
-        client.responses.create(
-          {
-            model: m,
-            instructions,
-            input: turn,
-            tools: [
-              ...tools.map(toToolSchema),
-              // Executed by OpenAI server-side, so it never returns a
-              // function_call for this loop to dispatch — the answer simply
-              // arrives already grounded.
-              ...builtinTools(env),
-            ],
-            tool_choice: "auto",
-            ...(previousResponseId ? { previous_response_id: previousResponseId } : {}),
-            ...(explicitCache(m) ? { prompt_cache_options: { mode: "explicit" as const, ttl: "30m" as const } } : {}),
-            store: true,
-          },
-          { signal },
-        );
-
-      let res: OpenAI.Responses.Response;
-      const hopStart = Date.now();
-      try {
-        res = await ask(model);
-      } catch (e) {
-        // A model picked in settings that OpenAI now refuses must not take the
-        // car down with it. Hop 0 only, before any tool has run, so the retry
-        // cannot repeat a side effect.
-        if (!shouldFallBack(e, model, step, signal.aborted)) throw e;
-        const status = (e as { status?: number }).status;
-        const message = redact(e instanceof Error ? e.message : String(e)).slice(0, 400);
-        console.warn(`router model ${model} rejected (${status}); using ${DEFAULT_ROUTER_MODEL}: ${message}`);
-        // Not awaited: the answer matters more than the note, and the stream
-        // keeps the request alive long enough for the write to land.
-        recordFallback(env, {
-          model, fellBackTo: DEFAULT_ROUTER_MODEL, at: Date.now(), status, message,
-        }).catch(() => {});
-        model = DEFAULT_ROUTER_MODEL;
-        res = await ask(model);
-      }
-      timing.hops.push(Date.now() - hopStart);
-      previousResponseId = res.id;
-      const u = res.usage as
-        | {
-            input_tokens?: number;
-            output_tokens?: number;
-            input_tokens_details?: { cached_tokens?: number; cache_write_tokens?: number };
-          }
-        | undefined;
-      usage.input += u?.input_tokens ?? 0;
-      usage.cached += u?.input_tokens_details?.cached_tokens ?? 0;
-      usage.written += u?.input_tokens_details?.cache_write_tokens ?? 0;
-      usage.output += u?.output_tokens ?? 0;
-      usage.hops += 1;
-
-      const calls = res.output.filter(
-        (o): o is OpenAI.Responses.ResponseFunctionToolCall => o.type === "function_call",
-      );
-
-      if (!calls.length) {
-        logTiming();
-        const text = res.output_text?.trim();
-        if (used.length) sse.send({ type: "used", tools: used });
-        sse.send(
-          text
-            ? { type: "result", text, model, usage }
-            : { type: "error", text: "I could not work out an answer to that.", model, usage },
-        );
-        return;
-      }
-
-      // Only the outputs go back; the chain carries everything else.
-      for (const call of calls) if (!used.includes(call.name)) used.push(call.name);
-
-      /*
-       * Together, not one after another. Calls issued in one response cannot
-       * depend on each other — the model has none of their results yet — so
-       * awaiting them in turn only made the driver wait for the SUM: a Nabu
-       * Casa round trip of 6-15s stacked on top of the car's. Results keep the
-       * order the model asked in. callTool never throws, so one failure cannot
-       * take the others down.
-       */
-      const toolStart = Date.now();
-      const next = await runCalls(calls, byName, { env, signal, memory, grants }, sse);
-      timing.tools.push(Date.now() - toolStart);
-
-      turn = next;
-    }
-
-    sse.send({
-      type: "error",
-      text: "I got stuck working that one out. Ask me again in a moment.",
-      model,
-      usage,
-    });
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    console.error("delegate failed:", msg);
-    // Returning silently on abort left the car with a closed stream and no
-    // explanation, which reads to the driver as Jarvis simply giving up. Say
-    // something whenever the stream is still open, whatever the cause.
-    if (!sse.isClosed) {
-      sse.send({
-        type: "error",
-        text: signal.aborted
-          ? "That request was cut off before your home answered."
-          : spokenFailure(msg),
-        detail: msg.slice(0, 300),
-        aborted: signal.aborted,
-        model,
-        usage,
-      });
-    }
-  } finally {
-    const closing = sessions.close();
-    // Persist once, at the end. Saving inside each tool would mean a KV write
-    // per hop, and a turn that saves three facts should cost one write, not
-    // three. A failed save must not turn a good answer into an error, so it is
-    // logged rather than thrown — the answer was already spoken by then.
-    try {
-      // Deliberately not gated on signal.aborted: if the user taught Jarvis
-      // something and then ended the session, the fact was still learned and
-      // must still be kept.
-      await memory.save();
-    } catch (e) {
-      console.error("memory save failed:", e instanceof Error ? e.message : String(e));
-    }
-    await closing;
-  }
+  // The loop itself is lib/router-loop.ts; this gives it the real model, tools
+  // and house, which is all that differs from its tests.
+  await routerLoop({
+    sink: sse,
+    signal,
+    label: opts.surface ?? "app",
+    hasKey: !!env.OPENAI_API_KEY,
+    ...(assist && ask ? { assist: () => tryAssist(assist, ask) } : {}),
+    async prepare() {
+      p = await prepareRouter(env, turns, signal, grants, opts, sessions);
+      return { model: p.model, input: p.input, save: () => p!.memory.save() };
+    },
+    ask: (model, input, previousResponseId) =>
+      p!.client.responses.create(
+        {
+          model,
+          instructions: p!.instructions,
+          input: input as OpenAI.Responses.ResponseInput,
+          tools: [
+            ...p!.tools.map(toToolSchema),
+            // Executed by OpenAI server-side, so it never returns a
+            // function_call for the loop to dispatch — the answer simply
+            // arrives already grounded.
+            ...builtinTools(env),
+          ],
+          tool_choice: "auto",
+          ...(previousResponseId ? { previous_response_id: previousResponseId } : {}),
+          ...(explicitCache(model) ? { prompt_cache_options: { mode: "explicit" as const, ttl: "30m" as const } } : {}),
+          store: true,
+        },
+        { signal },
+      ),
+    runCalls: (calls) =>
+      runCalls(calls as OpenAI.Responses.ResponseFunctionToolCall[], p!.byName, { env, signal, memory: p!.memory, grants }, sse),
+    close: () => sessions.close(),
+    onFallback(e, model) {
+      const status = (e as { status?: number }).status;
+      const message = redact(e instanceof Error ? e.message : String(e)).slice(0, 400);
+      console.warn(`router model ${model} rejected (${status}); using ${DEFAULT_ROUTER_MODEL}: ${message}`);
+      // Not awaited: the answer matters more than the note, and the stream
+      // keeps the request alive long enough for the write to land.
+      recordFallback(env, { model, fellBackTo: DEFAULT_ROUTER_MODEL, at: Date.now(), status, message }).catch(() => {});
+    },
+  });
 }
 
 /**
@@ -876,27 +744,4 @@ async function callTool(
   } finally {
     timers.forEach(clearTimeout);
   }
-}
-
-/**
- * What to say when the router loop itself fails.
- *
- * Tool failures never reach here — callTool catches them and hands the reason
- * to the router, which says it properly — so what does is the OpenAI call. This
- * used to blame the home system for everything, so an expired key or an empty
- * account was announced as Home Assistant refusing credentials, and the user
- * went to debug the wrong thing.
- */
-function spokenFailure(msg: string): string {
-  if (/insufficient_quota|exceeded your current quota|billing/i.test(msg)) {
-    return "My OpenAI account is out of credit, so I cannot work that out right now.";
-  }
-  if (/\b401\b|incorrect api key|invalid_api_key/i.test(msg)) {
-    return "OpenAI refused my key, so I cannot work that out right now.";
-  }
-  if (/\b429\b|rate limit/i.test(msg)) return "OpenAI is rate-limiting me. Try again in a moment.";
-  if (/\b5\d\d\b|overloaded|timed? ?out|fetch failed|network/i.test(msg)) {
-    return "OpenAI is not answering properly right now. Try again in a moment.";
-  }
-  return "Something went wrong while I was working that out.";
 }
