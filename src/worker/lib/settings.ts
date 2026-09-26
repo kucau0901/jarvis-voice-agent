@@ -230,6 +230,18 @@ export const SETTINGS: readonly SettingDef[] = [
     help: "How long the AI thinks on a question you are waiting for: spoken, typed or on the glasses. Auto leaves it to the model, which testing found best for GPT-6 Luna; less can help a heavier model. None can make mistakes. Background jobs and routines are not affected.",
   },
   {
+    name: "RESEARCH_MODEL", group: "openai", kind: "text", default: "gpt-6-sol",
+    label: "Research model",
+    help: "What a research job runs on (\"research … in depth and let me know\"): stronger than the router, as it is asked for depth and nobody is waiting. About a dollar a report on GPT-6 Sol.",
+    validate: (v: string) => (/^[a-z0-9][a-z0-9._:-]{1,79}$/i.test(v.trim()) ? null : "is not a model id like gpt-6-sol"),
+  },
+  {
+    name: "RESEARCH_MONTHLY_LIMIT", group: "openai", kind: "number", default: "10",
+    label: "Research jobs a month",
+    help: "A ceiling on what research can spend. 0 switches research jobs off.",
+    validate: intIn(0, 200),
+  },
+  {
     name: "OPENAI_API_KEY", group: "openai", kind: "secret", required: true,
     label: "API key", help: "Starts with sk-.",
     validate: all(noSpaces, (v) => (v.startsWith("sk-") ? null : "should start with sk-"), minLen(20)),

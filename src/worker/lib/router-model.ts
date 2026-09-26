@@ -132,11 +132,18 @@ export type Effort = Exclude<(typeof EFFORTS)[number], "auto">;
 export const INTERACTIVE_EFFORT: Effort | null = null;
 
 export function effortFor(surface: string | undefined, setting: string | undefined): Effort | null {
-  if (surface === "job" || surface === "routine") return null;
+  if (surface === "job" || surface === "research" || surface === "routine") return null;
   const s = setting?.trim().toLowerCase();
   if (s && s !== "auto" && (EFFORTS as readonly string[]).includes(s)) return s as Effort;
   return INTERACTIVE_EFFORT;
 }
+
+/**
+ * The model a research job runs on (RESEARCH_MODEL): stronger than the router,
+ * because it is asked for depth and nobody is waiting on it.
+ */
+export const DEFAULT_RESEARCH_MODEL = "gpt-6-sol";
+export const researchModel = (setting: string | undefined): string => saneModelId(setting) ?? DEFAULT_RESEARCH_MODEL;
 
 /**
  * A 400 that is about the effort itself, from a model that does not take it

@@ -6,7 +6,12 @@ import {
   MAX_JOB_MS,
   MAX_RUNNING,
   MAX_STEPS,
+  RESEARCH_MAX_MS,
+  RESEARCH_MAX_STEPS,
+  RESEARCH_MONTHLY_DEFAULT,
+  limitsOf,
   splitResult,
+  withSources,
   type Job,
   type JobDeps,
   type Step,
@@ -68,7 +73,7 @@ function fakeStorage() {
   };
 }
 
-function harness(steps: Step[] = [], opts: { start?: { responseId: string } | { error: string }; hermes?: { ok: boolean; text: string } } = {}) {
+function harness(steps: Step[] = [], opts: { start?: { responseId: string } | { error: string }; hermes?: { ok: boolean; text: string }; researchLimit?: number } = {}) {
   const sent: Alert[] = [];
   const log: string[] = [];
   const queue = [...steps];
@@ -92,6 +97,7 @@ function harness(steps: Step[] = [], opts: { start?: { responseId: string } | { 
       sent.push(a);
       return { alert: a, attempts: [{ channel: "push", ok: true, detail: "" }], deliveredBy: "push" } as Delivery;
     },
+    ...(opts.researchLimit !== undefined ? { researchLimit: opts.researchLimit } : {}),
   };
   const storage = fakeStorage();
   return { jobs: new Jobs(storage, async () => deps), sent, log, storage };
@@ -224,6 +230,56 @@ console.log("\nwho may");
 {
   check("/api/v1/jobs needs ask", requiredScope("/api/v1/jobs", "POST") === "ask" && requiredScope("/api/v1/jobs/cancel", "POST") === "ask");
   check("a lookalike is the owner's", requiredScope("/api/v1/jobsx", "GET") === "owner");
+}
+
+console.log("\nresearch in depth");
+{
+  const h = harness([{ kind: "done", text: "SUMMARY: The Wallbox Pulsar is the best value.\n\nFindings…", usage: { input: 900, cached: 500, output: 3000, model: "gpt-6-sol" } }]);
+  const j = (await h.jobs.create({ title: "Home chargers", task: "Research home EV chargers.", engine: "research" }, BY, T0)) as Job;
+  check("a research job", j.engine === "research");
+  await h.jobs.tick(T0);
+  await h.jobs.tick(T0 + 10_000);
+  const done = (await h.jobs.get(j.id))!;
+  check("finishes like any job, with its model's usage", done.status === "done" && done.usage?.model === "gpt-6-sol", done);
+  check("announced as research", h.sent[0]?.title === "Research done: Home chargers", h.sent[0]?.title);
+  check("more time and more steps than a job", limitsOf("research").maxMs === RESEARCH_MAX_MS && limitsOf("research").maxSteps === RESEARCH_MAX_STEPS &&
+    RESEARCH_MAX_MS > MAX_JOB_MS && RESEARCH_MAX_STEPS > MAX_STEPS && limitsOf("jarvis").maxSteps === MAX_STEPS);
+  check("anything else asked for is an ordinary job", ((await h.jobs.create({ task: "x", engine: "deep" }, BY, T0)) as Job).engine === "jarvis");
+}
+{
+  const h = harness([], { researchLimit: 2 });
+  const r1 = await h.jobs.create({ task: "a", engine: "research" }, BY, T0);
+  await h.jobs.cancel((r1 as Job).id, T0);
+  const r2 = await h.jobs.create({ task: "b", engine: "research" }, BY, T0);
+  await h.jobs.cancel((r2 as Job).id, T0);
+  const r3 = await h.jobs.create({ task: "c", engine: "research" }, BY, T0);
+  check("a month's research is capped", typeof r3 === "string" && /2 research jobs for this month/.test(r3), r3);
+  check("an ordinary job is not counted against it", typeof (await h.jobs.create({ task: "d" }, BY, T0)) !== "string");
+  const nextMonth = T0 + 32 * 86_400_000;
+  check("next month, it starts again", typeof (await h.jobs.create({ task: "e", engine: "research" }, BY, nextMonth)) !== "string");
+  const off = harness([], { researchLimit: 0 });
+  check("0 switches research off", String(await off.jobs.create({ task: "a", engine: "research" }, BY, T0)).includes("switched off"));
+  check(`${RESEARCH_MONTHLY_DEFAULT} a month when unset`, RESEARCH_MONTHLY_DEFAULT === 10);
+}
+
+console.log("\nsources, from the searches' own citations");
+{
+  const cited = [
+    { url: "https://maker.example/pulsar?utm_source=chatgpt.com", title: "Pulsar Plus" },
+    { url: "https://maker.example/pulsar", title: "Pulsar Plus again" },
+    { url: "https://news.example/review?page=2&utm_medium=x", title: "  A review  " },
+    { url: "javascript:alert(1)", title: "no" },
+    { url: "not a url" },
+    ...Array.from({ length: 20 }, (_, i) => ({ url: `https://site${i}.example/` })),
+  ];
+  const out = withSources("SUMMARY: x\n\nBody.  ", cited);
+  const list = out.split("Sources:\n")[1]!.split("\n");
+  check("listed after the report", out.startsWith("SUMMARY: x\n\nBody.\n\nSources:\n"), out.slice(0, 60));
+  check("each page once, tracking tags removed", list[0] === "- Pulsar Plus: https://maker.example/pulsar" && !list.some((l) => l.includes("again")), list.slice(0, 3));
+  check("other query parameters kept", list[1] === "- A review: https://news.example/review?page=2", list[1]);
+  check("only web pages", !out.includes("javascript:") && !out.includes("not a url"));
+  check("fifteen at most", list.length === 15, list.length);
+  check("no citations: the report as it was", withSources("Just text.", []) === "Just text.");
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

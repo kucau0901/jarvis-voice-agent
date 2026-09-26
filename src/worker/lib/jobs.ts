@@ -28,7 +28,15 @@ import type { UsageEntry } from "./usage.ts";
  * Kept free of runtime imports beyond the alert helpers, so Node tests it.
  */
 
-export type JobEngine = "jarvis" | "hermes";
+/**
+ * "research": a job asked for as research in depth. OpenAI's deep-research
+ * models were shut down on 23 July 2026, so it is Jarvis's own job loop with a
+ * stronger model (RESEARCH_MODEL, GPT-6 Sol by default) thinking hard, more
+ * steps and more time, told to write a report; its sources come from the web
+ * search's own citations (withSources). Capped per month: each costs about a
+ * dollar.
+ */
+export type JobEngine = "jarvis" | "hermes" | "research";
 export type JobStatus = "running" | "done" | "failed" | "cancelled";
 
 export interface Job {
@@ -78,6 +86,8 @@ export interface JobDeps {
   /** Ask Hermes, waiting as long as it takes. */
   hermes(job: Job): Promise<{ ok: boolean; text: string }>;
   deliver(alert: Alert): Promise<Delivery>;
+  /** Research jobs allowed a month (RESEARCH_MONTHLY_LIMIT); 0 turns them off. */
+  researchLimit?: number;
   /** A finished job, for Settings → Usage. */
   record?(e: UsageEntry): Promise<void>;
 }
@@ -90,6 +100,10 @@ export const DAILY_JOBS = 30;
 export const KEEP_JOBS = 30;
 /** A router job that has run this many steps is stopped: something is looping. */
 export const MAX_STEPS = 25;
+export const RESEARCH_MAX_STEPS = 40;
+export const RESEARCH_MAX_MS = 45 * 60_000;
+export const RESEARCH_MONTHLY_DEFAULT = 10;
+const RESEARCH_MONTH = "jobs:research:month";
 /** And this long, whatever it is doing. */
 export const MAX_JOB_MS = 20 * 60_000;
 export const MAX_TASK = 4000;
@@ -137,6 +151,40 @@ const newJobId = () => {
  * sentences. `whole` is everything, summary included, for when it is short
  * enough to send as it is.
  */
+/** How long, and how many steps, a job of each kind may take. */
+export function limitsOf(engine: JobEngine): { maxMs: number; maxSteps: number } {
+  return engine === "research"
+    ? { maxMs: RESEARCH_MAX_MS, maxSteps: RESEARCH_MAX_STEPS }
+    : { maxMs: MAX_JOB_MS, maxSteps: MAX_STEPS };
+}
+
+/**
+ * A report with its sources listed at the end, from the web search's own
+ * citations rather than the model's memory of them: each URL once, at most
+ * fifteen, in the order first cited.
+ */
+export function withSources(text: string, cited: readonly { url: string; title?: string }[]): string {
+  const seen = new Set<string>();
+  const lines: string[] = [];
+  for (const c of cited) {
+    let url: string;
+    try {
+      const u = new URL(c.url);
+      if (u.protocol !== "https:" && u.protocol !== "http:") continue;
+      // Tracking tags make one page look like several.
+      for (const k of [...u.searchParams.keys()]) if (k.startsWith("utm_")) u.searchParams.delete(k);
+      url = u.toString();
+    } catch {
+      continue;
+    }
+    if (seen.has(url)) continue;
+    seen.add(url);
+    lines.push(`- ${c.title?.trim() ? `${c.title.trim()}: ` : ""}${url}`);
+    if (lines.length === 15) break;
+  }
+  return lines.length ? `${text.trimEnd()}\n\nSources:\n${lines.join("\n")}` : text;
+}
+
 export function splitResult(text: string): { summary: string; result: string; whole: string } {
   const t = text.trim();
   const m = /^\s*\**\s*summary\s*\**\s*:\s*\**\s*(.+?)\s*(?:\n+|$)([\s\S]*)$/i.exec(t);
@@ -184,7 +232,7 @@ export class Jobs {
   ): Promise<Job | string> {
     const task = clean(input.task, MAX_TASK);
     if (!task) return "a job needs a task: what to find out or work through";
-    const engine: JobEngine = input.engine === "hermes" ? "hermes" : "jarvis";
+    const engine: JobEngine = input.engine === "hermes" ? "hermes" : input.engine === "research" ? "research" : "jarvis";
     const all = await this.list();
     if (all.filter((j) => j.status === "running").length >= MAX_RUNNING) {
       return `${MAX_RUNNING} jobs are already running; wait for one to finish`;
@@ -193,6 +241,15 @@ export class Jobs {
     const day = (await this.storage.get<{ day: string; n: number }>(DAY)) ?? { day: today, n: 0 };
     const n = day.day === today ? day.n : 0;
     if (n >= DAILY_JOBS) return `the limit of ${DAILY_JOBS} jobs a day has been reached`;
+    if (engine === "research") {
+      const limit = (await this.deps()).researchLimit ?? RESEARCH_MONTHLY_DEFAULT;
+      const month = today.slice(0, 7);
+      const used = (await this.storage.get<{ month: string; n: number }>(RESEARCH_MONTH)) ?? { month, n: 0 };
+      const m = used.month === month ? used.n : 0;
+      if (limit <= 0) return "research jobs are switched off in settings";
+      if (m >= limit) return `the ${limit} research jobs for this month have been used; the limit is in Settings → OpenAI`;
+      await this.storage.put(RESEARCH_MONTH, { month, n: m + 1 });
+    }
     await this.storage.put(DAY, { day: today, n: n + 1 });
 
     const job: Job = {
@@ -256,9 +313,10 @@ export class Jobs {
   }
 
   private async advanceJarvis(j: Job, deps: JobDeps, now: number): Promise<void> {
-    if (now - j.createdAt > MAX_JOB_MS) {
+    const { maxMs, maxSteps } = limitsOf(j.engine);
+    if (now - j.createdAt > maxMs) {
       await deps.cancel(j).catch(() => {});
-      return this.finish(j, deps, now, { error: `it ran for over ${MAX_JOB_MS / 60_000} minutes and was stopped` });
+      return this.finish(j, deps, now, { error: `it ran for over ${maxMs / 60_000} minutes and was stopped` });
     }
     if (!j.responseId) {
       const s = await deps.start(j);
@@ -287,9 +345,9 @@ export class Jobs {
       return this.save(j);
     }
     if (step.kind === "continued") {
-      if (j.steps + 1 > MAX_STEPS) {
+      if (j.steps + 1 > maxSteps) {
         await deps.cancel({ ...j, responseId: step.responseId }).catch(() => {});
-        return this.finish(j, deps, now, { error: `it took more than ${MAX_STEPS} steps and was stopped` });
+        return this.finish(j, deps, now, { error: `it took more than ${maxSteps} steps and was stopped` });
       }
       j.responseId = step.responseId;
       j.steps += 1;
@@ -325,7 +383,7 @@ export class Jobs {
       done.result = result.slice(0, MAX_RESULT);
       alert = makeAlert(
         {
-          title: j.engine === "hermes" ? "Hermes answered" : `Done: ${j.title}`,
+          title: j.engine === "hermes" ? "Hermes answered" : j.engine === "research" ? `Research done: ${j.title}` : `Done: ${j.title}`,
           text: whole.length <= ALERT_WHOLE ? whole : `${summary}\n\nThe full result is in Jobs.`,
         },
         "job",

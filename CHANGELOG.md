@@ -23,6 +23,11 @@ of every release, and in the [README](README.md#updating).
   the car has finished charging", "tell me when the washer is done". Jarvis
   checks Home Assistant itself every minute, with no AI cost per check, and
   says it once each time the condition comes true. Needs Home Assistant.
+- **Research jobs**: "research the best home charger for my car and let me
+  know" runs as a background job on a stronger model (GPT-6 Sol by default),
+  searches widely, and comes back as a report with its sources, taken from
+  the searches' own citations. About a dollar each, 10 to 40 minutes, capped
+  at 10 a month (Settings → OpenAI). The Jobs panel shows what each job cost.
 - **Settings → Usage and cost**: what Jarvis has cost this month and today,
   split into answering, live minutes and background jobs; how many questions
   Home Assistant answered for nothing; the typical answer time; and the

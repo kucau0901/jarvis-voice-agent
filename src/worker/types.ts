@@ -36,6 +36,10 @@ export interface Env {
   HA_TOKEN?: string;
   /** Home Assistant origin, for the camera proxy and the Assist fast path. */
   HA_BASE_URL?: string;
+  /** The model research jobs run on (lib/jobs.ts); GPT-6 Sol if unset. */
+  RESEARCH_MODEL?: string;
+  /** Research jobs allowed a month; "0" switches them off. Default 10. */
+  RESEARCH_MONTHLY_LIMIT?: string;
   /** How long the router thinks on a question someone is waiting on (lib/router-model.ts effortFor). */
   ROUTER_EFFORT?: string;
   /** Where to look for new releases: owner/name on GitHub, "off", or empty for this project's own. */

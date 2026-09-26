@@ -15,7 +15,7 @@ interface JobView {
   id: string;
   title: string;
   task: string;
-  engine: "jarvis" | "hermes";
+  engine: "jarvis" | "hermes" | "research";
   status: "running" | "done" | "failed" | "cancelled";
   createdAt: number;
   finishedAt?: number;
@@ -25,6 +25,8 @@ interface JobView {
   hasResult?: boolean;
   error?: string;
   deliveredBy?: string | null;
+  /** Dollars so far, at OpenAI's prices; null when the model has no listed price. */
+  cost?: number | null;
 }
 
 const STATUS: Record<JobView["status"], string> = {
@@ -65,11 +67,19 @@ export class Jobs {
     task.rows = 3;
     task.placeholder = "Compare the three cheapest EV chargers I can get installed at home, with prices and what the reviews say.";
     form.appendChild(task);
+    // Research: a stronger model, searching widely, with sources (lib/jobs.ts).
+    const deep = el("label", "on");
+    const deepBox = document.createElement("input");
+    deepBox.type = "checkbox";
+    deep.appendChild(deepBox);
+    deep.appendChild(document.createTextNode(" Research in depth: a stronger model and sources, 10–40 minutes, about $1"));
+    form.appendChild(deep);
     form.appendChild(
       button("Start", () =>
         void this.act(async () => {
-          await this.api("POST", "/api/v1/jobs", { task: task.value });
+          await this.api("POST", "/api/v1/jobs", { task: task.value, ...(deepBox.checked ? { engine: "research" } : {}) });
           task.value = "";
+          deepBox.checked = false;
         }, "Started — it arrives as an alert when done."), "primary"),
     );
     sheet.appendChild(form);
@@ -142,10 +152,11 @@ export class Jobs {
     top.appendChild(el("span", `chip ${j.status === "done" ? "on" : "off"}`, STATUS[j.status]));
     row.appendChild(top);
 
-    const facts: string[] = [j.engine === "hermes" ? "Hermes" : "Jarvis", `started ${when(j.createdAt)}`];
+    const facts: string[] = [j.engine === "hermes" ? "Hermes" : j.engine === "research" ? "Research" : "Jarvis", `started ${when(j.createdAt)}`];
     if (j.status === "running") facts.push(`${Math.max(1, Math.round((Date.now() - j.createdAt) / 60_000))} min so far${j.engine === "jarvis" ? `, step ${j.steps}` : ""}`);
     if (j.finishedAt) facts.push(`took ${Math.max(1, Math.round((j.finishedAt - j.createdAt) / 60_000))} min`);
     if (j.status !== "running" && j.deliveredBy !== undefined) facts.push(j.deliveredBy ? `sent by ${j.deliveredBy}` : "not delivered");
+    if (typeof j.cost === "number" && j.cost > 0) facts.push(`about ${j.cost < 0.01 ? "under 1¢" : `$${j.cost.toFixed(2)}`}`);
     row.appendChild(el("div", "rfacts", facts.join(" · ")));
 
     if (j.summary) row.appendChild(el("div", "rwhen", j.summary));

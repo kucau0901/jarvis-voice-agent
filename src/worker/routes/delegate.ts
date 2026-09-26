@@ -385,7 +385,7 @@ export interface RunOptions {
    * "glasses": shown as text on Even Realities G2 glasses and never spoken, so
    * nothing rephrases the answer on its way to the user (routes/v1.ts).
    */
-  surface?: "glasses" | "routine" | "voice" | "job" | "chat";
+  surface?: "glasses" | "routine" | "voice" | "job" | "research" | "chat";
   /** Characters the glasses show before cutting off. */
   charBudget?: number;
   /** For a routine: its name, so the answer knows what it is answering. */
@@ -499,7 +499,8 @@ export async function prepareRouter(
       ? glassesInstructions(opts.charBudget ?? DEFAULT_CHAR_BUDGET)
       : "") +
     (opts.surface === "voice" ? spokenReplyInstructions() : "") +
-    (opts.surface === "job" ? JOB_INSTRUCTIONS : "") +
+    (opts.surface === "job" || opts.surface === "research" ? JOB_INSTRUCTIONS : "") +
+    (opts.surface === "research" ? RESEARCH_INSTRUCTIONS : "") +
     (opts.surface === "chat" ? CHAT_INSTRUCTIONS : "") +
     (opts.surface === "routine"
       ? "\n\nTHIS IS A ROUTINE, NOT A CONVERSATION\n" +
@@ -742,6 +743,22 @@ const JOB_INSTRUCTIONS =
   "Your final answer starts with one line: SUMMARY: then one or two sentences that can " +
   "be read aloud on their own. Then the full result, organised and complete, in plain " +
   "text; short headings and \"- \" lists are fine, tables are not.";
+
+/**
+ * For a research job (lib/jobs.ts "research"): asked for in depth, read later,
+ * on a phone. Its sources are added from the searches' own citations, so the
+ * model is told not to list them from memory.
+ */
+const RESEARCH_INSTRUCTIONS =
+  "\n\nTHIS IS A RESEARCH JOB\n" +
+  "The user asked for this to be researched in depth. Work out what needs finding out, then " +
+  "search widely: several searches from different angles, primary sources where they exist " +
+  "(makers, official sites, regulators, published data) and recent ones. Compare what the " +
+  "sources say, and say where they disagree or where the evidence is thin. Give figures with " +
+  "their date, prices in the user's currency, and what is available where they live.\n" +
+  "Write a report to be read on a phone: the SUMMARY line, then the findings under short " +
+  "headings, then what you would recommend and why. Do not list your sources: the pages you " +
+  "searched are added at the end automatically.";
 
 async function callTool(
   tool: Tool,

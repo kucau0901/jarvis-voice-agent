@@ -5,12 +5,13 @@ import type { EventSink } from "../lib/sse";
 import { err, json } from "../lib/http";
 import { stateStub } from "../lib/state-client";
 import { allows, WILDCARD, type Grant } from "../lib/scopes";
-import { builtinTools, explicitCache } from "../lib/router-model";
+import { builtinTools, explicitCache, researchModel } from "../lib/router-model";
 import { toToolSchema } from "../tools/registry";
 import * as hermes from "../tools/hermes";
-import { jobTool, type Job, type JobDeps, type Step } from "../lib/jobs";
+import { RESEARCH_MONTHLY_DEFAULT, jobTool, withSources, type Job, type JobDeps, type Step } from "../lib/jobs";
 import { prepareRouter, runCalls } from "./delegate";
 import { recordUsage } from "./usage";
+import { costOf } from "../lib/usage.ts";
 
 /**
  * Background jobs (lib/jobs.ts): the engine that runs them, and the HTTP
@@ -18,7 +19,7 @@ import { recordUsage } from "./usage";
  *
  *   GET    /api/v1/jobs           the jobs (a device sees its own)
  *   GET    /api/v1/jobs?id=       one, with its whole result
- *   POST   /api/v1/jobs           {task, title?, engine?: "jarvis" | "hermes"}
+ *   POST   /api/v1/jobs           {task, title?, engine?: "jarvis" | "hermes" | "research"}
  *   POST   /api/v1/jobs/cancel    {id}
  *   DELETE /api/v1/jobs?id=
  */
@@ -34,30 +35,56 @@ function usageOf(r: OpenAI.Responses.Response): Usage {
   return { input: u?.input_tokens ?? 0, cached: u?.input_tokens_details?.cached_tokens ?? 0, output: u?.output_tokens ?? 0, model: r.model };
 }
 
+/** The pages a response cited, from its web search's url_citation annotations. */
+function citationsOf(r: OpenAI.Responses.Response): { url: string; title?: string }[] {
+  const out: { url: string; title?: string }[] = [];
+  for (const item of r.output) {
+    if (item.type !== "message") continue;
+    for (const part of item.content) {
+      if (part.type !== "output_text") continue;
+      for (const a of part.annotations ?? []) {
+        if (a.type === "url_citation") out.push({ url: a.url, title: a.title });
+      }
+    }
+  }
+  return out;
+}
+
+/** RESEARCH_MONTHLY_LIMIT, or the default; 0 switches research off. */
+const researchLimit = (raw: string | undefined): number => {
+  const n = Number(raw);
+  return raw !== undefined && raw !== "" && Number.isInteger(n) && n >= 0 ? n : RESEARCH_MONTHLY_DEFAULT;
+};
+
 /** The engine, bound to an environment: what the Durable Object runs jobs with. */
 export function jobEngine(env: Env, deliver: JobDeps["deliver"]): JobDeps {
   const client = () => new OpenAI({ apiKey: env.OPENAI_API_KEY });
   const signal = () => AbortSignal.timeout(60_000);
 
   async function request(job: Job, turns: { role: "user"; text: string }[]) {
-    const p = await prepareRouter(env, turns, signal(), jobGrants(job.grants), { surface: "job", toolFilter: jobTool });
+    const research = job.engine === "research";
+    const p = await prepareRouter(env, turns, signal(), jobGrants(job.grants), { surface: research ? "research" : "job", toolFilter: jobTool });
+    // Research: the stronger model, thinking hard (lib/jobs.ts "research").
+    const model = research ? researchModel(env.RESEARCH_MODEL) : p.model;
     return {
       p,
       base: {
-        model: p.model,
+        model,
+        ...(research ? { reasoning: { effort: "high" as const } } : {}),
         instructions: p.instructions,
         tools: [...p.tools.map(toToolSchema), ...builtinTools(env)],
         tool_choice: "auto" as const,
         // Background mode: the step runs at OpenAI, and nobody has to stay connected for it.
         background: true,
         store: true,
-        ...(explicitCache(p.model) ? { prompt_cache_options: { mode: "explicit" as const, ttl: "30m" as const } } : {}),
+        ...(explicitCache(model) ? { prompt_cache_options: { mode: "explicit" as const, ttl: "30m" as const } } : {}),
       },
     };
   }
 
   return {
     deliver,
+    researchLimit: researchLimit(env.RESEARCH_MONTHLY_LIMIT),
     record: (e) => recordUsage(env, e),
 
     async start(job) {
@@ -82,7 +109,8 @@ export function jobEngine(env: Env, deliver: JobDeps["deliver"]): JobDeps {
       const calls = r.output.filter((o): o is OpenAI.Responses.ResponseFunctionToolCall => o.type === "function_call");
       if (!calls.length) {
         const text = r.output_text?.trim() ?? "";
-        return text ? { kind: "done", text, usage } : { kind: "failed", error: "it finished without an answer" };
+        if (!text) return { kind: "failed", error: "it finished without an answer" };
+        return { kind: "done", text: job.engine === "research" ? withSources(text, citationsOf(r)) : text, usage };
       }
       // The tools it asked for run here, between steps; then the next step starts.
       const { p, base } = await request(job, []);
@@ -128,7 +156,15 @@ export function jobView(j: Job, whole = false) {
   const { grants: _g, responseId: _r, ...rest } = j;
   void _g;
   void _r;
-  return whole ? rest : { ...rest, result: undefined, hasResult: !!j.result };
+  // What it cost so far, at OpenAI's prices (lib/usage.ts); null for a model with no price.
+  const cost = j.usage
+    ? costOf({
+        at: j.createdAt, surface: "job", by: j.usage.model ?? "", ok: true, ms: 0, tools: [], ask: "",
+        input: j.usage.input, cached: j.usage.cached, written: 0, output: j.usage.output, searches: 0,
+      })
+    : null;
+  const view = { ...rest, cost };
+  return whole ? view : { ...view, result: undefined, hasResult: !!j.result };
 }
 
 export async function handleJobs(req: Request, env: Env, url: URL, principal: Principal): Promise<Response | null> {

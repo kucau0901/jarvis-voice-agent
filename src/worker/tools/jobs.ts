@@ -17,22 +17,33 @@ export const startJob: Tool = {
     "memory, the car, cameras — but not act; if the work leads to an action it will say what it " +
     "would do. Write `task` as a complete brief: everything it needs from this conversation, " +
     "names resolved, because it will not see the conversation. Then tell the user it has started " +
-    "and that they will hear when it is done. Not for quick questions: answer those now.",
+    "and that they will hear when it is done. Not for quick questions: answer those now. " +
+    "Set research to true only when the user asks for research in depth ('research…', 'dig " +
+    "into…', 'find out everything about…'): it runs on a stronger model, searches widely, takes " +
+    "10 to 40 minutes and costs about a dollar, and comes back as a report with its sources. " +
+    "Say that when you start one.",
   parameters: {
     type: "object",
     properties: {
       title: { type: "string", description: "A few words to list it by, e.g. 'Dashcams under RM800'." },
       task: { type: "string", description: "The complete brief, as if to a capable assistant who knows nothing of this conversation." },
+      research: { type: "boolean", description: "True only for research in depth the user asked for; false for an ordinary job." },
     },
-    required: ["title", "task"],
+    required: ["title", "task", "research"],
     additionalProperties: false,
   },
   async run(args, ctx) {
     const state = stateStub(ctx.env);
     if (!state) return "Background jobs cannot run on this deployment: it has no state object.";
-    const j = await state.createJob({ title: args.title, task: args.task, engine: "jarvis" }, { who: "voice", grants: ctx.grants });
+    const research = args.research === true;
+    const j = await state.createJob(
+      { title: args.title, task: args.task, engine: research ? "research" : "jarvis" },
+      { who: "voice", grants: ctx.grants },
+    );
     if (typeof j === "string") return `Not started: ${j}.`;
-    return `Started "${j.title}". It usually takes a few minutes; the result will reach the user as a message. Tell them so.`;
+    return research
+      ? `Started research on "${j.title}". It takes 10 to 40 minutes; the report, with its sources, will reach the user as a message and wait in Jobs. Tell them so.`
+      : `Started "${j.title}". It usually takes a few minutes; the result will reach the user as a message. Tell them so.`;
   },
 };
 
