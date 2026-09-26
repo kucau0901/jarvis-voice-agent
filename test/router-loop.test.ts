@@ -104,7 +104,7 @@ console.log("\na tool, then the answer");
   check("the next hop carries their outputs, chained to the last", h.asks[1]?.input === "outputs of home-assistant__ha_search,look_at_camera" && h.asks[1]?.prev === "r1", h.asks[1]);
   const used = h.events.find((e) => e.type === "used");
   check("the tools used are reported", JSON.stringify(used?.tools) === JSON.stringify(["home-assistant__ha_search", "look_at_camera"]), used);
-  check("usage summed over both hops", JSON.stringify(last(h.events).usage) === JSON.stringify({ input: 200, cached: 160, written: 10, output: 20, hops: 2 }), last(h.events).usage);
+  check("usage summed over both hops", JSON.stringify(last(h.events).usage) === JSON.stringify({ input: 200, cached: 160, written: 10, output: 20, hops: 2, searches: 0 }), last(h.events).usage);
   check("memory saved and connections closed, once each", h.counts.save === 1 && h.counts.close === 1, h.counts);
   check("recorded with its model, tools and usage", h.records[0]?.by === "gpt-6-sol" && h.records[0].ok && h.records[0].tools.length === 2 && h.records[0].usage.hops === 2, h.records[0]);
   check("one timing line", h.logs.filter((l) => l.startsWith("router timing: prep ")).length === 1, h.logs);
@@ -114,6 +114,12 @@ console.log("\na tool, then the answer");
   await routerLoop(h.deps);
   check("an empty answer says so", last(h.events).type === "error" && last(h.events).text === "I could not work out an answer to that.");
   check("recorded as not answered", h.records[0]?.ok === false);
+}
+
+{
+  const h = harness([reply("r1", { output: [{ type: "web_search_call" }, { type: "web_search_call" }, { type: "message" }], output_text: "Sunny, 31°C" })]);
+  await routerLoop(h.deps);
+  check("web searches are counted, as OpenAI charges for each", (last(h.events).usage as { searches: number }).searches === 2 && h.records[0]?.usage.searches === 2);
 }
 
 console.log("\na model OpenAI refuses");

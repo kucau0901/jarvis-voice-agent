@@ -20,6 +20,7 @@ import { handleRouter } from "./routes/router";
 import { handleSettings } from "./routes/settings";
 import { withSettings } from "./lib/settings-store";
 import { JARVIS_VERSION, handleVersion } from "./routes/version";
+import { handleUsage } from "./routes/usage";
 import { handleAlertsAdmin, isTicketedSocket, openTicketedSocket } from "./routes/alerts";
 
 // The Durable Object class must be exported from the entry for the runtime to find it.
@@ -174,6 +175,8 @@ async function route(
       });
     case "/api/version":
       return await handleVersion(env);
+    case "/api/usage":
+      return await handleUsage(req, env);
     default:
       return err(404, `no route for ${url.pathname}`);
   }

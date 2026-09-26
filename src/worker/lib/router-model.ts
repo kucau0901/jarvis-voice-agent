@@ -110,6 +110,46 @@ export async function recordFallback(env: Env, rec: FallbackRecord): Promise<voi
 }
 
 /**
+ * How long the router thinks before answering (`reasoning.effort`).
+ *
+ * The model's own default was used for everything until 26 Sep 2026, and its
+ * hops took 2.5 to 4.5 s each — most of any answer Home Assistant cannot give
+ * itself. Less thinking is faster and cheaper, which matters most to someone
+ * waiting: in the car, on the glasses, typing. Background jobs and routines
+ * have nobody waiting and keep the default whatever the setting says.
+ *
+ * "auto" is what testing on real questions found best (INTERACTIVE_EFFORT).
+ */
+export const EFFORTS = ["auto", "none", "minimal", "low", "medium", "high"] as const;
+export type Effort = Exclude<(typeof EFFORTS)[number], "auto">;
+
+/**
+ * What "auto" means for a question someone is waiting on; null is the model's
+ * own default. Tested on ten real questions with GPT-6 Luna (26 Sep 2026,
+ * docs/DESIGN.md): low and minimal were no faster, and "none" invented a task.
+ * So the default stays; the setting is there for a heavier router model.
+ */
+export const INTERACTIVE_EFFORT: Effort | null = null;
+
+export function effortFor(surface: string | undefined, setting: string | undefined): Effort | null {
+  if (surface === "job" || surface === "routine") return null;
+  const s = setting?.trim().toLowerCase();
+  if (s && s !== "auto" && (EFFORTS as readonly string[]).includes(s)) return s as Effort;
+  return INTERACTIVE_EFFORT;
+}
+
+/**
+ * A 400 that is about the effort itself, from a model that does not take it
+ * (or not that value): the call is made again without it rather than failing,
+ * and rather than read as the model being refused (shouldFallBack).
+ */
+export function effortRefused(e: unknown): boolean {
+  const status = (e as { status?: unknown } | null)?.status;
+  const message = e instanceof Error ? e.message : String(e);
+  return status === 400 && /reasoning|effort/i.test(message);
+}
+
+/**
  * Whether a failed call should be retried on the default model.
  *
  * Only the FIRST hop, because nothing has run yet: no tool has fired, so

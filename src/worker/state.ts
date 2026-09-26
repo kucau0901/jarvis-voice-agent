@@ -17,6 +17,7 @@ import type { Grant } from "./lib/scopes";
 import { askForRoutine, travelFor } from "./routes/routines";
 import { Jobs } from "./lib/jobs";
 import { jobEngine } from "./routes/jobs";
+import type { UsageEntry } from "./lib/usage.ts";
 
 /**
  * The Durable Object. Deliberately thin: everything it does lives in
@@ -268,12 +269,12 @@ export class JarvisState extends DurableObject<Env> {
     return this.host.listPushSubs();
   }
 
-  addPushSub(input: Omit<PushRecord, "id" | "createdAt" | "failures" | "okAt">) {
-    return this.host.addPushSub(input);
+  addPushSub(input: Omit<PushRecord, "id" | "createdAt" | "failures" | "okAt">, now = Date.now(), opts?: { resync?: boolean }) {
+    return this.host.addPushSub(input, now, opts);
   }
 
-  removePushSub(idOrEndpoint: string) {
-    return this.host.removePushSub(idOrEndpoint);
+  removePushSub(idOrEndpoint: string, byOwner = false) {
+    return this.host.removePushSub(idOrEndpoint, byOwner);
   }
 
   pushTargets() {
@@ -294,6 +295,14 @@ export class JarvisState extends DurableObject<Env> {
 
   findAlert(id: string) {
     return this.host.findAlert(id);
+  }
+
+  recordUsage(e: UsageEntry, day: string) {
+    return this.host.recordUsage(e, day);
+  }
+
+  usageReport(today: string) {
+    return this.host.usageReport(today);
   }
 
   mintTicket(client: Pick<LiveClient, "who" | "label">) {

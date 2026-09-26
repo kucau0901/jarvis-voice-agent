@@ -23,6 +23,8 @@ export interface Usage {
   written: number;
   output: number;
   hops: number;
+  /** Web searches OpenAI ran for it, which it charges for by the call. */
+  searches: number;
 }
 
 /** A tool call the model asked for. */
@@ -85,7 +87,7 @@ export async function routerLoop(deps: LoopDeps): Promise<void> {
   const log = deps.log ?? ((l: string) => console.log(l));
   const { sink, signal } = deps;
   const started = now();
-  const usage: Usage = { input: 0, cached: 0, written: 0, output: 0, hops: 0 };
+  const usage: Usage = { input: 0, cached: 0, written: 0, output: 0, hops: 0, searches: 0 };
   const used: string[] = [];
   let outcome: LoopRecord | null = null;
   const settle = (by: string, ok: boolean, text: string) => {
@@ -159,6 +161,7 @@ export async function routerLoop(deps: LoopDeps): Promise<void> {
       usage.written += u?.input_tokens_details?.cache_write_tokens ?? 0;
       usage.output += u?.output_tokens ?? 0;
       usage.hops += 1;
+      usage.searches += res.output.filter((o) => o.type === "web_search_call").length;
 
       const calls = res.output.filter((o): o is FunctionCall => o.type === "function_call");
 

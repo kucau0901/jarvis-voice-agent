@@ -10,7 +10,7 @@ import { Stage, type DisplayPayload } from "./ui/Stage";
 import { Orb } from "./orb/Orb";
 import { VoiceLevels } from "./audio";
 import { runDelegation } from "./delegate";
-import { LiveLink, speakAlert, speakHere, speakText, type Alert } from "./alerts";
+import { LiveLink, speakAlert, speakHere, speakText, syncPush, type Alert } from "./alerts";
 import { askTyped } from "./chat";
 import { richText } from "./ui/util";
 import { PushToTalk } from "./ptt";
@@ -256,12 +256,32 @@ function status(text: string, bad = false) {
   document.body.classList.toggle("focus", !!(session || userWantsSession || ptt?.busy));
 }
 
+/**
+ * When the live session in use went live, for Settings → Usage: GPT-Live bills
+ * by the open minute, and only this screen knows when a session ended.
+ */
+let liveSince = 0;
+function reportLiveMinutes() {
+  if (!liveSince || !key) return;
+  const seconds = Math.round((Date.now() - liveSince) / 1000);
+  liveSince = 0; // "closed" arrives more than once
+  if (seconds < 1) return;
+  void fetch("/api/v1/usage/live", {
+    method: "POST",
+    headers: authHeaders(key),
+    body: JSON.stringify({ seconds }),
+    // Sent even if the page is closing.
+    keepalive: true,
+  }).catch(() => {});
+}
+
 function onState(s: SessionState, detail?: string) {
   switch (s) {
     case "requesting-mic": status("waiting for microphone permission…"); setOrb("orb", "connecting"); break;
     case "connecting":     status("connecting…"); setOrb("connecting"); break;
     case "live":
       attempt = 0; droppedAt = 0;
+      if (!liveSince) liveSince = Date.now();
       status("listening — tap to end");
       els.hint.textContent = "";
       refreshOrb();
@@ -281,6 +301,7 @@ function onState(s: SessionState, detail?: string) {
       break;
     case "closed":
       clearTimeout(idleTimer);
+      reportLiveMinutes();
       session = null;
       levels.detach("user"); levels.detach("agent");
       liveVoice.detach();
@@ -474,7 +495,10 @@ function onAlert(a: Alert) {
 }
 
 const live = new LiveLink(key, onAlert);
-if (key) live.start();
+if (key) {
+  live.start();
+  void syncPush(key);
+}
 
 /** A tapped notification: it carries only an id, so the text is fetched. */
 async function openAlert(id: string) {
@@ -514,6 +538,7 @@ async function tryKey(candidate: string) {
     if (res.ok) {
       key = saveKey(candidate);
       live.start(key);
+      void syncPush(key);
       unlock.wrap.classList.remove("show");
       setMode(mode);
       return;

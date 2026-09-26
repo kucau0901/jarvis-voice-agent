@@ -1,6 +1,10 @@
 import {
   DEFAULT_ROUTER_MODEL,
+  EFFORTS,
+  INTERACTIVE_EFFORT,
   builtinTools,
+  effortFor,
+  effortRefused,
   explicitCache,
   isRouterCandidate,
   orderCandidates,
@@ -195,6 +199,21 @@ console.log("\nexplicit prompt caching only where the model takes it");
   for (const m of ["gpt-5.5", "gpt-5", "gpt-5-mini", "gpt-4.1", "gpt-4o", "o3", "gpt-5.5-pro", "chatgpt-6"]) {
     check(`${m} does not`, !explicitCache(m));
   }
+}
+
+console.log("\nhow long to think");
+{
+  check("auto is the tested default for someone waiting", effortFor("voice", "auto") === INTERACTIVE_EFFORT && effortFor(undefined, undefined) === INTERACTIVE_EFFORT);
+  check("a chosen effort applies to the car, glasses and typing",
+    effortFor("voice", "low") === "low" && effortFor("glasses", "minimal") === "minimal" && effortFor("chat", "none") === "none" && effortFor(undefined, "high") === "high");
+  check("case and spaces do not matter", effortFor("voice", " LOW ") === "low");
+  check("jobs and routines keep the model's own default", effortFor("job", "low") === null && effortFor("routine", "none") === null);
+  check("nonsense is auto", effortFor("voice", "turbo") === INTERACTIVE_EFFORT);
+  check("every choice is offered in settings", EFFORTS.join() === "auto,none,minimal,low,medium,high");
+  const e400 = (m: string) => Object.assign(new Error(m), { status: 400 });
+  check("a 400 about reasoning is the effort refused", effortRefused(e400("Unsupported value: 'reasoning.effort' does not support 'none'")));
+  check("any other 400 is not", !effortRefused(e400("model not found")));
+  check("nor a 429 that mentions it", !effortRefused(Object.assign(new Error("reasoning rate"), { status: 429 })));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

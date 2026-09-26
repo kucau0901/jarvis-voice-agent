@@ -105,9 +105,14 @@ export async function handleAlertApi(
       }
       // Apple refuses a push whose VAPID contact is not https: or mailto:.
       const subject = publicOrigin(env, url.origin);
-      const rec = await state.addPushSub({
-        endpoint, p256dh, auth, subject, ...identity(principal, b.label, "a browser"),
-      });
+      // resync: the app re-sending this browser's notifications on its own
+      // (src/app/alerts.ts syncPush), which must not undo the owner removing it.
+      const rec = await state.addPushSub(
+        { endpoint, p256dh, auth, subject, ...identity(principal, b.label, "a browser") },
+        Date.now(),
+        { resync: b.resync === true },
+      );
+      if (!rec) return json({ ok: false, removed: true, error: "removed in Settings → Alerts; turn notifications on again here to undo" }, { status: 409 });
       return json({ ok: true, id: rec.id, label: rec.label }, { status: 201 });
     }
 
@@ -146,7 +151,8 @@ export async function handleAlertsAdmin(req: Request, env: Env): Promise<Respons
   if (req.method === "DELETE") {
     const id = url.searchParams.get("sub") ?? "";
     if (!/^[0-9a-f]{16}$/.test(id)) return err(400, "sub must be a subscription id");
-    return json({ ok: await state.removePushSub(id) });
+    // The owner's choice: that browser re-sending it on its own does not undo it.
+    return json({ ok: await state.removePushSub(id, true) });
   }
   if (req.method !== "GET") return err(405, "method not allowed");
 

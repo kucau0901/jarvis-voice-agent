@@ -1,6 +1,7 @@
 import type { Storage } from "./state-host.ts";
 import type { Grant } from "./scopes.ts";
 import { makeAlert, type Alert, type Delivery } from "./alerts.ts";
+import type { UsageEntry } from "./usage.ts";
 
 /**
  * Background jobs: things that take minutes, answered later.
@@ -56,7 +57,8 @@ export interface Job {
   result?: string;
   error?: string;
   deliveredBy?: string | null;
-  usage?: { input: number; cached: number; output: number };
+  /** Tokens over every step, and the model that spent them, for Settings → Usage. */
+  usage?: { input: number; cached: number; output: number; model?: string };
 }
 
 /** One look at a running jarvis job, as the engine reports it. */
@@ -76,6 +78,8 @@ export interface JobDeps {
   /** Ask Hermes, waiting as long as it takes. */
   hermes(job: Job): Promise<{ ok: boolean; text: string }>;
   deliver(alert: Alert): Promise<Delivery>;
+  /** A finished job, for Settings → Usage. */
+  record?(e: UsageEntry): Promise<void>;
 }
 
 const J = "job:";
@@ -267,10 +271,12 @@ export class Jobs {
     }
     const step = await deps.poll(j);
     if (step.kind !== "failed" && step.usage) {
+      const model = step.usage.model ?? j.usage?.model;
       j.usage = {
         input: (j.usage?.input ?? 0) + step.usage.input,
         cached: (j.usage?.cached ?? 0) + step.usage.cached,
         output: (j.usage?.output ?? 0) + step.usage.output,
+        ...(model ? { model } : {}),
       };
     }
     if (step.kind === "wait") {
@@ -334,6 +340,20 @@ export class Jobs {
     const d = await deps.deliver(alert).catch(() => null);
     done.deliveredBy = d?.deliveredBy ?? null;
     await this.save(done);
+    await deps.record?.({
+      at: done.createdAt,
+      surface: "job",
+      by: done.engine === "hermes" ? "hermes" : (done.usage?.model ?? "unknown"),
+      ok: done.status === "done",
+      ms: now - done.createdAt,
+      input: done.usage?.input ?? 0,
+      cached: done.usage?.cached ?? 0,
+      written: 0,
+      output: done.usage?.output ?? 0,
+      searches: 0,
+      tools: [],
+      ask: done.title.slice(0, 80),
+    }).catch(() => {});
   }
 
   /** Keep the newest KEEP_JOBS finished ones. */

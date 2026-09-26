@@ -51,6 +51,12 @@ Jarvis closed, the phone locked, or after a restart, it still arrives. The text
 is encrypted for your browser; the push service carries it without being able
 to read it. Tap a notification and Jarvis opens on that alert.
 
+Each time you open Jarvis, it quietly checks in the device's notifications
+with your Jarvis again, so one that slipped off the list (a push service can
+replace them now and then) is back without you doing anything. A device you
+removed yourself in **Settings → Alerts** stays removed until you turn
+notifications on again on it.
+
 You need to turn notifications on again only if, on that device, you clear the
 browser's or the site's data, remove Jarvis from the Home Screen, or block its
 notifications. Jarvis notices a device that has gone and takes it off the list.

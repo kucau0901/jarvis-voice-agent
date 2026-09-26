@@ -6,6 +6,7 @@ import {
   type Changes,
   type SavedSettings,
 } from "./settings.ts";
+import { addToDay, emptyDay, report, type DayTotals, type UsageEntry, type UsageReport } from "./usage.ts";
 import {
   applyChanges,
   applyRefChanges,
@@ -76,6 +77,18 @@ const SETTINGS = "settings:v1";
  */
 const VAPID = "vapid:v1";
 const PUSH = "push:";
+/**
+ * A browser the owner took off the list in Settings → Alerts. Kept so that the
+ * browser re-sending its notifications when Jarvis opens (resync) does not put
+ * it straight back; turning notifications on again on that browser clears it.
+ */
+const PUSH_REMOVED = "pushoff:";
+/** Usage (lib/usage.ts): a day's totals under its date, and the last questions. */
+const USAGE_DAY = "usage:day:";
+const USAGE_RECENT = "usage:recent";
+export const USAGE_RECENT_MAX = 50;
+/** Thirteen months, so the same month last year can still be looked at. */
+export const USAGE_KEEP_DAYS = 400;
 const DELIVERIES = "alerts:log";
 const TICKET = "ticket:";
 /** Long enough to open a socket after asking for one; short enough that a ticket seen in a log is useless. */
@@ -310,25 +323,63 @@ export class StateHost {
   }
 
   /** Subscribing again from the same browser replaces its record rather than adding one. */
+  /**
+   * Add a browser's notifications, or refresh them. `resync` is the browser
+   * re-sending them on its own when Jarvis opens; it is refused (null) for a
+   * browser the owner removed, and keeps the record's history. Anything else
+   * is someone turning notifications on, which also undoes a removal.
+   */
   async addPushSub(
     input: Omit<PushRecord, "id" | "createdAt" | "failures" | "okAt">,
     now = Date.now(),
-  ): Promise<PushRecord> {
+    opts: { resync?: boolean } = {},
+  ): Promise<PushRecord | null> {
     const id = await endpointId(input.endpoint);
+    if (opts.resync && (await this.storage.get(PUSH_REMOVED + id))) return null;
+    if (!opts.resync) await this.storage.delete(PUSH_REMOVED + id);
     const all = await this.listPushSubs();
-    if (!all.some((s) => s.id === id) && all.length >= MAX_PUSH_SUBS) {
+    const had = all.find((s) => s.id === id);
+    if (!had && all.length >= MAX_PUSH_SUBS) {
       const stalest = all.sort((a, b) => (a.okAt ?? a.createdAt) - (b.okAt ?? b.createdAt))[0]!;
       await this.storage.delete(PUSH + stalest.id);
     }
-    const rec: PushRecord = { ...input, id, createdAt: now, failures: 0 };
+    // The same browser again keeps when it was added and when it last worked.
+    const rec: PushRecord = {
+      ...input,
+      id,
+      createdAt: had?.createdAt ?? now,
+      ...(had?.okAt ? { okAt: had.okAt } : {}),
+      failures: opts.resync ? (had?.failures ?? 0) : 0,
+    };
     await this.storage.put(PUSH + id, rec);
     return rec;
   }
 
   /** By id (the panel) or by endpoint (the browser that owns it, turning notifications off). */
-  async removePushSub(idOrEndpoint: string): Promise<boolean> {
+  async removePushSub(idOrEndpoint: string, byOwner = false, now = Date.now()): Promise<boolean> {
     const id = idOrEndpoint.startsWith("https:") ? await endpointId(idOrEndpoint) : idOrEndpoint;
+    if (byOwner) await this.storage.put(PUSH_REMOVED + id, now);
     return this.storage.delete(PUSH + id);
+  }
+
+  /** One question, job or live session, added to its day and to the recent list. */
+  async recordUsage(e: UsageEntry, day: string): Promise<void> {
+    const key = USAGE_DAY + day;
+    const fresh = !(await this.storage.get<DayTotals>(key));
+    await this.storage.put(key, addToDay((await this.storage.get<DayTotals>(key)) ?? emptyDay(day), e));
+    const recent = (await this.storage.get<UsageEntry[]>(USAGE_RECENT)) ?? [];
+    await this.storage.put(USAGE_RECENT, [...recent, e].slice(-USAGE_RECENT_MAX));
+    // Once a day at most, the oldest days beyond the keep go.
+    if (fresh) {
+      const days = [...(await this.storage.list<DayTotals>({ prefix: USAGE_DAY })).keys()].sort();
+      for (const k of days.slice(0, Math.max(0, days.length - USAGE_KEEP_DAYS))) await this.storage.delete(k);
+    }
+  }
+
+  /** This month so far, today, and the recent questions, as Settings → Usage shows them. */
+  async usageReport(today: string): Promise<UsageReport> {
+    const days = [...(await this.storage.list<DayTotals>({ prefix: USAGE_DAY + today.slice(0, 7) })).values()];
+    return report(days, (await this.storage.get<UsageEntry[]>(USAGE_RECENT)) ?? [], today);
   }
 
   async pushTargets(): Promise<{ vapid: VapidKeys; subs: PushTarget[] }> {
@@ -448,6 +499,8 @@ export type StateApi = Pick<
   | "deliveries"
   | "findAlert"
   | "mintTicket"
+  | "recordUsage"
+  | "usageReport"
 > &
   LiveApi &
   RoutineApi &

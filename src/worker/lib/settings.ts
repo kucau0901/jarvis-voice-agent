@@ -2,6 +2,7 @@ import type { Env } from "../types";
 import { DEFAULT_ORDER, validateOrder } from "./alerts.ts";
 import { validateCameraList } from "./cameras.ts";
 import { DEFAULT_STYLE, DEFAULT_VOICE, STT_PROVIDERS, TTS_PROVIDERS, TTS_VOICES } from "./speech.ts";
+import { EFFORTS } from "./router-model.ts";
 
 /**
  * Every setting Jarvis reads, in one list.
@@ -223,6 +224,11 @@ export const GROUPS: readonly GroupDef[] = [
 
 export const SETTINGS: readonly SettingDef[] = [
   // --- OpenAI
+  {
+    name: "ROUTER_EFFORT", group: "openai", kind: "enum", default: "auto", options: EFFORTS,
+    label: "Thinking before answering",
+    help: "How long the AI thinks on a question you are waiting for: spoken, typed or on the glasses. Auto leaves it to the model, which testing found best for GPT-6 Luna; less can help a heavier model. None can make mistakes. Background jobs and routines are not affected.",
+  },
   {
     name: "OPENAI_API_KEY", group: "openai", kind: "secret", required: true,
     label: "API key", help: "Starts with sk-.",

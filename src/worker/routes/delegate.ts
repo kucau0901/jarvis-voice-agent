@@ -7,6 +7,7 @@ import { baseTools, outputText, toToolSchema, type Tool, type ToolContext, type 
 import { mcpSessions, mcpTools } from "../tools/mcp";
 import { assistConfig, lastAsk, tryAssist } from "../lib/assist";
 import { routerLoop } from "../lib/router-loop";
+import { recordUsage } from "./usage";
 import { MemoryStore } from "../lib/memory";
 import { allows, type Grant } from "../lib/scopes";
 import { countryName, localeOf, utcOffset } from "../lib/locale.ts";
@@ -16,6 +17,8 @@ import { photosFrom } from "../lib/photos";
 import {
   DEFAULT_ROUTER_MODEL,
   builtinTools,
+  effortFor,
+  effortRefused,
   explicitCache,
   recordFallback,
   resolveRouterModel,
@@ -573,6 +576,11 @@ export async function run(
   const ask = assist ? lastAsk(turns) : null;
   const sessions = mcpSessions();
   let p: Prepared | null = null;
+  // How long to think (lib/router-model.ts): dropped for the rest of the
+  // question if the model refuses it.
+  let effort = effortFor(opts.surface, env.ROUTER_EFFORT);
+  const create = (params: OpenAI.Responses.ResponseCreateParamsNonStreaming) =>
+    p!.client.responses.create(effort ? { ...params, reasoning: { effort } } : params, { signal });
 
   // The loop itself is lib/router-loop.ts; this gives it the real model, tools
   // and house, which is all that differs from its tests.
@@ -586,29 +594,51 @@ export async function run(
       p = await prepareRouter(env, turns, signal, grants, opts, sessions);
       return { model: p.model, input: p.input, save: () => p!.memory.save() };
     },
-    ask: (model, input, previousResponseId) =>
-      p!.client.responses.create(
-        {
-          model,
-          instructions: p!.instructions,
-          input: input as OpenAI.Responses.ResponseInput,
-          tools: [
-            ...p!.tools.map(toToolSchema),
-            // Executed by OpenAI server-side, so it never returns a
-            // function_call for the loop to dispatch — the answer simply
-            // arrives already grounded.
-            ...builtinTools(env),
-          ],
-          tool_choice: "auto",
-          ...(previousResponseId ? { previous_response_id: previousResponseId } : {}),
-          ...(explicitCache(model) ? { prompt_cache_options: { mode: "explicit" as const, ttl: "30m" as const } } : {}),
-          store: true,
-        },
-        { signal },
-      ),
+    async ask(model, input, previousResponseId) {
+      const params: OpenAI.Responses.ResponseCreateParamsNonStreaming = {
+        model,
+        instructions: p!.instructions,
+        input: input as OpenAI.Responses.ResponseInput,
+        tools: [
+          ...p!.tools.map(toToolSchema),
+          // Executed by OpenAI server-side, so it never returns a
+          // function_call for the loop to dispatch — the answer simply
+          // arrives already grounded.
+          ...builtinTools(env),
+        ],
+        tool_choice: "auto",
+        ...(previousResponseId ? { previous_response_id: previousResponseId } : {}),
+        ...(explicitCache(model) ? { prompt_cache_options: { mode: "explicit" as const, ttl: "30m" as const } } : {}),
+        store: true,
+      };
+      try {
+        return await create(params);
+      } catch (e) {
+        if (!effort || !effortRefused(e)) throw e;
+        console.warn(`router: ${model} refused reasoning effort "${effort}"; asking without it`);
+        effort = null;
+        return await create(params);
+      }
+    },
     runCalls: (calls) =>
       runCalls(calls as OpenAI.Responses.ResponseFunctionToolCall[], p!.byName, { env, signal, memory: p!.memory, grants }, sse),
     close: () => sessions.close(),
+    // Settings → Usage: after the answer, where the request allows, so the
+    // glasses and push-to-talk do not wait on the write.
+    record(r) {
+      const write = recordUsage(env, {
+        at: Date.now() - r.ms,
+        surface: opts.surface ?? "app",
+        by: r.by,
+        ok: r.ok,
+        ms: r.ms,
+        ...r.usage,
+        tools: r.tools,
+        ask: (lastAsk(turns) ?? "").slice(0, 80),
+      });
+      if (!opts.waitUntil) return write;
+      opts.waitUntil(write);
+    },
     onFallback(e, model) {
       const status = (e as { status?: number }).status;
       const message = redact(e instanceof Error ? e.message : String(e)).slice(0, 400);

@@ -164,6 +164,26 @@ length.
 Times were measured in September 2026 and move with the router model, the
 network and how long Hermes thinks.
 
+**How long the router thinks is not where the time goes.** Tested on 26 Sep
+2026 with GPT-6 Luna: ten real questions (the car, memory, the staff list, the
+calendar, the web, Malay, the house, a planted false memory, the gate and a
+follow-up) at each reasoning effort, through the live deployment.
+
+| effort | total | output tokens | wrong answers |
+|---|---|---|---|
+| model default | 85 s | 1,262 | 0 |
+| medium | 73 s | 1,191 | 0 |
+| low | 87 s | 1,313 | 0 |
+| minimal | 80 s | 1,416 | 0 |
+| none | 63 s | 943 | 1 |
+
+Low and minimal were no faster and wrote as much: Luna already thinks little.
+The differences are the house (one porch-light question took 10 to 28 s,
+depending on how many searches it made) and the link to it. "None" was quickest
+and invented a task: asked about tomorrow's calendar, it started a background
+job looking for payroll dates. So `ROUTER_EFFORT` stays at the model's
+default; the setting is there for a heavier router model, where it may matter.
+
 ## The car
 
 Home Assistant mirrors the Tesla's basic state, but only a subset — it cannot push

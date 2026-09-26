@@ -359,6 +359,31 @@ console.log("\nstorage: notifications");
   check("by endpoint, for the browser that owns it", await host.removePushSub(all[2]!.endpoint));
 }
 
+console.log("\nstorage: a browser re-sending its notifications");
+{
+  const host = new StateHost(fakeStorage(), {} as never);
+  const s = await browserSub("y", "Pixel");
+  const base = { endpoint: s.endpoint, p256dh: s.p256dh, auth: s.auth, subject: s.subject, who: "owner", label: "Pixel" };
+  const first = (await host.addPushSub(base, 100))!;
+  await host.pushResults([{ id: first.id, ok: true, gone: false }], 150);
+  const again = (await host.addPushSub(base, 200, { resync: true }))!;
+  check("keeps when it was added and when it last worked", again.createdAt === 100 && again.okAt === 150, again);
+
+  // The push service said it had gone, so Jarvis dropped it; the browser still has it.
+  await host.pushResults([{ id: first.id, ok: false, gone: true }]);
+  check("dropped when the push service says gone", (await host.listPushSubs()).length === 0);
+  check("and re-sending puts it back", (await host.addPushSub(base, 300, { resync: true })) !== null && (await host.listPushSubs()).length === 1);
+
+  // The owner took it off the list: re-sending on its own must not undo that.
+  await host.removePushSub(first.id, true);
+  check("removed by the owner, a re-send is refused", (await host.addPushSub(base, 400, { resync: true })) === null && (await host.listPushSubs()).length === 0);
+  check("turning notifications on again on that browser undoes it", (await host.addPushSub(base, 500)) !== null);
+  check("and then re-sending works again", (await host.addPushSub(base, 600, { resync: true })) !== null);
+
+  await host.removePushSub(s.endpoint);
+  check("the browser turning its own notifications off is not a removal", (await host.addPushSub(base, 700, { resync: true })) !== null);
+}
+
 console.log("\nstorage: tickets");
 {
   const store = fakeStorage();

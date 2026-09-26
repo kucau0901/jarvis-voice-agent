@@ -19,12 +19,27 @@ of every release, and in the [README](README.md#updating).
 
 ### Added
 
+- **Settings → Usage and cost**: what Jarvis has cost this month and today,
+  split into answering, live minutes and background jobs; how many questions
+  Home Assistant answered for nothing; the typical answer time; and the
+  slowest recent answers, with who answered them. Estimates at OpenAI's
+  published prices; OpenAI's usage page stays the bill.
+- **Settings → OpenAI → Thinking before answering**: how long the AI thinks
+  on a question you are waiting for. Auto, the model's own, stays the
+  default: tested on real questions, lower levels were no faster with GPT-6
+  Luna, and "none" made a serious mistake (docs/DESIGN.md). It is there for a
+  heavier router model, where it may help.
 - [How Jarvis reaches you](docs/notifications.md): where alerts go, turning
   on notifications, why the app need not be open or reopened after a restart,
   and what to do when one does not arrive.
 
 ### Fixed
 
+- A phone whose notifications had slipped off Jarvis's list (the push service
+  replaced them, or reported them gone) kept believing they were on, and
+  alerts stopped without a word. Opening Jarvis now checks them in again. A
+  device you removed in Settings → Alerts stays removed until you turn
+  notifications on again on it, and the list keeps each device's history.
 - Notifications could arrive late on an idle phone (screen off, on a table),
   as Android held them for its next battery-saving window: every alert is now
   sent as high priority. And a phone that was off for more than an hour never

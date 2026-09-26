@@ -206,6 +206,42 @@ export async function enablePush(key: string): Promise<void> {
   if (!r.ok) throw new Error(((await r.json().catch(() => ({}))) as { error?: string }).error ?? `server said ${r.status}`);
 }
 
+/**
+ * Tell Jarvis again about this browser's notifications, if they are on. Run
+ * whenever Jarvis opens; prompts for nothing.
+ *
+ * A push service may replace a subscription, and Jarvis drops one a push
+ * service reports gone. Either way the browser still believed notifications
+ * were on while Jarvis no longer had it, and alerts stopped without a word.
+ * If the owner removed this browser in Settings → Alerts, Jarvis says so (409)
+ * and it is unsubscribed here too, so this screen shows notifications off.
+ */
+export async function syncPush(key: string): Promise<void> {
+  try {
+    if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) return;
+    if (Notification.permission !== "granted") return;
+    const reg = await navigator.serviceWorker.getRegistration();
+    let sub = await reg?.pushManager.getSubscription();
+    if (!reg || !sub) return;
+    const res = await fetch("/api/v1/push", { headers: authHeaders(key) });
+    if (!res.ok) return;
+    const serverKey = fromB64url(((await res.json()) as { publicKey: string }).publicKey);
+    // Made against a different key (a new deployment): it would never deliver.
+    if (!sameKey(sub.options.applicationServerKey, serverKey)) {
+      await sub.unsubscribe();
+      sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: serverKey });
+    }
+    const r = await fetch("/api/v1/push", {
+      method: "POST",
+      headers: authHeaders(key),
+      body: JSON.stringify({ subscription: sub.toJSON(), label: screenLabel(), resync: true }),
+    });
+    if (r.status === 409) await sub.unsubscribe();
+  } catch {
+    // offline, or no push here: the next time Jarvis opens
+  }
+}
+
 export async function disablePush(key: string): Promise<void> {
   const reg = await navigator.serviceWorker.getRegistration();
   const sub = await reg?.pushManager.getSubscription();

@@ -10,6 +10,7 @@ import { toToolSchema } from "../tools/registry";
 import * as hermes from "../tools/hermes";
 import { jobTool, type Job, type JobDeps, type Step } from "../lib/jobs";
 import { prepareRouter, runCalls } from "./delegate";
+import { recordUsage } from "./usage";
 
 /**
  * Background jobs (lib/jobs.ts): the engine that runs them, and the HTTP
@@ -30,7 +31,7 @@ const quiet: EventSink = { send() {}, isClosed: false };
 type Usage = NonNullable<Job["usage"]>;
 function usageOf(r: OpenAI.Responses.Response): Usage {
   const u = r.usage as { input_tokens?: number; output_tokens?: number; input_tokens_details?: { cached_tokens?: number } } | undefined;
-  return { input: u?.input_tokens ?? 0, cached: u?.input_tokens_details?.cached_tokens ?? 0, output: u?.output_tokens ?? 0 };
+  return { input: u?.input_tokens ?? 0, cached: u?.input_tokens_details?.cached_tokens ?? 0, output: u?.output_tokens ?? 0, model: r.model };
 }
 
 /** The engine, bound to an environment: what the Durable Object runs jobs with. */
@@ -57,6 +58,7 @@ export function jobEngine(env: Env, deliver: JobDeps["deliver"]): JobDeps {
 
   return {
     deliver,
+    record: (e) => recordUsage(env, e),
 
     async start(job) {
       if (!env.OPENAI_API_KEY) return { error: "no OpenAI key is set" };

@@ -8,10 +8,26 @@ import { speakText } from "../alerts";
 const NAV: [string, string[]][] = [
   ["Connections", ["openai", "car", "home", "hermes", "google", "spotify", "maps", "cameras", "mcp"]],
   ["How Jarvis behaves", ["router", "voice", "screen", "alerts", "locale"]],
-  ["Access and advanced", ["owner", "devices", "advanced"]],
+  ["Access and advanced", ["usage", "owner", "devices", "advanced"]],
 ];
 const SECTION_KEY = "jarvis.settings.section";
 const LOUD_LABEL: Record<Loudness, string> = { normal: "Normal", louder: "Louder", loudest: "Loudest" };
+
+/** GET /api/usage, as the panel reads it (src/worker/lib/usage.ts UsageReport). */
+interface UsageEntryView { at: number; surface: string; by: string; ms: number; hops?: number; seconds?: number; ask: string }
+interface UsageView {
+  month: string;
+  total: { questions: number; byHouse: number; cost: { router: number; live: number; jobs: number }; liveSeconds: number; jobs: number; unpriced: number };
+  today: { questions: number; cost: { router: number; live: number; jobs: number } };
+  medianMs: number | null;
+  slowest: UsageEntryView[];
+  recent: UsageEntryView[];
+  pricesAsOf: string;
+}
+
+/** Dollars as the panel says them: small amounts are the usual case. */
+const money = (d: number) => (d === 0 ? "$0" : d < 0.01 ? "under 1¢" : d < 10 ? `$${d.toFixed(2)}` : `$${d.toFixed(0)}`);
+const minutes = (s: number) => (s < 90 ? `${Math.round(s)} s` : `${Math.round(s / 60)} min`);
 
 function node<K extends keyof HTMLElementTagNameMap>(tag: K, text: string): HTMLElementTagNameMap[K] {
   const e = document.createElement(tag);
@@ -97,6 +113,16 @@ export class Settings {
             <button class="reset">Reset</button>
           </div>
           <div class="res"></div>
+        </section>
+        <section class="svc usage" data-section="usage" data-title="Usage and cost" data-state="on">
+          <h3>Usage and cost</h3>
+          <p class="note">
+            What Jarvis has cost you this month, and how it answered. Estimates at
+            OpenAI's published prices; OpenAI's own usage page is the bill. Hearing
+            and speaking for push-to-talk are not counted.
+          </p>
+          <div class="now usagenow"></div>
+          <div class="res usageres"></div>
         </section>
         <section class="svc screen" data-section="screen" data-title="This screen" data-state="on">
           <h3>This screen</h3>
@@ -194,6 +220,54 @@ export class Settings {
       }
     } catch {
       line.textContent = "";
+    }
+  }
+
+  /** Settings → Usage and cost (GET /api/usage, src/worker/lib/usage.ts). */
+  private async loadUsage(): Promise<void> {
+    const box = this.el.querySelector<HTMLElement>(".usagenow")!;
+    const res = this.el.querySelector<HTMLElement>(".usageres")!;
+    try {
+      const r = await fetch("/api/usage", { headers: authHeaders(this.key) });
+      if (!r.ok) throw new Error(`server said ${r.status}`);
+      const u = (await r.json()) as UsageView;
+      const t = u.total;
+      const cost = t.cost.router + t.cost.live + t.cost.jobs;
+      const lines: HTMLElement[] = [];
+      const line = (label: string, text: string) => {
+        const d = node("div", "");
+        d.appendChild(node("b", label));
+        d.appendChild(document.createTextNode(` ${text}`));
+        lines.push(d);
+      };
+      const month = new Date(`${u.month}-01T12:00:00`).toLocaleDateString([], { month: "long", year: "numeric" });
+      line(`${month}:`, t.questions
+        ? `${t.questions} question${t.questions === 1 ? "" : "s"}, ${t.byHouse} answered by Home Assistant for nothing (${Math.round((100 * t.byHouse) / t.questions)}%).`
+        : "no questions yet.");
+      const parts = [`${money(t.cost.router)} answering`];
+      if (t.liveSeconds) parts.push(`${money(t.cost.live)} live (${minutes(t.liveSeconds)})`);
+      if (t.jobs) parts.push(`${money(t.cost.jobs)} in ${t.jobs} job${t.jobs === 1 ? "" : "s"}`);
+      line("Cost so far:", `about ${money(cost)}: ${parts.join(", ")}.` +
+        (t.unpriced ? ` Plus ${t.unpriced.toLocaleString()} tokens from a model with no listed price.` : ""));
+      const d = u.today;
+      line("Today:", `${d.questions} question${d.questions === 1 ? "" : "s"}, about ${money(d.cost.router + d.cost.live + d.cost.jobs)}.`);
+      if (u.medianMs !== null) line("Typical answer:", `${(u.medianMs / 1000).toFixed(1)} s, over the last ${u.recent.filter((e) => e.seconds === undefined && e.surface !== "job").length} questions.`);
+      if (u.slowest.length) {
+        lines.push(node("h4", "Slowest recently"));
+        const ul = node("ul", "");
+        for (const e of u.slowest) {
+          const li = node("li", "");
+          const who = e.by === "home-assistant" ? "Home Assistant" : `the AI${e.hops ? `, ${e.hops} step${e.hops === 1 ? "" : "s"}` : ""}`;
+          li.textContent = `${(e.ms / 1000).toFixed(1)} s · ${e.surface} · "${e.ask}" · ${who}`;
+          ul.appendChild(li);
+        }
+        lines.push(ul);
+      }
+      box.replaceChildren(...lines);
+      res.textContent = `Prices as of ${u.pricesAsOf}.`;
+    } catch (e) {
+      box.replaceChildren();
+      res.textContent = `Could not load usage: ${e instanceof Error ? e.message : String(e)}`;
     }
   }
 
@@ -313,6 +387,7 @@ export class Settings {
     void this.services.load();
     void this.loadRouter();
     void this.loadVersion();
+    void this.loadUsage();
     try {
       const res = await fetch("/api/mcp", { headers: authHeaders(this.key) });
       const data = (await res.json()) as {

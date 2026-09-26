@@ -120,6 +120,8 @@ export function requiredScope(pathname: string, method: string): RouteRequiremen
     case "/api/voices":
     // Push-to-talk. It also needs `ask`, checked in the route: it asks things.
     case "/api/v1/voice":
+    // How long a live session was open, reported by its screen for Usage.
+    case "/api/v1/usage/live":
       return "voice";
 
     case "/api/map":
