@@ -1,12 +1,17 @@
 # Jarvis on Even Realities G2 glasses
 
-Ask Jarvis from your glasses and read the answer on their display. Say
-"Hi Even" and ask: the Even app on your phone turns what you say into text and
-sends it to your Jarvis;
-the answer comes back as text on the glasses. House commands go straight to
-Home Assistant and are done in about a second. Everything else goes to
-Jarvis's AI, with the same tools as in the car: calendar, mail, memory, the
-car, the web, your own agents.
+**Say "Hi Even" and ask.** That is all there is to it. Jarvis takes the place
+of Even AI, the assistant already built into the glasses, so the wake word you
+use today reaches your own Jarvis. Unlike an app from Even Hub, there is
+nothing to open and no menu to find on the glasses: hands-free, whatever you
+are doing.
+
+"Hi Even, open the main gate." "Hi Even, what's my next meeting?" "Hi Even,
+remind me at five to call the office." The Even app on your phone turns what
+you say into text and sends it to your Jarvis, and the answer appears on the
+display. House commands go straight to Home Assistant and are done in about a
+second. Everything else goes to Jarvis's AI, with the same tools as in the car:
+calendar, mail, memory, the car, the web, your own agents.
 
 ```
 G2 glasses

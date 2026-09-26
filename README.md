@@ -56,8 +56,10 @@ enough) or run it yourself with **Docker**.
   be open.
 - **Your own agents** — any MCP server, and optionally a
   [Hermes](https://github.com/NousResearch/hermes-agent) agent at home.
-- **Other devices** — an ESP32, smart glasses (Even Realities G2 —
-  [setup guide](docs/even-g2.md)) or anything else can use it through a small
+- **Smart glasses** — on Even Realities G2, say *"Hi Even"* and ask: Jarvis
+  takes the place of the glasses' built-in assistant, so there is no app to
+  open, hands-free. [Setup guide](docs/even-g2.md).
+- **Other devices** — an ESP32 or anything else can use it through a small
   [device API](docs/api.md) with per-device, revocable, scoped tokens.
 - **Set up in the browser** — every key and setting is entered, tested and
   changed in the app's settings panel. You need exactly one secret to deploy.

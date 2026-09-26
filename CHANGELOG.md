@@ -19,8 +19,9 @@ of every release, and in the [README](README.md#updating).
 
 ### Added
 
-- A step-by-step setup guide for Even Realities G2 glasses:
-  [docs/even-g2.md](docs/even-g2.md).
+- A setup guide for Even Realities G2 glasses: say "Hi Even" and ask, with
+  Jarvis in place of the glasses' built-in assistant, so there is no app to
+  open. [docs/even-g2.md](docs/even-g2.md).
 
 ## [1.0.0] - 2026-09-26
 
