@@ -61,7 +61,8 @@ export class Devices {
         <p class="note">
           Anything that is not the car: a microcontroller, a pair of glasses, a script.
           Each gets its own token and its own reach, and can be revoked on its own.
-          See <code>docs/api.md</code>.
+          See <code>docs/api.md</code>, and for Even Realities G2 glasses,
+          <code>docs/even-g2.md</code>.
         </p>
 
         <div class="mint">

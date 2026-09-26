@@ -525,6 +525,9 @@ reference implementation.
 `/api/v1/ask` in the shape the Even app reads, an OpenAI chat completion, so no
 firmware or app changes are needed. Requires `ask`.
 
+Setting up a pair of glasses, step by step, with what to tick and what to do
+when it does not work: [even-g2.md](even-g2.md). What follows is the protocol.
+
 In the Even app: **Settings → Even AI → Agent configuration → Add agent**.
 
 | Field | Value |

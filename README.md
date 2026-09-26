@@ -56,9 +56,9 @@ enough) or run it yourself with **Docker**.
   be open.
 - **Your own agents** — any MCP server, and optionally a
   [Hermes](https://github.com/NousResearch/hermes-agent) agent at home.
-- **Other devices** — an ESP32, smart glasses (Even Realities G2) or anything
-  else can use it through a small [device API](docs/api.md) with per-device,
-  revocable, scoped tokens.
+- **Other devices** — an ESP32, smart glasses (Even Realities G2 —
+  [setup guide](docs/even-g2.md)) or anything else can use it through a small
+  [device API](docs/api.md) with per-device, revocable, scoped tokens.
 - **Set up in the browser** — every key and setting is entered, tested and
   changed in the app's settings panel. You need exactly one secret to deploy.
 
@@ -205,7 +205,8 @@ each screen. Device tokens keep working.
 `POST /api/v1/ask` takes text and returns an answer, for anything that can make
 an HTTPS request. Mint a token per device in the app's **devices** panel, with
 only the scopes it needs, and revoke it there. See [docs/api.md](docs/api.md),
-including an ESP32 example and the setup for Even Realities G2 glasses.
+including an ESP32 example. Even Realities G2 glasses have a step-by-step
+guide of their own: [docs/even-g2.md](docs/even-g2.md).
 
 ## Security
 

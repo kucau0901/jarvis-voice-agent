@@ -17,6 +17,11 @@ of every release, and in the [README](README.md#updating).
 
 ## [Unreleased]
 
+### Added
+
+- A step-by-step setup guide for Even Realities G2 glasses:
+  [docs/even-g2.md](docs/even-g2.md).
+
 ## [1.0.0] - 2026-09-26
 
 The first numbered release. A copy made before it has no version number;
