@@ -9,12 +9,14 @@ car, the web, your own agents.
 
 ```
 G2 glasses
-   │ Bluetooth
-Even app on your phone        speech → text
-   │ HTTPS
-your Jarvis
-   ├─▶ Home Assistant Assist   house commands, ~1 s
-   └─▶ the AI and its tools    everything else, 3–15 s
+  │ Bluetooth
+Even app on your phone
+  │ speech → text, HTTPS
+Your Jarvis
+  ├─▶ Home Assistant
+  │     house commands, ~1 s
+  └─▶ the AI and its tools
+        the rest, 3–15 s
 ```
 
 Setting it up takes about ten minutes: a token in Jarvis, an agent in the
