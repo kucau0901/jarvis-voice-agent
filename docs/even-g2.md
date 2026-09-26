@@ -80,11 +80,9 @@ the token has to be pasted into the Even app, and it is 37 characters long.
    select it. If the app shows an "Even AI is active" message, dismiss it
    first.
 
-No **Agent configuration** in your Even app? Even has offered custom agents
-to people enrolled as EvenHub developers; its own tutorial,
-[Bridging G2 to OpenClaw](https://support.evenrealities.com/hc/en-us/articles/16280926743695-Tutorial-Bridging-G2-to-OpenClaw-Bring-Your-Own-Agent),
-covers what your account needs. Jarvis needs nothing from that tutorial beyond
-the agent itself.
+This is the same menu people use to connect other agents, such as OpenClaw,
+and it is there for every G2 owner. If you cannot find it, update the Even
+app.
 
 ## 3. Try it
 
