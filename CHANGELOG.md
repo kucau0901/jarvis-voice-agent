@@ -19,17 +19,27 @@ of every release, and in the [README](README.md#updating).
 
 ### Added
 
-- Jarvis's voice can be made louder, per screen: **Settings → This screen →
-  Jarvis's voice**, Normal, Louder (about 6 dB) or Loudest (about 8 dB), with
-  a limiter so it does not clip. In the car, leave the volume where the music
-  wants it: turned up for Jarvis, Spotify came back far too loud when a live
-  conversation ended. Live, push-to-talk and spoken alerts all follow it.
+- Jarvis's voice is louder, to match music: about 8 dB, with a limiter so it
+  does not clip. In the car, the volume had to be turned up for Jarvis, and
+  Spotify came back far too loud when a live conversation ended; now the
+  volume can stay where the music wants it. Live, push-to-talk and spoken
+  alerts all follow it. To change it, per screen: **Settings → This screen →
+  Jarvis's voice** — Loudest (the default), Louder (about 6 dB) or Normal (as
+  before). If a screen hears Jarvis echo in a live conversation, choose less
+  there.
 
 - A setup guide for Even Realities G2 glasses: say "Hi Even" and ask, with
   Jarvis in place of the glasses' built-in assistant, so there is no app to
   open. It explains why Jarvis beats connecting OpenClaw or Hermes directly:
   faster, answers that fit the display, and background jobs for slow work.
   [docs/even-g2.md](docs/even-g2.md).
+
+### Changed
+
+- Updating moves to the newest release rather than to the latest code on
+  `main`: see [Updating](README.md#updating), and the foot of every release.
+  Releases now collect changes that have been in use, rather than one per
+  change.
 
 ## [1.0.0] - 2026-09-26
 

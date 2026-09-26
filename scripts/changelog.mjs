@@ -75,11 +75,13 @@ export function bump(current, part) {
 }
 
 /** Said at the foot of every release, so nobody has to go looking for how. */
-export const HOW_TO_UPDATE = `---
+export const howToUpdate = (version) => `---
 
 **Updating.** Read the notes above first: anything under *Action needed* has to be done as part of the update.
 
-- Cloudflare: \`git pull\`, then \`npm ci && npm run deploy\`.
-- Docker: \`git pull\`, then \`docker compose up -d --build\`.
+\`\`\`bash
+git fetch --tags
+git checkout v${version}
+\`\`\`
 
-To stay on this version rather than the newest, \`git checkout\` its tag instead of pulling. The version you are running is at the foot of the menu in Settings, which also says when a newer one is out.`;
+Then \`npm ci && npm run deploy\` on Cloudflare, or \`docker compose up -d --build\` with Docker. Your memory, settings and devices are kept. The version you are running is at the foot of the menu in Settings, which also says when a newer one is out.`;

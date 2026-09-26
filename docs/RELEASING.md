@@ -21,6 +21,23 @@ instance, can keep reading the old name (`RENAMED` in
 The device API (`/api/v1`, [api.md](api.md)) follows the same rule: adding a
 field is minor; removing or changing one that devices read is major.
 
+## Releases and main
+
+`main` always passes CI and is what the maintainer runs, but a release is the
+checkpoint: changes collect under `[Unreleased]` and are released together once
+they have been used for a while. Running copies are told about releases, not
+commits, and the README's update commands move to the newest release rather
+than to `main`.
+
+When to release:
+
+- **A fix for something broken or unsafe** in a copy people run: a patch
+  release straight away, even for that one fix.
+- **Features and small fixes:** a minor release once they have been tried,
+  typically every week or two, not one per change.
+- **Something that needs doing on update:** a major release, avoided where a
+  compatible change will do.
+
 ## While working
 
 Every change someone running a copy would notice gets a line under

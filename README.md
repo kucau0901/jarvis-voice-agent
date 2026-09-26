@@ -15,9 +15,10 @@ enough) or run it yourself with **Docker**.
 > use it from your phone instead. [docs/DESIGN.md](docs/DESIGN.md#the-in-car-probe)
 > has a probe page to check your own car.
 >
-> Jarvis's voice is quieter than music. Rather than turning the car up for it,
-> and having Spotify blast when a live conversation ends, make Jarvis louder
-> on the car's screen: **Settings → This screen → Jarvis's voice**.
+> Jarvis's voice is quieter than music, so Jarvis makes it louder itself: set
+> the car's volume for your music and leave it there, and Spotify will not
+> blast when a live conversation ends. To change how loud, per screen:
+> **Settings → This screen → Jarvis's voice**.
 
 - **Voice** — OpenAI GPT‑Live, speaking and listening in real time, in whatever
   language you speak (and mixing two in one sentence, which it handles).
@@ -176,11 +177,20 @@ The version you are running is at the foot of the menu in **Settings**, which
 also says when a newer one is out, with a link to what changed. To be told by
 GitHub, choose **Watch → Custom → Releases** on the repository.
 
+To move to the newest release:
+
 ```bash
-git pull                              # or: git checkout v1.1.0, to pick a version
-npm ci && npm run deploy              # Cloudflare
-docker compose up -d --build          # Docker
+git fetch --tags
+git checkout "$(git tag --list 'v*' --sort=-v:refname | head -n 1)"
 ```
+
+then `npm ci && npm run deploy` on Cloudflare, or `docker compose up -d --build`
+with Docker. To pick a particular version, `git checkout v1.1.0` instead.
+
+A release is a version that has been in use before it was numbered. `main`
+has everything since, sooner and less tried; a fresh clone starts there, and
+the two commands above move it to the newest release. To follow `main`
+instead: `git checkout main && git pull`.
 
 Your memory, settings and devices are kept across updates. A fork can point
 the check at its own releases with the `UPDATE_REPO` setting (Settings →

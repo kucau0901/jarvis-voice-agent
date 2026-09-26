@@ -10,7 +10,7 @@
  */
 import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
-import { HOW_TO_UPDATE, bump, cut, needsAction, notesFor, unreleased } from "./changelog.mjs";
+import { bump, cut, howToUpdate, needsAction, notesFor, unreleased } from "./changelog.mjs";
 
 const [what, arg] = process.argv.slice(2);
 const git = (...args) => execFileSync("git", args, { encoding: "utf8" }).trim();
@@ -24,7 +24,7 @@ const writeJson = (p, v) => writeFileSync(p, JSON.stringify(v, null, 2) + "\n");
 if (what === "notes") {
   const notes = notesFor(readFileSync("CHANGELOG.md", "utf8"), arg ?? "");
   if (notes === null) die(`CHANGELOG.md has no section for ${arg}.`);
-  process.stdout.write(`${notes}\n\n${HOW_TO_UPDATE}\n`);
+  process.stdout.write(`${notes}\n\n${howToUpdate(arg)}\n`);
   process.exit(0);
 }
 

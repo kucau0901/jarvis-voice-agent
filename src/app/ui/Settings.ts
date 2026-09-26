@@ -105,11 +105,11 @@ export class Settings {
             <div class="fieldtop"><label>Jarvis's voice</label></div>
             <div class="checks loud" role="group" aria-label="How loud Jarvis speaks"></div>
             <p class="note">
-              Jarvis's voice is quieter than music. In the car, set the volume for your
-              music, then choose the level here at which Jarvis is clear, rather than
-              turning the car up: the music then comes back at the volume you left it.
-              If, in a live conversation, Jarvis starts to hear itself and interrupt,
-              choose a lower level.
+              Jarvis's voice is quieter than music, so it is made louder here, and
+              Loudest is where it starts. Set the car's volume for your music and
+              leave it: the music then comes back at the volume you left it. Choose
+              less if Jarvis is too loud on this screen, or if, in a live
+              conversation, it starts to hear itself and interrupt.
             </p>
             <div class="rowbtns"><button class="hear" type="button">Hear it</button></div>
             <div class="res loudres"></div>

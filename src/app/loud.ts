@@ -13,8 +13,11 @@
  * with nothing clipped; "loudest" about 8 dB, with the loudest peaks gently
  * rounded. Beyond that the clipper did audible work, so there is no third step.
  *
- * Per screen, in localStorage: the car needs it, a phone may not. "normal"
- * leaves every sound exactly as it was, not through this at all.
+ * "loudest" is the default, on every screen: it is the level that matched the
+ * music in the car it was tried in (26 Sep 2026), and the gap between a voice
+ * and music is not the car's alone. Kept per screen, in localStorage, so any
+ * screen can choose otherwise. "normal" leaves every sound exactly as it was,
+ * not through this at all.
  */
 
 export type Loudness = "normal" | "louder" | "loudest";
@@ -33,12 +36,14 @@ const SHAPES: Record<Exclude<Loudness, "normal">, Shape> = {
 
 const KEY = "jarvis.voiceLoudness";
 
+const DEFAULT: Loudness = "loudest";
+
 export function loudness(): Loudness {
   try {
     const v = localStorage.getItem(KEY);
-    return v === "louder" || v === "loudest" ? v : "normal";
+    return v === "normal" || v === "louder" || v === "loudest" ? v : DEFAULT;
   } catch {
-    return "normal";
+    return DEFAULT;
   }
 }
 
