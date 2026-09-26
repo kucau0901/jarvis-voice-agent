@@ -1,4 +1,5 @@
 import { authHeaders } from "./key";
+import { routeElement } from "./loud";
 
 /**
  * This screen's end of alerts: a live socket to the Worker while the page is
@@ -259,6 +260,8 @@ export async function speakText(key: string, text: string): Promise<boolean> {
     const url = URL.createObjectURL(await r.blob());
     const audio = new Audio(url);
     audio.onended = () => URL.revokeObjectURL(url);
+    // As loud as this screen asks for (loud.ts); otherwise it plays as it is.
+    await routeElement(audio);
     await audio.play();
     return true;
   } catch (e) {

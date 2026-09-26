@@ -19,6 +19,12 @@ of every release, and in the [README](README.md#updating).
 
 ### Added
 
+- Jarvis's voice can be made louder, per screen: **Settings → This screen →
+  Jarvis's voice**, Normal, Louder (about 6 dB) or Loudest (about 8 dB), with
+  a limiter so it does not clip. In the car, leave the volume where the music
+  wants it: turned up for Jarvis, Spotify came back far too loud when a live
+  conversation ended. Live, push-to-talk and spoken alerts all follow it.
+
 - A setup guide for Even Realities G2 glasses: say "Hi Even" and ask, with
   Jarvis in place of the glasses' built-in assistant, so there is no app to
   open. It explains why Jarvis beats connecting OpenClaw or Hermes directly:

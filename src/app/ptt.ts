@@ -1,3 +1,4 @@
+import { VoiceChain } from "./loud";
 import { authHeaders } from "./key";
 import type { VoiceLevels } from "./audio";
 import type { Turn } from "./history";
@@ -68,6 +69,7 @@ export class PushToTalk {
   private playing = false;
   private streamDone = false;
   private playCtx: AudioContext | null = null;
+  private playOut: VoiceChain | null = null;
   private playDest: MediaStreamAudioDestinationNode | null = null;
   private abort: AbortController | null = null;
   private recognition: SpeechRecognitionLike | null = null;
@@ -129,6 +131,8 @@ export class PushToTalk {
     this.levels.detach("agent");
     void this.playCtx?.close().catch(() => {});
     this.playCtx = null;
+    this.playOut?.dispose();
+    this.playOut = null;
     this.playDest = null;
   }
 
@@ -363,10 +367,12 @@ export class PushToTalk {
         this.playCtx = new AudioContext();
         this.playDest = this.playCtx.createMediaStreamDestination();
         this.levels.attach("agent", this.playDest.stream);
+        // As loud as this screen asks for (loud.ts); straight through at normal.
+        this.playOut = new VoiceChain(this.playCtx);
       }
       const src = this.playCtx.createMediaElementSource(el);
       src.connect(this.playDest!);
-      src.connect(this.playCtx.destination);
+      src.connect(this.playOut!.input);
     } catch {
       // the answer still plays; the orb just sits still
     }

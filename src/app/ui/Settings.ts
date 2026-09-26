@@ -1,14 +1,17 @@
 import { authHeaders } from "../key";
 import { Services } from "./Services";
 import { AlertsPanel } from "./AlertsPanel";
+import { LOUDNESS, loudness, setLoudness, type Loudness } from "../loud";
+import { speakText } from "../alerts";
 
 /** The settings menu: groups, and the sections in each, by id. */
 const NAV: [string, string[]][] = [
   ["Connections", ["openai", "car", "home", "hermes", "google", "spotify", "maps", "cameras", "mcp"]],
-  ["How Jarvis behaves", ["router", "voice", "alerts", "locale"]],
+  ["How Jarvis behaves", ["router", "voice", "screen", "alerts", "locale"]],
   ["Access and advanced", ["owner", "devices", "advanced"]],
 ];
 const SECTION_KEY = "jarvis.settings.section";
+const LOUD_LABEL: Record<Loudness, string> = { normal: "Normal", louder: "Louder", loudest: "Loudest" };
 
 function node<K extends keyof HTMLElementTagNameMap>(tag: K, text: string): HTMLElementTagNameMap[K] {
   const e = document.createElement(tag);
@@ -95,6 +98,23 @@ export class Settings {
           </div>
           <div class="res"></div>
         </section>
+        <section class="svc screen" data-section="screen" data-title="This screen" data-state="on">
+          <h3>This screen</h3>
+          <p class="note">Kept on this screen only, so the car and your phone can differ.</p>
+          <div class="field">
+            <div class="fieldtop"><label>Jarvis's voice</label></div>
+            <div class="checks loud" role="group" aria-label="How loud Jarvis speaks"></div>
+            <p class="note">
+              Jarvis's voice is quieter than music. In the car, set the volume for your
+              music, then choose the level here at which Jarvis is clear, rather than
+              turning the car up: the music then comes back at the volume you left it.
+              If, in a live conversation, Jarvis starts to hear itself and interrupt,
+              choose a lower level.
+            </p>
+            <div class="rowbtns"><button class="hear" type="button">Hear it</button></div>
+            <div class="res loudres"></div>
+          </div>
+        </section>
         <section class="svc mcp" data-section="mcp" data-title="MCP servers" data-state="off">
         <h3>MCP servers</h3>
         <p class="note">
@@ -123,6 +143,8 @@ export class Settings {
       () => this.buildNav(),
     );
     this.el.querySelector(".back")!.addEventListener("click", () => this.sheet.classList.remove("detail"));
+    this.renderLoud();
+    this.el.querySelector(".hear")!.addEventListener("click", () => void this.hearLoud());
     this.buildNav();
     this.router.querySelector(".rtest")!.addEventListener("click", () => void this.testModel());
     this.router.querySelector(".use")!.addEventListener("click", () => void this.useModel());
@@ -173,6 +195,36 @@ export class Settings {
     } catch {
       line.textContent = "";
     }
+  }
+
+  /** This screen's voice level (loud.ts): one button each, the chosen one lit. */
+  private renderLoud(): void {
+    const box = this.el.querySelector<HTMLElement>(".checks.loud")!;
+    const now = loudness();
+    box.replaceChildren(
+      ...LOUDNESS.map((level) => {
+        const b = node("button", LOUD_LABEL[level]);
+        b.type = "button";
+        b.className = `check${level === now ? " on" : ""}`;
+        b.setAttribute("aria-pressed", String(level === now));
+        b.addEventListener("click", () => {
+          setLoudness(level);
+          this.renderLoud();
+          void this.hearLoud();
+        });
+        return b;
+      }),
+    );
+  }
+
+  /** A sentence at the chosen level, through the same path as a spoken alert. */
+  private async hearLoud(): Promise<void> {
+    const res = this.el.querySelector<HTMLElement>(".loudres")!;
+    res.classList.remove("bad");
+    res.textContent = "playing…";
+    const ok = await speakText(this.key, "This is how loud I will be.");
+    res.textContent = ok ? "" : "Could not play it here. Tap Hear it again.";
+    res.classList.toggle("bad", !ok);
   }
 
   /* ---------- the menu of sections ------------------------------------------ */

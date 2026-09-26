@@ -14,6 +14,7 @@ import { LiveLink, speakAlert, speakHere, speakText, type Alert } from "./alerts
 import { askTyped } from "./chat";
 import { richText } from "./ui/util";
 import { PushToTalk } from "./ptt";
+import { LiveVoice, wakeVoice } from "./loud";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -30,6 +31,10 @@ const els = {
 
 let key = loadKey();
 let session: JarvisSession | null = null;
+/** The live voice, made louder on this screen if asked (loud.ts). */
+const liveVoice = new LiveVoice(els.audio);
+// A louder voice needs an audio context, and the browser starts one only inside a tap.
+document.addEventListener("pointerdown", wakeVoice, { capture: true });
 
 const unlock = {
   wrap: $("unlock"),
@@ -278,6 +283,7 @@ function onState(s: SessionState, detail?: string) {
       clearTimeout(idleTimer);
       session = null;
       levels.detach("user"); levels.detach("agent");
+      liveVoice.detach();
       thinking = false;
       stage?.hide();
       if (userWantsSession) break;   // a reconnect is already in flight
@@ -388,6 +394,7 @@ async function openSession(seed?: ReturnType<History["snapshot"]>, gapSec = 0) {
     onRemoteStream: (stream) => {
       levels.attach("agent", stream);
       els.audio.srcObject = stream;
+      void liveVoice.attach(stream);
       // Autoplay is allowed here because this runs inside the tap that started
       // the session, and a granted getUserMedia already unblocks audio.
       els.audio.play().catch((e) => status(`audio blocked: ${e.message}`, true));

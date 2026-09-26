@@ -14,6 +14,10 @@ enough) or run it yourself with **Docker**.
 > (Australia, for one); there, Jarvis on the car's screen works only in Park, so
 > use it from your phone instead. [docs/DESIGN.md](docs/DESIGN.md#the-in-car-probe)
 > has a probe page to check your own car.
+>
+> Jarvis's voice is quieter than music. Rather than turning the car up for it,
+> and having Spotify blast when a live conversation ends, make Jarvis louder
+> on the car's screen: **Settings → This screen → Jarvis's voice**.
 
 - **Voice** — OpenAI GPT‑Live, speaking and listening in real time, in whatever
   language you speak (and mixing two in one sentence, which it handles).
