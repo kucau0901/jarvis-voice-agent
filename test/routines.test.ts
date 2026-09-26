@@ -14,7 +14,8 @@ import {
   mergeEvents,
   type LeaveEvent,
 } from "../src/worker/lib/leave.ts";
-import { DAILY_GRACE_MS, EVENT_COOLDOWN_MS, Scheduler, type SchedulerDeps } from "../src/worker/lib/scheduler.ts";
+import { DAILY_GRACE_MS, EVENT_COOLDOWN_MS, Scheduler, WATCH_ERRORS_SLOW, WATCH_EVERY_MS, WATCH_SLOW_MS, type SchedulerDeps } from "../src/worker/lib/scheduler.ts";
+import { haConfig, renderTemplate, truthy } from "../src/worker/lib/ha.ts";
 import type { Alert, Delivery } from "../src/worker/lib/alerts.ts";
 import { requiredScope } from "../src/worker/lib/scopes.ts";
 
@@ -102,7 +103,7 @@ function fakeStorage() {
   };
 }
 
-function harness(opts: { events?: LeaveEvent[] | string; travel?: number | null; delivered?: boolean } = {}) {
+function harness(opts: { events?: LeaveEvent[] | string; travel?: number | null; delivered?: boolean; noHa?: boolean } = {}) {
   const sent: Alert[] = [];
   const asked: { prompt: string; grants: readonly string[] }[] = [];
   const travels: string[] = [];
@@ -110,6 +111,9 @@ function harness(opts: { events?: LeaveEvent[] | string; travel?: number | null;
     events: opts.events ?? ([] as LeaveEvent[] | string),
     travel: (opts.travel ?? null) as number | null | ((now: number) => number | null),
     now: 0,
+    /** What Home Assistant renders a watch's condition as, at a given moment. */
+    ha: ((_now: number) => "False") as (now: number) => string | Error,
+    rendered: 0,
   };
   const deps: SchedulerDeps = {
     timeZone: "Asia/Kuala_Lumpur",
@@ -129,6 +133,14 @@ function harness(opts: { events?: LeaveEvent[] | string; travel?: number | null;
       const min = typeof state.travel === "function" ? state.travel(state.now) : state.travel;
       return min === null ? null : { min, from: "car" };
     },
+    renderTemplate: opts.noHa
+      ? null
+      : async () => {
+          state.rendered++;
+          const v = state.ha(state.now);
+          if (v instanceof Error) throw v;
+          return v;
+        },
   };
   const storage = fakeStorage();
   const s = new Scheduler(storage, async () => deps);
@@ -370,6 +382,112 @@ console.log("\nscopes");
     check(`${p} needs routines`, requiredScope(p, "POST") === "routines");
   }
   check("a lookalike path is the owner's", requiredScope("/api/v1/routinesx", "GET") === "owner");
+}
+
+/* ---------- watches ---------------------------------------------------------------- */
+
+console.log("\nwatches: what one is");
+{
+  const GATE = "{{ is_state('cover.main_gate', 'open') }}";
+  const ok = buildRoutine({ when: "watch", condition: GATE, forMinutes: 10, say: "The main gate has been open ten minutes." }, tz, T0);
+  check("a condition, how long, and what to say", ok.ok && ok.trigger.kind === "watch" && ok.trigger.forMin === 10 && ok.trigger.template === GATE, ok);
+  check("described plainly", ok.ok && describeTrigger(ok.trigger, tz) === `when ${GATE} is true for 10 minutes (checked every minute)`);
+  const now0 = buildRoutine({ when: "watch", condition: GATE, say: "Gate open." }, tz, T0);
+  check("at once, if no time is given", now0.ok && now0.trigger.kind === "watch" && now0.trigger.forMin === 0);
+  check("no template, no watch", !buildRoutine({ when: "watch", condition: "the gate is open", say: "x" }, tz, T0).ok);
+  check("a day at most", !buildRoutine({ when: "watch", condition: GATE, forMinutes: 1441, say: "x" }, tz, T0).ok);
+  check("not a novel", !buildRoutine({ when: "watch", condition: `{{ ${"x".repeat(600)} }}`, say: "x" }, tz, T0).ok);
+}
+
+console.log("\nwatches: tried before they are kept");
+{
+  const GATE = "{{ is_state('cover.main_gate', 'open') }}";
+  const noHa = harness({ noHa: true });
+  check("not without Home Assistant", String(await noHa.s.add({ when: "watch", condition: GATE, say: "x" }, OWNER, T0)).includes("need Home Assistant"));
+
+  const h = harness();
+  h.state.ha = () => "unknown";
+  check("a condition that is not True or False is refused, with what it gave",
+    String(await h.s.add({ when: "watch", condition: "{{ states('cover.mian_gate') }}", say: "x" }, OWNER, T0)).includes('gave "unknown"'));
+  h.state.ha = () => new Error("Home Assistant said 400: UndefinedError: 'mian_gate' is undefined");
+  check("Home Assistant's own complaint is passed on", String(await h.s.add({ when: "watch", condition: GATE, say: "x" }, OWNER, T0)).includes("mian_gate"));
+  h.state.ha = () => "False";
+  for (let i = 0; i < 10; i++) await h.s.add({ when: "watch", condition: GATE, say: `w${i}` }, OWNER, T0);
+  check("ten at most", String(await h.s.add({ when: "watch", condition: GATE, say: "one more" }, OWNER, T0)).includes("already 10 watches"));
+}
+
+console.log("\nwatches: the gate left open");
+{
+  const h = harness();
+  const r = await h.s.add({ when: "watch", condition: "{{ is_state('cover.main_gate', 'open') }}", forMinutes: 10, say: "The main gate has been open ten minutes." }, OWNER, T0);
+  check("kept", typeof r !== "string" && r.trigger.kind === "watch", r);
+  check("wakes at once to look", (await h.s.nextWake(T0)) === T0);
+  const rendersAtAdd = h.state.rendered;
+
+  // Shut until 10:05, open 10:05 to 10:40, shut, open again from 11:00.
+  h.state.ha = (now) => (now >= T0 + 5 * MIN && now < T0 + 40 * MIN) || now >= T0 + 60 * MIN ? "True" : "False";
+  await runAlarm(h, T0, T0 + 14 * MIN);
+  check("open nine minutes: nothing said", h.sent.length === 0);
+  check("looked at about every minute", h.state.rendered - rendersAtAdd >= 13 && h.state.rendered - rendersAtAdd <= 16, h.state.rendered - rendersAtAdd);
+  await runAlarm(h, T0 + 14 * MIN, T0 + 39 * MIN);
+  check("ten minutes open: said once, and only once", h.sent.length === 1 && h.sent[0]!.text === "The main gate has been open ten minutes.", h.sent.map((a) => a.text));
+  check("on time", h.sent[0]!.at >= T0 + 15 * MIN && h.sent[0]!.at <= T0 + 16 * MIN, iso(h.sent[0]?.at));
+  await runAlarm(h, T0 + 39 * MIN, T0 + 69 * MIN);
+  check("shut in between: not said again too soon", h.sent.length === 1);
+  await runAlarm(h, T0 + 69 * MIN, T0 + 72 * MIN);
+  check("open ten minutes again: said again", h.sent.length === 2, h.sent.length);
+  const w = (await h.s.list())[0]!;
+  check("recorded", w.lastRun?.ok === true && w.watch?.fired === true);
+}
+
+console.log("\nwatches: when Home Assistant cannot be reached");
+{
+  const h = harness();
+  await h.s.add({ when: "watch", condition: "{{ is_state('cover.main_gate', 'open') }}", say: "Gate open." }, OWNER, T0);
+  h.state.ha = () => new Error("timed out");
+  for (let i = 0; i < WATCH_ERRORS_SLOW; i++) await h.s.tick(T0 + i * WATCH_EVERY_MS);
+  const w = (await h.s.list())[0]!;
+  check("said once that it could not check", w.lastRun?.ok === false && /could not check: timed out/.test(w.lastRun.detail), w.lastRun);
+  const at = T0 + (WATCH_ERRORS_SLOW - 1) * WATCH_EVERY_MS;
+  check("and looks less often", w.watch?.nextCheck === at + WATCH_SLOW_MS, w.watch);
+  check("nothing was said to the user", h.sent.length === 0);
+  h.state.ha = () => "True";
+  await h.s.tick(at + WATCH_SLOW_MS);
+  check("back to every minute once it answers, and says its message", h.sent.length === 1 && (await h.s.list())[0]!.watch?.errors === 0);
+}
+
+console.log("\nwatches: off and on again");
+{
+  const h = harness();
+  const r = (await h.s.add({ when: "watch", condition: "{{ true }}", say: "x" }, OWNER, T0)) as Exclude<Awaited<ReturnType<typeof h.s.add>>, string>;
+  h.state.ha = () => "True";
+  await h.s.tick(T0);
+  check("fired", h.sent.length === 1);
+  await h.s.update(r.id, { enabled: false }, T0 + MIN);
+  check("off: nothing to wake for", (await h.s.nextWake(T0 + MIN)) === null);
+  await h.s.update(r.id, { enabled: true }, T0 + 2 * MIN);
+  await h.s.tick(T0 + 2 * MIN);
+  check("on again, it starts afresh", h.sent.length === 2);
+}
+
+console.log("\nHome Assistant templates");
+{
+  check("True, on, yes, 1 are yes", ["True", "on", " yes ", "1"].every((v) => truthy(v) === true));
+  check("False, off, no, 0 are no", ["False", "off", "no", "0"].every((v) => truthy(v) === false));
+  check("anything else is neither", truthy("unknown") === null && truthy("") === null);
+  check("configured from the base URL and token", haConfig({ HA_BASE_URL: "https://ha.example/", HA_TOKEN: "t" } as never)?.base === "https://ha.example" && haConfig({} as never) === null);
+  const calls: { url: string; init: RequestInit }[] = [];
+  const f = (async (url: string, init: RequestInit) => {
+    calls.push({ url, init });
+    return new Response("True", { status: 200 });
+  }) as unknown as typeof fetch;
+  const out = await renderTemplate({ base: "https://ha.example", token: "t0k" }, "{{ true }}", f);
+  check("posts the template to /api/template with the token", out === "True" && calls[0]!.url === "https://ha.example/api/template" &&
+    JSON.parse(String(calls[0]!.init.body)).template === "{{ true }}" && (calls[0]!.init.headers as Record<string, string>).Authorization === "Bearer t0k");
+  const bad = (async () => new Response("Error rendering template: UndefinedError", { status: 400 })) as unknown as typeof fetch;
+  let msg = "";
+  await renderTemplate({ base: "https://ha.example", token: "t" }, "{{ x.y }}", bad).catch((e: Error) => { msg = e.message; });
+  check("its complaint about a bad template is kept", msg === "Home Assistant said 400: Error rendering template: UndefinedError", msg);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

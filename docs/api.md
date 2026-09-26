@@ -474,6 +474,7 @@ POST /api/v1/routines
 | `daily` | `time` (`"HH:MM"`), optional `days` (`"mon"`…`"sun"` or 0–6, Sunday first; absent = every day) |
 | `event` | `event`: a name like `arrived_home` |
 | `leave` | optional `bufferMin` (default 10). No message: it warns before each calendar event with a place |
+| `watch` | `condition`: a Home Assistant template, true while the thing is happening (`"{{ is_state('cover.main_gate', 'open') }}"`); optional `forMinutes` (how long it must stay true first, default 0) |
 
 Every kind but `leave` takes exactly one of `say` (a fixed message) or `ask`
 (a request for Jarvis, answered at the time with the creator's grants and sent).
@@ -484,6 +485,16 @@ next run and the last result; `PATCH` takes `{id, enabled?, name?}`; `DELETE
 A daily routine more than 30 minutes late (Jarvis was not running) is skipped
 rather than sent at the wrong time; a one-off reminder up to 12 hours late is
 still given, marked with when it was due.
+
+**Watches** need Home Assistant (Settings → Home). The condition is rendered
+once when the watch is made, and anything but true or false is refused with
+what Home Assistant said, so a misspelt entity id is caught then, not never.
+After that it is checked every minute from the alarm, with no model and no
+cost: one small `POST /api/template` to Home Assistant. It speaks once when the
+condition has been true for `forMinutes`, and again only after it has been
+false. After five failed checks in a row it looks every five minutes and
+says, once, in the routine's last result, that it could not check. At most
+ten watches.
 
 ### Setting one off from outside
 

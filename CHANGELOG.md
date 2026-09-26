@@ -19,6 +19,10 @@ of every release, and in the [README](README.md#updating).
 
 ### Added
 
+- **Watches**: "tell me if the gate stays open ten minutes", "let me know when
+  the car has finished charging", "tell me when the washer is done". Jarvis
+  checks Home Assistant itself every minute, with no AI cost per check, and
+  says it once each time the condition comes true. Needs Home Assistant.
 - **Settings → Usage and cost**: what Jarvis has cost this month and today,
   split into answering, live minutes and background jobs; how many questions
   Home Assistant answered for nothing; the typical answer time; and the

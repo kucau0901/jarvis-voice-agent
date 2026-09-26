@@ -3,6 +3,7 @@ import type { Grant } from "./scopes.ts";
 import { makeAlert, summarise, type Alert, type Delivery } from "./alerts.ts";
 import {
   MAX_ROUTINES,
+  MAX_WATCHES,
   buildRoutine,
   makeRoutine,
   nextDaily,
@@ -11,7 +12,9 @@ import {
   type Routine,
   type RoutineInput,
   type RunRecord,
+  type WatchState,
 } from "./routines.ts";
+import { truthy } from "./ha.ts";
 import {
   FRESH_MS,
   SCAN_MS,
@@ -50,11 +53,18 @@ export interface SchedulerDeps {
   ask(prompt: string, grants: readonly Grant[], routine: Routine): Promise<{ ok: boolean; text: string }>;
   events(now: number): Promise<LeaveEvent[] | string>;
   travel(destination: string): Promise<Travel | null>;
+  /** Home Assistant renders a watch's condition; null when it is not set up. */
+  renderTemplate: ((template: string) => Promise<string>) | null;
 }
 
 const R = "routine:";
 const PLANS = "leave:plans";
 const SCAN_AT = "leave:scanAt";
+
+/** How often a watch looks; one whose checks keep failing looks less often, and says so once. */
+export const WATCH_EVERY_MS = 60_000;
+export const WATCH_SLOW_MS = 5 * 60_000;
+export const WATCH_ERRORS_SLOW = 5;
 
 /** A daily routine this late is skipped, not run: a 7:30 briefing at noon helps nobody. */
 export const DAILY_GRACE_MS = 30 * 60_000;
@@ -91,10 +101,27 @@ export class Scheduler {
   }
 
   async add(input: RoutineInput, by: { who: string; grants: readonly Grant[] }, now = Date.now()): Promise<Routine | string> {
-    const { timeZone } = await this.deps();
+    const deps = await this.deps();
+    const { timeZone } = deps;
     const all = await this.list();
     const built = buildRoutine(input, timeZone, now);
     if (!built.ok) return built.error;
+
+    // A watch is tried once before it is kept: a misspelt entity id is better
+    // said now, to the router that can fix it, than found out never to fire.
+    if (built.trigger.kind === "watch") {
+      if (!deps.renderTemplate) return "watches need Home Assistant, which is not set up";
+      if (all.filter((r) => r.trigger.kind === "watch").length >= MAX_WATCHES) {
+        return `there are already ${MAX_WATCHES} watches; remove one first`;
+      }
+      let out: string;
+      try {
+        out = await deps.renderTemplate(built.trigger.template);
+      } catch (e) {
+        return `Home Assistant could not check that condition: ${e instanceof Error ? e.message : String(e)}`;
+      }
+      if (truthy(out) === null) return `the condition must come out True or False, and it gave "${out.slice(0, 80)}"`;
+    }
 
     // One leave routine: a second would warn twice about every event.
     if (built.trigger.kind === "leave") {
@@ -124,6 +151,8 @@ export class Scheduler {
         if (r.trigger.kind === "once" && next === undefined) return "that one-off time has passed; make a new one";
         r.enabled = true;
         if (next !== undefined) r.nextAt = next;
+        // Switched back on, a watch starts afresh: what it saw before is old news.
+        if (r.trigger.kind === "watch") r.watch = { nextCheck: now };
       } else {
         r.enabled = false;
         delete r.nextAt;
@@ -182,6 +211,7 @@ export class Scheduler {
     for (const r of await this.list()) {
       if (r.pending) consider(r.pending.at);
       if (r.enabled && r.nextAt !== undefined) consider(r.nextAt);
+      if (r.enabled && r.trigger.kind === "watch") consider(r.watch?.nextCheck ?? now);
       if (r.enabled && r.trigger.kind === "leave") {
         consider((await this.storage.get<number>(SCAN_AT)) ?? now);
         consider(nextLeaveWake((await this.storage.get<Stored>(PLANS)) ?? {}));
@@ -198,6 +228,7 @@ export class Scheduler {
     for (const r of await this.list()) {
       try {
         await this.tickOne(r, deps, now);
+        if (r.trigger.kind === "watch") await this.tickWatch((await this.get(r.id)) ?? r, deps, now);
       } catch (e) {
         await this.record(r.id, { at: now, ok: false, detail: `failed: ${e instanceof Error ? e.message : String(e)}` });
       }
@@ -243,6 +274,64 @@ export class Scheduler {
     }
     await this.save(r);
     await this.execute(r, deps, now, undefined, late > 5 * 60_000 ? dueAt : undefined);
+  }
+
+  /**
+   * Look at a watch: no model, one small request to Home Assistant. It says
+   * its message once when the condition has held for forMin minutes, then
+   * waits for it to be false before it can say it again.
+   */
+  private async tickWatch(r: Routine, deps: SchedulerDeps, now: number): Promise<void> {
+    if (!r.enabled || r.trigger.kind !== "watch") return;
+    const t = r.trigger;
+    const w: WatchState = { ...(r.watch ?? {}) };
+    if ((w.nextCheck ?? 0) > now + 1000) return;
+
+    let state: boolean | null = null;
+    let error = "";
+    if (!deps.renderTemplate) {
+      error = "Home Assistant is not set up";
+    } else {
+      try {
+        const out = await deps.renderTemplate(t.template);
+        state = truthy(out);
+        if (state === null) error = `the condition gave "${out.slice(0, 60)}", not True or False`;
+      } catch (e) {
+        error = e instanceof Error ? e.message : String(e);
+      }
+    }
+    w.checkedAt = now;
+
+    if (state === null) {
+      w.errors = (w.errors ?? 0) + 1;
+      w.nextCheck = now + (w.errors >= WATCH_ERRORS_SLOW ? WATCH_SLOW_MS : WATCH_EVERY_MS);
+      r.watch = w;
+      // Said once, when it has failed enough times to matter, not every minute.
+      if (w.errors === WATCH_ERRORS_SLOW) r.lastRun = { at: now, ok: false, detail: `could not check: ${error}`.slice(0, 300) };
+      await this.save(r);
+      return;
+    }
+
+    w.errors = 0;
+    w.nextCheck = now + WATCH_EVERY_MS;
+    if (state) {
+      w.trueSince ??= now;
+      const due = w.trueSince + t.forMin * 60_000;
+      if (!w.fired && now >= due) {
+        w.fired = true;
+        r.watch = w;
+        await this.save(r); // recorded before it is said: a retried alarm must not say it twice
+        await this.execute(r, deps, now);
+        return;
+      }
+      // Look again when it would be due, if that is sooner than a minute.
+      if (!w.fired) w.nextCheck = Math.min(w.nextCheck, due);
+    } else {
+      delete w.trueSince;
+      w.fired = false;
+    }
+    r.watch = w;
+    await this.save(r);
   }
 
   private async execute(r: Routine, deps: SchedulerDeps, now: number, data?: string, lateFrom?: number): Promise<void> {

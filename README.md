@@ -57,9 +57,11 @@ enough) or run it yourself with **Docker**.
 - **Routines** — "remind me at five to call Mum", "every weekday at 7:30 tell
   me my first meeting and the traffic", "tell me when to leave for my
   appointments" (from your calendar, the car's position and live traffic), or
-  anything set off by an event your home automation or phone sends. Said aloud
-  or set up in the **routines** panel; run by the server, so no screen has to
-  be open.
+  anything set off by an event your home automation or phone sends. And
+  **watches**: "tell me if the gate stays open ten minutes", "let me know when
+  the car has finished charging" — Home Assistant checked every minute, at no
+  AI cost. Said aloud or set up in the **routines** panel; run by the server,
+  so no screen has to be open.
 - **Your own agents** — any MCP server, and optionally a
   [Hermes](https://github.com/NousResearch/hermes-agent) agent at home.
 - **Smart glasses** — on Even Realities G2, say *"Hi Even"* and ask: Jarvis

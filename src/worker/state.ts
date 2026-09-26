@@ -18,6 +18,7 @@ import { askForRoutine, travelFor } from "./routes/routines";
 import { Jobs } from "./lib/jobs";
 import { jobEngine } from "./routes/jobs";
 import type { UsageEntry } from "./lib/usage.ts";
+import { haConfig, renderTemplate } from "./lib/ha.ts";
 
 /**
  * The Durable Object. Deliberately thin: everything it does lives in
@@ -172,12 +173,14 @@ export class JarvisState extends DurableObject<Env> {
 
   private async schedulerDeps(): Promise<SchedulerDeps> {
     const env = await this.localEnv();
+    const ha = haConfig(env);
     return {
       timeZone: localeOf(env).timeZone,
       deliver: (alert) => deliver(env, this, alert),
       ask: (prompt, grants, routine) => askForRoutine(env, prompt, grants, routine),
       events: (now) => upcomingEvents(env, now),
       travel: (destination) => travelFor(env, destination),
+      renderTemplate: ha ? (template) => renderTemplate(ha, template) : null,
     };
   }
 

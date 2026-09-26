@@ -17,6 +17,8 @@ interface RoutineView {
   createdBy: string;
   nextAt?: number;
   lastRun?: { at: number; ok: boolean; detail: string };
+  /** A watch's last look at the house. */
+  watch?: { checkedAt?: number; trueSince?: number; fired?: boolean; errors?: number };
   when: string;
   does: string;
 }
@@ -113,6 +115,13 @@ export class Routines {
       row.appendChild(el("div", "rwhen", `${r.when}; ${r.does}`));
       const facts: string[] = [];
       if (r.enabled && r.nextAt) facts.push(`next ${when(r.nextAt, this.tz)}`);
+      if (r.enabled && r.watch?.checkedAt) {
+        const w = r.watch;
+        facts.push(
+          `checked ${when(w.checkedAt!, this.tz)}` +
+            (w.errors ? ", could not check" : w.trueSince ? `, true since ${when(w.trueSince, this.tz)}${w.fired ? ", told you" : ""}` : ", not true"),
+        );
+      }
       if (r.lastRun) facts.push(`last ${when(r.lastRun.at, this.tz)}: ${r.lastRun.ok ? "✓" : "✗"} ${r.lastRun.detail}`);
       if (r.createdBy !== "owner" && r.createdBy !== "voice") facts.push("made by a device");
       if (facts.length) row.appendChild(el("div", `rfacts${r.lastRun && !r.lastRun.ok ? " bad" : ""}`, facts.join(" · ")));

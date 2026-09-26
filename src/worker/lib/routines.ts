@@ -29,7 +29,15 @@ export type Trigger =
   | { kind: "once"; at: number }
   | { kind: "daily"; time: string; days: number[] }
   | { kind: "event"; event: string }
-  | { kind: "leave"; bufferMin: number };
+  | { kind: "leave"; bufferMin: number }
+  /**
+   * Watches: a Home Assistant template that is true while the thing to watch
+   * for is happening ("{{ is_state('cover.main_gate', 'open') }}"), checked
+   * every minute by the alarm with no model involved (lib/scheduler.ts). It
+   * fires once when it has been true for forMin minutes, and again only after
+   * it has been false.
+   */
+  | { kind: "watch"; template: string; forMin: number };
 
 export type Action = { kind: "say"; text: string } | { kind: "ask"; prompt: string } | { kind: "leave" };
 
@@ -58,7 +66,24 @@ export interface Routine {
   /** Queued by an event or by "run now", for the next alarm to pick up. */
   pending?: { at: number; data?: string };
   lastRun?: RunRecord;
+  /** A watch's own record of its checks. */
+  watch?: WatchState;
 }
+
+export interface WatchState {
+  /** When it is next looked at. */
+  nextCheck?: number;
+  checkedAt?: number;
+  /** When the condition last became true, while it still is. */
+  trueSince?: number;
+  /** Already said, for this spell of being true. */
+  fired?: boolean;
+  /** Checks in a row that failed. */
+  errors?: number;
+}
+
+export const MAX_WATCHES = 10;
+export const MAX_TEMPLATE = 500;
 
 export const MAX_ROUTINES = 50;
 export const MAX_TEXT = 1000;
@@ -171,6 +196,8 @@ export function describeTrigger(t: Trigger, timeZone: string): string {
       return `when the event "${t.event}" arrives`;
     case "leave":
       return `when it is time to leave for a calendar event with a place (${t.bufferMin} min to spare)`;
+    case "watch":
+      return `when ${t.template} is true${t.forMin ? ` for ${t.forMin} minute${t.forMin === 1 ? "" : "s"}` : ""} (checked every minute)`;
   }
 }
 
@@ -203,6 +230,10 @@ export interface RoutineInput {
   event?: unknown;
   /** leave: minutes to spare on top of the drive. */
   bufferMin?: unknown;
+  /** watch: a Home Assistant template, true while the thing is happening. */
+  condition?: unknown;
+  /** watch: how long it must stay true first; 0 for at once. */
+  forMinutes?: unknown;
   say?: unknown;
   ask?: unknown;
 }
@@ -253,8 +284,17 @@ export function buildRoutine(input: RoutineInput, timeZone: string, now: number)
     const b = input.bufferMin === undefined || input.bufferMin === null ? 10 : Number(input.bufferMin);
     if (!Number.isInteger(b) || b < 0 || b > 120) return { ok: false, error: "the spare time must be 0 to 120 minutes" };
     trigger = { kind: "leave", bufferMin: b };
+  } else if (when === "watch") {
+    const template = str(input.condition);
+    if (!template.includes("{{") || !template.includes("}}")) {
+      return { ok: false, error: "a watch needs a condition: a Home Assistant template such as {{ is_state('cover.main_gate', 'open') }}" };
+    }
+    if (template.length > MAX_TEMPLATE) return { ok: false, error: `keep the condition under ${MAX_TEMPLATE} characters` };
+    const f = input.forMinutes === undefined || input.forMinutes === null ? 0 : Number(input.forMinutes);
+    if (!Number.isInteger(f) || f < 0 || f > 1440) return { ok: false, error: "for_minutes must be 0 to 1440" };
+    trigger = { kind: "watch", template, forMin: f };
   } else {
-    return { ok: false, error: "when must be once, daily, event or leave" };
+    return { ok: false, error: "when must be once, daily, event, leave or watch" };
   }
 
   let action: Action;

@@ -31,12 +31,21 @@ export const routineAdd: Tool = {
     "Something to do when another system sends an event ('when I get home, remind me to take " +
     "the bins out'): when=event with a short name like arrived_home — and tell the user it " +
     "fires when their home automation or phone sends that event to Jarvis, which they set up " +
-    "once. Afterwards read back what was set and when it will next happen.",
+    "once. " +
+    "Something to watch for in the house ('tell me if the gate stays open for ten minutes', " +
+    "'let me know when the car has finished charging', 'tell me when the washer is done'): " +
+    "when=watch with condition, a Home Assistant template that is TRUE WHILE the thing is " +
+    "happening, and for_minutes, how long it must stay true first (0 for at once). Find the " +
+    "entity id with the house tools first, never guess it. Forms: " +
+    "{{ is_state('cover.main_gate', 'open') }}, {{ states('sensor.car_battery') | float(0) >= 80 }}, " +
+    "{{ is_state('sensor.washer_state', 'idle') }}. It is checked every minute, at no cost, and " +
+    "says its message once each time the condition comes true. " +
+    "Afterwards read back what was set and when it will next happen.",
   parameters: {
     type: "object",
     properties: {
       name: { type: ["string", "null"], description: "A few words to title it by. Null to use the message." },
-      when: { type: "string", enum: ["once", "daily", "event", "leave"] },
+      when: { type: "string", enum: ["once", "daily", "event", "leave", "watch"] },
       local_time: {
         type: ["string", "null"],
         description: "once: the user's local date and time, YYYY-MM-DDTHH:MM, from RIGHT NOW in the instructions.",
@@ -50,13 +59,18 @@ export const routineAdd: Tool = {
       },
       event: { type: ["string", "null"], description: "event: its name, lower case, e.g. arrived_home." },
       buffer_min: { type: ["integer", "null"], description: "leave: minutes to spare on top of the drive. Null for 10." },
+      condition: {
+        type: ["string", "null"],
+        description: "watch: a Home Assistant template, true while the thing is happening, with real entity ids.",
+      },
+      for_minutes: { type: ["integer", "null"], description: "watch: how long it must stay true first. Null or 0 for at once." },
       say: { type: ["string", "null"], description: "A fixed message to send. Exactly one of say or ask." },
       ask: {
         type: ["string", "null"],
         description: "A request for Jarvis to carry out at the time, with the answer sent to the user.",
       },
     },
-    required: ["name", "when", "local_time", "in_minutes", "time", "days", "event", "buffer_min", "say", "ask"],
+    required: ["name", "when", "local_time", "in_minutes", "time", "days", "event", "buffer_min", "condition", "for_minutes", "say", "ask"],
     additionalProperties: false,
   },
   async run(args, ctx) {
@@ -72,6 +86,8 @@ export const routineAdd: Tool = {
         days: args.days,
         event: args.event,
         bufferMin: args.buffer_min,
+        condition: args.condition,
+        forMinutes: args.for_minutes,
         say: args.say,
         ask: args.ask,
       },
@@ -84,7 +100,9 @@ export const routineAdd: Tool = {
         ? ` It runs when something sends the event "${r.trigger.event}" to Jarvis (POST /api/v1/trigger) — a Home Assistant automation or a phone shortcut, set up once.`
         : r.trigger.kind === "leave" && !(ctx.env.GOOGLE_CLIENT_ID && ctx.env.GOOGLE_CLIENT_SECRET)
           ? " Google Calendar is not connected yet, so there is nothing to warn about until it is."
-          : "";
+          : r.trigger.kind === "watch"
+            ? " Home Assistant is checked every minute, at no cost; it speaks once each time the condition comes true."
+            : "";
     return `Set up: ${said(r, tz)}${extra} It will reach the user as an alert.`;
   },
 };
