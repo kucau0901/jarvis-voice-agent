@@ -298,6 +298,7 @@ console.log("\nleave now: end to end");
   await runAlarm(h, T0, start + 30 * MIN);
   check("warned exactly once", h.sent.length === 1 && h.sent[0]!.title === "Time to leave", h.sent.map((a) => a.title));
   check("at start − 25 min drive − 10 spare", h.sent[0]?.at === start - 35 * MIN, iso(h.sent[0]?.at));
+  check("and no use once the appointment has begun", h.sent[0]?.expiresAt === start, h.sent[0]?.expiresAt);
   check("a handful of route lookups, not one per wake", h.travels.length <= 5, h.travels.length);
   const r = (await h.s.list())[0]!;
   check("recorded against the routine", r.lastRun?.ok === true && r.lastRun.detail.startsWith("Dentist"), r.lastRun);

@@ -17,6 +17,20 @@ of every release, and in the [README](README.md#updating).
 
 ## [Unreleased]
 
+### Added
+
+- [How Jarvis reaches you](docs/notifications.md): where alerts go, turning
+  on notifications, why the app need not be open or reopened after a restart,
+  and what to do when one does not arrive.
+
+### Fixed
+
+- Notifications could arrive late on an idle phone (screen off, on a table),
+  as Android held them for its next battery-saving window: every alert is now
+  sent as high priority. And a phone that was off for more than an hour never
+  got them: they are now held for a day, except "time to leave", which is held
+  only until the appointment starts.
+
 ## [1.1.0] - 2026-09-26
 
 ### Added

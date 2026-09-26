@@ -388,7 +388,7 @@ and connects to `/api/v1/events?ticket=…`. A ticket works once.
 | Direction | Message |
 |---|---|
 | ← | `{"type":"hello","label":…}` on connecting |
-| ← | `{"type":"alert","alert":{id, at, title, text, speak, urgent, source}}` |
+| ← | `{"type":"alert","alert":{id, at, title, text, speak, urgent, source, expiresAt?}}` |
 | → | `{"type":"presence","visible":true}` whenever the screen is shown or hidden |
 | → | `{"type":"ack","id":…,"visible":true}` on each alert, if someone can see it |
 | → / ← | `ping` / `pong`, every 25 seconds or so, to keep proxies from closing it |
@@ -410,6 +410,13 @@ services browsers use (Google, Apple, Mozilla, Microsoft) are accepted as
 endpoints. A tapped notification carries only the alert's id; the text is
 `GET /api/v1/alerts?id=…` for about the last thirty alerts. On iPhone and
 iPad, notifications need the app added to the Home Screen first.
+
+Every push is sent with `Urgency: high`, so Android delivers it to an idle
+phone at once rather than at its next battery-saving window, and with a `TTL`
+of a day for a phone that is off or out of signal. An alert that stops being
+useful carries `expiresAt`, and its TTL ends there instead: a "time to leave"
+alert expires when the appointment starts. For how this looks to someone
+using it: [notifications.md](notifications.md).
 
 ### The webhook
 

@@ -184,7 +184,8 @@ In Jarvis, **Settings → Devices**:
   alert, on an open Jarvis screen or as a notification on your phone once
   notifications are on there (**Settings → Alerts**).
 - **Jarvis cannot start a conversation on the glasses.** The Even app only
-  asks. Alerts and reminders go to your phone and any open Jarvis screen.
+  asks. Alerts and reminders go to your phone and any open Jarvis screen:
+  [how Jarvis reaches you](notifications.md).
 
 ## When it doesn't work
 

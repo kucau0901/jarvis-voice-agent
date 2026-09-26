@@ -35,7 +35,8 @@ enough) or run it yourself with **Docker**.
   there without opening a paid voice session, or arrive as a notification on
   your phone. Telegram, ntfy, a signed webhook and Home Assistant are optional
   extra routes. "Send that to my phone" works from the car. Nothing to set up
-  beyond the OpenAI key.
+  beyond the OpenAI key, and the app need not be open:
+  [how Jarvis reaches you](docs/notifications.md).
 - **Three ways to talk** — *Live* is GPT‑Live, a real conversation at $0.05 a
   minute while it is open. *Push‑to‑talk* is one question at a time:
   transcribed, answered by the same router with the same tools, and spoken

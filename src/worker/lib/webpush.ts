@@ -212,8 +212,8 @@ export async function sendPush(
       authorization: await vapidHeader(sub.endpoint, vapid, subject),
       "content-encoding": "aes128gcm",
       "content-type": "application/octet-stream",
-      // How long the push service may hold it for a phone that is off. An
-      // alert about leaving in ten minutes is worthless tomorrow.
+      // How long the push service may hold it for a phone that is off or out
+      // of signal. The caller decides (pushTtl in lib/alerts.ts); an hour if not.
       ttl: String(opts.ttl ?? 3600),
       urgency: opts.urgency ?? "normal",
     },

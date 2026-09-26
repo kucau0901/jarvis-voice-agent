@@ -334,7 +334,8 @@ export class Scheduler {
       p.done = true;
       await this.storage.put(PLANS, plans); // before delivering, for the same reason as above
       const m = leaveMessage(p, deps.timeZone, now);
-      const d = await deps.deliver(makeAlert({ title: m.title, text: m.text }, "routine", now)!);
+      // No use once the event has begun: a phone that was off all along is not told late.
+      const d = await deps.deliver(makeAlert({ title: m.title, text: m.text, expiresAt: p.start }, "routine", now)!);
       await this.record(r.id, { ...outcome(d, now), detail: `${p.summary}: ${outcome(d, now).detail}` });
     }
     await this.storage.put(PLANS, plans);

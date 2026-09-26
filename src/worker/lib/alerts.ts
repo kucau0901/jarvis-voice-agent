@@ -38,6 +38,12 @@ export interface Alert {
   urgent: boolean;
   /** What raised it — shown in the panel, and useful in a webhook. */
   source: "test" | "api" | "note" | "routine" | "job";
+  /**
+   * When it stops being worth having (ms). "Leave now for the dentist" is noise
+   * once the appointment has started, so a push service holding it for a phone
+   * that is off drops it then, rather than deliver it late. Without one, a day.
+   */
+  expiresAt?: number;
 }
 
 export interface Attempt {
@@ -83,7 +89,7 @@ export function newAlertId(): string {
 
 /** Build an alert from untrusted input, with the limits applied. */
 export function makeAlert(
-  input: { title?: unknown; text?: unknown; speak?: unknown; urgent?: unknown },
+  input: { title?: unknown; text?: unknown; speak?: unknown; urgent?: unknown; expiresAt?: unknown },
   source: Alert["source"],
   now = Date.now(),
 ): Alert | null {
@@ -98,7 +104,17 @@ export function makeAlert(
     speak: input.speak !== false,
     urgent: input.urgent === true,
     source,
+    ...(typeof input.expiresAt === "number" && Number.isFinite(input.expiresAt) ? { expiresAt: input.expiresAt } : {}),
   };
+}
+
+/** A day: long enough for a phone switched off overnight, short of stale. */
+export const PUSH_TTL_S = 24 * 3600;
+
+/** How long a push service may hold this alert for a phone it cannot reach yet. */
+export function pushTtl(alert: Alert, now = Date.now()): number {
+  if (alert.expiresAt === undefined) return PUSH_TTL_S;
+  return Math.max(60, Math.min(PUSH_TTL_S, Math.round((alert.expiresAt - now) / 1000)));
 }
 
 /* ---------- what the Durable Object provides -------------------------------- */
@@ -200,7 +216,13 @@ const SEND: Record<Channel, Sender> = {
       subs.map(async (s) => {
         try {
           const r = await sendPush(s, payload, vapid, s.subject, {
-            urgency: alert.urgent ? "high" : "normal",
+            // High for every alert, not only urgent ones. At normal, Android
+            // holds a push for an idle phone (screen off, on a table) until
+            // its next battery-saving wake-up, and "remind me at five"
+            // arrived late. Every Jarvis push shows a notification, which is
+            // what high priority is for.
+            urgency: "high",
+            ttl: pushTtl(alert),
             signal: timeout(),
           });
           return { id: s.id, label: s.label, ...r };

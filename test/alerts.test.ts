@@ -2,7 +2,9 @@ import {
   DEFAULT_ORDER,
   deliver,
   makeAlert,
+  PUSH_TTL_S,
   parseOrder,
+  pushTtl,
   pushPayload,
   summarise,
   validateOrder,
@@ -121,8 +123,21 @@ console.log("\nno one looking: the phone gets a notification");
   check("push delivered it", d.deliveredBy === "push" && d.attempts[1]!.detail.startsWith("1 of 1"), d.attempts[1]);
   check("sent encrypted to the push service", calls[0]?.init.headers?.["content-encoding"] === "aes128gcm" && calls[0]!.url.startsWith("https://fcm.googleapis.com/"));
   check("VAPID signed", /^vapid t=.+, k=.+/.test(calls[0]?.init.headers?.authorization ?? ""));
-  check("normal urgency, an hour to live", calls[0]?.init.headers?.urgency === "normal" && calls[0]?.init.headers?.ttl === "3600");
+  // High for everything: at normal, Android holds pushes for an idle phone.
+  check("high urgency, a day to live", calls[0]?.init.headers?.urgency === "high" && calls[0]?.init.headers?.ttl === String(24 * 3600), calls[0]?.init.headers);
   check("the result was recorded", f.results[0]?.[0]?.ok === true);
+}
+
+console.log("\nhow long a push service may hold one");
+{
+  const now = 1_000_000_000;
+  const a = makeAlert({ text: "Call the office" }, "routine", now)!;
+  check("a day, by default", pushTtl(a, now) === PUSH_TTL_S && PUSH_TTL_S === 86_400);
+  const leave = makeAlert({ title: "Time to leave", text: "Dentist at 13:00", expiresAt: now + 35 * 60_000 }, "routine", now)!;
+  check("until it expires, when it does", leave.expiresAt === now + 35 * 60_000 && pushTtl(leave, now) === 35 * 60);
+  check("never less than a minute, even when already due", pushTtl(leave, now + 60 * 60_000) === 60);
+  check("never more than a day", pushTtl(makeAlert({ text: "x", expiresAt: now + 9e9 }, "api", now)!, now) === PUSH_TTL_S);
+  check("a nonsense expiry is ignored", makeAlert({ text: "x", expiresAt: "soon" }, "api", now)!.expiresAt === undefined);
 }
 
 console.log("\na subscription that has gone is reported and dropped");
