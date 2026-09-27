@@ -41,6 +41,12 @@ interface Invite {
   expiresAt: number;
 }
 
+/**
+ * The car is the screen that shows a code, never the one that types another
+ * screen's in: that is a job for the phone in your hand.
+ */
+const IN_CAR = /Tesla/i.test(navigator.userAgent);
+
 const ROLE_WORDS: Record<string, string> = {
   admin: "Admin — everything, and manages the family",
   adult: "Adult — asks, the house, live voice",
@@ -207,18 +213,19 @@ export class Family {
         </div>
       </div>` : ""}
 
-      <h3>Pair a screen</h3>
-      <div class="srv">
-        <p class="note">On the car, a tablet or any screen: choose <b>Pair with my phone</b>, and type the code it shows.</p>
-        <input type="text" class="f-code" maxlength="7" placeholder="ABC DEF" autocapitalize="characters" autocomplete="off">
-        ${admin && data.members.length > 1 ? `<select class="f-for">${data.members
-          .map((m) => `<option value="${esc(m.id)}"${m.you ? " selected" : ""}>for ${esc(m.you ? "me" : m.name)}</option>`)
-          .join("")}</select>` : ""}
-        <button class="primary f-pair">Pair</button>
-      </div>
-
       <h3>Members</h3>
       <div class="f-members"></div>
+
+      ${IN_CAR ? "" : `
+      <h3>Sign in another screen</h3>
+      <div class="srv">
+        <p class="note">Is the car, a tablet or another screen showing a code? Type it here, and that screen signs in.</p>
+        <input type="text" class="f-code" maxlength="7" placeholder="ABC DEF" autocapitalize="characters" autocomplete="off">
+        ${admin && data.members.length > 1 ? `<select class="f-for">${data.members
+          .map((m) => `<option value="${esc(m.id)}"${m.you ? " selected" : ""}>as ${esc(m.you ? "me" : m.name)}</option>`)
+          .join("")}</select>` : ""}
+        <button class="primary f-pair">Sign it in</button>
+      </div>`}
 
       ${admin ? `
       <h3>Invite someone</h3>
@@ -403,7 +410,7 @@ export class Family {
       try {
         const r = await this.api<{ label: string }>("/api/hub/pair", "POST", { code, ...(user ? { user } : {}) });
         q<HTMLInputElement>(".f-code")!.value = "";
-        this.msg(`Paired ${r.label}. It signs itself in within a few seconds.`);
+        this.msg(`Done: ${r.label} signs itself in within a few seconds.`);
       } catch (e) {
         this.msg(e instanceof Error ? e.message : String(e), true);
       }

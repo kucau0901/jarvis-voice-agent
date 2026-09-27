@@ -54,11 +54,12 @@ The car's browser cannot make a passkey, and typing is a chore. Pair it
 instead:
 
 1. On the car, choose **Pair with my phone**. It shows a six-letter code.
-2. On your phone: **Family → Pair a screen**. Type the code and tap **Pair**.
+2. On your phone: **Family → Sign in another screen**. Type the code and
+   tap **Sign it in**.
 
 The car signs itself in as you within a few seconds. An admin can pair a
 screen for someone else, a grandparent's tablet say, by choosing them
-before tapping **Pair**. A code lasts ten minutes.
+before tapping **Sign it in**. A code lasts ten minutes.
 
 On a phone or computer, **Sign in with a passkey** is quicker.
 
