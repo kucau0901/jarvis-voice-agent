@@ -661,6 +661,7 @@ unlock.pair.addEventListener("click", async () => {
     unlockView("signin");
   } finally {
     clearInterval(tick);
+    pairing = null;
   }
 });
 unlock.pairCancel.addEventListener("click", () => {
@@ -994,6 +995,50 @@ async function whoAmI() {
   }
 }
 void whoAmI();
+
+/*
+ * Picking up a new version.
+ *
+ * A home-screen app on a phone is resumed, not reloaded: iOS keeps the page
+ * alive for days, so a deploy went unseen until the app was swiped away. And
+ * the car's tab can stay open for a whole drive. So when the app comes back to
+ * the front (and every half hour while it stays there), it asks the server for
+ * the page it would serve now; if that loads a different build, it reloads —
+ * but never in the middle of anything.
+ */
+const myBuild = document.querySelector<HTMLScriptElement>('script[type="module"][src*="/assets/"]')?.src ?? "";
+let buildCheckedAt = 0;
+function busy(): boolean {
+  return !!(
+    session ||
+    userWantsSession ||
+    ptt?.busy ||
+    typedAbort ||
+    typed.value.trim() ||
+    pairing ||
+    document.querySelector(".panel.open") ||
+    !unlock.joinView.hidden
+  );
+}
+async function freshen() {
+  // Only a built app has a build to compare; the dev server's modules do not.
+  if (!myBuild || document.visibilityState !== "visible" || Date.now() - buildCheckedAt < 60_000) return;
+  buildCheckedAt = Date.now();
+  try {
+    const page = await (await fetch("/", { cache: "no-store" })).text();
+    const m = /<script[^>]*type="module"[^>]*src="([^"]*\/assets\/[^"]+)"/.exec(page);
+    if (!m?.[1] || new URL(m[1], location.href).href === myBuild) return;
+    if (busy()) {
+      buildCheckedAt = 0; // look again at the next chance
+      return;
+    }
+    location.reload();
+  } catch {
+    // Offline: carry on with what is loaded.
+  }
+}
+document.addEventListener("visibilitychange", () => void freshen());
+setInterval(() => void freshen(), 30 * 60_000);
 
 /* ---------- the menu, and focus mode ------------------------------------ */
 const menuBtn = $<HTMLButtonElement>("menuBtn");
