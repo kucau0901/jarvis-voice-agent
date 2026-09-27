@@ -249,6 +249,7 @@ export class JarvisState extends DurableObject<Env> {
       },
       post: async (between, msg) => void (await this.chat.post(dmId(between[0], between[1]), msg)),
       markPosted: (between, id, note) => this.chat.markRelay(dmId(between[0], between[1]), id, note),
+      timeZone: localeOf(env).timeZone,
     };
   }
 

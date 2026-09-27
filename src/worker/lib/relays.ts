@@ -1,5 +1,6 @@
 import type { Storage } from "./state-host.ts";
 import { makeAlert, type Alert, type Delivery } from "./alerts.ts";
+import { whenSaid } from "./routines.ts";
 
 /**
  * Jarvis as go-between: "remind Aisyah to buy ice cream when she gets home,
@@ -59,6 +60,8 @@ export interface RelayDeps {
   post(between: [string, string], msg: { from: string; name: string; text: string; relay?: { id: string; kind: RelayKind; to: string } }): Promise<void>;
   /** A passed-on message has its answer: say so where it was posted. */
   markPosted(between: [string, string], relayId: string, note: string): Promise<void>;
+  /** For saying when something later will go. */
+  timeZone?: string;
 }
 
 export const FOLLOW_MS = 30 * 60_000;
@@ -143,7 +146,24 @@ export class Relays {
     }
     // Due now and not waiting for anyone to get home: send straight away.
     await this.tick(now, made.map((r) => r.id));
-    return Promise.all(made.map(async (r) => (await this.get(r.id)) ?? r));
+    const out = await Promise.all(made.map(async (r) => (await this.get(r.id)) ?? r));
+    // Later: in their conversation at once, so both can see it is coming, and a reminder tells them quietly.
+    const deps = await this.deps();
+    for (const r of out.filter((x) => x.status === "waiting")) await this.announce(r, deps, now);
+    return out;
+  }
+
+  /** Something passed on for later: said now, in their conversation, and for a reminder, to them. */
+  private async announce(r: Relay, deps: RelayDeps, now: number): Promise<void> {
+    const at = r.after ? whenSaid(r.after, deps.timeZone ?? "UTC") : "";
+    const when = [at, r.home ? (at ? "or once you are home, whichever is later" : "once you are home") : ""].filter(Boolean).join(", ");
+    const what = r.kind === "ask" ? "A question" : r.kind === "remind" ? "A reminder" : "A message";
+    await deps
+      .post([r.from, r.to], { from: r.from, name: r.fromName, text: `${what} for ${when || "later"}: ${r.text}` })
+      .catch(() => {});
+    if (r.kind !== "remind") return;
+    const a = makeAlert({ title: `${r.fromName} will remind you`, text: `${when || "Later"}: ${r.text}`, speak: false }, "relay", now, r.to);
+    if (a) await deps.deliver(a).catch(() => null);
   }
 
   /** The recipient answers: done, can't, or words. The sender hears it. */

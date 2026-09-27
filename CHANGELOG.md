@@ -53,6 +53,11 @@ of every release, and in the [README](README.md#updating).
   their own screens and phones, and their Done, Can't or answer comes back to
   you. Unanswered, it nudges once, then tells you. "When she gets home" uses
   her Home Assistant person. Asking everyone gathers every answer for you.
+- Something passed on for later shows at once in the two people's
+  conversation, and for a reminder, its recipient is told quietly that it is
+  coming ("Aisyah will remind you, Sat 17:00: …"), so neither wonders whether
+  it went through. Someone whose permissions an admin set by hand also gets
+  what their role has gained since, such as passing things on.
 - **Family chat**: a room the whole family shares and a conversation with
   each person, in the menu. Name the assistant in the room and it answers
   there. Messages Jarvis passed on appear in the two people's conversation,

@@ -83,9 +83,11 @@ export const passOn: Tool = {
     const names = r.relays.map((x) => x.toName).join(", ");
     const waiting = r.relays.filter((x) => x.status === "waiting");
     const home = r.relays.some((x) => x.home);
+    // Scheduled is not sent: the model must not say "I've reminded him" of something still to come.
     let out = waiting.length
-      ? `It will reach ${names}${after ? ` at ${whenSaid(after, tz)}` : ""}${home ? `${after ? ", or" : ""} once they are home${after ? ", whichever is later" : ""}` : ""}.`
-      : `Passed on to ${names}.`;
+      ? `Scheduled, not sent yet: it will reach ${names}${after ? ` at ${whenSaid(after, tz)}` : ""}${home ? `${after ? ", or" : ""} once they are home${after ? ", whichever is later" : ""}` : ""}. ` +
+        `It is in the user's conversation with ${names} already${kind === "remind" ? `, and ${names} ${r.relays.length === 1 ? "has" : "have"} been told it is coming` : ""}.`
+      : `Passed on to ${names}: it has reached them.`;
     if (r.noHome.length) out += ` ${r.noHome.join(" and ")} ha${r.noHome.length === 1 ? "s" : "ve"} no Home Assistant person set, so it goes by the time alone.`;
     if (kind !== "tell") out += " Their answer will come back to the user by itself.";
     return out;

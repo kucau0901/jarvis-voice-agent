@@ -176,6 +176,8 @@ export interface Member {
   role: Role;
   /** Set by an admin; without it, the role's. */
   scopes?: Grant[];
+  /** How far the role's gains had come when `scopes` was set (GAINS). */
+  scopesV?: number;
   addedAt: number;
   addedBy: string;
 }
@@ -310,9 +312,27 @@ export function cleanName(raw: unknown, max = 40): string {
 
 export const isRole = (r: unknown): r is Role => typeof r === "string" && (ROLES as readonly string[]).includes(r);
 
+/**
+ * What each role has gained since families began, in order. Someone an
+ * admin set up by hand (their own list) before a gain gets it too: it is
+ * what their role gives now, and nobody chose to keep it from them. A list
+ * set since then records how far it has seen (`scopesV`), so a scope taken
+ * away later stays away.
+ */
+const GAINS: { v: number; roles: Role[]; scopes: Grant[] }[] = [
+  { v: 1, roles: ["adult"], scopes: ["memory.read", "memory.write", "family", "mail", "calendar", "media", "alerts", "routines"] },
+  { v: 1, roles: ["child"], scopes: ["memory.read", "memory.write", "calendar", "alerts", "routines"] },
+  { v: 2, roles: ["adult", "child"], scopes: ["car.read", "car.control"] },
+  { v: 3, roles: ["adult", "child"], scopes: ["chat"] },
+];
+export const SCOPES_V = 3;
+
 export function scopesOf(m: Member): Grant[] {
   if (m.role === "admin") return [WILDCARD];
-  return m.scopes ? [...m.scopes] : [...ROLE_SCOPES[m.role]];
+  if (!m.scopes) return [...ROLE_SCOPES[m.role]];
+  const out = new Set<Grant>(m.scopes);
+  for (const g of GAINS) if (g.v > (m.scopesV ?? 0) && g.roles.includes(m.role)) for (const s of g.scopes) out.add(s);
+  return [...out];
 }
 
 type Fail = { error: string };
@@ -717,8 +737,13 @@ export class HubHost {
       delete next.scopes;
     }
     if (patch.scopes !== undefined) {
-      if (patch.scopes === null) delete next.scopes;
-      else next.scopes = saneGrants(patch.scopes).filter((g) => g !== WILDCARD);
+      if (patch.scopes === null) {
+        delete next.scopes;
+        delete next.scopesV;
+      } else {
+        next.scopes = saneGrants(patch.scopes).filter((g) => g !== WILDCARD);
+        next.scopesV = SCOPES_V;
+      }
     }
     await this.storage.put(K.member(space, user), next);
     return next;

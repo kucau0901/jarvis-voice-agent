@@ -78,12 +78,14 @@ console.log("\nat five, once she is home");
   const h = harness({ "person.aisyah": false });
   const five = T0 + 60 * MIN;
   const made = (await h.relays.create({ kind: "remind", from: "owner", fromName: "Adam", to: [AISYAH], text: "Take the bins out", after: five, whenHome: true }, T0)) as { id: string }[];
-  check("it waits until five", h.sent.length === 0 && (await h.relays.nextWake(T0)) === five);
+  check("it waits until five", !h.sent.some((a) => a.relay) && (await h.relays.nextWake(T0)) === five);
+  check("but is in their conversation at once", h.posted.some((p) => p.text.startsWith("A reminder for")));
+  check("and she is told, quietly, that it is coming", h.sent.length === 1 && h.sent[0]!.title === "Adam will remind you" && !h.sent[0]!.speak && h.sent[0]!.for === "u_aisyah");
   await h.relays.tick(five);
-  check("at five she is out: still waiting, looked at again in a minute", h.sent.length === 0 && (await h.relays.get(made[0]!.id))!.status === "waiting" && (await h.relays.nextWake(five)) === five + MIN);
+  check("at five she is out: still waiting, looked at again in a minute", h.sent.length === 1 && (await h.relays.get(made[0]!.id))!.status === "waiting" && (await h.relays.nextWake(five)) === five + MIN);
   h.state.home["person.aisyah"] = true;
   await h.relays.tick(five + MIN);
-  check("home: it reaches her", h.sent.length === 1 && (await h.relays.get(made[0]!.id))!.status === "sent");
+  check("home: it reaches her", h.sent.length === 2 && h.sent[1]!.relay?.kind === "remind" && (await h.relays.get(made[0]!.id))!.status === "sent");
   const noHome = (await h.relays.create({ kind: "remind", from: "owner", fromName: "Adam", to: [SARA], text: "x", whenHome: true }, T0)) as { status: string; home?: string }[];
   check("someone with no Home Assistant person gets it by the time alone", noHome[0]!.status === "sent" && !noHome[0]!.home);
 }

@@ -138,6 +138,12 @@ console.log("\nroles and reach");
   check("scopesOf follows it", scopesOf(narrowed).join() === "ask,car.read");
   const reset = ok(await hub.updateMember(space, memberId, { scopes: null }));
   check("and put it back to the role's", reset.scopes === undefined && scopesOf(reset).join() === ROLE_SCOPES.adult.join());
+  // Someone set up by hand before a role gained something gets it too; a list set since keeps its choices.
+  const old = scopesOf({ space, user: "u_x", role: "adult", scopes: ["ask", "home"], addedAt: 0, addedBy: "owner" });
+  check("a hand-made list from before still gets what the role gained since", old.includes("chat") && old.includes("mail") && old.includes("home"));
+  const fresh = ok(await hub.updateMember(space, memberId, { scopes: ["ask", "home"] }));
+  check("one made now keeps what was taken away", !scopesOf(fresh).includes("chat") && fresh.scopesV === 3);
+  ok(await hub.updateMember(space, memberId, { scopes: null }));
   check("the last admin cannot step down", errorOf(await hub.updateMember(space, adminId, { role: "adult" })).includes("needs an admin"));
   check("nor be removed", errorOf(await hub.removeMember(space, adminId)).includes("cannot be removed"));
   ok(await hub.updateMember(space, memberId, { role: "admin" }));
