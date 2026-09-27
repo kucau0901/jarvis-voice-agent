@@ -344,11 +344,14 @@ the speaking. The app sends `multipart/form-data` — an `audio` file and an
 as `audio` events, so it starts talking about a second after the words are
 ready.
 
-How it hears and speaks is set in Settings → Push-to-talk voice: OpenAI
-(default; any language, mixed ones too), Cloudflare Workers AI (cheapest;
-needs `"ai": {"binding": "AI"}` in wrangler.jsonc; English speech only, via
-Deepgram Aura), or the device itself. Anything unavailable falls back to
-OpenAI. People and places saved in memory are passed to the recogniser as
+How it hears and speaks is set in Settings → Voice, which also sets the voice
+of alerts said aloud: OpenAI (default; any language, mixed ones too; hearing
+about $0.003 a minute, speaking about $0.015), Cloudflare Workers AI (needs
+`"ai": {"binding": "AI"}` in wrangler.jsonc; hearing with Whisper at about
+$0.0005 a minute, the cheapest; speaking English with Deepgram Aura 2 at
+$0.03 per 1,000 characters, about $0.025 a minute, which is dearer than OpenAI
+past Cloudflare's small free allowance), or the device itself, free. Anything
+unavailable falls back to OpenAI. Prices as of 27 Sep 2026. People and places saved in memory are passed to the recogniser as
 hints, so names are heard right.
 
 When the device has `home` and Home Assistant is set up, what was heard goes

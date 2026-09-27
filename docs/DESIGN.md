@@ -595,8 +595,10 @@ GPT-Live is the premium voice: full duplex, interruptible, and billed at $0.05
 for every minute a session is open, whether anyone is speaking or not.
 Push-to-talk (`routes/voice.ts`, `lib/speech.ts`, `src/app/ptt.ts`) is the
 economy one: speech to text, the same router, text to speech — about $0.003 a
-question with OpenAI for both, less with Workers AI or the device's own
-recognition and voice. Nothing automatic ever opens a GPT-Live session; the
+question with OpenAI for both, less with Workers AI's hearing or the device's
+own recognition and voice. Not with Workers AI's speaking: English there is
+Deepgram Aura 2 at $0.03 per 1,000 characters, about $0.025 a minute against
+OpenAI's $0.015 (27 Sep 2026), once the small free allowance is used. Nothing automatic ever opens a GPT-Live session; the
 choice is made per screen, and switching to push-to-talk ends a live session.
 
 **Type** is the third way: a chat, for a noisy room or a quiet one. The

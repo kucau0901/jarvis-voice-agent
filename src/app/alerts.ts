@@ -306,14 +306,19 @@ export async function speakAlert(key: string, a: Alert): Promise<boolean> {
   return speakText(key, a.title && a.title !== "Jarvis" ? `${a.title}. ${a.text}` : a.text);
 }
 
-/** One short clip of any text, as for an alert: typed chat's read-aloud option uses it too. */
+/**
+ * One short clip of any text, as for an alert: typed chat's read-aloud option
+ * uses it too. In the voice chosen in Settings → Voice; with the device's own
+ * voice chosen, the server says so (204) and it is spoken here.
+ */
 export async function speakText(key: string, text: string): Promise<boolean> {
   try {
     const r = await fetch("/api/tts", {
       method: "POST",
       headers: authHeaders(key),
-      body: JSON.stringify({ text, voice: "cedar" }),
+      body: JSON.stringify({ text }),
     });
+    if (r.status === 204) return speakOnDevice(text);
     if (!r.ok) throw new Error(String(r.status));
     const url = URL.createObjectURL(await r.blob());
     const audio = new Audio(url);
@@ -325,10 +330,12 @@ export async function speakText(key: string, text: string): Promise<boolean> {
   } catch (e) {
     if (e instanceof DOMException && e.name === "NotAllowedError") return false;
     // No voice scope or no network for the clip: the browser's own voice, if it has one.
-    if ("speechSynthesis" in window) {
-      speechSynthesis.speak(new SpeechSynthesisUtterance(text));
-      return true;
-    }
-    return false;
+    return speakOnDevice(text);
   }
+}
+
+function speakOnDevice(text: string): boolean {
+  if (!("speechSynthesis" in window)) return false;
+  speechSynthesis.speak(new SpeechSynthesisUtterance(text));
+  return true;
 }

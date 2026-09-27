@@ -45,7 +45,19 @@ of every release, and in the [README](README.md#updating).
   on notifications, why the app need not be open or reopened after a restart,
   and what to do when one does not arrive.
 
+### Changed
+
+- **Settings → Voice** (was "Push-to-talk voice") now sets the voice of
+  everything Jarvis says outside a Live conversation: push-to-talk's answers
+  and alerts said aloud — reminders, routines, watches, finished jobs and
+  research. Alerts used to be spoken by OpenAI in a fixed voice whatever was
+  chosen there. With the device's own voice chosen, alerts use it too.
+
 ### Fixed
+
+- The voice prices in Settings: Workers AI's English speech (Deepgram Aura 2,
+  $0.03 per 1,000 characters) is dearer than OpenAI's past Cloudflare's free
+  allowance, not the cheapest option; the docs said otherwise.
 
 - A phone whose notifications had slipped off Jarvis's list (the push service
   replaced them, or reported them gone) kept believing they were on, and

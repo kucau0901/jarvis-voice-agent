@@ -233,7 +233,8 @@ export class JarvisSession {
     const res = await fetch("/api/tts", {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-Jarvis-Key": key },
-      body: JSON.stringify({ text }),
+      // Real audio, whatever voice is chosen: this is fed into the session.
+      body: JSON.stringify({ text, audio: true }),
     });
     if (!res.ok) throw new Error(`tts failed: ${res.status}`);
 

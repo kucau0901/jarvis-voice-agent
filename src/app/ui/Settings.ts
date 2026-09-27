@@ -119,7 +119,7 @@ export class Settings {
           <p class="note">
             What Jarvis has cost you this month, and how it answered. Estimates at
             OpenAI's published prices; OpenAI's own usage page is the bill. Hearing
-            and speaking for push-to-talk are not counted.
+            and speaking (push-to-talk, and alerts said aloud) are not counted yet.
           </p>
           <div class="now usagenow"></div>
           <div class="res usageres"></div>

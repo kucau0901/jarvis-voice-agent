@@ -1,19 +1,24 @@
 import type { Env } from "../types";
 import { err } from "../lib/http";
+import { speechConfig, synthesize } from "../lib/speech";
 
 /**
- * Text to speech, used only to test the voice loop without a human.
+ * Text to speech for what Jarvis says by itself, outside a live session:
+ * alerts (reminders, routines, watches, finished jobs), Settings' Hear it.
  *
- * Injecting text through commentary.append proved useless for testing: it hands
- * the model something to *say*, not a request to act on, so it never triggers a
- * delegation. Feeding real audio into the peer connection exercises the actual
- * path — transcription, intent, delegation — end to end.
+ * It follows Settings → Voice, as push-to-talk's answers do (lib/speech.ts):
+ * the same service, voice and "how it sounds". It used to call OpenAI with a
+ * fixed voice whatever was chosen there. With the device's own voice chosen,
+ * it answers 204 and the screen speaks the text itself.
+ *
+ * `audio: true` insists on audio, for feeding speech into a live session to
+ * test the voice loop without a human (src/app/session.ts): the device's own
+ * voice cannot be fed in, so OpenAI's is used then.
  */
 export async function handleTts(req: Request, env: Env): Promise<Response> {
   if (req.method !== "POST") return err(405, "method not allowed");
-  if (!env.OPENAI_API_KEY) return err(503, "OPENAI_API_KEY is not configured");
 
-  let body: { text?: unknown; voice?: unknown };
+  let body: { text?: unknown; audio?: unknown };
   try {
     body = await req.json();
   } catch {
@@ -22,25 +27,12 @@ export async function handleTts(req: Request, env: Env): Promise<Response> {
   const text = typeof body.text === "string" ? body.text.trim().slice(0, 1000) : "";
   if (!text) return err(400, "text is required");
 
-  const res = await fetch("https://api.openai.com/v1/audio/speech", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${env.OPENAI_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: "gpt-4o-mini-tts",
-      voice: typeof body.voice === "string" ? body.voice : "alloy",
-      input: text,
-      response_format: "mp3",
-    }),
-  });
-
-  if (!res.ok) {
-    const detail = await res.text().catch(() => "");
-    return err(502, "tts failed", { status: res.status, detail: detail.slice(0, 300) });
+  if (speechConfig(env).tts === "browser" && body.audio !== true) {
+    return new Response(null, { status: 204, headers: { "x-jarvis-voice": "browser" } });
   }
-  return new Response(res.body, {
-    headers: { "content-type": "audio/mpeg", "cache-control": "no-store" },
+  const spoken = await synthesize(env, text, "mp3");
+  if (!spoken.ok) return err(502, "speech failed", { detail: spoken.error.slice(0, 300) });
+  return new Response(spoken.audio, {
+    headers: { "content-type": spoken.mime, "cache-control": "no-store", "x-jarvis-voice": spoken.by },
   });
 }

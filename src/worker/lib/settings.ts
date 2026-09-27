@@ -200,9 +200,9 @@ export const GROUPS: readonly GroupDef[] = [
   },
   {
     id: "voice",
-    title: "Push-to-talk voice",
+    title: "Voice",
     intro:
-      "The cheap way to talk to Jarvis: one question at a time, transcribed, answered and spoken back, for a fraction of a cent — no live session. GPT-Live stays for proper conversations. Choose it per screen under the orb. Test speaks a sentence and hears it back.",
+      "How Jarvis hears and speaks outside a Live conversation. Hearing is for push-to-talk. Speaking is for push-to-talk's answers and for everything Jarvis says by itself: reminders, routines, watches, finished jobs and research. A Live conversation uses GPT-Live's own voice instead. Test speaks a sentence and hears it back.",
     needs: [],
     testable: true,
   },
@@ -433,12 +433,12 @@ export const SETTINGS: readonly SettingDef[] = [
   {
     name: "VOICE_STT", group: "voice", kind: "enum", default: "openai", options: STT_PROVIDERS,
     label: "Hearing",
-    help: "openai: any language, mixed ones too, ~$0.003/min. workers-ai: Whisper, ~$0.0005/min, needs the AI binding (Cloudflare only). browser: the device's own, free, where it has one.",
+    help: "For push-to-talk. openai: any language, mixed ones too, about $0.003 a minute. workers-ai: Whisper, about $0.0005 a minute; needs the AI binding (Cloudflare only). browser: the device's own, free, where it has one. Prices as of 27 Sep 2026.",
   },
   {
     name: "VOICE_TTS", group: "voice", kind: "enum", default: "openai", options: TTS_PROVIDERS,
     label: "Speaking",
-    help: "openai: the same voices as GPT-Live, ~$0.015 per minute of speech. workers-ai: Deepgram Aura for English, MeloTTS for a few others; anything else falls back to OpenAI. browser: the device's own voice, free.",
+    help: "Push-to-talk's answers and alerts said aloud. openai: about $0.015 a minute of speech (OpenAI's estimate), in the voice below. workers-ai: English is Deepgram Aura 2 at $0.03 per 1,000 characters, about $0.025 a minute: dearer than OpenAI once Cloudflare's free allowance (roughly four minutes a day, shared with everything else on Workers AI) is used. A few other languages use MeloTTS, nearly free; the rest fall back to OpenAI. browser: the device's own voice, free. Prices as of 27 Sep 2026.",
   },
   {
     name: "VOICE_TTS_VOICE", group: "voice", kind: "enum", default: DEFAULT_VOICE, options: TTS_VOICES,
