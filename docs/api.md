@@ -110,6 +110,11 @@ without deciding whether doing the thing twice matters.
 
 ## Authentication
 
+Three kinds of credential: the owner key, a device token (below), and a
+family member's session, `jss1_…`, which the app gets by signing in with a
+passkey or pairing a screen ([families](#families-and-signing-in)). A session
+is sent the same way as a device token, and is bounded by the member's role.
+
 Two headers work. Both carry the same value.
 
 ```
@@ -146,13 +151,14 @@ existence, or argued around.
 | `memory.write` | `remember`, `forget`. |
 | `car.read` | `car_state`, `directions`. |
 | `car.control` | `car_command` — including unlock and sending a destination. |
-| `home` | Home Assistant, `control_home`, `ask_hermes`, `show_camera`, `look_at_camera`, `/api/camera`. |
+| `home` | Home Assistant, `show_camera`, `look_at_camera`, `/api/camera`. |
+| `hermes` | `ask_hermes`, `control_home`: Hermes can run commands on its machine, so sharing the house never shares it. A device made before 2.0 with `home` keeps it. |
 | `media` | Spotify. |
 | `mail` | Gmail: `mail_check`, `mail_search`, `mail_send`, `mail_manage`, `contacts_lookup`. Reads, sends, replies, drafts, trashes and archives — there is no read-only half. Also reads Google Contacts to turn a name into an address. |
 | `calendar` | Google Calendar: `calendar_check`, `calendar_add`. Reads the diary **and creates events**. |
 | `screen` | `show_place`, `hide_display`, `/api/map`. |
 | `voice` | `/api/session`, `/api/tts`, `/api/voices`, and push-to-talk `/api/v1/voice` (which also needs `ask`). |
-| `ask` (jobs) | `/api/v1/jobs`, `/api/v1/jobs/cancel`, `start_job`. A job for Hermes also needs `home`. Each job runs with its creator's grants, and only their reading tools. |
+| `ask` (jobs) | `/api/v1/jobs`, `/api/v1/jobs/cancel`, `start_job`. A job for Hermes also needs `hermes`. Each job runs with its creator's grants, and only their reading tools. |
 | `routines` | `/api/v1/routines`, `/api/v1/routines/run`, `/api/v1/trigger`; `routine_add`, `routine_list`, `routine_remove`. A routine's question runs with **its creator's** grants, never more. |
 | `alerts` | Receiving alerts (`/api/v1/events`, `/api/v1/push`, `/api/v1/alerts`), raising one (`/api/v1/notify`), and `send_note`. The same scope both ways: a device that may be told things may ask to be told something. |
 
@@ -642,6 +648,52 @@ Irrelevant to native clients and microcontrollers — CORS is enforced by browse
 not servers. If a browser-based client runs on a *different* origin, set
 `JARVIS_ALLOWED_ORIGINS` to a comma-separated list of exact origins. No wildcards
 and no suffix matching. Loading the app from this domain needs none of it.
+
+## Families and signing in
+
+People, not devices: see [docs/family.md](family.md) for what it is. The app
+does all of this; it is here for anyone building their own client.
+
+Before signing in (no credential; rate-limited by address):
+
+| Route | Body | Answer |
+|---|---|---|
+| `GET /api/auth/status` | | `{claimed, agentName}` |
+| `POST /api/auth/login/options` | `{}` | `{options}` for `navigator.credentials.get` |
+| `POST /api/auth/login/verify` | `{credential, label}` | `{token, name}` |
+| `POST /api/auth/invite` | `{token}` | what an invite is for |
+| `POST /api/auth/invite/options` | `{token, name}` | `{options}` for `navigator.credentials.create` |
+| `POST /api/auth/invite/verify` | `{token, name, credential, label}` | `{token, name, agentName}` |
+| `POST /api/auth/pair/start` | `{label}` | `{code, poll, expiresAt}`: show the code |
+| `POST /api/auth/pair/poll` | `{poll}` | `{status: "waiting" \| "expired" \| "approved", token?}` |
+
+`credential` is the WebAuthn response with its binary fields base64url
+encoded. Passkeys must be discoverable and user-verified; attestation is not
+asked for. A `token` is a session: send it as `Authorization: Bearer jss1_…`.
+Poll a pairing every few seconds; the code lasts ten minutes.
+
+Signed in (a member or the owner key; never a device):
+
+| Route | Who | |
+|---|---|---|
+| `GET /api/hub/me` | anyone | who this is, their role and reach |
+| `PATCH /api/hub/me` | a member | `{name}` |
+| `POST /api/hub/signout` | a member | end this session |
+| `POST /api/hub/claim` | the owner key | `{name, spaceName, agentName}` → the first admin's invite `{token}` |
+| `GET /api/hub/members` | anyone | names and roles; for admins also reach and pending invites |
+| `PATCH /api/hub/members` | admin | `{user, role?, scopes?}`; `scopes: null` resets to the role's |
+| `DELETE /api/hub/members` | admin | `{user}` |
+| `POST /api/hub/invites` | admin | `{role, name}`, or `{user}` for a new passkey for them → `{token, url}` |
+| `DELETE /api/hub/invites` | admin | `{id}` |
+| `PATCH /api/hub/space` | admin | `{name?, agentName?}` |
+| `POST /api/hub/pair` | anyone | `{code, user?}`: approve a screen; `user` only for admins |
+| `GET/DELETE /api/hub/passkeys`, `POST /api/hub/passkeys/options`, `POST /api/hub/passkeys/verify` | a member | their own passkeys |
+| `GET/DELETE /api/hub/sessions` | a member | their own sessions |
+
+A member's session reaches what their role allows (admin: everything;
+adult: `ask`, `home`, `voice`, `screen`; child: `ask`, `voice`, `screen`;
+guest: `ask`, `voice`) unless an admin set it otherwise. Changes and
+removals are felt within 30 seconds everywhere.
 
 ## Not part of this contract
 

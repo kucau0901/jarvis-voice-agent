@@ -77,6 +77,10 @@ enough) or run it yourself with **Docker**.
   away. [Setup guide](docs/even-g2.md).
 - **Other devices** — an ESP32 or anything else can use it through a small
   [device API](docs/api.md) with per-device, revocable, scoped tokens.
+- **Your family** — everyone signs in as themselves with a passkey (no
+  passwords), the car and other screens pair with a short code, and an admin
+  decides what each person reaches. Name the assistant what you like.
+  [Sharing Jarvis with your family](docs/family.md).
 - **Set up in the browser** — every key and setting is entered, tested and
   changed in the app's settings panel. You need exactly one secret to deploy.
 
@@ -237,10 +241,12 @@ guide of their own: [docs/even-g2.md](docs/even-g2.md).
 
 ## Security
 
-- Every `/api/*` route needs the owner key or a device token, except the Google
-  and Spotify sign-in callbacks, which carry a single-use code instead. Device tokens are
+- Every `/api/*` route needs the owner key, a family member's session or a
+  device token, except signing in itself (rate-limited) and the Google and
+  Spotify sign-in callbacks, which carry a single-use code instead. Members
+  sign in with passkeys; there are no passwords. Device tokens and members are
   scoped (`car.read`, `home`, `mail`, …), rate-limited and individually
-  revocable; administration is owner-only.
+  revocable; administration is for the owner key and family admins.
 - Credentials stay on the server. Text written by other people — email bodies,
   calendar invitations, reviews — is fenced as data and never followed as an
   instruction.

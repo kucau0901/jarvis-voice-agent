@@ -1,7 +1,7 @@
 import type { Env } from "./types";
 import { err } from "./lib/http";
-import { authorize, type Principal } from "./lib/auth";
-import { allows, requiredScope, WILDCARD, type Grant } from "./lib/scopes";
+import { authorize, grantsOf, isAdmin, type Principal } from "./lib/auth";
+import { allows, requiredScope } from "./lib/scopes";
 import { preflight, withCors } from "./lib/cors";
 import * as limits from "./lib/limits";
 import { handleProbe } from "./routes/probe";
@@ -22,11 +22,10 @@ import { withSettings } from "./lib/settings-store";
 import { JARVIS_VERSION, handleVersion } from "./routes/version";
 import { handleUsage } from "./routes/usage";
 import { handleAlertsAdmin, isTicketedSocket, openTicketedSocket } from "./routes/alerts";
+import { handleAuth, handleHub } from "./routes/hub";
 
 // The Durable Object class must be exported from the entry for the runtime to find it.
 export { JarvisState } from "./state";
-
-const grantsOf = (p: Principal): readonly Grant[] => (p.kind === "owner" ? [WILDCARD] : p.scopes);
 
 export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -65,6 +64,15 @@ export default {
     // a one-time ticket it was issued over an authenticated request instead.
     // The Durable Object checks and spends it (routes/alerts.ts).
     if (isTicketedSocket(req, url)) return openTicketedSocket(req, env);
+    // Signing in, which by its nature comes before a credential (routes/hub.ts).
+    if (url.pathname.startsWith("/api/auth/")) {
+      try {
+        return withCors(await handleAuth(req, await withSettings(env)), origin, env);
+      } catch (e) {
+        console.error("auth", e instanceof Error ? e.stack : String(e));
+        return withCors(err(500, "internal error"), origin, env);
+      }
+    }
 
     const auth = await authorize(req, env, ctx);
     if (!auth.ok) return withCors(auth.response, origin, env);
@@ -88,18 +96,18 @@ export default {
      * would guarantee the next route added forgets one; here, forgetting means
      * the route is closed to devices, which is the safe direction to fail in.
      */
-    if (principal.kind !== "owner") {
+    if (!isAdmin(principal)) {
+      const scoped = principal as Exclude<Principal, { kind: "owner" }>;
       const need = requiredScope(url.pathname, req.method);
-      if (need === "owner") return withCors(err(403, "owner credential required"), origin, env);
-      if (need !== "any" && !allows(principal.scopes, need)) {
-        return withCors(
-          err(403, `this device is not granted "${need}"`, { need, has: principal.scopes }),
-          origin,
-          env,
-        );
+      if (need === "owner") {
+        return withCors(err(403, scoped.kind === "member" ? "only a family admin can do that" : "owner credential required"), origin, env);
+      }
+      if (need !== "any" && !allows(scoped.scopes, need)) {
+        const who = scoped.kind === "member" ? "you are" : "this device is";
+        return withCors(err(403, `${who} not granted "${need}"`, { need, has: scoped.scopes }), origin, env);
       }
 
-      const verdict = await limits.check(env, principal.id);
+      const verdict = await limits.check(env, scoped.id);
       if (!verdict.ok) {
         const message = limits.limitMessage(verdict.reason);
         const headers = new Headers({ "content-type": "application/json" });
@@ -114,7 +122,7 @@ export default {
         );
       }
       // The Durable Object counts inside check(), atomically; only KV needs this.
-      if (!verdict.counted) ctx.waitUntil(limits.charge(env, principal.id));
+      if (!verdict.counted) ctx.waitUntil(limits.charge(env, scoped.id));
     }
 
     try {
@@ -140,6 +148,7 @@ async function route(
   principal: Principal,
 ): Promise<Response> {
   if (url.pathname.startsWith("/api/v1/")) return await handleV1(req, env, ctx, principal);
+  if (url.pathname.startsWith("/api/hub/")) return await handleHub(req, env, principal);
   if (url.pathname.startsWith("/api/mcp")) return await handleMcp(req, env);
   if (url.pathname.startsWith("/api/memory")) return await handleMemory(req, env);
   if (url.pathname.startsWith("/api/spotify")) return await handleSpotify(req, env);

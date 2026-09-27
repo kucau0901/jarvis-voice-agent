@@ -93,7 +93,7 @@ const str = (v: unknown, fallback = ""): string =>
 
 export const askHermes: Tool = {
   name: "ask_hermes",
-  scope: "home",
+  scope: "hermes",
   available: (env) => !!hermes.hermesConfig(env),
   pace: "fast",
   description:
@@ -141,7 +141,7 @@ export const askHermes: Tool = {
 
 export const controlHome: Tool = {
   name: "control_home",
-  scope: "home",
+  scope: "hermes",
   available: (env) => !!hermes.hermesConfig(env),
   pace: "slow",
   description:

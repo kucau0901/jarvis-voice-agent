@@ -15,6 +15,9 @@ import { askTyped } from "./chat";
 import { richText } from "./ui/util";
 import { PushToTalk } from "./ptt";
 import { LiveVoice, wakeVoice } from "./loud";
+import { Family } from "./ui/Family";
+import { hubStatus, inviteInfo, joinWithInvite, pairThisScreen, signInWithPasskey } from "./account";
+import { passkeyError, passkeysSupported } from "./passkey";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -41,7 +44,28 @@ const unlock = {
   input: $<HTMLInputElement>("keyInput"),
   go: $<HTMLButtonElement>("keyGo"),
   err: $("keyErr"),
+  name: $("unlockName"),
+  signIn: $("signIn"),
+  passkey: $<HTMLButtonElement>("passkeyGo"),
+  pair: $<HTMLButtonElement>("pairGo"),
+  pairView: $("pairView"),
+  pairCode: $("pairCode"),
+  pairLeft: $("pairLeft"),
+  pairCancel: $<HTMLButtonElement>("pairCancel"),
+  joinView: $("joinView"),
+  joinText: $("joinText"),
+  joinName: $<HTMLInputElement>("joinName"),
+  joinGo: $<HTMLButtonElement>("joinGo"),
+  keyWrap: $<HTMLDetailsElement>("keyWrap"),
 };
+
+/** An invite link (#invite=…): read once and taken off the address bar. */
+const inviteToken = (() => {
+  const m = /invite=([^&]+)/.exec(location.hash);
+  if (!m?.[1]) return "";
+  window.history.replaceState(null, "", location.pathname + location.search);
+  return decodeURIComponent(m[1]);
+})();
 
 /* ---------- transcript ------------------------------------------------- */
 // Full duplex means the two speakers genuinely overlap, so rows grow in place
@@ -329,7 +353,7 @@ function onState(s: SessionState, detail?: string) {
       session = null;
       // A stored key can stop working (rotated, revoked). Re-prompt rather than
       // leaving the driver tapping an orb that will never start.
-      if (detail?.includes("unauthorized")) { clearKey(); key = ""; requireKey(); }
+      if (detail?.includes("unauthorized")) { clearKey(); key = ""; void requireKey(); }
       break;
   }
 }
@@ -541,6 +565,15 @@ async function tryKey(candidate: string) {
       void syncPush(key);
       unlock.wrap.classList.remove("show");
       setMode(mode);
+      // Unlocked with the owner key and no family yet: offer to set one up, once.
+      void hubStatus().then((s) => {
+        let asked = false;
+        try {
+          asked = !!localStorage.getItem("jarvis.familyOffered");
+          localStorage.setItem("jarvis.familyOffered", "1");
+        } catch { /* private mode */ }
+        if (!s.claimed && !asked) openFamily();
+      });
       return;
     }
     unlock.err.textContent =
@@ -561,10 +594,126 @@ unlock.input.addEventListener("keydown", (e) => {
   if (e.key === "Enter") void tryKey(unlock.input.value);
 });
 
-function requireKey() {
-  unlock.wrap.classList.add("show");
-  unlock.input.focus();
+/*
+ * Signing in as a person (src/app/account.ts): with a passkey, by pairing
+ * this screen with a phone that is signed in, or by joining from an invite.
+ * The owner key stays, folded away, for a Jarvis with no family yet and as
+ * the way back in. Each ends by reloading: every panel was made with the old
+ * key, and a fresh start is the simple way to leave none of them behind.
+ */
+function signedIn(token: string) {
+  key = saveKey(token);
+  location.reload();
 }
+
+function unlockView(v: "signin" | "pair" | "join") {
+  unlock.signIn.hidden = v !== "signin";
+  unlock.pairView.hidden = v !== "pair";
+  unlock.joinView.hidden = v !== "join";
+  unlock.keyWrap.hidden = v !== "signin";
+}
+
+async function requireKey() {
+  unlock.wrap.classList.add("show");
+  if (inviteToken) return void showInvite();
+  unlockView("signin");
+  const s = await hubStatus();
+  unlock.name.textContent = (s.agentName ?? "Jarvis").toUpperCase();
+  // No family yet: the owner key is the only way in, as it always was.
+  unlock.signIn.hidden = !s.claimed;
+  unlock.passkey.hidden = !passkeysSupported();
+  unlock.keyWrap.open = !s.claimed;
+  if (!s.claimed) unlock.input.focus();
+}
+
+unlock.passkey.addEventListener("click", async () => {
+  unlock.err.textContent = "";
+  unlock.passkey.disabled = true;
+  try {
+    signedIn((await signInWithPasskey()).token);
+  } catch (e) {
+    unlock.err.textContent = passkeyError(e);
+  } finally {
+    unlock.passkey.disabled = false;
+  }
+});
+
+let pairing: AbortController | null = null;
+unlock.pair.addEventListener("click", async () => {
+  unlock.err.textContent = "";
+  unlockView("pair");
+  unlock.pairCode.textContent = "······";
+  pairing = new AbortController();
+  let tick = 0;
+  try {
+    const r = await pairThisScreen((code, expiresAt) => {
+      unlock.pairCode.textContent = `${code.slice(0, 3)} ${code.slice(3)}`;
+      const left = () => {
+        const s = Math.max(0, Math.round((expiresAt - Date.now()) / 1000));
+        unlock.pairLeft.textContent = `Waiting for your phone… ${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+      };
+      left();
+      tick = setInterval(left, 1000) as unknown as number;
+    }, pairing.signal);
+    signedIn(r.token);
+  } catch (e) {
+    if (!pairing?.signal.aborted) unlock.err.textContent = e instanceof Error ? e.message : String(e);
+    unlockView("signin");
+  } finally {
+    clearInterval(tick);
+  }
+});
+unlock.pairCancel.addEventListener("click", () => {
+  pairing?.abort();
+  unlockView("signin");
+});
+
+async function showInvite() {
+  unlockView("join");
+  unlock.joinGo.disabled = true;
+  try {
+    const inv = await inviteInfo(inviteToken);
+    unlock.name.textContent = inv.agentName.toUpperCase();
+    unlock.joinText.textContent = inv.existing
+      ? `A new passkey for ${inv.name} on this device, to use ${inv.agentName} with ${inv.spaceName}.`
+      : `You're invited to join ${inv.spaceName}${inv.role === "admin" ? " as its admin" : ""}, and use ${inv.agentName}, its assistant.`;
+    unlock.joinName.value = inv.name;
+    unlock.joinName.hidden = inv.existing;
+    if (!passkeysSupported()) {
+      unlock.err.textContent = "This browser cannot make a passkey. Open the link on your phone; then pair this screen from Family.";
+      return;
+    }
+    unlock.joinGo.disabled = false;
+    if (!inv.existing) unlock.joinName.focus();
+  } catch (e) {
+    unlock.joinText.textContent = "";
+    unlock.err.textContent = e instanceof Error ? e.message : String(e);
+  }
+}
+
+unlock.joinGo.addEventListener("click", async () => {
+  const name = unlock.joinName.value.trim();
+  if (!unlock.joinName.hidden && !name) {
+    unlock.err.textContent = "Your name, as the family should see it.";
+    return;
+  }
+  unlock.err.textContent = "";
+  unlock.joinGo.disabled = true;
+  try {
+    signedIn((await joinWithInvite(inviteToken, name)).token);
+  } catch (e) {
+    unlock.err.textContent = passkeyError(e);
+    unlock.joinGo.disabled = false;
+  }
+});
+
+let family: Family | null = null;
+function openFamily() {
+  if (!key) { void requireKey(); return; }
+  family ??= new Family(key, signedIn);
+  void family.show();
+}
+$("openFamily").addEventListener("click", openFamily);
 
 let devices: Devices | null = null;
 let memory: Memory | null = null;
@@ -823,6 +972,29 @@ new ResizeObserver(() => {
   if (shrunk > 0 && t.scrollHeight - t.scrollTop - t.clientHeight - shrunk < 40) t.scrollTop = t.scrollHeight;
 }).observe(els.transcript);
 
+/*
+ * Who this screen is: the family's name for its assistant in the title, and
+ * only the menu items this person may use. The server enforces the same; this
+ * only spares someone a panel that would refuse them.
+ */
+async function whoAmI() {
+  if (!key) return;
+  try {
+    const res = await fetch("/api/hub/me", { headers: authHeaders(key) });
+    if (!res.ok) return;
+    const me = (await res.json()) as { space: { agentName: string } | null; role: string; scopes: string[] };
+    if (me.space?.agentName) {
+      $("title").textContent = me.space.agentName.toUpperCase();
+      document.title = me.space.agentName;
+    }
+    const may = (need: string) => me.role === "admin" || me.scopes.includes("*") || (need !== "admin" && me.scopes.includes(need));
+    for (const b of document.querySelectorAll<HTMLElement>("#topbtns [data-need]")) b.hidden = !may(b.dataset.need!);
+  } catch {
+    // Offline: the menu stays as it is.
+  }
+}
+void whoAmI();
+
 /* ---------- the menu, and focus mode ------------------------------------ */
 const menuBtn = $<HTMLButtonElement>("menuBtn");
 const menu = $("topbtns");
@@ -958,11 +1130,11 @@ window.__jarvis = {
   history: () => history.snapshot(),
 };
 
-if (key) {
+if (key && !inviteToken) {
   setMode(mode);
 } else {
   status("");
-  requireKey();
+  void requireKey();
 }
 
 /*

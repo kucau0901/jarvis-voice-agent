@@ -53,6 +53,8 @@ export interface Device {
 /** The index entry. `digest` never leaves the Worker. */
 interface StoredDevice extends Device {
   digest: string;
+  /** 2 from when `hermes` became its own scope; absent before. */
+  v?: number;
 }
 
 const enc = new TextEncoder();
@@ -101,10 +103,15 @@ function saneDevice(raw: unknown): StoredDevice | undefined {
   if (!raw || typeof raw !== "object") return undefined;
   const d = raw as Partial<StoredDevice>;
   if (typeof d.id !== "string" || typeof d.name !== "string") return undefined;
+  const scopes = saneGrants(d.scopes);
+  // Hermes used to come with `home`. A device made then keeps it, so splitting
+  // the scope takes nothing away from anyone; it is written back as v2.
+  if (d.v !== 2 && scopes.includes("home") && !scopes.includes("hermes")) scopes.push("hermes");
   return {
+    v: 2,
     id: d.id,
     name: d.name,
-    scopes: saneGrants(d.scopes),
+    scopes,
     hint: typeof d.hint === "string" ? d.hint : "",
     digest: typeof d.digest === "string" ? d.digest : "",
     createdAt: typeof d.createdAt === "number" ? d.createdAt : 0,
@@ -207,6 +214,7 @@ export async function create(
 ): Promise<{ device: Device; token: string }> {
   const token = mintToken();
   const stored: StoredDevice = {
+    v: 2,
     id: newId(),
     name: name.slice(0, 64),
     scopes,

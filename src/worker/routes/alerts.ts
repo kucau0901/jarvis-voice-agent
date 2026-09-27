@@ -1,5 +1,5 @@
 import type { Env } from "../types";
-import type { Principal } from "../lib/auth";
+import { whoOf, type Principal } from "../lib/auth";
 import { err, json, publicOrigin } from "../lib/http";
 import { stateFetch, stateStub } from "../lib/state-client";
 import { deliver, makeAlert, parseOrder } from "../lib/alerts";
@@ -35,9 +35,9 @@ async function body(req: Request): Promise<Record<string, unknown> | null> {
 
 /** What a screen is called in the panel and in "shown on …". A device is its own name. */
 function identity(principal: Principal, label: unknown, fallback: string) {
-  return principal.kind === "owner"
-    ? { who: "owner", label: cleanLabel(label, fallback) }
-    : { who: principal.id, label: cleanLabel(principal.name, "a device") };
+  return principal.kind === "device"
+    ? { who: principal.id, label: cleanLabel(principal.name, "a device") }
+    : { who: whoOf(principal), label: cleanLabel(label, fallback) };
 }
 
 const isUpgrade = (req: Request) => req.headers.get("upgrade")?.toLowerCase() === "websocket";

@@ -1,5 +1,5 @@
 import type { Env } from "../types";
-import type { Principal } from "../lib/auth";
+import { whoOf, type Principal } from "../lib/auth";
 import { err, json } from "../lib/http";
 import { SseStream, type EventSink, type SseEvent } from "../lib/sse";
 import { Collector, type Collected } from "../lib/collector";
@@ -295,7 +295,7 @@ export async function handleVoice(
     : grants.includes(WILDCARD)
       ? SCOPES.filter((s) => s !== "screen")
       : grants.filter((g) => g !== "screen");
-  const who = principal.kind === "owner" ? "owner" : principal.id;
+  const who = whoOf(principal);
   const accept = (req.headers.get("accept") ?? "").toLowerCase();
   const ac = new AbortController();
   req.signal.addEventListener("abort", () => ac.abort());

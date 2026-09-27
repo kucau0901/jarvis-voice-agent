@@ -1,5 +1,5 @@
 import type { Env } from "../types";
-import type { Principal } from "../lib/auth";
+import { whoOf, grantsOf, type Principal } from "../lib/auth";
 import { err, json } from "../lib/http";
 import { stateStub } from "../lib/state-client";
 import { localeOf } from "../lib/locale";
@@ -37,8 +37,7 @@ async function body(req: Request): Promise<Record<string, unknown> | null> {
   }
 }
 
-const creator = (p: Principal) =>
-  p.kind === "owner" ? { who: "owner", grants: [WILDCARD] as Grant[] } : { who: p.id, grants: p.scopes };
+const creator = (p: Principal) => ({ who: whoOf(p), grants: grantsOf(p) });
 
 /** A routine as the panel and the API show it. */
 export function view(r: Routine, timeZone: string) {

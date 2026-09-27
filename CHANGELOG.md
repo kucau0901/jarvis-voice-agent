@@ -19,6 +19,16 @@ of every release, and in the [README](README.md#updating).
 
 ### Added
 
+- **Share Jarvis with your family.** Everyone signs in as themselves with a
+  passkey (Face ID, a fingerprint or the phone's PIN; no passwords), and the
+  car or any other screen pairs with a short code approved from a phone. One
+  of you is the admin, who invites the others with a link, chooses each
+  person's role (admin, adult, child or guest) and what they can reach, and
+  can remove them. Call the assistant whatever you like. Until you set a
+  family up, nothing changes: the owner key works as before, and keeps
+  working after, as the way back in.
+  [Sharing Jarvis with your family](docs/family.md).
+
 - **One conversation across your devices**: ask in the car, and "what was
   that address again?" works on the phone or the glasses for the next half
   hour. Only devices allowed to read memory take part.
@@ -47,6 +57,13 @@ of every release, and in the [README](README.md#updating).
 
 ### Changed
 
+- **Hermes has its own permission,** `hermes`, apart from the house (`home`),
+  because Hermes can run commands on its machine: sharing the house with
+  someone never shares that. Devices made before this version with the house
+  keep Hermes.
+- What Jarvis knows about you (the profile it reads before answering) goes
+  only to people and devices allowed to read memory (`memory.read`). A device
+  without it no longer gets it, as it could not ask for it either.
 - **Settings → Voice** (was "Push-to-talk voice") now sets the voice of
   everything Jarvis says outside a Live conversation: push-to-talk's answers
   and alerts said aloud — reminders, routines, watches, finished jobs and

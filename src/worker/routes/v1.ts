@@ -3,7 +3,7 @@ import { err, json } from "../lib/http";
 import { Collector, type Collected } from "../lib/collector";
 import { buildHistory, type Turn } from "../lib/history";
 import { run, handleDelegate, type RunOptions } from "./delegate";
-import type { Principal } from "../lib/auth";
+import { whoOf, grantsOf, isAdmin, type Principal } from "../lib/auth";
 import { stateStub } from "../lib/state-client";
 import { charBudget, forGlasses, latestUserText, toChatCompletion, waitSeconds } from "../lib/glasses";
 import { allows, saneGrants, SCOPES, WILDCARD, type Grant } from "../lib/scopes";
@@ -246,8 +246,8 @@ async function handleChatCompletions(
   return reply(answer, r.model);
 }
 
-/** One thread per device, and one for the owner key. */
-const threadOf = (p: Principal): string => (p.kind === "owner" ? "owner" : p.id);
+/** One thread per device and per member, and one for the owner key. */
+const threadOf = (p: Principal): string => whoOf(p);
 
 /** Never throws: an unreadable thread costs a follow-up its context, not the question. */
 async function priorTurns(env: Env, key: string): Promise<Turn[]> {
@@ -345,7 +345,7 @@ export async function handleV1(
   principal: Principal,
 ): Promise<Response> {
   const url = new URL(req.url);
-  const grants: readonly Grant[] = principal.kind === "owner" ? [WILDCARD] : principal.scopes;
+  const grants: readonly Grant[] = grantsOf(principal);
 
   // No display channel on this route at all, so screen tools are dropped
   // rather than offered and silently discarded.
@@ -372,7 +372,7 @@ export async function handleV1(
   if (url.pathname === "/api/v1/usage/live") return handleLiveUsage(req, env);
 
   if (url.pathname === "/api/v1/devices") {
-    if (principal.kind !== "owner") return err(403, "owner credential required");
+    if (!isAdmin(principal)) return err(403, "owner credential required");
     return handleDevices(req, env);
   }
 

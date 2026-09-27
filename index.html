@@ -94,6 +94,7 @@
     min-width: 210px; padding: 8px; border-radius: 14px; background: #0e1520;
     border: 1px solid #1e2937; box-shadow: 0 18px 50px rgba(0,0,0,.55); }
   #topbtns.open { display: flex; }
+  #topbtns button[hidden] { display: none !important; }
   #topbtns button { background: #131b26; color: var(--fg); border: 1px solid #1e2937;
     border-radius: 10px; padding: 12px 16px; min-height: 52px; font: inherit; font-size: 16px;
     text-align: left; cursor: pointer; white-space: nowrap; }
@@ -234,15 +235,15 @@
   #devices button.armed { background: var(--red); border-color: var(--red);
     color: #fff; font-weight: 600; }
   /* The one moment the token is readable, so it gets the loudest box here. */
-  #devices .token { border: 1px solid var(--cyan); border-radius: 10px;
+  #devices .token, #family .token { border: 1px solid var(--cyan); border-radius: 10px;
     padding: 16px; margin-bottom: 16px; background: #071018; }
-  #devices .token p { color: var(--dim); font-size: 13px; margin: 8px 0; }
-  #devices .tok { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-  #devices .tok code { font: 13px ui-monospace, Menlo, monospace; word-break: break-all;
+  #devices .token p, #family .token p { color: var(--dim); font-size: 13px; margin: 8px 0; }
+  #devices .tok, #family .tok { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  #devices .tok code, #family .tok code { font: 13px ui-monospace, Menlo, monospace; word-break: break-all;
     flex: 1 1 260px; padding: 10px; }
-  #devices .qr { background: #fff; padding: 10px; border-radius: 8px;
+  #devices .qr, #family .qr { background: #fff; padding: 10px; border-radius: 8px;
     width: max-content; margin: 12px 0; }
-  #devices .qr svg { display: block; width: 190px; height: 190px; }
+  #devices .qr svg, #family .qr svg { display: block; width: 190px; height: 190px; }
   /* Memory (src/app/ui/Memory.ts): every fact Jarvis carries, and a way to add or forget one. */
   #memory [hidden] { display: none !important; }
   #memory .gauge { display: grid; grid-template-columns: auto minmax(60px, 1fr) auto; gap: 10px;
@@ -336,7 +337,23 @@
   #keyGo { width: min(460px, 100%); height: 64px; background: var(--cyan);
     color: #05070b; border: 0; border-radius: 12px; font: 600 19px inherit; cursor: pointer; }
   #keyGo:disabled { opacity: .35; }
-  #keyErr { color: var(--red); font-size: 14px; min-height: 20px; }
+  #keyErr { color: var(--red); font-size: 14px; min-height: 20px; text-align: center; max-width: 460px; }
+  #unlock .uview { width: min(460px, 100%); display: grid; gap: 14px; justify-items: stretch; }
+  #unlock .uview[hidden] { display: none; }
+  #unlock .dim { color: var(--dim); font-size: 13px; }
+  #unlock button.big { height: 64px; background: var(--cyan); color: #05070b; border: 0;
+    border-radius: 12px; font: 600 19px inherit; cursor: pointer; }
+  #unlock button.big.alt { background: #1a242f; color: var(--fg); border: 1px solid #243140; }
+  #unlock button.big:disabled { opacity: .35; }
+  #unlock .field { height: 60px; background: #0c1218; color: var(--fg); border: 1px solid #22303f;
+    border-radius: 12px; font: 20px inherit; padding: 0 16px; text-align: center; }
+  #unlock .paircode { text-align: center; font: 600 54px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+    letter-spacing: 12px; color: var(--cyan); padding: 12px 0; }
+  #unlock details summary { color: var(--dim); font-size: 14px; cursor: pointer; text-align: center; list-style: none; }
+  #unlock details summary::-webkit-details-marker { display: none; }
+  #unlock details[open] { gap: 12px; }
+  #unlock details[open] summary { margin-bottom: 4px; }
+  #unlock details > input, #unlock details > button { display: block; width: 100%; }
 
   /* Viewport overrides last: these carry no extra specificity, so they only
      win by coming after the rules they override. */
@@ -358,8 +375,8 @@
     .panel { padding: 0; align-items: flex-end; }
     .panel .sheet { width: 100%; max-height: 92dvh; border-radius: 16px 16px 0 0;
       padding: 18px 16px calc(18px + env(safe-area-inset-bottom)); }
-    #devices .qr svg { width: 150px; height: 150px; }
-    #devices .tok code { flex: 1 1 100%; }
+    #devices .qr svg, #family .qr svg { width: 150px; height: 150px; }
+    #devices .tok code, #family .tok code { flex: 1 1 100%; }
   }
 
   /* A desktop window has room the dashboard does not. */
@@ -520,14 +537,16 @@
 </style>
 </head>
 <body>
-  <h1>JARVIS</h1>
+  <h1 id="title">JARVIS</h1>
   <button id="menuBtn" type="button" aria-label="Menu" aria-haspopup="menu" aria-expanded="false">☰</button>
   <div id="topbtns" role="menu" aria-label="Menu">
-    <button id="openMemory" type="button" role="menuitem">Memory</button>
-    <button id="openRoutines" type="button" role="menuitem">Routines</button>
-    <button id="openJobs" type="button" role="menuitem">Jobs</button>
-    <button id="openDevices" type="button" role="menuitem">Devices</button>
-    <button id="openSettings" type="button" role="menuitem">Settings</button>
+    <!-- data-need: what a family member must be allowed for the item to be offered (main.ts). -->
+    <button id="openMemory" type="button" role="menuitem" data-need="memory.read">Memory</button>
+    <button id="openRoutines" type="button" role="menuitem" data-need="routines">Routines</button>
+    <button id="openJobs" type="button" role="menuitem" data-need="ask">Jobs</button>
+    <button id="openFamily" type="button" role="menuitem">Family</button>
+    <button id="openDevices" type="button" role="menuitem" data-need="admin">Devices</button>
+    <button id="openSettings" type="button" role="menuitem" data-need="admin">Settings</button>
     <button id="toggleLog" type="button" role="menuitem">Events</button>
   </div>
 
@@ -552,12 +571,39 @@
   </form>
 
   <div id="unlock">
-    <h2 style="margin:0;font-weight:300;letter-spacing:8px;font-size:22px">JARVIS</h2>
-    <p>Enter your access key.<br>You only need to do this once on this screen.</p>
-    <input id="keyInput" autocomplete="off" autocapitalize="characters"
-           autocorrect="off" spellcheck="false" inputmode="latin"
-           maxlength="24" placeholder="XXXXXXXXXXXXXXXX">
-    <button id="keyGo">Unlock</button>
+    <h2 id="unlockName" style="margin:0;font-weight:300;letter-spacing:8px;font-size:22px">JARVIS</h2>
+
+    <!-- Signing in as yourself: a passkey here, or this screen paired with your phone. -->
+    <div id="signIn" class="uview">
+      <p>Sign in once on this screen.</p>
+      <button id="passkeyGo" class="big">Sign in with a passkey</button>
+      <button id="pairGo" class="big alt">Pair with my phone</button>
+    </div>
+
+    <!-- A code for a signed-in phone to approve: Family → Pair a screen. -->
+    <div id="pairView" class="uview" hidden>
+      <p>On your phone, open Jarvis → <b>Family</b> → <b>Pair a screen</b>, and enter</p>
+      <div id="pairCode" class="paircode">······</div>
+      <p id="pairLeft" class="dim"></p>
+      <button id="pairCancel" class="big alt">Cancel</button>
+    </div>
+
+    <!-- Opened from an invite link. -->
+    <div id="joinView" class="uview" hidden>
+      <p id="joinText"></p>
+      <input id="joinName" class="field" autocomplete="name" maxlength="40" placeholder="Your name">
+      <button id="joinGo" class="big">Create my passkey</button>
+      <p class="dim">Face ID, a fingerprint or your phone's PIN. No password.</p>
+    </div>
+
+    <!-- The deployment's owner key: how a Jarvis without a family is used, and the way back in. -->
+    <details id="keyWrap" class="uview">
+      <summary>Use the owner key</summary>
+      <input id="keyInput" autocomplete="off" autocapitalize="characters"
+             autocorrect="off" spellcheck="false" inputmode="latin"
+             maxlength="24" placeholder="XXXXXXXXXXXXXXXX">
+      <button id="keyGo">Unlock</button>
+    </details>
     <div id="keyErr"></div>
   </div>
 

@@ -1,6 +1,8 @@
 import type { Env } from "../types";
 import { looksLikeToken, lookup, touch, type Device } from "./devices.ts";
-import type { Grant } from "./scopes";
+import { WILDCARD, type Grant } from "./scopes.ts";
+import { looksLikeSession, type Role } from "./hub.ts";
+import { sessionFor } from "./hub-client.ts";
 
 const enc = new TextEncoder();
 
@@ -26,12 +28,28 @@ async function safeEqual(a: string, b: string): Promise<boolean> {
  * Who is calling.
  *
  * The owner holds JARVIS_SHARED_SECRET and is bounded by nothing. A device holds
- * its own token and is bounded by its grants. Everything downstream branches on
- * this rather than re-deriving it.
+ * its own token and is bounded by its grants. A member of the family signed in
+ * with a passkey or a paired screen (lib/hub.ts): an admin is bounded by
+ * nothing, as the owner is; anyone else by what their role allows.
+ * Everything downstream branches on this, through the helpers below, rather
+ * than re-deriving it.
  */
 export type Principal =
   | { kind: "owner" }
-  | { kind: "device"; id: string; name: string; scopes: Grant[] };
+  | { kind: "device"; id: string; name: string; scopes: Grant[] }
+  | { kind: "member"; id: string; name: string; scopes: Grant[]; role: Role; space: string; session: string };
+
+/** Bounded by nothing: the owner key, or a family admin. */
+export const isAdmin = (p: Principal): boolean => p.kind === "owner" || (p.kind === "member" && p.role === "admin");
+
+export const grantsOf = (p: Principal): Grant[] => (isAdmin(p) ? [WILDCARD] : (p as { scopes: Grant[] }).scopes);
+
+/**
+ * Whose a thread, a job or a routine is. An admin's are the owner's: until
+ * memory, mail and alerts are each person's own, what the admin has is what
+ * the owner had. Anyone else's are their own.
+ */
+export const whoOf = (p: Principal): string => (isAdmin(p) ? "owner" : (p as { id: string }).id);
 
 export type AuthResult = { ok: true; principal: Principal } | { ok: false; response: Response };
 
@@ -66,6 +84,27 @@ export async function authorize(
     req.headers.get("authorization")?.match(/^Bearer\s+(.+)$/i)?.[1] ??
     ""
   ).trim();
+
+  // --- a family member's session: exact bytes, never normalised -------------
+  if (looksLikeSession(raw)) {
+    const who = await sessionFor(env, raw).catch((e) => {
+      console.warn("sessions unavailable:", e instanceof Error ? e.message : String(e));
+      return null;
+    });
+    if (!who) return deny(401, "unauthorized");
+    return {
+      ok: true,
+      principal: {
+        kind: "member",
+        id: who.user.id,
+        name: who.user.name,
+        scopes: who.scopes,
+        role: who.member.role,
+        space: who.member.space,
+        session: who.session.id,
+      },
+    };
+  }
 
   // --- device tokens: exact bytes, never normalised -------------------------
   if (looksLikeToken(raw)) {

@@ -16,6 +16,12 @@ export const SCOPES = [
   "car.read",
   "car.control",
   "home",
+  /**
+   * Hermes, the user's own agent: it can run commands on the machine it lives
+   * on, so it is its own scope, never part of sharing the house. Devices made
+   * before it existed, with `home`, keep it (lib/devices.ts).
+   */
+  "hermes",
   "media",
   "mail",
   "calendar",
@@ -102,6 +108,10 @@ export function requiredScope(pathname: string, method: string): RouteRequiremen
   if (pathname.startsWith("/api/settings")) return "owner";
   // Which devices get notifications, and every recent alert's text.
   if (pathname.startsWith("/api/alerts")) return "owner";
+
+  // The family: each route checks for itself what a member may do there, and a
+  // device may do none of it (routes/hub.ts).
+  if (pathname.startsWith("/api/hub/")) return "any";
 
   switch (pathname) {
     // How any client checks a credential, so it cannot itself need a scope.

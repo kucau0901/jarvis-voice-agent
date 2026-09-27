@@ -1,0 +1,478 @@
+import qrcode from "qrcode-generator";
+import { authHeaders, isSession } from "../key";
+import { addPasskeyHere, joinWithInvite } from "../account";
+import { passkeyError, passkeysSupported } from "../passkey";
+import { ago, arm, esc } from "./util";
+
+/**
+ * The family: who is in it, inviting someone, pairing a screen, and your own
+ * passkeys and signed-in screens (src/worker/routes/hub.ts).
+ *
+ * With the owner key and no family yet, this is where one is set up: the
+ * holder names themselves, the family and its assistant, and makes the first
+ * passkey, becoming its admin.
+ */
+
+interface Me {
+  owner: boolean;
+  claimed: boolean;
+  space: { name: string; agentName: string } | null;
+  user: { id: string; name: string } | null;
+  role: string;
+  session: string | null;
+}
+
+interface Member {
+  id: string;
+  name: string;
+  role: string;
+  you: boolean;
+  scopes?: string[];
+  custom?: boolean;
+  passkeys?: number;
+  lastSeenAt?: number;
+}
+
+interface Invite {
+  id: string;
+  role: string;
+  name: string;
+  user?: string;
+  expiresAt: number;
+}
+
+const ROLE_WORDS: Record<string, string> = {
+  admin: "Admin — everything, and manages the family",
+  adult: "Adult — asks, the house, live voice",
+  child: "Child — asks and live voice",
+  guest: "Guest — asks only",
+};
+
+/** What each reach means, as the Devices panel says it. */
+const SCOPE_WORDS: Record<string, string> = {
+  ask: "ask questions",
+  "memory.read": "read saved facts",
+  "memory.write": "save facts",
+  "car.read": "the car's battery and place",
+  "car.control": "operate the car",
+  home: "the house and cameras",
+  hermes: "Hermes (runs commands)",
+  media: "Spotify",
+  mail: "mail",
+  calendar: "calendar",
+  screen: "maps on screen",
+  voice: "live voice",
+  alerts: "alerts",
+  routines: "routines",
+};
+
+export class Family {
+  private el: HTMLElement;
+  private body: HTMLElement;
+  private me: Me | null = null;
+
+  constructor(private readonly key: string, private readonly onSignedIn: (token: string) => void) {
+    this.el = document.createElement("div");
+    this.el.id = "family";
+    this.el.className = "panel";
+    this.el.innerHTML = `
+      <div class="sheet">
+        <header>
+          <h2>Family</h2>
+          <button class="close" aria-label="Close">Done</button>
+        </header>
+        <div class="fbody"></div>
+        <div class="msg"></div>
+      </div>`;
+    document.body.appendChild(this.el);
+    this.body = this.el.querySelector(".fbody")!;
+    this.el.querySelector(".close")!.addEventListener("click", () => this.hide());
+    this.el.addEventListener("click", (e) => {
+      if (e.target === this.el) this.hide();
+    });
+  }
+
+  async show(): Promise<void> {
+    this.el.classList.add("open");
+    this.msg("");
+    await this.load();
+  }
+
+  hide(): void {
+    this.el.classList.remove("open");
+    // An invite link is as good as a key to the house: never leave one on screen.
+    this.el.querySelectorAll(".reveal").forEach((r) => (r.innerHTML = ""));
+  }
+
+  private msg(text: string, bad = false): void {
+    const m = this.el.querySelector<HTMLElement>(".msg")!;
+    m.textContent = text;
+    m.classList.toggle("bad", bad);
+  }
+
+  private async api<T>(path: string, method = "GET", body?: unknown): Promise<T> {
+    const res = await fetch(path, {
+      method,
+      headers: authHeaders(this.key),
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    const data = (await res.json().catch(() => ({}))) as T & { error?: string };
+    if (!res.ok) throw new Error(data.error ?? `the server said ${res.status}`);
+    return data;
+  }
+
+  private async load(): Promise<void> {
+    try {
+      this.me = await this.api<Me>("/api/hub/me");
+    } catch (e) {
+      this.body.innerHTML = "";
+      this.msg(`Could not load the family: ${e instanceof Error ? e.message : String(e)}`, true);
+      return;
+    }
+    if (!this.me.claimed) return this.renderSetup();
+    await this.render();
+  }
+
+  /* ---------- no family yet: the owner sets it up --------------------------------- */
+
+  private renderSetup(): void {
+    this.body.innerHTML = `
+      <p class="note">Share this Jarvis with your family. Each person signs in with their own
+        passkey (Face ID, a fingerprint or their phone's PIN), and sees what you let them.
+        You become its admin. The owner key keeps working: keep it somewhere safe, as the way
+        back in if every passkey is lost.</p>
+      <div class="srv">
+        <input type="text" class="f-name" maxlength="40" placeholder="Your name" autocomplete="name">
+        <input type="text" class="f-space" maxlength="60" placeholder="The family's name, e.g. The Rahmans">
+        <input type="text" class="f-agent" maxlength="24" placeholder="What you call the assistant" value="Jarvis">
+        <button class="primary f-go">Create my passkey</button>
+        ${passkeysSupported() ? "" : `<p class="warn">This browser cannot make a passkey. Do this on your phone or computer, then pair this screen.</p>`}
+      </div>`;
+    const go = this.body.querySelector<HTMLButtonElement>(".f-go")!;
+    go.disabled = !passkeysSupported();
+    go.addEventListener("click", async () => {
+      const val = (c: string) => this.body.querySelector<HTMLInputElement>(c)!.value.trim();
+      const name = val(".f-name");
+      if (!name || !val(".f-space")) return this.msg("Your name and the family's name, please.", true);
+      go.disabled = true;
+      this.msg("Setting up…");
+      try {
+        const claim = await this.api<{ token: string }>("/api/hub/claim", "POST", {
+          name,
+          spaceName: val(".f-space"),
+          agentName: val(".f-agent") || "Jarvis",
+        });
+        const joined = await joinWithInvite(claim.token, name);
+        this.msg("Done. You are the admin.");
+        this.onSignedIn(joined.token);
+      } catch (e) {
+        this.msg(passkeyError(e), true);
+        go.disabled = false;
+      }
+    });
+  }
+
+  /* ---------- the family ------------------------------------------------------------ */
+
+  private async render(): Promise<void> {
+    const me = this.me!;
+    const admin = me.role === "admin";
+    let data: { members: Member[]; invites?: Invite[]; roles?: string[]; scopes?: string[] };
+    try {
+      data = await this.api("/api/hub/members");
+    } catch (e) {
+      this.msg(`Could not load the family: ${e instanceof Error ? e.message : String(e)}`, true);
+      return;
+    }
+    const roles = data.roles ?? [];
+    const scopes = (data.scopes ?? []).filter((s) => s !== "*");
+
+    this.body.innerHTML = `
+      <p class="note">${esc(me.space?.name ?? "")} · the assistant is <b>${esc(me.space?.agentName ?? "Jarvis")}</b>.
+        ${me.owner ? "You are using the owner key on this screen: sign in with your passkey to be yourself here." : ""}</p>
+
+      ${me.user ? `
+      <h3>You</h3>
+      <div class="srv">
+        <div class="svchead"><b>${esc(me.user.name)}</b><span class="chip">${esc(me.role)}</span></div>
+        <div class="rowbtns">
+          <button class="f-rename">Change my name</button>
+          <button class="f-signout">Sign out of this screen</button>
+        </div>
+      </div>` : ""}
+
+      <h3>Pair a screen</h3>
+      <div class="srv">
+        <p class="note">On the car, a tablet or any screen: choose <b>Pair with my phone</b>, and type the code it shows.</p>
+        <input type="text" class="f-code" maxlength="7" placeholder="ABC DEF" autocapitalize="characters" autocomplete="off">
+        ${admin && data.members.length > 1 ? `<select class="f-for">${data.members
+          .map((m) => `<option value="${esc(m.id)}"${m.you ? " selected" : ""}>for ${esc(m.you ? "me" : m.name)}</option>`)
+          .join("")}</select>` : ""}
+        <button class="primary f-pair">Pair</button>
+      </div>
+
+      <h3>Members</h3>
+      <div class="f-members"></div>
+
+      ${admin ? `
+      <h3>Invite someone</h3>
+      <div class="srv">
+        <input type="text" class="f-iname" maxlength="40" placeholder="Their name">
+        <select class="f-irole">${roles.map((r) => `<option value="${esc(r)}"${r === "adult" ? " selected" : ""}>${esc(ROLE_WORDS[r] ?? r)}</option>`).join("")}</select>
+        <button class="primary f-invite">Make an invite link</button>
+        <div class="reveal"></div>
+        <div class="f-invites"></div>
+      </div>
+
+      <h3>The family</h3>
+      <div class="srv">
+        <input type="text" class="f-sname" maxlength="60" value="${esc(me.space?.name ?? "")}">
+        <input type="text" class="f-aname" maxlength="24" value="${esc(me.space?.agentName ?? "")}">
+        <button class="f-ssave">Save</button>
+      </div>` : ""}
+
+      ${me.user ? `
+      <h3>Your passkeys</h3>
+      <div class="srv f-keys"></div>
+      <h3>Where you are signed in</h3>
+      <div class="srv f-sessions"></div>` : ""}`;
+
+    this.renderMembers(data.members, admin, roles, scopes);
+    if (admin) this.renderInvites(data.invites ?? []);
+    this.wire(admin);
+    if (me.user) await Promise.all([this.renderKeys(), this.renderSessions()]);
+  }
+
+  private renderMembers(members: Member[], admin: boolean, roles: string[], scopes: string[]): void {
+    const box = this.body.querySelector<HTMLElement>(".f-members")!;
+    box.innerHTML = members
+      .map(
+        (m) => `
+        <div class="srv" data-id="${esc(m.id)}">
+          <div class="svchead">
+            <b>${esc(m.name)}${m.you ? " (you)" : ""}</b>
+            ${admin && !m.you
+              ? `<select class="m-role">${roles.map((r) => `<option value="${esc(r)}"${r === m.role ? " selected" : ""}>${esc(r)}</option>`).join("")}</select>`
+              : `<span class="chip">${esc(m.role)}</span>`}
+          </div>
+          ${admin ? `<p class="note">seen ${ago(m.lastSeenAt)} · ${m.passkeys ?? 0} passkey${m.passkeys === 1 ? "" : "s"}</p>` : ""}
+          ${admin && m.role !== "admin"
+            ? `<div class="checks">${scopes
+                .map((s) => `<button class="check${m.scopes?.includes(s) ? " on" : ""}" data-scope="${esc(s)}" title="${esc(s)}">${esc(SCOPE_WORDS[s] ?? s)}</button>`)
+                .join("")}</div>
+               ${m.custom ? `<button class="m-reset">Back to what a ${esc(m.role)} gets</button>` : ""}`
+            : ""}
+          ${admin && !m.you
+            ? `<div class="rowbtns"><button class="m-link">New passkey link</button><button class="m-remove">Remove</button></div>
+               <div class="reveal"></div>`
+            : ""}
+        </div>`,
+      )
+      .join("");
+
+    if (!admin) return;
+    for (const row of box.querySelectorAll<HTMLElement>("[data-id]")) {
+      const id = row.dataset.id!;
+      const name = row.querySelector("b")!.textContent ?? "";
+      (row.querySelector(".m-role") as HTMLSelectElement | null)?.addEventListener("change", (e) =>
+        void this.change({ user: id, role: (e.target as HTMLSelectElement).value }, `${name} is now ${(e.target as HTMLSelectElement).value}.`),
+      );
+      for (const b of row.querySelectorAll<HTMLButtonElement>(".check")) {
+        b.addEventListener("click", () => {
+          b.classList.toggle("on");
+          const chosen = [...row.querySelectorAll<HTMLButtonElement>(".check.on")].map((x) => x.dataset.scope!);
+          void this.change({ user: id, scopes: chosen }, `Saved what ${name} can reach.`);
+        });
+      }
+      row.querySelector(".m-reset")?.addEventListener("click", () => void this.change({ user: id, scopes: null }, `${name} is back to the defaults.`));
+      row.querySelector(".m-link")?.addEventListener("click", async () => {
+        try {
+          const r = await this.api<{ url: string }>("/api/hub/invites", "POST", { user: id });
+          this.reveal(row.querySelector(".reveal")!, r.url, `A new passkey for ${name}`, "For a lost or new phone. It adds a passkey to them; it does not make anyone new.");
+        } catch (e) {
+          this.msg(e instanceof Error ? e.message : String(e), true);
+        }
+      });
+      const rm = row.querySelector<HTMLButtonElement>(".m-remove");
+      if (rm) {
+        arm(rm, `Remove ${name}?`, async () => {
+          try {
+            await this.api("/api/hub/members", "DELETE", { user: id });
+            this.msg(`${name} has been removed, and signed out everywhere.`);
+            await this.render();
+          } catch (e) {
+            this.msg(e instanceof Error ? e.message : String(e), true);
+          }
+        });
+      }
+    }
+  }
+
+  private async change(body: unknown, ok: string): Promise<void> {
+    try {
+      await this.api("/api/hub/members", "PATCH", body);
+      this.msg(ok);
+      await this.render();
+    } catch (e) {
+      this.msg(e instanceof Error ? e.message : String(e), true);
+      await this.render();
+    }
+  }
+
+  private renderInvites(invites: Invite[]): void {
+    const box = this.body.querySelector<HTMLElement>(".f-invites")!;
+    box.innerHTML = invites.length
+      ? invites
+          .map(
+            (i) => `<div class="fieldfoot" data-id="${esc(i.id)}">
+              <span class="help">${i.user ? "New passkey for" : "Invite for"} ${esc(i.name || "someone")} (${esc(i.role)}), until ${new Date(i.expiresAt).toLocaleDateString()}</span>
+              <button class="i-cancel">Cancel</button></div>`,
+          )
+          .join("")
+      : "";
+    for (const row of box.querySelectorAll<HTMLElement>("[data-id]")) {
+      row.querySelector(".i-cancel")!.addEventListener("click", async () => {
+        await this.api("/api/hub/invites", "DELETE", { id: row.dataset.id }).catch(() => {});
+        await this.render();
+      });
+    }
+  }
+
+  /** An invite link, shown once: to copy, or to scan from their phone. */
+  private reveal(box: HTMLElement, url: string, title: string, note: string): void {
+    const qr = qrcode(0, "M");
+    qr.addData(url);
+    qr.make();
+    box.innerHTML = `
+      <div class="token">
+        <strong>${esc(title)}</strong>
+        <p>${esc(note)} It works once, for seven days. Send it only to them: whoever opens it first joins.</p>
+        <div class="tok"><code>${esc(url)}</code><button class="copy">Copy</button></div>
+        <div class="qr">${qr.createSvgTag({ cellSize: 4, margin: 2 })}</div>
+      </div>`;
+    box.querySelector(".copy")!.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(url);
+        this.msg("Copied.");
+      } catch {
+        this.msg("Select the link and copy it.");
+      }
+    });
+  }
+
+  private wire(admin: boolean): void {
+    const q = <T = HTMLElement>(c: string) => this.body.querySelector(c) as T | null;
+
+    q(".f-rename")?.addEventListener("click", async () => {
+      const name = prompt("Your name, as the family sees it:", this.me?.user?.name ?? "");
+      if (!name?.trim()) return;
+      try {
+        await this.api("/api/hub/me", "PATCH", { name });
+        await this.load();
+      } catch (e) {
+        this.msg(e instanceof Error ? e.message : String(e), true);
+      }
+    });
+
+    const out = q<HTMLButtonElement>(".f-signout");
+    if (out) {
+      arm(out, "Sign out here?", async () => {
+        await this.api("/api/hub/signout", "POST", {}).catch(() => {});
+        try {
+          localStorage.removeItem("jarvis.key");
+        } catch { /* private mode */ }
+        location.reload();
+      });
+    }
+
+    q(".f-pair")?.addEventListener("click", async () => {
+      const code = q<HTMLInputElement>(".f-code")!.value;
+      const user = q<HTMLSelectElement>(".f-for")?.value;
+      try {
+        const r = await this.api<{ label: string }>("/api/hub/pair", "POST", { code, ...(user ? { user } : {}) });
+        q<HTMLInputElement>(".f-code")!.value = "";
+        this.msg(`Paired ${r.label}. It signs itself in within a few seconds.`);
+      } catch (e) {
+        this.msg(e instanceof Error ? e.message : String(e), true);
+      }
+    });
+
+    if (!admin) return;
+
+    q(".f-invite")?.addEventListener("click", async () => {
+      const name = q<HTMLInputElement>(".f-iname")!.value.trim();
+      const role = q<HTMLSelectElement>(".f-irole")!.value;
+      if (!name) return this.msg("Who is it for? A name helps you tell invites apart.", true);
+      try {
+        const r = await this.api<{ url: string }>("/api/hub/invites", "POST", { name, role });
+        q<HTMLInputElement>(".f-iname")!.value = "";
+        this.reveal(q(".reveal")!, r.url, `An invite for ${name}`, `They open it on their phone, and make a passkey.`);
+        this.msg("");
+      } catch (e) {
+        this.msg(e instanceof Error ? e.message : String(e), true);
+      }
+    });
+
+    q(".f-ssave")?.addEventListener("click", async () => {
+      try {
+        await this.api("/api/hub/space", "PATCH", { name: q<HTMLInputElement>(".f-sname")!.value, agentName: q<HTMLInputElement>(".f-aname")!.value });
+        this.msg("Saved.");
+        await this.load();
+      } catch (e) {
+        this.msg(e instanceof Error ? e.message : String(e), true);
+      }
+    });
+  }
+
+  private async renderKeys(): Promise<void> {
+    const box = this.body.querySelector<HTMLElement>(".f-keys");
+    if (!box) return;
+    const { passkeys } = await this.api<{ passkeys: { id: string; label: string; createdAt: number; lastUsedAt?: number; synced: boolean }[] }>("/api/hub/passkeys");
+    box.innerHTML =
+      passkeys
+        .map(
+          (k) => `<div class="fieldfoot" data-id="${esc(k.id)}">
+            <span class="help">${esc(k.label)}${k.synced ? " · synced" : ""} · added ${ago(k.createdAt)} · used ${ago(k.lastUsedAt)}</span>
+            <button class="k-del">Remove</button></div>`,
+        )
+        .join("") + (passkeysSupported() && isSession(this.key) ? `<button class="k-add">Add a passkey on this device</button>` : "");
+    for (const row of box.querySelectorAll<HTMLElement>("[data-id]")) {
+      arm(row.querySelector<HTMLButtonElement>(".k-del")!, "Remove it?", async () => {
+        try {
+          await this.api("/api/hub/passkeys", "DELETE", { id: row.dataset.id });
+          await this.renderKeys();
+        } catch (e) {
+          this.msg(e instanceof Error ? e.message : String(e), true);
+        }
+      });
+    }
+    box.querySelector(".k-add")?.addEventListener("click", async () => {
+      try {
+        await addPasskeyHere(this.key);
+        this.msg("Added.");
+        await this.renderKeys();
+      } catch (e) {
+        this.msg(passkeyError(e), true);
+      }
+    });
+  }
+
+  private async renderSessions(): Promise<void> {
+    const box = this.body.querySelector<HTMLElement>(".f-sessions");
+    if (!box) return;
+    const { sessions } = await this.api<{ sessions: { id: string; label: string; via: string; lastSeenAt: number; current: boolean }[] }>("/api/hub/sessions");
+    box.innerHTML = sessions
+      .map(
+        (s) => `<div class="fieldfoot" data-id="${esc(s.id)}">
+          <span class="help">${esc(s.label)}${s.current ? " (this screen)" : ""} · ${s.via === "pairing" ? "paired" : "passkey"} · ${ago(s.lastSeenAt)}</span>
+          ${s.current ? "" : `<button class="s-end">Sign out</button>`}</div>`,
+      )
+      .join("");
+    for (const row of box.querySelectorAll<HTMLElement>("[data-id]")) {
+      row.querySelector(".s-end")?.addEventListener("click", async () => {
+        await this.api("/api/hub/sessions", "DELETE", { id: row.dataset.id }).catch(() => {});
+        await this.renderSessions();
+      });
+    }
+  }
+}

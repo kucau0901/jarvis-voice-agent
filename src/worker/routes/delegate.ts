@@ -547,7 +547,9 @@ export async function prepareRouter(
    * must not be able to write a standing instruction into a context that can
    * reach a shell at home.
    */
-  const profile = memory.buildProfile();
+  // What is saved about the user is theirs: a caller not allowed to read memory
+  // (a family member, a gate controller) is not handed it in the prompt either.
+  const profile = allows(grants, "memory.read") ? memory.buildProfile() : "";
   const cacheable = explicitCache(model);
   const input: OpenAI.Responses.ResponseInput = [
     {

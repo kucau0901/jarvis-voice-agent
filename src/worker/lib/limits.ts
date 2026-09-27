@@ -39,7 +39,7 @@ export interface LimitVerdict {
  * without a difference — but it is not a hard global cap and should not be
  * described as one.
  */
-async function burst(env: Env, deviceId: string): Promise<boolean> {
+export async function burst(env: Env, deviceId: string): Promise<boolean> {
   if (!env.DEVICE_LIMIT) return true; // binding not deployed yet
   try {
     const { success } = await env.DEVICE_LIMIT.limit({ key: deviceId });

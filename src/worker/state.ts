@@ -20,6 +20,7 @@ import { jobEngine } from "./routes/jobs";
 import type { UsageEntry } from "./lib/usage.ts";
 import type { SharedTurn } from "./lib/shared.ts";
 import { haConfig, renderTemplate } from "./lib/ha.ts";
+import { HUB_METHODS, HubHost } from "./lib/hub.ts";
 
 /**
  * The Durable Object. Deliberately thin: everything it does lives in
@@ -30,6 +31,8 @@ import { haConfig, renderTemplate } from "./lib/ha.ts";
  */
 export class JarvisState extends DurableObject<Env> {
   private host: StateHost;
+  /** Who uses this Jarvis and how they sign in (lib/hub.ts). */
+  private people: HubHost;
   private hub = new LiveHub();
   private scheduler: Scheduler;
   private jobs: Jobs;
@@ -37,6 +40,7 @@ export class JarvisState extends DurableObject<Env> {
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.host = new StateHost(ctx.storage, env);
+    this.people = new HubHost(ctx.storage);
     this.scheduler = new Scheduler(ctx.storage, () => this.schedulerDeps());
     this.jobs = new Jobs(ctx.storage, async () => {
       const env = await this.localEnv();
@@ -52,6 +56,13 @@ export class JarvisState extends DurableObject<Env> {
 
   loadMemory() {
     return this.host.loadMemory();
+  }
+
+  /** The people and their sign-ins: one RPC method for the listed few (lib/hub.ts). */
+  hubCall(method: string, args: unknown[]): Promise<unknown> {
+    if (!(HUB_METHODS as readonly string[]).includes(method)) throw new Error(`no hub method ${method}`);
+    const fn = (this.people as unknown as Record<string, (...a: unknown[]) => Promise<unknown>>)[method]!;
+    return fn.apply(this.people, args);
   }
 
   loadReference() {

@@ -1,10 +1,10 @@
 import OpenAI from "openai";
 import type { Env } from "../types";
-import type { Principal } from "../lib/auth";
+import { whoOf, grantsOf, isAdmin, type Principal } from "../lib/auth";
 import type { EventSink } from "../lib/sse";
 import { err, json } from "../lib/http";
 import { stateStub } from "../lib/state-client";
-import { allows, WILDCARD, type Grant } from "../lib/scopes";
+import { allows, type Grant } from "../lib/scopes";
 import { builtinTools, explicitCache, researchModel } from "../lib/router-model";
 import { toToolSchema } from "../tools/registry";
 import * as hermes from "../tools/hermes";
@@ -179,10 +179,10 @@ export async function handleJobs(req: Request, env: Env, url: URL, principal: Pr
   if (p !== "/api/v1/jobs" && p !== "/api/v1/jobs/cancel") return null;
   const state = stateStub(env);
   if (!state) return err(503, "jobs need the STATE Durable Object");
-  const grants: Grant[] = principal.kind === "owner" ? [WILDCARD] : principal.scopes;
-  const who = principal.kind === "owner" ? "owner" : principal.id;
-  // A device sees its own jobs; the owner sees all, including those started by voice.
-  const mine = (j: Job) => principal.kind === "owner" || j.createdBy === who;
+  const grants: Grant[] = grantsOf(principal);
+  const who = whoOf(principal);
+  // A device or a member sees their own jobs; the owner and admins see all, including those started by voice.
+  const mine = (j: Job) => isAdmin(principal) || j.createdBy === who;
 
   if (p === "/api/v1/jobs/cancel") {
     if (req.method !== "POST") return err(405, "method not allowed");
@@ -212,7 +212,7 @@ export async function handleJobs(req: Request, env: Env, url: URL, principal: Pr
   if (req.method === "POST") {
     const b = await body(req);
     if (!b) return err(400, "body must be a small JSON object");
-    if (b.engine === "hermes" && !allows(grants, "home")) return err(403, 'a Hermes job needs "home"', { need: "home" });
+    if (b.engine === "hermes" && !allows(grants, "hermes")) return err(403, 'a Hermes job needs "hermes"', { need: "hermes" });
     const j = await state.createJob(b, { who, grants });
     return typeof j === "string" ? err(400, j) : json({ ok: true, job: jobView(j) }, { status: 201 });
   }

@@ -7,8 +7,14 @@
  */
 const STORAGE_KEY = "jarvis.key";
 
-/** A device token, which is exact bytes rather than a typed-in key. */
-const DEVICE_TOKEN = /^jdv1_[abcdefghijkmnpqrstuvwxyz23456789]{32}$/;
+/**
+ * A device token or a family member's session (signed in with a passkey, or
+ * a paired screen): exact bytes rather than a typed-in key.
+ */
+const DEVICE_TOKEN = /^j(dv|ss)1_[abcdefghijkmnpqrstuvwxyz23456789]{32}$/;
+
+/** Whether this screen is signed in as a person, rather than with the owner key. */
+export const isSession = (key: string) => key.startsWith("jss1_");
 
 /** Uppercase and drop anything not in the key alphabet, so spaces, dashes and
  *  the car keyboard's stray capitalisation all still work.
