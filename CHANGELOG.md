@@ -17,6 +17,8 @@ of every release, and in the [README](README.md#updating).
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-09-27
+
 Jarvis becomes something a family shares: everyone signs in as themselves,
 with their own memory, mail and reminders, and Jarvis passes things on
 between you.
@@ -266,6 +268,7 @@ updating to this one needs nothing doing.
 - A camera picture in Type mode was drawn under the chat; the chat now keeps
   its newest message in view above the phone's keyboard.
 
-[Unreleased]: https://github.com/kucau0901/jarvis-voice-agent/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/kucau0901/jarvis-voice-agent/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/kucau0901/jarvis-voice-agent/compare/v1.1.0...v2.0.0
 [1.1.0]: https://github.com/kucau0901/jarvis-voice-agent/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/kucau0901/jarvis-voice-agent/releases/tag/v1.0.0
