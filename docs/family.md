@@ -200,7 +200,9 @@ A screen that goes unused for six months signs itself out.
 Tap **Remove** on their page in Family. Their sessions end and their passkeys are
 deleted: within half a minute on every screen, since each server copy
 remembers a sign-in that long. Any Jarvis screen they have open stops
-receiving alerts.
+receiving alerts, and their glasses and ESP32s stop working. Their routines
+stop, chore rotas go on without them, and nothing passed on to or from them
+is waited on any more.
 
 ## What is yours, and what is shared
 

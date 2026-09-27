@@ -27,8 +27,10 @@ function fakeStorage() {
 
 const T0 = 1_800_000_000_000;
 const MIN = 60_000;
+/** The clock the fake quiet time is read against. */
+const now = { t: T0 };
 
-function harness(home: Record<string, boolean | null> = {}) {
+function harness(home: Record<string, boolean | null> = {}, quiet: Record<string, number> = {}) {
   const sent: Alert[] = [];
   const posted: { between: string; from: string; text: string; relay?: unknown }[] = [];
   const marks: string[] = [];
@@ -46,6 +48,10 @@ function harness(home: Record<string, boolean | null> = {}) {
     },
     async markPosted(_b, id, note) {
       marks.push(`${id}:${note}`);
+    },
+    async quietUntil(person) {
+      const until = quiet[person];
+      return until && until > now.t ? until : null;
     },
   };
   const relays = new Relays(fakeStorage(), async () => deps);
@@ -163,6 +169,44 @@ console.log("\nchat");
   check("the assistant is named: at the start, with @, in the middle", namesAgent("Jarvis, add rice") && namesAgent("ok @jarvis what time") && namesAgent("can Jarvis check the car?"));
   check("but not inside another word", !namesAgent("jarvisfan says hi") && !namesAgent("dinner at eight"));
   check("by whatever the family calls it", namesAgent("Friday, lights off", "Friday") && !namesAgent("Jarvis, lights off", "Friday"));
+}
+
+console.log("quiet time: nothing reaches them, or is waited on, until it ends");
+{
+  const wakes = T0 + 9 * 60 * MIN;
+  const h = harness({}, { u_aisyah: wakes });
+  now.t = T0;
+  const made = (await h.relays.create({ kind: "remind", from: ADAM.person, fromName: ADAM.name, to: [AISYAH], text: "Pack your bag" }, T0)) as { id: string; status: string; after?: number }[];
+  check("it waits, due when her quiet time ends", made[0]!.status === "waiting" && made[0]!.after === wakes);
+  check("she is told only that it is coming (held like any alert)", h.sent.length === 1 && h.sent[0]!.title === "Adam will remind you");
+  now.t = T0 + 2 * 60 * MIN;
+  await h.relays.tick(now.t);
+  check("no nudge, and no 'no answer' for Adam, in the night", h.sent.length === 1);
+  now.t = wakes;
+  await h.relays.tick(now.t);
+  const r = await h.relays.get(made[0]!.id);
+  check("it reaches her when her hours begin", r?.status === "sent" && r.sentAt === wakes && h.sent.at(-1)!.title === "Reminder from Adam");
+  now.t = T0;
+}
+
+console.log("asked of everyone: one never answers, the rest still come back");
+{
+  const h = harness();
+  const made = (await h.relays.create({ kind: "ask", from: ADAM.person, fromName: ADAM.name, to: [AISYAH, SARA], text: "Where shall we eat?" }, T0)) as { id: string; to: string }[];
+  await h.relays.answer(made.find((r) => r.to === "u_sara")!.id, "u_sara", { status: "answered", answer: "Nasi lemak" }, T0 + MIN);
+  await h.relays.tick(T0 + GIVE_UP_MS + 2 * MIN);
+  const all = h.sent.find((a) => a.title === "Everyone has answered");
+  check("once Aisyah's lapses, Adam hears them together", !!all && /Sara: Nasi lemak/.test(all.text) && /Aisyah: no answer/.test(all.text));
+}
+
+console.log("someone leaves the family");
+{
+  const h = harness();
+  const made = (await h.relays.create({ kind: "remind", from: ADAM.person, fromName: ADAM.name, to: [SARA], text: "Call the plumber" }, T0)) as { id: string }[];
+  await h.relays.forget("u_sara");
+  const r = await h.relays.get(made[0]!.id);
+  check("what was waiting on them is let go", r?.status === "cancelled" && r.nextCheck === undefined);
+  check("and nothing is left for the alarm", (await h.relays.nextWake(T0)) === null);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

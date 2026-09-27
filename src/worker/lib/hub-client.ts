@@ -62,6 +62,8 @@ export async function personView(env: Env, person: string): Promise<PersonView> 
   const hub = hubStub(env);
   const view = hub ? await hub.personView(person).catch(() => null) : null;
   const v: PersonView = view ?? { space: null, name: null, prefs: {}, cars: [] };
+  // A failed call is not an answer: kept, it would lock their devices out for the whole half minute.
+  if (!view && hub) return v;
   if (views.size > 200) views.clear();
   views.set(person, { at: Date.now(), view: v });
   return v;

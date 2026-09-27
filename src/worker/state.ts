@@ -13,7 +13,7 @@ import { localeOf } from "./lib/locale";
 import { upcomingEvents } from "./lib/leave";
 import { Scheduler, type SchedulerDeps } from "./lib/scheduler";
 import type { RoutineInput } from "./lib/routines";
-import type { Grant } from "./lib/scopes";
+import { narrow, type Grant } from "./lib/scopes";
 import { askForRoutine, travelFor } from "./routes/routines";
 import { Jobs } from "./lib/jobs";
 import { jobEngine } from "./routes/jobs";
@@ -107,9 +107,10 @@ export class JarvisState extends DurableObject<Env> {
     }
   }
 
-  /** A member's own Telegram chat, for their alerts (lib/alerts.ts). */
+  /** Someone's own Telegram chat, for their alerts (lib/alerts.ts): "owner" is the first person's. */
   async chatFor(person: string): Promise<string | null> {
-    return (await this.people.prefsOf(person)).telegram ?? null;
+    const id = person === "owner" ? await this.people.firstPerson() : person;
+    return id ? ((await this.people.prefsOf(id)).telegram ?? null) : null;
   }
 
   /** The people and their sign-ins: one RPC method for the listed few (lib/hub.ts). */
@@ -212,6 +213,16 @@ export class JarvisState extends DurableObject<Env> {
     return this.hub.clients(this.sockets());
   }
 
+  /**
+   * Someone left the family (routes/hub.ts): their routines stop, rotas go on
+   * without them, and messages to or from them are no longer waited on.
+   */
+  async forgetMember(person: string): Promise<void> {
+    await this.scheduler.forget(person);
+    await this.relays.forget(person);
+    await this.rearm();
+  }
+
   async forgetDevice(who: string) {
     for (const ws of this.ctx.getWebSockets(who)) {
       try {
@@ -244,7 +255,13 @@ export class JarvisState extends DurableObject<Env> {
       timeZone: localeOf(env).timeZone,
       deliver: (alert) => deliver(env, this, alert),
       // A routine runs as whoever made it: their memory, their calendar (lib/context.ts).
-      ask: async (prompt, grants, routine) => askForRoutine(await this.personEnv(env, routine.createdBy), prompt, grants, routine),
+      ask: async (prompt, grants, routine) => {
+        // No further than its maker may reach now: something an admin took from them is taken from their routines too.
+        const view = await this.people.personView(personOfWho(routine.createdBy)).catch(() => null);
+        if (view && !view.scopes) return { ok: false, text: "whoever made it is no longer in the family" };
+        const now = view?.scopes ? narrow(grants, view.scopes) : grants;
+        return askForRoutine(await this.personEnv(env, routine.createdBy), prompt, now, routine);
+      },
       events: async (now, person) => upcomingEvents(await this.personEnv(env, person), now),
       travel: async (destination, person) => travelFor(await this.personEnv(env, person), destination),
       renderTemplate: ha ? (template) => renderTemplate(ha, template) : null,
@@ -313,6 +330,7 @@ export class JarvisState extends DurableObject<Env> {
       },
       // A check-in nobody answered is for the family: not a guest or a helper.
       family: async () => (await this.people.familyPeople()).filter((p) => p.role !== "guest").map((p) => p.person),
+      quietUntil: (person) => this.quietUntil(person),
     };
   }
 

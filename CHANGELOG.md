@@ -28,6 +28,34 @@ of every release, and in the [README](README.md#updating).
 
 - An invite link appeared on the first person's card in Family, not under
   the invite form, once the family had more than one person.
+- Something passed on to a child in their quiet time counted as sent at
+  once: she was nudged, held till morning, and the sender heard "no answer"
+  in the night. It now waits for her quiet time to end, and the sender is
+  told when it will reach her.
+- Removing someone left their routines running, messages waiting on them,
+  and chore rotas passing turns to them. Their routines now stop, rotas go
+  on without them, and nothing waits on them.
+- "Ask everyone": if one person never answered, the others' answers never
+  came back together. They now do once that question lapses, a day on.
+- Limits set on an invite (a guest's pass, an end date) were dropped if
+  their section was folded away before making the link.
+- Moving a reference fact (a roster, a directory) between yours and the
+  family's failed, and a moved fact showed under Recently forgotten.
+- The first person's own Telegram chat, set in Family → Alerts, was used
+  for answers but not for reminders or messages passed on to them.
+- A moment's hiccup reaching the family's records could turn away members'
+  glasses and ESP32s for half a minute.
+
+### Security
+
+- Named in the family room, the assistant read the room's recent messages
+  as requests, while holding the asker's mail, memory and house: something
+  one person wrote could be carried out the next time another asked. Only
+  the asker's own message is a request now; the rest of the room is quoted
+  as context.
+- A routine ran with what its maker could reach when they made it: taking
+  the house away from someone did not take it from their routines. It now
+  reaches no further than they may today.
 
 ## [2.0.0] - 2026-09-27
 

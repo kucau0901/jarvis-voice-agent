@@ -289,8 +289,11 @@ const SEND: Record<Channel, Sender> = {
   },
 
   async telegram(env, state, alert) {
-    // A member's own chat, or none; never the first person's for someone else.
-    const chat = alert.for ? await state.chatFor?.(alert.for).catch(() => null) : env.TELEGRAM_CHAT_ID;
+    // A member's own chat, or none; never the first person's for someone else. The first
+    // person's own, if they gave one in Family → Alerts, else the family's (Settings).
+    const chat = alert.for
+      ? await state.chatFor?.(alert.for).catch(() => null)
+      : ((await state.chatFor?.(OWNER).catch(() => null)) || env.TELEGRAM_CHAT_ID);
     if (!env.TELEGRAM_BOT_TOKEN || !chat) return null;
     const r = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
       method: "POST",

@@ -487,6 +487,8 @@ export interface RunOptions {
    * push-to-talk. Not with a photo, which Assist cannot see.
    */
   assist?: boolean;
+  /** What Assist is asked, when the latest turn is more than the words said (the family room's). */
+  assistAsk?: string;
 }
 
 /** Everything a router request is built from, shared by run() and background jobs. */
@@ -663,7 +665,7 @@ export async function run(
   opts: RunOptions = {},
 ) {
   const assist = opts.assist && !opts.images?.length ? assistConfig(env, grants) : null;
-  const ask = assist ? lastAsk(turns) : null;
+  const ask = assist ? (opts.assistAsk?.trim() || lastAsk(turns)) : null;
   const sessions = mcpSessions();
   let p: Prepared | null = null;
   // How long to think (lib/router-model.ts): dropped for the rest of the

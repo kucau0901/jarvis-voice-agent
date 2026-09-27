@@ -9,7 +9,7 @@ import { whenSaid } from "./routines.ts";
  *
  * A relay is one such message, from one person to another. It waits until it
  * is due — a time, and if asked, until they are home (their Home Assistant
- * person) — then reaches them on their own screens, phones and Telegram, and
+ * person), and never in their quiet time — then reaches them on their own screens, phones and Telegram, and
  * appears in the two people's conversation (lib/chat.ts). A reminder waits for
  * Done (or Can't); a question for an answer; either comes back to whoever
  * asked. Unanswered, it nudges once after half an hour, and after an hour
@@ -76,6 +76,11 @@ export interface RelayDeps {
   award?(person: string, points: number): Promise<void>;
   /** Everyone in the family, for a check-in nobody answered. */
   family?(): Promise<string[]>;
+  /**
+   * When someone's quiet time ends, if they are in it now (a child at night,
+   * a helper off duty): nothing reaches them before it, so it waits too.
+   */
+  quietUntil?(person: string): Promise<number | null>;
 }
 
 /** How long someone has to answer, unless said otherwise: nudged halfway, the sender told at the end. */
@@ -151,6 +156,9 @@ export class Relays {
     const group = input.to.length > 1 ? newId() : undefined;
     const made: Relay[] = [];
     for (const t of input.to) {
+      // In their quiet time, it is due when that ends: said so now, and not waited on before.
+      const quiet = (await deps0.quietUntil?.(t.person).catch(() => null)) ?? null;
+      const after = Math.max(input.after ?? 0, quiet ?? 0);
       const r: Relay = {
         id: newId(),
         ...(group ? { group } : {}),
@@ -160,7 +168,7 @@ export class Relays {
         to: t.person,
         toName: t.name,
         text,
-        ...(input.after && input.after > now ? { after: input.after } : {}),
+        ...(after > now ? { after } : {}),
         ...(input.whenHome && t.home ? { home: t.home } : {}),
         ...(input.points ? { points: input.points } : {}),
         ...(input.escalate ? { escalate: true } : {}),
@@ -168,7 +176,7 @@ export class Relays {
         ...(answerMin !== ANSWER_MIN ? { answerMin } : {}),
         status: "waiting",
         createdAt: now,
-        nextCheck: input.after && input.after > now ? input.after : now,
+        nextCheck: after > now ? after : now,
       };
       await this.save(r);
       made.push(r);
@@ -240,6 +248,16 @@ export class Relays {
     return c;
   }
 
+  /** Someone left the family: nothing more is passed on to them, or waited on from them. */
+  async forget(person: string): Promise<void> {
+    for (const r of await this.list()) {
+      if (!isOpen(r) || (r.to !== person && r.from !== person)) continue;
+      const c: Relay = { ...r, status: "cancelled" };
+      delete c.nextCheck;
+      await this.save(c);
+    }
+  }
+
   /** What a person sent and was sent lately, newest first: for "did she get my message?" and their day. */
   async forPerson(person: string, now = Date.now()): Promise<{ sent: Relay[]; received: Relay[] }> {
     const recent = (await this.list()).filter((r) => now - r.createdAt < KEEP_MS);
@@ -281,9 +299,11 @@ export class Relays {
     const due = r.after ?? r.createdAt;
     if (r.status === "waiting") {
       if (now - due > GIVE_UP_MS) {
-        await this.save({ ...r, status: "expired", nextCheck: undefined });
+        const gone: Relay = { ...r, status: "expired", nextCheck: undefined };
+        await this.save(gone);
         const a = makeAlert({ title: "Not passed on", text: `${r.toName} was not home, so this never reached them: ${r.text}` }, "relay", now, r.from);
         if (a) await deps.deliver(a).catch(() => null);
+        await this.closeGroup(gone, deps, now);
         return;
       }
       if (r.home) {
@@ -293,6 +313,12 @@ export class Relays {
           return;
         }
       }
+      // Not while they are in their quiet time: sent, and waited on, from when it ends.
+      const quiet = (await deps.quietUntil?.(r.to).catch(() => null)) ?? null;
+      if (quiet && quiet > now) {
+        await this.save({ ...r, nextCheck: quiet });
+        return;
+      }
       await this.send(r, deps, now, false);
       return;
     }
@@ -301,7 +327,10 @@ export class Relays {
       return;
     }
     if (now - r.sentAt > GIVE_UP_MS) {
-      await this.save({ ...r, status: "expired", nextCheck: undefined });
+      const gone: Relay = { ...r, status: "expired", nextCheck: undefined };
+      await this.save(gone);
+      // Asked with everyone: the others' answers still come back, with this one as no answer.
+      await this.closeGroup(gone, deps, now);
       return;
     }
     if (!r.nudged && now - r.sentAt >= halfOf(r)) {

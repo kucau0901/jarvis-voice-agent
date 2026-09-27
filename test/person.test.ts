@@ -3,6 +3,7 @@ import { carCommand, pickCar } from "../src/worker/tools/tessie.ts";
 import { personOf, whoOf, type Principal } from "../src/worker/lib/auth.ts";
 import { MemoryStore, memoryFor } from "../src/worker/lib/memory.ts";
 import { forget, recall, remember } from "../src/worker/tools/memory.ts";
+import { handleMemory } from "../src/worker/routes/memory.ts";
 import { beginAuth, consumeState, isLinked } from "../src/worker/lib/google.ts";
 import { deliver, makeAlert, type Alert, type AlertState } from "../src/worker/lib/alerts.ts";
 import { LiveHub, type LiveClient, type LiveSocket } from "../src/worker/lib/live.ts";
@@ -143,6 +144,25 @@ console.log("\nmemory: each their own, and the family's");
   const kept = await forget.run({ id: famId }, { ...ctx, memory: child } as never);
   check("nor forgotten", String(kept).includes("belongs to the whole family"), kept);
   check("someone who may not read memory does not get the family's either", memoryFor(sara, ["ask"] as never).family === null);
+
+  // Moving: a fact goes over whole, and is not "forgotten" where it was; reference facts move too.
+  const move = (id: string, to: string) =>
+    handleMemory(new Request("https://j.test/api/memory/move", { method: "POST", body: JSON.stringify({ id, to }) }), sara, grants as never);
+  const oat = s.facts.find((f) => /oat milk/.test(f.text))!.id;
+  const moved = await move(oat, "family");
+  const fam = new MemoryStore(sara, familyBook(SPACE));
+  await fam.load();
+  const mine = new MemoryStore(sara);
+  await mine.load();
+  check("a fact moves to the family's", moved.status === 200 && fam.facts.some((f) => /oat milk/.test(f.text)) && !mine.facts.some((f) => /oat milk/.test(f.text)));
+  check("and is not in the trash of the book it left", !mine.trash.some((f) => /oat milk/.test(f.text)), mine.trash);
+  mine.add({ text: "Plumber: Ali, 012-345", kind: "reference" });
+  await mine.save();
+  const refId = (await mine.allFacts()).find((f) => /Plumber/.test(f.text))!.id;
+  const refMoved = await move(refId, "family");
+  const fam2 = new MemoryStore(sara, familyBook(SPACE));
+  await fam2.load();
+  check("a reference fact moves too", refMoved.status === 200 && (await fam2.allFacts()).some((f) => /Plumber/.test(f.text) && f.kind === "reference"), await refMoved.text());
 }
 
 console.log("\neach person's own Google");

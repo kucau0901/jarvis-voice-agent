@@ -631,7 +631,8 @@ export class Family {
       const role = q<HTMLSelectElement>(".f-irole")!.value;
       if (!name) return this.msg("Who is it for? A name helps you tell invites apart.", true);
       const lbox = q<HTMLElement>(".f-ilbox");
-      const access = lbox && (q<HTMLDetailsElement>(".f-ilimits")!).open ? readLimits(lbox.firstElementChild as HTMLElement) : null;
+      // Read whether or not the section is open: limits set and folded away still count.
+      const access = lbox ? readLimits(lbox.firstElementChild as HTMLElement) : null;
       try {
         const r = await this.api<{ url: string }>("/api/hub/invites", "POST", { name, role, ...(access ? { access } : {}) });
         q<HTMLInputElement>(".f-iname")!.value = "";

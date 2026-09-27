@@ -439,6 +439,8 @@ export async function handleHub(req: Request, env: Env, principal: Principal): P
       forgetSessions(r.ended);
       // A screen of theirs still open stops hearing alerts, and their phones stop being sent them.
       await stateStub(env)?.forgetDevice(user).catch(() => {});
+      // What they set going stops: their routines, their turns in a rota, messages waiting on them.
+      await Promise.resolve(stateStub(env)?.forgetMember?.(user)).catch(() => {});
       // Their glasses and ESP32s are revoked, and theirs close too.
       for (const d of await devices.list(env)) {
         if (d.owner !== user || d.revokedAt) continue;

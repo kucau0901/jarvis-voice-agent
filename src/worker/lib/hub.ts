@@ -545,12 +545,9 @@ export class HubHost {
   /**
    * The family as a message is addressed to it (lib/relays.ts): each
    * person's name, how they are named everywhere else ("owner" for the first
-   * person), and their Home Assistant person if they gave one.
-   */
-  /**
-   * The family, by the names things are kept under. `chat` is whether they
-   * take part in messages: a guest does not, so is never asked, reminded or
-   * written to, and is not one of "everyone".
+   * person), and their Home Assistant person if they gave one. `chat` is
+   * whether they take part in messages: a guest does not, so is never asked,
+   * reminded or written to, and is not one of "everyone".
    */
   async familyPeople(): Promise<{ person: string; name: string; role: Role; chat: boolean; presence?: string }[]> {
     const meta = await this.meta();

@@ -93,6 +93,11 @@ export const passOn: Tool = {
       ? `Scheduled, not sent yet: it will reach ${names}${after ? ` at ${whenSaid(after, tz)}` : ""}${home ? `${after ? ", or" : ""} once they are home${after ? ", whichever is later" : ""}` : ""}. ` +
         `It is in the user's conversation with ${names} already${kind === "remind" ? `, and ${names} ${r.relays.length === 1 ? "has" : "have"} been told it is coming` : ""}.`
       : `Passed on to ${names}: it has reached them.`;
+    // Later than asked: they are in their quiet time, and it waits for it to end.
+    const quiet = waiting.filter((x) => x.after && (!after || x.after > after));
+    if (quiet.length) {
+      out += ` ${quiet.map((x) => x.toName).join(" and ")} ${quiet.length === 1 ? "is" : "are"} in quiet time now, so it reaches them when that ends, ${whenSaid(quiet[0]!.after!, tz)}.`;
+    }
     if (r.noHome.length) out += ` ${r.noHome.join(" and ")} ha${r.noHome.length === 1 ? "s" : "ve"} no Home Assistant person set, so it goes by the time alone.`;
     if (kind !== "tell") out += " Their answer will come back to the user by itself.";
     return out;

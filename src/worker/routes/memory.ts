@@ -197,7 +197,8 @@ async function move(req: Request, env: Env, grants: readonly Grant[]): Promise<R
   const fam = new MemoryStore(env, env.JARVIS_FAMILY);
   const [from, to] = toFamily ? [mine, fam] : [fam, mine];
   await Promise.all([from.load(), to.load()]);
-  const fact = from.facts.find((f) => f.id === id);
+  // Everyday facts, or reference ones (a roster, a directory), which live apart.
+  const fact = from.facts.find((f) => f.id === id) ?? (await from.allFacts()).find((f) => f.id === id);
   if (!fact) return err(404, "no saved fact with that id");
   const { fact: made } = to.add({
     text: fact.text,
@@ -207,7 +208,8 @@ async function move(req: Request, env: Env, grants: readonly Grant[]): Promise<R
     pinned: fact.pinned,
     source: "ui",
   });
-  from.remove(id);
+  // Out of the old book without going in its trash: it was moved, not forgotten.
+  await from.moveOut(id);
   // The new copy first: a failure between the two leaves it in both, never in neither.
   await to.save();
   await from.save();

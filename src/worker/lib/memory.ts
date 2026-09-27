@@ -270,6 +270,8 @@ export interface Changeset {
   replaceAll?: { facts: Fact[]; trash: Fact[] };
   changed: Fact[];
   removed: string[];
+  /** Ids gone to the other book (lib/context.ts): out of this one, but not forgotten, so not in its trash. */
+  moved?: string[];
   used: Usage;
 }
 
@@ -303,11 +305,12 @@ export function applyChanges(base: MemoryDoc, cs: Changeset): MemoryDoc {
   if (cs.replaceAll) {
     return evictDoc({ rev: base.rev + 1, facts: cs.replaceAll.facts, trash: cs.replaceAll.trash });
   }
-  const removed = new Set(cs.removed);
+  const moved = new Set(cs.moved ?? []);
+  const removed = new Set([...cs.removed, ...moved]);
   const changed = new Set(cs.changed.map((f) => f.id));
   const used = new Map(cs.used);
 
-  const gone = base.facts.filter((f) => removed.has(f.id));
+  const gone = base.facts.filter((f) => removed.has(f.id) && !moved.has(f.id));
   const facts = base.facts
     .filter((f) => !removed.has(f.id))
     .map((f) => (changed.has(f.id) ? f : withUse(f, used.get(f.id))));
@@ -396,6 +399,7 @@ export class MemoryStore {
   /** What this store changed — see "changes" above. */
   private changed = new Set<string>();
   private removed = new Set<string>();
+  private moved = new Set<string>();
   private used = new Map<string, { at: number; n: number }>();
   private refUsed = new Map<string, { at: number; n: number }>();
   private replacedAll = false;
@@ -503,6 +507,7 @@ export class MemoryStore {
     return {
       changed: [...this.changed].map((id) => byId.get(id)).filter((f): f is Fact => !!f),
       removed: [...this.removed],
+      ...(this.moved.size ? { moved: [...this.moved] } : {}),
       used: [...this.used],
     };
   }
@@ -545,6 +550,7 @@ export class MemoryStore {
     this.refRemoved.clear();
     this.changed.clear();
     this.removed.clear();
+    this.moved.clear();
     this.used.clear();
     this.refUsed.clear();
   }
@@ -701,6 +707,22 @@ export class MemoryStore {
     this.changed.delete(id);
     this.dirty = true;
     return f;
+  }
+
+  /**
+   * Take a fact out of this book because it now lives in the other (the
+   * family's, or back): unlike forgetting, it does not go in the trash.
+   */
+  async moveOut(id: string): Promise<boolean> {
+    const doc = this.doc!;
+    if (doc.facts.some((x) => x.id === id)) {
+      doc.facts = doc.facts.filter((x) => x.id !== id);
+      this.moved.add(id);
+      this.changed.delete(id);
+      this.dirty = true;
+      return true;
+    }
+    return !!(await this.removeReference(id));
   }
 
   /**

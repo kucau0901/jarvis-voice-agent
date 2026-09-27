@@ -188,6 +188,29 @@ export class Scheduler {
     return true;
   }
 
+  /**
+   * Someone left the family: what they made stops, and rotas go on without
+   * them (one that was only them stops too). Returns how many changed.
+   */
+  async forget(person: string): Promise<number> {
+    let n = 0;
+    for (const r of await this.list()) {
+      if (personOfWho(r.createdBy) === person) {
+        if (await this.remove(r.id)) n++;
+        continue;
+      }
+      if (r.action.kind !== "relay" || !r.action.to.some((t) => t.person === person)) continue;
+      const to = r.action.to.filter((t) => t.person !== person);
+      n++;
+      if (!to.length) {
+        await this.remove(r.id);
+        continue;
+      }
+      await this.save({ ...r, action: { ...r.action, to, turn: (r.action.turn ?? 0) % to.length } });
+    }
+    return n;
+  }
+
   /** "Run it now": queued for the alarm, which is set to fire at once. */
   async queue(id: string, now = Date.now(), data?: string): Promise<Routine | string> {
     const r = await this.get(id);

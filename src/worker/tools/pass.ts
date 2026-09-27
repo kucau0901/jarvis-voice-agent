@@ -22,6 +22,8 @@ export function passOf(env: Env): { entity: string; label: string }[] {
 export async function usePass(env: Env, thing: string, action: string): Promise<string> {
   const pass = passOf(env);
   const want = thing.trim().toLowerCase();
+  // Nothing named is nothing to work (an empty name would match every label).
+  if (!want) return `Which one? This pass covers: ${pass.map((p) => p.label).join(", ") || "nothing"}.`;
   const hit = pass.find((p) => p.entity === want || p.label.toLowerCase() === want) ?? pass.find((p) => p.label.toLowerCase().includes(want) || want.includes(p.label.toLowerCase()));
   if (!hit) return `That is not on this pass. It covers: ${pass.map((p) => p.label).join(", ") || "nothing"}.`;
   const svc = passService(hit.entity, action);

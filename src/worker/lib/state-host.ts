@@ -542,6 +542,8 @@ export interface LiveApi {
   liveClients(): Promise<LiveClient[]>;
   /** Close a device's open screens and drop its notifications, when it is revoked or narrowed. */
   forgetDevice(who: string): Promise<void>;
+  /** Someone left the family: their routines stop, and nothing more is passed on to or from them. */
+  forgetMember(person: string): Promise<void>;
 }
 
 /** What a Worker can call on the object. */

@@ -175,6 +175,20 @@ console.log("\na chore rota takes turns");
   check("a turn that could not go is not skipped", stuck.action.kind === "relay" && stuck.action.turn === 1 && stuck.lastRun?.ok === false);
 }
 
+console.log("\nsomeone leaves: their routines stop, and rotas go on without them");
+{
+  const h = harness();
+  const rota = (await h.s.add({ when: "daily", time: "10:30", say: "Dishes", passTo: [{ person: "u_a", name: "Aisyah" }, { person: "u_b", name: "Bilal" }] }, OWNER, T0)) as Routine;
+  const alone = (await h.s.add({ when: "daily", time: "11:00", say: "Water the plants", passTo: [{ person: "u_b", name: "Bilal" }] }, OWNER, T0)) as Routine;
+  const theirs = (await h.s.add({ when: "daily", time: "12:00", say: "Stretch" }, { who: "u_b", grants: ["*"] as const }, T0)) as Routine;
+  await h.s.forget("u_b");
+  const left = await h.s.list();
+  const r = left.find((x) => x.id === rota.id);
+  check("the rota goes on with those still here", r?.action.kind === "relay" && r.action.to.map((t) => t.name).join() === "Aisyah");
+  check("a rota that was only them stops", !left.some((x) => x.id === alone.id));
+  check("and so do the routines they made", !left.some((x) => x.id === theirs.id));
+}
+
 console.log("\na reminder fires once");
 {
   const h = harness();
