@@ -7,10 +7,11 @@ reach. The family chooses what the assistant is called: "Jarvis", or any
 name you like.
 
 Each person has their own memory, mail, calendar, music, reminders and
-alerts; the family has a memory it shares; and cars are shared by their
-owners, to see or to drive. Coming next: Jarvis passing messages and
-reminders between you, and a family chat. See
-[What is yours, and what is shared](#what-is-yours-and-what-is-shared).
+alerts; the family has a memory it shares; cars are shared by their owners,
+to see or to drive; and Jarvis passes things on between you, and talks with
+you in the family chat. See
+[What is yours, and what is shared](#what-is-yours-and-what-is-shared) and
+[Passing things on](#passing-things-on-and-the-family-chat).
 
 ## Setting it up
 
@@ -89,6 +90,41 @@ family: each person is added once, and switching is a tap.
   admin can clear it from your card in Members, and you set a new one.
 
 Without a PIN, anyone at that screen can switch to you.
+
+## Passing things on, and the family chat
+
+Ask Jarvis, by voice or typing, as you would ask anyone at home:
+
+- **"Remind Aisyah to buy ice cream when she gets home, around five."** At
+  five, or once she is home, whichever is later, it reaches her: on her
+  open Jarvis screen (said aloud), her phone, or her Telegram. She taps
+  **Done** (or **Can't**), or tells Jarvis "done", and you hear it.
+- **"Ask Mum if she wants anything from the shop."** Her answer comes back to
+  you, wherever you are.
+- **"Tell everyone dinner is at eight."** Or **"ask everyone where we should
+  eat on Saturday"**: each answers, and when all have, you hear the answers
+  together.
+- **"Did Aisyah get my message?"**, **"what's still open?"**: Jarvis knows
+  what became of each.
+
+Unanswered, a reminder or question nudges once after half an hour; after an
+hour, you are told it has not been answered. A day after it was due, it is
+let go.
+
+**"When she gets home"** needs to know where she is: her person in Home
+Assistant, which follows her phone (Family → You → **Getting home**, or an
+admin sets it on her card, `person.aisyah`). Without it, it goes by the time
+alone, and Jarvis says so.
+
+**Chat** (in the menu) has the family room everyone shares, and a
+conversation with each person. What Jarvis passed on between two people
+appears in theirs, with Done or a reply while it waits. In the family room,
+name the assistant, "**Jarvis**, add rice to the shopping list", and it
+answers there, as you, with what you may reach. Each message reaches the
+others quietly, as a notification, not aloud.
+
+Talking with the family needs the `chat` permission: adults and children
+have it; guests do not.
 
 ## Lost phone, new phone
 

@@ -288,6 +288,29 @@ function nowLine(env: Env): string {
 }
 
 /**
+ * The family, by name, and anything passed on to this person that waits for
+ * their answer (tools/family.ts). A user message, like the profile: it is
+ * data, and a message someone typed must never become an instruction.
+ */
+async function familyBlock(env: Env): Promise<string> {
+  const state = stateStub(env);
+  if (!state) return "";
+  const me = env.JARVIS_PERSON || "owner";
+  const [people, waiting] = await Promise.all([state.familyPeople(), state.relaysAwaiting(me)]);
+  const names = people.map((p) => (p.person === me ? `${p.name} (the person asking)` : p.name));
+  let out = names.length ? `THE FAMILY: ${names.join(", ")}.` : "";
+  if (waiting.length) {
+    out +=
+      "\n\nWAITING FOR THEIR ANSWER (passed on by someone in the family; answer with answer_message)\n" +
+      waiting
+        .slice(0, 8)
+        .map((r) => `- [${r.id}] ${r.kind === "ask" ? "A question" : "A reminder"} from ${r.fromName}: ${r.text}`)
+        .join("\n");
+  }
+  return out;
+}
+
+/**
  * Who is asking, in a family (lib/context.ts): so "my calendar" and "remind
  * me" mean theirs, and the assistant goes by the name the family gave it.
  * Here, after the cache breakpoint, not in the cached instructions: it
@@ -494,7 +517,9 @@ export async function prepareRouter(
   // round trip of its own before the first hop.
   // The user's other devices, when this one may see the conversation (lib/shared.ts).
   const shares = !!opts.origin && allows(grants, "memory.read");
-  const [, mcp, chosen, shared] = await Promise.all([
+  // The family, and what is waiting for this person to answer (lib/relays.ts), when they talk with the family.
+  const talks = !!env.JARVIS_FAMILY && allows(grants, "chat");
+  const [, mcp, chosen, shared, family] = await Promise.all([
     memory.load().catch((e) => {
       console.warn("memory unavailable:", e instanceof Error ? e.message : String(e));
     }),
@@ -506,8 +531,9 @@ export async function prepareRouter(
     shares
       ? (stateStub(env)?.recentShared(opts.origin!.id, Date.now(), bookOf(env.JARVIS_PERSON)) ?? Promise.resolve([] as SharedTurn[])).catch(() => [] as SharedTurn[])
       : Promise.resolve([] as SharedTurn[]),
+    talks ? familyBlock(env).catch(() => "") : Promise.resolve(""),
   ]);
-  const elsewhere = sharedBlock(shared, Date.now());
+  const elsewhere = [sharedBlock(shared, Date.now()), family].filter(Boolean).join("\n\n");
   tools.push(...mcp);
   if (opts.toolFilter) {
     const keep = tools.filter(opts.toolFilter);

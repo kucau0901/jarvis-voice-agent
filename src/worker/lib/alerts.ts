@@ -38,7 +38,14 @@ export interface Alert {
   /** Every channel, not the first that works. */
   urgent: boolean;
   /** What raised it — shown in the panel, and useful in a webhook. */
-  source: "test" | "api" | "note" | "routine" | "job";
+  source: "test" | "api" | "note" | "routine" | "job" | "relay" | "chat";
+  /**
+   * A message passed on from someone (lib/relays.ts): the app offers Done
+   * and Can't for a reminder, a reply for a question.
+   */
+  relay?: { id: string; kind: "tell" | "remind" | "ask" };
+  /** A chat message (lib/chat.ts): which conversation to open. */
+  convo?: string;
   /**
    * Whose it is (lib/context.ts): a member's id, or none for the first
    * person's. A member's alert reaches only their screens, their phones and

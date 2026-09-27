@@ -43,8 +43,8 @@ export const ROLES: readonly Role[] = ["admin", "adult", "child", "guest"];
  */
 export const ROLE_SCOPES: Readonly<Record<Role, readonly Grant[]>> = {
   admin: [WILDCARD],
-  adult: ["ask", "home", "voice", "screen", "memory.read", "memory.write", "family", "mail", "calendar", "media", "alerts", "routines", "car.read", "car.control"],
-  child: ["ask", "voice", "screen", "memory.read", "memory.write", "calendar", "alerts", "routines", "car.read", "car.control"],
+  adult: ["ask", "home", "voice", "screen", "memory.read", "memory.write", "family", "mail", "calendar", "media", "alerts", "routines", "car.read", "car.control", "chat"],
+  child: ["ask", "voice", "screen", "memory.read", "memory.write", "calendar", "alerts", "routines", "car.read", "car.control", "chat"],
   guest: ["ask", "voice"],
 };
 
@@ -85,6 +85,8 @@ export interface Prefs {
   style?: string;
   language?: string;
   telegram?: string;
+  /** Their Home Assistant person, for "when she gets home" (lib/relays.ts): person.aisyah. */
+  presence?: string;
 }
 
 /** A user as stored: the PIN never leaves this file. */
@@ -438,7 +440,7 @@ export class HubHost {
   }
 
   /** Everyone in a family, with when they were last about. */
-  async members(space: string): Promise<(Member & { name: string; scopesNow: Grant[]; passkeys: number; hasPin: boolean; lastSeenAt?: number })[]> {
+  async members(space: string): Promise<(Member & { name: string; scopesNow: Grant[]; passkeys: number; hasPin: boolean; presence?: string; lastSeenAt?: number })[]> {
     const ms = await this.membersOf(space);
     const keys = [...(await this.storage.list<Passkey>({ prefix: "hub:pk:" })).values()];
     const sessions = [...(await this.storage.list<Session>({ prefix: "hub:sess:" })).values()];
@@ -450,6 +452,7 @@ export class HubHost {
         ...m,
         name: u?.name ?? "?",
         hasPin: !!u?.pin,
+        ...(u?.prefs?.presence ? { presence: u.prefs.presence } : {}),
         scopesNow: scopesOf(m),
         passkeys: keys.filter((k) => k.user === m.user).length,
         lastSeenAt: seen.length ? Math.max(...seen) : undefined,
@@ -473,7 +476,7 @@ export class HubHost {
     const u = await this.storedUser(id);
     if (!u) return fail("no such person");
     const next: Prefs = { ...u.prefs };
-    for (const k of ["voice", "style", "language", "telegram"] as const) {
+    for (const k of ["voice", "style", "language", "telegram", "presence"] as const) {
       const v = patch[k];
       if (v === undefined) continue;
       const clean = typeof v === "string" ? v.replace(/[\u0000-\u001f\u007f]/g, " ").trim().slice(0, k === "style" ? 300 : 40) : "";
@@ -495,6 +498,24 @@ export class HubHost {
 
   async hasHaToken(id: string): Promise<boolean> {
     return !!(await this.storedUser(id))?.haToken;
+  }
+
+  /**
+   * The family as a message is addressed to it (lib/relays.ts): each
+   * person's name, how they are named everywhere else ("owner" for the first
+   * person), and their Home Assistant person if they gave one.
+   */
+  async familyPeople(): Promise<{ person: string; name: string; presence?: string }[]> {
+    const meta = await this.meta();
+    if (!meta.space) return [];
+    const first = await this.firstPerson();
+    const out: { person: string; name: string; presence?: string }[] = [];
+    for (const m of await this.membersOf(meta.space)) {
+      const u = await this.storedUser(m.user);
+      if (!u) continue;
+      out.push({ person: m.user === first ? "owner" : m.user, name: u.name, ...(u.prefs?.presence ? { presence: u.prefs.presence } : {}) });
+    }
+    return out;
   }
 
   async prefsOf(id: string): Promise<Prefs> {
@@ -1085,6 +1106,7 @@ export const HUB_METHODS = [
   "firstPerson",
   "personView",
   "setPrefs",
+  "familyPeople",
   "setHaToken",
   "hasHaToken",
   "carsFor",

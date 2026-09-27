@@ -78,7 +78,9 @@ function prefsProblem(p: Record<string, unknown>): string | null {
   const language = s("language");
   const telegram = s("telegram");
   const style = s("style");
-  if (voice === null || language === null || telegram === null || style === null) return "each choice is text";
+  const presence = s("presence");
+  if (voice === null || language === null || telegram === null || style === null || presence === null) return "each choice is text";
+  if (presence && !/^(person|device_tracker)\.[a-z0-9_]+$/.test(presence)) return "the Home Assistant person is an entity id such as person.aisyah";
   if (voice && !(TTS_VOICES as readonly string[]).includes(voice)) return `voice must be one of ${TTS_VOICES.join(", ")}`;
   if (language && !/^[a-z]{2,3}(-[A-Za-z0-9]{2,8})?$/.test(language)) return "language is a tag such as en, ms or en-GB";
   if (telegram && !/^(-?\d{3,20}|@[A-Za-z0-9_]{4,32})$/.test(telegram)) return "the Telegram chat is a number (or @channel); the bot tells you yours";
@@ -375,7 +377,7 @@ export async function handleHub(req: Request, env: Env, principal: Principal): P
         you: me?.id === x.user,
         // What Jarvis kept before the family is theirs, recorded as "owner" (lib/context.ts).
         first: x.user === first,
-        ...(admin ? { scopes: x.scopesNow, custom: !!x.scopes, passkeys: x.passkeys, hasPin: x.hasPin, lastSeenAt: x.lastSeenAt, addedAt: x.addedAt } : {}),
+        ...(admin ? { scopes: x.scopesNow, custom: !!x.scopes, passkeys: x.passkeys, hasPin: x.hasPin, presence: x.presence, lastSeenAt: x.lastSeenAt, addedAt: x.addedAt } : {}),
       }));
       return json({
         members,
@@ -386,6 +388,14 @@ export async function handleHub(req: Request, env: Env, principal: Principal): P
     }
     if (!admin) return err(403, "only an admin can change the family");
     const user = str(b.user);
+    if (m === "PATCH" && b.presence !== undefined) {
+      // Their Home Assistant person, for "when she gets home": an admin may set it for someone, a child say.
+      if (!(await hub.member(space, user))) return err(400, "not a member");
+      const bad = prefsProblem({ presence: b.presence });
+      if (bad) return err(400, bad);
+      const r = await hub.setPrefs(user, { presence: str(b.presence) });
+      return "error" in r ? err(400, r.error) : json({ ok: true });
+    }
     if (m === "PATCH" && b.clearPin === true) {
       // A forgotten PIN: the admin takes it off, and the member sets a new one.
       if (!(await hub.member(space, user))) return err(400, "not a member");

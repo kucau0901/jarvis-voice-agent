@@ -25,6 +25,7 @@ import { JARVIS_VERSION, handleVersion } from "./routes/version";
 import { handleUsage } from "./routes/usage";
 import { handleAlertsAdmin, isTicketedSocket, openTicketedSocket } from "./routes/alerts";
 import { handleAuth, handleHub } from "./routes/hub";
+import { handleFamily } from "./routes/family";
 
 // The Durable Object class must be exported from the entry for the runtime to find it.
 export { JarvisState } from "./state";
@@ -177,6 +178,9 @@ async function route(
   principal: Principal,
 ): Promise<Response> {
   if (url.pathname.startsWith("/api/v1/")) return await handleV1(req, env, ctx, principal);
+  if (url.pathname.startsWith("/api/hub/chat") || url.pathname.startsWith("/api/hub/relays")) {
+    return (await handleFamily(req, env, ctx, principal))!;
+  }
   if (url.pathname.startsWith("/api/hub/")) return await handleHub(req, env, principal);
   if (url.pathname.startsWith("/api/mcp")) return await handleMcp(req, env);
   if (url.pathname.startsWith("/api/memory")) return await handleMemory(req, env, grantsOf(principal), principal.kind === "device");

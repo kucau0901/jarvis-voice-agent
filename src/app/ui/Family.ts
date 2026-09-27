@@ -36,6 +36,7 @@ interface Member {
   custom?: boolean;
   passkeys?: number;
   hasPin?: boolean;
+  presence?: string;
   lastSeenAt?: number;
 }
 
@@ -307,6 +308,9 @@ export class Family {
                 .join("")}</div>
                ${m.custom ? `<button class="m-reset">Back to what a ${esc(m.role)} gets</button>` : ""}`
             : ""}
+          ${admin
+            ? `<div class="fieldfoot"><input type="text" class="m-presence" maxlength="60" placeholder="Home Assistant person, for “when home”: person.name" value="${esc(m.presence ?? "")}"><button class="m-psave">Save</button></div>`
+            : ""}
           ${admin && !m.you
             ? `<div class="rowbtns"><button class="m-link">New passkey link</button>${m.hasPin ? `<button class="m-clearpin">Clear their PIN</button>` : ""}<button class="m-remove">Remove</button></div>
                <div class="reveal"></div>`
@@ -338,6 +342,9 @@ export class Family {
           this.msg(e instanceof Error ? e.message : String(e), true);
         }
       });
+      row.querySelector(".m-psave")?.addEventListener("click", () =>
+        void this.change({ user: id, presence: row.querySelector<HTMLInputElement>(".m-presence")!.value.trim() }, `Saved where ${name} is, for “when home”.`),
+      );
       const cp = row.querySelector<HTMLButtonElement>(".m-clearpin");
       if (cp) arm(cp, "Clear it?", () => this.change({ user: id, clearPin: true }, `${name}'s PIN is cleared; they can set a new one.`));
       const rm = row.querySelector<HTMLButtonElement>(".m-remove");

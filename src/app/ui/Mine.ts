@@ -17,6 +17,7 @@ export interface Prefs {
   style?: string;
   language?: string;
   telegram?: string;
+  presence?: string;
 }
 
 /** The voices the server accepts (lib/speech.ts TTS_VOICES). */
@@ -69,6 +70,14 @@ export class Mine {
         <div class="rowbtns"><button class="m-hasave">Save</button>${this.haToken ? `<button class="m-haoff">Remove mine</button>` : ""}</div>
       </div>
 
+      <h3>Getting home</h3>
+      <div class="srv">
+        <p class="note">So “remind her when she gets home” waits until you are: your person in Home Assistant,
+          which follows your phone. Empty, such reminders go by the time alone.</p>
+        <input type="text" class="m-presence" maxlength="60" placeholder="person.yourname" value="${esc(this.prefs.presence ?? "")}">
+        <div class="rowbtns"><button class="m-psave">Save</button></div>
+      </div>
+
       <h3>Your voice and language</h3>
       <div class="srv">
         <p class="note">How Jarvis sounds when it answers you out loud, and the language it expects.
@@ -107,6 +116,9 @@ export class Mine {
       const ok = await speakText(this.key, "This is how I sound when I answer you.");
       if (!ok) this.say("Could not play it here.", true);
     });
+    this.box.querySelector(".m-psave")!.addEventListener("click", () =>
+      void this.save({ presence: this.box.querySelector<HTMLInputElement>(".m-presence")!.value.trim() }, "Saved."),
+    );
     this.box.querySelector(".m-tgsave")!.addEventListener("click", () =>
       void this.save({ telegram: this.box.querySelector<HTMLInputElement>(".m-tg")!.value.trim() }, "Saved."),
     );

@@ -31,6 +31,8 @@ export const SCOPES = [
   "voice",
   "alerts",
   "routines",
+  /** Talk with the family: its chat, direct messages, and passing things on (lib/relays.ts). */
+  "chat",
 ] as const;
 
 export type Scope = (typeof SCOPES)[number];

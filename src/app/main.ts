@@ -16,6 +16,8 @@ import { richText } from "./ui/util";
 import { PushToTalk } from "./ptt";
 import { LiveVoice, wakeVoice } from "./loud";
 import { Family } from "./ui/Family";
+import { Chat } from "./ui/Chat";
+import { relayActions } from "./relay";
 import { hubStatus, inviteInfo, joinWithInvite, pairThisScreen, signInWithPasskey } from "./account";
 import { passkeyError, passkeysSupported } from "./passkey";
 import { describe, dropPerson, endSignIn, keepPerson, loadPeople, lockPerson, unlockPerson, type Person } from "./people";
@@ -509,6 +511,24 @@ function showAlert(a: Alert): HTMLElement {
   body.textContent = a.text;
   card.appendChild(head);
   card.appendChild(body);
+  // Passed on from someone in the family: answer it right here (relay.ts).
+  if (a.relay && a.relay.kind !== "tell") {
+    const acts = relayActions(key, a.relay, (said) => {
+      acts.replaceWith(Object.assign(document.createElement("div"), { className: "cdone", textContent: said }));
+    });
+    card.appendChild(acts);
+  }
+  // A chat message, or anything passed on: open the conversation.
+  if (a.convo || a.relay) {
+    const open = document.createElement("button");
+    open.className = "aopen";
+    open.textContent = "Open the chat";
+    open.addEventListener("click", () => {
+      card.remove();
+      openChat(a.convo);
+    });
+    card.appendChild(open);
+  }
   alertsBox.insertBefore(card, alertsBox.firstChild);
   while (alertsBox.children.length > MAX_CARDS) alertsBox.lastElementChild?.remove();
   setTimeout(() => card.remove(), CARD_MS);
@@ -844,6 +864,34 @@ unlock.joinGo.addEventListener("click", async () => {
   }
 });
 
+let chat: Chat | null = null;
+function openChat(convo?: string) {
+  if (!key) { void requireKey(); return; }
+  chat ??= new Chat(key, document.title);
+  void chat.show(convo);
+}
+$("openChat").addEventListener("click", () => openChat());
+
+/** Unread messages, on the menu: looked at now and then, and when the app comes back. */
+async function unreadChat() {
+  const item = $("openChat");
+  if (!isSession(key) || item.hidden) return;
+  try {
+    const r = await fetch("/api/hub/chat", { headers: authHeaders(key) });
+    if (!r.ok) return;
+    const { convos } = (await r.json()) as { convos: { unread: number }[] };
+    const n = convos.reduce((t, c) => t + c.unread, 0);
+    item.textContent = n ? `Chat (${n})` : "Chat";
+    $("menuBtn").classList.toggle("dot", n > 0);
+  } catch {
+    // Next time.
+  }
+}
+setInterval(() => void unreadChat(), 60_000);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") void unreadChat();
+});
+
 let family: Family | null = null;
 function openFamily() {
   if (!key) { void requireKey(); return; }
@@ -1143,6 +1191,9 @@ async function whoAmI() {
     title.classList.toggle("switchable", isSession(key));
     const may = (need: string) => me.role === "admin" || me.scopes.includes("*") || (need !== "admin" && me.scopes.includes(need));
     for (const b of document.querySelectorAll<HTMLElement>("#topbtns [data-need]")) b.hidden = !may(b.dataset.need!);
+    // The family's chat is for people in a family.
+    $("openChat").hidden = !me.space || !isSession(key) || !may("chat");
+    void unreadChat();
   } catch {
     // Offline: the menu stays as it is.
   }

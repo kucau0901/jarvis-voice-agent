@@ -47,6 +47,16 @@ of every release, and in the [README](README.md#updating).
 - **Your own Home Assistant user**, if you like: give its token in Family →
   You, and the house answers you as yourself, in Home Assistant's logbook
   and under its rules for you.
+- **Jarvis passes things on.** "Remind Aisyah to buy ice cream when she
+  gets home, around five", "ask Mum if she wants anything from the shop",
+  "tell everyone dinner is at eight": it reaches them at the right time, on
+  their own screens and phones, and their Done, Can't or answer comes back to
+  you. Unanswered, it nudges once, then tells you. "When she gets home" uses
+  her Home Assistant person. Asking everyone gathers every answer for you.
+- **Family chat**: a room the whole family shares and a conversation with
+  each person, in the menu. Name the assistant in the room and it answers
+  there. Messages Jarvis passed on appear in the two people's conversation,
+  with Done or a reply.
 - **The assistant goes by the family's name for it**, and knows who it is
   talking to.
 - **Settings → Usage** shows each person's part.

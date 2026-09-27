@@ -731,7 +731,22 @@ voice, language and Telegram chat; an empty value clears one.
 | `DELETE /api/hub/cars` | `{id}`, its owner only |
 
 `car_state` and `car_command` take a `car` (its name) when there is more than
-one; a car shared to `see` is never operated. `PATCH /api/hub/me {haToken}`
+one; a car shared to `see` is never operated.
+
+**The family talking** (needs `chat`; never a device):
+
+| Route | |
+|---|---|
+| `GET /api/hub/chat` | your conversations: `family` (the room) and `dm:<a>\|<b>` with each person, each with its last message and unread count |
+| `GET /api/hub/chat/messages?c=&since=` | a conversation's messages, newer than `since`; marks it read |
+| `POST /api/hub/chat/messages` | `{c, text}`. In the room, naming the assistant asks it; it answers there |
+| `GET /api/hub/relays` | `{sent, received}`: what you passed on and were sent this week |
+| `POST /api/hub/relays` | `{to, kind: "tell" \| "remind" \| "ask", text, at?, whenHome?}`: `to` is a name or `everyone` |
+| `POST /api/hub/relays/answer` | `{id, status: "done" \| "declined" \| "answered", answer?}` |
+| `DELETE /api/hub/relays` | `{id}`: take back something you passed on, before it is answered |
+
+An alert for something passed on carries `relay: {id, kind}`; one for a chat
+message, `convo`. `PATCH /api/hub/me {haToken}`
 sets a person's own Home Assistant token (checked with the house first); an
 empty one removes it.
 

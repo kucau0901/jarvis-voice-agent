@@ -19,8 +19,10 @@ import { Jobs } from "./lib/jobs";
 import { jobEngine } from "./routes/jobs";
 import type { UsageEntry } from "./lib/usage.ts";
 import type { SharedTurn } from "./lib/shared.ts";
-import { haConfig, renderTemplate } from "./lib/ha.ts";
+import { haConfig, renderTemplate, truthy } from "./lib/ha.ts";
 import { HUB_METHODS, HubHost } from "./lib/hub.ts";
+import { Relays, type Relay, type RelayDeps, type RelayKind } from "./lib/relays.ts";
+import { Chat, dmId, type ChatMessage } from "./lib/chat.ts";
 import { personOfWho, withPerson } from "./lib/context.ts";
 
 /**
@@ -37,12 +39,17 @@ export class JarvisState extends DurableObject<Env> {
   private hub = new LiveHub();
   private scheduler: Scheduler;
   private jobs: Jobs;
+  /** Messages passed on between the family (lib/relays.ts), and their conversations (lib/chat.ts). */
+  private relays: Relays;
+  private chat: Chat;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.host = new StateHost(ctx.storage, env);
     this.people = new HubHost(ctx.storage);
     this.scheduler = new Scheduler(ctx.storage, () => this.schedulerDeps());
+    this.chat = new Chat(ctx.storage);
+    this.relays = new Relays(ctx.storage, () => this.relayDeps());
     this.jobs = new Jobs(ctx.storage, async () => {
       const env = await this.localEnv();
       // Each job runs as whoever started it: their memory, their mail (lib/context.ts).
@@ -213,8 +220,8 @@ export class JarvisState extends DurableObject<Env> {
 
   /** Point the one alarm at whatever is due first: a routine or a job. */
   private async rearm(): Promise<void> {
-    const [a, b] = await Promise.all([this.scheduler.nextWake(), this.jobs.nextWake()]);
-    const at = a === null ? b : b === null ? a : Math.min(a, b);
+    const wakes = (await Promise.all([this.scheduler.nextWake(), this.jobs.nextWake(), this.relays.nextWake()])).filter((t): t is number => t !== null);
+    const at = wakes.length ? Math.min(...wakes) : null;
     if (at === null) await this.ctx.storage.deleteAlarm();
     else await this.ctx.storage.setAlarm(at);
   }
@@ -224,7 +231,97 @@ export class JarvisState extends DurableObject<Env> {
     // the runtime retries, which is what is wanted.
     await this.scheduler.tick();
     await this.jobs.tick();
+    await this.relays.tick();
     await this.rearm();
+  }
+
+  /* ---------- the family's messages (lib/relays.ts, lib/chat.ts) ------------------- */
+
+  private async relayDeps(): Promise<RelayDeps> {
+    const env = await this.localEnv();
+    const ha = haConfig(env);
+    return {
+      deliver: (alert) => deliver(env, this, alert),
+      // Home, by their Home Assistant person; unknown without the house.
+      isHome: async (entity) => {
+        if (!ha || !/^(person|device_tracker)\.[a-z0-9_]+$/.test(entity)) return null;
+        return truthy(await renderTemplate(ha, `{{ is_state('${entity}', 'home') }}`));
+      },
+      post: async (between, msg) => void (await this.chat.post(dmId(between[0], between[1]), msg)),
+      markPosted: (between, id, note) => this.chat.markRelay(dmId(between[0], between[1]), id, note),
+    };
+  }
+
+  /**
+   * Pass something on: `to` is a family member's name ("Aisyah", or just
+   * her first name) or "everyone". Returns what was made, or why not.
+   */
+  async relayCreate(input: {
+    kind: RelayKind;
+    from: string;
+    fromName: string;
+    to: string;
+    text: string;
+    after?: number;
+    whenHome?: boolean;
+  }): Promise<{ relays: Relay[]; noHome: string[] } | string> {
+    const family = await this.people.familyPeople();
+    if (!family.some((p) => p.person === input.from)) return "only a member of the family can pass things on";
+    const want = input.to.trim().toLowerCase();
+    const others = family.filter((p) => p.person !== input.from);
+    const to = ["everyone", "everybody", "all", "the family"].includes(want)
+      ? others
+      : others.filter((p) => p.name.toLowerCase() === want || p.name.toLowerCase().split(/\s+/)[0] === want).slice(0, 1);
+    if (!to.length) return `nobody in the family is called "${input.to}". The family: ${others.map((p) => p.name).join(", ") || "only you so far"}`;
+    const made = await this.relays.create(
+      { ...input, to: to.map((p) => ({ person: p.person, name: p.name, ...(p.presence ? { home: p.presence } : {}) })) },
+      Date.now(),
+    );
+    await this.rearm();
+    if (typeof made === "string") return made;
+    // Asked for "when home", but without their Home Assistant person: it goes by the time alone.
+    const noHome = input.whenHome ? to.filter((p) => !p.presence).map((p) => p.name) : [];
+    return { relays: made, noHome };
+  }
+
+  async relayAnswer(id: string, by: string, a: { status: "done" | "declined" | "answered"; answer?: string }) {
+    const r = await this.relays.answer(id, by, a);
+    await this.rearm();
+    return r;
+  }
+
+  async relayCancel(id: string, by: string) {
+    const r = await this.relays.cancel(id, by);
+    await this.rearm();
+    return r;
+  }
+
+  relaysFor(person: string) {
+    return this.relays.forPerson(person);
+  }
+
+  relaysAwaiting(person: string) {
+    return this.relays.awaiting(person);
+  }
+
+  chatPost(convo: string, msg: Omit<ChatMessage, "id" | "at">) {
+    return this.chat.post(convo, msg);
+  }
+
+  chatMessages(convo: string, since = 0) {
+    return this.chat.messages(convo, since);
+  }
+
+  chatConvos(person: string, family: { id: string; name: string }[]) {
+    return this.chat.convos(person, family);
+  }
+
+  chatSeen(person: string, convo: string, at: number) {
+    return this.chat.seen(person, convo, at);
+  }
+
+  familyPeople() {
+    return this.people.familyPeople();
   }
 
   /* ---------- background jobs (lib/jobs.ts) ------------------------------------- */

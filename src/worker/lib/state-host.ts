@@ -25,6 +25,8 @@ import type { Alert, Delivery, LiveResult, PushTarget } from "./alerts.ts";
 import type { LiveClient } from "./live.ts";
 import type { Routine, RoutineInput } from "./routines.ts";
 import type { Job } from "./jobs.ts";
+import type { Relay, RelayKind } from "./relays.ts";
+import type { ChatMessage } from "./chat.ts";
 import type { Grant } from "./scopes.ts";
 
 /**
@@ -509,6 +511,28 @@ export interface JobApi {
   removeJob(id: string): Promise<boolean>;
 }
 
+/** The family's messages, passed on and chatted (lib/relays.ts, lib/chat.ts; state.ts). */
+export interface FamilyApi {
+  relayCreate(input: {
+    kind: RelayKind;
+    from: string;
+    fromName: string;
+    to: string;
+    text: string;
+    after?: number;
+    whenHome?: boolean;
+  }): Promise<{ relays: Relay[]; noHome: string[] } | string>;
+  relayAnswer(id: string, by: string, a: { status: "done" | "declined" | "answered"; answer?: string }): Promise<Relay | string>;
+  relayCancel(id: string, by: string): Promise<Relay | string>;
+  relaysFor(person: string): Promise<{ sent: Relay[]; received: Relay[] }>;
+  relaysAwaiting(person: string): Promise<Relay[]>;
+  chatPost(convo: string, msg: Omit<ChatMessage, "id" | "at">): Promise<ChatMessage>;
+  chatMessages(convo: string, since?: number): Promise<ChatMessage[]>;
+  chatConvos(person: string, family: { id: string; name: string }[]): Promise<{ id: string; title: string; last: ChatMessage | null; unread: number }[]>;
+  chatSeen(person: string, convo: string, at: number): Promise<void>;
+  familyPeople(): Promise<{ person: string; name: string; presence?: string }[]>;
+}
+
 /** What the object adds itself, because it holds the sockets (state.ts). */
 export interface LiveApi {
   broadcast(alert: Alert, waitMs: number): Promise<LiveResult>;
@@ -547,4 +571,5 @@ export type StateApi = Pick<
 > &
   LiveApi &
   RoutineApi &
-  JobApi;
+  JobApi &
+  FamilyApi;

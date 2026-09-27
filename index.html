@@ -95,6 +95,44 @@
     border: 1px solid #1e2937; box-shadow: 0 18px 50px rgba(0,0,0,.55); }
   #topbtns.open { display: flex; }
   #topbtns button[hidden] { display: none !important; }
+  #menuBtn.dot::after { content: ""; position: absolute; top: 6px; right: 6px; width: 9px; height: 9px;
+    border-radius: 50%; background: var(--cyan); }
+
+  /* The family's chat (src/app/ui/Chat.ts). */
+  #chat .chatsheet { display: flex; flex-direction: column; height: 86dvh; }
+  #chat .chatwrap { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 14px; flex: 1; min-height: 0; margin-top: 12px; }
+  #chat .convos { display: grid; align-content: start; gap: 6px; overflow-y: auto; }
+  #chat .convo { display: grid; text-align: left; gap: 2px; padding: 10px 12px; position: relative; }
+  #chat .convo.on { border-color: var(--cyan); }
+  #chat .convo small { color: #5d6b7d; font-size: 12px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  #chat .unread { position: absolute; top: 8px; right: 10px; background: var(--cyan); color: #05070b;
+    border-radius: 999px; font-size: 11px; font-weight: 700; padding: 1px 7px; }
+  #chat .thread { display: flex; flex-direction: column; min-height: 0; }
+  #chat .msgs { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 4px; }
+  #chat .cmsg { max-width: 85%; padding: 8px 12px; border-radius: 12px; background: #111a24; align-self: flex-start; }
+  #chat .cmsg.mine { align-self: flex-end; background: #0d2a33; }
+  #chat .cmsg.agent { background: #16202c; border: 1px solid #1f4d5a; }
+  #chat .cwho { font-size: 11px; color: #5d6b7d; margin-bottom: 2px; }
+  #chat .ctext { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 15px; }
+  #chat .compose { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; margin-top: 10px; }
+  #chat .compose input { background: #0e151d; color: var(--fg); border: 1px solid #1d2835; border-radius: 8px;
+    padding: 11px 12px; font: 16px inherit; min-height: 44px; }
+  #chat .back { display: none; }
+  .relayacts { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; align-items: center; }
+  .relayacts input { flex: 1 1 160px; background: #0e151d; color: var(--fg); border: 1px solid #1d2835;
+    border-radius: 8px; padding: 9px 10px; font: 15px inherit; min-height: 40px; }
+  .relayacts button { background: #1a242f; color: var(--fg); border: 1px solid #243140; border-radius: 8px;
+    padding: 8px 14px; min-height: 40px; font: 14px inherit; cursor: pointer; }
+  .relayacts button.primary { background: var(--cyan); color: #05070b; border-color: var(--cyan); font-weight: 600; }
+  .relayerr { color: var(--red); font-size: 12px; }
+  .cdone { margin-top: 6px; font-size: 13px; color: #4ade80; }
+  .alert .aopen { margin-top: 8px; background: none; border: 0; color: var(--cyan); font: 13px inherit; cursor: pointer; padding: 0; }
+  @media (max-width: 620px) {
+    #chat .chatwrap { grid-template-columns: minmax(0, 1fr); }
+    #chat .sheet:not(.detail) .thread { display: none; }
+    #chat .sheet.detail .convos { display: none; }
+    #chat .sheet.detail .back { display: inline-block; }
+  }
   #topbtns button { background: #131b26; color: var(--fg); border: 1px solid #1e2937;
     border-radius: 10px; padding: 12px 16px; min-height: 52px; font: inherit; font-size: 16px;
     text-align: left; cursor: pointer; white-space: nowrap; }
@@ -552,6 +590,7 @@
     <button id="openMemory" type="button" role="menuitem" data-need="memory.read">Memory</button>
     <button id="openRoutines" type="button" role="menuitem" data-need="routines">Routines</button>
     <button id="openJobs" type="button" role="menuitem" data-need="ask">Jobs</button>
+    <button id="openChat" type="button" role="menuitem" data-need="chat" hidden>Chat</button>
     <button id="openFamily" type="button" role="menuitem">Family</button>
     <button id="openDevices" type="button" role="menuitem" data-need="admin">Devices</button>
     <button id="openSettings" type="button" role="menuitem" data-need="admin">Settings</button>

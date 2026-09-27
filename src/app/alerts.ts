@@ -19,6 +19,10 @@ export interface Alert {
   speak: boolean;
   urgent: boolean;
   source: string;
+  /** Passed on from someone in the family (src/worker/lib/relays.ts): Done, or a reply. */
+  relay?: { id: string; kind: string };
+  /** A chat message: the conversation to open. */
+  convo?: string;
 }
 
 /** What this screen is called in "shown on …" and in the list of devices. */
