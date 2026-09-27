@@ -1,6 +1,7 @@
 import type { Env } from "../types";
 import { localeOf } from "../lib/locale.ts";
 import { CALENDAR, call, explain, googleConfig, NeedsRelink, type GoogleConfig } from "../lib/google.ts";
+import { localParts, zonedToUtc } from "../lib/routines.ts";
 import type { Tool, ToolContext } from "./registry";
 
 /**
@@ -36,8 +37,9 @@ const MAX_TEXT = 200;
 const available = (env: Env): boolean => !!(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET);
 
 const NOT_LINKED =
-  "The Google account is not linked yet. The user needs to open /api/google/auth once " +
-  "from a phone or laptop and approve access. Tell them that plainly; do not retry.";
+  "This person's Google account is not linked yet. They link it once from a phone or " +
+  "laptop: in Family → Accounts, or before a family is set up, Settings → Google. " +
+  "Tell them that plainly; do not retry.";
 
 const cfgOf = (ctx: ToolContext): GoogleConfig => {
   const cfg = googleConfig(ctx.env, "https://jarvis.invalid");
@@ -52,8 +54,8 @@ async function guard<T>(fn: () => Promise<T>): Promise<T | string> {
   } catch (e) {
     if (e instanceof NeedsRelink) {
       return (
-        "The Google authorisation has expired and needs re-linking from a phone at " +
-        "/api/google/auth. Say that plainly; retrying will not help."
+        "The Google authorisation has expired and needs linking again from a phone: " +
+        "Family → Accounts (or Settings → Google). Say that plainly; retrying will not help."
       );
     }
     const msg = e instanceof Error ? e.message : String(e);
@@ -98,12 +100,17 @@ const dayKey = (tz: string, d: Date) =>
  * An all-day event has `date` and no `dateTime`; saying "09:00" for one would
  * be an invention, so it is reported as all-day instead.
  */
-function whenSpoken(tz: string, start?: EventTime, now = new Date()): string {
+export function whenSpoken(tz: string, start?: EventTime, now = new Date()): string {
   if (start?.date && !start.dateTime) {
+    // A date, not a moment: compared with today's date where the user is, and
+    // said as itself. Read as midnight UTC and shown in a zone west of it, it
+    // was the day before.
+    const p = localParts(now.getTime(), tz);
+    const today = `${p.y}-${String(p.mo).padStart(2, "0")}-${String(p.d).padStart(2, "0")}`;
     const d = new Date(`${start.date}T00:00:00Z`);
-    return dayKey(tz, d) === dayKey(tz, now)
+    return start.date === today
       ? "all day today"
-      : `all day ${fmt(tz, d, { weekday: "short", day: "numeric", month: "short" })}`;
+      : `all day ${fmt("UTC", d, { weekday: "short", day: "numeric", month: "short" })}`;
   }
   if (!start?.dateTime) return "time unknown";
 
@@ -119,12 +126,21 @@ function whenSpoken(tz: string, start?: EventTime, now = new Date()): string {
 
 /* ---------- reading ------------------------------------------------------- */
 
-const RANGES: Record<string, number> = {
-  next: 14 * 86_400_000,
-  today: 86_400_000,
-  tomorrow: 2 * 86_400_000,
-  week: 7 * 86_400_000,
-};
+const RANGES = ["next", "today", "tomorrow", "week"] as const;
+
+/**
+ * The window a range means, in the user's own days: "today" is until their
+ * midnight, "tomorrow" all of the next day — not the next 24 hours, and not
+ * days by the server's clock, which is UTC.
+ */
+export function rangeWindow(range: string, now: number, tz: string): { from: number; to: number } {
+  const p = localParts(now, tz);
+  const midnight = (plus: number) => zonedToUtc(p.y, p.mo, p.d + plus, 0, 0, tz);
+  if (range === "today") return { from: now, to: midnight(1) };
+  if (range === "tomorrow") return { from: midnight(1), to: midnight(2) };
+  if (range === "week") return { from: now, to: now + 7 * 86_400_000 };
+  return { from: now, to: now + 14 * 86_400_000 };
+}
 
 const clampLimit = (v: unknown): number => {
   const n = Math.round(Number(v));
@@ -148,7 +164,7 @@ export const calendarCheck: Tool = {
     properties: {
       range: {
         type: "string",
-        enum: Object.keys(RANGES),
+        enum: [...RANGES],
         description:
           "next = the next fortnight, for 'what's my next meeting'. today, tomorrow, " +
           "or week for a rundown.",
@@ -165,19 +181,15 @@ export const calendarCheck: Tool = {
     const tz = localeOf(ctx.env).timeZone;
     return (await guard(async () => {
       const cfg = cfgOf(ctx);
-      const range = String(args.range ?? "next");
-      const span = RANGES[range] ?? RANGES.next!;
+      const range = (RANGES as readonly string[]).includes(String(args.range)) ? String(args.range) : "next";
       const limit = clampLimit(args.limit);
 
       const now = new Date();
       // "today" and "tomorrow" mean calendar days, not "the next 24 hours" — a
       // meeting at 09:00 tomorrow is not part of today whatever the clock says.
-      let timeMin = now;
-      if (range === "tomorrow") {
-        timeMin = new Date(now.getTime() + 86_400_000);
-        timeMin.setHours(0, 0, 0, 0);
-      }
-      const timeMax = new Date(timeMin.getTime() + span);
+      const w = rangeWindow(range, now.getTime(), tz);
+      const timeMin = new Date(w.from);
+      const timeMax = new Date(w.to);
 
       const p = new URLSearchParams({
         timeMin: timeMin.toISOString(),

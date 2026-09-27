@@ -17,7 +17,7 @@ import { costOf } from "../lib/usage.ts";
 
 /**
  * Background jobs (lib/jobs.ts): the engine that runs them, and the HTTP
- * surface. All paths need `ask`; a Hermes job also needs `home`.
+ * surface. All paths need `ask`; a Hermes job also needs `hermes`, and research `routines`.
  *
  *   GET    /api/v1/jobs           the jobs (a device sees its own)
  *   GET    /api/v1/jobs?id=       one, with its whole result
@@ -219,6 +219,8 @@ export async function handleJobs(req: Request, env: Env, url: URL, principal: Pr
     const b = await body(req);
     if (!b) return err(400, "body must be a small JSON object");
     if (b.engine === "hermes" && !allows(grants, "hermes")) return err(403, 'a Hermes job needs "hermes"', { need: "hermes" });
+    // Research spends the family's monthly allowance (Settings → OpenAI): not a guest's to spend.
+    if (b.engine === "research" && !allows(grants, "routines")) return err(403, 'a research job needs "routines"', { need: "routines" });
     const j = await state.createJob(b, { who, grants });
     return typeof j === "string" ? err(400, j) : json({ ok: true, job: jobView(j) }, { status: 201 });
   }

@@ -203,6 +203,12 @@ export async function deliver(
   if (alert.for && !alert.urgent && state.quietUntil && state.hold) {
     const until = await state.quietUntil(alert.for).catch(() => null);
     if (until) {
+      // Worth nothing by the time they could have it ("leave now" for something already begun): not kept.
+      if (alert.expiresAt !== undefined && alert.expiresAt <= until) {
+        const d: Delivery = { alert, attempts: [], deliveredBy: null };
+        await state.logDelivery(d).catch(() => {});
+        return d;
+      }
       await state.hold(alert, until);
       const d: Delivery = { alert, attempts, deliveredBy: null, heldUntil: until };
       await state.logDelivery(d).catch(() => {});

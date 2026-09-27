@@ -271,6 +271,22 @@ export async function syncPush(key: string): Promise<void> {
   }
 }
 
+/**
+ * This browser's notifications stop being someone's, and it stays subscribed:
+ * for a shared screen putting a person aside. Whoever is taken up next makes
+ * them theirs when Jarvis opens (syncPush).
+ */
+export async function releasePush(key: string): Promise<void> {
+  try {
+    const reg = await navigator.serviceWorker?.getRegistration();
+    const sub = await reg?.pushManager.getSubscription();
+    if (!sub) return;
+    await fetch("/api/v1/push", { method: "DELETE", headers: authHeaders(key), body: JSON.stringify({ endpoint: sub.endpoint }) });
+  } catch {
+    // no push here, or offline
+  }
+}
+
 export async function disablePush(key: string): Promise<void> {
   const reg = await navigator.serviceWorker.getRegistration();
   const sub = await reg?.pushManager.getSubscription();

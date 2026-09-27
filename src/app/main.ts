@@ -10,7 +10,7 @@ import { Stage, type DisplayPayload } from "./ui/Stage";
 import { Orb } from "./orb/Orb";
 import { VoiceLevels } from "./audio";
 import { runDelegation } from "./delegate";
-import { LiveLink, speakAlert, speakHere, speakText, syncPush, type Alert } from "./alerts";
+import { LiveLink, releasePush, speakAlert, speakHere, speakText, syncPush, type Alert } from "./alerts";
 import { askTyped } from "./chat";
 import { richText } from "./ui/util";
 import { PushToTalk } from "./ptt";
@@ -703,8 +703,9 @@ async function switchTo(p: Person) {
     dropPerson(p.token);
     return showPeople(`${p.name}'s sign-in here has ended. Add them again.`);
   }
-  // The one in use steps aside first.
+  // The one in use steps aside first, and their notifications with them.
   if (isSession(key) && (await lockPerson(key))) {
+    await releasePush(key);
     clearKey();
     key = "";
   }
@@ -1179,6 +1180,7 @@ async function whoAmI() {
     if (me.user) keepPerson({ id: me.user.id, name: me.user.name, hasPin: me.hasPin, token: key });
     // Put aside on this screen (a shared one, left idle): choose who is using it.
     if (me.locked) {
+      await releasePush(key);
       clearKey();
       key = "";
       return showPeople();
@@ -1217,6 +1219,7 @@ setInterval(async () => {
   if (people.length < 2 || !me?.hasPin || Date.now() - touchedAt < IDLE_LOCK_MS) return;
   if (session || userWantsSession || ptt?.busy || typedAbort) return;
   if (await lockPerson(key)) {
+    await releasePush(key);
     clearKey();
     key = "";
     document.querySelectorAll(".panel.open").forEach((el) => el.classList.remove("open"));

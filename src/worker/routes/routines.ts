@@ -1,5 +1,5 @@
 import type { Env } from "../types";
-import { whoOf, grantsOf, personOf, type Principal } from "../lib/auth";
+import { whoOf, grantsOf, isAdmin, personOf, type Principal } from "../lib/auth";
 import { isTheirs } from "../lib/context.ts";
 import { err, json } from "../lib/http";
 import { stateStub } from "../lib/state-client";
@@ -58,7 +58,11 @@ export async function handleRoutines(req: Request, env: Env, url: URL, principal
     const event = typeof b?.event === "string" ? b.event.trim().toLowerCase() : "";
     if (!EVENT_NAME.test(event)) return err(400, "event is required: letters, digits and _ . : - , like arrived_home");
     const text = typeof b?.text === "string" ? b.text.trim().slice(0, 500) : undefined;
-    const started = await state.fireEvent(event, text || undefined);
+    // The house's events (the owner key, an admin, the first person's devices, as Home Assistant
+    // uses) reach everyone's routines; anyone else's, only their own, and never with words of theirs in someone else's.
+    const whose = personOf(principal);
+    const houseWide = isAdmin(principal) || (principal.kind === "device" && whose === "owner");
+    const started = await state.fireEvent(event, text || undefined, houseWide ? undefined : whose);
     return json({ event, started });
   }
 

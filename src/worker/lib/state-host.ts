@@ -499,7 +499,7 @@ export interface RoutineApi {
   updateRoutine(id: string, patch: { enabled?: boolean; name?: string }): Promise<Routine | string>;
   removeRoutine(id: string): Promise<boolean>;
   runRoutine(id: string): Promise<Routine | string>;
-  fireEvent(event: string, data?: string): Promise<string[]>;
+  fireEvent(event: string, data?: string, only?: string): Promise<string[]>;
 }
 
 /** Background jobs, which the object runs from the same alarm (lib/jobs.ts). */

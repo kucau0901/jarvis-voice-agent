@@ -101,6 +101,8 @@ console.log("\nquiet time holds alerts");
   check("an urgent one never waits", held.length === 1 && pushed.includes("u_child"));
   await deliverAlert(env, state, alertOf({ text: "hi" }, "relay", MON_10, "u_adult")!);
   check("someone in their hours gets theirs at once", held.length === 1 && pushed.includes("u_adult"));
+  const stale = await deliverAlert(env, state, alertOf({ text: "Leave now for swimming", expiresAt: at(2026, 9, 28, 23, 30) }, "routine", MON_10, "u_child")!);
+  check("one that is no use by the morning is not kept", held.length === 1 && stale.deliveredBy === null && !stale.heldUntil);
 }
 
 console.log("\nwhat a pass may do");

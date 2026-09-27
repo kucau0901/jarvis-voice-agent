@@ -1,6 +1,7 @@
 import type { Tool } from "./registry";
 import { stateStub } from "../lib/state-client.ts";
 import { voiceWho } from "../lib/context.ts";
+import { allows } from "../lib/scopes.ts";
 
 /**
  * Starting a background job by voice (lib/jobs.ts). The job keeps the
@@ -37,6 +38,10 @@ export const startJob: Tool = {
     const state = stateStub(ctx.env);
     if (!state) return "Background jobs cannot run on this deployment: it has no state object.";
     const research = args.research === true;
+    // Research spends the family's monthly allowance: for the family, not a guest.
+    if (research && !allows(ctx.grants, "routines")) {
+      return "Not started: research in depth is for the family, and this person may not start it. Offer an ordinary job, or to answer now.";
+    }
     const j = await state.createJob(
       { title: args.title, task: args.task, engine: research ? "research" : "jarvis" },
       { who: voiceWho(ctx.env), grants: ctx.grants },

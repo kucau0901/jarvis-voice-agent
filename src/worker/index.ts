@@ -107,7 +107,9 @@ export default {
     const principal = auth.principal;
 
     // A profile locked on a shared screen does nothing until its PIN is given.
-    if (principal.kind === "member" && principal.locked && !LOCKED_MAY.has(url.pathname)) {
+    // Letting go of this browser's notifications too: a locked profile's alerts must stop showing on a shared screen.
+    const lettingGo = url.pathname === "/api/v1/push" && req.method === "DELETE";
+    if (principal.kind === "member" && principal.locked && !LOCKED_MAY.has(url.pathname) && !lettingGo) {
       return withCors(err(423, "locked: enter this person's PIN", { locked: true }), origin, env);
     }
 

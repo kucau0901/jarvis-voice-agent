@@ -1,4 +1,4 @@
-import { calendarAdd, calendarCheck, calendarTools } from "../src/worker/tools/calendar.ts";
+import { calendarAdd, calendarCheck, calendarTools, rangeWindow, whenSpoken } from "../src/worker/tools/calendar.ts";
 import { SCOPES as GOOGLE_SCOPES, CALENDAR, PEOPLE, GMAIL } from "../src/worker/lib/google.ts";
 import { allows, requiredScope, SCOPES } from "../src/worker/lib/scopes.ts";
 import { readFileSync } from "node:fs";
@@ -163,6 +163,23 @@ console.log("\nunconfigured deployment");
 {
   const bare = await calendarCheck.run({ range: "next", limit: 5 }, ctx({ env: {} }));
   check("says it is not configured", /not configured|not linked/i.test(bare), bare);
+}
+
+console.log("days are the user's, not the server's");
+{
+  // 10:00 on 28 Sep in Kuala Lumpur is 02:00 UTC.
+  const now = Date.UTC(2026, 8, 28, 2, 0);
+  const kl = "Asia/Kuala_Lumpur";
+  const tomorrow = rangeWindow("tomorrow", now, kl);
+  check("tomorrow starts at their midnight", tomorrow.from === Date.UTC(2026, 8, 28, 16, 0), new Date(tomorrow.from).toISOString());
+  check("and is one day long", tomorrow.to - tomorrow.from === 86_400_000);
+  const today = rangeWindow("today", now, kl);
+  check("today ends at their midnight, not 24 hours on", today.from === now && today.to === Date.UTC(2026, 8, 28, 16, 0));
+  // 20:00 on 27 Sep in New York is 00:00 UTC on the 28th.
+  const ny = "America/New_York";
+  const late = Date.UTC(2026, 8, 28, 0, 0);
+  check("an all-day event today, west of UTC, is today", whenSpoken(ny, { date: "2026-09-27" }, new Date(late)) === "all day today");
+  check("and tomorrow's is its own date", whenSpoken(ny, { date: "2026-09-28" }, new Date(late)) === "all day Mon 28 Sept" || whenSpoken(ny, { date: "2026-09-28" }, new Date(late)) === "all day Mon 28 Sep", whenSpoken(ny, { date: "2026-09-28" }, new Date(late)));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

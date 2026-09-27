@@ -68,8 +68,9 @@ const MAX_SEND_CHARS = 4_000;
 const available = (env: Env): boolean => !!(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET);
 
 const NOT_LINKED =
-  "Gmail is not linked yet. The user needs to open /api/google/auth once from a phone " +
-  "or laptop and approve access. Tell them that plainly; do not retry.";
+  "This person's Gmail is not linked yet. They link it once from a phone or laptop: in " +
+  "Family → Accounts, or before a family is set up, Settings → Google. Tell them that " +
+  "plainly; do not retry.";
 
 /**
  * The origin is a sentinel, as in tools/spotify.ts: it only ever feeds the
@@ -96,8 +97,8 @@ async function guard<T>(fn: () => Promise<T>): Promise<T | string> {
   } catch (e) {
     if (e instanceof NeedsRelink) {
       return (
-        "Gmail's authorisation has expired and needs re-linking from a phone at " +
-        "/api/google/auth. Say that plainly; retrying will not help."
+        "Gmail's authorisation has expired and needs linking again from a phone: " +
+        "Family → Accounts (or Settings → Google). Say that plainly; retrying will not help."
       );
     }
     const msg = e instanceof Error ? e.message : String(e);
@@ -542,8 +543,11 @@ async function replyTarget(
   }
 
   const original = tidy(headerOf(m, "Subject"));
-  const messageIdHeader = headerOf(m, "Message-ID").trim();
-  const priorRefs = headerOf(m, "References").trim();
+  // Written into the reply's own headers, so on one line whatever came back: a
+  // folded References header keeps its ids, and loses its line breaks.
+  const oneLine = (s: string) => s.replace(/\s+/g, " ").trim();
+  const messageIdHeader = oneLine(headerOf(m, "Message-ID"));
+  const priorRefs = oneLine(headerOf(m, "References"));
 
   return {
     to,

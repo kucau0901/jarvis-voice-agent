@@ -461,8 +461,9 @@ POST /api/v1/jobs
 ```
 
 `engine` is `jarvis` (default: the router, many steps, in OpenAI's background
-mode), `research`, or `hermes` (one question to the Hermes agent; needs
-`home`). `research` is the same loop on a stronger model (`RESEARCH_MODEL`,
+mode), `research` (needs `routines`: it spends the family's monthly
+allowance), or `hermes` (one question to the Hermes agent; needs `hermes`).
+`research` is the same loop on a stronger model (`RESEARCH_MODEL`,
 GPT-6 Sol by default) thinking hard, told to search widely and write a report,
 with a Sources list made from the web search's own citations; it may take 40
 steps and 45 minutes, costs roughly $1–2 depending on how far it searches,
@@ -530,6 +531,11 @@ Every enabled `event` routine waiting for that name runs, each at most once a
 minute however often the event arrives. The answer lists the routines it
 started. Give the sender a device token holding only `routines`. `text` reaches
 an `ask` fenced as data, never as instructions.
+
+Whose routines: sent with the owner key, by an admin, or from a device of the
+first person's (Home Assistant's, say), it is the house's event and starts
+everyone's. Sent by anyone else, or a device of theirs, it starts only their
+own.
 
 ### Leave now
 

@@ -189,6 +189,18 @@ console.log("\nsomeone leaves: their routines stop, and rotas go on without them
   check("and so do the routines they made", !left.some((x) => x.id === theirs.id));
 }
 
+console.log("\nan event someone sends for themselves starts only their routines");
+{
+  const h = harness();
+  const dads = (await h.s.add({ when: "event", event: "home", say: "Welcome home, Dad" }, OWNER, T0)) as Routine;
+  const hers = (await h.s.add({ when: "event", event: "home", say: "Welcome home" }, { who: "u_b", grants: ["*"] as const }, T0)) as Routine;
+  const started = await h.s.fireEvent("home", undefined, T0, "u_b");
+  check("hers starts", started.includes(hers.name));
+  check("her father's does not", !started.includes(dads.name));
+  const house = await h.s.fireEvent("home", undefined, T0 + 10 * MIN);
+  check("the house's own event starts everyone's", house.includes(dads.name));
+}
+
 console.log("\na reminder fires once");
 {
   const h = harness();

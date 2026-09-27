@@ -45,6 +45,14 @@ of every release, and in the [README](README.md#updating).
   for answers but not for reminders or messages passed on to them.
 - A moment's hiccup reaching the family's records could turn away members'
   glasses and ESP32s for half a minute.
+- "What's on tomorrow?" started tomorrow at 8 in the morning in Malaysia
+  (midnight by the server's clock) and ran two days, and "today" ran 24
+  hours from now rather than to midnight. Both are your own days now.
+- An all-day event was said a day early west of UTC.
+- A "time to leave" warning held for a child's quiet time arrived after
+  the event had begun. One that would be too late is now let go.
+- Jarvis told someone whose Google was not linked to open an address in
+  the API; it now says Family → Accounts.
 
 ### Security
 
@@ -56,6 +64,15 @@ of every release, and in the [README](README.md#updating).
 - A routine ran with what its maker could reach when they made it: taking
   the house away from someone did not take it from their routines. It now
   reaches no further than they may today.
+- An event sent to `/api/v1/trigger` started everyone's routines, whoever
+  sent it, with their words attached. A member's event now starts only
+  their own; the house's (the owner key, an admin, the first person's
+  devices, as Home Assistant uses) still start everyone's.
+- A guest could start research in depth, spending the family's monthly
+  allowance. Research now needs `routines`, which guests do not have.
+- On a shared tablet, a profile put aside kept getting its notifications
+  there. Putting someone aside now lets go of them; the next person to use
+  the screen gets theirs.
 
 ## [2.0.0] - 2026-09-27
 

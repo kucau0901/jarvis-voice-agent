@@ -103,6 +103,8 @@ export class JarvisState extends DurableObject<Env> {
     const env = await this.localEnv();
     for (const [k, h] of due) {
       await this.ctx.storage.delete(k);
+      // Past its use while it waited (its quiet time grew longer, say): let go, not delivered late.
+      if (h.alert.expiresAt !== undefined && h.alert.expiresAt <= now) continue;
       await deliver(env, this, h.alert).catch(() => null);
     }
   }
@@ -490,8 +492,8 @@ export class JarvisState extends DurableObject<Env> {
     return r;
   }
 
-  async fireEvent(event: string, data?: string) {
-    const started = await this.scheduler.fireEvent(event, data);
+  async fireEvent(event: string, data?: string, only?: string) {
+    const started = await this.scheduler.fireEvent(event, data, Date.now(), only);
     if (started.length) await this.rearm();
     return started;
   }
