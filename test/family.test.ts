@@ -121,7 +121,7 @@ let saraToken = "";
   saraFake = fake;
   saraToken = done.body.token;
   sara = (await who(saraToken))!;
-  check("she is a member, with an adult's reach", sara?.kind === "member" && !isAdmin(sara) && grantsOf(sara).includes("home") && !grantsOf(sara).includes("memory.read"));
+  check("she is a member, with an adult's reach", sara?.kind === "member" && !isAdmin(sara) && grantsOf(sara).includes("home") && grantsOf(sara).includes("memory.read") && !grantsOf(sara).includes("car.control"));
   check("her things are her own", whoOf(sara) === (sara as { id: string }).id);
   check("she cannot invite", (await call("/api/hub/invites", { role: "admin", name: "x" }, { principal: sara })).status === 403);
   check("nor change anyone", (await call("/api/hub/members", { user: (admin as { id: string }).id, role: "guest" }, { method: "PATCH", principal: sara })).status === 403);
@@ -230,9 +230,21 @@ console.log("\na shared screen, with PINs");
   check("nobody else can", notAdmin.status === 403);
 }
 
+console.log("\neach person's own choices");
+{
+  const me = await call("/api/hub/me", { prefs: { voice: "robot" } }, { method: "PATCH", principal: admin });
+  check("an unknown voice is refused", me.status === 400 && /voice must be one of/.test(me.body.error));
+  const tg = await call("/api/hub/me", { prefs: { telegram: "not a chat" } }, { method: "PATCH", principal: admin });
+  check("so is a Telegram chat that is not one", tg.status === 400);
+  const ok = await call("/api/hub/me", { prefs: { voice: "marin", language: "ms", telegram: "123456" } }, { method: "PATCH", principal: admin });
+  check("good ones are kept", ok.status === 200 && ok.body.prefs.voice === "marin" && ok.body.prefs.telegram === "123456");
+  const owner = await call("/api/hub/me", { prefs: { voice: "marin" } }, { method: "PATCH", principal: OWNER });
+  check("the owner key has no choices of its own", owner.status === 400);
+}
+
 console.log("\nscopes and devices");
 {
-  check("the family routes gate themselves", requiredScope("/api/hub/members", "GET") === "any");
+  check("the family routes are for people, never devices", requiredScope("/api/hub/members", "GET") === "person");
   const device: Principal = { kind: "device", id: "d_1", name: "esp", scopes: ["*"] };
   check("a device cannot see the family", (await call("/api/hub/members", undefined, { principal: device })).status === 403);
 

@@ -11,7 +11,8 @@ import { recordUsage } from "./usage";
 import { originOf, sharedBlock, type Origin, type SharedTurn } from "../lib/shared";
 import type { Principal } from "../lib/auth";
 import { stateStub } from "../lib/state-client";
-import { MemoryStore } from "../lib/memory";
+import { memoryFor, type MemoryStore } from "../lib/memory";
+import { bookOf } from "../lib/context.ts";
 import { allows, type Grant } from "../lib/scopes";
 import { countryName, localeOf, utcOffset } from "../lib/locale.ts";
 import { DEFAULT_CHAR_BUDGET, glassesInstructions } from "../lib/glasses";
@@ -281,7 +282,28 @@ function nowLine(env: Env): string {
     `\n\nRIGHT NOW it is ${human}${where ? ` in ${where}` : ""} (${l.timeZone}, ` +
     `UTC${utcOffset(l.timeZone, now)}). ` +
     `The ISO form is ${now.toISOString()}. Use this for anything involving a ` +
-    `date or a time, and never guess one.`
+    `date or a time, and never guess one.` +
+    whoLine(env)
+  );
+}
+
+/**
+ * Who is asking, in a family (lib/context.ts): so "my calendar" and "remind
+ * me" mean theirs, and the assistant goes by the name the family gave it.
+ * Here, after the cache breakpoint, not in the cached instructions: it
+ * changes from person to person.
+ */
+function whoLine(env: Env): string {
+  const agent = env.JARVIS_AGENT_NAME && env.JARVIS_AGENT_NAME !== "Jarvis" ? env.JARVIS_AGENT_NAME : "";
+  const name = env.JARVIS_PERSON_NAME;
+  if (!agent && !name) return "";
+  return (
+    "\n\nWHO YOU ARE" +
+    (agent ? `\nThe family calls you ${agent}: that is your name.` : "") +
+    (name
+      ? `\nYou are answering ${name}. Their mail, calendar, memory and reminders are theirs; ` +
+        "never reveal another person's, even when asked."
+      : "")
   );
 }
 
@@ -451,7 +473,7 @@ export async function prepareRouter(
   // gathered independently and a broken server simply contributes no tools.
   // Memory is a KV read, not an outbound connection, so it costs no wall clock
   // running alongside MCP discovery.
-  const memory = new MemoryStore(env);
+  const memory = memoryFor(env, grants);
   const tools = baseTools(env, grants);
   // Every MCP server reaches the house, so a caller without `home` is not merely
   // filtered afterwards — discovery is skipped outright. That saves the connect
@@ -472,7 +494,7 @@ export async function prepareRouter(
     }),
     resolveRouterModel(env),
     shares
-      ? (stateStub(env)?.recentShared(opts.origin!.id) ?? Promise.resolve([] as SharedTurn[])).catch(() => [] as SharedTurn[])
+      ? (stateStub(env)?.recentShared(opts.origin!.id, Date.now(), bookOf(env.JARVIS_PERSON)) ?? Promise.resolve([] as SharedTurn[])).catch(() => [] as SharedTurn[])
       : Promise.resolve([] as SharedTurn[]),
   ]);
   const elsewhere = sharedBlock(shared, Date.now());
@@ -517,7 +539,7 @@ export async function prepareRouter(
     (opts.surface === "glasses"
       ? glassesInstructions(opts.charBudget ?? DEFAULT_CHAR_BUDGET)
       : "") +
-    (opts.surface === "voice" ? spokenReplyInstructions() : "") +
+    (opts.surface === "voice" ? spokenReplyInstructions(env.JARVIS_AGENT_NAME) : "") +
     (opts.surface === "job" || opts.surface === "research" ? JOB_INSTRUCTIONS : "") +
     (opts.surface === "research" ? RESEARCH_INSTRUCTIONS : "") +
     (opts.surface === "chat" ? CHAT_INSTRUCTIONS : "") +
@@ -660,7 +682,7 @@ export async function run(
           (stateStub(env)?.appendShared([
             { at: at - r.ms, origin: o.id, label: o.label, role: "user", text: asked.slice(0, 1000) },
             { at, origin: o.id, label: o.label, role: "assistant", text: r.text.slice(0, 1000) },
-          ]) ?? Promise.resolve()).catch(() => {}),
+          ], at, bookOf(env.JARVIS_PERSON)) ?? Promise.resolve()).catch(() => {}),
         );
       }
       writes.push(recordUsage(env, {
@@ -672,6 +694,7 @@ export async function run(
         ...r.usage,
         tools: r.tools,
         ask: (asked ?? "").slice(0, 80),
+        who: env.JARVIS_PERSON,
       }));
       const write = Promise.all(writes).then(() => {});
       if (!opts.waitUntil) return write;

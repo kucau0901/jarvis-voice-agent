@@ -13,6 +13,8 @@ export const SCOPES = [
   "ask",
   "memory.read",
   "memory.write",
+  /** Change what the whole family shares: its memory (lib/context.ts). */
+  "family",
   "car.read",
   "car.control",
   "home",
@@ -70,7 +72,12 @@ export function allows(grants: readonly Grant[], needed: Scope): boolean {
  * `"owner"` means no device token may reach it, whatever it holds.
  * `"any"` means an authenticated caller of any kind may.
  */
-export type RouteRequirement = Scope | "owner" | "any";
+/**
+ * "person": something a signed-in person does for themselves — linking their
+ * own Google or Spotify, their usage, the family's pages. Any member may; a
+ * device may not, whatever its scopes.
+ */
+export type RouteRequirement = Scope | "owner" | "any" | "person";
 
 /**
  * What a path requires.
@@ -89,14 +96,17 @@ export function requiredScope(pathname: string, method: string): RouteRequiremen
 
   // Prefix matches first, exactly as the router does them.
   if (pathname.startsWith("/api/mcp")) return "owner";
-  if (pathname.startsWith("/api/spotify")) return "owner";
-  // Linking, unlinking and inspecting the Google grant are administrative: they
-  // affect the credential itself, not the mail a device is allowed to read. A
-  // device with `mail` gets the tools and nothing else.
-  if (pathname.startsWith("/api/google")) return "owner";
+  // Each person links their own Spotify and Google (lib/context.ts). Linking,
+  // unlinking and inspecting the grant affect the credential itself, so a
+  // device, even one with `mail`, gets the tools and nothing else.
+  if (pathname.startsWith("/api/spotify")) return "person";
+  if (pathname.startsWith("/api/google")) return "person";
+  // Each person's own memory (and, with ?book=family, the family's: the route
+  // checks `family` for changing that). Devices only read here (routes/memory.ts).
   if (pathname.startsWith("/api/memory")) {
     if (pathname === "/api/memory/search") return "memory.read";
-    if (pathname === "/api/memory") return m === "GET" ? "memory.read" : "owner";
+    if (pathname === "/api/memory") return m === "GET" ? "memory.read" : "memory.write";
+    if (pathname === "/api/memory/move") return "memory.write";
     return "owner";
   }
   if (pathname.startsWith("/api/v1/devices")) return "owner";
@@ -111,7 +121,9 @@ export function requiredScope(pathname: string, method: string): RouteRequiremen
 
   // The family: each route checks for itself what a member may do there, and a
   // device may do none of it (routes/hub.ts).
-  if (pathname.startsWith("/api/hub/")) return "any";
+  if (pathname.startsWith("/api/hub/")) return "person";
+  // What Jarvis cost: each person their own, the admins everyone's (routes/usage.ts).
+  if (pathname === "/api/usage") return "person";
 
   switch (pathname) {
     // How any client checks a credential, so it cannot itself need a scope.

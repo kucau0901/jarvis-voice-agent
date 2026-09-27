@@ -1,6 +1,7 @@
 import type { Storage } from "./state-host.ts";
 import type { Grant } from "./scopes.ts";
 import { makeAlert, summarise, type Alert, type Delivery } from "./alerts.ts";
+import { bookOf, personOfWho } from "./context.ts";
 import {
   MAX_ROUTINES,
   MAX_WATCHES,
@@ -51,8 +52,9 @@ export interface SchedulerDeps {
   deliver(alert: Alert): Promise<Delivery>;
   /** Ask the router, as the routine's creator could. */
   ask(prompt: string, grants: readonly Grant[], routine: Routine): Promise<{ ok: boolean; text: string }>;
-  events(now: number): Promise<LeaveEvent[] | string>;
-  travel(destination: string): Promise<Travel | null>;
+  /** The calendar of `person` (lib/context.ts): whoever made the leave routine. */
+  events(now: number, person: string): Promise<LeaveEvent[] | string>;
+  travel(destination: string, person: string): Promise<Travel | null>;
   /** Home Assistant renders a watch's condition; null when it is not set up. */
   renderTemplate: ((template: string) => Promise<string>) | null;
 }
@@ -60,6 +62,12 @@ export interface SchedulerDeps {
 const R = "routine:";
 const PLANS = "leave:plans";
 const SCAN_AT = "leave:scanAt";
+/**
+ * Each person's leave plans and calendar scan (lib/context.ts): their own
+ * calendar, their own warnings. The first person's keep the names they had.
+ */
+const plansKey = (who: string) => (bookOf(personOfWho(who)) ? `${PLANS}:${bookOf(personOfWho(who))}` : PLANS);
+const scanKey = (who: string) => (bookOf(personOfWho(who)) ? `${SCAN_AT}:${bookOf(personOfWho(who))}` : SCAN_AT);
 
 /** How often a watch looks; one whose checks keep failing looks less often, and says so once. */
 export const WATCH_EVERY_MS = 60_000;
@@ -123,9 +131,10 @@ export class Scheduler {
       if (truthy(out) === null) return `the condition must come out True or False, and it gave "${out.slice(0, 80)}"`;
     }
 
-    // One leave routine: a second would warn twice about every event.
+    // One leave routine each: a second would warn twice about every event.
     if (built.trigger.kind === "leave") {
-      const had = all.find((r) => r.trigger.kind === "leave");
+      const mine = personOfWho(by.who);
+      const had = all.find((r) => r.trigger.kind === "leave" && personOfWho(r.createdBy) === mine);
       if (had) {
         const updated: Routine = { ...had, trigger: built.trigger, enabled: true };
         await this.save(updated);
@@ -168,8 +177,8 @@ export class Scheduler {
     if (!r) return false;
     await this.storage.delete(R + id);
     if (r.trigger.kind === "leave") {
-      await this.storage.delete(PLANS);
-      await this.storage.delete(SCAN_AT);
+      await this.storage.delete(plansKey(r.createdBy));
+      await this.storage.delete(scanKey(r.createdBy));
     }
     return true;
   }
@@ -180,7 +189,7 @@ export class Scheduler {
     if (!r) return "no such routine";
     if (r.action.kind === "leave") {
       // Nothing to run on demand; read the calendar again instead.
-      await this.storage.put(SCAN_AT, now);
+      await this.storage.put(scanKey(r.createdBy), now);
       return r;
     }
     r.pending = { at: now, ...(data ? { data } : {}) };
@@ -213,8 +222,8 @@ export class Scheduler {
       if (r.enabled && r.nextAt !== undefined) consider(r.nextAt);
       if (r.enabled && r.trigger.kind === "watch") consider(r.watch?.nextCheck ?? now);
       if (r.enabled && r.trigger.kind === "leave") {
-        consider((await this.storage.get<number>(SCAN_AT)) ?? now);
-        consider(nextLeaveWake((await this.storage.get<Stored>(PLANS)) ?? {}));
+        consider((await this.storage.get<number>(scanKey(r.createdBy))) ?? now);
+        consider(nextLeaveWake((await this.storage.get<Stored>(plansKey(r.createdBy))) ?? {}));
       }
     }
     return next === undefined ? null : Math.max(next, now);
@@ -239,8 +248,8 @@ export class Scheduler {
         await this.record(r.id, { at: now, ok: false, detail: `failed: ${e instanceof Error ? e.message : String(e)}` });
       }
     }
-    const leave = (await this.list()).find((r) => r.enabled && r.trigger.kind === "leave");
-    if (leave) {
+    // One leave routine per person, each with its own calendar.
+    for (const leave of (await this.list()).filter((r) => r.enabled && r.trigger.kind === "leave")) {
       try {
         await this.tickLeave(leave, deps, now);
       } catch (e) {
@@ -373,27 +382,30 @@ export class Scheduler {
         .format(new Date(lateFrom));
       text = `(This was due at ${hhmm}.) ${text}`;
     }
-    const alert = makeAlert({ title: r.name, text }, "routine", now)!;
+    const alert = makeAlert({ title: r.name, text }, "routine", now, personOfWho(r.createdBy))!;
     const d = await deps.deliver(alert);
     await this.record(r.id, outcome(d, now));
   }
 
   private async tickLeave(r: Routine, deps: SchedulerDeps, now: number): Promise<void> {
     const buffer = r.trigger.kind === "leave" ? r.trigger.bufferMin : 10;
+    const person = personOfWho(r.createdBy);
+    const PLANS = plansKey(r.createdBy);
+    const SCAN_AT = scanKey(r.createdBy);
     let plans: Stored = (await this.storage.get<Stored>(PLANS)) ?? {};
 
     const scanAt = (await this.storage.get<number>(SCAN_AT)) ?? 0;
     if (now >= scanAt) {
       // Set first, so a calendar that keeps failing is read every SCAN_MS, not hammered by retries.
       await this.storage.put(SCAN_AT, now + SCAN_MS);
-      const events = await deps.events(now);
+      const events = await deps.events(now, person);
       if (typeof events === "string") {
         await this.record(r.id, { at: now, ok: false, detail: events });
       } else {
         plans = mergeEvents(plans, events, buffer, now) as Stored;
         for (const p of Object.values(plans)) {
           if (!needsTravel(p, now)) continue;
-          const t = await deps.travel(p.location);
+          const t = await deps.travel(p.location, person);
           p.travelMin = t?.min ?? null;
           if (t) p.from = t.from;
           p.checkedAt = now;
@@ -424,7 +436,7 @@ export class Scheduler {
       }
       if (now - p.checkedAt > FRESH_MS) {
         // Traffic moves; ask again at the moment it matters.
-        const t = await deps.travel(p.location);
+        const t = await deps.travel(p.location, person);
         p.checkedAt = now;
         if (t) {
           p.travelMin = t.min;
@@ -440,7 +452,7 @@ export class Scheduler {
       await this.storage.put(PLANS, plans); // before delivering, for the same reason as above
       const m = leaveMessage(p, deps.timeZone, now);
       // No use once the event has begun: a phone that was off all along is not told late.
-      const d = await deps.deliver(makeAlert({ title: m.title, text: m.text, expiresAt: p.start }, "routine", now)!);
+      const d = await deps.deliver(makeAlert({ title: m.title, text: m.text, expiresAt: p.start }, "routine", now, personOfWho(r.createdBy))!);
       await this.record(r.id, { ...outcome(d, now), detail: `${p.summary}: ${outcome(d, now).detail}` });
     }
     await this.storage.put(PLANS, plans);
@@ -460,16 +472,17 @@ export class Scheduler {
         await this.storage.delete(R + r.id);
       }
     }
-    const plans = await this.storage.get<Stored>(PLANS);
-    if (!plans) return;
-    let changed = false;
-    for (const [k, p] of Object.entries(plans)) {
-      if (p.start < now - 3_600_000) {
-        delete plans[k];
-        changed = true;
+    // Everyone's plans ("leave:plans" and each person's "leave:plans:…").
+    for (const [key, plans] of await this.storage.list<Stored>({ prefix: PLANS })) {
+      let changed = false;
+      for (const [k, p] of Object.entries(plans)) {
+        if (p.start < now - 3_600_000) {
+          delete plans[k];
+          changed = true;
+        }
       }
+      if (changed) await this.storage.put(key, plans);
     }
-    if (changed) await this.storage.put(PLANS, plans);
   }
 }
 

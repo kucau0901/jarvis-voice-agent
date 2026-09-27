@@ -33,6 +33,8 @@ export interface UsageEntry {
   tools: string[];
   /** The start of what was asked, to recognise it by. */
   ask: string;
+  /** Whose (lib/context.ts): "owner" for the first person, else a member's id. */
+  who?: string;
 }
 
 /** US dollars, or null for a model with no known price (tokens are still counted). */
@@ -61,10 +63,14 @@ export interface DayTotals {
   jobs: number;
   /** Tokens from models with no known price, so the cost is known to be short. */
   unpriced: number;
+  /** The same, for each person (lib/context.ts). */
+  people?: Record<string, Totals>;
 }
 
-export const emptyDay = (day: string): DayTotals => ({
-  day,
+/** A day's totals, for one person or all. */
+export type Totals = Omit<DayTotals, "day" | "people">;
+
+const emptyTotals = (): Totals => ({
   questions: 0,
   byHouse: 0,
   cost: { router: 0, live: 0, jobs: 0 },
@@ -73,8 +79,18 @@ export const emptyDay = (day: string): DayTotals => ({
   unpriced: 0,
 });
 
+export const emptyDay = (day: string): DayTotals => ({ day, ...emptyTotals() });
+
+/** Add an entry to the day, and to its person's part of it. */
 export function addToDay(d: DayTotals, e: UsageEntry): DayTotals {
-  const out: DayTotals = { ...d, cost: { ...d.cost } };
+  const who = e.who || "owner";
+  const people = { ...d.people };
+  people[who] = addTo(people[who] ?? emptyTotals(), e);
+  return { ...addTo(d, e), day: d.day, people };
+}
+
+function addTo<T extends Totals>(d: T, e: UsageEntry): T {
+  const out: T = { ...d, cost: { ...d.cost } };
   const cost = costOf(e);
   if (cost === null) out.unpriced += e.input + e.output;
   if (e.seconds !== undefined) {
@@ -107,14 +123,46 @@ export interface UsageReport {
   month: string;
   total: DayTotals;
   today: DayTotals;
+  /** The month, person by person: for the admins, whose view is everyone's. */
+  byPerson?: Record<string, Totals>;
   /** Median answer time over the recent questions, ms; null with none. */
   medianMs: number | null;
   slowest: UsageEntry[];
   recent: UsageEntry[];
 }
 
-/** The month's totals, today's, and what the recent questions say about speed. */
-export function report(days: DayTotals[], recent: UsageEntry[], today: string): UsageReport {
+const sum = (a: Totals, b: Totals): Totals => ({
+  questions: a.questions + b.questions,
+  byHouse: a.byHouse + b.byHouse,
+  cost: { router: a.cost.router + b.cost.router, live: a.cost.live + b.cost.live, jobs: a.cost.jobs + b.cost.jobs },
+  liveSeconds: a.liveSeconds + b.liveSeconds,
+  jobs: a.jobs + b.jobs,
+  unpriced: a.unpriced + b.unpriced,
+});
+
+/**
+ * The month's totals, today's, and what the recent questions say about speed.
+ * With `person`, only theirs: what a member sees of their own use. Without,
+ * everyone's, with each person's part.
+ */
+export function report(days: DayTotals[], recent: UsageEntry[], today: string, person?: string): UsageReport {
+  if (person) {
+    // A day before families counted people is all the first person's.
+    const own = (d: DayTotals): DayTotals => ({
+      day: d.day,
+      ...(d.people ? (d.people[person] ?? emptyTotals()) : person === "owner" ? d : emptyTotals()),
+    });
+    return reportAll(days.map(own), recent.filter((e) => (e.who || "owner") === person), today);
+  }
+  const byPerson: Record<string, Totals> = {};
+  for (const d of days.filter((x) => x.day.startsWith(today.slice(0, 7)))) {
+    const parts = d.people ?? { owner: d };
+    for (const [who, t] of Object.entries(parts)) byPerson[who] = sum(byPerson[who] ?? emptyTotals(), t);
+  }
+  return { ...reportAll(days, recent, today), byPerson };
+}
+
+function reportAll(days: DayTotals[], recent: UsageEntry[], today: string): UsageReport {
   const month = today.slice(0, 7);
   const total = days
     .filter((d) => d.day.startsWith(month))

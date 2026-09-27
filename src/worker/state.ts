@@ -21,6 +21,7 @@ import type { UsageEntry } from "./lib/usage.ts";
 import type { SharedTurn } from "./lib/shared.ts";
 import { haConfig, renderTemplate } from "./lib/ha.ts";
 import { HUB_METHODS, HubHost } from "./lib/hub.ts";
+import { personOfWho, withPerson } from "./lib/context.ts";
 
 /**
  * The Durable Object. Deliberately thin: everything it does lives in
@@ -44,7 +45,8 @@ export class JarvisState extends DurableObject<Env> {
     this.scheduler = new Scheduler(ctx.storage, () => this.schedulerDeps());
     this.jobs = new Jobs(ctx.storage, async () => {
       const env = await this.localEnv();
-      return jobEngine(env, (alert) => deliver(env, this, alert));
+      // Each job runs as whoever started it: their memory, their mail (lib/context.ts).
+      return jobEngine(env, (alert) => deliver(env, this, alert), (job) => this.personEnv(env, job.createdBy));
     });
     // Screens ping to keep their socket open through proxies. The runtime
     // answers these itself, so a hibernating object is not woken to say pong.
@@ -54,8 +56,20 @@ export class JarvisState extends DurableObject<Env> {
     ctx.blockConcurrencyWhile(() => this.host.ready());
   }
 
-  loadMemory() {
-    return this.host.loadMemory();
+  loadMemory(book?: string) {
+    return this.host.loadMemory(book);
+  }
+
+  /** The environment as `who` would have it (lib/context.ts), for a routine or a job they made. */
+  private async personEnv(env: Env, who: string): Promise<Env> {
+    const person = personOfWho(who);
+    const v = await this.people.personView(person).catch(() => null);
+    return withPerson(env, { person, name: v?.name, space: v?.space, prefs: v?.prefs });
+  }
+
+  /** A member's own Telegram chat, for their alerts (lib/alerts.ts). */
+  async chatFor(person: string): Promise<string | null> {
+    return (await this.people.prefsOf(person)).telegram ?? null;
   }
 
   /** The people and their sign-ins: one RPC method for the listed few (lib/hub.ts). */
@@ -65,12 +79,12 @@ export class JarvisState extends DurableObject<Env> {
     return fn.apply(this.people, args);
   }
 
-  loadReference() {
-    return this.host.loadReference();
+  loadReference(book?: string) {
+    return this.host.loadReference(book);
   }
 
-  applyMemory(cs: Changeset | null, rcs: RefChangeset | null) {
-    return this.host.applyMemory(cs, rcs);
+  applyMemory(cs: Changeset | null, rcs: RefChangeset | null, book?: string) {
+    return this.host.applyMemory(cs, rcs, book);
   }
 
   consume(deviceId: string, cap: number, day: string) {
@@ -93,12 +107,12 @@ export class JarvisState extends DurableObject<Env> {
     return this.host.putSettings(changes);
   }
 
-  vectorsNeeded(items: { id: string; hash: string }[]) {
-    return this.host.vectorsNeeded(items);
+  vectorsNeeded(items: { id: string; hash: string }[], book?: string) {
+    return this.host.vectorsNeeded(items, book);
   }
 
-  searchVectors(query: string, put: { id: string; hash: string; v: string }[], ids: string[], k: number, prune: boolean) {
-    return this.host.searchVectors(query, put, ids, k, prune);
+  searchVectors(query: string, put: { id: string; hash: string; v: string }[], ids: string[], k: number, prune: boolean, book?: string) {
+    return this.host.searchVectors(query, put, ids, k, prune, book);
   }
 
   /* ---------- live screens (lib/live.ts) ------------------------------------ */
@@ -189,9 +203,10 @@ export class JarvisState extends DurableObject<Env> {
     return {
       timeZone: localeOf(env).timeZone,
       deliver: (alert) => deliver(env, this, alert),
-      ask: (prompt, grants, routine) => askForRoutine(env, prompt, grants, routine),
-      events: (now) => upcomingEvents(env, now),
-      travel: (destination) => travelFor(env, destination),
+      // A routine runs as whoever made it: their memory, their calendar (lib/context.ts).
+      ask: async (prompt, grants, routine) => askForRoutine(await this.personEnv(env, routine.createdBy), prompt, grants, routine),
+      events: async (now, person) => upcomingEvents(await this.personEnv(env, person), now),
+      travel: async (destination, person) => travelFor(await this.personEnv(env, person), destination),
       renderTemplate: ha ? (template) => renderTemplate(ha, template) : null,
     };
   }
@@ -312,20 +327,20 @@ export class JarvisState extends DurableObject<Env> {
     return this.host.findAlert(id);
   }
 
-  appendShared(turns: SharedTurn[], now = Date.now()) {
-    return this.host.appendShared(turns, now);
+  appendShared(turns: SharedTurn[], now = Date.now(), book = "") {
+    return this.host.appendShared(turns, now, book);
   }
 
-  recentShared(origin: string, now = Date.now()) {
-    return this.host.recentShared(origin, now);
+  recentShared(origin: string, now = Date.now(), book = "") {
+    return this.host.recentShared(origin, now, book);
   }
 
   recordUsage(e: UsageEntry, day: string) {
     return this.host.recordUsage(e, day);
   }
 
-  usageReport(today: string) {
-    return this.host.usageReport(today);
+  usageReport(today: string, person?: string) {
+    return this.host.usageReport(today, person);
   }
 
   mintTicket(client: Pick<LiveClient, "who" | "label">) {

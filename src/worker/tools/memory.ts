@@ -70,8 +70,15 @@ export const remember: Tool = {
         type: ["boolean", "null"],
         description: "Keep this permanently, never evicted.",
       },
+      for_family: {
+        type: ["boolean", "null"],
+        description:
+          "True only for something the whole family shares and the user says so, or " +
+          "it plainly belongs to everyone at home: the house's Wi-Fi, the family " +
+          "doctor, where the spare key is. Someone's own facts stay theirs: null.",
+      },
     },
-    required: ["text", "kind", "place", "replaces", "pin", "more"],
+    required: ["text", "kind", "place", "replaces", "pin", "more", "for_family"],
     additionalProperties: false,
   },
   async run(args, ctx) {
@@ -81,7 +88,16 @@ export const remember: Tool = {
     const kind = (KINDS as string[]).includes(String(args.kind)) ? (args.kind as Kind) : "note";
     const place = args.place as { name?: string; address?: string } | null | undefined;
 
-    const { fact, replaced } = ctx.memory.add({
+    // The family's book, or this person's own.
+    let book = ctx.memory;
+    if (args.for_family === true) {
+      if (!ctx.memory.family) return "Not saved: there is no family memory here. Save it as the user's own instead.";
+      if (!ctx.memory.familyWrite) return "Not saved: this person may not change what the family shares. Offer to save it as their own.";
+      book = ctx.memory.family;
+    }
+    const where = book === ctx.memory ? "" : " for the whole family";
+
+    const { fact, replaced } = book.add({
       text: clean.text,
       kind,
       slug: place?.name,
@@ -104,17 +120,17 @@ export const remember: Tool = {
         skipped.push(`${String(raw).slice(0, 40)} (${one.why})`);
         continue;
       }
-      saved.push(ctx.memory.add({ text: one.text, kind }).fact.text);
+      saved.push(book.add({ text: one.text, kind }).fact.text);
     }
 
     let head = replaced
-      ? `Updated what I had. It now reads: ${fact.text} [${fact.id}]`
-      : `Saved: ${fact.text} [${fact.id}]`;
+      ? `Updated what I had${where}. It now reads: ${fact.text} [${fact.id}]`
+      : `Saved${where}: ${fact.text} [${fact.id}]`;
     // Different words, same meaning: "my sister lives in Shah Alam" after "Aina
     // stays in Shah Alam". Pointed out rather than merged, because two facts that
     // look alike are sometimes both true.
     if (!replaced && typeof args.replaces !== "string") {
-      const close = await ctx.memory.closest(fact.text, kind, fact.id).catch(() => null);
+      const close = await book.closest(fact.text, kind, fact.id).catch(() => null);
       if (close) {
         head +=
           `\nNote: this is very close to something already saved: [${close.fact.id}] ${close.fact.text}. ` +
@@ -155,17 +171,22 @@ export const recall: Tool = {
     if (!query) return "No search text was supplied.";
     const limit = Number.isFinite(args.limit) ? Math.min(20, Math.max(1, Number(args.limit))) : 6;
 
-    const hits = await ctx.memory.search(query, limit);
+    // Their own, and what the family shares, marked so the answer can say which.
+    const [own, fam] = await Promise.all([
+      ctx.memory.search(query, limit),
+      ctx.memory.family ? ctx.memory.family.search(query, limit).catch(() => []) : Promise.resolve([]),
+    ]);
+    const hits = [...own.map((h) => ({ ...h, fam: false })), ...fam.map((h) => ({ ...h, fam: true }))].slice(0, limit + 3);
     if (!hits.length) {
       // Report the corpus size, so the model cannot read an empty result as
       // "nothing is known" and confabulate from it.
-      const total = ctx.memory.facts.length;
+      const total = ctx.memory.facts.length + (ctx.memory.family?.facts.length ?? 0);
       return total
         ? `Nothing saved matches that. I have ${total} thing${total === 1 ? "" : "s"} noted in total.`
         : "Nothing is saved about the user yet.";
     }
     return hits
-      .map((h) => `[${h.fact.id}] ${h.fact.text}${h.fact.address ? ` — ${h.fact.address}` : ""}`)
+      .map((h) => `[${h.fact.id}]${h.fam ? " (family)" : ""} ${h.fact.text}${h.fact.address ? ` — ${h.fact.address}` : ""}`)
       .join("\n");
   },
 };
@@ -193,7 +214,14 @@ export const forget: Tool = {
       return "That is not a fact id. Use recall to find the right one first.";
     }
     const gone = ctx.memory.remove(id);
-    return gone ? `Forgotten: ${gone.text}` : "No saved fact has that id.";
+    if (gone) return `Forgotten: ${gone.text}`;
+    const fam = ctx.memory.family;
+    if (fam?.facts.some((f) => f.id === id)) {
+      if (!ctx.memory.familyWrite) return "That belongs to the whole family, and this person may not change what the family shares.";
+      const g = fam.remove(id);
+      return g ? `Forgotten, for the whole family: ${g.text}` : "No saved fact has that id.";
+    }
+    return "No saved fact has that id.";
   },
 };
 

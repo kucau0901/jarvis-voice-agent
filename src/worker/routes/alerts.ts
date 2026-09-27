@@ -1,5 +1,5 @@
 import type { Env } from "../types";
-import { whoOf, type Principal } from "../lib/auth";
+import { isAdmin, whoOf, type Principal } from "../lib/auth";
 import { err, json, publicOrigin } from "../lib/http";
 import { stateFetch, stateStub } from "../lib/state-client";
 import { deliver, makeAlert, parseOrder } from "../lib/alerts";
@@ -129,7 +129,7 @@ export async function handleAlertApi(
     if (req.method !== "POST") return err(405, "method not allowed");
     const b = await body(req);
     if (!b) return err(400, "body must be a small JSON object");
-    const alert = makeAlert(b, "api");
+    const alert = makeAlert(b, "api", Date.now(), env.JARVIS_PERSON);
     if (!alert) return err(400, "text is required");
     const d = await deliver(env, state, alert);
     return json({ id: alert.id, deliveredBy: d.deliveredBy, attempts: d.attempts }, { status: d.deliveredBy ? 200 : 502 });
@@ -138,7 +138,9 @@ export async function handleAlertApi(
   // /api/v1/alerts
   if (req.method !== "GET") return err(405, "method not allowed");
   const id = url.searchParams.get("id") ?? "";
-  const alert = id ? await state.findAlert(id) : null;
+  const found = id ? await state.findAlert(id) : null;
+  // Someone's own alerts only; an admin (and the owner key) may open anyone's.
+  const alert = found && (isAdmin(principal) || (found.for ?? "owner") === (env.JARVIS_PERSON ?? "owner")) ? found : null;
   return alert ? json({ alert }) : err(404, "no such recent alert");
 }
 

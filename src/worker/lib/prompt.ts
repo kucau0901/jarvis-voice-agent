@@ -176,11 +176,11 @@ and do not apologise for being cut off.`;
  * reads the router's reply word for word. So for that one answer the router
  * has to BE Jarvis — same manner, same languages.
  */
-export function spokenReplyInstructions(): string {
+export function spokenReplyInstructions(agentName = "Jarvis"): string {
   return (
     "\n\nYOUR ANSWER IS SPOKEN EXACTLY AS WRITTEN\n" +
     "This is push-to-talk. No live voice rephrases you: a text-to-speech voice reads " +
-    "your reply to the user word for word, so for this answer you are Jarvis speaking.\n" +
+    `your reply to the user word for word, so for this answer you are ${agentName} speaking.\n` +
     "- One to three short sentences. Lead with the answer, then stop.\n" +
     "- Plain speech only: no markdown, lists, headings, emoji, URLs or code.\n" +
     "- Digits and units are fine (94%, 386 km, 14:30); the voice reads them properly.\n" +
@@ -189,8 +189,17 @@ export function spokenReplyInstructions(): string {
   );
 }
 
-export function jarvisPrompt(client: ClientKind = "car"): string {
-  return `${OPENING[client]}\n\n${MANNER}\n\n${ATTENTION[client]}\n\n${REST}`;
+/**
+ * The live voice's instructions. A family may call its assistant something
+ * else (lib/context.ts), and the voice is told who it is talking to.
+ */
+export function jarvisPrompt(client: ClientKind = "car", o: { agentName?: string; personName?: string } = {}): string {
+  const agent = o.agentName?.trim() || "Jarvis";
+  const opening = OPENING[client].replace("You are Jarvis", `You are ${agent}`);
+  const who = o.personName
+    ? `\n\nWHO YOU ARE TALKING TO\nThis is ${o.personName}. What is theirs (mail, calendar, memory, reminders) is theirs; never another person's.`
+    : "";
+  return `${opening}${who}\n\n${MANNER}\n\n${ATTENTION[client]}\n\n${REST}`;
 }
 
 /** The car remains the default, because that is where it is used unattended. */

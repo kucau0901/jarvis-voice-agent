@@ -23,12 +23,13 @@ export async function recordUsage(env: Env, e: UsageEntry): Promise<void> {
   }
 }
 
-export async function handleUsage(req: Request, env: Env): Promise<Response> {
+/** Admins see everyone's, with each person's part; anyone else their own (lib/context.ts). */
+export async function handleUsage(req: Request, env: Env, everyone = true): Promise<Response> {
   if (req.method !== "GET") return err(405, "GET only");
   const state = stateStub(env);
   if (!state) return err(503, "usage needs the STATE Durable Object");
   const timeZone = localeOf(env).timeZone;
-  const r = await state.usageReport(dayOf(Date.now(), timeZone));
+  const r = await state.usageReport(dayOf(Date.now(), timeZone), everyone ? undefined : (env.JARVIS_PERSON ?? "owner"));
   return json({ ...r, pricesAsOf: PRICES_AS_OF, timeZone });
 }
 
@@ -56,6 +57,7 @@ export async function handleLiveUsage(req: Request, env: Env): Promise<Response>
     seconds,
     tools: [],
     ask: "",
+    who: env.JARVIS_PERSON,
   });
   return json({ ok: true });
 }

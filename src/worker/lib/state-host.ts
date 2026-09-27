@@ -8,6 +8,7 @@ import {
 } from "./settings.ts";
 import { addToDay, emptyDay, report, type DayTotals, type UsageEntry, type UsageReport } from "./usage.ts";
 import { fromOthers, keep, type SharedTurn } from "./shared.ts";
+import { personOfWho } from "./context.ts";
 import {
   applyChanges,
   applyRefChanges,
@@ -52,6 +53,15 @@ export interface Storage {
 
 const MEM = "mem";
 const REF = "ref";
+/**
+ * Whose memory: each person has a book, and a family has one they share
+ * (lib/context.ts). "" is the first person's, kept under the names memory
+ * always had; any other book is stored beside it under its own name.
+ */
+const memKey = (book = "") => (book ? `${MEM}:${book}` : MEM);
+const refKey = (book = "") => (book ? `${REF}:${book}` : REF);
+/** Vectors per book too, so one book's search never prunes another's. "vec2:" never matches "vec:". */
+const vecPrefix = (book = "") => (book ? `vec2:${book}:` : VEC);
 /** Present once memory has been copied out of KV. */
 const MIGRATED = "migrated:v1";
 /** Where memory lived before, kept in KV untouched as a backup. */
@@ -177,14 +187,14 @@ export class StateHost {
     await this.storage.put(MIGRATED, Date.now());
   }
 
-  async loadMemory(): Promise<MemoryDoc> {
+  async loadMemory(book = ""): Promise<MemoryDoc> {
     await this.ready();
-    return readDoc(await this.storage.get(MEM));
+    return readDoc(await this.storage.get(memKey(book)));
   }
 
-  async loadReference(): Promise<RefDoc> {
+  async loadReference(book = ""): Promise<RefDoc> {
     await this.ready();
-    return readRefDoc(await this.storage.get(REF));
+    return readRefDoc(await this.storage.get(refKey(book)));
   }
 
   /**
@@ -197,16 +207,17 @@ export class StateHost {
   async applyMemory(
     cs: Changeset | null,
     rcs: RefChangeset | null,
+    book = "",
   ): Promise<{ doc?: MemoryDoc; ref?: RefDoc }> {
     await this.ready();
     const out: { doc?: MemoryDoc; ref?: RefDoc } = {};
     if (rcs) {
-      out.ref = applyRefChanges(readRefDoc(await this.storage.get(REF)), rcs);
-      await this.storage.put(REF, out.ref);
+      out.ref = applyRefChanges(readRefDoc(await this.storage.get(refKey(book))), rcs);
+      await this.storage.put(refKey(book), out.ref);
     }
     if (cs) {
-      out.doc = applyChanges(readDoc(await this.storage.get(MEM)), cs);
-      await this.storage.put(MEM, out.doc);
+      out.doc = applyChanges(readDoc(await this.storage.get(memKey(book))), cs);
+      await this.storage.put(memKey(book), out.doc);
     }
     return out;
   }
@@ -273,9 +284,10 @@ export class StateHost {
   /* ---------- meaning (lib/embeddings.ts) ---------------------------------- */
 
   /** Which of these facts have no vector, or one made from different text. */
-  async vectorsNeeded(items: { id: string; hash: string }[]): Promise<string[]> {
-    const have = await this.storage.list<StoredVec>({ prefix: VEC });
-    return items.filter((i) => have.get(VEC + i.id)?.h !== i.hash).map((i) => i.id);
+  async vectorsNeeded(items: { id: string; hash: string }[], book = ""): Promise<string[]> {
+    const pre = vecPrefix(book);
+    const have = await this.storage.list<StoredVec>({ prefix: pre });
+    return items.filter((i) => have.get(pre + i.id)?.h !== i.hash).map((i) => i.id);
   }
 
   /**
@@ -291,13 +303,15 @@ export class StateHost {
     ids: string[],
     k: number,
     prune: boolean,
+    book = "",
   ): Promise<Near[]> {
-    for (const p of put) await this.storage.put(VEC + p.id, { h: p.hash, v: p.v } satisfies StoredVec);
+    const pre = vecPrefix(book);
+    for (const p of put) await this.storage.put(pre + p.id, { h: p.hash, v: p.v } satisfies StoredVec);
     const keep = new Set(ids);
     const q = fromB64(query);
     const out: Near[] = [];
-    for (const [key, s] of await this.storage.list<StoredVec>({ prefix: VEC })) {
-      const id = key.slice(VEC.length);
+    for (const [key, s] of await this.storage.list<StoredVec>({ prefix: pre })) {
+      const id = key.slice(pre.length);
       if (!keep.has(id)) {
         if (prune) await this.storage.delete(key);
         continue;
@@ -373,14 +387,19 @@ export class StateHost {
   }
 
   /** A question and its answer, into the conversation shared across devices. */
-  async appendShared(turns: SharedTurn[], now = Date.now()): Promise<void> {
-    const log = (await this.storage.get<SharedTurn[]>(SHARED)) ?? [];
-    await this.storage.put(SHARED, keep([...log, ...turns], now));
+  /**
+   * One conversation per person, across their devices: never another
+   * person's. "" (the first person) keeps the name it always had.
+   */
+  async appendShared(turns: SharedTurn[], now = Date.now(), book = ""): Promise<void> {
+    const key = book ? `${SHARED}:${book}` : SHARED;
+    const log = (await this.storage.get<SharedTurn[]>(key)) ?? [];
+    await this.storage.put(key, keep([...log, ...turns], now));
   }
 
-  /** What the user's other devices said recently, for a question from this one. */
-  async recentShared(origin: string, now = Date.now()): Promise<SharedTurn[]> {
-    return fromOthers((await this.storage.get<SharedTurn[]>(SHARED)) ?? [], origin, now);
+  /** What this person's other devices said recently, for a question from this one. */
+  async recentShared(origin: string, now = Date.now(), book = ""): Promise<SharedTurn[]> {
+    return fromOthers((await this.storage.get<SharedTurn[]>(book ? `${SHARED}:${book}` : SHARED)) ?? [], origin, now);
   }
 
   /** One question, job or live session, added to its day and to the recent list. */
@@ -398,13 +417,14 @@ export class StateHost {
   }
 
   /** This month so far, today, and the recent questions, as Settings → Usage shows them. */
-  async usageReport(today: string): Promise<UsageReport> {
+  async usageReport(today: string, person?: string): Promise<UsageReport> {
     const days = [...(await this.storage.list<DayTotals>({ prefix: USAGE_DAY + today.slice(0, 7) })).values()];
-    return report(days, (await this.storage.get<UsageEntry[]>(USAGE_RECENT)) ?? [], today);
+    return report(days, (await this.storage.get<UsageEntry[]>(USAGE_RECENT)) ?? [], today, person);
   }
 
-  async pushTargets(): Promise<{ vapid: VapidKeys; subs: PushTarget[] }> {
-    const subs = await this.listPushSubs();
+  async pushTargets(person?: string): Promise<{ vapid: VapidKeys; subs: PushTarget[] }> {
+    // One person's browsers: the first person's are the owner key's and the devices' (lib/context.ts).
+    const subs = (await this.listPushSubs()).filter((s) => person === undefined || personOfWho(s.who) === person);
     if (!subs.length) return { vapid: { publicKey: "", privateJwk: {} }, subs: [] };
     return {
       vapid: await this.vapid(),

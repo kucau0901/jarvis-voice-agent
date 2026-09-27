@@ -8,6 +8,22 @@ export interface Env {
    */
   STATE?: DurableObjectNamespace;
 
+  /*
+   * Who a request is for (lib/context.ts). Not settings: filled in per request
+   * from who signed in, never saved.
+   *
+   * JARVIS_PERSON is whose data it uses: "owner" for the first person (and the
+   * owner key, and devices), whose memory, mail and routines are what Jarvis
+   * kept before families; a member's own id otherwise.
+   */
+  JARVIS_PERSON?: string;
+  /** Their name, for the model to address them by. */
+  JARVIS_PERSON_NAME?: string;
+  /** What the family calls its assistant. */
+  JARVIS_AGENT_NAME?: string;
+  /** The family's shared memory book, when there is a family. */
+  JARVIS_FAMILY?: string;
+
   /** OpenAI key. Worker-only — it must never be sent to the browser. */
   OPENAI_API_KEY: string;
   /** Shared secret gating every /api/* route. */

@@ -1,10 +1,11 @@
 import type { Env } from "../types";
-import { whoOf, grantsOf, type Principal } from "../lib/auth";
+import { whoOf, grantsOf, personOf, type Principal } from "../lib/auth";
+import { isTheirs } from "../lib/context.ts";
 import { err, json } from "../lib/http";
 import { stateStub } from "../lib/state-client";
 import { localeOf } from "../lib/locale";
 import { Collector } from "../lib/collector";
-import { MemoryStore } from "../lib/memory";
+import { memoryFor } from "../lib/memory";
 import { carWaypoint, drive } from "../lib/travel";
 import { EVENT_NAME, describeAction, describeTrigger, type Routine } from "../lib/routines";
 import type { Travel } from "../lib/scheduler";
@@ -61,21 +62,30 @@ export async function handleRoutines(req: Request, env: Env, url: URL, principal
     return json({ event, started });
   }
 
+  // Each person's own routines (lib/context.ts); a device's are the first person's.
+  const person = personOf(principal);
+  const theirs = async (id: string) => {
+    const r = (await state.listRoutines()).find((x) => x.id === id);
+    return !!r && isTheirs(r.createdBy, person);
+  };
+
   if (p === "/api/v1/routines/run") {
     if (req.method !== "POST") return err(405, "method not allowed");
     const b = await body(req);
+    if (!(await theirs(typeof b?.id === "string" ? b.id : ""))) return err(404, "no such routine");
     const r = await state.runRoutine(typeof b?.id === "string" ? b.id : "");
     return typeof r === "string" ? err(404, r) : json({ ok: true, routine: view(r, tz) });
   }
 
   // /api/v1/routines
   if (req.method === "GET") {
-    const all = await state.listRoutines();
+    const all = (await state.listRoutines()).filter((r) => isTheirs(r.createdBy, person));
     return json({ timeZone: tz, routines: all.map((r) => view(r, tz)) });
   }
   if (req.method === "DELETE") {
     const b = req.headers.get("content-type")?.includes("json") ? await body(req) : null;
     const id = typeof b?.id === "string" ? b.id : url.searchParams.get("id") ?? "";
+    if (!(await theirs(id))) return err(404, "no such routine");
     return (await state.removeRoutine(id)) ? json({ ok: true, id }) : err(404, "no such routine");
   }
   const b = await body(req);
@@ -88,6 +98,7 @@ export async function handleRoutines(req: Request, env: Env, url: URL, principal
     const patch: { enabled?: boolean; name?: string } = {};
     if (typeof b.enabled === "boolean") patch.enabled = b.enabled;
     if (typeof b.name === "string") patch.name = b.name;
+    if (!(await theirs(typeof b.id === "string" ? b.id : ""))) return err(404, "no such routine");
     const r = await state.updateRoutine(typeof b.id === "string" ? b.id : "", patch);
     return typeof r === "string" ? err(r === "no such routine" ? 404 : 400, r) : json({ ok: true, routine: view(r, tz) });
   }
@@ -132,9 +143,9 @@ export async function travelFor(env: Env, destination: string): Promise<Travel |
   let from: Travel["from"] = "car";
   let origin = await carWaypoint(env);
   if (!origin) {
-    const memory = new MemoryStore(env);
+    const memory = memoryFor(env, ["memory.read"]);
     await memory.load().catch(() => {});
-    const home = memory.resolvePlace("home");
+    const home = memory.findPlace("home");
     if (!home?.address) return null;
     origin = { address: home.address };
     from = "home";

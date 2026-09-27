@@ -1,6 +1,7 @@
 import type { Env } from "../types";
 import { json, err } from "../lib/http.ts";
-import { MemoryStore, sane, sanitise, PROFILE_BUDGET, type Kind } from "../lib/memory.ts";
+import { MemoryStore, memoryFor, sane, sanitise, PROFILE_BUDGET, type Kind } from "../lib/memory.ts";
+import { allows, type Grant } from "../lib/scopes.ts";
 
 const KINDS: readonly Kind[] = ["place", "person", "preference", "vehicle", "routine", "note", "reference"];
 
@@ -21,9 +22,25 @@ async function body(req: Request): Promise<Record<string, unknown> | null> {
  * office fact?" is otherwise unanswerable. It is the same idea as the per-server
  * Test button in the MCP settings.
  */
-export async function handleMemory(req: Request, env: Env): Promise<Response> {
+export async function handleMemory(req: Request, env: Env, grants: readonly Grant[] = ["*"], device = false): Promise<Response> {
   const url = new URL(req.url);
-  const store = new MemoryStore(env);
+  const reading = req.method === "GET" || url.pathname === "/api/memory/search";
+  // A device changes memory by voice, through the tools, never in bulk here.
+  if (device && !reading) return err(403, "a device changes memory by asking, not here");
+
+  /*
+   * Whose: the person asking (lib/context.ts), or with ?book=family the
+   * family's shared book, which anyone who may read memory can read and only
+   * someone with the `family` scope can change.
+   */
+  const family = url.searchParams.get("book") === "family";
+  if (family && !env.JARVIS_FAMILY) return err(404, "there is no family memory here: set up a family first");
+  if (family && !reading && !allows(grants, "family")) return err(403, 'changing what the family shares needs "family"', { need: "family" });
+
+  if (url.pathname === "/api/memory/move") return move(req, env, grants);
+
+  // Their own book comes with the family's attached, so "what Jarvis reads" shows both, as the router reads them.
+  const store = family ? new MemoryStore(env, env.JARVIS_FAMILY) : memoryFor(env, grants);
   await store.load();
 
   if (url.pathname === "/api/memory/search") {
@@ -161,4 +178,38 @@ export async function handleMemory(req: Request, env: Env): Promise<Response> {
   }
 
   return err(405, "method not allowed");
+}
+
+/**
+ * Move a fact between a person's own memory and the family's: POST
+ * {id, to: "family" | "mine"}. Either way changes what the family shares.
+ */
+async function move(req: Request, env: Env, grants: readonly Grant[]): Promise<Response> {
+  if (req.method !== "POST") return err(405, "method not allowed");
+  if (!env.JARVIS_FAMILY) return err(404, "there is no family memory here: set up a family first");
+  if (!allows(grants, "family")) return err(403, 'moving to or from the family needs "family"', { need: "family" });
+  const b = await body(req);
+  const id = typeof b?.id === "string" ? b.id : "";
+  const toFamily = b?.to === "family";
+  if (!id || (b?.to !== "family" && b?.to !== "mine")) return err(400, 'id and to ("family" or "mine") are required');
+
+  const mine = new MemoryStore(env);
+  const fam = new MemoryStore(env, env.JARVIS_FAMILY);
+  const [from, to] = toFamily ? [mine, fam] : [fam, mine];
+  await Promise.all([from.load(), to.load()]);
+  const fact = from.facts.find((f) => f.id === id);
+  if (!fact) return err(404, "no saved fact with that id");
+  const { fact: made } = to.add({
+    text: fact.text,
+    kind: fact.kind,
+    slug: fact.slug,
+    address: fact.address,
+    pinned: fact.pinned,
+    source: "ui",
+  });
+  from.remove(id);
+  // The new copy first: a failure between the two leaves it in both, never in neither.
+  await to.save();
+  await from.save();
+  return json({ ok: true, fact: made });
 }

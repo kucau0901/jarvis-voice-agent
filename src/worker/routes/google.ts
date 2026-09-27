@@ -56,7 +56,8 @@ export async function handleGoogle(req: Request, env: Env): Promise<Response> {
     const state = url.searchParams.get("state") ?? "";
     if (!code) return page("Not linked", "<p>Google sent no authorisation code.</p>", false);
 
-    if (!(await consumeState(env, state))) {
+    const person = await consumeState(env, state);
+    if (!person) {
       return page(
         "Not linked",
         "<p>That link has expired or was already used. Start again from the app.</p>",
@@ -70,7 +71,7 @@ export async function handleGoogle(req: Request, env: Env): Promise<Response> {
     const live = await withSettings(env);
     const cfg = googleConfig(live, url.origin);
     if (!cfg) return page("Not linked", "<p>Google is not configured any more.</p>", false);
-    const r = await exchangeCode(live, cfg, code);
+    const r = await exchangeCode({ ...live, JARVIS_PERSON: person }, cfg, code);
     if (!r.ok) return page("Not linked", `<p>${escapeHtml(r.detail)}</p>`, false);
 
     return page(

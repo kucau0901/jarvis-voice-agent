@@ -49,7 +49,7 @@ export async function handleSession(req: Request, env: Env): Promise<Response> {
     const result = await client.live.create({
       session: {
         model: "gpt-live-1",
-        instructions: jarvisPrompt(clientKind),
+        instructions: jarvisPrompt(clientKind, { agentName: env.JARVIS_AGENT_NAME, personName: env.JARVIS_PERSON_NAME }),
         audio: { output: { voice } },
         // Client delegation: this app handles tool work, which is what lets the
         // Worker run MCP and speak progress during a slow Hermes call.

@@ -1,4 +1,5 @@
 import type { Alert, LiveResult } from "./alerts.ts";
+import { OWNER, personOfWho } from "./context.ts";
 
 /**
  * Open Jarvis screens, and getting an alert onto one that someone is looking at.
@@ -55,11 +56,14 @@ export class LiveHub {
   /** Send to every open screen; resolve on the first visible one to confirm, or after `waitMs`. */
   broadcast(sockets: LiveSocket[], alert: Alert, waitMs: number): Promise<LiveResult> {
     const msg = JSON.stringify({ type: "alert", alert });
+    const whose = alert.for ?? OWNER;
     let open = 0;
     let visible = 0;
     for (const s of sockets) {
       const c = s.client();
       if (!c) continue;
+      // Only the screens of whoever it is for (lib/context.ts).
+      if (personOfWho(c.who) !== whose) continue;
       try {
         s.send(msg);
       } catch {

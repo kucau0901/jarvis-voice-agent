@@ -1,4 +1,5 @@
 import type { Env } from "../types";
+import { OWNER } from "./context.ts";
 import { MAX_PAYLOAD, sendPush, type Subscription, type VapidKeys } from "./webpush.ts";
 
 /**
@@ -38,6 +39,13 @@ export interface Alert {
   urgent: boolean;
   /** What raised it — shown in the panel, and useful in a webhook. */
   source: "test" | "api" | "note" | "routine" | "job";
+  /**
+   * Whose it is (lib/context.ts): a member's id, or none for the first
+   * person's. A member's alert reaches only their screens, their phones and
+   * their own Telegram chat; the household's channels (ntfy, the webhook,
+   * Home Assistant) are the first person's.
+   */
+  for?: string;
   /**
    * When it stops being worth having (ms). "Leave now for the dentist" is noise
    * once the appointment has started, so a push service holding it for a phone
@@ -92,6 +100,7 @@ export function makeAlert(
   input: { title?: unknown; text?: unknown; speak?: unknown; urgent?: unknown; expiresAt?: unknown },
   source: Alert["source"],
   now = Date.now(),
+  person?: string,
 ): Alert | null {
   const text = typeof input.text === "string" ? input.text.trim().slice(0, 1500) : "";
   if (!text) return null;
@@ -104,6 +113,7 @@ export function makeAlert(
     speak: input.speak !== false,
     urgent: input.urgent === true,
     source,
+    ...(person && person !== OWNER ? { for: person } : {}),
     ...(typeof input.expiresAt === "number" && Number.isFinite(input.expiresAt) ? { expiresAt: input.expiresAt } : {}),
   };
 }
@@ -140,8 +150,12 @@ export interface LiveResult {
  * object itself passes itself (for routines), the tests pass a fake.
  */
 export interface AlertState {
+  /** To the open screens of whoever the alert is for. */
   broadcast(alert: Alert, waitMs: number): Promise<LiveResult>;
-  pushTargets(): Promise<{ vapid: VapidKeys; subs: PushTarget[] }>;
+  /** The browsers of this person ("owner" for the first person) that turned notifications on. */
+  pushTargets(person?: string): Promise<{ vapid: VapidKeys; subs: PushTarget[] }>;
+  /** A member's own Telegram chat, if they gave one (hub.ts prefs). */
+  chatFor?(person: string): Promise<string | null>;
   pushResults(results: { id: string; ok: boolean; gone: boolean }[]): Promise<void>;
   logDelivery(d: Delivery): Promise<void>;
 }
@@ -170,6 +184,8 @@ export async function deliver(
 
   for (const channel of parseOrder(env.ALERT_ORDER)) {
     if (channel === "live" && opts.skipLive) continue;
+    // A member's alert goes only where it is theirs.
+    if (alert.for && !PERSONAL.has(channel)) continue;
     let a: Attempt | null;
     try {
       a = await SEND[channel](env, state, alert);
@@ -188,6 +204,9 @@ export async function deliver(
 }
 
 type Sender = (env: Env, state: AlertState, alert: Alert) => Promise<Attempt | null>;
+
+/** The channels that can reach one person: their screens, their phones, their Telegram. */
+const PERSONAL = new Set<Channel>(["live", "push", "telegram"]);
 
 const timeout = () => AbortSignal.timeout(10_000);
 
@@ -209,7 +228,7 @@ const SEND: Record<Channel, Sender> = {
   },
 
   async push(_env, state, alert) {
-    const { vapid, subs } = await state.pushTargets();
+    const { vapid, subs } = await state.pushTargets(alert.for ?? OWNER);
     if (!subs.length) return null;
     const payload = pushPayload(alert);
     const results = await Promise.all(
@@ -241,13 +260,15 @@ const SEND: Record<Channel, Sender> = {
     return { channel: "push", ok: ok.length > 0, detail: parts.join("; ") };
   },
 
-  async telegram(env, _state, alert) {
-    if (!env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_CHAT_ID) return null;
+  async telegram(env, state, alert) {
+    // A member's own chat, or none; never the first person's for someone else.
+    const chat = alert.for ? await state.chatFor?.(alert.for).catch(() => null) : env.TELEGRAM_CHAT_ID;
+    if (!env.TELEGRAM_BOT_TOKEN || !chat) return null;
     const r = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        chat_id: env.TELEGRAM_CHAT_ID,
+        chat_id: chat,
         text: alert.title === "Jarvis" ? alert.text : `${alert.title}\n\n${alert.text}`,
         disable_notification: false,
       }),

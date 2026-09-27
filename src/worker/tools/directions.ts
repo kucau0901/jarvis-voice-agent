@@ -57,7 +57,7 @@ export const directions: Tool = {
     const resolve = (raw: string): { wp: Waypoint; label: string } | string => {
       const v = raw.trim();
       if (!v) return "No destination was supplied.";
-      const saved = ctx.memory.resolvePlace(v);
+      const saved = ctx.memory.findPlace(v);
       if (saved?.address) return { wp: { address: saved.address }, label: saved.slug ?? v };
       if (looksLikeAddress(v)) return { wp: { address: v }, label: v };
       // Turn the failure into the moment that teaches it, rather than guessing.
@@ -70,7 +70,7 @@ export const directions: Tool = {
     // Prefer the nickname when it resolves to something saved: "home" is a
     // better key than whatever address the model guessed alongside it.
     const nameHint = typeof args.to_name === "string" ? args.to_name.trim() : "";
-    const target = nameHint && ctx.memory.resolvePlace(nameHint) ? nameHint : String(args.to ?? "");
+    const target = nameHint && ctx.memory.findPlace(nameHint) ? nameHint : String(args.to ?? "");
     const dest = resolve(target);
     if (typeof dest === "string") return dest;
 

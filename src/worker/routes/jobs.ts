@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import type { Env } from "../types";
-import { whoOf, grantsOf, isAdmin, type Principal } from "../lib/auth";
+import { whoOf, grantsOf, personOf, type Principal } from "../lib/auth";
+import { isTheirs } from "../lib/context.ts";
 import type { EventSink } from "../lib/sse";
 import { err, json } from "../lib/http";
 import { stateStub } from "../lib/state-client";
@@ -67,17 +68,20 @@ const researchLimit = (raw: string | undefined): number => {
 };
 
 /** The engine, bound to an environment: what the Durable Object runs jobs with. */
-export function jobEngine(env: Env, deliver: JobDeps["deliver"]): JobDeps {
+export function jobEngine(env: Env, deliver: JobDeps["deliver"], envFor: (job: Job) => Promise<Env> = async () => env): JobDeps {
   const client = () => new OpenAI({ apiKey: env.OPENAI_API_KEY });
   const signal = () => AbortSignal.timeout(60_000);
 
   async function request(job: Job, turns: { role: "user"; text: string }[]) {
     const research = job.engine === "research";
+    // As whoever started it (lib/context.ts): their memory, their mail.
+    const env = await envFor(job);
     const p = await prepareRouter(env, turns, signal(), jobGrants(job.grants), { surface: research ? "research" : "job", toolFilter: jobTool });
     // Research: the stronger model, thinking hard (lib/jobs.ts "research").
     const model = research ? researchModel(env.RESEARCH_MODEL) : p.model;
     return {
       p,
+      env,
       base: {
         model,
         ...(research ? { reasoning: { effort: "high" as const } } : {}),
@@ -125,8 +129,8 @@ export function jobEngine(env: Env, deliver: JobDeps["deliver"]): JobDeps {
         return { kind: "done", text: job.engine === "research" ? withSources(text, citationsOf(r)) : text, usage };
       }
       // The tools it asked for run here, between steps; then the next step starts.
-      const { p, base } = await request(job, []);
-      const outputs = await runCalls(calls, p.byName, { env, signal: signal(), memory: p.memory, grants: jobGrants(job.grants) }, quiet);
+      const { p, env: theirs, base } = await request(job, []);
+      const outputs = await runCalls(calls, p.byName, { env: theirs, signal: signal(), memory: p.memory, grants: jobGrants(job.grants) }, quiet);
       await p.memory.save().catch(() => {});
       const next = await p.client.responses.create({ ...base, previous_response_id: r.id, input: outputs }, { signal: signal() });
       return { kind: "continued", responseId: next.id, usage };
@@ -181,8 +185,9 @@ export async function handleJobs(req: Request, env: Env, url: URL, principal: Pr
   if (!state) return err(503, "jobs need the STATE Durable Object");
   const grants: Grant[] = grantsOf(principal);
   const who = whoOf(principal);
-  // A device or a member sees their own jobs; the owner and admins see all, including those started by voice.
-  const mine = (j: Job) => isAdmin(principal) || j.createdBy === who;
+  // A device sees its own jobs; a person theirs, including those they started by
+  // voice (lib/context.ts). Another person's are theirs, admin or not.
+  const mine = (j: Job) => (principal.kind === "device" ? j.createdBy === who : isTheirs(j.createdBy, personOf(principal)));
 
   if (p === "/api/v1/jobs/cancel") {
     if (req.method !== "POST") return err(405, "method not allowed");

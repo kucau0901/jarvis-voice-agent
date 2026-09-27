@@ -4,6 +4,7 @@ import { addPasskeyHere, joinWithInvite } from "../account";
 import { passkeyError, passkeysSupported } from "../passkey";
 import { ago, arm, esc } from "./util";
 import { dropPerson, loadPeople } from "../people";
+import { Mine, type Prefs } from "./Mine";
 
 /**
  * The family: who is in it, inviting someone, pairing a screen, and your own
@@ -22,6 +23,7 @@ interface Me {
   role: string;
   session: string | null;
   hasPin: boolean;
+  prefs?: Prefs;
 }
 
 interface Member {
@@ -52,8 +54,8 @@ const IN_CAR = /Tesla/i.test(navigator.userAgent);
 
 const ROLE_WORDS: Record<string, string> = {
   admin: "Admin — everything, and manages the family",
-  adult: "Adult — asks, the house, live voice",
-  child: "Child — asks and live voice",
+  adult: "Adult — the house, their own mail, calendar, memory, music and reminders",
+  child: "Child — their own memory, calendar and reminders",
   guest: "Guest — asks only",
 };
 
@@ -62,6 +64,7 @@ const SCOPE_WORDS: Record<string, string> = {
   ask: "ask questions",
   "memory.read": "read saved facts",
   "memory.write": "save facts",
+  family: "change what the family shares",
   "car.read": "the car's battery and place",
   "car.control": "operate the car",
   home: "the house and cameras",
@@ -220,6 +223,7 @@ export class Family {
           <button class="f-signout">Sign out of this screen</button>
         </div>
       </div>
+      <div class="f-mine"></div>
 
       <h3>A screen you share</h3>
       <div class="srv">
@@ -275,6 +279,8 @@ export class Family {
       <h3>Where you are signed in</h3>
       <div class="srv f-sessions"></div>` : ""}`;
 
+    const mine = this.body.querySelector<HTMLElement>(".f-mine");
+    if (mine) new Mine(this.key, mine, me.prefs ?? {}).render();
     this.renderMembers(data.members, admin, roles, scopes);
     if (admin) this.renderInvites(data.invites ?? []);
     this.wire(admin);

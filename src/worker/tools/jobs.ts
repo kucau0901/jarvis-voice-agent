@@ -1,5 +1,6 @@
 import type { Tool } from "./registry";
 import { stateStub } from "../lib/state-client.ts";
+import { voiceWho } from "../lib/context.ts";
 
 /**
  * Starting a background job by voice (lib/jobs.ts). The job keeps the
@@ -38,7 +39,7 @@ export const startJob: Tool = {
     const research = args.research === true;
     const j = await state.createJob(
       { title: args.title, task: args.task, engine: research ? "research" : "jarvis" },
-      { who: "voice", grants: ctx.grants },
+      { who: voiceWho(ctx.env), grants: ctx.grants },
     );
     if (typeof j === "string") return `Not started: ${j}.`;
     return research

@@ -1,5 +1,6 @@
 import type { Env } from "../types";
 import { publicOrigin } from "./http.ts";
+import { bookOf } from "./context.ts";
 
 /**
  * Google account access, for Gmail.
@@ -24,6 +25,13 @@ export const PEOPLE = "https://people.googleapis.com/v1";
 const REFRESH_KEY = "google:refresh";
 const ACCESS_KEY = "google:access";
 const STATE_PREFIX = "google:state:";
+
+/**
+ * Each person links their own Google (lib/context.ts): their mail, their
+ * calendar. The first person's link keeps the name it always had.
+ */
+const refreshKey = (env: Env) => (bookOf(env.JARVIS_PERSON) ? `${REFRESH_KEY}:${bookOf(env.JARVIS_PERSON)}` : REFRESH_KEY);
+const accessKey = (env: Env) => (bookOf(env.JARVIS_PERSON) ? `${ACCESS_KEY}:${bookOf(env.JARVIS_PERSON)}` : ACCESS_KEY);
 
 /**
  * Everything a person does with mail, except destroying it.
@@ -119,7 +127,7 @@ export class NeedsRelink extends Error {
  */
 export async function beginAuth(env: Env, cfg: GoogleConfig): Promise<string> {
   const state = crypto.randomUUID();
-  await env.CONFIG.put(STATE_PREFIX + state, "1", { expirationTtl: 900 });
+  await env.CONFIG.put(STATE_PREFIX + state, env.JARVIS_PERSON || "owner", { expirationTtl: 900 });
 
   const p = new URLSearchParams({
     client_id: cfg.clientId,
@@ -140,14 +148,19 @@ export async function beginAuth(env: Env, cfg: GoogleConfig): Promise<string> {
   return `${AUTH}?${p}`;
 }
 
-export async function consumeState(env: Env, state: string): Promise<boolean> {
-  if (!state) return false;
+/**
+ * Spend a state value, and say whose link it was for (lib/context.ts): the
+ * person who started it. Null if unknown, used or expired.
+ */
+export async function consumeState(env: Env, state: string): Promise<string | null> {
+  if (!state) return null;
   const key = STATE_PREFIX + state;
   const found = await env.CONFIG.get(key);
-  if (!found) return false;
+  if (!found) return null;
   // Single use, so a replayed callback cannot mint a second token.
   await env.CONFIG.delete(key);
-  return true;
+  // "1" is what a link started before families left: the first person's.
+  return /^u_[a-z0-9]+$/.test(found) ? found : "owner";
 }
 
 export async function exchangeCode(
@@ -186,20 +199,20 @@ export async function exchangeCode(
     return { ok: false, detail };
   }
 
-  await env.CONFIG.put(REFRESH_KEY, body.refresh_token);
+  await env.CONFIG.put(refreshKey(env), body.refresh_token);
   if (body.access_token) await cacheAccess(env, body.access_token, body.expires_in);
   return { ok: true };
 }
 
 export async function isLinked(env: Env): Promise<boolean> {
-  return !!(await env.CONFIG.get(REFRESH_KEY).catch(() => null));
+  return !!(await env.CONFIG.get(refreshKey(env)).catch(() => null));
 }
 
 export async function unlink(env: Env): Promise<void> {
-  const refresh = await env.CONFIG.get(REFRESH_KEY).catch(() => null);
+  const refresh = await env.CONFIG.get(refreshKey(env)).catch(() => null);
   await Promise.all([
-    env.CONFIG.delete(REFRESH_KEY).catch(() => {}),
-    env.CONFIG.delete(ACCESS_KEY).catch(() => {}),
+    env.CONFIG.delete(refreshKey(env)).catch(() => {}),
+    env.CONFIG.delete(accessKey(env)).catch(() => {}),
   ]);
   // Best effort: tell Google too, so the grant disappears from the account's
   // permissions page rather than lingering as a live token nobody is holding.
@@ -229,7 +242,7 @@ async function cacheAccess(env: Env, token: string, expiresIn = 3600): Promise<v
   const value: CachedAccess = { token, expiresAt: Date.now() + ttl * 1000 };
   // KV expires it too, so a stale entry cannot outlive the token it describes
   // even if nothing reads it for a week.
-  await env.CONFIG.put(ACCESS_KEY, JSON.stringify(value), { expirationTtl: ttl }).catch(() => {});
+  await env.CONFIG.put(accessKey(env), JSON.stringify(value), { expirationTtl: ttl }).catch(() => {});
 }
 
 /**
@@ -247,12 +260,12 @@ async function cacheAccess(env: Env, token: string, expiresIn = 3600): Promise<v
  * which the margin above covers.
  */
 async function accessToken(env: Env, cfg: GoogleConfig): Promise<string> {
-  const cached = (await env.CONFIG.get(ACCESS_KEY, "json").catch(() => null)) as
+  const cached = (await env.CONFIG.get(accessKey(env), "json").catch(() => null)) as
     | CachedAccess
     | null;
   if (cached?.token && cached.expiresAt - EXPIRY_MARGIN_MS > Date.now()) return cached.token;
 
-  const refresh = await env.CONFIG.get(REFRESH_KEY);
+  const refresh = await env.CONFIG.get(refreshKey(env));
   if (!refresh) throw new Error("Gmail is not linked yet");
 
   const res = await fetch(TOKEN, {
@@ -287,7 +300,7 @@ async function accessToken(env: Env, cfg: GoogleConfig): Promise<string> {
      *     never does — so this path matters here in a way it does not there.
      */
     if (body.error === "invalid_grant") {
-      await env.CONFIG.delete(ACCESS_KEY).catch(() => {});
+      await env.CONFIG.delete(accessKey(env)).catch(() => {});
       throw new NeedsRelink(body.error_description ?? "the saved authorisation is no longer valid");
     }
     throw new Error(
@@ -297,7 +310,7 @@ async function accessToken(env: Env, cfg: GoogleConfig): Promise<string> {
 
   // Google does not normally rotate the refresh token, but it is allowed to.
   if (body.refresh_token && body.refresh_token !== refresh) {
-    await env.CONFIG.put(REFRESH_KEY, body.refresh_token);
+    await env.CONFIG.put(refreshKey(env), body.refresh_token);
   }
   await cacheAccess(env, body.access_token, body.expires_in);
   return body.access_token;

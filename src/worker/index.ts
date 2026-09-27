@@ -1,6 +1,8 @@
 import type { Env } from "./types";
 import { err } from "./lib/http";
-import { authorize, grantsOf, isAdmin, type Principal } from "./lib/auth";
+import { authorize, grantsOf, isAdmin, personOf, type Principal } from "./lib/auth";
+import { withPerson } from "./lib/context.ts";
+import { personView } from "./lib/hub-client.ts";
 import { allows, requiredScope } from "./lib/scopes";
 import { preflight, withCors } from "./lib/cors";
 import * as limits from "./lib/limits";
@@ -26,6 +28,19 @@ import { handleAuth, handleHub } from "./routes/hub";
 
 // The Durable Object class must be exported from the entry for the runtime to find it.
 export { JarvisState } from "./state";
+
+/**
+ * Who this request is for (lib/context.ts): a member from their sign-in; the
+ * owner key and devices as the first person. Never fails a request: without
+ * the family's details it runs as it always did.
+ */
+async function forPerson(env: Env, p: Principal): Promise<Env> {
+  if (p.kind === "member" && p.place) {
+    return withPerson(env, { person: personOf(p), name: p.name, space: p.place.space, prefs: p.place.prefs });
+  }
+  const v = await personView(env, "owner").catch(() => null);
+  return withPerson(env, { person: "owner", name: v?.name, space: v?.space, prefs: v?.prefs });
+}
 
 /** What a locked profile may still do: say who it is, be unlocked, or be signed out. */
 const LOCKED_MAY = new Set(["/api/hub/me", "/api/hub/unlock", "/api/hub/signout"]);
@@ -94,6 +109,7 @@ export default {
      */
     const raw = env;
     env = await withSettings(raw);
+    env = await forPerson(env, principal);
 
     /*
      * One enforcement point, not twelve.
@@ -107,10 +123,13 @@ export default {
     if (!isAdmin(principal)) {
       const scoped = principal as Exclude<Principal, { kind: "owner" }>;
       const need = requiredScope(url.pathname, req.method);
+      if (need === "person" && scoped.kind === "device") {
+        return withCors(err(403, "that is for a person, not a device"), origin, env);
+      }
       if (need === "owner") {
         return withCors(err(403, scoped.kind === "member" ? "only a family admin can do that" : "owner credential required"), origin, env);
       }
-      if (need !== "any" && !allows(scoped.scopes, need)) {
+      if (need !== "any" && need !== "person" && !allows(scoped.scopes, need)) {
         const who = scoped.kind === "member" ? "you are" : "this device is";
         return withCors(err(403, `${who} not granted "${need}"`, { need, has: scoped.scopes }), origin, env);
       }
@@ -158,7 +177,7 @@ async function route(
   if (url.pathname.startsWith("/api/v1/")) return await handleV1(req, env, ctx, principal);
   if (url.pathname.startsWith("/api/hub/")) return await handleHub(req, env, principal);
   if (url.pathname.startsWith("/api/mcp")) return await handleMcp(req, env);
-  if (url.pathname.startsWith("/api/memory")) return await handleMemory(req, env);
+  if (url.pathname.startsWith("/api/memory")) return await handleMemory(req, env, grantsOf(principal), principal.kind === "device");
   if (url.pathname.startsWith("/api/spotify")) return await handleSpotify(req, env);
   if (url.pathname.startsWith("/api/google")) return await handleGoogle(req, env);
 
@@ -193,7 +212,7 @@ async function route(
     case "/api/version":
       return await handleVersion(env);
     case "/api/usage":
-      return await handleUsage(req, env);
+      return await handleUsage(req, env, isAdmin(principal));
     default:
       return err(404, `no route for ${url.pathname}`);
   }

@@ -1,6 +1,7 @@
 import type { Storage } from "./state-host.ts";
 import type { Grant } from "./scopes.ts";
 import { makeAlert, type Alert, type Delivery } from "./alerts.ts";
+import { personOfWho } from "./context.ts";
 import type { UsageEntry } from "./usage.ts";
 
 /**
@@ -108,6 +109,7 @@ export function usageEntry(j: Job, ok: boolean, now: number): UsageEntry {
     searches: j.usage?.searches ?? 0,
     tools: [],
     ask: j.title.slice(0, 80),
+    who: personOfWho(j.createdBy),
   };
 }
 
@@ -462,11 +464,12 @@ export class Jobs {
         },
         "job",
         now,
+        personOfWho(j.createdBy),
       )!;
     } else {
       done.status = "failed";
       done.error = "error" in out ? out.error.slice(0, 500) : "it finished without an answer";
-      alert = makeAlert({ title: `Could not finish: ${j.title}`, text: done.error, speak: false }, "job", now)!;
+      alert = makeAlert({ title: `Could not finish: ${j.title}`, text: done.error, speak: false }, "job", now, personOfWho(j.createdBy))!;
     }
     await this.save(done); // before delivering: a retried alarm must not tell the user twice
     const d = await deps.deliver(alert).catch(() => null);

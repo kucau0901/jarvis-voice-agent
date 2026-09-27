@@ -1,5 +1,6 @@
 import type { Env } from "../types";
 import { publicOrigin } from "./http.ts";
+import { bookOf } from "./context.ts";
 
 /**
  * Spotify Web API access.
@@ -16,6 +17,9 @@ export const API = "https://api.spotify.com/v1";
 
 const TOKEN_KEY = "spotify:refresh";
 const STATE_PREFIX = "spotify:state:";
+
+/** Each person links their own Spotify (lib/context.ts); the first person's keeps the name it always had. */
+const tokenKey = (env: Env) => (bookOf(env.JARVIS_PERSON) ? `${TOKEN_KEY}:${bookOf(env.JARVIS_PERSON)}` : TOKEN_KEY);
 
 /** Enough to see what is playing, control it, and reach saved music. */
 export const SCOPES = [
@@ -55,7 +59,7 @@ const basic = (c: SpotifyConfig) => btoa(`${c.clientId}:${c.clientSecret}`);
  */
 export async function beginAuth(env: Env, cfg: SpotifyConfig): Promise<string> {
   const state = crypto.randomUUID();
-  await env.CONFIG.put(STATE_PREFIX + state, "1", { expirationTtl: 900 });
+  await env.CONFIG.put(STATE_PREFIX + state, env.JARVIS_PERSON || "owner", { expirationTtl: 900 });
 
   const p = new URLSearchParams({
     client_id: cfg.clientId,
@@ -68,14 +72,19 @@ export async function beginAuth(env: Env, cfg: SpotifyConfig): Promise<string> {
   return `${AUTH}?${p}`;
 }
 
-export async function consumeState(env: Env, state: string): Promise<boolean> {
-  if (!state) return false;
+/**
+ * Spend a state value, and say whose link it was for (lib/context.ts): the
+ * person who started it. Null if unknown, used or expired.
+ */
+export async function consumeState(env: Env, state: string): Promise<string | null> {
+  if (!state) return null;
   const key = STATE_PREFIX + state;
   const found = await env.CONFIG.get(key);
-  if (!found) return false;
+  if (!found) return null;
   // Single use, so a replayed callback cannot mint a second token.
   await env.CONFIG.delete(key);
-  return true;
+  // "1" is what a link started before families left: the first person's.
+  return /^u_[a-z0-9]+$/.test(found) ? found : "owner";
 }
 
 export async function exchangeCode(
@@ -103,16 +112,16 @@ export async function exchangeCode(
   if (!res.ok || !body.refresh_token) {
     return { ok: false, detail: body.error_description ?? body.error ?? `status ${res.status}` };
   }
-  await env.CONFIG.put(TOKEN_KEY, body.refresh_token);
+  await env.CONFIG.put(tokenKey(env), body.refresh_token);
   return { ok: true };
 }
 
 export async function isLinked(env: Env): Promise<boolean> {
-  return !!(await env.CONFIG.get(TOKEN_KEY).catch(() => null));
+  return !!(await env.CONFIG.get(tokenKey(env)).catch(() => null));
 }
 
 export async function unlink(env: Env): Promise<void> {
-  await env.CONFIG.delete(TOKEN_KEY).catch(() => {});
+  await env.CONFIG.delete(tokenKey(env)).catch(() => {});
 }
 
 /* ---------- using it ------------------------------------------------------ */
@@ -124,7 +133,7 @@ export async function unlink(env: Env): Promise<void> {
  * milliseconds on a path that is already talking to Spotify.
  */
 async function accessToken(env: Env, cfg: SpotifyConfig): Promise<string> {
-  const refresh = await env.CONFIG.get(TOKEN_KEY);
+  const refresh = await env.CONFIG.get(tokenKey(env));
   if (!refresh) throw new Error("Spotify is not linked yet");
 
   const res = await fetch(TOKEN, {
@@ -145,7 +154,7 @@ async function accessToken(env: Env, cfg: SpotifyConfig): Promise<string> {
   }
   // Spotify occasionally rotates the refresh token; losing it means re-linking.
   if (body.refresh_token && body.refresh_token !== refresh) {
-    await env.CONFIG.put(TOKEN_KEY, body.refresh_token);
+    await env.CONFIG.put(tokenKey(env), body.refresh_token);
   }
   return body.access_token;
 }

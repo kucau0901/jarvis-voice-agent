@@ -2,6 +2,7 @@ import type { Tool } from "./registry";
 import { stateStub } from "../lib/state-client.ts";
 import { localeOf } from "../lib/locale.ts";
 import { describeAction, describeTrigger, whenSaid, type Routine } from "../lib/routines.ts";
+import { isTheirs, voiceWho } from "../lib/context.ts";
 
 /**
  * Making routines by voice (lib/routines.ts). The routine keeps the caller's
@@ -91,7 +92,7 @@ export const routineAdd: Tool = {
         say: args.say,
         ask: args.ask,
       },
-      { who: "voice", grants: ctx.grants },
+      { who: voiceWho(ctx.env), grants: ctx.grants },
     );
     if (typeof r === "string") return `Not set up: ${r}.`;
     const tz = localeOf(ctx.env).timeZone;
@@ -116,7 +117,8 @@ export const routineList: Tool = {
   async run(_args, ctx) {
     const state = stateStub(ctx.env);
     if (!state) return "No routines on this deployment.";
-    const all = await state.listRoutines();
+    // This person's own: another's reminders are theirs (lib/context.ts).
+    const all = (await state.listRoutines()).filter((r) => isTheirs(r.createdBy, ctx.env.JARVIS_PERSON));
     if (!all.length) return "No routines are set up.";
     const tz = localeOf(ctx.env).timeZone;
     return all.map((r) => `${r.id}: ${r.enabled ? "" : "(off) "}${said(r, tz)}`).join("\n");
@@ -137,7 +139,10 @@ export const routineRemove: Tool = {
   async run(args, ctx) {
     const state = stateStub(ctx.env);
     if (!state) return "No routines on this deployment.";
-    return (await state.removeRoutine(String(args.id ?? ""))) ? "Removed." : "No routine has that id.";
+    const id = String(args.id ?? "");
+    const r = (await state.listRoutines()).find((x) => x.id === id);
+    if (!r || !isTheirs(r.createdBy, ctx.env.JARVIS_PERSON)) return "No routine has that id.";
+    return (await state.removeRoutine(id)) ? "Removed." : "No routine has that id.";
   },
 };
 

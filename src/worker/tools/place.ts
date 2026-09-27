@@ -25,7 +25,7 @@ async function locate(query: string, ctx: ToolContext): Promise<Located | string
   // full address is not a nickname, so it goes straight to Google — otherwise a
   // weak token overlap can silently redirect it somewhere else entirely.
   const looksLikeAddress = query.split(/\s+/).length > 5 || /\d{4,}/.test(query);
-  const saved = looksLikeAddress ? undefined : ctx.memory.resolvePlace(query);
+  const saved = looksLikeAddress ? undefined : ctx.memory.findPlace(query);
   const address = saved?.address ?? query;
 
   const key = ctx.env.GOOGLE_MAPS_API_KEY!;

@@ -1,7 +1,8 @@
 import type { Env } from "../types";
 import { looksLikeToken, lookup, touch, type Device } from "./devices.ts";
 import { WILDCARD, type Grant } from "./scopes.ts";
-import { looksLikeSession, type Role } from "./hub.ts";
+import { looksLikeSession, type Place, type Role } from "./hub.ts";
+import { OWNER } from "./context.ts";
 import { sessionFor } from "./hub-client.ts";
 
 const enc = new TextEncoder();
@@ -49,6 +50,8 @@ export type Principal =
       locked?: boolean;
       /** Whether they have set a PIN, for shared screens. */
       hasPin?: boolean;
+      /** Their family, whether they are its first person, and their own choices. */
+      place?: Place;
     };
 
 /** Bounded by nothing: the owner key, or a family admin. */
@@ -57,11 +60,14 @@ export const isAdmin = (p: Principal): boolean => p.kind === "owner" || (p.kind 
 export const grantsOf = (p: Principal): Grant[] => (isAdmin(p) ? [WILDCARD] : (p as { scopes: Grant[] }).scopes);
 
 /**
- * Whose a thread, a job or a routine is. An admin's are the owner's: until
- * memory, mail and alerts are each person's own, what the admin has is what
- * the owner had. Anyone else's are their own.
+ * Whose data a caller uses (lib/context.ts): a member's own, except the first
+ * person's, which is what Jarvis kept before families ("owner"). The owner key
+ * and devices act as the first person.
  */
-export const whoOf = (p: Principal): string => (isAdmin(p) ? "owner" : (p as { id: string }).id);
+export const personOf = (p: Principal): string => (p.kind === "member" && !p.place?.first ? p.id : OWNER);
+
+/** Whose a thread, a job or a routine is: a device's own, else the person's. */
+export const whoOf = (p: Principal): string => (p.kind === "device" ? p.id : personOf(p));
 
 export type AuthResult = { ok: true; principal: Principal } | { ok: false; response: Response };
 
@@ -116,6 +122,7 @@ export async function authorize(
         session: who.session.id,
         ...(who.session.locked ? { locked: true } : {}),
         hasPin: who.user.hasPin,
+        place: who.place,
       },
     };
   }

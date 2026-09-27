@@ -15,6 +15,7 @@ import { sendNote } from "./notes";
 import { routineTools } from "./routines";
 import { jobTools } from "./jobs";
 import { stateStub } from "../lib/state-client.ts";
+import { voiceWho } from "../lib/context.ts";
 
 /**
  * The tools the delegation router may call.
@@ -132,7 +133,7 @@ export const askHermes: Tool = {
     }
     const j = await state.createJob(
       { title: `Hermes: ${question.slice(0, 60)}`, task: question, engine: "hermes" },
-      { who: "voice", grants: ctx.grants },
+      { who: voiceWho(ctx.env), grants: ctx.grants },
     );
     if (typeof j === "string") return `Hermes was not asked: ${j}.`;
     return "Asked Hermes. It usually takes one to four minutes; the answer will reach the user as a message when it is ready. Tell them so, briefly.";

@@ -28,6 +28,19 @@ of every release, and in the [README](README.md#updating).
   family up, nothing changes: the owner key works as before, and keeps
   working after, as the way back in.
   [Sharing Jarvis with your family](docs/family.md).
+- **Each person's own.** Memory, mail, calendar and contacts, Spotify,
+  reminders, routines, background jobs, alerts, the conversation across
+  devices, and what they have used are each person's, and nobody else sees
+  them. Each person links their own Google and Spotify, and chooses their
+  own voice, language and Telegram chat, in Family → You. Alerts reach only
+  the person they are for. What Jarvis kept before is the admin's who set
+  up the family, where it always was.
+- **Family memory**: "remember for the family that the spare key is under
+  the blue pot". Everyone sees it; adults change it. Memory has Mine and The
+  family's, and a fact can be moved between them.
+- **The assistant goes by the family's name for it**, and knows who it is
+  talking to.
+- **Settings → Usage** shows each person's part.
 - **One car, the whole family.** Add each person to the car once, and tap
   the name at the top to switch. A PIN keeps your profile yours: switching
   away locks it on the car, as does half an hour untouched, and only your

@@ -52,7 +52,8 @@ export async function handleSpotify(req: Request, env: Env): Promise<Response> {
     const state = url.searchParams.get("state") ?? "";
     if (!code) return page("Not linked", "<p>Spotify sent no authorisation code.</p>", false);
 
-    if (!(await consumeState(env, state))) {
+    const person = await consumeState(env, state);
+    if (!person) {
       // Either a replay, an expired link, or someone else's redirect.
       return page(
         "Not linked",
@@ -67,7 +68,7 @@ export async function handleSpotify(req: Request, env: Env): Promise<Response> {
     const live = await withSettings(env);
     const cfg = spotifyConfig(live, url.origin);
     if (!cfg) return page("Not linked", "<p>Spotify is not configured any more.</p>", false);
-    const r = await exchangeCode(live, cfg, code);
+    const r = await exchangeCode({ ...live, JARVIS_PERSON: person }, cfg, code);
     if (!r.ok) return page("Not linked", `<p>${escapeHtml(r.detail)}</p>`, false);
 
     return page(

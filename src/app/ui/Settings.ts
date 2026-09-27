@@ -23,6 +23,8 @@ interface UsageView {
   slowest: UsageEntryView[];
   recent: UsageEntryView[];
   pricesAsOf: string;
+  /** Each person's part of the month: "owner" is the first person (lib/context.ts). */
+  byPerson?: Record<string, { questions: number; cost: { router: number; live: number; jobs: number } }>;
 }
 
 /** Dollars as the panel says them: small amounts are the usual case. */
@@ -224,6 +226,20 @@ export class Settings {
   }
 
   /** Settings → Usage and cost (GET /api/usage, src/worker/lib/usage.ts). */
+  /** Whose usage is whose: member ids, and "owner" for the first person (lib/context.ts). */
+  private async memberNames(): Promise<Map<string, string>> {
+    const out = new Map<string, string>();
+    try {
+      const r = await fetch("/api/hub/members", { headers: authHeaders(this.key) });
+      if (!r.ok) return out;
+      const { members } = (await r.json()) as { members: { id: string; name: string; first?: boolean }[] };
+      for (const m of members) out.set(m.first ? "owner" : m.id, m.name);
+    } catch {
+      // Names are a nicety; the totals stand without them.
+    }
+    return out;
+  }
+
   private async loadUsage(): Promise<void> {
     const box = this.el.querySelector<HTMLElement>(".usagenow")!;
     const res = this.el.querySelector<HTMLElement>(".usageres")!;
@@ -249,6 +265,16 @@ export class Settings {
       if (t.jobs) parts.push(`${money(t.cost.jobs)} in ${t.jobs} job${t.jobs === 1 ? "" : "s"}`);
       line("Cost so far:", `about ${money(cost)}: ${parts.join(", ")}.` +
         (t.unpriced ? ` Plus ${t.unpriced.toLocaleString()} tokens from a model with no listed price.` : ""));
+      // With a family, each person's part, by name.
+      const people = Object.entries(u.byPerson ?? {});
+      if (people.length > 1 || (people.length === 1 && people[0]![0] !== "owner")) {
+        const names = await this.memberNames();
+        const each = people
+          .map(([who, p]) => ({ who: names.get(who) ?? (who === "owner" ? "you" : "someone removed"), p, c: p.cost.router + p.cost.live + p.cost.jobs }))
+          .sort((a, b) => b.c - a.c)
+          .map((x) => `${x.who} ${money(x.c)} (${x.p.questions} question${x.p.questions === 1 ? "" : "s"})`);
+        line("By person:", `${each.join("; ")}.`);
+      }
       const d = u.today;
       line("Today:", `${d.questions} question${d.questions === 1 ? "" : "s"}, about ${money(d.cost.router + d.cost.live + d.cost.jobs)}.`);
       if (u.medianMs !== null) line("Typical answer:", `${(u.medianMs / 1000).toFixed(1)} s, over the last ${u.recent.filter((e) => e.seconds === undefined && e.surface !== "job").length} questions.`);

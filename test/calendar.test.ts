@@ -32,7 +32,7 @@ check("calendar is a real route scope", (SCOPES as readonly string[]).includes("
 check("a calendar grant allows calendar", allows(["calendar"], "calendar"));
 check("a mail grant does not imply calendar", !allows(["mail"], "calendar"));
 check("the wildcard allows calendar", allows(["*"], "calendar"));
-check("/api/google/* stays owner-only", requiredScope("/api/google/auth", "GET") === "owner");
+check("/api/google/* is a person's own, never a device's", requiredScope("/api/google/auth", "GET") === "person");
 
 check("requests calendar.events", GOOGLE_SCOPES.includes("auth/calendar.events"));
 check("requests contacts.readonly", GOOGLE_SCOPES.includes("auth/contacts.readonly"));

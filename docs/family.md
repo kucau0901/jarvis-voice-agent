@@ -6,11 +6,10 @@ passwords). One of you is the **admin**, and decides what everyone else can
 reach. The family chooses what the assistant is called: "Jarvis", or any
 name you like.
 
-This is the first part of Jarvis for families. It covers signing in,
-members, roles and pairing screens. Coming next: each person's own memory,
-mail and alerts; sharing the car and the house with levels; Jarvis passing
-messages and reminders between you; and a family chat. See
-[What is shared today](#what-is-shared-today).
+Each person has their own memory, mail, calendar, music, reminders and
+alerts, and the family has a memory it shares. Coming next: sharing the car
+and the house with levels; Jarvis passing messages and reminders between
+you; and a family chat. See [What is yours, and what is shared](#what-is-yours-and-what-is-shared).
 
 ## Setting it up
 
@@ -38,9 +37,9 @@ only to them.
 
 | Role | Can, until you change it |
 |---|---|
-| **Admin** | Everything, and manage the family: invite, remove, change roles, settings, devices. |
-| **Adult** | Ask questions, use the house (Home Assistant), talk in live voice, see maps. |
-| **Child** | Ask questions, live voice, maps. |
+| **Admin** | Everything, and manage the family: invite, remove, change roles, settings, devices, the car, Hermes. |
+| **Adult** | The house (Home Assistant); their own memory, mail, calendar, Spotify, alerts and reminders; changing what the family shares; live voice, maps. |
+| **Child** | Their own memory, calendar, alerts and reminders; live voice, maps. |
 | **Guest** | Ask questions and live voice. |
 
 An admin can widen or narrow any member, one item at a time, from their
@@ -111,11 +110,39 @@ deleted: within half a minute on every screen, since each server copy
 remembers a sign-in that long. Any Jarvis screen they have open stops
 receiving alerts.
 
-## What is shared today
+## What is yours, and what is shared
 
-For now, memory, mail, calendar, the car, Spotify, alerts and routines are
-the admin's, as they were the owner's. That is why only admins get them by
-default. You can give them to someone else, but they will see yours.
+**Yours alone** — nobody else sees them, admins included:
+
+- **Memory.** "Remember that…" saves to your own. Only you see it, in
+  **Memory → Mine**.
+- **Mail, calendar and contacts.** Link your own Google in **Family → You →
+  Your accounts**. If the family's Google app is still in testing, an admin
+  adds your Google address as a test user in Google Cloud first.
+- **Spotify.** Link your own the same way.
+- **Reminders, routines and background jobs.** They are yours, they run as
+  you (your calendar, your memory), and they tell only you.
+- **Alerts.** They go to your open Jarvis screens, your phones and your own
+  Telegram chat (**Family → You → Telegram**). Never to the family's
+  notification channels, and never to anyone else's.
+- **Your voice and language**, in **Family → You**. Empty means the family's.
+- **The conversation across your devices** ("what was that address again?").
+- **What you have used**, in **Family → You**. Admins see everyone's in
+  Settings → Usage.
+
+**The family's**, shared by everyone:
+
+- **Family memory**: the house, the family doctor, where the spare key is.
+  Say "remember *for the family* that…", or add it in **Memory → The
+  family's**. **Move to the family's** moves one of your own there. Everyone
+  who may read memory sees it; adults (the `family` permission) change it.
+- **The house**, through Home Assistant: adults get it by default.
+- **The assistant's name, and the family's defaults** (Settings, for admins).
+
+**Still the admin's**, until they can be shared in the next update: the car,
+and Hermes. What Jarvis kept before there was a family (your memory, your
+Google, your reminders) is the admin's who set the family up, where it
+always was.
 
 Two things changed with families:
 

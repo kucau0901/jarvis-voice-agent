@@ -34,14 +34,16 @@ export const ROLES: readonly Role[] = ["admin", "adult", "child", "guest"];
 /**
  * What each role reaches until an admin changes it.
  *
- * Until memory, mail, the car and alerts are each person's own, they are the
- * admin's, so nobody else is given them by default: the house is what a family
- * shares. An admin can widen a member, as with a device.
+ * Memory, mail, the calendar, Spotify, alerts and routines are each person's
+ * own (lib/context.ts): an adult has all of theirs, and changes what the
+ * family shares; a child their memory, calendar, alerts and routines. The
+ * car and Hermes stay the admin's until they are shared, and a guest only
+ * asks. An admin can widen or narrow anyone, as with a device.
  */
 export const ROLE_SCOPES: Readonly<Record<Role, readonly Grant[]>> = {
   admin: [WILDCARD],
-  adult: ["ask", "home", "voice", "screen"],
-  child: ["ask", "voice", "screen"],
+  adult: ["ask", "home", "voice", "screen", "memory.read", "memory.write", "family", "mail", "calendar", "media", "alerts", "routines"],
+  child: ["ask", "voice", "screen", "memory.read", "memory.write", "calendar", "alerts", "routines"],
   guest: ["ask", "voice"],
 };
 
@@ -72,9 +74,30 @@ interface PinRecord {
   waitUntil?: number;
 }
 
+/**
+ * What each person chooses for themselves, laid over the family's settings
+ * when they ask (lib/context.ts): their voice, their language, and where
+ * their Telegram messages go.
+ */
+export interface Prefs {
+  voice?: string;
+  style?: string;
+  language?: string;
+  telegram?: string;
+}
+
 /** A user as stored: the PIN never leaves this file. */
 interface StoredUser extends User {
   pin?: PinRecord;
+  prefs?: Prefs;
+}
+
+/** Everything about one sign-in that a request needs to know. */
+export interface Place {
+  space: Space;
+  /** The person who claimed the hub: what Jarvis kept before families is theirs. */
+  first: boolean;
+  prefs: Prefs;
 }
 
 export const PIN_SHAPE = /^\d{4,8}$/;
@@ -156,6 +179,7 @@ export interface SignedIn {
   user: User & { hasPin: boolean };
   member: Member;
   scopes: Grant[];
+  place: Place;
 }
 
 const shown = (u: StoredUser): User => ({ id: u.id, name: u.name, createdAt: u.createdAt });
@@ -237,8 +261,41 @@ export class HubHost {
 
   /* ---------- the family ----------------------------------------------------- */
 
-  private async meta(): Promise<{ space?: string }> {
-    return (await this.storage.get<{ space?: string }>(K.meta)) ?? {};
+  private async meta(): Promise<{ space?: string; owner?: string }> {
+    return (await this.storage.get<{ space?: string; owner?: string }>(K.meta)) ?? {};
+  }
+
+  /**
+   * The first person: whoever claimed the hub with the owner key. What Jarvis
+   * kept before there were families (memory, mail, routines, alerts) is
+   * theirs, under the names it always had, so nothing has to move. Found once
+   * — the admin the owner key invited — and remembered.
+   */
+  async firstPerson(): Promise<string | null> {
+    const meta = await this.meta();
+    if (meta.owner) return meta.owner;
+    if (!meta.space) return null;
+    const claimer = (await this.membersOf(meta.space))
+      .filter((m) => m.addedBy === "owner" && m.role === "admin")
+      .sort((a, b) => a.addedAt - b.addedAt)[0];
+    if (!claimer) return null;
+    await this.storage.put(K.meta, { ...meta, owner: claimer.user });
+    return claimer.user;
+  }
+
+  /**
+   * A person as a request made on their behalf needs them: their name, their
+   * family, their choices. "owner" is the first person — the owner key and
+   * devices act as them — and gives what there is before anyone has claimed
+   * the hub: no name, no family.
+   */
+  async personView(person: string): Promise<{ space: Space | null; name: string | null; prefs: Prefs }> {
+    const meta = await this.meta();
+    const space = meta.space ? await this.space(meta.space) : null;
+    const id = person === "owner" ? await this.firstPerson() : person;
+    const u = id ? await this.storedUser(id) : null;
+    if (person !== "owner" && (!u || !space || !(await this.member(space.id, person)))) return { space: null, name: null, prefs: {} };
+    return { space, name: u?.name ?? null, prefs: u?.prefs ?? {} };
   }
 
   private async membersOf(space: string): Promise<Member[]> {
@@ -347,6 +404,26 @@ export class HubHost {
     return shown(next);
   }
 
+  /** A person's own choices; an empty value clears one. */
+  async setPrefs(id: string, patch: Prefs): Promise<Prefs | Fail> {
+    const u = await this.storedUser(id);
+    if (!u) return fail("no such person");
+    const next: Prefs = { ...u.prefs };
+    for (const k of ["voice", "style", "language", "telegram"] as const) {
+      const v = patch[k];
+      if (v === undefined) continue;
+      const clean = typeof v === "string" ? v.replace(/[\u0000-\u001f\u007f]/g, " ").trim().slice(0, k === "style" ? 300 : 40) : "";
+      if (clean) next[k] = clean;
+      else delete next[k];
+    }
+    await this.storage.put(K.user(id), { ...u, prefs: next });
+    return next;
+  }
+
+  async prefsOf(id: string): Promise<Prefs> {
+    return (await this.storedUser(id))?.prefs ?? {};
+  }
+
   /* ---------- PINs, for shared screens ------------------------------------------ */
 
   /** Set a PIN (4 to 8 digits), or with none, remove it: their locked screens open again. */
@@ -432,6 +509,8 @@ export class HubHost {
   async removeMember(space: string, user: string): Promise<{ ended: string[] } | Fail> {
     const m = await this.member(space, user);
     if (!m) return fail("not a member");
+    // Everything Jarvis kept before the family (memory, mail, routines) is theirs.
+    if ((await this.firstPerson()) === user) return fail("the person who set up the family holds what Jarvis kept before it, so they cannot be removed");
     if (m.role === "admin" && (await this.admins(space)) < 2) return fail("the last admin cannot be removed");
     await this.storage.delete(K.member(space, user));
     const ended = await this.endSessionsOf(user);
@@ -673,7 +752,15 @@ export class HubHost {
     const { digest: _, ...visible } = session;
     // Locked means something only while there is a PIN to open it with.
     const locked = !!session.locked && !!user.pin;
-    return { session: { ...visible, locked }, user: { ...shown(user), hasPin: !!user.pin }, member, scopes: scopesOf(member) };
+    const space = await this.space(s.space);
+    if (!space) return null;
+    return {
+      session: { ...visible, locked },
+      user: { ...shown(user), hasPin: !!user.pin },
+      member,
+      scopes: scopesOf(member),
+      place: { space, first: (await this.firstPerson()) === user.id, prefs: user.prefs ?? {} },
+    };
   }
 
   async sessionsOf(user: string): Promise<Omit<Session, "digest">[]> {
@@ -789,6 +876,10 @@ export const HUB_METHODS = [
   "putChallenge",
   "takeChallenge",
   "lookupSession",
+  "firstPerson",
+  "personView",
+  "setPrefs",
+  "prefsOf",
   "setPin",
   "lockSession",
   "unlockSession",

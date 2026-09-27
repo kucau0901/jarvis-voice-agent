@@ -700,9 +700,26 @@ row wait fifteen minutes. This is how a screen several people share (the
 family car) keeps each person's profile theirs.
 
 A member's session reaches what their role allows (admin: everything;
-adult: `ask`, `home`, `voice`, `screen`; child: `ask`, `voice`, `screen`;
-guest: `ask`, `voice`) unless an admin set it otherwise. Changes and
-removals are felt within 30 seconds everywhere.
+adult: `ask`, `home`, `voice`, `screen`, `memory.read`, `memory.write`,
+`family`, `mail`, `calendar`, `media`, `alerts`, `routines`; child: `ask`,
+`voice`, `screen`, `memory.read`, `memory.write`, `calendar`, `alerts`,
+`routines`; guest: `ask`, `voice`) unless an admin set it otherwise.
+Changes and removals are felt within 30 seconds everywhere.
+
+**Everything is the asker's own.** Memory, the Google and Spotify links,
+routines, jobs, alerts, the conversation across devices and usage are kept
+per person. The owner key and devices act as the first person (who set up
+the family), whose data is what Jarvis kept before families. `PATCH
+/api/hub/me {prefs: {voice, language, telegram, style}}` sets a person's own
+voice, language and Telegram chat; an empty value clears one.
+
+- `GET /api/memory?book=family` (and the same on POST, DELETE,
+  `/api/memory/search`): the family's shared memory. Changing it needs
+  `family`.
+- `POST /api/memory/move {id, to: "family" | "mine"}` moves a fact between
+  a person's own memory and the family's (needs `family`).
+- `/api/google/*`, `/api/spotify/*`, `/api/usage` and `/api/hub/*` are for
+  people: any member, for their own; never a device.
 
 ## Not part of this contract
 

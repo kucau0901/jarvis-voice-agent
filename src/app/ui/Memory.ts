@@ -57,6 +57,10 @@ export class Memory {
   private data: Loaded | null = null;
   /** The last Test recall, ranked; null when showing the plain list. */
   private hits: Hit[] | null = null;
+  /** Whose memory is shown: this person's own, or the family's shared one (lib/context.ts). */
+  private book: "mine" | "family" = "mine";
+  /** Whether there is a family memory to show at all. */
+  private hasFamily = false;
 
   constructor(key: string) {
     this.key = key;
@@ -69,7 +73,11 @@ export class Memory {
           <h2>Memory</h2>
           <button class="close" aria-label="Close">Done</button>
         </header>
-        <p class="note">
+        <div class="checks books" hidden>
+          <button class="check on" data-book="mine" type="button">Mine</button>
+          <button class="check" data-book="family" type="button">The family's</button>
+        </div>
+        <p class="note bnote">
           What Jarvis knows about you. Tell it “remember that…” while driving, or add
           something here. Reference material (rosters, directories) is only looked up
           when asked; everything else rides along on every request.
@@ -117,6 +125,13 @@ export class Memory {
     this.list = this.el.querySelector(".list")!;
 
     this.el.querySelector(".close")!.addEventListener("click", () => this.hide());
+    for (const b of this.el.querySelectorAll<HTMLButtonElement>(".books .check")) {
+      b.addEventListener("click", () => {
+        this.book = b.dataset.book === "family" ? "family" : "mine";
+        this.hits = null;
+        void this.load();
+      });
+    }
     this.el.querySelector(".save")!.addEventListener("click", () => void this.add());
     this.el.querySelector(".ftext")!.addEventListener("keydown", (e) => {
       if ((e as KeyboardEvent).key === "Enter") void this.add();
@@ -140,7 +155,16 @@ export class Memory {
   async show(): Promise<void> {
     this.el.classList.add("open");
     this.msg("");
+    // Is there a family memory? Only with a family, and for someone who may read memory.
+    this.hasFamily = await fetch("/api/memory?book=family", { headers: authHeaders(this.key) }).then((r) => r.ok).catch(() => false);
+    this.$(".books").hidden = !this.hasFamily;
+    if (!this.hasFamily) this.book = "mine";
     await this.load();
+  }
+
+  /** A memory route for the book on show. */
+  private path(p: string): string {
+    return this.book === "family" ? `${p}?book=family` : p;
   }
 
   hide(): void {
@@ -170,9 +194,14 @@ export class Memory {
 
   private async load(): Promise<void> {
     try {
-      const res = await fetch("/api/memory", { headers: authHeaders(this.key) });
+      const res = await fetch(this.path("/api/memory"), { headers: authHeaders(this.key) });
       if (!res.ok) throw new Error(`memory ${res.status}`);
       this.data = (await res.json()) as Loaded;
+      for (const b of this.el.querySelectorAll<HTMLElement>(".books .check")) b.classList.toggle("on", b.dataset.book === this.book);
+      this.$(".bnote").textContent =
+        this.book === "family"
+          ? "What the whole family shares: the house, the family doctor, where the spare key is. Everyone who may read memory sees it; adults can change it. Say “remember for the family that…”, or add it here."
+          : "What Jarvis knows about you: only you see it. Tell it “remember that…”, or add something here. Reference material (rosters, directories) is only looked up when asked; everything else rides along on every request.";
       this.render();
     } catch (e) {
       this.msg(`Could not load memory: ${e instanceof Error ? e.message : String(e)}`, true);
@@ -196,7 +225,7 @@ export class Memory {
 
     this.msg("Saving…");
     try {
-      const res = await fetch("/api/memory", {
+      const res = await fetch(this.path("/api/memory"), {
         method: "POST",
         headers: authHeaders(this.key),
         body: JSON.stringify({ text, kind, name, address, pinned }),
@@ -217,7 +246,7 @@ export class Memory {
 
   private async forget(f: Fact): Promise<void> {
     try {
-      const res = await fetch("/api/memory", {
+      const res = await fetch(this.path("/api/memory"), {
         method: "DELETE",
         headers: authHeaders(this.key),
         body: JSON.stringify({ id: f.id }),
@@ -226,6 +255,24 @@ export class Memory {
       if (!res.ok) throw new Error(body.error ?? `status ${res.status}`);
       if (this.hits) this.hits = this.hits.filter((h) => h.id !== f.id);
       this.msg(`Forgot “${f.text}”.`);
+      await this.load();
+    } catch (e) {
+      this.msg(`That did not work: ${e instanceof Error ? e.message : String(e)}`, true);
+    }
+  }
+
+  /** From this person's memory to the family's, or back (routes/memory.ts). */
+  private async move(f: Fact): Promise<void> {
+    const to = this.book === "family" ? "mine" : "family";
+    try {
+      const res = await fetch("/api/memory/move", {
+        method: "POST",
+        headers: authHeaders(this.key),
+        body: JSON.stringify({ id: f.id, to }),
+      });
+      const body = (await res.json()) as { error?: string };
+      if (!res.ok) throw new Error(body.error ?? `status ${res.status}`);
+      this.msg(to === "family" ? `Moved to the family's: “${f.text}”.` : `Moved to yours: “${f.text}”.`);
       await this.load();
     } catch (e) {
       this.msg(`That did not work: ${e instanceof Error ? e.message : String(e)}`, true);
@@ -243,7 +290,7 @@ export class Memory {
       return;
     }
     try {
-      const res = await fetch("/api/memory/search", {
+      const res = await fetch(this.path("/api/memory/search"), {
         method: "POST",
         headers: authHeaders(this.key),
         body: JSON.stringify({ query }),
@@ -272,7 +319,10 @@ export class Memory {
       <div class="fact" data-id="${esc(f.id)}">
         <div class="ftxt">${esc(f.text)}</div>
         <div class="meta">${meta.join(" · ")}</div>
-        <button class="forget">Forget</button>
+        <div class="rowbtns">
+          ${this.hasFamily ? `<button class="move">${this.book === "family" ? "Move to mine" : "Move to the family's"}</button>` : ""}
+          <button class="forget">Forget</button>
+        </div>
       </div>`;
   }
 
@@ -328,6 +378,7 @@ export class Memory {
     for (const el of this.list.querySelectorAll<HTMLElement>(".fact")) {
       const f = byId.get(el.dataset.id!);
       if (f) arm(el.querySelector<HTMLButtonElement>(".forget")!, "Forget it?", () => this.forget(f));
+      if (f) el.querySelector(".move")?.addEventListener("click", () => void this.move(f));
     }
 
     const trash = this.$(".trash");

@@ -37,7 +37,7 @@ export const sendNote: Tool = {
   async run(args, ctx) {
     const state = stateStub(ctx.env);
     if (!state) return "Notes cannot be sent on this deployment: it has no state object.";
-    const alert = makeAlert({ title: args.title ?? undefined, text: args.text, speak: false }, "note");
+    const alert = makeAlert({ title: args.title ?? undefined, text: args.text, speak: false }, "note", Date.now(), ctx.env.JARVIS_PERSON);
     if (!alert) return "Nothing was sent: the note was empty.";
     const d = await deliver(ctx.env, state, alert, { skipLive: true });
     if (d.deliveredBy) return `Sent, by ${d.deliveredBy}.`;

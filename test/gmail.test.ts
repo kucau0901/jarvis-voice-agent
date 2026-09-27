@@ -99,17 +99,18 @@ check("a mail grant allows mail", allows(["mail"], "mail"));
 check("an ask-only grant does not", !allows(["ask"], "mail"));
 check("the wildcard allows mail", allows(["*"], "mail"));
 
-// Linking and unlinking touch the credential itself, so they are the owner's
-// business however many scopes a device carries.
-check("/api/google/auth is owner-only", requiredScope("/api/google/auth", "GET") === "owner");
-check("/api/google/status is owner-only", requiredScope("/api/google/status", "GET") === "owner");
+// Linking and unlinking touch the credential itself: each person their own,
+// and never a device, however many scopes it carries.
+// Each person links their own; a device never can, whatever its scopes (index.ts).
+check("/api/google/auth is a person's own", requiredScope("/api/google/auth", "GET") === "person");
+check("/api/google/status is a person's own", requiredScope("/api/google/status", "GET") === "person");
 check(
-  "/api/google/unlink is owner-only",
-  requiredScope("/api/google/unlink", "POST") === "owner",
+  "/api/google/unlink is a person's own",
+  requiredScope("/api/google/unlink", "POST") === "person",
 );
 // Mirrors the prefix matching in index.ts: an unknown /api/google* path must
 // not fall through to the default branch by accident.
-check("an unknown google path stays owner-only", requiredScope("/api/googleanything", "GET") === "owner");
+check("an unknown google path is still never a device's", requiredScope("/api/googleanything", "GET") === "person");
 
 console.log("\ntool registration");
 

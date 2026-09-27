@@ -1,10 +1,11 @@
 import type { Env } from "../types";
 import { err, json, publicOrigin } from "../lib/http.ts";
-import { grantsOf, isAdmin, type Principal } from "../lib/auth.ts";
+import { grantsOf, isAdmin, personOf, type Principal } from "../lib/auth.ts";
+import { TTS_VOICES } from "../lib/speech.ts";
 import { burst } from "../lib/limits.ts";
 import { SCOPES, type Grant } from "../lib/scopes.ts";
-import { ROLES, ROLE_SCOPES, type HubApi } from "../lib/hub.ts";
-import { forgetSessions, hubStub } from "../lib/hub-client.ts";
+import { ROLES, ROLE_SCOPES, type HubApi, type Prefs } from "../lib/hub.ts";
+import { forgetPerson, forgetSessions, hubStub } from "../lib/hub-client.ts";
 import { sha256Hex } from "../lib/devices.ts";
 import { stateStub } from "../lib/state-client.ts";
 import {
@@ -61,6 +62,20 @@ import {
  *   POST   /api/hub/unlock                   {pin}: take it back up (the one thing a locked session may do)
  *   PATCH  /api/hub/members                  admin: {user, clearPin: true} for a forgotten PIN
  */
+
+/** What is wrong with a person's choices, or null. An empty value clears one. */
+function prefsProblem(p: Record<string, unknown>): string | null {
+  const s = (k: string) => (typeof p[k] === "string" ? (p[k] as string).trim() : p[k] == null ? "" : null);
+  const voice = s("voice");
+  const language = s("language");
+  const telegram = s("telegram");
+  const style = s("style");
+  if (voice === null || language === null || telegram === null || style === null) return "each choice is text";
+  if (voice && !(TTS_VOICES as readonly string[]).includes(voice)) return `voice must be one of ${TTS_VOICES.join(", ")}`;
+  if (language && !/^[a-z]{2,3}(-[A-Za-z0-9]{2,8})?$/.test(language)) return "language is a tag such as en, ms or en-GB";
+  if (telegram && !/^(-?\d{3,20}|@[A-Za-z0-9_]{4,32})$/.test(telegram)) return "the Telegram chat is a number (or @channel); the bot tells you yours";
+  return null;
+}
 
 /** The digest of the session this request came with. */
 async function sessionDigest(req: Request): Promise<string> {
@@ -213,6 +228,17 @@ export async function handleHub(req: Request, env: Env, principal: Principal): P
   if (p === "/api/hub/me") {
     if (m === "PATCH") {
       if (!me) return err(400, "the owner key is not a person; sign in with a passkey to have a name");
+      if (b.prefs !== undefined) {
+        // Their own voice, language and Telegram chat (lib/context.ts), checked before they are kept.
+        const raw = (b.prefs && typeof b.prefs === "object" ? b.prefs : {}) as Record<string, unknown>;
+        const bad = prefsProblem(raw);
+        if (bad) return err(400, bad);
+        const r = await hub.setPrefs(me.id, raw as Prefs);
+        if ("error" in r) return err(400, r.error);
+        forgetSessions([await sessionDigest(req)]);
+        forgetPerson(personOf(principal));
+        if (b.name === undefined) return json({ prefs: r });
+      }
       const u = await hub.renameUser(me.id, b.name);
       return "error" in u ? err(400, u.error) : json({ name: u.name });
     }
@@ -224,6 +250,7 @@ export async function handleHub(req: Request, env: Env, principal: Principal): P
       space: s ? { name: s.name, agentName: s.agentName } : null,
       user: me ? { id: me.id, name: me.name } : null,
       role: me ? me.role : "admin",
+      prefs: me?.place?.prefs ?? {},
       // What this person may reach, so the app offers only that.
       scopes: me?.locked ? [] : grantsOf(principal),
       session: me ? me.session : null,
@@ -273,11 +300,14 @@ export async function handleHub(req: Request, env: Env, principal: Principal): P
 
   if (p === "/api/hub/members") {
     if (m === "GET") {
+      const first = await hub.firstPerson();
       const members = (await hub.members(space)).map((x) => ({
         id: x.user,
         name: x.name,
         role: x.role,
         you: me?.id === x.user,
+        // What Jarvis kept before the family is theirs, recorded as "owner" (lib/context.ts).
+        first: x.user === first,
         ...(admin ? { scopes: x.scopesNow, custom: !!x.scopes, passkeys: x.passkeys, hasPin: x.hasPin, lastSeenAt: x.lastSeenAt, addedAt: x.addedAt } : {}),
       }));
       return json({

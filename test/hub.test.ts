@@ -91,7 +91,7 @@ let memberId = "";
   check("the name they give is used", joined.user.name === "Sara M");
   const who = await lookup(hub, memberToken, T0 + 13);
   check("an adult reaches what the role allows", who?.member.role === "adult" && who.scopes.join() === ROLE_SCOPES.adult.join());
-  check("and nothing of the admin's own (memory, mail, car)", !who!.scopes.some((s) => s.startsWith("memory") || s === "mail" || s.startsWith("car")));
+  check("their own memory and mail, but not the car or Hermes", who!.scopes.includes("memory.read") && who!.scopes.includes("mail") && !who!.scopes.some((s) => s.startsWith("car") || s === "hermes"));
   check("used invites are no longer listed", (await hub.invites(space, T0 + 14)).length === 0);
 
   const late = ok(await hub.createInvite(space, { role: "child", name: "Kid" }, adminId, T0));
@@ -138,7 +138,7 @@ console.log("\nroles and reach");
   const reset = ok(await hub.updateMember(space, memberId, { scopes: null }));
   check("and put it back to the role's", reset.scopes === undefined && scopesOf(reset).join() === ROLE_SCOPES.adult.join());
   check("the last admin cannot step down", errorOf(await hub.updateMember(space, adminId, { role: "adult" })).includes("needs an admin"));
-  check("nor be removed", errorOf(await hub.removeMember(space, adminId)).includes("last admin"));
+  check("nor be removed", errorOf(await hub.removeMember(space, adminId)).includes("cannot be removed"));
   ok(await hub.updateMember(space, memberId, { role: "admin" }));
   check("with a second admin, the first can step down", !("error" in (await hub.updateMember(space, adminId, { role: "adult" }))));
   ok(await hub.updateMember(space, adminId, { role: "admin" }));
@@ -193,6 +193,21 @@ console.log("\nchallenges");
   for (let i = 0; i < 200; i++) await h2.putChallenge({ challenge: `c${i}`, purpose: "login" }, T0);
   check("strangers cannot pile up challenges without end", errorOf(await h2.putChallenge({ challenge: "one-more", purpose: "login" }, T0)).includes("too many"));
   check("once they expire, there is room again", (await h2.putChallenge({ challenge: "later", purpose: "login" }, T0 + 6 * 60_000)) === true);
+}
+
+console.log("\nthe first person, and what each person chooses");
+{
+  check("the first person is whoever the owner key invited as admin", (await hub.firstPerson()) === adminId);
+  const view = await hub.personView("owner");
+  check("the owner key acts as them", view.name === "Adam" && view.space?.id === space);
+  check("anyone else is themselves", (await hub.personView("u_nobody")).space === null);
+  const who = await lookup(hub, adminToken, T0 + 900);
+  check("their session says so", who?.place.first === true && who.place.space.agentName === "Jarvis");
+  const prefs = await hub.setPrefs(adminId, { voice: "marin", language: "ms", telegram: " 12345 ", style: "" });
+  check("a person's choices are kept, trimmed", !("error" in prefs) && prefs.voice === "marin" && prefs.telegram === "12345" && !("style" in prefs));
+  check("and ride along with their session", (await lookup(hub, adminToken, T0 + 901))?.place.prefs.language === "ms");
+  const cleared = await hub.setPrefs(adminId, { language: "" });
+  check("an empty value clears one", !("error" in cleared) && cleared.language === undefined && cleared.voice === "marin");
 }
 
 console.log("\nPINs, for a screen several people share");

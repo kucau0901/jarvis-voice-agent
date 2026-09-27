@@ -157,11 +157,14 @@ console.log("\nroute requirements — fail closed is the whole point");
   check("mcp is owner-only", requiredScope("/api/mcp", "GET") === "owner");
   check("/api/mcp/call is owner-only", requiredScope("/api/mcp/call", "POST") === "owner");
   check("the prefix gap is closed", requiredScope("/api/mcpanything", "POST") === "owner");
-  check("spotify is owner-only", requiredScope("/api/spotify/status", "GET") === "owner");
+  // Each person links their own; a device never can, whatever its scopes (index.ts).
+  check("spotify is a person's own", requiredScope("/api/spotify/auth", "GET") === "person");
+  check("so is google", requiredScope("/api/google/auth", "GET") === "person");
   check("device management is owner-only", requiredScope("/api/v1/devices", "POST") === "owner");
 
   check("memory read is readable", requiredScope("/api/memory", "GET") === "memory.read");
-  check("memory write is owner-only", requiredScope("/api/memory", "PUT") === "owner");
+  // A person's own memory; devices are refused writes in the route itself (routes/memory.ts).
+  check("memory write needs memory.write", requiredScope("/api/memory", "PUT") === "memory.write");
   check("memory search needs memory.read", requiredScope("/api/memory/search", "POST") === "memory.read");
   check("camera needs home", requiredScope("/api/camera", "GET") === "home");
   check("map needs screen", requiredScope("/api/map", "GET") === "screen");
