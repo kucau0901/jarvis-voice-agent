@@ -4,6 +4,7 @@ import { grantsOf, isAdmin, personOf, type Principal } from "../lib/auth.ts";
 import { TTS_VOICES } from "../lib/speech.ts";
 import { tessieVehicles } from "../tools/tessie.ts";
 import { usePass } from "../tools/pass.ts";
+import { haConfig, passThings } from "../lib/ha.ts";
 import { passActions } from "../lib/access.ts";
 import { burst } from "../lib/limits.ts";
 import { SCOPES, type Grant } from "../lib/scopes.ts";
@@ -358,6 +359,18 @@ export async function handleHub(req: Request, env: Env, principal: Principal): P
       return r === true ? json({ ok: true }) : err(400, r.error);
     }
     return err(405, "method not allowed");
+  }
+
+  if (p === "/api/hub/house" && m === "GET") {
+    // For an admin choosing a guest's pass: the things in the house it could work, by name.
+    if (!admin) return err(403, "only an admin chooses what a pass may work");
+    const ha = haConfig(env);
+    if (!ha) return err(409, "the house is not connected: set Home Assistant up in Settings");
+    try {
+      return json({ things: await passThings(ha) });
+    } catch (e) {
+      return err(502, `the house did not answer: ${(e instanceof Error ? e.message : String(e)).slice(0, 120)}`);
+    }
   }
 
   if (p === "/api/hub/pass" && m === "POST") {

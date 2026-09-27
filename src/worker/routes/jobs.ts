@@ -1,3 +1,4 @@
+import { openaiBase } from "../lib/openai-base.ts";
 import OpenAI from "openai";
 import type { Env } from "../types";
 import { whoOf, grantsOf, personOf, type Principal } from "../lib/auth";
@@ -69,7 +70,7 @@ const researchLimit = (raw: string | undefined): number => {
 
 /** The engine, bound to an environment: what the Durable Object runs jobs with. */
 export function jobEngine(env: Env, deliver: JobDeps["deliver"], envFor: (job: Job) => Promise<Env> = async () => env): JobDeps {
-  const client = () => new OpenAI({ apiKey: env.OPENAI_API_KEY });
+  const client = () => new OpenAI({ apiKey: env.OPENAI_API_KEY, baseURL: openaiBase(env) });
   const signal = () => AbortSignal.timeout(60_000);
 
   async function request(job: Job, turns: { role: "user"; text: string }[]) {

@@ -1,3 +1,4 @@
+import { openaiBase } from "../lib/openai-base.ts";
 import OpenAI from "openai";
 import type { Env } from "../types";
 import { json, err, redact } from "../lib/http";
@@ -96,7 +97,7 @@ async function state(env: Env, justStored?: unknown) {
 async function listModels(env: Env): Promise<{ ids?: string[]; error?: string }> {
   if (!env.OPENAI_API_KEY) return { error: "OPENAI_API_KEY is not set" };
   try {
-    const r = await fetch("https://api.openai.com/v1/models", {
+    const r = await fetch(`${openaiBase(env)}/models`, {
       headers: { Authorization: `Bearer ${env.OPENAI_API_KEY}` },
     });
     if (!r.ok) return { error: `OpenAI answered ${r.status}` };
@@ -153,7 +154,7 @@ const HOP_TIMEOUT_MS = 30_000;
  */
 async function probeModel(env: Env, model: string): Promise<ProbeResult> {
   if (!env.OPENAI_API_KEY) return { ok: false, model, stage: "call", error: "OPENAI_API_KEY is not set" };
-  const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+  const client = new OpenAI({ apiKey: env.OPENAI_API_KEY, baseURL: openaiBase(env) });
   const tools = [PROBE_TOOL, ...builtinTools(env)];
   let stage: "call" | "chain" = "call";
   let toolMs: number | undefined;

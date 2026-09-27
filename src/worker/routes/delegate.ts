@@ -1,3 +1,4 @@
+import { openaiBase } from "../lib/openai-base.ts";
 import OpenAI from "openai";
 import type { Env } from "../types";
 import { err, redact } from "../lib/http";
@@ -549,7 +550,7 @@ export async function prepareRouter(
   }
 
 
-  const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+  const client = new OpenAI({ apiKey: env.OPENAI_API_KEY, baseURL: openaiBase(env) });
   // Chosen in settings (lib/router-model.ts). `let`, because a first hop the
   // chosen model rejects is retried on the default and the rest follows it.
   const model = chosen.model;

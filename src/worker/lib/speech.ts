@@ -1,3 +1,4 @@
+import { openaiBase } from "./openai-base.ts";
 import type { Env } from "../types";
 import { localeOf } from "./locale.ts";
 import type { MemoryDoc } from "./memory.ts";
@@ -158,7 +159,7 @@ export async function transcribe(env: Env, audio: ArrayBuffer, mime: string, hin
   form.append("model", "gpt-4o-mini-transcribe");
   form.append("prompt", hints);
   form.append("response_format", "json");
-  const r = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+  const r = await fetch(`${openaiBase(env)}/audio/transcriptions`, {
     method: "POST",
     headers: { Authorization: `Bearer ${env.OPENAI_API_KEY}` },
     body: form,
@@ -218,7 +219,7 @@ export async function synthesize(env: Env, text: string, format: AudioFormat = "
   }
 
   if (!env.OPENAI_API_KEY) return { ok: false, error: "no OpenAI key is set" };
-  const r = await fetch("https://api.openai.com/v1/audio/speech", {
+  const r = await fetch(`${openaiBase(env)}/audio/speech`, {
     method: "POST",
     headers: { Authorization: `Bearer ${env.OPENAI_API_KEY}`, "Content-Type": "application/json" },
     body: JSON.stringify({

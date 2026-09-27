@@ -1,3 +1,4 @@
+import { openaiBase } from "../lib/openai-base.ts";
 import type { Env } from "../types";
 import { json } from "../lib/http";
 import { ping, hermesConfig, orderAccessPair } from "../tools/hermes";
@@ -21,7 +22,7 @@ export async function handleDiag(_req: Request, env: Env): Promise<Response> {
     if (!env.OPENAI_API_KEY) return { configured: false };
     try {
       const started = Date.now();
-      const r = await fetch("https://api.openai.com/v1/models", {
+      const r = await fetch(`${openaiBase(env)}/models`, {
         headers: { Authorization: `Bearer ${env.OPENAI_API_KEY}` },
       });
       const ms = Date.now() - started;

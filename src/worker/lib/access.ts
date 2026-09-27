@@ -1,4 +1,4 @@
-import { localParts } from "./routines.ts";
+import { localParts, zonedToUtc } from "./routines.ts";
 
 /**
  * Limits on one member, set by an admin: for a guest, and for a child.
@@ -97,6 +97,23 @@ export function allowedNow(a: Access | undefined, now: number, timeZone: string)
   const day = from > to && t < to ? (p.dow + 6) % 7 : p.dow;
   if (inWindow && (!a.hours.days || a.hours.days.includes(day))) return { ok: true };
   return { ok: false, why: `Jarvis is yours ${hoursSaid(a.hours)}; ask again then` };
+}
+
+/**
+ * When their hours next begin, if they are outside them now: what an alert
+ * for them waits for (lib/alerts.ts). Null when they are inside, have no
+ * hours, or have none left (access ended).
+ */
+export function nextAllowed(a: Access | undefined, now: number, timeZone: string): number | null {
+  if (!a?.hours || allowedNow(a, now, timeZone).ok) return null;
+  if (a.until !== undefined && now >= a.until) return null;
+  const from = a.hours.from.split(":").map(Number) as [number, number];
+  for (let d = 0; d <= 8; d++) {
+    const p = localParts(now + d * 86_400_000, timeZone);
+    const start = zonedToUtc(p.y, p.mo, p.d, from[0], from[1], timeZone);
+    if (start > now && allowedNow(a, start + 1000, timeZone).ok) return a.until !== undefined && start >= a.until ? null : start;
+  }
+  return null;
 }
 
 /**

@@ -1,3 +1,4 @@
+import { openaiBase } from "./openai-base.ts";
 import type { Env } from "../types";
 import type { Fact, Hit } from "./memory.ts";
 
@@ -100,7 +101,7 @@ export function cosine(a: Float32Array, b: Float32Array): number {
 /** Embed several texts in one call; null if it cannot be done (no key, OpenAI down). */
 export async function embed(env: Env, texts: string[]): Promise<Float32Array[] | null> {
   if (!env.OPENAI_API_KEY || !texts.length) return null;
-  const r = await fetch("https://api.openai.com/v1/embeddings", {
+  const r = await fetch(`${openaiBase(env)}/embeddings`, {
     method: "POST",
     headers: { Authorization: `Bearer ${env.OPENAI_API_KEY}`, "Content-Type": "application/json" },
     body: JSON.stringify({ model: EMBED_MODEL, input: texts, dimensions: EMBED_DIMS, encoding_format: "base64" }),

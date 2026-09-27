@@ -103,13 +103,18 @@ Ask Jarvis, by voice or typing, as you would ask anyone at home:
   you, wherever you are.
 - **"Tell everyone dinner is at eight."** Or **"ask everyone where we should
   eat on Saturday"**: each answers, and when all have, you hear the answers
-  together.
+  together. Everyone means the family, not a guest.
 - **"Did Aisyah get my message?"**, **"what's still open?"**: Jarvis knows
   what became of each.
 
-Unanswered, a reminder or question nudges once after half an hour; after an
-hour, you are told it has not been answered. A day after it was due, it is
+Unanswered, a reminder or question nudges once halfway through its time to
+answer, and when that is up you are told. The time is an hour unless you
+change it (Settings → Alerts → **Time to answer**), or say otherwise: "ask
+Adam to call the plumber, within 15 minutes". A day after it was due, it is
 let go.
+
+A guest cannot answer messages, so Jarvis will tell them something but not
+remind or ask them, and they are not in the chat.
 
 **"When she gets home"** needs to know where she is: her person in Home
 Assistant, which follows her phone (Family → You → **Getting home**, or an
@@ -136,13 +141,16 @@ on their card in Members (**Limits**), or when inviting them.
 - **Only between** two times, on chosen days: a helper's working hours
   ("08:00 to 17:00, Mondays to Fridays"), or a child's waking hours (07:00 to
   21:00 is quiet time from nine at night). Outside them Jarvis does not answer
-  them, on any screen or device of theirs, and says when it will.
-- **A pass**: only these things in the house, by their Home Assistant entity,
-  with a name (`cover.main_gate`, *Main gate*). A guest with a pass gets a
-  button for each in Family, and Jarvis works those for them and nothing
-  else. Give a guest no `home` permission (the guest role has none), so the
-  pass is all the house they reach. Covers, switches, lights, locks,
-  buttons, scripts and scenes can be on a pass.
+  them, on any screen or device of theirs, and says when it will. What is
+  passed on to them then, or any alert for them, waits: it reaches them
+  when their hours begin, not in the night.
+- **A pass**: only these things in the house. Tick them in the list of what
+  your Home Assistant has, by name (the gate, the porch light), or type one
+  it does not list by its entity (`cover.main_gate`). A guest with a pass
+  gets a button for each in Family, and Jarvis works those for them and
+  nothing else. Give a guest no `home` permission (the guest role has none),
+  so the pass is all the house they reach. Covers, switches, lights, locks,
+  buttons, scripts, scenes and fans can be on a pass.
 
 For a child, the child role already leaves out mail and the family's
 changes; limits add quiet time.
@@ -156,8 +164,9 @@ Routines can pass something on, on a schedule, instead of telling you:
   **Done** earns the points. **Family → Chores** shows the tally; an admin
   can start it again. "Who has the most points?" works too.
 - **A check-in**: "every day at ten, ask Grandma if she is well, and tell the
-  family if she doesn't answer". If she has not answered after an hour (after
-  one nudge), everyone in the family is told, on every channel.
+  family if she doesn't answer". If she has not answered in the time to
+  answer (after one nudge), everyone in the family is told, on every
+  channel; guests are not. "…within 30 minutes" sets a shorter time for it.
 - **Medicine**: "at eight in the morning and evening, remind Grandpa to take
   his tablets, and tell us if he doesn't". The same: Done, or the family hears.
 

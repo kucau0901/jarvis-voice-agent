@@ -72,6 +72,8 @@ export interface Delivery {
   attempts: Attempt[];
   /** The channel that got it through, or null if none did. */
   deliveredBy: Channel | null;
+  /** Kept for someone's quiet time, until then (ms). */
+  heldUntil?: number;
 }
 
 /* ---------- the list ------------------------------------------------------- */
@@ -157,6 +159,10 @@ export interface LiveResult {
  * object itself passes itself (for routines), the tests pass a fake.
  */
 export interface AlertState {
+  /** When someone's quiet time ends, if they are in it now (lib/access.ts nextAllowed). */
+  quietUntil?(person: string): Promise<number | null>;
+  /** Keep an alert until then, and deliver it at that time (state.ts). */
+  hold?(alert: Alert, until: number): Promise<void>;
   /** To the open screens of whoever the alert is for. */
   broadcast(alert: Alert, waitMs: number): Promise<LiveResult>;
   /** The browsers of this person ("owner" for the first person) that turned notifications on. */
@@ -188,6 +194,21 @@ export async function deliver(
   const every = opts.every || alert.urgent;
   const attempts: Attempt[] = [];
   let deliveredBy: Channel | null = null;
+
+  /*
+   * Someone in their quiet time (a child at night, a helper off duty) gets it
+   * when their hours begin, not now. Never for something urgent: a check-in
+   * nobody answered reaches everyone at once.
+   */
+  if (alert.for && !alert.urgent && state.quietUntil && state.hold) {
+    const until = await state.quietUntil(alert.for).catch(() => null);
+    if (until) {
+      await state.hold(alert, until);
+      const d: Delivery = { alert, attempts, deliveredBy: null, heldUntil: until };
+      await state.logDelivery(d).catch(() => {});
+      return d;
+    }
+  }
 
   for (const channel of parseOrder(env.ALERT_ORDER)) {
     if (channel === "live" && opts.skipLive) continue;

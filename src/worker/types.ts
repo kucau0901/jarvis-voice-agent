@@ -32,6 +32,11 @@ export interface Env {
   /** A guest's pass (lib/access.ts), as JSON: the only things in the house they may work. */
   JARVIS_PASS?: string;
 
+  /** Minutes someone has to answer something passed on to them (lib/relays.ts). Default 60. */
+  RELAY_ANSWER_MIN?: string;
+  /** An OpenAI-compatible gateway instead of OpenAI itself (lib/openai-base.ts). */
+  OPENAI_BASE_URL?: string;
+
   /** OpenAI key. Worker-only — it must never be sent to the browser. */
   OPENAI_API_KEY: string;
   /** Shared secret gating every /api/* route. */

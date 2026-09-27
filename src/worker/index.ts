@@ -156,7 +156,11 @@ export default {
         return withCors(err(403, `${who} not granted "${need}"`, { need, has: scoped.scopes }), origin, env);
       }
 
-      const verdict = await limits.check(env, scoped.id);
+      // A device's allowance: glasses and ESP32s call on their own, and a leaked
+      // token is spent by nobody watching. A person signed in is not counted
+      // this way: the app alone reads their chat every few seconds, and what
+      // they spend shows, person by person, in Usage.
+      const verdict = scoped.kind === "device" ? await limits.check(env, scoped.id) : ({ ok: true, counted: true } as const);
       if (!verdict.ok) {
         const message = limits.limitMessage(verdict.reason);
         const headers = new Headers({ "content-type": "application/json" });

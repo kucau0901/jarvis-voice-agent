@@ -383,6 +383,12 @@ export const SETTINGS: readonly SettingDef[] = [
     validate: validateOrder,
   },
   {
+    name: "RELAY_ANSWER_MIN", group: "alerts", kind: "number", default: "60",
+    label: "Time to answer (minutes)",
+    help: "How long someone has to answer a reminder or question passed on to them: nudged halfway, then the sender is told (or, for a check-in or medicine, the whole family). A message or routine can say otherwise.",
+    validate: (v) => (/^\d+$/.test(v) && +v >= 2 && +v <= 1440 ? null : "2 to 1440 minutes"),
+  },
+  {
     name: "TELEGRAM_BOT_TOKEN", group: "alerts", kind: "secret",
     label: "Telegram bot token", help: "Message @BotFather, /newbot. Looks like 123456:ABC-DEF…",
     validate: (v) => (/^\d{5,}:[A-Za-z0-9_-]{30,}$/.test(v) ? null : "should look like 123456789:AA… (digits, a colon, then letters)"),
@@ -476,6 +482,20 @@ export const SETTINGS: readonly SettingDef[] = [
   },
 
   // --- Advanced
+  {
+    name: "OPENAI_BASE_URL", group: "advanced", kind: "url",
+    label: "OpenAI address",
+    help: "Empty for OpenAI itself. An OpenAI-compatible gateway (ending /v1) that a company requires, or a stand-in for testing.",
+    validate: (v) => {
+      try {
+        const u = new URL(v);
+        if (u.protocol === "https:") return null;
+        return u.protocol === "http:" && ["localhost", "127.0.0.1"].includes(u.hostname) ? null : "must start with https:// (http:// only on this machine)";
+      } catch {
+        return "is not a URL";
+      }
+    },
+  },
   {
     name: "PUBLIC_URL", group: "advanced", kind: "url",
     label: "Public address",

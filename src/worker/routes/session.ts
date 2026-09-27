@@ -1,3 +1,4 @@
+import { openaiBase } from "../lib/openai-base.ts";
 import OpenAI from "openai";
 import type { Env } from "../types";
 import { json, err } from "../lib/http";
@@ -43,7 +44,7 @@ export async function handleSession(req: Request, env: Env): Promise<Response> {
   const clientKind = isClientKind(body.client) ? body.client : "car";
 
   const input = buildHistory(body.history);
-  const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+  const client = new OpenAI({ apiKey: env.OPENAI_API_KEY, baseURL: openaiBase(env) });
 
   try {
     const result = await client.live.create({

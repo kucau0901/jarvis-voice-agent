@@ -54,6 +54,8 @@ export interface Relay {
   escalate?: boolean;
   /** The routine that made it. */
   routine?: string;
+  /** How long they have to answer (minutes): nudged halfway, then the sender (or family) is told. */
+  answerMin?: number;
   /** When the alarm next looks at it; none once there is nothing more to do. */
   nextCheck?: number;
 }
@@ -68,13 +70,19 @@ export interface RelayDeps {
   markPosted(between: [string, string], relayId: string, note: string): Promise<void>;
   /** For saying when something later will go. */
   timeZone?: string;
+  /** The family's time to answer, in minutes (Settings: RELAY_ANSWER_MIN). */
+  answerMin?: number;
   /** A chore done: its points to them. */
   award?(person: string, points: number): Promise<void>;
   /** Everyone in the family, for a check-in nobody answered. */
   family?(): Promise<string[]>;
 }
 
-export const FOLLOW_MS = 30 * 60_000;
+/** How long someone has to answer, unless said otherwise: nudged halfway, the sender told at the end. */
+export const ANSWER_MIN = 60;
+export const FOLLOW_MS = (ANSWER_MIN / 2) * 60_000;
+/** Half the time to answer, for a relay: when the nudge goes. */
+const halfOf = (r: Relay) => ((r.answerMin ?? ANSWER_MIN) / 2) * 60_000;
 export const GIVE_UP_MS = 24 * 3600_000;
 const HOME_CHECK_MS = 60_000;
 const KEEP_MS = 7 * 24 * 3600_000;
@@ -127,9 +135,13 @@ export class Relays {
       points?: number;
       escalate?: boolean;
       routine?: string;
+      answerMin?: number;
     },
     now = Date.now(),
   ): Promise<Relay[] | string> {
+    const deps0 = await this.deps();
+    const answerMin = Math.round(input.answerMin ?? deps0.answerMin ?? ANSWER_MIN);
+    if (!Number.isFinite(answerMin) || answerMin < 2 || answerMin > 1440) return "the time to answer is 2 minutes to a day";
     const text = input.text.replace(/[\u0000-\u001f\u007f]/g, " ").trim().slice(0, MAX_TEXT);
     if (!text) return "there is nothing to pass on";
     if (!input.to.length) return "nobody to pass it on to";
@@ -153,6 +165,7 @@ export class Relays {
         ...(input.points ? { points: input.points } : {}),
         ...(input.escalate ? { escalate: true } : {}),
         ...(input.routine ? { routine: input.routine } : {}),
+        ...(answerMin !== ANSWER_MIN ? { answerMin } : {}),
         status: "waiting",
         createdAt: now,
         nextCheck: input.after && input.after > now ? input.after : now,
@@ -291,16 +304,16 @@ export class Relays {
       await this.save({ ...r, status: "expired", nextCheck: undefined });
       return;
     }
-    if (!r.nudged && now - r.sentAt >= FOLLOW_MS) {
+    if (!r.nudged && now - r.sentAt >= halfOf(r)) {
       await this.send({ ...r, nudged: true }, deps, now, true);
       return;
     }
-    if (r.nudged && !r.toldSender && now - r.sentAt >= 2 * FOLLOW_MS) {
+    if (r.nudged && !r.toldSender && now - r.sentAt >= 2 * halfOf(r)) {
       if (r.escalate) {
         // A check-in or medicine nobody answered: the whole family hears, on every channel.
         const everyone = (await deps.family?.().catch(() => null)) ?? [r.from];
         for (const who of new Set([r.from, ...everyone].filter((p) => p !== r.to))) {
-          const a = makeAlert({ title: `No answer from ${r.toName}`, text: `${r.toName} hasn't answered in an hour: ${r.text}`, speak: true, urgent: true }, "relay", now, who);
+          const a = makeAlert({ title: `No answer from ${r.toName}`, text: `${r.toName} hasn't answered in ${(r.answerMin ?? ANSWER_MIN) >= 120 ? `${Math.round((r.answerMin ?? ANSWER_MIN) / 60)} hours` : `${r.answerMin ?? ANSWER_MIN} minutes`}: ${r.text}`, speak: true, urgent: true }, "relay", now, who);
           if (a) await deps.deliver(a).catch(() => null);
         }
       } else {
@@ -332,7 +345,7 @@ export class Relays {
       ...r,
       status: "sent",
       sentAt,
-      ...(closed ? { nextCheck: undefined } : { nextCheck: nudge ? sentAt + 2 * FOLLOW_MS : sentAt + FOLLOW_MS }),
+      ...(closed ? { nextCheck: undefined } : { nextCheck: nudge ? sentAt + 2 * halfOf(r) : sentAt + halfOf(r) }),
     });
   }
 }

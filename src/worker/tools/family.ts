@@ -53,8 +53,12 @@ export const passOn: Tool = {
       },
       in_minutes: { type: ["integer", "null"], description: "Or this many minutes from now." },
       when_home: { type: ["boolean", "null"], description: "Not until they are home (their Home Assistant person)." },
+      answer_within_minutes: {
+        type: ["integer", "null"],
+        description: "For remind or ask: how long they have before the user hears it went unanswered (nudged halfway). Null for the family's usual.",
+      },
     },
-    required: ["to", "kind", "text", "local_time", "in_minutes", "when_home"],
+    required: ["to", "kind", "text", "local_time", "in_minutes", "when_home", "answer_within_minutes"],
     additionalProperties: false,
   },
   async run(args, ctx) {
@@ -78,6 +82,7 @@ export const passOn: Tool = {
       text: String(args.text ?? ""),
       ...(after ? { after } : {}),
       whenHome: args.when_home === true,
+      ...(Number.isInteger(args.answer_within_minutes) ? { answerMin: Number(args.answer_within_minutes) } : {}),
     });
     if (typeof r === "string") return `Not passed on: ${r}.`;
     const names = r.relays.map((x) => x.toName).join(", ");

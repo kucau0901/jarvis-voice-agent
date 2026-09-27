@@ -1,5 +1,5 @@
 import { sha256Hex } from "./devices.ts";
-import { WILDCARD, saneGrants, type Grant } from "./scopes.ts";
+import { WILDCARD, allows, saneGrants, type Grant } from "./scopes.ts";
 import type { StoredKey } from "./webauthn.ts";
 import type { Storage } from "./state-host.ts";
 import { saneAccess, type Access } from "./access.ts";
@@ -547,15 +547,26 @@ export class HubHost {
    * person's name, how they are named everywhere else ("owner" for the first
    * person), and their Home Assistant person if they gave one.
    */
-  async familyPeople(): Promise<{ person: string; name: string; presence?: string }[]> {
+  /**
+   * The family, by the names things are kept under. `chat` is whether they
+   * take part in messages: a guest does not, so is never asked, reminded or
+   * written to, and is not one of "everyone".
+   */
+  async familyPeople(): Promise<{ person: string; name: string; role: Role; chat: boolean; presence?: string }[]> {
     const meta = await this.meta();
     if (!meta.space) return [];
     const first = await this.firstPerson();
-    const out: { person: string; name: string; presence?: string }[] = [];
+    const out: { person: string; name: string; role: Role; chat: boolean; presence?: string }[] = [];
     for (const m of await this.membersOf(meta.space)) {
       const u = await this.storedUser(m.user);
       if (!u) continue;
-      out.push({ person: m.user === first ? "owner" : m.user, name: u.name, ...(u.prefs?.presence ? { presence: u.prefs.presence } : {}) });
+      out.push({
+        person: m.user === first ? "owner" : m.user,
+        name: u.name,
+        role: m.role,
+        chat: allows(scopesOf(m), "chat"),
+        ...(u.prefs?.presence ? { presence: u.prefs.presence } : {}),
+      });
     }
     return out;
   }

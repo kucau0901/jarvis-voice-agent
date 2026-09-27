@@ -65,13 +65,21 @@ of every release, and in the [README](README.md#updating).
   their devices stop working.
 - **Guests and helpers.** An admin gives someone limits: until a date, only
   between certain hours on certain days, and a pass — only these things in the
-  house, such as the gate, with a button for each. Outside their hours Jarvis
-  does not answer them; after the date they are signed out.
+  house, such as the gate, with a button for each, ticked from the list of
+  what your Home Assistant has. Outside their hours Jarvis does not answer
+  them; after the date they are signed out.
 - **Children's quiet time**: the same hours, as a child's waking hours.
+  Anything passed on to them in quiet time, and any alert, waits until their
+  hours begin.
 - **Chores, check-ins and medicine.** Routines can pass things on: a chore
   rota that takes turns and earns points on Done (Family → Chores), a daily
   check-in on a grandparent, or medicine reminders, which tell the whole family
-  if they go unanswered for an hour.
+  if they go unanswered.
+- **Time to answer**: how long someone has before a reminder or question
+  counts as unanswered, an hour unless you change it in Settings → Alerts,
+  or say otherwise for one ("within 15 minutes").
+- **OpenAI address** (Settings → Advanced): an OpenAI-compatible gateway a
+  company requires, instead of OpenAI itself.
 - **Family chat**: a room the whole family shares and a conversation with
   each person, in the menu. Name the assistant in the room and it answers
   there. Messages Jarvis passed on appear in the two people's conversation,

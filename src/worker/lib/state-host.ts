@@ -521,6 +521,7 @@ export interface FamilyApi {
     text: string;
     after?: number;
     whenHome?: boolean;
+    answerMin?: number;
   }): Promise<{ relays: Relay[]; noHome: string[] } | string>;
   relayAnswer(id: string, by: string, a: { status: "done" | "declined" | "answered"; answer?: string }): Promise<Relay | string>;
   relayCancel(id: string, by: string): Promise<Relay | string>;
@@ -530,7 +531,7 @@ export interface FamilyApi {
   chatMessages(convo: string, since?: number): Promise<ChatMessage[]>;
   chatConvos(person: string, family: { id: string; name: string }[]): Promise<{ id: string; title: string; last: ChatMessage | null; unread: number }[]>;
   chatSeen(person: string, convo: string, at: number): Promise<void>;
-  familyPeople(): Promise<{ person: string; name: string; presence?: string }[]>;
+  familyPeople(): Promise<{ person: string; name: string; role: string; chat: boolean; presence?: string }[]>;
   choresPoints(): Promise<{ person: string; name: string; points: number }[]>;
   resetPoints(): Promise<void>;
 }

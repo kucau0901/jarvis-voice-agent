@@ -1,3 +1,4 @@
+import { openaiBase } from "../lib/openai-base.ts";
 import type { Env } from "../types";
 import { err, json, redact } from "../lib/http";
 import { stateStub } from "../lib/state-client";
@@ -169,7 +170,7 @@ const timeout = () => AbortSignal.timeout(15_000);
 const TESTS: Partial<Record<Group, (eff: Env, origin: string) => Promise<TestResult>>> = {
   async openai(eff) {
     if (!eff.OPENAI_API_KEY) return { ok: false, detail: "No key set." };
-    const r = await fetch("https://api.openai.com/v1/models", {
+    const r = await fetch(`${openaiBase(eff)}/models`, {
       headers: { Authorization: `Bearer ${eff.OPENAI_API_KEY}` },
       signal: timeout(),
     });

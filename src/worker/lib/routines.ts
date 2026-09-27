@@ -56,6 +56,8 @@ export type Action =
       text: string;
       points?: number;
       escalate?: boolean;
+      /** How long they have to answer, in minutes; the family's setting if absent. */
+      answerMin?: number;
       /** Whose turn is next, for a rota. */
       turn?: number;
     };
@@ -268,6 +270,8 @@ export interface RoutineInput {
   points?: unknown;
   /** Unanswered, tell the whole family: a check-in, medicine. */
   escalate?: unknown;
+  /** How long they have to answer, in minutes. */
+  answerMin?: unknown;
 }
 
 const DAY_KEYS: Record<string, number> = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
@@ -342,6 +346,8 @@ export function buildRoutine(input: RoutineInput, timeZone: string, now: number)
     if (text.length > MAX_TEXT) return { ok: false, error: `keep it under ${MAX_TEXT} characters` };
     const points = input.points === undefined || input.points === null ? 0 : Number(input.points);
     if (!Number.isInteger(points) || points < 0 || points > 100) return { ok: false, error: "points are 0 to 100" };
+    const answerMin = input.answerMin === undefined || input.answerMin === null ? 0 : Number(input.answerMin);
+    if (answerMin && (!Number.isInteger(answerMin) || answerMin < 2 || answerMin > 1440)) return { ok: false, error: "the time to answer is 2 to 1440 minutes" };
     action = {
       kind: "relay",
       relay: str(input.passKind) === "ask" || (!str(input.say) && !!str(input.ask)) ? "ask" : "remind",
@@ -349,6 +355,7 @@ export function buildRoutine(input: RoutineInput, timeZone: string, now: number)
       text,
       ...(points ? { points } : {}),
       ...(input.escalate === true ? { escalate: true } : {}),
+      ...(answerMin ? { answerMin } : {}),
     };
   } else {
     const say = str(input.say);

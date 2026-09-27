@@ -41,8 +41,11 @@ export async function handleFamily(req: Request, env: Env, ctx: ExecutionContext
   const myName = env.JARVIS_PERSON_NAME || "Someone at home";
   const m = req.method;
 
+  // Who takes part: not a guest, who has no chat, so is neither written to nor sent the family's messages.
+  const talkers = async () => (await state.familyPeople()).filter((x) => x.chat);
+
   if (p === "/api/hub/chat" && m === "GET") {
-    const people = await state.familyPeople();
+    const people = await talkers();
     const convos = await state.chatConvos(me, people.map((x) => ({ id: x.person, name: x.name })));
     return json({ you: me, convos, people: people.map((x) => ({ id: x.person, name: x.name })) });
   }
@@ -63,7 +66,7 @@ export async function handleFamily(req: Request, env: Env, ctx: ExecutionContext
     const text = typeof b.text === "string" ? b.text.trim() : "";
     if (!mayRead(convo, me)) return err(404, "no such conversation");
     if (!text) return err(400, "say something");
-    const people = await state.familyPeople();
+    const people = await talkers();
     // A direct conversation is only ever between two people who are still in the family.
     const between = convo === FAMILY_ROOM ? null : convo.slice(3).split("|");
     if (between && !between.every((x) => people.some((y) => y.person === x))) return err(404, "no such conversation");
@@ -114,6 +117,7 @@ export async function handleFamily(req: Request, env: Env, ctx: ExecutionContext
       text: String(b.text ?? ""),
       ...(at ? { after: at } : {}),
       whenHome: b.whenHome === true,
+      ...(typeof b.answerMin === "number" ? { answerMin: b.answerMin } : {}),
     });
     return typeof r === "string" ? err(400, r) : json(r, { status: 201 });
   }

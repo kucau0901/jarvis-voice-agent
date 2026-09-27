@@ -24,6 +24,7 @@ import { HUB_METHODS, HubHost } from "./lib/hub.ts";
 import { Relays, type Relay, type RelayDeps, type RelayKind } from "./lib/relays.ts";
 import { Chat, dmId, type ChatMessage } from "./lib/chat.ts";
 import { personOfWho, withPerson } from "./lib/context.ts";
+import { nextAllowed } from "./lib/access.ts";
 
 /**
  * The Durable Object. Deliberately thin: everything it does lives in
@@ -34,6 +35,8 @@ import { personOfWho, withPerson } from "./lib/context.ts";
  */
 /** Chore points, per person (lib/relays.ts award). */
 const POINTS = "chore:points";
+/** Alerts kept for someone's quiet time (lib/alerts.ts). */
+const HELD = "held:";
 
 export class JarvisState extends DurableObject<Env> {
   private host: StateHost;
@@ -75,6 +78,33 @@ export class JarvisState extends DurableObject<Env> {
     const person = personOfWho(who);
     const v = await this.people.personView(person).catch(() => null);
     return withPerson(env, { person, name: v?.name, space: v?.space, prefs: v?.prefs, cars: v?.space ? v.cars : undefined, haToken: v?.haToken, access: v?.access });
+  }
+
+  /** When someone's quiet time ends, if they are in it now (lib/access.ts). */
+  async quietUntil(person: string): Promise<number | null> {
+    if (person === "owner") return null;
+    const v = await this.people.personView(person).catch(() => null);
+    if (!v?.access?.hours) return null;
+    return nextAllowed(v.access, Date.now(), localeOf(await this.localEnv()).timeZone);
+  }
+
+  /** Keep an alert for someone in their quiet time; the alarm delivers it when it ends. */
+  async hold(alert: Alert, until: number): Promise<void> {
+    await this.ctx.storage.put(HELD + alert.id, { alert, until });
+    await this.rearm();
+  }
+
+  /** Held alerts whose quiet time is over: delivered now (and held again if it is not, after all). */
+  private async releaseHeld(): Promise<void> {
+    const now = Date.now();
+    const held = await this.ctx.storage.list<{ alert: Alert; until: number }>({ prefix: HELD });
+    const due = [...held.entries()].filter(([, h]) => h.until <= now);
+    if (!due.length) return;
+    const env = await this.localEnv();
+    for (const [k, h] of due) {
+      await this.ctx.storage.delete(k);
+      await deliver(env, this, h.alert).catch(() => null);
+    }
   }
 
   /** A member's own Telegram chat, for their alerts (lib/alerts.ts). */
@@ -232,6 +262,7 @@ export class JarvisState extends DurableObject<Env> {
           text: r.action.text,
           ...(r.action.points ? { points: r.action.points } : {}),
           ...(r.action.escalate ? { escalate: true } : {}),
+          ...(r.action.answerMin ? { answerMin: r.action.answerMin } : {}),
           routine: r.id,
         });
         return typeof made === "string" ? made : null;
@@ -241,7 +272,10 @@ export class JarvisState extends DurableObject<Env> {
 
   /** Point the one alarm at whatever is due first: a routine or a job. */
   private async rearm(): Promise<void> {
-    const wakes = (await Promise.all([this.scheduler.nextWake(), this.jobs.nextWake(), this.relays.nextWake()])).filter((t): t is number => t !== null);
+    const held = [...(await this.ctx.storage.list<{ until: number }>({ prefix: HELD })).values()].map((h) => h.until);
+    const wakes = [...(await Promise.all([this.scheduler.nextWake(), this.jobs.nextWake(), this.relays.nextWake()])), ...held].filter(
+      (t): t is number => t !== null,
+    );
     const at = wakes.length ? Math.min(...wakes) : null;
     if (at === null) await this.ctx.storage.deleteAlarm();
     else await this.ctx.storage.setAlarm(at);
@@ -253,6 +287,7 @@ export class JarvisState extends DurableObject<Env> {
     await this.scheduler.tick();
     await this.jobs.tick();
     await this.relays.tick();
+    await this.releaseHeld();
     await this.rearm();
   }
 
@@ -271,11 +306,13 @@ export class JarvisState extends DurableObject<Env> {
       post: async (between, msg) => void (await this.chat.post(dmId(between[0], between[1]), msg)),
       markPosted: (between, id, note) => this.chat.markRelay(dmId(between[0], between[1]), id, note),
       timeZone: localeOf(env).timeZone,
+      answerMin: Number(env.RELAY_ANSWER_MIN) || undefined,
       award: async (person, points) => {
         const tally = (await this.ctx.storage.get<Record<string, number>>(POINTS)) ?? {};
         await this.ctx.storage.put(POINTS, { ...tally, [person]: (tally[person] ?? 0) + points });
       },
-      family: async () => (await this.people.familyPeople()).map((p) => p.person),
+      // A check-in nobody answered is for the family: not a guest or a helper.
+      family: async () => (await this.people.familyPeople()).filter((p) => p.role !== "guest").map((p) => p.person),
     };
   }
 
@@ -291,15 +328,19 @@ export class JarvisState extends DurableObject<Env> {
     text: string;
     after?: number;
     whenHome?: boolean;
+    answerMin?: number;
   }): Promise<{ relays: Relay[]; noHome: string[] } | string> {
     const family = await this.people.familyPeople();
     if (!family.some((p) => p.person === input.from)) return "only a member of the family can pass things on";
     const want = input.to.trim().toLowerCase();
     const others = family.filter((p) => p.person !== input.from);
+    // Everyone is everyone who takes part in messages: a guest cannot answer, so is never waited for.
     const to = ["everyone", "everybody", "all", "the family"].includes(want)
-      ? others
+      ? others.filter((p) => p.chat)
       : others.filter((p) => p.name.toLowerCase() === want || p.name.toLowerCase().split(/\s+/)[0] === want).slice(0, 1);
     if (!to.length) return `nobody in the family is called "${input.to}". The family: ${others.map((p) => p.name).join(", ") || "only you so far"}`;
+    const mute = to.find((p) => !p.chat);
+    if (mute && input.kind !== "tell") return `${mute.name} cannot answer messages here (they are a guest), so cannot be reminded or asked; tell them instead`;
     const made = await this.relays.create(
       { ...input, to: to.map((p) => ({ person: p.person, name: p.name, ...(p.presence ? { home: p.presence } : {}) })) },
       Date.now(),
@@ -392,6 +433,7 @@ export class JarvisState extends DurableObject<Env> {
         const want = String(n).trim().toLowerCase();
         const p = family.find((x) => x.name.toLowerCase() === want || x.name.toLowerCase().split(/\s+/)[0] === want);
         if (!p) return `nobody in the family is called "${String(n)}". The family: ${family.map((x) => x.name).join(", ")}`;
+        if (!p.chat) return `${p.name} cannot answer messages here (they are a guest), so cannot be given a chore or a check-in`;
         to.push({ person: p.person, name: p.name });
       }
       input = { ...input, passTo: to };
@@ -405,7 +447,7 @@ export class JarvisState extends DurableObject<Env> {
   async choresPoints(): Promise<{ person: string; name: string; points: number }[]> {
     const tally = (await this.ctx.storage.get<Record<string, number>>(POINTS)) ?? {};
     const family = await this.people.familyPeople();
-    return family.map((p) => ({ person: p.person, name: p.name, points: tally[p.person] ?? 0 })).sort((a, b) => b.points - a.points);
+    return family.filter((p) => p.chat).map((p) => ({ person: p.person, name: p.name, points: tally[p.person] ?? 0 })).sort((a, b) => b.points - a.points);
   }
 
   async resetPoints(): Promise<void> {

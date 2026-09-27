@@ -84,8 +84,12 @@ export const routineAdd: Tool = {
       pass_kind: { type: ["string", "null"], description: "With pass_to: \"remind\" (they say done) or \"ask\" (they answer)." },
       points: { type: ["integer", "null"], description: "With pass_to: a chore's points, earned on done." },
       escalate: { type: ["boolean", "null"], description: "With pass_to: tell the whole family if it goes unanswered." },
+      answer_within_minutes: {
+        type: ["integer", "null"],
+        description: "With pass_to: how long they have to answer before the user (or family) is told; nudged halfway. Null for the family's usual (an hour). Medicine might be 20.",
+      },
     },
-    required: ["name", "when", "local_time", "in_minutes", "time", "days", "event", "buffer_min", "condition", "for_minutes", "say", "ask", "pass_to", "pass_kind", "points", "escalate"],
+    required: ["name", "when", "local_time", "in_minutes", "time", "days", "event", "buffer_min", "condition", "for_minutes", "say", "ask", "pass_to", "pass_kind", "points", "escalate", "answer_within_minutes"],
     additionalProperties: false,
   },
   async run(args, ctx) {
@@ -106,7 +110,7 @@ export const routineAdd: Tool = {
         say: args.say,
         ask: args.ask,
         ...(Array.isArray(args.pass_to) && args.pass_to.length
-          ? { passTo: args.pass_to, passKind: args.pass_kind, points: args.points, escalate: args.escalate }
+          ? { passTo: args.pass_to, passKind: args.pass_kind, points: args.points, escalate: args.escalate, answerMin: args.answer_within_minutes }
           : {}),
       },
       { who: voiceWho(ctx.env), grants: ctx.grants },

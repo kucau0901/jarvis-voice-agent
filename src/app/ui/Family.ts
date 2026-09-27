@@ -292,7 +292,7 @@ export class Family {
 
     const mine = this.body.querySelector<HTMLElement>(".f-mine");
     if (mine) new Mine(this.key, mine, me.prefs ?? {}, !!me.haToken).render();
-    this.body.querySelector(".f-ilbox")?.appendChild(limitsForm(null));
+    this.body.querySelector(".f-ilbox")?.appendChild(limitsForm(null, () => this.houseThings()));
     this.renderPass(me);
     void this.renderPoints(admin);
     this.renderMembers(data.members, admin, roles, scopes);
@@ -359,7 +359,7 @@ export class Family {
       const lbox = row.querySelector<HTMLElement>(".m-lbox");
       if (lbox) {
         const m = members.find((x) => x.id === id);
-        const form = limitsForm(m?.access ?? null);
+        const form = limitsForm(m?.access ?? null, () => this.houseThings());
         lbox.appendChild(form);
         row.querySelector(".m-lsave")!.addEventListener("click", () => void this.change({ user: id, access: readLimits(form) }, `Saved ${name}'s limits.`));
         row.querySelector(".m-lclear")!.addEventListener("click", () => void this.change({ user: id, access: null }, `${name} has no limits now.`));
@@ -440,6 +440,14 @@ export class Family {
     } catch {
       box.innerHTML = `<p class="note">Chores need the family chat permission.</p>`;
     }
+  }
+
+  /** What the house has that a pass could work (routes/hub.ts), asked once per opening of the panel. */
+  private things: Promise<{ entity: string; name: string }[]> | null = null;
+  private houseThings(): Promise<{ entity: string; name: string }[]> {
+    this.things ??= this.api<{ things: { entity: string; name: string }[] }>("/api/hub/house").then((r) => r.things);
+    this.things.catch(() => (this.things = null));
+    return this.things.then((t) => [...t]);
   }
 
   private async change(body: unknown, ok: string): Promise<void> {

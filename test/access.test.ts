@@ -1,4 +1,5 @@
-import { allowedNow, hoursSaid, passActions, passService, saneAccess } from "../src/worker/lib/access.ts";
+import { allowedNow, hoursSaid, nextAllowed, passActions, passService, saneAccess } from "../src/worker/lib/access.ts";
+import { deliver as deliverAlert, makeAlert as alertOf, type AlertState } from "../src/worker/lib/alerts.ts";
 import { zonedToUtc } from "../src/worker/lib/routines.ts";
 import { HubHost } from "../src/worker/lib/hub.ts";
 import { sha256Hex } from "../src/worker/lib/devices.ts";
@@ -62,6 +63,44 @@ console.log("\nhours");
   const night = { hours: { from: "22:00", to: "06:00", days: [1] } };
   check("a night shift past midnight belongs to the day it began", allowedNow(night, at(2026, 9, 29, 2), TZ).ok && !allowedNow(night, at(2026, 9, 28, 2), TZ).ok);
   check("after the end, never", !allowedNow({ until: MON_10 }, MON_10 + 1, TZ).ok);
+}
+
+console.log("\nquiet time holds alerts");
+{
+  const child = { hours: { from: "07:00", to: "21:00" } };
+  check("at eleven at night, her hours next begin at seven", nextAllowed(child, at(2026, 9, 28, 23), TZ) === at(2026, 9, 29, 7));
+  check("in her hours, nothing waits", nextAllowed(child, MON_19, TZ) === null);
+  const helper = { hours: { from: "08:00", to: "17:00", days: [1, 2, 3, 4, 5] } };
+  check("a helper's Saturday waits for Monday morning", nextAllowed(helper, SAT_10, TZ) === at(2026, 10, 5, 8));
+  check("an ended pass waits for nothing", nextAllowed({ until: MON_10, hours: child.hours }, at(2026, 9, 28, 23), TZ) === null);
+
+  const held: { id: string; until: number }[] = [];
+  const pushed: string[] = [];
+  const state: AlertState = {
+    async quietUntil(person) {
+      return person === "u_child" ? at(2026, 9, 29, 7) : null;
+    },
+    async hold(a, until) {
+      held.push({ id: a.id, until });
+    },
+    async broadcast() {
+      return { open: 0, visible: 0, acked: null };
+    },
+    async pushTargets(person) {
+      pushed.push(person ?? "");
+      return { vapid: { publicKey: "", privateJwk: {} }, subs: [] };
+    },
+    async pushResults() {},
+    async logDelivery() {},
+  };
+  const env = { ALERT_ORDER: "live,push" } as never;
+  const quiet = await deliverAlert(env, state, alertOf({ text: "Tidy your room" }, "relay", MON_10, "u_child")!);
+  check("an alert for a child in quiet time waits for the morning", quiet.heldUntil === at(2026, 9, 29, 7) && held.length === 1 && pushed.length === 0);
+  const urgent = alertOf({ text: "No answer from Nenek", urgent: true }, "relay", MON_10, "u_child")!;
+  await deliverAlert(env, state, urgent);
+  check("an urgent one never waits", held.length === 1 && pushed.includes("u_child"));
+  await deliverAlert(env, state, alertOf({ text: "hi" }, "relay", MON_10, "u_adult")!);
+  check("someone in their hours gets theirs at once", held.length === 1 && pushed.includes("u_adult"));
 }
 
 console.log("\nwhat a pass may do");
@@ -145,6 +184,15 @@ console.log("\nchores, check-ins and medicine, as routines");
   const told = sent.filter((a) => a.title === "No answer from Nenek");
   check("an unanswered check-in tells the whole family, urgently", told.length === 2 && told.every((a) => a.urgent) && told.some((a) => a.for === "u_sara") && told.some((a) => a.for === undefined));
   check("but not the one who did not answer", !told.some((a) => a.for === "u_nenek"));
+
+  // Medicine with twenty minutes to answer: nudged at ten, the family told at twenty.
+  sent.length = 0;
+  await relays.create({ kind: "remind", from: "owner", fromName: "Adam", to: [{ person: "u_atuk", name: "Atuk" }], text: "Take your tablets", escalate: true, answerMin: 20 }, MON_10);
+  await relays.tick(MON_10 + 10 * 60_000);
+  check("the time to answer can be shorter: nudged halfway", sent.some((a) => a.for === "u_atuk" && a.text.startsWith("Still waiting")));
+  await relays.tick(MON_10 + 20 * 60_000);
+  check("and the family told at its end", sent.some((a) => a.title === "No answer from Atuk" && a.text.includes("20 minutes")));
+  check("too short a time is refused", typeof (await relays.create({ kind: "ask", from: "owner", fromName: "Adam", to: [{ person: "u_x", name: "X" }], text: "?", answerMin: 1 }, MON_10)) === "string");
   void ci;
 }
 
