@@ -382,6 +382,13 @@ console.log("\nstorage: a browser re-sending its notifications");
 
   await host.removePushSub(s.endpoint);
   check("the browser turning its own notifications off is not a removal", (await host.addPushSub(base, 700, { resync: true })) !== null);
+  // An old marker, from a browser removed long ago and never seen again, is pruned by the next removal.
+  const old = (await host.addPushSub({ ...base, endpoint: "https://fcm.googleapis.com/fcm/send/old" }, 800))!;
+  await host.removePushSub(old.id, true, 900);
+  const other = (await host.addPushSub({ ...base, endpoint: "https://fcm.googleapis.com/fcm/send/other" }, 1000))!;
+  await host.removePushSub(other.id, true, 900 + 91 * 86_400_000);
+  check("markers older than three months are pruned", (await host.addPushSub({ ...base, endpoint: "https://fcm.googleapis.com/fcm/send/old" }, 2000, { resync: true })) !== null);
+  check("recent ones are kept", (await host.addPushSub({ ...base, endpoint: "https://fcm.googleapis.com/fcm/send/other" }, 2000, { resync: true })) === null);
 }
 
 console.log("\nstorage: tickets");

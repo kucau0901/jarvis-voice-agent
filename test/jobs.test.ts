@@ -9,6 +9,7 @@ import {
   RESEARCH_MAX_MS,
   RESEARCH_MAX_STEPS,
   RESEARCH_MONTHLY_DEFAULT,
+  addUsage,
   limitsOf,
   splitResult,
   withSources,
@@ -280,6 +281,80 @@ console.log("\nsources, from the searches' own citations");
   check("only web pages", !out.includes("javascript:") && !out.includes("not a url"));
   check("fifteen at most", list.length === 15, list.length);
   check("no citations: the report as it was", withSources("Just text.", []) === "Just text.");
+}
+
+console.log("\ncancelled while OpenAI was being asked");
+{
+  // The alarm is waiting on OpenAI when the user cancels: the step's save must not undo it.
+  const recorded: unknown[] = [];
+  const cancelled: string[] = [];
+  let jobs!: Jobs;
+  let id = "";
+  const deps: JobDeps = {
+    async start() { return { responseId: "resp_1" }; },
+    async poll() {
+      await jobs.cancel(id, T0 + 5_000); // the user, meanwhile
+      return { kind: "continued", responseId: "resp_2", usage: { input: 1000, cached: 0, output: 50, searches: 3, model: "gpt-6-sol" } };
+    },
+    async cancel(j) { cancelled.push(j.responseId ?? ""); },
+    async hermes() { return { ok: true, text: "" }; },
+    async deliver(a) { return { alert: a, attempts: [], deliveredBy: null } as Delivery; },
+    async record(e) { recorded.push(e); },
+  };
+  jobs = new Jobs(fakeStorage(), async () => deps);
+  id = ((await jobs.create({ task: "Research chargers.", engine: "research" }, BY, T0)) as Job).id;
+  await jobs.tick(T0);            // starts: resp_1
+  await jobs.tick(T0 + 10_000);   // polls; cancelled during the poll
+  const j = (await jobs.get(id))!;
+  check("stays cancelled", j.status === "cancelled", j.status);
+  check("the step it had just started is stopped too", cancelled.includes("resp_2"), cancelled);
+  check("what the step spent is kept on the job", j.usage?.input === 1000 && j.usage?.searches === 3, j.usage);
+  check("and the cancel was counted in Usage", recorded.length === 1 && (recorded[0] as { ok: boolean }).ok === false);
+  await jobs.tick(T0 + 20_000);
+  check("nothing more is asked of OpenAI", (await jobs.get(id))!.status === "cancelled");
+}
+{
+  const cancelled: string[] = [];
+  let jobs!: Jobs;
+  let id = "";
+  const deps: JobDeps = {
+    async start() { await jobs.cancel(id, T0 + 1); return { responseId: "resp_x" }; },
+    async poll() { return { kind: "wait" }; },
+    async cancel(j) { cancelled.push(j.responseId ?? ""); },
+    async hermes() { return { ok: true, text: "" }; },
+    async deliver(a) { return { alert: a, attempts: [], deliveredBy: null } as Delivery; },
+  };
+  jobs = new Jobs(fakeStorage(), async () => deps);
+  id = ((await jobs.create({ task: "x" }, BY, T0)) as Job).id;
+  await jobs.tick(T0);
+  check("cancelled while starting: stays cancelled, and what started is stopped", (await jobs.get(id))!.status === "cancelled" && cancelled.includes("resp_x"), cancelled);
+}
+
+console.log("\nresearch that cannot run");
+{
+  const h = harness([], { start: { error: "it could not start: model not found" }, researchLimit: 1 });
+  await h.jobs.create({ task: "a", engine: "research" }, BY, T0);
+  await h.jobs.tick(T0);
+  check("a research job that never started gives its slot back", typeof (await h.jobs.create({ task: "b", engine: "research" }, BY, T0 + 1000)) !== "string");
+}
+{
+  const deps: JobDeps = {
+    async start() { return { responseId: "r" }; },
+    async poll() { return { kind: "wait" }; },
+    async cancel() {},
+    async hermes() { return { ok: true, text: "" }; },
+    async deliver(a) { return { alert: a, attempts: [], deliveredBy: null } as Delivery; },
+    researchBlocked: "research needs web search, which is withheld",
+  };
+  const jobs = new Jobs(fakeStorage(), async () => deps);
+  check("refused when the web is withheld, with why", String(await jobs.create({ task: "a", engine: "research" }, BY, T0)).includes("web search"));
+  check("an ordinary job still starts", typeof (await jobs.create({ task: "a" }, BY, T0)) !== "string");
+}
+
+console.log("\nwhat a job spent");
+{
+  const u = addUsage(addUsage(undefined, { input: 100, cached: 50, output: 10, written: 20, searches: 2, model: "gpt-6-sol" }), { input: 200, cached: 150, output: 5, searches: 1 });
+  check("tokens, cache writes and searches add up, the model kept", u.input === 300 && u.cached === 200 && u.written === 20 && u.searches === 3 && u.output === 15 && u.model === "gpt-6-sol", u);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

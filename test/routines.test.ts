@@ -470,6 +470,50 @@ console.log("\nwatches: off and on again");
   check("on again, it starts afresh", h.sent.length === 2);
 }
 
+console.log("\nwatches: changed while Home Assistant is being asked");
+{
+  const h = harness();
+  const r = (await h.s.add({ when: "watch", condition: "{{ is_state('cover.main_gate', 'open') }}", say: "Gate open." }, OWNER, T0)) as Exclude<Awaited<ReturnType<typeof h.s.add>>, string>;
+  // The check is in flight when the user says "stop watching the gate".
+  h.state.ha = () => {
+    void h.s.remove(r.id);
+    return "True";
+  };
+  await h.s.tick(T0);
+  await new Promise((res) => setTimeout(res, 0));
+  check("removed during a check: stays removed", (await h.s.list()).length === 0, (await h.s.list()).map((x) => x.id));
+  check("and says nothing", h.sent.length === 0);
+}
+{
+  const h = harness();
+  const r = (await h.s.add({ when: "watch", condition: "{{ true }}", say: "x" }, OWNER, T0)) as Exclude<Awaited<ReturnType<typeof h.s.add>>, string>;
+  h.state.ha = () => {
+    void h.s.update(r.id, { enabled: false, name: "Paused gate" }, T0);
+    return "True";
+  };
+  await h.s.tick(T0);
+  const after = (await h.s.list())[0]!;
+  check("paused and renamed during a check: stays so", after.enabled === false && after.name === "Paused gate" && h.sent.length === 0, after);
+}
+{
+  // Two watches whose checks take a while: asked together, not one after the other.
+  const h = harness();
+  await h.s.add({ when: "watch", condition: "{{ a }}", say: "a" }, OWNER, T0);
+  await h.s.add({ when: "watch", condition: "{{ b }}", say: "b" }, OWNER, T0);
+  let inFlight = 0;
+  let most = 0;
+  const deps = await (h.s as unknown as { deps: () => Promise<SchedulerDeps> }).deps();
+  deps.renderTemplate = async () => {
+    inFlight++;
+    most = Math.max(most, inFlight);
+    await new Promise((res) => setTimeout(res, 20));
+    inFlight--;
+    return "False";
+  };
+  await h.s.tick(T0);
+  check("due watches are checked at the same time", most === 2, most);
+}
+
 console.log("\nHome Assistant templates");
 {
   check("True, on, yes, 1 are yes", ["True", "on", " yes ", "1"].every((v) => truthy(v) === true));

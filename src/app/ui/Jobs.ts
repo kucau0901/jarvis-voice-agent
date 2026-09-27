@@ -72,7 +72,7 @@ export class Jobs {
     const deepBox = document.createElement("input");
     deepBox.type = "checkbox";
     deep.appendChild(deepBox);
-    deep.appendChild(document.createTextNode(" Research in depth: a stronger model and sources, 10–40 minutes, about $1"));
+    deep.appendChild(document.createTextNode(" Research in depth: a stronger model and sources, 10–40 minutes, roughly $1–2 (shown below once done)"));
     form.appendChild(deep);
     form.appendChild(
       button("Start", () =>

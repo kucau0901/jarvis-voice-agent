@@ -225,10 +225,16 @@ export class Scheduler {
   /** Run everything due. Returns when to wake next. */
   async tick(now = Date.now()): Promise<number | null> {
     const deps = await this.deps();
-    for (const r of await this.list()) {
+    const all = await this.list();
+    // Every due watch asks Home Assistant at once: one slow answer (up to its
+    // 15 s timeout) must not hold up the others, or a reminder due now.
+    const due = all.filter((r) => r.enabled && r.trigger.kind === "watch" && (r.watch?.nextCheck ?? 0) <= now + 1000);
+    const looks = new Map(await Promise.all(due.map(async (r) => [r.id, await this.look(r, deps)] as const)));
+    for (const r of all) {
       try {
         await this.tickOne(r, deps, now);
-        if (r.trigger.kind === "watch") await this.tickWatch((await this.get(r.id)) ?? r, deps, now);
+        const look = looks.get(r.id);
+        if (look) await this.applyWatch(r.id, look, deps, now);
       } catch (e) {
         await this.record(r.id, { at: now, ok: false, detail: `failed: ${e instanceof Error ? e.message : String(e)}` });
       }
@@ -276,30 +282,40 @@ export class Scheduler {
     await this.execute(r, deps, now, undefined, late > 5 * 60_000 ? dueAt : undefined);
   }
 
+  /** One look at a watch's condition: no model, one small request to Home Assistant. */
+  private async look(r: Routine, deps: SchedulerDeps): Promise<{ template: string; state: boolean | null; error: string }> {
+    const template = r.trigger.kind === "watch" ? r.trigger.template : "";
+    if (!deps.renderTemplate) return { template, state: null, error: "Home Assistant is not set up" };
+    try {
+      const out = await deps.renderTemplate(template);
+      const state = truthy(out);
+      return { template, state, error: state === null ? `the condition gave "${out.slice(0, 60)}", not True or False` : "" };
+    } catch (e) {
+      return { template, state: null, error: e instanceof Error ? e.message : String(e) };
+    }
+  }
+
   /**
-   * Look at a watch: no model, one small request to Home Assistant. It says
-   * its message once when the condition has held for forMin minutes, then
-   * waits for it to be false before it can say it again.
+   * What a look means for the watch. It says its message once when the
+   * condition has held for forMin minutes, then waits for it to be false
+   * before it can say it again.
+   *
+   * Applied to the routine as it is NOW, read after the look: the look waited
+   * on the network, and meanwhile the watch may have been removed, switched
+   * off, renamed or changed. Saving the copy from before the look undid all of
+   * those, and brought a removed watch back.
    */
-  private async tickWatch(r: Routine, deps: SchedulerDeps, now: number): Promise<void> {
-    if (!r.enabled || r.trigger.kind !== "watch") return;
+  private async applyWatch(
+    id: string,
+    look: { template: string; state: boolean | null; error: string },
+    deps: SchedulerDeps,
+    now: number,
+  ): Promise<void> {
+    const r = await this.get(id);
+    if (!r || !r.enabled || r.trigger.kind !== "watch" || r.trigger.template !== look.template) return;
     const t = r.trigger;
     const w: WatchState = { ...(r.watch ?? {}) };
-    if ((w.nextCheck ?? 0) > now + 1000) return;
-
-    let state: boolean | null = null;
-    let error = "";
-    if (!deps.renderTemplate) {
-      error = "Home Assistant is not set up";
-    } else {
-      try {
-        const out = await deps.renderTemplate(t.template);
-        state = truthy(out);
-        if (state === null) error = `the condition gave "${out.slice(0, 60)}", not True or False`;
-      } catch (e) {
-        error = e instanceof Error ? e.message : String(e);
-      }
-    }
+    const { state, error } = look;
     w.checkedAt = now;
 
     if (state === null) {

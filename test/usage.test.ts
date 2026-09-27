@@ -52,6 +52,9 @@ console.log("\na day, and the month");
   check("the house's share", d.byHouse === 1);
   check("costs split by what spent them", near(d.cost.live, 0.5) && near(d.cost.jobs, costOf(q())!) && near(d.cost.router, costOf(q())!), d.cost);
   check("tokens with no price are noted", d.unpriced === 21_300);
+  let big = emptyDay("2026-09-26");
+  for (let i = 0; i < 10; i++) big = addToDay(big, q({ by: "gpt-live-1", seconds: 4 * 3600, input: 0, cached: 0, output: 0, surface: "live" }));
+  check("a day holds 24 hours of live at most, however much is reported", big.liveSeconds === 86_400 && Math.abs(big.cost.live - 72) < 1e-9, big);
 
   const days = [d, { ...emptyDay("2026-09-25"), questions: 2, cost: { router: 0.01, live: 0, jobs: 0 } }, { ...emptyDay("2026-08-31"), questions: 50 }];
   const recent = [q({ ms: 1000 }), q({ ms: 9000, ask: "slow one" }), q({ ms: 3000 }), q({ surface: "job", ms: 600_000 }), q({ seconds: 60, by: "gpt-live-1", ms: 60_000 })];

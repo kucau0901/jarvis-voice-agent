@@ -84,6 +84,7 @@ const PUSH = "push:";
  * it straight back; turning notifications on again on that browser clears it.
  */
 const PUSH_REMOVED = "pushoff:";
+const PUSH_REMOVED_KEEP_MS = 90 * 86_400_000;
 /** The conversation shared across the user's devices (lib/shared.ts). */
 const SHARED = "convo:shared";
 /** Usage (lib/usage.ts): a day's totals under its date, and the last questions. */
@@ -361,7 +362,13 @@ export class StateHost {
   /** By id (the panel) or by endpoint (the browser that owns it, turning notifications off). */
   async removePushSub(idOrEndpoint: string, byOwner = false, now = Date.now()): Promise<boolean> {
     const id = idOrEndpoint.startsWith("https:") ? await endpointId(idOrEndpoint) : idOrEndpoint;
-    if (byOwner) await this.storage.put(PUSH_REMOVED + id, now);
+    if (byOwner) {
+      await this.storage.put(PUSH_REMOVED + id, now);
+      // A browser not seen again in three months has gone for good: its marker goes too.
+      for (const [k, at] of await this.storage.list<number>({ prefix: PUSH_REMOVED })) {
+        if (now - at > PUSH_REMOVED_KEEP_MS) await this.storage.delete(k);
+      }
+    }
     return this.storage.delete(PUSH + id);
   }
 

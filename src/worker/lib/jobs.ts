@@ -66,7 +66,49 @@ export interface Job {
   error?: string;
   deliveredBy?: string | null;
   /** Tokens over every step, and the model that spent them, for Settings → Usage. */
-  usage?: { input: number; cached: number; output: number; model?: string };
+  usage?: JobUsage;
+}
+
+export interface JobUsage {
+  input: number;
+  cached: number;
+  output: number;
+  /** Prompt-cache writes, charged above plain input. */
+  written?: number;
+  /** Web searches, charged by the call: most of what research costs besides tokens. */
+  searches?: number;
+  model?: string;
+}
+
+/** A step's usage added to the job's so far. */
+export function addUsage(a: JobUsage | undefined, b: JobUsage): JobUsage {
+  const model = b.model ?? a?.model;
+  return {
+    input: (a?.input ?? 0) + b.input,
+    cached: (a?.cached ?? 0) + b.cached,
+    output: (a?.output ?? 0) + b.output,
+    written: (a?.written ?? 0) + (b.written ?? 0),
+    searches: (a?.searches ?? 0) + (b.searches ?? 0),
+    ...(model ? { model } : {}),
+  };
+}
+
+/** A job as Settings → Usage counts it (lib/usage.ts): finished, failed or cancelled. */
+export function usageEntry(j: Job, ok: boolean, now: number): UsageEntry {
+  return {
+    at: j.createdAt,
+    surface: "job",
+    by: j.engine === "hermes" ? "hermes" : (j.usage?.model ?? "unknown"),
+    ok,
+    ms: now - j.createdAt,
+    input: j.usage?.input ?? 0,
+    cached: j.usage?.cached ?? 0,
+    written: j.usage?.written ?? 0,
+    output: j.usage?.output ?? 0,
+    searches: j.usage?.searches ?? 0,
+    tools: [],
+    ask: j.title.slice(0, 80),
+  };
 }
 
 /** One look at a running jarvis job, as the engine reports it. */
@@ -88,6 +130,8 @@ export interface JobDeps {
   deliver(alert: Alert): Promise<Delivery>;
   /** Research jobs allowed a month (RESEARCH_MONTHLY_LIMIT); 0 turns them off. */
   researchLimit?: number;
+  /** Why research cannot run on this deployment at all, e.g. web search withheld. */
+  researchBlocked?: string | null;
   /** A finished job, for Settings → Usage. */
   record?(e: UsageEntry): Promise<void>;
 }
@@ -242,7 +286,9 @@ export class Jobs {
     const n = day.day === today ? day.n : 0;
     if (n >= DAILY_JOBS) return `the limit of ${DAILY_JOBS} jobs a day has been reached`;
     if (engine === "research") {
-      const limit = (await this.deps()).researchLimit ?? RESEARCH_MONTHLY_DEFAULT;
+      const deps = await this.deps();
+      if (deps.researchBlocked) return deps.researchBlocked;
+      const limit = deps.researchLimit ?? RESEARCH_MONTHLY_DEFAULT;
       const month = today.slice(0, 7);
       const used = (await this.storage.get<{ month: string; n: number }>(RESEARCH_MONTH)) ?? { month, n: 0 };
       const m = used.month === month ? used.n : 0;
@@ -279,8 +325,24 @@ export class Jobs {
     j.finishedAt = j.updatedAt = now;
     delete j.nextAt;
     await this.save(j);
-    if (j.responseId) await (await this.deps()).cancel(j).catch(() => {});
+    const deps = await this.deps();
+    if (j.responseId) await deps.cancel(j).catch(() => {});
+    // What it spent before it was stopped still counts in Settings → Usage.
+    await deps.record?.(usageEntry(j, false, now)).catch(() => {});
     return j;
+  }
+
+  /** A research job that never started gives its monthly slot back. */
+  private async refundResearch(createdAt: number): Promise<void> {
+    const month = new Date(createdAt).toISOString().slice(0, 7);
+    const used = await this.storage.get<{ month: string; n: number }>(RESEARCH_MONTH);
+    if (used && used.month === month && used.n > 0) await this.storage.put(RESEARCH_MONTH, { month, n: used.n - 1 });
+  }
+
+  /** The job as stored now, if it is still running; null if it was cancelled or removed meanwhile. */
+  private async stillRunning(id: string): Promise<Job | null> {
+    const cur = await this.get(id);
+    return cur && cur.status === "running" ? cur : null;
   }
 
   async remove(id: string): Promise<boolean> {
@@ -318,25 +380,37 @@ export class Jobs {
       await deps.cancel(j).catch(() => {});
       return this.finish(j, deps, now, { error: `it ran for over ${maxMs / 60_000} minutes and was stopped` });
     }
+    /*
+     * Asking OpenAI is a wait during which the job can be cancelled or removed
+     * (the Durable Object lets other requests in while it waits on the
+     * network). So after each one the job is read again, and a job no longer
+     * running is not saved over: that save used to undo the cancel, and the
+     * job went on stepping, and spending.
+     */
     if (!j.responseId) {
       const s = await deps.start(j);
-      if ("error" in s) return this.finish(j, deps, now, { error: s.error });
-      j.responseId = s.responseId;
-      j.steps = 1;
-      j.nextAt = now + BACKOFF_S[0]! * 1000;
-      j.updatedAt = now;
-      return this.save(j);
+      if ("error" in s) {
+        if (j.engine === "research") await this.refundResearch(j.createdAt);
+        return this.finish(j, deps, now, { error: s.error });
+      }
+      const cur = await this.stillRunning(j.id);
+      if (!cur) {
+        await deps.cancel({ ...j, responseId: s.responseId }).catch(() => {});
+        return;
+      }
+      return this.save({ ...cur, responseId: s.responseId, steps: 1, nextAt: now + BACKOFF_S[0]! * 1000, updatedAt: now });
     }
     const step = await deps.poll(j);
-    if (step.kind !== "failed" && step.usage) {
-      const model = step.usage.model ?? j.usage?.model;
-      j.usage = {
-        input: (j.usage?.input ?? 0) + step.usage.input,
-        cached: (j.usage?.cached ?? 0) + step.usage.cached,
-        output: (j.usage?.output ?? 0) + step.usage.output,
-        ...(model ? { model } : {}),
-      };
+    const usage = step.kind !== "failed" && step.usage ? addUsage(j.usage, step.usage) : j.usage;
+    const cur = await this.stillRunning(j.id);
+    if (!cur) {
+      // Stopped meanwhile: stop what this step started too, and keep what it spent.
+      if (step.kind === "continued") await deps.cancel({ ...j, responseId: step.responseId }).catch(() => {});
+      const stopped = await this.get(j.id);
+      if (stopped && usage) await this.save({ ...stopped, usage });
+      return;
     }
+    j = { ...cur, ...(usage ? { usage } : {}) };
     if (step.kind === "wait") {
       const waited = Math.round((now - j.updatedAt) / 1000);
       const next = BACKOFF_S.find((s) => s > waited) ?? BACKOFF_S[BACKOFF_S.length - 1]!;
@@ -398,20 +472,7 @@ export class Jobs {
     const d = await deps.deliver(alert).catch(() => null);
     done.deliveredBy = d?.deliveredBy ?? null;
     await this.save(done);
-    await deps.record?.({
-      at: done.createdAt,
-      surface: "job",
-      by: done.engine === "hermes" ? "hermes" : (done.usage?.model ?? "unknown"),
-      ok: done.status === "done",
-      ms: now - done.createdAt,
-      input: done.usage?.input ?? 0,
-      cached: done.usage?.cached ?? 0,
-      written: 0,
-      output: done.usage?.output ?? 0,
-      searches: 0,
-      tools: [],
-      ask: done.title.slice(0, 80),
-    }).catch(() => {});
+    await deps.record?.(usageEntry(done, done.status === "done", now)).catch(() => {});
   }
 
   /** Keep the newest KEEP_JOBS finished ones. */

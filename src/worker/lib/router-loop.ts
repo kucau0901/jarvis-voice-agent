@@ -138,7 +138,11 @@ export async function routerLoop(deps: LoopDeps): Promise<void> {
 
   try {
     for (let step = 0; step < MAX_STEPS; step++) {
-      if (signal.aborted) return;
+      if (signal.aborted) {
+        // Cut off between hops: what the hops so far spent still counts.
+        if (usage.hops) settle(model, false, "That request was cut off.");
+        return;
+      }
 
       let res: Reply;
       const hopStart = now();

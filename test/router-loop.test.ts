@@ -163,6 +163,17 @@ console.log("\nfailures, said plainly");
   check("cut off: said, and marked", /cut off/.test(String(last(h.events).text)) && last(h.events).aborted === true, last(h.events));
 }
 {
+  // Ended while the tools ran: the hop before it was paid for, so it is recorded.
+  const h = harness([reply("r1", { output: [call("web")] }), reply("r2", { output_text: "never" })]);
+  h.deps.runCalls = async () => {
+    h.ac.abort();
+    return "outputs";
+  };
+  await routerLoop(h.deps);
+  check("cut off between hops: the spent hop still counts", h.records[0]?.ok === false && h.records[0].usage.hops === 1 && h.records[0].usage.input === 100, h.records);
+  check("and nothing more is asked", h.asks.length === 1);
+}
+{
   const h = harness([], { prepare: async () => { throw new Error("KV down"); } });
   let threw = "";
   await routerLoop(h.deps).catch((e: Error) => { threw = e.message; });

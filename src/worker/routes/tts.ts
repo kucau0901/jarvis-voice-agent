@@ -27,8 +27,10 @@ export async function handleTts(req: Request, env: Env): Promise<Response> {
   const text = typeof body.text === "string" ? body.text.trim().slice(0, 1000) : "";
   if (!text) return err(400, "text is required");
 
-  if (speechConfig(env).tts === "browser" && body.audio !== true) {
-    return new Response(null, { status: 204, headers: { "x-jarvis-voice": "browser" } });
+  const cfg = speechConfig(env);
+  if (cfg.tts === "browser" && body.audio !== true) {
+    // The screen speaks it, in the language push-to-talk would use.
+    return new Response(null, { status: 204, headers: { "x-jarvis-voice": "browser", "x-jarvis-language": cfg.language } });
   }
   const spoken = await synthesize(env, text, "mp3");
   if (!spoken.ok) return err(502, "speech failed", { detail: spoken.error.slice(0, 300) });

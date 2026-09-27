@@ -232,7 +232,7 @@ export const SETTINGS: readonly SettingDef[] = [
   {
     name: "RESEARCH_MODEL", group: "openai", kind: "text", default: "gpt-6-sol",
     label: "Research model",
-    help: "What a research job runs on (\"research … in depth and let me know\"): stronger than the router, as it is asked for depth and nobody is waiting. About a dollar a report on GPT-6 Sol.",
+    help: "What a research job runs on (\"research … in depth and let me know\"): stronger than the router, as it is asked for depth and nobody is waiting. Roughly $1–2 a report on GPT-6 Sol, depending on how far it searches; the Jobs panel shows what each one cost.",
     validate: (v: string) => (/^[a-z0-9][a-z0-9._:-]{1,79}$/i.test(v.trim()) ? null : "is not a model id like gpt-6-sol"),
   },
   {

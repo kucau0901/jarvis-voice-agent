@@ -314,7 +314,8 @@ export async function handleDelegate(
   principal: Principal = { kind: "owner" },
 ): Promise<Response> {
   if (req.method !== "POST") return err(405, "method not allowed");
-  if (!env.OPENAI_API_KEY) return err(503, "OPENAI_API_KEY is not configured");
+  // No OpenAI key is not refused here: Home Assistant's Assist can still
+  // answer a typed house request, and run() says plainly what cannot be.
 
   let body: { transcript?: unknown; delegationId?: unknown; images?: unknown; surface?: unknown; origin?: unknown };
   try {

@@ -459,9 +459,9 @@ mode), `research`, or `hermes` (one question to the Hermes agent; needs
 `home`). `research` is the same loop on a stronger model (`RESEARCH_MODEL`,
 GPT-6 Sol by default) thinking hard, told to search widely and write a report,
 with a Sources list made from the web search's own citations; it may take 40
-steps and 45 minutes, costs about a dollar, and is capped at
-`RESEARCH_MONTHLY_LIMIT` a month (default 10; 0 switches it off). Each job's
-`cost` so far, at OpenAI's prices, comes with it. `task` must
+steps and 45 minutes, costs roughly $1–2 depending on how far it searches,
+and is capped at `RESEARCH_MONTHLY_LIMIT` a month (default 10; 0 switches it
+off). Each job's `cost` so far, at OpenAI's prices, comes with it. `task` must
 be complete on its own: a job never sees a conversation. `GET /api/v1/jobs`
 lists them (a device sees its own); `GET ?id=` returns one with its whole
 result; `POST /api/v1/jobs/cancel {id}` stops one; `DELETE ?id=` removes it.

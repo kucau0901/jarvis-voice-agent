@@ -41,19 +41,22 @@ const ORIGIN_KEY = "jarvis.origin";
  * (src/worker/lib/shared.ts): a random id made once and kept, and the label
  * the model hears it by ("the car", "iPhone").
  */
+let originId = "";
+
 export function originHere(): { id: string; label: string } {
-  let id = "";
-  try {
-    id = localStorage.getItem(ORIGIN_KEY) ?? "";
-    if (!/^[A-Za-z0-9_-]{6,64}$/.test(id)) {
-      id = `s_${crypto.getRandomValues(new Uint32Array(3)).reduce((a, n) => a + n.toString(36), "")}`;
-      localStorage.setItem(ORIGIN_KEY, id);
+  // Once per page: a new id per question would make this screen's own turns
+  // come back to it as "your other devices" wherever storage is refused.
+  if (!originId) {
+    const made = `s_${crypto.getRandomValues(new Uint32Array(3)).reduce((a, n) => a + n.toString(36), "")}`;
+    try {
+      const kept = localStorage.getItem(ORIGIN_KEY) ?? "";
+      originId = /^[A-Za-z0-9_-]{6,64}$/.test(kept) ? kept : made;
+      if (originId === made) localStorage.setItem(ORIGIN_KEY, made);
+    } catch {
+      originId = made; // private mode: one id for this page's life
     }
-  } catch {
-    // private mode: one id for this page's life
-    id ||= `s_${Math.random().toString(36).slice(2, 14)}`;
   }
-  return { id, label: screenLabel() };
+  return { id: originId, label: screenLabel() };
 }
 
 const BACKOFF_S = [1, 2, 5, 10, 30, 60];
@@ -318,7 +321,7 @@ export async function speakText(key: string, text: string): Promise<boolean> {
       headers: authHeaders(key),
       body: JSON.stringify({ text }),
     });
-    if (r.status === 204) return speakOnDevice(text);
+    if (r.status === 204) return speakOnDevice(text, r.headers.get("x-jarvis-language") ?? undefined);
     if (!r.ok) throw new Error(String(r.status));
     const url = URL.createObjectURL(await r.blob());
     const audio = new Audio(url);
@@ -334,8 +337,11 @@ export async function speakText(key: string, text: string): Promise<boolean> {
   }
 }
 
-function speakOnDevice(text: string): boolean {
+/** The device's own voice, in the language set in Settings when the server says it. */
+function speakOnDevice(text: string, lang?: string): boolean {
   if (!("speechSynthesis" in window)) return false;
-  speechSynthesis.speak(new SpeechSynthesisUtterance(text));
+  const u = new SpeechSynthesisUtterance(text);
+  if (lang) u.lang = lang;
+  speechSynthesis.speak(u);
   return true;
 }

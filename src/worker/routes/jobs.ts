@@ -8,7 +8,7 @@ import { allows, WILDCARD, type Grant } from "../lib/scopes";
 import { builtinTools, explicitCache, researchModel } from "../lib/router-model";
 import { toToolSchema } from "../tools/registry";
 import * as hermes from "../tools/hermes";
-import { RESEARCH_MONTHLY_DEFAULT, jobTool, withSources, type Job, type JobDeps, type Step } from "../lib/jobs";
+import { RESEARCH_MONTHLY_DEFAULT, jobTool, usageEntry, withSources, type Job, type JobDeps, type Step } from "../lib/jobs";
 import { prepareRouter, runCalls } from "./delegate";
 import { recordUsage } from "./usage";
 import { costOf } from "../lib/usage.ts";
@@ -31,8 +31,18 @@ const quiet: EventSink = { send() {}, isClosed: false };
 
 type Usage = NonNullable<Job["usage"]>;
 function usageOf(r: OpenAI.Responses.Response): Usage {
-  const u = r.usage as { input_tokens?: number; output_tokens?: number; input_tokens_details?: { cached_tokens?: number } } | undefined;
-  return { input: u?.input_tokens ?? 0, cached: u?.input_tokens_details?.cached_tokens ?? 0, output: u?.output_tokens ?? 0, model: r.model };
+  const u = r.usage as
+    | { input_tokens?: number; output_tokens?: number; input_tokens_details?: { cached_tokens?: number; cache_write_tokens?: number } }
+    | undefined;
+  return {
+    input: u?.input_tokens ?? 0,
+    cached: u?.input_tokens_details?.cached_tokens ?? 0,
+    written: u?.input_tokens_details?.cache_write_tokens ?? 0,
+    output: u?.output_tokens ?? 0,
+    // Charged by the call, and most of what research costs besides tokens.
+    searches: r.output.filter((o) => o.type === "web_search_call").length,
+    model: r.model,
+  };
 }
 
 /** The pages a response cited, from its web search's url_citation annotations. */
@@ -85,6 +95,8 @@ export function jobEngine(env: Env, deliver: JobDeps["deliver"]): JobDeps {
   return {
     deliver,
     researchLimit: researchLimit(env.RESEARCH_MONTHLY_LIMIT),
+    // Research without the web is forty steps of nothing to search.
+    researchBlocked: builtinTools(env).length ? null : "research needs web search, which is withheld in Settings → Advanced",
     record: (e) => recordUsage(env, e),
 
     async start(job) {
@@ -157,12 +169,7 @@ export function jobView(j: Job, whole = false) {
   void _g;
   void _r;
   // What it cost so far, at OpenAI's prices (lib/usage.ts); null for a model with no price.
-  const cost = j.usage
-    ? costOf({
-        at: j.createdAt, surface: "job", by: j.usage.model ?? "", ok: true, ms: 0, tools: [], ask: "",
-        input: j.usage.input, cached: j.usage.cached, written: 0, output: j.usage.output, searches: 0,
-      })
-    : null;
+  const cost = j.usage ? costOf(usageEntry(j, true, j.updatedAt)) : null;
   const view = { ...rest, cost };
   return whole ? view : { ...view, result: undefined, hasResult: !!j.result };
 }

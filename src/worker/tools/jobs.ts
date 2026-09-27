@@ -20,7 +20,7 @@ export const startJob: Tool = {
     "and that they will hear when it is done. Not for quick questions: answer those now. " +
     "Set research to true only when the user asks for research in depth ('research…', 'dig " +
     "into…', 'find out everything about…'): it runs on a stronger model, searches widely, takes " +
-    "10 to 40 minutes and costs about a dollar, and comes back as a report with its sources. " +
+    "10 to 40 minutes and costs roughly one to two dollars, and comes back as a report with its sources. " +
     "Say that when you start one.",
   parameters: {
     type: "object",

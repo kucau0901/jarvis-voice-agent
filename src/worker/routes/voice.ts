@@ -67,6 +67,8 @@ interface Input {
   opts: Options;
   /** The asking device, once known (handleVoice). */
   origin?: Origin;
+  /** The request's ctx.waitUntil (handleVoice). */
+  waitUntil?: (p: Promise<unknown>) => void;
 }
 
 const THREAD = /^[A-Za-z0-9_-]{1,40}$/;
@@ -216,6 +218,7 @@ async function pipeline(
     surface: "voice",
     assist: true,
     ...(input.origin ? { origin: input.origin } : {}),
+    ...(input.waitUntil ? { waitUntil: input.waitUntil } : {}),
     ...(input.photos?.length ? { images: input.photos } : {}),
   });
   const reply = collector.finish();
@@ -271,13 +274,20 @@ export async function handleVoice(
   if (req.method !== "POST") return err(405, "method not allowed");
   // Asking is what this does; voice alone is not enough.
   if (!allows(grants, "ask")) return err(403, 'this device is not granted "ask"', { need: "ask" });
-  if (!env.OPENAI_API_KEY) return err(503, "OPENAI_API_KEY is not configured");
 
   const url = new URL(req.url);
   const input = await readInput(req, url);
   if (input instanceof Response) return input;
   if (!input.audio && !input.text) return err(400, "nothing to answer: send a recording or text");
+  // Only refused when OpenAI must do the hearing. Text, or other hearing, can
+  // still be answered by Home Assistant's Assist, and run() says the rest.
+  if (!env.OPENAI_API_KEY && input.audio && speechConfig(env).stt === "openai") {
+    return err(503, "OPENAI_API_KEY is not configured, and hearing is set to OpenAI");
+  }
   input.origin = originOf(principal, input.opts.origin) ?? undefined;
+  // Bookkeeping (usage, the shared conversation, a stale tool list) after the
+  // answer, not before it is spoken.
+  input.waitUntil = (p) => ctx.waitUntil(p);
 
   // A screen only when the caller has one to show a map on, and may use it.
   const scoped: readonly Grant[] = input.opts.screen

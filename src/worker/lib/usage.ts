@@ -1,5 +1,7 @@
 import { LIVE_PER_MINUTE, WEB_SEARCH_PER_CALL, priceOf } from "./prices.ts";
 
+const DAY_S = 24 * 3600;
+
 /**
  * What Jarvis costs, and how it answers: one entry per question, per job and
  * per live session, kept in the Durable Object and shown in Settings → Usage.
@@ -76,8 +78,11 @@ export function addToDay(d: DayTotals, e: UsageEntry): DayTotals {
   const cost = costOf(e);
   if (cost === null) out.unpriced += e.input + e.output;
   if (e.seconds !== undefined) {
-    out.liveSeconds += e.seconds;
-    out.cost.live += cost ?? 0;
+    // A day holds 24 hours of live session at most, whatever a screen reports:
+    // the route takes a screen's word for it, so a bad one cannot run the bill up.
+    const seconds = Math.max(0, Math.min(e.seconds, DAY_S - out.liveSeconds));
+    out.liveSeconds += seconds;
+    out.cost.live += seconds === e.seconds ? (cost ?? 0) : (seconds / 60) * LIVE_PER_MINUTE;
   } else if (e.surface === "job") {
     out.jobs += 1;
     out.cost.jobs += cost ?? 0;

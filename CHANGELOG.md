@@ -29,7 +29,7 @@ of every release, and in the [README](README.md#updating).
 - **Research jobs**: "research the best home charger for my car and let me
   know" runs as a background job on a stronger model (GPT-6 Sol by default),
   searches widely, and comes back as a report with its sources, taken from
-  the searches' own citations. About a dollar each, 10 to 40 minutes, capped
+  the searches' own citations. Roughly $1–2 each, 10 to 40 minutes, capped
   at 10 a month (Settings → OpenAI). The Jobs panel shows what each job cost.
 - **Settings → Usage and cost**: what Jarvis has cost this month and today,
   split into answering, live minutes and background jobs; how many questions
@@ -69,6 +69,14 @@ of every release, and in the [README](README.md#updating).
   sent as high priority. And a phone that was off for more than an hour never
   got them: they are now held for a day, except "time to leave", which is held
   only until the appointment starts.
+- Cancelling a background job just as Jarvis was checking on it could be
+  undone: the check saved the job as still running, and it ran on to the end
+  and reported back. A cancel now sticks, and the work already started is
+  stopped.
+- Without an OpenAI key, Type and push-to-talk refused every question, even
+  those Home Assistant's Assist answers on its own. They now go to Assist
+  first, as the glasses do; push-to-talk still needs a key when OpenAI
+  transcribes speech.
 
 ## [1.1.0] - 2026-09-26
 
