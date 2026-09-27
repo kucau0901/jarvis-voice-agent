@@ -72,6 +72,11 @@ of every release, and in the [README](README.md#updating).
 
 ### Fixed
 
+- An update never reached a phone with Jarvis on its home screen until the
+  app was swiped away: the phone resumes it rather than reloading it. Now,
+  whenever Jarvis comes back to the front (and every half hour while it stays
+  there, as in the car), it picks up a newer version, unless you are in the
+  middle of something.
 - The voice prices in Settings: Workers AI's English speech (Deepgram Aura 2,
   $0.03 per 1,000 characters) is dearer than OpenAI's past Cloudflare's free
   allowance, not the cheapest option; the docs said otherwise.
