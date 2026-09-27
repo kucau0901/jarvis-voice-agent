@@ -58,6 +58,11 @@ of every release, and in the [README](README.md#updating).
   coming ("Aisyah will remind you, Sat 17:00: …"), so neither wonders whether
   it went through. Someone whose permissions an admin set by hand also gets
   what their role has gained since, such as passing things on.
+- **Each person's own glasses and devices.** Anyone makes a token for
+  their own G2 glasses or ESP32 in Devices; it acts as them (their memory,
+  mail, reminders and messages) and never reaches further than they may. An
+  admin sees everyone's and can make one for a child. When someone leaves,
+  their devices stop working.
 - **Family chat**: a room the whole family shares and a conversation with
   each person, in the menu. Name the assistant in the room and it answers
   there. Messages Jarvis passed on appear in the two people's conversation,

@@ -48,6 +48,16 @@ export function isScope(v: unknown): v is Grant {
   return typeof v === "string" && (v === WILDCARD || KNOWN.has(v));
 }
 
+/**
+ * What two sets of grants both allow: a member's device reaches only what the
+ * device was given AND what its owner may (lib/auth.ts).
+ */
+export function narrow(a: readonly Grant[], b: readonly Grant[]): Grant[] {
+  if (a.includes(WILDCARD)) return [...b];
+  if (b.includes(WILDCARD)) return [...a];
+  return a.filter((g) => b.includes(g));
+}
+
 /** Drop anything unrecognised rather than failing — a stored grant may predate a rename. */
 export function saneGrants(raw: unknown): Grant[] {
   if (!Array.isArray(raw)) return [];
@@ -111,7 +121,8 @@ export function requiredScope(pathname: string, method: string): RouteRequiremen
     if (pathname === "/api/memory/move") return "memory.write";
     return "owner";
   }
-  if (pathname.startsWith("/api/v1/devices")) return "owner";
+  // Each person's own devices; an admin's view is everyone's (routes/v1.ts). Never a device's.
+  if (pathname.startsWith("/api/v1/devices")) return "person";
   // Which model reads the house and the mailbox. Covered by the default below
   // anyway; stated so nobody later mistakes it for something a device may set.
   if (pathname.startsWith("/api/router")) return "owner";

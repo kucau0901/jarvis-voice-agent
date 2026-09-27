@@ -126,6 +126,17 @@ others quietly, as a notification, not aloud.
 Talking with the family needs the `chat` permission: adults and children
 have it; guests do not.
 
+## Your own glasses and devices
+
+Each person's glasses (Even Realities G2), ESP32s and other devices are
+theirs. In **Devices** (in the menu), anyone makes a token for their own: it
+acts as them — their memory, their mail, their reminders, what is passed on
+to them — and never reaches further than they may, whatever it was given.
+An admin sees everyone's devices, whose each is, and can make one for
+someone else (a child's ESP32, say). When someone leaves the family, their
+devices stop working. The devices you had before the family are the first
+person's, as they were. [Setting up G2 glasses](even-g2.md).
+
 ## Lost phone, new phone
 
 - **A new phone with the same account** (iCloud Keychain, Google Password

@@ -29,8 +29,19 @@ export const voiceWho = (env: { JARVIS_PERSON?: string }): string =>
 /** Whether a stored creator is this person's (the first person owns "voice", "owner" and the devices'). */
 export const isTheirs = (who: string, person: string | undefined): boolean => personOfWho(who) === (person || OWNER);
 
-/** Whose person a stored creator or subscriber is: a member's id, else the first person (the owner key, a device). */
-export const personOfWho = (who: string): string => (/^u_[a-z0-9]+$/.test(who) ? who : OWNER);
+/**
+ * Whose person a stored creator or subscriber is: a member's id, or one of
+ * their devices ("u_x~d_y", deviceWho); else the first person (the owner
+ * key, "voice", and the first person's devices).
+ */
+export const personOfWho = (who: string): string => /^(u_[a-z0-9]+)(~|$)/.exec(who)?.[1] ?? OWNER;
+
+/**
+ * How a device is named where it makes, subscribes or opens things: its own
+ * id for the first person's, as always; its owner's id before it for a
+ * member's, so what it makes and receives is theirs.
+ */
+export const deviceWho = (id: string, owner?: string): string => (owner && owner !== OWNER ? `${owner}~${id}` : id);
 
 /** The family's shared memory book. */
 export const familyBook = (space: Pick<Space, "id">): string => `fam:${space.id}`;

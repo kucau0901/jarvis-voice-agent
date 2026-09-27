@@ -48,6 +48,12 @@ export interface Device {
   expiresAt?: number;
   lastSeenAt?: number;
   revokedAt?: number;
+  /**
+   * Whose it is (lib/context.ts): a member's id, whose glasses or ESP32 it
+   * is; it acts as them and never reaches further than they may. Absent for
+   * the first person's, as every device was before families.
+   */
+  owner?: string;
 }
 
 /** The index entry. `digest` never leaves the Worker. */
@@ -118,6 +124,7 @@ function saneDevice(raw: unknown): StoredDevice | undefined {
     expiresAt: typeof d.expiresAt === "number" ? d.expiresAt : undefined,
     lastSeenAt: typeof d.lastSeenAt === "number" ? d.lastSeenAt : undefined,
     revokedAt: typeof d.revokedAt === "number" ? d.revokedAt : undefined,
+    ...(typeof d.owner === "string" && /^u_[a-z0-9]+$/.test(d.owner) ? { owner: d.owner } : {}),
   };
 }
 
@@ -211,6 +218,8 @@ export async function create(
   name: string,
   scopes: Grant[],
   expiresAt?: number,
+  /** A member's id, for their own device; none for the first person's. */
+  owner?: string,
 ): Promise<{ device: Device; token: string }> {
   const token = mintToken();
   const stored: StoredDevice = {
@@ -222,6 +231,7 @@ export async function create(
     digest: await sha256Hex(token),
     createdAt: Date.now(),
     expiresAt,
+    ...(owner && owner !== "owner" ? { owner } : {}),
   };
 
   const list = await readIndex(env);

@@ -7,7 +7,9 @@ import { burst } from "../lib/limits.ts";
 import { SCOPES, type Grant } from "../lib/scopes.ts";
 import { ROLES, ROLE_SCOPES, type HubApi, type Prefs } from "../lib/hub.ts";
 import { forgetPerson, forgetSessions, hubStub } from "../lib/hub-client.ts";
+import * as devices from "../lib/devices.ts";
 import { sha256Hex } from "../lib/devices.ts";
+import { deviceWho } from "../lib/context.ts";
 import { stateStub } from "../lib/state-client.ts";
 import {
   creationOptions,
@@ -413,6 +415,12 @@ export async function handleHub(req: Request, env: Env, principal: Principal): P
       forgetSessions(r.ended);
       // A screen of theirs still open stops hearing alerts, and their phones stop being sent them.
       await stateStub(env)?.forgetDevice(user).catch(() => {});
+      // Their glasses and ESP32s are revoked, and theirs close too.
+      for (const d of await devices.list(env)) {
+        if (d.owner !== user || d.revokedAt) continue;
+        await devices.update(env, d.id, { revoked: true });
+        await stateStub(env)?.forgetDevice(deviceWho(d.id, user)).catch(() => {});
+      }
       return json({ ok: true });
     }
     return err(405, "method not allowed");

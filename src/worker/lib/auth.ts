@@ -1,9 +1,9 @@
 import type { Env } from "../types";
 import { looksLikeToken, lookup, touch, type Device } from "./devices.ts";
-import { WILDCARD, type Grant } from "./scopes.ts";
+import { WILDCARD, narrow, type Grant } from "./scopes.ts";
 import { looksLikeSession, type Place, type Role } from "./hub.ts";
-import { OWNER } from "./context.ts";
-import { sessionFor } from "./hub-client.ts";
+import { OWNER, deviceWho } from "./context.ts";
+import { personView, sessionFor } from "./hub-client.ts";
 
 const enc = new TextEncoder();
 
@@ -37,7 +37,14 @@ async function safeEqual(a: string, b: string): Promise<boolean> {
  */
 export type Principal =
   | { kind: "owner" }
-  | { kind: "device"; id: string; name: string; scopes: Grant[] }
+  | {
+      kind: "device";
+      id: string;
+      name: string;
+      scopes: Grant[];
+      /** A member's device (lib/devices.ts): whose it is. Absent for the first person's. */
+      owner?: string;
+    }
   | {
       kind: "member";
       id: string;
@@ -64,10 +71,11 @@ export const grantsOf = (p: Principal): Grant[] => (isAdmin(p) ? [WILDCARD] : (p
  * person's, which is what Jarvis kept before families ("owner"). The owner key
  * and devices act as the first person.
  */
-export const personOf = (p: Principal): string => (p.kind === "member" && !p.place?.first ? p.id : OWNER);
+export const personOf = (p: Principal): string =>
+  p.kind === "member" ? (p.place?.first ? OWNER : p.id) : p.kind === "device" ? (p.owner ?? OWNER) : OWNER;
 
-/** Whose a thread, a job or a routine is: a device's own, else the person's. */
-export const whoOf = (p: Principal): string => (p.kind === "device" ? p.id : personOf(p));
+/** Whose a thread, a job or a routine is: a device's own (its owner's, for a member's), else the person's. */
+export const whoOf = (p: Principal): string => (p.kind === "device" ? deviceWho(p.id, p.owner) : personOf(p));
 
 export type AuthResult = { ok: true; principal: Principal } | { ok: false; response: Response };
 
@@ -135,10 +143,20 @@ export async function authorize(
     if (!found.ok) return deny(401, "unauthorized");
 
     const device: Device = found.device;
+    /*
+     * A member's glasses or ESP32 act as them: never further than they may
+     * reach, and not at all once they have left the family.
+     */
+    let scopes = device.scopes;
+    if (device.owner) {
+      const v = await personView(env, device.owner).catch(() => null);
+      if (!v?.scopes) return deny(401, "unauthorized");
+      scopes = narrow(device.scopes, v.scopes);
+    }
     ctx?.waitUntil(touch(env, device).catch(() => {}));
     return {
       ok: true,
-      principal: { kind: "device", id: device.id, name: device.name, scopes: device.scopes },
+      principal: { kind: "device", id: device.id, name: device.name, scopes, ...(device.owner ? { owner: device.owner } : {}) },
     };
   }
 

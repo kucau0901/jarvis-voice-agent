@@ -155,6 +155,8 @@ export interface PersonView {
   cars: Reach[];
   /** Their own Home Assistant token, for the Worker only. */
   haToken?: string;
+  /** What they may reach (their member's scopes); null if they are not in the family. */
+  scopes?: Grant[] | null;
 }
 
 /** Everything about one sign-in that a request needs to know. */
@@ -380,8 +382,16 @@ export class HubHost {
     const space = meta.space ? await this.space(meta.space) : null;
     const id = person === "owner" ? await this.firstPerson() : person;
     const u = id ? await this.storedUser(id) : null;
-    if (person !== "owner" && (!u || !space || !(await this.member(space.id, person)))) return { space: null, name: null, prefs: {}, cars: [] };
-    return { space, name: u?.name ?? null, prefs: u?.prefs ?? {}, cars: await this.carsFor(person), ...(u?.haToken ? { haToken: u.haToken } : {}) };
+    const m = person !== "owner" && space ? await this.member(space.id, person) : null;
+    if (person !== "owner" && (!u || !space || !m)) return { space: null, name: null, prefs: {}, cars: [], scopes: null };
+    return {
+      space,
+      name: u?.name ?? null,
+      prefs: u?.prefs ?? {},
+      cars: await this.carsFor(person),
+      ...(u?.haToken ? { haToken: u.haToken } : {}),
+      scopes: m ? scopesOf(m) : [WILDCARD],
+    };
   }
 
   private async membersOf(space: string): Promise<Member[]> {

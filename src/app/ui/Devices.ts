@@ -23,6 +23,8 @@ interface Device {
   createdAt: number;
   lastSeenAt?: number;
   revokedAt?: number;
+  /** Whose it is, for an admin's view of everyone's. */
+  ownerName?: string | null;
 }
 
 /** What each scope actually lets a device do, in the words the panel shows. */
@@ -47,6 +49,8 @@ export class Devices {
   private list: HTMLElement;
   private key: string;
   private scopes: string[] = [];
+  /** For an admin: the family, to make a device for one of them. */
+  private people: { id: string; name: string }[] = [];
 
   constructor(key: string) {
     this.key = key;
@@ -61,13 +65,16 @@ export class Devices {
         </header>
         <p class="note">
           Anything that is not the car: a microcontroller, a pair of glasses, a script.
-          Each gets its own token and its own reach, and can be revoked on its own.
+          Each gets its own token and its own reach, and can be revoked on its own. A device
+          acts as whoever it belongs to — their memory, their mail, their alerts — and never
+          reaches further than they may.
           See <code>docs/api.md</code>, and for Even Realities G2 glasses,
           <code>docs/even-g2.md</code>.
         </p>
 
         <div class="mint">
           <input class="dname" type="text" placeholder="what is it? e.g. garage esp32">
+          <select class="dfor" hidden></select>
           <div class="scopes"></div>
           <button class="add primary">Create token</button>
         </div>
@@ -110,9 +117,16 @@ export class Devices {
     try {
       const res = await fetch("/api/v1/devices", { headers: authHeaders(this.key) });
       if (!res.ok) throw new Error(`devices ${res.status}`);
-      const body = (await res.json()) as { devices: Device[]; scopes: string[] };
+      const body = (await res.json()) as { devices: Device[]; scopes: string[]; people?: { id: string; name: string }[] };
       this.scopes = body.scopes ?? [];
+      this.people = body.people ?? [];
       this.renderScopes();
+      // An admin may make one for someone else in the family: a child's ESP32, say.
+      const dfor = this.el.querySelector(".dfor") as unknown as HTMLSelectElement;
+      dfor.hidden = this.people.length < 2;
+      if (!dfor.options.length) {
+        dfor.innerHTML = `<option value="">for me</option>` + this.people.map((p) => `<option value="${esc(p.id)}">for ${esc(p.name)}</option>`).join("");
+      }
       this.render(body.devices ?? []);
     } catch (e) {
       this.msg(`Could not load devices: ${e instanceof Error ? e.message : String(e)}`, true);
@@ -157,7 +171,7 @@ export class Devices {
       const res = await fetch("/api/v1/devices", {
         method: "POST",
         headers: authHeaders(this.key),
-        body: JSON.stringify({ name, scopes }),
+        body: JSON.stringify({ name, scopes, ...((this.el.querySelector(".dfor") as unknown as HTMLSelectElement).value ? { owner: (this.el.querySelector(".dfor") as unknown as HTMLSelectElement).value } : {}) }),
       });
       const body = (await res.json()) as { token?: string; error?: string };
       if (!res.ok || !body.token) throw new Error(body.error ?? `status ${res.status}`);
@@ -224,7 +238,7 @@ export class Devices {
         <div class="dev${d.revokedAt ? " dead" : ""}" data-id="${esc(d.id)}">
           <div class="who">
             <strong>${esc(d.name)}</strong>
-            <span class="dim">${esc(d.hint)} · seen ${ago(d.lastSeenAt)}</span>
+            <span class="dim">${d.ownerName ? `${esc(d.ownerName)}'s · ` : ""}${esc(d.hint)} · seen ${ago(d.lastSeenAt)}</span>
           </div>
           <div class="grants">${d.scopes.map((s) => `<code>${esc(s)}</code>`).join(" ")}</div>
           <div class="rowbtns">

@@ -3,7 +3,9 @@ import { err, json } from "../lib/http";
 import { Collector, type Collected } from "../lib/collector";
 import { buildHistory, type Turn } from "../lib/history";
 import { run, handleDelegate, type RunOptions } from "./delegate";
-import { whoOf, grantsOf, isAdmin, type Principal } from "../lib/auth";
+import { whoOf, grantsOf, isAdmin, personOf, type Principal } from "../lib/auth";
+import { deviceWho } from "../lib/context.ts";
+import { hubStub } from "../lib/hub-client.ts";
 import { stateStub } from "../lib/state-client";
 import { charBudget, forGlasses, latestUserText, toChatCompletion, waitSeconds } from "../lib/glasses";
 import { allows, saneGrants, SCOPES, WILDCARD, type Grant } from "../lib/scopes";
@@ -276,11 +278,25 @@ async function recordTurns(env: Env, key: string, asked: string, answered: strin
 
 /* ---------- GET/POST/PATCH/DELETE /api/v1/devices ------------------------- */
 
-async function handleDevices(req: Request, env: Env): Promise<Response> {
+/**
+ * Devices: each person's glasses and ESP32s, which act as them (lib/auth.ts).
+ * A member sees and manages their own; an admin everyone's, and may make one
+ * for a member (a child's ESP32, say). A device never manages devices.
+ */
+async function handleDevices(req: Request, env: Env, principal: Principal): Promise<Response> {
   const url = new URL(req.url);
+  if (principal.kind === "device") return err(403, "a device cannot manage devices");
+  const admin = isAdmin(principal);
+  const me = personOf(principal);
+  const theirs = (d: devices.Device) => admin || (d.owner ?? "owner") === me;
+  const family = (await hubStub(env)?.familyPeople().catch(() => null)) ?? [];
 
   if (req.method === "GET") {
-    return json({ devices: await devices.list(env), scopes: [WILDCARD, ...SCOPES] });
+    const names = new Map(family.map((p) => [p.person, p.name]));
+    const list = (await devices.list(env)).filter(theirs).map((d) => ({ ...d, ownerName: names.get(d.owner ?? "owner") ?? null }));
+    // What a new one may be given: everything for an admin, a member's own reach otherwise.
+    const offer = admin ? [WILDCARD, ...SCOPES] : grantsOf(principal);
+    return json({ devices: list, scopes: offer, people: admin ? family.map((p) => ({ id: p.person, name: p.name })) : [] });
   }
 
   const parsed = await readJson(req);
@@ -297,8 +313,10 @@ async function handleDevices(req: Request, env: Env): Promise<Response> {
     }
     const expiresAt =
       typeof body.expiresAt === "number" && body.expiresAt > Date.now() ? body.expiresAt : undefined;
+    // Whose: the maker's own, or for an admin, any member of the family.
+    const owner = admin && typeof body.owner === "string" && family.some((p) => p.person === body.owner) ? body.owner : me;
 
-    const { device, token } = await devices.create(env, name, scopes, expiresAt);
+    const { device, token } = await devices.create(env, name, scopes, expiresAt, owner);
     return json(
       {
         ...device,
@@ -317,10 +335,12 @@ async function handleDevices(req: Request, env: Env): Promise<Response> {
     if (body.scopes !== undefined) patch.scopes = saneGrants(body.scopes);
     if (typeof body.revoked === "boolean") patch.revoked = body.revoked;
 
+    const before = (await devices.list(env)).find((d) => d.id === id);
+    if (!before || !theirs(before)) return err(404, `no device ${id}`);
     const updated = await devices.update(env, id, patch);
     // Its open screens and its notifications go with the grant.
     if (updated && (patch.revoked === true || (patch.scopes && !allows(patch.scopes, "alerts")))) {
-      await stateStub(env)?.forgetDevice(id).catch(() => {});
+      await stateStub(env)?.forgetDevice(deviceWho(id, before.owner)).catch(() => {});
     }
     return updated ? json(updated) : err(404, `no device ${id}`);
   }
@@ -328,8 +348,10 @@ async function handleDevices(req: Request, env: Env): Promise<Response> {
   if (req.method === "DELETE") {
     const id = typeof body.id === "string" ? body.id : url.searchParams.get("id") ?? "";
     if (!id) return err(400, "id is required");
+    const before = (await devices.list(env)).find((d) => d.id === id);
+    if (!before || !theirs(before)) return err(404, `no device ${id}`);
     if (!(await devices.remove(env, id))) return err(404, `no device ${id}`);
-    await stateStub(env)?.forgetDevice(id).catch(() => {});
+    await stateStub(env)?.forgetDevice(deviceWho(id, before.owner)).catch(() => {});
     return json({ ok: true, id });
   }
 
@@ -371,10 +393,7 @@ export async function handleV1(
   if (url.pathname === "/api/v1/voice") return handleVoice(req, env, ctx, principal, grants);
   if (url.pathname === "/api/v1/usage/live") return handleLiveUsage(req, env);
 
-  if (url.pathname === "/api/v1/devices") {
-    if (!isAdmin(principal)) return err(403, "owner credential required");
-    return handleDevices(req, env);
-  }
+  if (url.pathname === "/api/v1/devices") return handleDevices(req, env, principal);
 
   // Alerts: open screens, notifications, and asking Jarvis to tell you something.
   const alerts = await handleAlertApi(req, env, url, principal);

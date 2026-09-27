@@ -160,7 +160,8 @@ console.log("\nroute requirements — fail closed is the whole point");
   // Each person links their own; a device never can, whatever its scopes (index.ts).
   check("spotify is a person's own", requiredScope("/api/spotify/auth", "GET") === "person");
   check("so is google", requiredScope("/api/google/auth", "GET") === "person");
-  check("device management is owner-only", requiredScope("/api/v1/devices", "POST") === "owner");
+  // Each person manages their own devices, an admin everyone's; a device none (routes/v1.ts).
+  check("device management is a person's, never a device's", requiredScope("/api/v1/devices", "GET") === "person");
 
   check("memory read is readable", requiredScope("/api/memory", "GET") === "memory.read");
   // A person's own memory; devices are refused writes in the route itself (routes/memory.ts).

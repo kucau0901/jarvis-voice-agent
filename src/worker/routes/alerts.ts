@@ -36,7 +36,7 @@ async function body(req: Request): Promise<Record<string, unknown> | null> {
 /** What a screen is called in the panel and in "shown on …". A device is its own name. */
 function identity(principal: Principal, label: unknown, fallback: string) {
   return principal.kind === "device"
-    ? { who: principal.id, label: cleanLabel(principal.name, "a device") }
+    ? { who: whoOf(principal), label: cleanLabel(principal.name, "a device") }
     : { who: whoOf(principal), label: cleanLabel(label, fallback) };
 }
 

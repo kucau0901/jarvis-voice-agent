@@ -42,7 +42,8 @@ async function forPerson(env: Env, p: Principal): Promise<Env> {
   if (p.kind === "member" && p.place) {
     return withPerson(env, { person, name: p.name, space: p.place.space, prefs: p.place.prefs, cars: v?.space ? v.cars : undefined, haToken: v?.haToken });
   }
-  return withPerson(env, { person: "owner", name: v?.name, space: v?.space, prefs: v?.prefs, cars: v?.space ? v.cars : undefined, haToken: v?.haToken });
+  // The owner key, and devices: the first person's, or for a member's own device, that member's.
+  return withPerson(env, { person, name: v?.name, space: v?.space, prefs: v?.prefs, cars: v?.space ? v.cars : undefined, haToken: v?.haToken });
 }
 
 /** What a locked profile may still do: say who it is, be unlocked, or be signed out. */

@@ -746,7 +746,12 @@ one; a car shared to `see` is never operated.
 | `DELETE /api/hub/relays` | `{id}`: take back something you passed on, before it is answered |
 
 An alert for something passed on carries `relay: {id, kind}`; one for a chat
-message, `convo`. `PATCH /api/hub/me {haToken}`
+message, `convo`.
+
+**Devices are people's.** `/api/v1/devices` is for people, never a device: a
+member lists and manages their own, an admin everyone's (each with its
+`ownerName`), and `POST` may name an `owner` (a member's id). A member's
+device acts as them, with the scopes it was given narrowed to theirs. `PATCH /api/hub/me {haToken}`
 sets a person's own Home Assistant token (checked with the house first); an
 empty one removes it.
 

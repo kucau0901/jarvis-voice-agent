@@ -79,7 +79,10 @@ The glasses get their own token, so they can reach only what you allow, and
 you can shut them out without touching anything else. Do this on your phone:
 the token has to be pasted into the Even app, and it is 37 characters long.
 
-1. Open Jarvis on your phone and sign in with your owner key.
+1. Open Jarvis on your phone, signed in as yourself (or with the owner key).
+   **In a family, each person makes the token for their own glasses**: the
+   glasses then act as them (their memory, their mail, their reminders) and
+   never reach further than they may.
 2. Open the menu (**☰**) → **Devices**.
 3. Name it, e.g. `G2 glasses`.
 4. Tick what the glasses may do:
@@ -94,6 +97,7 @@ the token has to be pasted into the Even app, and it is 37 characters long.
    | `media` | "play some jazz", "skip this song" |
    | `routines` | "remind me at five to call the office" |
    | `alerts` | "send that to my phone" |
+   | `chat` | "remind Aisyah to buy milk", "tell Dad I'm on my way", "done" to a reminder |
 
    Leave off `screen` and `voice` (the glasses show text only, and use neither).
    Leave off `car.control` unless you want to lock, unlock or open the car from

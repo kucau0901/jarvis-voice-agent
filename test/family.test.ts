@@ -1,8 +1,10 @@
 import { HubHost } from "../src/worker/lib/hub.ts";
 import { _clearSessionCache } from "../src/worker/lib/hub-client.ts";
-import { authorize, grantsOf, isAdmin, whoOf, type Principal } from "../src/worker/lib/auth.ts";
+import { authorize, grantsOf, isAdmin, personOf, whoOf, type Principal } from "../src/worker/lib/auth.ts";
 import { requiredScope } from "../src/worker/lib/scopes.ts";
-import { lookup, sha256Hex } from "../src/worker/lib/devices.ts";
+import { create as createDevice, lookup, sha256Hex } from "../src/worker/lib/devices.ts";
+import { deviceWho, personOfWho } from "../src/worker/lib/context.ts";
+import { narrow } from "../src/worker/lib/scopes.ts";
 import { handleAuth, handleHub } from "../src/worker/routes/hub.ts";
 import { makeFake, register, signIn } from "./fake-authenticator.ts";
 
@@ -172,6 +174,21 @@ console.log("\npairing the car");
   check("an admin may pair a screen for a member, and it is theirs", byAdmin.status === 200 && ((await who(tab.body.token)) as { id: string } | null)?.id === (sara as { id: string }).id);
 }
 
+console.log("\nher own glasses");
+{
+  const saraId = (sara as { id: string }).id;
+  const { token, device } = await createDevice(env, "Sara's G2", ["*"], undefined, saraId);
+  check("a member's device is theirs", device.owner === saraId);
+  _clearSessionCache();
+  const g = (await who(token))!;
+  check("it acts as her", g?.kind === "device" && personOf(g) === saraId);
+  check("with no more than she may, though it was given everything", !grantsOf(g).includes("*") && grantsOf(g).includes("home") && !grantsOf(g).includes("hermes"));
+  check("what it makes and hears is hers", whoOf(g) === `${saraId}~${device.id}` && personOfWho(whoOf(g)) === saraId);
+  check("the first person's devices are named as always", deviceWho("d_1") === "d_1" && personOfWho("d_1") === "owner");
+  check("two sets of grants narrow to what both allow", narrow(["ask", "home", "mail"], ["ask", "mail", "chat"]).join() === "ask,mail" && narrow(["*"], ["ask"]).join() === "ask");
+  (globalThis as { __saraG2?: string }).__saraG2 = token;
+}
+
 console.log("\nher sessions, and removing her");
 {
   const mine = await call("/api/hub/sessions", undefined, { principal: sara });
@@ -184,6 +201,8 @@ console.log("\nher sessions, and removing her");
   const gone = await call("/api/hub/members", { user: (sara as { id: string }).id }, { method: "DELETE", principal: admin });
   check("the admin removes her", gone.status === 200);
   check("and at once, her sessions stop working here", (await who(saraToken)) === null);
+  _clearSessionCache();
+  check("her glasses stop working too", (await who((globalThis as { __saraG2?: string }).__saraG2!)) === null);
   check("her open screens and phones stop getting alerts", forgotten.includes((sara as { id: string }).id));
   const lastAdmin = await call("/api/hub/members", { user: (admin as { id: string }).id }, { method: "DELETE", principal: admin });
   check("the last admin cannot remove themselves", lastAdmin.status === 400);
