@@ -60,6 +60,28 @@ export interface User {
   createdAt: number;
 }
 
+/**
+ * A PIN for screens several people share (the family car): switching into
+ * someone's profile there asks for it. Kept as a PBKDF2 hash; wrong guesses
+ * are counted, and five in a row wait a quarter of an hour.
+ */
+interface PinRecord {
+  salt: string;
+  hash: string;
+  fails?: number;
+  waitUntil?: number;
+}
+
+/** A user as stored: the PIN never leaves this file. */
+interface StoredUser extends User {
+  pin?: PinRecord;
+}
+
+export const PIN_SHAPE = /^\d{4,8}$/;
+export const PIN_TRIES = 5;
+export const PIN_WAIT_MS = 15 * 60_000;
+const PIN_ITERATIONS = 100_000;
+
 export interface Member {
   space: string;
   user: string;
@@ -103,6 +125,11 @@ export interface Session {
   createdAt: number;
   lastSeenAt: number;
   expiresAt: number;
+  /**
+   * On a screen several people share, the profile not in use is locked: it
+   * does nothing until its PIN is given again. Only for people with a PIN.
+   */
+  locked?: boolean;
 }
 
 export interface Pairing {
@@ -126,9 +153,19 @@ export interface Challenge {
 /** A signed-in person, as auth needs them. */
 export interface SignedIn {
   session: Omit<Session, "digest">;
-  user: User;
+  user: User & { hasPin: boolean };
   member: Member;
   scopes: Grant[];
+}
+
+const shown = (u: StoredUser): User => ({ id: u.id, name: u.name, createdAt: u.createdAt });
+
+const hex = (b: ArrayBuffer) => [...new Uint8Array(b)].map((x) => x.toString(16).padStart(2, "0")).join("");
+
+async function pinHash(pin: string, salt: string): Promise<string> {
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey("raw", enc.encode(pin), "PBKDF2", false, ["deriveBits"]);
+  return hex(await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt: enc.encode(salt), iterations: PIN_ITERATIONS }, key, 256));
 }
 
 export const SESSION_TOKEN = "jss1_";
@@ -267,7 +304,12 @@ export class HubHost {
   /* ---------- members -------------------------------------------------------- */
 
   async user(id: string): Promise<User | null> {
-    return (await this.storage.get<User>(K.user(id))) ?? null;
+    const u = await this.storedUser(id);
+    return u ? shown(u) : null;
+  }
+
+  private async storedUser(id: string): Promise<StoredUser | null> {
+    return (await this.storage.get<StoredUser>(K.user(id))) ?? null;
   }
 
   async member(space: string, user: string): Promise<Member | null> {
@@ -275,17 +317,18 @@ export class HubHost {
   }
 
   /** Everyone in a family, with when they were last about. */
-  async members(space: string): Promise<(Member & { name: string; scopesNow: Grant[]; passkeys: number; lastSeenAt?: number })[]> {
+  async members(space: string): Promise<(Member & { name: string; scopesNow: Grant[]; passkeys: number; hasPin: boolean; lastSeenAt?: number })[]> {
     const ms = await this.membersOf(space);
     const keys = [...(await this.storage.list<Passkey>({ prefix: "hub:pk:" })).values()];
     const sessions = [...(await this.storage.list<Session>({ prefix: "hub:sess:" })).values()];
     const out = [];
     for (const m of ms) {
-      const u = await this.user(m.user);
+      const u = await this.storedUser(m.user);
       const seen = sessions.filter((s) => s.user === m.user).map((s) => s.lastSeenAt);
       out.push({
         ...m,
         name: u?.name ?? "?",
+        hasPin: !!u?.pin,
         scopesNow: scopesOf(m),
         passkeys: keys.filter((k) => k.user === m.user).length,
         lastSeenAt: seen.length ? Math.max(...seen) : undefined,
@@ -295,13 +338,65 @@ export class HubHost {
   }
 
   async renameUser(id: string, raw: unknown): Promise<User | Fail> {
-    const u = await this.user(id);
+    const u = await this.storedUser(id);
     const name = cleanName(raw);
     if (!u) return fail("no such person");
     if (!name) return fail("a name cannot be empty");
     const next = { ...u, name };
     await this.storage.put(K.user(id), next);
-    return next;
+    return shown(next);
+  }
+
+  /* ---------- PINs, for shared screens ------------------------------------------ */
+
+  /** Set a PIN (4 to 8 digits), or with none, remove it: their locked screens open again. */
+  async setPin(id: string, pin: unknown): Promise<true | Fail> {
+    const u = await this.storedUser(id);
+    if (!u) return fail("no such person");
+    if (pin === null || pin === "" || pin === undefined) {
+      const { pin: _, ...rest } = u;
+      await this.storage.put(K.user(id), rest);
+      return true;
+    }
+    if (typeof pin !== "string" || !PIN_SHAPE.test(pin)) return fail("a PIN is 4 to 8 digits");
+    const salt = random(ALPHABET, 16);
+    await this.storage.put(K.user(id), { ...u, pin: { salt, hash: await pinHash(pin, salt) } });
+    return true;
+  }
+
+  /** Lock a session: switching to someone else on a shared screen. Does nothing for someone with no PIN. */
+  async lockSession(digest: string): Promise<boolean> {
+    const s = await this.storage.get<Session>(K.session(digest));
+    if (!s) return false;
+    const u = await this.storedUser(s.user);
+    if (!u?.pin) return false;
+    await this.storage.put(K.session(digest), { ...s, locked: true });
+    return true;
+  }
+
+  /** Give a locked session back its use, with the PIN. Five wrong in a row wait fifteen minutes. */
+  async unlockSession(digest: string, pin: unknown, now: number): Promise<true | Fail> {
+    const s = await this.storage.get<Session>(K.session(digest));
+    if (!s) return fail("this sign-in has ended");
+    const u = await this.storedUser(s.user);
+    if (!u) return fail("this person is no longer a member");
+    if (!u.pin) {
+      if (s.locked) await this.storage.put(K.session(digest), { ...s, locked: false });
+      return true;
+    }
+    if (u.pin.waitUntil && u.pin.waitUntil > now) {
+      return fail(`too many wrong PINs; try again in ${Math.ceil((u.pin.waitUntil - now) / 60_000)} minutes`);
+    }
+    const good = typeof pin === "string" && PIN_SHAPE.test(pin) && (await pinHash(pin, u.pin.salt)) === u.pin.hash;
+    if (!good) {
+      const fails = (u.pin.fails ?? 0) + 1;
+      const pinNext = fails >= PIN_TRIES ? { ...u.pin, fails: 0, waitUntil: now + PIN_WAIT_MS } : { ...u.pin, fails };
+      await this.storage.put(K.user(u.id), { ...u, pin: pinNext });
+      return fail(fails >= PIN_TRIES ? "too many wrong PINs; try again in 15 minutes" : "that PIN is not right");
+    }
+    await this.storage.put(K.user(u.id), { ...u, pin: { salt: u.pin.salt, hash: u.pin.hash } });
+    await this.storage.put(K.session(digest), { ...s, locked: false });
+    return true;
   }
 
   /** Change a member's role or reach. The last admin cannot stop being one. */
@@ -440,15 +535,24 @@ export class HubHost {
     input: { name: unknown; key: StoredKey; label: unknown },
     now: number,
   ): Promise<{ token: string; user: User; space: Space } | Fail> {
+    const r = await this.redeem(token, input, now);
+    return "error" in r ? r : { ...r, user: shown(r.user) };
+  }
+
+  private async redeem(
+    token: string,
+    input: { name: unknown; key: StoredKey; label: unknown },
+    now: number,
+  ): Promise<{ token: string; user: StoredUser; space: Space } | Fail> {
     const inv = await this.liveInvite(token, now);
     if (!inv) return fail("this invite has been used or has expired; ask for a new one");
     const space = await this.space(inv.space);
     if (!space) return fail("the family this invite was for is gone");
     if (await this.storage.get(K.passkey(input.key.id))) return fail("that passkey is already registered");
 
-    let user: User;
+    let user: StoredUser;
     if (inv.user) {
-      const existing = await this.user(inv.user);
+      const existing = await this.storedUser(inv.user);
       if (!existing || !(await this.member(inv.space, inv.user))) return fail("the member this invite was for has been removed");
       user = existing;
     } else {
@@ -556,7 +660,7 @@ export class HubHost {
       await this.storage.delete(key);
       return null;
     }
-    const [user, member] = await Promise.all([this.user(s.user), this.member(s.space, s.user)]);
+    const [user, member] = await Promise.all([this.storedUser(s.user), this.member(s.space, s.user)]);
     if (!user || !member) {
       await this.storage.delete(key);
       return null;
@@ -566,8 +670,10 @@ export class HubHost {
       session = { ...s, lastSeenAt: now, expiresAt: now + SESSION_IDLE_MS };
       await this.storage.put(key, session);
     }
-    const { digest: _, ...shown } = session;
-    return { session: shown, user, member, scopes: scopesOf(member) };
+    const { digest: _, ...visible } = session;
+    // Locked means something only while there is a PIN to open it with.
+    const locked = !!session.locked && !!user.pin;
+    return { session: { ...visible, locked }, user: { ...shown(user), hasPin: !!user.pin }, member, scopes: scopesOf(member) };
   }
 
   async sessionsOf(user: string): Promise<Omit<Session, "digest">[]> {
@@ -683,6 +789,9 @@ export const HUB_METHODS = [
   "putChallenge",
   "takeChallenge",
   "lookupSession",
+  "setPin",
+  "lockSession",
+  "unlockSession",
   "sessionsOf",
   "endSession",
   "endSessionsOf",

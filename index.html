@@ -354,6 +354,13 @@
   #unlock details[open] { gap: 12px; }
   #unlock details[open] summary { margin-bottom: 4px; }
   #unlock details > input, #unlock details > button { display: block; width: 100%; }
+  #unlock .people { display: grid; gap: 10px; }
+  #unlock .people button { height: 64px; background: #0e151d; color: var(--fg); border: 1px solid #22303f;
+    border-radius: 12px; font: 500 20px inherit; cursor: pointer; display: flex; align-items: center;
+    justify-content: space-between; padding: 0 20px; }
+  #unlock .people button.now { border-color: var(--cyan); }
+  #unlock .people .tag { color: var(--dim); font-size: 14px; }
+  #title.switchable { cursor: pointer; z-index: 58; padding: 6px 8px; margin: -6px -8px; }
 
   /* Viewport overrides last: these carry no extra specificity, so they only
      win by coming after the rules they override. */
@@ -578,6 +585,24 @@
       <p>Sign in once on this screen.</p>
       <button id="passkeyGo" class="big">Sign in with a passkey</button>
       <button id="pairGo" class="big alt">Pair with my phone</button>
+      <button id="signInBack" class="big alt" hidden>Back</button>
+    </div>
+
+    <!-- A screen several people share: who is using it now (src/app/people.ts). -->
+    <div id="peopleView" class="uview" hidden>
+      <p id="peopleText">Who's using Jarvis?</p>
+      <div id="peopleList" class="people"></div>
+      <button id="peopleAdd" class="big alt">Add someone</button>
+      <button id="peopleBack" class="big alt" hidden>Back</button>
+    </div>
+
+    <!-- Their PIN, to switch into someone who has one. -->
+    <div id="pinView" class="uview" hidden>
+      <p id="pinText"></p>
+      <input id="pinInput" class="field" type="password" inputmode="numeric" pattern="[0-9]*"
+             maxlength="8" autocomplete="off" placeholder="PIN">
+      <button id="pinGo" class="big">Unlock</button>
+      <button id="pinBack" class="big alt">Back</button>
     </div>
 
     <!-- A code for a signed-in phone to approve: Family → Sign in another screen. -->

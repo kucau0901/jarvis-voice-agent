@@ -689,6 +689,15 @@ Signed in (a member or the owner key; never a device):
 | `POST /api/hub/pair` | anyone | `{code, user?}`: approve a screen; `user` only for admins |
 | `GET/DELETE /api/hub/passkeys`, `POST /api/hub/passkeys/options`, `POST /api/hub/passkeys/verify` | a member | their own passkeys |
 | `GET/DELETE /api/hub/sessions` | a member | their own sessions |
+| `POST /api/hub/pin` | a member | `{pin}` (4 to 8 digits) sets theirs; `{pin: null}` removes it |
+| `POST /api/hub/lock` | a member | put this session aside: with a PIN, it is locked → `{locked}` |
+| `POST /api/hub/unlock` | a member | `{pin}`: take a locked session back up |
+| `PATCH /api/hub/members` | admin | `{user, clearPin: true}`: clear a forgotten PIN |
+
+A locked session is answered `423` with `{locked: true}` everywhere except
+`/api/hub/me`, `/api/hub/unlock` and `/api/hub/signout`. Five wrong PINs in a
+row wait fifteen minutes. This is how a screen several people share (the
+family car) keeps each person's profile theirs.
 
 A member's session reaches what their role allows (admin: everything;
 adult: `ask`, `home`, `voice`, `screen`; child: `ask`, `voice`, `screen`;

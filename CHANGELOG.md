@@ -28,6 +28,10 @@ of every release, and in the [README](README.md#updating).
   family up, nothing changes: the owner key works as before, and keeps
   working after, as the way back in.
   [Sharing Jarvis with your family](docs/family.md).
+- **One car, the whole family.** Add each person to the car once, and tap
+  the name at the top to switch. A PIN keeps your profile yours: switching
+  away locks it on the car, as does half an hour untouched, and only your
+  PIN opens it again.
 
 - **One conversation across your devices**: ask in the car, and "what was
   that address again?" works on the phone or the glasses for the next half

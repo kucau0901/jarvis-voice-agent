@@ -68,6 +68,28 @@ before families) keeps working as it is. To make it yours: **Family → Pair
 this screen with my phone**, and approve the code on your phone. The owner
 key stays on that screen until you do.
 
+## A screen you share: the family car
+
+A phone is one person's. The car, or a tablet at home, can hold the whole
+family: each person is added once, and switching is a tap.
+
+- **Add someone:** on the car, **Family → Add someone to this screen**. It
+  shows a code; they type it on their phone (**Family → Sign in another
+  screen**). You both stay signed in on the car.
+- **Switch:** tap the name at the top (**JARVIS · ADAM**), and choose who is
+  using it.
+- **A PIN keeps your profile yours.** Set one in **Family → A screen you
+  share** (4 to 8 digits). With it, switching away from you locks you on
+  that screen: your sign-in there does nothing, not even for someone who
+  copies it, until your PIN is given. A screen shared by two or more people
+  also locks you after half an hour untouched, and asks who is using it. Set
+  one if your profile can do things others in the car should not: unlock
+  it, open the gate.
+- **Five wrong PINs** in a row wait fifteen minutes. **Forgot yours?** An
+  admin can clear it from your card in Members, and you set a new one.
+
+Without a PIN, anyone at that screen can switch to you.
+
 ## Lost phone, new phone
 
 - **A new phone with the same account** (iCloud Keychain, Google Password

@@ -37,7 +37,19 @@ async function safeEqual(a: string, b: string): Promise<boolean> {
 export type Principal =
   | { kind: "owner" }
   | { kind: "device"; id: string; name: string; scopes: Grant[] }
-  | { kind: "member"; id: string; name: string; scopes: Grant[]; role: Role; space: string; session: string };
+  | {
+      kind: "member";
+      id: string;
+      name: string;
+      scopes: Grant[];
+      role: Role;
+      space: string;
+      session: string;
+      /** A profile put aside on a shared screen: it can only be unlocked, with its PIN (index.ts). */
+      locked?: boolean;
+      /** Whether they have set a PIN, for shared screens. */
+      hasPin?: boolean;
+    };
 
 /** Bounded by nothing: the owner key, or a family admin. */
 export const isAdmin = (p: Principal): boolean => p.kind === "owner" || (p.kind === "member" && p.role === "admin");
@@ -102,6 +114,8 @@ export async function authorize(
         role: who.member.role,
         space: who.member.space,
         session: who.session.id,
+        ...(who.session.locked ? { locked: true } : {}),
+        hasPin: who.user.hasPin,
       },
     };
   }

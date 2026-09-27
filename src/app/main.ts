@@ -18,6 +18,8 @@ import { LiveVoice, wakeVoice } from "./loud";
 import { Family } from "./ui/Family";
 import { hubStatus, inviteInfo, joinWithInvite, pairThisScreen, signInWithPasskey } from "./account";
 import { passkeyError, passkeysSupported } from "./passkey";
+import { describe, dropPerson, endSignIn, keepPerson, loadPeople, lockPerson, unlockPerson, type Person } from "./people";
+import { isSession } from "./key";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -57,6 +59,17 @@ const unlock = {
   joinName: $<HTMLInputElement>("joinName"),
   joinGo: $<HTMLButtonElement>("joinGo"),
   keyWrap: $<HTMLDetailsElement>("keyWrap"),
+  signInBack: $<HTMLButtonElement>("signInBack"),
+  peopleView: $("peopleView"),
+  peopleText: $("peopleText"),
+  peopleList: $("peopleList"),
+  peopleAdd: $<HTMLButtonElement>("peopleAdd"),
+  peopleBack: $<HTMLButtonElement>("peopleBack"),
+  pinView: $("pinView"),
+  pinText: $("pinText"),
+  pinInput: $<HTMLInputElement>("pinInput"),
+  pinGo: $<HTMLButtonElement>("pinGo"),
+  pinBack: $<HTMLButtonElement>("pinBack"),
 };
 
 /** An invite link (#invite=…): read once and taken off the address bar. */
@@ -601,21 +614,125 @@ unlock.input.addEventListener("keydown", (e) => {
  * the way back in. Each ends by reloading: every panel was made with the old
  * key, and a fresh start is the simple way to leave none of them behind.
  */
-function signedIn(token: string) {
+async function signedIn(token: string) {
+  // Whoever was using this screen is put aside (locked, if they have a PIN),
+  // and the new person joins the screen's people (people.ts).
+  if (isSession(key) && key !== token) await lockPerson(key);
+  const d = await describe(token);
+  if (d && d !== "gone") {
+    const replaced = keepPerson({ id: d.id, name: d.name, hasPin: d.hasPin, token });
+    // The same person again: their older sign-in on this screen is not needed.
+    if (replaced) await endSignIn(replaced);
+  }
   key = saveKey(token);
   location.reload();
 }
 
-function unlockView(v: "signin" | "pair" | "join") {
+type UnlockView = "signin" | "pair" | "join" | "people" | "pin";
+function unlockView(v: UnlockView) {
   unlock.signIn.hidden = v !== "signin";
   unlock.pairView.hidden = v !== "pair";
   unlock.joinView.hidden = v !== "join";
+  unlock.peopleView.hidden = v !== "people";
+  unlock.pinView.hidden = v !== "pin";
   unlock.keyWrap.hidden = v !== "signin";
+  // From signing in, back to the people already here, if there are any.
+  unlock.signInBack.hidden = !(v === "signin" && loadPeople().length);
 }
+
+/*
+ * Who's using Jarvis: the people signed in on this screen (people.ts). Picking
+ * someone puts the one in use aside — locked, if they have a PIN — and takes
+ * the chosen one up, asking for their PIN if they have one.
+ */
+function showPeople(why = "") {
+  const people = loadPeople();
+  unlock.wrap.classList.add("show");
+  unlockView("people");
+  unlock.err.textContent = why;
+  unlock.name.textContent = (document.title || "Jarvis").toUpperCase();
+  unlock.peopleText.textContent = `Who's using ${document.title || "Jarvis"}?`;
+  unlock.peopleList.replaceChildren(
+    ...people.map((p) => {
+      const b = document.createElement("button");
+      b.className = p.token === key ? "now" : "";
+      const n = document.createElement("span");
+      n.textContent = p.name;
+      const t = document.createElement("span");
+      t.className = "tag";
+      t.textContent = p.token === key ? "now" : p.hasPin ? "PIN" : "";
+      b.appendChild(n);
+      b.appendChild(t);
+      b.addEventListener("click", () => void switchTo(p));
+      return b;
+    }),
+  );
+  // Back to the app only while someone is still in use here.
+  unlock.peopleBack.hidden = !key;
+}
+
+let pinFor: Person | null = null;
+async function switchTo(p: Person) {
+  unlock.err.textContent = "";
+  if (p.token === key) {
+    unlock.wrap.classList.remove("show");
+    return;
+  }
+  const d = await describe(p.token);
+  if (d === "gone") {
+    dropPerson(p.token);
+    return showPeople(`${p.name}'s sign-in here has ended. Add them again.`);
+  }
+  // The one in use steps aside first.
+  if (isSession(key) && (await lockPerson(key))) {
+    clearKey();
+    key = "";
+  }
+  if (d?.locked) {
+    pinFor = p;
+    unlockView("pin");
+    unlock.pinText.textContent = `${p.name}'s PIN`;
+    unlock.pinInput.value = "";
+    unlock.pinInput.focus();
+    return;
+  }
+  key = saveKey(p.token);
+  location.reload();
+}
+
+async function submitPin() {
+  if (!pinFor) return;
+  unlock.pinGo.disabled = true;
+  try {
+    await unlockPerson(pinFor.token, unlock.pinInput.value.trim());
+    key = saveKey(pinFor.token);
+    location.reload();
+  } catch (e) {
+    unlock.err.textContent = e instanceof Error ? e.message : String(e);
+    unlock.pinInput.value = "";
+  } finally {
+    unlock.pinGo.disabled = false;
+  }
+}
+unlock.pinGo.addEventListener("click", () => void submitPin());
+unlock.pinInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") void submitPin();
+});
+unlock.pinBack.addEventListener("click", () => showPeople());
+unlock.peopleBack.addEventListener("click", () => unlock.wrap.classList.remove("show"));
+// Adding someone: they sign in here, with a passkey or by pairing their phone.
+unlock.peopleAdd.addEventListener("click", () => {
+  unlock.err.textContent = "";
+  unlockView("signin");
+  unlock.passkey.hidden = !passkeysSupported();
+});
+unlock.signInBack.addEventListener("click", () => showPeople());
 
 async function requireKey() {
   unlock.wrap.classList.add("show");
   if (inviteToken) return void showInvite();
+  // People are signed in here, just none in use: choose one.
+  if (loadPeople().length) return showPeople();
   unlockView("signin");
   const s = await hubStatus();
   unlock.name.textContent = (s.agentName ?? "Jarvis").toUpperCase();
@@ -675,9 +792,10 @@ async function pairHere() {
   }
 }
 
-/** Back to where pairing began: the app, if this screen is still unlocked; else signing in. */
+/** Back to where pairing began: the app, if this screen is still unlocked; else choosing or signing in. */
 function leavePairing() {
   if (key) unlock.wrap.classList.remove("show");
+  else if (loadPeople().length) showPeople();
   else unlockView("signin");
 }
 
@@ -729,7 +847,7 @@ unlock.joinGo.addEventListener("click", async () => {
 let family: Family | null = null;
 function openFamily() {
   if (!key) { void requireKey(); return; }
-  family ??= new Family(key, signedIn, () => void pairHere());
+  family ??= new Family(key, (t) => void signedIn(t), () => void pairHere(), () => void whoAmI());
   void family.show();
 }
 $("openFamily").addEventListener("click", openFamily);
@@ -1001,11 +1119,28 @@ async function whoAmI() {
   try {
     const res = await fetch("/api/hub/me", { headers: authHeaders(key) });
     if (!res.ok) return;
-    const me = (await res.json()) as { space: { agentName: string } | null; role: string; scopes: string[] };
-    if (me.space?.agentName) {
-      $("title").textContent = me.space.agentName.toUpperCase();
-      document.title = me.space.agentName;
+    const me = (await res.json()) as {
+      space: { agentName: string } | null;
+      role: string;
+      scopes: string[];
+      user: { id: string; name: string } | null;
+      hasPin: boolean;
+      locked: boolean;
+    };
+    if (me.space?.agentName) document.title = me.space.agentName;
+    if (me.user) keepPerson({ id: me.user.id, name: me.user.name, hasPin: me.hasPin, token: key });
+    // Put aside on this screen (a shared one, left idle): choose who is using it.
+    if (me.locked) {
+      clearKey();
+      key = "";
+      return showPeople();
     }
+    // On a screen several people share, the title says whose Jarvis this is now.
+    const shared = loadPeople().length > 1;
+    const first = me.user?.name.split(/\s+/)[0] ?? "";
+    const title = $("title");
+    title.textContent = ((me.space?.agentName ?? "Jarvis") + (shared && first ? ` · ${first}` : "")).toUpperCase();
+    title.classList.toggle("switchable", isSession(key));
     const may = (need: string) => me.role === "admin" || me.scopes.includes("*") || (need !== "admin" && me.scopes.includes(need));
     for (const b of document.querySelectorAll<HTMLElement>("#topbtns [data-need]")) b.hidden = !may(b.dataset.need!);
   } catch {
@@ -1013,6 +1148,30 @@ async function whoAmI() {
   }
 }
 void whoAmI();
+$("title").addEventListener("click", () => {
+  if (isSession(key)) showPeople();
+});
+
+/*
+ * A shared screen left alone: after half an hour with nobody touching it, the
+ * person in use is put aside if they have a PIN, so whoever sits in the car
+ * next cannot carry on as them.
+ */
+const IDLE_LOCK_MS = 30 * 60_000;
+let touchedAt = Date.now();
+for (const ev of ["pointerdown", "keydown"]) document.addEventListener(ev, () => (touchedAt = Date.now()), { capture: true });
+setInterval(async () => {
+  const people = loadPeople();
+  const me = people.find((p) => p.token === key);
+  if (people.length < 2 || !me?.hasPin || Date.now() - touchedAt < IDLE_LOCK_MS) return;
+  if (session || userWantsSession || ptt?.busy || typedAbort) return;
+  if (await lockPerson(key)) {
+    clearKey();
+    key = "";
+    document.querySelectorAll(".panel.open").forEach((el) => el.classList.remove("open"));
+    showPeople();
+  }
+}, 60_000);
 
 /*
  * Picking up a new version.
@@ -1035,7 +1194,8 @@ function busy(): boolean {
     typed.value.trim() ||
     pairing ||
     document.querySelector(".panel.open") ||
-    !unlock.joinView.hidden
+    !unlock.joinView.hidden ||
+    !unlock.pinView.hidden
   );
 }
 async function freshen() {

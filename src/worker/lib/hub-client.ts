@@ -38,7 +38,8 @@ export async function sessionFor(env: Env, token: string): Promise<SignedIn | nu
   if (hit && now - hit.at < CACHE_MS) return hit.who;
   const who = await hub.lookupSession(digest, now);
   if (cache.size > 500) cache.clear();
-  cache.set(digest, { at: now, who });
+  // A locked profile is asked about every time, so its PIN takes effect at once.
+  if (!who?.session.locked) cache.set(digest, { at: now, who });
   return who;
 }
 

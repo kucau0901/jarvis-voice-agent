@@ -5,6 +5,7 @@ import { burst } from "../lib/limits.ts";
 import { SCOPES, type Grant } from "../lib/scopes.ts";
 import { ROLES, ROLE_SCOPES, type HubApi } from "../lib/hub.ts";
 import { forgetSessions, hubStub } from "../lib/hub-client.ts";
+import { sha256Hex } from "../lib/devices.ts";
 import { stateStub } from "../lib/state-client.ts";
 import {
   creationOptions,
@@ -52,7 +53,20 @@ import {
  *   DELETE /api/hub/passkeys                 {id}
  *   GET    /api/hub/sessions                 your signed-in screens
  *   DELETE /api/hub/sessions                 {id}
+ *
+ * Screens several people share (the family car), with a PIN each:
+ *
+ *   POST   /api/hub/pin                      {pin}: set yours; empty removes it
+ *   POST   /api/hub/lock                     put this session aside: it needs the PIN again
+ *   POST   /api/hub/unlock                   {pin}: take it back up (the one thing a locked session may do)
+ *   PATCH  /api/hub/members                  admin: {user, clearPin: true} for a forgotten PIN
  */
+
+/** The digest of the session this request came with. */
+async function sessionDigest(req: Request): Promise<string> {
+  const raw = (req.headers.get("authorization")?.match(/^Bearer\s+(.+)$/i)?.[1] ?? req.headers.get("x-jarvis-key") ?? "").trim();
+  return sha256Hex(raw);
+}
 
 const body = async (req: Request): Promise<Record<string, unknown>> => {
   const b = (await req.json().catch(() => null)) as unknown;
@@ -211,9 +225,35 @@ export async function handleHub(req: Request, env: Env, principal: Principal): P
       user: me ? { id: me.id, name: me.name } : null,
       role: me ? me.role : "admin",
       // What this person may reach, so the app offers only that.
-      scopes: grantsOf(principal),
+      scopes: me?.locked ? [] : grantsOf(principal),
       session: me ? me.session : null,
+      hasPin: !!me?.hasPin,
+      locked: !!me?.locked,
     });
+  }
+
+  if (p === "/api/hub/lock" && m === "POST") {
+    if (!me) return json({ locked: false });
+    const d = await sessionDigest(req);
+    const locked = await hub.lockSession(d);
+    forgetSessions([d]);
+    return json({ locked });
+  }
+
+  if (p === "/api/hub/unlock" && m === "POST") {
+    if (!me) return json({ ok: true });
+    const d = await sessionDigest(req);
+    const r = await hub.unlockSession(d, b.pin, now);
+    forgetSessions([d]);
+    return r === true ? json({ ok: true }) : err(403, r.error);
+  }
+
+  if (p === "/api/hub/pin" && m === "POST") {
+    if (!me) return err(400, "the owner key is not a person; sign in with a passkey to have a PIN");
+    const r = await hub.setPin(me.id, b.pin ?? null);
+    // This screen sees the change at once; their others within half a minute.
+    forgetSessions([await sessionDigest(req)]);
+    return r === true ? json({ ok: true }) : err(400, r.error);
   }
 
   if (p === "/api/hub/signout" && m === "POST") {
@@ -238,7 +278,7 @@ export async function handleHub(req: Request, env: Env, principal: Principal): P
         name: x.name,
         role: x.role,
         you: me?.id === x.user,
-        ...(admin ? { scopes: x.scopesNow, custom: !!x.scopes, passkeys: x.passkeys, lastSeenAt: x.lastSeenAt, addedAt: x.addedAt } : {}),
+        ...(admin ? { scopes: x.scopesNow, custom: !!x.scopes, passkeys: x.passkeys, hasPin: x.hasPin, lastSeenAt: x.lastSeenAt, addedAt: x.addedAt } : {}),
       }));
       return json({
         members,
@@ -249,6 +289,12 @@ export async function handleHub(req: Request, env: Env, principal: Principal): P
     }
     if (!admin) return err(403, "only an admin can change the family");
     const user = str(b.user);
+    if (m === "PATCH" && b.clearPin === true) {
+      // A forgotten PIN: the admin takes it off, and the member sets a new one.
+      if (!(await hub.member(space, user))) return err(400, "not a member");
+      const r = await hub.setPin(user, null);
+      return r === true ? json({ ok: true }) : err(400, r.error);
+    }
     if (m === "PATCH") {
       const r = await hub.updateMember(space, user, { role: b.role, scopes: b.scopes as Grant[] | null | undefined });
       // Felt within half a minute: that is how long a sign-in is cached (lib/hub-client.ts).

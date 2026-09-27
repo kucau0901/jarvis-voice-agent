@@ -27,6 +27,9 @@ import { handleAuth, handleHub } from "./routes/hub";
 // The Durable Object class must be exported from the entry for the runtime to find it.
 export { JarvisState } from "./state";
 
+/** What a locked profile may still do: say who it is, be unlocked, or be signed out. */
+const LOCKED_MAY = new Set(["/api/hub/me", "/api/hub/unlock", "/api/hub/signout"]);
+
 export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(req.url);
@@ -77,6 +80,11 @@ export default {
     const auth = await authorize(req, env, ctx);
     if (!auth.ok) return withCors(auth.response, origin, env);
     const principal = auth.principal;
+
+    // A profile locked on a shared screen does nothing until its PIN is given.
+    if (principal.kind === "member" && principal.locked && !LOCKED_MAY.has(url.pathname)) {
+      return withCors(err(423, "locked: enter this person's PIN", { locked: true }), origin, env);
+    }
 
     /*
      * From here on, every route sees the Worker's environment with the settings

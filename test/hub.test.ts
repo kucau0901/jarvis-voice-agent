@@ -195,6 +195,32 @@ console.log("\nchallenges");
   check("once they expire, there is room again", (await h2.putChallenge({ challenge: "later", purpose: "login" }, T0 + 6 * 60_000)) === true);
 }
 
+console.log("\nPINs, for a screen several people share");
+{
+  const inv = ok(await hub.createInvite(space, { role: "adult", name: "Dan" }, adminId, T0 + 600));
+  const dan = ok(await hub.redeemInvite(inv.token, { name: "Dan", key: { ...key(), id: "cred-dan" }, label: "car" }, T0 + 601));
+  const d = await sha256Hex(dan.token);
+  check("without a PIN, locking does nothing", (await hub.lockSession(d)) === false && (await hub.lookupSession(d, T0 + 602))?.session.locked === false);
+  check("a PIN is 4 to 8 digits", errorOf(await hub.setPin(dan.user.id, "12a4")).includes("4 to 8") && errorOf(await hub.setPin(dan.user.id, "123")).includes("4 to 8"));
+  check("a good one is set", (await hub.setPin(dan.user.id, "4821")) === true);
+  check("and kept only as a hash", !JSON.stringify([...storage._m.values()]).includes("4821"));
+  check("the session says there is a PIN", (await hub.lookupSession(d, T0 + 603))?.user.hasPin === true);
+  check("nor does a user record handed out carry it", !("pin" in ((await hub.user(dan.user.id)) as object)));
+  check("with a PIN, locking takes", (await hub.lockSession(d)) === true && (await hub.lookupSession(d, T0 + 604))?.session.locked === true);
+  check("a wrong PIN does not unlock", errorOf(await hub.unlockSession(d, "0000", T0 + 605)).includes("not right") && (await hub.lookupSession(d, T0 + 606))?.session.locked === true);
+  check("the right one does", (await hub.unlockSession(d, "4821", T0 + 607)) === true && (await hub.lookupSession(d, T0 + 608))?.session.locked === false);
+  await hub.lockSession(d);
+  for (let i = 0; i < 4; i++) await hub.unlockSession(d, "1111", T0 + 700 + i);
+  const fifth = await hub.unlockSession(d, "1111", T0 + 710);
+  check("five wrong in a row wait fifteen minutes", errorOf(fifth).includes("15 minutes"));
+  check("even the right PIN, during the wait", errorOf(await hub.unlockSession(d, "4821", T0 + 720)).includes("try again"));
+  check("after it, the right PIN works", (await hub.unlockSession(d, "4821", T0 + 710 + 15 * 60_000 + 1)) === true);
+  await hub.lockSession(d);
+  check("removing the PIN leaves nothing locked", (await hub.setPin(dan.user.id, null)) === true && (await hub.lookupSession(d, T0 + 800))?.session.locked === false);
+  check("a gone session cannot be unlocked", errorOf(await hub.unlockSession("nope", "1234", T0)).includes("ended"));
+  ok(await hub.removeMember(space, dan.user.id));
+}
+
 console.log("\nremoving someone");
 {
   const before = await hub.sessionsOf(memberId);

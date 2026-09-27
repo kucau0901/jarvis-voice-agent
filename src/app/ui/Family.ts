@@ -3,6 +3,7 @@ import { authHeaders, isSession } from "../key";
 import { addPasskeyHere, joinWithInvite } from "../account";
 import { passkeyError, passkeysSupported } from "../passkey";
 import { ago, arm, esc } from "./util";
+import { dropPerson, loadPeople } from "../people";
 
 /**
  * The family: who is in it, inviting someone, pairing a screen, and your own
@@ -20,6 +21,7 @@ interface Me {
   user: { id: string; name: string } | null;
   role: string;
   session: string | null;
+  hasPin: boolean;
 }
 
 interface Member {
@@ -30,6 +32,7 @@ interface Member {
   scopes?: string[];
   custom?: boolean;
   passkeys?: number;
+  hasPin?: boolean;
   lastSeenAt?: number;
 }
 
@@ -80,8 +83,13 @@ export class Family {
   constructor(
     private readonly key: string,
     private readonly onSignedIn: (token: string) => void,
-    /** Show a pairing code on this screen (main.ts): how a screen on the owner key becomes a person's. */
+    /**
+     * Show a pairing code on this screen (main.ts): how a screen on the owner
+     * key becomes a person's, and how someone else is added to a shared one.
+     */
     private readonly onPairHere: () => void,
+    /** Something about who is signed in here changed (a PIN): main.ts refreshes it. */
+    private readonly onChanged: () => void,
   ) {
     this.el = document.createElement("div");
     this.el.id = "family";
@@ -211,6 +219,23 @@ export class Family {
           <button class="f-rename">Change my name</button>
           <button class="f-signout">Sign out of this screen</button>
         </div>
+      </div>
+
+      <h3>A screen you share</h3>
+      <div class="srv">
+        <p class="note">The car, or a tablet at home: add each person once, and tap the name at the top to switch.
+          With a PIN, nobody can switch into you there${me.hasPin ? "; yours is set" : ""}. Switching away locks you, and so does
+          half an hour untouched when others share the screen.</p>
+        <div class="rowbtns">
+          <button class="primary f-addhere">Add someone to this screen</button>
+          ${loadPeople().length > 1 ? `<button class="f-switch">Switch person</button>` : ""}
+        </div>
+        <input type="password" class="f-pin" inputmode="numeric" pattern="[0-9]*" maxlength="8" autocomplete="new-password"
+          placeholder="${me.hasPin ? "A new PIN" : "A PIN"}, 4 to 8 digits">
+        <div class="rowbtns">
+          <button class="f-pinset">${me.hasPin ? "Change my PIN" : "Set my PIN"}</button>
+          ${me.hasPin ? `<button class="f-pinoff">Remove my PIN</button>` : ""}
+        </div>
       </div>` : ""}
 
       <h3>Members</h3>
@@ -276,7 +301,7 @@ export class Family {
                ${m.custom ? `<button class="m-reset">Back to what a ${esc(m.role)} gets</button>` : ""}`
             : ""}
           ${admin && !m.you
-            ? `<div class="rowbtns"><button class="m-link">New passkey link</button><button class="m-remove">Remove</button></div>
+            ? `<div class="rowbtns"><button class="m-link">New passkey link</button>${m.hasPin ? `<button class="m-clearpin">Clear their PIN</button>` : ""}<button class="m-remove">Remove</button></div>
                <div class="reveal"></div>`
             : ""}
         </div>`,
@@ -306,6 +331,8 @@ export class Family {
           this.msg(e instanceof Error ? e.message : String(e), true);
         }
       });
+      const cp = row.querySelector<HTMLButtonElement>(".m-clearpin");
+      if (cp) arm(cp, "Clear it?", () => this.change({ user: id, clearPin: true }, `${name}'s PIN is cleared; they can set a new one.`));
       const rm = row.querySelector<HTMLButtonElement>(".m-remove");
       if (rm) {
         arm(rm, `Remove ${name}?`, async () => {
@@ -397,12 +424,39 @@ export class Family {
     if (out) {
       arm(out, "Sign out here?", async () => {
         await this.api("/api/hub/signout", "POST", {}).catch(() => {});
+        dropPerson(this.key);
         try {
           localStorage.removeItem("jarvis.key");
         } catch { /* private mode */ }
         location.reload();
       });
     }
+
+    q(".f-addhere")?.addEventListener("click", () => {
+      this.hide();
+      this.onPairHere();
+    });
+    q(".f-switch")?.addEventListener("click", () => {
+      this.hide();
+      document.getElementById("title")?.click();
+    });
+    const setPin = async (pin: string | null) => {
+      try {
+        await this.api("/api/hub/pin", "POST", { pin });
+        this.msg(pin ? "Your PIN is set. Nobody can switch into you on a shared screen without it." : "Your PIN is removed.");
+        this.onChanged();
+        await this.load();
+      } catch (e) {
+        this.msg(e instanceof Error ? e.message : String(e), true);
+      }
+    };
+    q(".f-pinset")?.addEventListener("click", () => {
+      const pin = q<HTMLInputElement>(".f-pin")!.value.trim();
+      if (!/^\d{4,8}$/.test(pin)) return this.msg("A PIN is 4 to 8 digits.", true);
+      void setPin(pin);
+    });
+    const off = q<HTMLButtonElement>(".f-pinoff");
+    if (off) arm(off, "Remove it?", () => setPin(null));
 
     q(".f-pair")?.addEventListener("click", async () => {
       const code = q<HTMLInputElement>(".f-code")!.value;

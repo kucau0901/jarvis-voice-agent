@@ -201,6 +201,35 @@ console.log("\nsigning out");
   check("and only that one", (await who((await call("/api/auth/login/verify", {})).body.token ?? "")) === null && (await call("/api/hub/sessions", undefined, { principal: admin })).body.sessions.length >= 1);
 }
 
+console.log("\na shared screen, with PINs");
+{
+  const inv = await call("/api/hub/invites", { role: "adult", name: "Nur" }, { principal: admin });
+  const { done } = await join(inv.body.token, "Nur");
+  const token = done.body.token;
+  const as = async () => (await who(token))!;
+  const withToken = async (path: string, body: unknown) => {
+    const req = new Request(SITE + path, { method: "POST", headers: { origin: SITE, "content-type": "application/json", authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
+    const res = await handleHub(req, env, await as());
+    return { status: res.status, body: (await res.json()) as Record<string, any> };
+  };
+  check("a PIN can be set", (await withToken("/api/hub/pin", { pin: "2468" })).status === 200);
+  _clearSessionCache();
+  check("and shows as set", (await as() as { hasPin?: boolean }).hasPin === true);
+  const lock = await withToken("/api/hub/lock", {});
+  check("switching away locks her", lock.body.locked === true);
+  const locked = await as();
+  check("a locked session says so", (locked as { locked?: boolean }).locked === true);
+  const me = await call("/api/hub/me", undefined, { principal: locked });
+  check("and reaches nothing", me.body.locked === true && me.body.scopes.length === 0);
+  check("a wrong PIN is refused", (await withToken("/api/hub/unlock", { pin: "1357" })).status === 403);
+  check("the right one unlocks her at once", (await withToken("/api/hub/unlock", { pin: "2468" })).status === 200 && !(await as() as { locked?: boolean }).locked);
+  const clear = await call("/api/hub/members", { user: (await as() as { id: string }).id, clearPin: true }, { method: "PATCH", principal: admin });
+  _clearSessionCache();
+  check("an admin can clear a forgotten PIN", clear.status === 200 && (await as() as { hasPin?: boolean }).hasPin === false);
+  const notAdmin = await call("/api/hub/members", { user: (admin as { id: string }).id, clearPin: true }, { method: "PATCH", principal: await as() });
+  check("nobody else can", notAdmin.status === 403);
+}
+
 console.log("\nscopes and devices");
 {
   check("the family routes gate themselves", requiredScope("/api/hub/members", "GET") === "any");
