@@ -17,6 +17,27 @@ of every release, and in the [README](README.md#updating).
 
 ## [Unreleased]
 
+Jarvis becomes something a family shares: everyone signs in as themselves,
+with their own memory, mail and reminders, and Jarvis passes things on
+between you.
+
+### Action needed
+
+Nothing breaks if you update and do nothing: Jarvis keeps working on the
+owner key, exactly as before, and your memory, routines, devices and
+connected accounts stay yours. To use what is new, once:
+
+1. Open Jarvis on your phone and unlock it with the owner key
+   (`JARVIS_SHARED_SECRET`).
+2. **Family** offers to set up your family: your name, the family's name,
+   and what you call the assistant.
+3. Tap **Create my passkey**. You are now the admin, and can invite the
+   others from Family → Members.
+
+Keep the owner key somewhere safe: it is the way back in if every passkey is
+lost. Passkeys belong to the address you open Jarvis at, so set everyone up
+on the one you will keep using. [Sharing Jarvis with your family](docs/family.md).
+
 ### Added
 
 - **Share Jarvis with your family.** Everyone signs in as themselves with a
