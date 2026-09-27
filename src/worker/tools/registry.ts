@@ -15,6 +15,7 @@ import { sendNote } from "./notes";
 import { routineTools } from "./routines";
 import { jobTools } from "./jobs";
 import { familyTools } from "./family";
+import { passTool } from "./pass";
 import { stateStub } from "../lib/state-client.ts";
 import { voiceWho } from "../lib/context.ts";
 
@@ -194,6 +195,7 @@ const ALL: Tool[] = [
   ...routineTools,
   ...jobTools,
   ...familyTools,
+  passTool,
   askHermes,
   controlHome,
 ];

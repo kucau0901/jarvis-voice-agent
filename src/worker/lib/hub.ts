@@ -2,6 +2,7 @@ import { sha256Hex } from "./devices.ts";
 import { WILDCARD, saneGrants, type Grant } from "./scopes.ts";
 import type { StoredKey } from "./webauthn.ts";
 import type { Storage } from "./state-host.ts";
+import { saneAccess, type Access } from "./access.ts";
 
 /**
  * Who uses this Jarvis: people, the families (spaces) they belong to, and how
@@ -155,8 +156,10 @@ export interface PersonView {
   cars: Reach[];
   /** Their own Home Assistant token, for the Worker only. */
   haToken?: string;
-  /** What they may reach (their member's scopes); null if they are not in the family. */
+  /** What they may reach (their member's scopes); null if they are not in the family, or their access ended. */
   scopes?: Grant[] | null;
+  /** Their limits (lib/access.ts). */
+  access?: Access;
 }
 
 /** Everything about one sign-in that a request needs to know. */
@@ -165,6 +168,8 @@ export interface Place {
   /** The person who claimed the hub: what Jarvis kept before families is theirs. */
   first: boolean;
   prefs: Prefs;
+  /** Their limits, if an admin set any (lib/access.ts). */
+  access?: Access;
 }
 
 export const PIN_SHAPE = /^\d{4,8}$/;
@@ -180,6 +185,8 @@ export interface Member {
   scopes?: Grant[];
   /** How far the role's gains had come when `scopes` was set (GAINS). */
   scopesV?: number;
+  /** A guest's or a child's limits (lib/access.ts): an end, hours, a pass. */
+  access?: Access;
   addedAt: number;
   addedBy: string;
 }
@@ -200,6 +207,8 @@ export interface Invite {
   name: string;
   /** For an existing member: the link adds a passkey to them. */
   user?: string;
+  /** Limits the new member starts with (a guest pass). */
+  access?: Access;
   createdBy: string;
   createdAt: number;
   expiresAt: number;
@@ -384,6 +393,8 @@ export class HubHost {
     const u = id ? await this.storedUser(id) : null;
     const m = person !== "owner" && space ? await this.member(space.id, person) : null;
     if (person !== "owner" && (!u || !space || !m)) return { space: null, name: null, prefs: {}, cars: [], scopes: null };
+    // A pass that has ended: their devices stop, as their sessions do.
+    if (m?.access?.until !== undefined && m.access.until <= Date.now()) return { space: null, name: null, prefs: {}, cars: [], scopes: null };
     return {
       space,
       name: u?.name ?? null,
@@ -391,6 +402,7 @@ export class HubHost {
       cars: await this.carsFor(person),
       ...(u?.haToken ? { haToken: u.haToken } : {}),
       scopes: m ? scopesOf(m) : [WILDCARD],
+      ...(m?.access ? { access: m.access } : {}),
     };
   }
 
@@ -733,7 +745,7 @@ export class HubHost {
   }
 
   /** Change a member's role or reach. The last admin cannot stop being one. */
-  async updateMember(space: string, user: string, patch: { role?: unknown; scopes?: unknown }): Promise<Member | Fail> {
+  async updateMember(space: string, user: string, patch: { role?: unknown; scopes?: unknown; access?: unknown }): Promise<Member | Fail> {
     const m = await this.member(space, user);
     if (!m) return fail("not a member");
     const next: Member = { ...m };
@@ -745,6 +757,13 @@ export class HubHost {
       next.role = patch.role;
       // A new role starts from its own defaults.
       delete next.scopes;
+    }
+    if (patch.access !== undefined) {
+      if ((await this.firstPerson()) === user) return fail("the person who set up the family has no limits");
+      const a = saneAccess(patch.access);
+      if (typeof a === "string") return fail(a);
+      if (a) next.access = a;
+      else delete next.access;
     }
     if (patch.scopes !== undefined) {
       if (patch.scopes === null) {
@@ -787,10 +806,12 @@ export class HubHost {
 
   async createInvite(
     space: string,
-    o: { role: unknown; name: unknown; user?: string },
+    o: { role: unknown; name: unknown; user?: string; access?: unknown },
     by: string,
     now: number,
   ): Promise<{ token: string; invite: Omit<Invite, "digest"> } | Fail> {
+    const access = o.access === undefined || o.user ? null : saneAccess(o.access, now);
+    if (typeof access === "string") return fail(access);
     if (!(await this.space(space))) return fail("no such family");
     let role: Role;
     let name: string;
@@ -815,6 +836,7 @@ export class HubHost {
       role,
       name,
       ...(o.user ? { user: o.user } : {}),
+      ...(access ? { access } : {}),
       createdBy: by,
       createdAt: now,
       expiresAt: now + INVITE_MS,
@@ -901,7 +923,7 @@ export class HubHost {
       if (!name) return fail("your name is needed");
       user = { id: newId("u_"), name, createdAt: now };
       await this.storage.put(K.user(user.id), user);
-      const member: Member = { space: inv.space, user: user.id, role: inv.role, addedAt: now, addedBy: inv.createdBy };
+      const member: Member = { space: inv.space, user: user.id, role: inv.role, addedAt: now, addedBy: inv.createdBy, ...(inv.access ? { access: inv.access } : {}) };
       await this.storage.put(K.member(inv.space, user.id), member);
     }
     await this.storage.put(K.invite(inv.digest), { ...inv, usedAt: now });
@@ -1006,6 +1028,8 @@ export class HubHost {
       await this.storage.delete(key);
       return null;
     }
+    // A pass that has ended signs them out.
+    if (member.access?.until !== undefined && member.access.until <= now) return null;
     let session = s;
     if (now - s.lastSeenAt > TOUCH_MS) {
       session = { ...s, lastSeenAt: now, expiresAt: now + SESSION_IDLE_MS };
@@ -1021,7 +1045,7 @@ export class HubHost {
       user: { ...shown(user), hasPin: !!user.pin },
       member,
       scopes: scopesOf(member),
-      place: { space, first: (await this.firstPerson()) === user.id, prefs: user.prefs ?? {} },
+      place: { space, first: (await this.firstPerson()) === user.id, prefs: user.prefs ?? {}, ...(member.access ? { access: member.access } : {}) },
     };
   }
 

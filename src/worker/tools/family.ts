@@ -153,4 +153,19 @@ export const familyMessages: Tool = {
   },
 };
 
-export const familyTools: Tool[] = [passOn, answerMessage, familyMessages];
+export const chorePoints: Tool = {
+  name: "chore_points",
+  scope: "chat",
+  pace: "fast",
+  available: (env) => !!env.JARVIS_FAMILY,
+  description: "The family's chore points, earned by saying done to chores passed on by a rota: 'how many points has Aisyah got?', 'who's winning?'.",
+  parameters: { type: "object", properties: {}, required: [], additionalProperties: false },
+  async run(_args, ctx) {
+    const state = stateStub(ctx.env);
+    if (!state) return "There are no chore points here.";
+    const tally = (await state.choresPoints()).filter((p) => p.points > 0);
+    return tally.length ? tally.map((p) => `${p.name}: ${p.points}`).join("\n") : "Nobody has chore points yet.";
+  },
+};
+
+export const familyTools: Tool[] = [passOn, answerMessage, familyMessages, chorePoints];

@@ -126,6 +126,41 @@ others quietly, as a notification, not aloud.
 Talking with the family needs the `chat` permission: adults and children
 have it; guests do not.
 
+## Guests, helpers and children
+
+An admin can put **limits** on anyone but the person who set up the family:
+on their card in Members (**Limits**), or when inviting them.
+
+- **Until** a date: a relative's week, a helper's month. After it they are
+  signed out, and their devices stop.
+- **Only between** two times, on chosen days: a helper's working hours
+  ("08:00 to 17:00, Mondays to Fridays"), or a child's waking hours (07:00 to
+  21:00 is quiet time from nine at night). Outside them Jarvis does not answer
+  them, on any screen or device of theirs, and says when it will.
+- **A pass**: only these things in the house, by their Home Assistant entity,
+  with a name (`cover.main_gate`, *Main gate*). A guest with a pass gets a
+  button for each in Family, and Jarvis works those for them and nothing
+  else. Give a guest no `home` permission (the guest role has none), so the
+  pass is all the house they reach. Covers, switches, lights, locks,
+  buttons, scripts and scenes can be on a pass.
+
+For a child, the child role already leaves out mail and the family's
+changes; limits add quiet time.
+
+## Chores, check-ins and medicine
+
+Routines can pass something on, on a schedule, instead of telling you:
+
+- **A chore rota**: "every Saturday at ten, remind Aisyah and Adam in turn to
+  wash the car, 5 points". Each week it goes to the next of them; saying
+  **Done** earns the points. **Family → Chores** shows the tally; an admin
+  can start it again. "Who has the most points?" works too.
+- **A check-in**: "every day at ten, ask Grandma if she is well, and tell the
+  family if she doesn't answer". If she has not answered after an hour (after
+  one nudge), everyone in the family is told, on every channel.
+- **Medicine**: "at eight in the morning and evening, remind Grandpa to take
+  his tablets, and tell us if he doesn't". The same: Done, or the family hears.
+
 ## Your own glasses and devices
 
 Each person's glasses (Even Realities G2), ESP32s and other devices are

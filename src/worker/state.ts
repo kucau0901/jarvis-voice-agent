@@ -32,6 +32,9 @@ import { personOfWho, withPerson } from "./lib/context.ts";
  * SQLite-backed (see the `new_sqlite_classes` migration in wrangler.jsonc),
  * because that is the only kind the Workers free plan allows.
  */
+/** Chore points, per person (lib/relays.ts award). */
+const POINTS = "chore:points";
+
 export class JarvisState extends DurableObject<Env> {
   private host: StateHost;
   /** Who uses this Jarvis and how they sign in (lib/hub.ts). */
@@ -71,7 +74,7 @@ export class JarvisState extends DurableObject<Env> {
   private async personEnv(env: Env, who: string): Promise<Env> {
     const person = personOfWho(who);
     const v = await this.people.personView(person).catch(() => null);
-    return withPerson(env, { person, name: v?.name, space: v?.space, prefs: v?.prefs, cars: v?.space ? v.cars : undefined, haToken: v?.haToken });
+    return withPerson(env, { person, name: v?.name, space: v?.space, prefs: v?.prefs, cars: v?.space ? v.cars : undefined, haToken: v?.haToken, access: v?.access });
   }
 
   /** A member's own Telegram chat, for their alerts (lib/alerts.ts). */
@@ -215,6 +218,24 @@ export class JarvisState extends DurableObject<Env> {
       events: async (now, person) => upcomingEvents(await this.personEnv(env, person), now),
       travel: async (destination, person) => travelFor(await this.personEnv(env, person), destination),
       renderTemplate: ha ? (template) => renderTemplate(ha, template) : null,
+      // A chore, a check-in or medicine: passed on to whoever's turn it is.
+      relay: async (r, to) => {
+        if (r.action.kind !== "relay") return "not a routine that passes things on";
+        const from = personOfWho(r.createdBy);
+        const fromName = (await this.people.personView(from).catch(() => null))?.name ?? "Someone at home";
+        const home = (await this.people.familyPeople()).find((p) => p.person === to.person)?.presence;
+        const made = await this.relays.create({
+          kind: r.action.relay,
+          from,
+          fromName,
+          to: [{ person: to.person, name: to.name, ...(home ? { home } : {}) }],
+          text: r.action.text,
+          ...(r.action.points ? { points: r.action.points } : {}),
+          ...(r.action.escalate ? { escalate: true } : {}),
+          routine: r.id,
+        });
+        return typeof made === "string" ? made : null;
+      },
     };
   }
 
@@ -250,6 +271,11 @@ export class JarvisState extends DurableObject<Env> {
       post: async (between, msg) => void (await this.chat.post(dmId(between[0], between[1]), msg)),
       markPosted: (between, id, note) => this.chat.markRelay(dmId(between[0], between[1]), id, note),
       timeZone: localeOf(env).timeZone,
+      award: async (person, points) => {
+        const tally = (await this.ctx.storage.get<Record<string, number>>(POINTS)) ?? {};
+        await this.ctx.storage.put(POINTS, { ...tally, [person]: (tally[person] ?? 0) + points });
+      },
+      family: async () => (await this.people.familyPeople()).map((p) => p.person),
     };
   }
 
@@ -358,9 +384,32 @@ export class JarvisState extends DurableObject<Env> {
   }
 
   async addRoutine(input: RoutineInput, by: { who: string; grants: readonly Grant[] }) {
+    // Passed on to people named by the family's names: who they are, found here.
+    if (Array.isArray(input.passTo) && input.passTo.some((x) => typeof x === "string")) {
+      const family = await this.people.familyPeople();
+      const to: { person: string; name: string }[] = [];
+      for (const n of input.passTo as unknown[]) {
+        const want = String(n).trim().toLowerCase();
+        const p = family.find((x) => x.name.toLowerCase() === want || x.name.toLowerCase().split(/\s+/)[0] === want);
+        if (!p) return `nobody in the family is called "${String(n)}". The family: ${family.map((x) => x.name).join(", ")}`;
+        to.push({ person: p.person, name: p.name });
+      }
+      input = { ...input, passTo: to };
+    }
     const r = await this.scheduler.add(input, by);
     await this.rearm();
     return r;
+  }
+
+  /** Chore points, each person's, with their names (lib/relays.ts award). */
+  async choresPoints(): Promise<{ person: string; name: string; points: number }[]> {
+    const tally = (await this.ctx.storage.get<Record<string, number>>(POINTS)) ?? {};
+    const family = await this.people.familyPeople();
+    return family.map((p) => ({ person: p.person, name: p.name, points: tally[p.person] ?? 0 })).sort((a, b) => b.points - a.points);
+  }
+
+  async resetPoints(): Promise<void> {
+    await this.ctx.storage.delete(POINTS);
   }
 
   async updateRoutine(id: string, patch: { enabled?: boolean; name?: string }) {

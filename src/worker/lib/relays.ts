@@ -48,6 +48,12 @@ export interface Relay {
   answer?: string;
   nudged?: boolean;
   toldSender?: boolean;
+  /** A chore's points, earned on Done (lib/routines.ts). */
+  points?: number;
+  /** Unanswered, the whole family is told, not only the sender: a check-in, medicine. */
+  escalate?: boolean;
+  /** The routine that made it. */
+  routine?: string;
   /** When the alarm next looks at it; none once there is nothing more to do. */
   nextCheck?: number;
 }
@@ -62,6 +68,10 @@ export interface RelayDeps {
   markPosted(between: [string, string], relayId: string, note: string): Promise<void>;
   /** For saying when something later will go. */
   timeZone?: string;
+  /** A chore done: its points to them. */
+  award?(person: string, points: number): Promise<void>;
+  /** Everyone in the family, for a check-in nobody answered. */
+  family?(): Promise<string[]>;
 }
 
 export const FOLLOW_MS = 30 * 60_000;
@@ -114,6 +124,9 @@ export class Relays {
       text: string;
       after?: number;
       whenHome?: boolean;
+      points?: number;
+      escalate?: boolean;
+      routine?: string;
     },
     now = Date.now(),
   ): Promise<Relay[] | string> {
@@ -137,6 +150,9 @@ export class Relays {
         text,
         ...(input.after && input.after > now ? { after: input.after } : {}),
         ...(input.whenHome && t.home ? { home: t.home } : {}),
+        ...(input.points ? { points: input.points } : {}),
+        ...(input.escalate ? { escalate: true } : {}),
+        ...(input.routine ? { routine: input.routine } : {}),
         status: "waiting",
         createdAt: now,
         nextCheck: input.after && input.after > now ? input.after : now,
@@ -184,6 +200,8 @@ export class Relays {
     await deps.post([r.from, r.to], { from: r.to, name: r.toName, text: answer ?? (a.status === "done" ? "Done." : "I can't."), relay: undefined }).catch(() => {});
     const alert = makeAlert({ title: r.toName, text: line, speak: true }, "relay", now, r.from);
     if (alert) await deps.deliver(alert).catch(() => null);
+    // A chore done earns its points.
+    if (done.status === "done" && r.points) await deps.award?.(r.to, r.points).catch(() => {});
     await this.closeGroup(done, deps, now);
     return done;
   }
@@ -278,8 +296,17 @@ export class Relays {
       return;
     }
     if (r.nudged && !r.toldSender && now - r.sentAt >= 2 * FOLLOW_MS) {
-      const a = makeAlert({ title: "No answer yet", text: `${r.toName} hasn't answered: ${r.text}`, speak: false }, "relay", now, r.from);
-      if (a) await deps.deliver(a).catch(() => null);
+      if (r.escalate) {
+        // A check-in or medicine nobody answered: the whole family hears, on every channel.
+        const everyone = (await deps.family?.().catch(() => null)) ?? [r.from];
+        for (const who of new Set([r.from, ...everyone].filter((p) => p !== r.to))) {
+          const a = makeAlert({ title: `No answer from ${r.toName}`, text: `${r.toName} hasn't answered in an hour: ${r.text}`, speak: true, urgent: true }, "relay", now, who);
+          if (a) await deps.deliver(a).catch(() => null);
+        }
+      } else {
+        const a = makeAlert({ title: "No answer yet", text: `${r.toName} hasn't answered: ${r.text}`, speak: false }, "relay", now, r.from);
+        if (a) await deps.deliver(a).catch(() => null);
+      }
       await this.save({ ...r, toldSender: true, nextCheck: r.sentAt + GIVE_UP_MS });
     }
   }

@@ -13,6 +13,7 @@ import type { Principal } from "../lib/auth";
 import { stateStub } from "../lib/state-client";
 import { memoryFor, type MemoryStore } from "../lib/memory";
 import { bookOf, carsOf } from "../lib/context.ts";
+import { passOf } from "../tools/pass.ts";
 import { allows, type Grant } from "../lib/scopes";
 import { countryName, localeOf, utcOffset } from "../lib/locale.ts";
 import { DEFAULT_CHAR_BUDGET, glassesInstructions } from "../lib/glasses";
@@ -319,6 +320,11 @@ async function familyBlock(env: Env): Promise<string> {
 function whoLine(env: Env): string {
   const agent = env.JARVIS_AGENT_NAME && env.JARVIS_AGENT_NAME !== "Jarvis" ? env.JARVIS_AGENT_NAME : "";
   const name = env.JARVIS_PERSON_NAME;
+  // A guest's pass: what they may work, and that it is all (tools/pass.ts).
+  const pass = passOf(env);
+  const passLine = pass.length
+    ? `\n\nPASS: this person is a guest. In the house they may work only: ${pass.map((p) => p.label).join(", ")} (use_pass). Nothing else.`
+    : "";
   // The cars this person may reach, when there is a choice to make (tools/tessie.ts pickCar).
   const cars = carsOf(env);
   const carLine =
@@ -328,7 +334,7 @@ function whoLine(env: Env): string {
           .map((c) => `- ${c.name}: ${c.mine ? "theirs" : c.level === "drive" ? "shared with them, they may drive it" : "shared with them to see only, not to operate"}`)
           .join("\n")
       : "";
-  if (!agent && !name) return carLine;
+  if (!agent && !name) return carLine + passLine;
   return (
     "\n\nWHO YOU ARE" +
     (agent ? `\nThe family calls you ${agent}: that is your name.` : "") +
@@ -336,7 +342,8 @@ function whoLine(env: Env): string {
       ? `\nYou are answering ${name}. Their mail, calendar, memory and reminders are theirs; ` +
         "never reveal another person's, even when asked."
       : "") +
-    carLine
+    carLine +
+    passLine
   );
 }
 

@@ -41,6 +41,12 @@ export const routineAdd: Tool = {
     "{{ is_state('cover.main_gate', 'open') }}, {{ states('sensor.car_battery') | float(0) >= 80 }}, " +
     "{{ is_state('sensor.washer_state', 'idle') }}. It is checked every minute, at no cost, and " +
     "says its message once each time the condition comes true. " +
+    "For someone else in the family, on a schedule, give pass_to (their names from THE FAMILY): " +
+    "a chore rota ('every Saturday at ten, remind Aisyah and Adam in turn to wash the car, 5 " +
+    "points': pass_to both, points 5), a check-in on a grandparent ('every day at ten ask Grandma " +
+    "if she is well': pass_kind ask, escalate true), medicine ('at eight and eight remind Grandpa " +
+    "to take his tablets': escalate true). say is then the words for them; escalate tells the whole " +
+    "family if it goes unanswered for an hour. " +
     "Afterwards read back what was set and when it will next happen.",
   parameters: {
     type: "object",
@@ -70,8 +76,16 @@ export const routineAdd: Tool = {
         type: ["string", "null"],
         description: "A request for Jarvis to carry out at the time, with the answer sent to the user.",
       },
+      pass_to: {
+        type: ["array", "null"],
+        items: { type: "string" },
+        description: "Pass it on to these family members instead of the user; several take turns. Null for the user.",
+      },
+      pass_kind: { type: ["string", "null"], description: "With pass_to: \"remind\" (they say done) or \"ask\" (they answer)." },
+      points: { type: ["integer", "null"], description: "With pass_to: a chore's points, earned on done." },
+      escalate: { type: ["boolean", "null"], description: "With pass_to: tell the whole family if it goes unanswered." },
     },
-    required: ["name", "when", "local_time", "in_minutes", "time", "days", "event", "buffer_min", "condition", "for_minutes", "say", "ask"],
+    required: ["name", "when", "local_time", "in_minutes", "time", "days", "event", "buffer_min", "condition", "for_minutes", "say", "ask", "pass_to", "pass_kind", "points", "escalate"],
     additionalProperties: false,
   },
   async run(args, ctx) {
@@ -91,6 +105,9 @@ export const routineAdd: Tool = {
         forMinutes: args.for_minutes,
         say: args.say,
         ask: args.ask,
+        ...(Array.isArray(args.pass_to) && args.pass_to.length
+          ? { passTo: args.pass_to, passKind: args.pass_kind, points: args.points, escalate: args.escalate }
+          : {}),
       },
       { who: voiceWho(ctx.env), grants: ctx.grants },
     );
@@ -104,7 +121,9 @@ export const routineAdd: Tool = {
           : r.trigger.kind === "watch"
             ? " Home Assistant is checked every minute, at no cost; it speaks once each time the condition comes true."
             : "";
-    return `Set up: ${said(r, tz)}${extra} It will reach the user as an alert.`;
+    return r.action.kind === "relay"
+      ? `Set up: ${said(r, tz)}${extra} Each time, it reaches them on their own screens and phone, and what they say comes back to the user.`
+      : `Set up: ${said(r, tz)}${extra} It will reach the user as an alert.`;
   },
 };
 

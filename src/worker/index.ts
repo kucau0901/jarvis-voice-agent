@@ -2,6 +2,9 @@ import type { Env } from "./types";
 import { err } from "./lib/http";
 import { authorize, grantsOf, isAdmin, personOf, type Principal } from "./lib/auth";
 import { withPerson } from "./lib/context.ts";
+import { allowedNow } from "./lib/access.ts";
+import { localeOf } from "./lib/locale.ts";
+import { json } from "./lib/http";
 import { personView } from "./lib/hub-client.ts";
 import { allows, requiredScope } from "./lib/scopes";
 import { preflight, withCors } from "./lib/cors";
@@ -40,11 +43,14 @@ async function forPerson(env: Env, p: Principal): Promise<Env> {
   // Their cars (and, for the owner key and devices, who the first person is), kept a little while per isolate.
   const v = await personView(env, person).catch(() => null);
   if (p.kind === "member" && p.place) {
-    return withPerson(env, { person, name: p.name, space: p.place.space, prefs: p.place.prefs, cars: v?.space ? v.cars : undefined, haToken: v?.haToken });
+    return withPerson(env, { person, name: p.name, space: p.place.space, prefs: p.place.prefs, cars: v?.space ? v.cars : undefined, haToken: v?.haToken, access: p.place.access });
   }
   // The owner key, and devices: the first person's, or for a member's own device, that member's.
-  return withPerson(env, { person, name: v?.name, space: v?.space, prefs: v?.prefs, cars: v?.space ? v.cars : undefined, haToken: v?.haToken });
+  return withPerson(env, { person, name: v?.name, space: v?.space, prefs: v?.prefs, cars: v?.space ? v.cars : undefined, haToken: v?.haToken, access: v?.access });
 }
+
+/** What someone outside their hours may still do (lib/access.ts). */
+const ACCESS_ALWAYS = new Set(["/api/hub/me", "/api/hub/signout", "/api/hub/unlock", "/api/health"]);
 
 /** What a locked profile may still do: say who it is, be unlocked, or be signed out. */
 const LOCKED_MAY = new Set(["/api/hub/me", "/api/hub/unlock", "/api/hub/signout"]);
@@ -113,6 +119,18 @@ export default {
      */
     const raw = env;
     env = await withSettings(raw);
+
+    /*
+     * A guest's or a child's hours (lib/access.ts): outside them, Jarvis does
+     * not answer them, from any screen or device of theirs. Saying who they
+     * are and signing out always work.
+     */
+    const access = principal.kind === "member" ? principal.place?.access : principal.kind === "device" ? principal.access : undefined;
+    if (access && !ACCESS_ALWAYS.has(url.pathname)) {
+      const now = allowedNow(access, Date.now(), localeOf(env).timeZone);
+      if (!now.ok) return withCors(json({ error: now.why, text: `Not now: ${now.why}.`, outside: true }, { status: 403 }), origin, env);
+    }
+
     env = await forPerson(env, principal);
 
     /*
@@ -179,7 +197,7 @@ async function route(
   principal: Principal,
 ): Promise<Response> {
   if (url.pathname.startsWith("/api/v1/")) return await handleV1(req, env, ctx, principal);
-  if (url.pathname.startsWith("/api/hub/chat") || url.pathname.startsWith("/api/hub/relays")) {
+  if (url.pathname.startsWith("/api/hub/chat") || url.pathname.startsWith("/api/hub/relays") || url.pathname === "/api/hub/points") {
     return (await handleFamily(req, env, ctx, principal))!;
   }
   if (url.pathname.startsWith("/api/hub/")) return await handleHub(req, env, principal);

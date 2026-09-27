@@ -2,6 +2,7 @@ import type { Env } from "../types";
 import { looksLikeToken, lookup, touch, type Device } from "./devices.ts";
 import { WILDCARD, narrow, type Grant } from "./scopes.ts";
 import { looksLikeSession, type Place, type Role } from "./hub.ts";
+import type { Access } from "./access.ts";
 import { OWNER, deviceWho } from "./context.ts";
 import { personView, sessionFor } from "./hub-client.ts";
 
@@ -44,6 +45,8 @@ export type Principal =
       scopes: Grant[];
       /** A member's device (lib/devices.ts): whose it is. Absent for the first person's. */
       owner?: string;
+      /** Its owner's limits (lib/access.ts). */
+      access?: Access;
     }
   | {
       kind: "member";
@@ -148,15 +151,24 @@ export async function authorize(
      * reach, and not at all once they have left the family.
      */
     let scopes = device.scopes;
+    let access: Access | undefined;
     if (device.owner) {
       const v = await personView(env, device.owner).catch(() => null);
       if (!v?.scopes) return deny(401, "unauthorized");
       scopes = narrow(device.scopes, v.scopes);
+      access = v.access;
     }
     ctx?.waitUntil(touch(env, device).catch(() => {}));
     return {
       ok: true,
-      principal: { kind: "device", id: device.id, name: device.name, scopes, ...(device.owner ? { owner: device.owner } : {}) },
+      principal: {
+        kind: "device",
+        id: device.id,
+        name: device.name,
+        scopes,
+        ...(device.owner ? { owner: device.owner } : {}),
+        ...(access ? { access } : {}),
+      },
     };
   }
 

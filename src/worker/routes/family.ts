@@ -1,6 +1,6 @@
 import type { Env } from "../types";
 import { err, json } from "../lib/http.ts";
-import { grantsOf, personOf, type Principal } from "../lib/auth.ts";
+import { grantsOf, isAdmin, personOf, type Principal } from "../lib/auth.ts";
 import { allows, SCOPES, WILDCARD } from "../lib/scopes.ts";
 import { stateStub } from "../lib/state-client.ts";
 import { deliver, makeAlert } from "../lib/alerts.ts";
@@ -19,6 +19,8 @@ import { run } from "./delegate";
  *   POST   /api/hub/relays                    {to, kind: tell | remind | ask, text, at?, whenHome?}: pass something on
  *   POST   /api/hub/relays/answer             {id, status: done | declined | answered, answer?}
  *   DELETE /api/hub/relays                    {id}: take back something you passed on
+ *   GET    /api/hub/points                    the family's chore points
+ *   DELETE /api/hub/points                    admin: start the tally again
  */
 
 const body = async (req: Request): Promise<Record<string, unknown>> => {
@@ -29,7 +31,7 @@ const body = async (req: Request): Promise<Record<string, unknown>> => {
 export async function handleFamily(req: Request, env: Env, ctx: ExecutionContext, principal: Principal): Promise<Response | null> {
   const url = new URL(req.url);
   const p = url.pathname;
-  if (!p.startsWith("/api/hub/chat") && !p.startsWith("/api/hub/relays")) return null;
+  if (!p.startsWith("/api/hub/chat") && !p.startsWith("/api/hub/relays") && p !== "/api/hub/points") return null;
   if (principal.kind === "device") return err(403, "that is for a person, not a device");
   if (!allows(grantsOf(principal), "chat")) return err(403, 'talking with the family needs "chat"', { need: "chat" });
   if (!env.JARVIS_FAMILY) return err(409, "there is no family yet");
@@ -89,6 +91,16 @@ export async function handleFamily(req: Request, env: Env, ctx: ExecutionContext
   }
 
   if (p === "/api/hub/relays" && m === "GET") return json(await state.relaysFor(me));
+
+  if (p === "/api/hub/points") {
+    if (m === "GET") return json({ points: await state.choresPoints() });
+    if (m === "DELETE") {
+      if (!isAdmin(principal)) return err(403, "only an admin can start the tally again");
+      await state.resetPoints();
+      return json({ ok: true });
+    }
+    return err(405, "method not allowed");
+  }
 
   if (p === "/api/hub/relays" && m === "POST") {
     const b = await body(req);

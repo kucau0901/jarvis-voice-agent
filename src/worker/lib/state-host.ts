@@ -531,6 +531,8 @@ export interface FamilyApi {
   chatConvos(person: string, family: { id: string; name: string }[]): Promise<{ id: string; title: string; last: ChatMessage | null; unread: number }[]>;
   chatSeen(person: string, convo: string, at: number): Promise<void>;
   familyPeople(): Promise<{ person: string; name: string; presence?: string }[]>;
+  choresPoints(): Promise<{ person: string; name: string; points: number }[]>;
+  resetPoints(): Promise<void>;
 }
 
 /** What the object adds itself, because it holds the sockets (state.ts). */

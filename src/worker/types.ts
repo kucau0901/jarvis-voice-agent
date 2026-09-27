@@ -29,6 +29,8 @@ export interface Env {
    * are then the one used when no car is named.
    */
   JARVIS_CARS?: string;
+  /** A guest's pass (lib/access.ts), as JSON: the only things in the house they may work. */
+  JARVIS_PASS?: string;
 
   /** OpenAI key. Worker-only — it must never be sent to the browser. */
   OPENAI_API_KEY: string;

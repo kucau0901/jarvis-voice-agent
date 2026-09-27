@@ -748,6 +748,15 @@ one; a car shared to `see` is never operated.
 An alert for something passed on carries `relay: {id, kind}`; one for a chat
 message, `convo`.
 
+**Limits** (guests, helpers, children): `PATCH /api/hub/members {user,
+access}` and `POST /api/hub/invites {…, access}` take `{until?, hours?: {from,
+to, days?}, allow?: [{entity, label}]}`; `access: null` clears them. Outside
+their hours a member (and their devices) gets `403 {outside: true}`; after
+`until`, `401`. `POST /api/hub/pass {entity, action}` works one thing on the
+asker's pass. `GET /api/hub/points` is the chore tally; `DELETE` (admin)
+starts it again. Routines take `passTo` (names), `passKind`, `points` and
+`escalate`.
+
 **Devices are people's.** `/api/v1/devices` is for people, never a device: a
 member lists and manages their own, an admin everyone's (each with its
 `ownerName`), and `POST` may name an `owner` (a member's id). A member's

@@ -39,7 +39,26 @@ export type Trigger =
    */
   | { kind: "watch"; template: string; forMin: number };
 
-export type Action = { kind: "say"; text: string } | { kind: "ask"; prompt: string } | { kind: "leave" };
+export type Action =
+  | { kind: "say"; text: string }
+  | { kind: "ask"; prompt: string }
+  | { kind: "leave" }
+  /**
+   * Passed on to someone in the family (lib/relays.ts), or to several in
+   * turn: a chore rota, a daily check-in on a grandparent, a medicine
+   * reminder. Done earns a chore its points; a check-in or medicine left
+   * unanswered tells the whole family (`escalate`).
+   */
+  | {
+      kind: "relay";
+      relay: "remind" | "ask";
+      to: { person: string; name: string }[];
+      text: string;
+      points?: number;
+      escalate?: boolean;
+      /** Whose turn is next, for a rota. */
+      turn?: number;
+    };
 
 export interface RunRecord {
   at: number;
@@ -202,6 +221,11 @@ export function describeTrigger(t: Trigger, timeZone: string): string {
 }
 
 export function describeAction(a: Action): string {
+  if (a.kind === "relay") {
+    const who = a.to.length > 1 ? `${a.to.map((p) => p.name).join(", then ")}, in turn` : a.to[0]?.name ?? "someone";
+    const what = `${a.relay === "ask" ? "ask" : "remind"} ${who}: "${a.text.length > 80 ? a.text.slice(0, 80) + "…" : a.text}"`;
+    return what + (a.points ? `, ${a.points} point${a.points === 1 ? "" : "s"} for doing it` : "") + (a.escalate ? "; the family is told if there is no answer" : "");
+  }
   if (a.kind === "say") return `say "${a.text.length > 80 ? a.text.slice(0, 80) + "…" : a.text}"`;
   if (a.kind === "ask") return `ask Jarvis "${a.prompt.length > 80 ? a.prompt.slice(0, 80) + "…" : a.prompt}" and send the answer`;
   return "say when to set off, with the drive time";
@@ -236,6 +260,14 @@ export interface RoutineInput {
   forMinutes?: unknown;
   say?: unknown;
   ask?: unknown;
+  /** Pass it on to these family members (already named as people: lib/relays.ts), in turn if several. */
+  passTo?: unknown;
+  /** remind (Done or Can't) or ask (an answer). */
+  passKind?: unknown;
+  /** A chore's points, earned on Done. */
+  points?: unknown;
+  /** Unanswered, tell the whole family: a check-in, medicine. */
+  escalate?: unknown;
 }
 
 const DAY_KEYS: Record<string, number> = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
@@ -298,8 +330,26 @@ export function buildRoutine(input: RoutineInput, timeZone: string, now: number)
   }
 
   let action: Action;
+  const passTo = Array.isArray(input.passTo)
+    ? (input.passTo as { person?: unknown; name?: unknown }[]).filter((p) => typeof p?.person === "string" && typeof p?.name === "string")
+    : [];
   if (trigger.kind === "leave") {
     action = { kind: "leave" };
+  } else if (passTo.length) {
+    // Passed on to someone: the words are for them.
+    const text = str(input.say) || str(input.ask);
+    if (!text) return { ok: false, error: "say what to remind them of, or what to ask them" };
+    if (text.length > MAX_TEXT) return { ok: false, error: `keep it under ${MAX_TEXT} characters` };
+    const points = input.points === undefined || input.points === null ? 0 : Number(input.points);
+    if (!Number.isInteger(points) || points < 0 || points > 100) return { ok: false, error: "points are 0 to 100" };
+    action = {
+      kind: "relay",
+      relay: str(input.passKind) === "ask" || (!str(input.say) && !!str(input.ask)) ? "ask" : "remind",
+      to: passTo.slice(0, 10).map((p) => ({ person: String(p.person), name: String(p.name).slice(0, 40) })),
+      text,
+      ...(points ? { points } : {}),
+      ...(input.escalate === true ? { escalate: true } : {}),
+    };
   } else {
     const say = str(input.say);
     const ask = str(input.ask);
@@ -309,7 +359,7 @@ export function buildRoutine(input: RoutineInput, timeZone: string, now: number)
   }
 
   const fallback =
-    action.kind === "say" ? action.text : action.kind === "ask" ? action.prompt : "Time to leave";
+    action.kind === "say" ? action.text : action.kind === "ask" ? action.prompt : action.kind === "relay" ? action.text : "Time to leave";
   const name = (str(input.name) || fallback).replace(/[\u0000-\u001f\u007f]/g, " ").slice(0, MAX_NAME);
   return { ok: true, trigger, action, name };
 }

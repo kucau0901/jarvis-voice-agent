@@ -3,6 +3,8 @@ import { err, json, publicOrigin } from "../lib/http.ts";
 import { grantsOf, isAdmin, personOf, type Principal } from "../lib/auth.ts";
 import { TTS_VOICES } from "../lib/speech.ts";
 import { tessieVehicles } from "../tools/tessie.ts";
+import { usePass } from "../tools/pass.ts";
+import { passActions } from "../lib/access.ts";
 import { burst } from "../lib/limits.ts";
 import { SCOPES, type Grant } from "../lib/scopes.ts";
 import { ROLES, ROLE_SCOPES, type HubApi, type Prefs } from "../lib/hub.ts";
@@ -285,6 +287,10 @@ export async function handleHub(req: Request, env: Env, principal: Principal): P
       user: me ? { id: me.id, name: me.name } : null,
       role: me ? me.role : "admin",
       prefs: me?.place?.prefs ?? {},
+      // A guest's limits: until when, which hours, and the pass's things with what each can do.
+      access: me?.place?.access
+        ? { ...me.place.access, allow: me.place.access.allow?.map((a) => ({ ...a, actions: passActions(a.entity) })) }
+        : null,
       haToken: me ? await hub.hasHaToken(me.id) : false,
       // What this person may reach, so the app offers only that.
       scopes: me?.locked ? [] : grantsOf(principal),
@@ -354,6 +360,11 @@ export async function handleHub(req: Request, env: Env, principal: Principal): P
     return err(405, "method not allowed");
   }
 
+  if (p === "/api/hub/pass" && m === "POST") {
+    // A guest's button: one thing on their pass (tools/pass.ts), nothing else.
+    return json({ text: await usePass(env, str(b.entity), str(b.action)) });
+  }
+
   if (p === "/api/hub/signout" && m === "POST") {
     if (!me) return json({ ok: true });
     const d = await hub.endSession(me.id, me.session);
@@ -379,7 +390,7 @@ export async function handleHub(req: Request, env: Env, principal: Principal): P
         you: me?.id === x.user,
         // What Jarvis kept before the family is theirs, recorded as "owner" (lib/context.ts).
         first: x.user === first,
-        ...(admin ? { scopes: x.scopesNow, custom: !!x.scopes, passkeys: x.passkeys, hasPin: x.hasPin, presence: x.presence, lastSeenAt: x.lastSeenAt, addedAt: x.addedAt } : {}),
+        ...(admin ? { scopes: x.scopesNow, custom: !!x.scopes, passkeys: x.passkeys, hasPin: x.hasPin, presence: x.presence, access: x.access ?? null, lastSeenAt: x.lastSeenAt, addedAt: x.addedAt } : {}),
       }));
       return json({
         members,
@@ -405,7 +416,7 @@ export async function handleHub(req: Request, env: Env, principal: Principal): P
       return r === true ? json({ ok: true }) : err(400, r.error);
     }
     if (m === "PATCH") {
-      const r = await hub.updateMember(space, user, { role: b.role, scopes: b.scopes as Grant[] | null | undefined });
+      const r = await hub.updateMember(space, user, { role: b.role, scopes: b.scopes as Grant[] | null | undefined, access: b.access });
       // Felt within half a minute: that is how long a sign-in is cached (lib/hub-client.ts).
       return "error" in r ? err(400, r.error) : json({ ok: true });
     }
@@ -430,7 +441,7 @@ export async function handleHub(req: Request, env: Env, principal: Principal): P
     if (!admin) return err(403, "only an admin can invite");
     if (m === "POST") {
       const by = me?.id ?? "owner";
-      const r = await hub.createInvite(space, { role: b.role, name: b.name, user: str(b.user) || undefined }, by, now);
+      const r = await hub.createInvite(space, { role: b.role, name: b.name, user: str(b.user) || undefined, access: b.access }, by, now);
       if ("error" in r) return err(400, r.error);
       const origin = publicOrigin(env, url.origin);
       return json({ token: r.token, url: `${origin}/#invite=${r.token}`, invite: r.invite });

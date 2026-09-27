@@ -1,5 +1,6 @@
 import type { Env } from "../types";
 import type { Prefs, Reach, Space } from "./hub.ts";
+import type { Access } from "./access.ts";
 
 /**
  * Who a request is for, laid over the environment every route already reads.
@@ -79,7 +80,7 @@ export function carKeys(env: Env, reach: readonly Reach[]): CarKey[] {
 
 export function withPerson(
   env: Env,
-  o: { person: string; name?: string | null; space?: Space | null; prefs?: Prefs; cars?: readonly Reach[]; haToken?: string },
+  o: { person: string; name?: string | null; space?: Space | null; prefs?: Prefs; cars?: readonly Reach[]; haToken?: string; access?: Access },
 ): Env {
   const out: Env = { ...env, JARVIS_PERSON: o.person };
   if (o.name) out.JARVIS_PERSON_NAME = o.name;
@@ -101,6 +102,8 @@ export function withPerson(
    */
   // Their own Home Assistant user, if they gave one: the house answers them as themselves.
   if (o.haToken) out.HA_TOKEN = o.haToken;
+  // A guest's pass: the things in the house they may work, and no others (tools/pass.ts).
+  if (o.access?.allow?.length) out.JARVIS_PASS = JSON.stringify(o.access.allow);
   if (o.cars || o.person !== OWNER) {
     const keys = carKeys(env, o.cars ?? []);
     out.JARVIS_CARS = JSON.stringify(keys);

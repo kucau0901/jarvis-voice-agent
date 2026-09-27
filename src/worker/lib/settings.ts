@@ -511,6 +511,7 @@ export const NOT_SETTINGS: Readonly<Record<string, string>> = {
   JARVIS_AGENT_NAME: "per request: the family's name for the assistant (lib/context.ts)",
   JARVIS_FAMILY: "per request: the family's shared memory (lib/context.ts)",
   JARVIS_CARS: "per request: the cars this person may reach (lib/context.ts)",
+  JARVIS_PASS: "per request: a guest's pass (lib/access.ts)",
   ROUTER_MODEL: "has its own section, with a live probe before saving",
   G2_FASTPATH: "renamed HA_ASSIST; the old name is still read",
   G2_HA_LANGUAGE: "renamed HA_ASSIST_LANGUAGE; the old name is still read",

@@ -151,6 +151,30 @@ const OWNER = { who: "owner", grants: ["*"] as const };
 const tz = "Asia/Kuala_Lumpur";
 const T0 = zonedToUtc(2026, 9, 25, 10, 0, tz);
 
+console.log("\na chore rota takes turns");
+{
+  const h = harness();
+  const passed: string[] = [];
+  const deps = await (h.s as unknown as { deps: () => Promise<SchedulerDeps> }).deps();
+  deps.relay = async (_r, to) => {
+    passed.push(to.name);
+    return null;
+  };
+  const r = (await h.s.add({ when: "daily", time: "10:30", say: "Take the bins out", passTo: [{ person: "u_a", name: "Aisyah" }, { person: "u_b", name: "Bilal" }], points: 3 }, OWNER, T0)) as Routine;
+  check("it is a rota", r.action.kind === "relay" && r.action.to.length === 2);
+  await h.s.tick(T0 + 30 * MIN);
+  await h.s.tick(T0 + 30 * MIN + 86_400_000);
+  await h.s.tick(T0 + 30 * MIN + 2 * 86_400_000);
+  check("to each in turn, day by day", passed.join() === "Aisyah,Bilal,Aisyah", passed);
+  check("nothing is said to its maker", h.sent.length === 0);
+  const after = (await h.s.list()).find((x) => x.id === r.id)!;
+  check("and it says whom it went to", after.lastRun?.detail === "passed on to Aisyah", after.lastRun);
+  deps.relay = async () => "there are already 50 messages waiting";
+  await h.s.tick(T0 + 30 * MIN + 3 * 86_400_000);
+  const stuck = (await h.s.list()).find((x) => x.id === r.id)!;
+  check("a turn that could not go is not skipped", stuck.action.kind === "relay" && stuck.action.turn === 1 && stuck.lastRun?.ok === false);
+}
+
 console.log("\na reminder fires once");
 {
   const h = harness();

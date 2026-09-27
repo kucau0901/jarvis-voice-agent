@@ -39,6 +39,26 @@ export async function renderTemplate(
   return text;
 }
 
+/**
+ * Work one thing in the house (a guest's pass, lib/access.ts): a service on
+ * one entity, nothing else. Throws with Home Assistant's answer if refused.
+ */
+export async function callService(
+  cfg: HaConfig,
+  domain: string,
+  service: string,
+  entityId: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<void> {
+  const res = await fetchImpl(`${cfg.base}/api/services/${domain}/${service}`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${cfg.token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ entity_id: entityId }),
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!res.ok) throw new Error(`Home Assistant said ${res.status}: ${(await res.text()).slice(0, 160)}`);
+}
+
 /** A rendered condition as yes or no; null when it is neither. */
 export function truthy(rendered: string): boolean | null {
   const v = rendered.trim().toLowerCase();

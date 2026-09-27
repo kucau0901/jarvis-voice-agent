@@ -57,6 +57,11 @@ export interface SchedulerDeps {
   travel(destination: string, person: string): Promise<Travel | null>;
   /** Home Assistant renders a watch's condition; null when it is not set up. */
   renderTemplate: ((template: string) => Promise<string>) | null;
+  /**
+   * Pass a routine's words on to someone in the family (lib/relays.ts).
+   * Null when it was; else why not.
+   */
+  relay?(r: Routine, to: { person: string; name: string }): Promise<string | null>;
 }
 
 const R = "routine:";
@@ -360,6 +365,26 @@ export class Scheduler {
   }
 
   private async execute(r: Routine, deps: SchedulerDeps, now: number, data?: string, lateFrom?: number): Promise<void> {
+    if (r.action.kind === "relay") {
+      // To whoever's turn it is; the rota moves on only once it has gone.
+      const a = r.action;
+      const turn = (a.turn ?? 0) % Math.max(1, a.to.length);
+      const to = a.to[turn];
+      if (!to || !deps.relay) {
+        await this.record(r.id, { at: now, ok: false, detail: "nobody to pass it on to" });
+        return;
+      }
+      const why = await deps.relay(r, to).catch((e) => (e instanceof Error ? e.message : String(e)));
+      const cur = await this.get(r.id);
+      if (cur && cur.action.kind === "relay" && !why) {
+        cur.action = { ...cur.action, turn: (turn + 1) % cur.action.to.length };
+        cur.lastRun = { at: now, ok: true, detail: `passed on to ${to.name}` };
+        await this.save(cur);
+      } else if (why) {
+        await this.record(r.id, { at: now, ok: false, detail: `not passed on: ${why}` });
+      }
+      return;
+    }
     let text: string;
     if (r.action.kind === "say") {
       text = data ? `${r.action.text}\n\n${data}` : r.action.text;

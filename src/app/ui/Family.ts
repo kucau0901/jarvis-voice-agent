@@ -5,6 +5,7 @@ import { passkeyError, passkeysSupported } from "../passkey";
 import { ago, arm, esc } from "./util";
 import { dropPerson, loadPeople } from "../people";
 import { Mine, type Prefs } from "./Mine";
+import { limitsForm, limitsSaid, readLimits, type Access } from "./Limits";
 
 /**
  * The family: who is in it, inviting someone, pairing a screen, and your own
@@ -25,6 +26,7 @@ interface Me {
   hasPin: boolean;
   prefs?: Prefs;
   haToken?: boolean;
+  access?: (Omit<Access, "allow"> & { allow?: { entity: string; label: string; actions: string[] }[] }) | null;
 }
 
 interface Member {
@@ -37,6 +39,8 @@ interface Member {
   passkeys?: number;
   hasPin?: boolean;
   presence?: string;
+  first?: boolean;
+  access?: Access | null;
   lastSeenAt?: number;
 }
 
@@ -216,6 +220,7 @@ export class Family {
         ${me.owner ? "This screen is unlocked with the owner key. To make it yours, pair it with your phone: it shows a code, you approve it on your phone, and the owner key is kept until you do." : ""}</p>
       ${me.owner && me.claimed ? `<div class="rowbtns"><button class="primary f-asme">Pair this screen with my phone</button></div>` : ""}
 
+      <div class="f-pass"></div>
       ${me.user ? `
       <h3>You</h3>
       <div class="srv">
@@ -247,6 +252,9 @@ export class Family {
       <h3>Members</h3>
       <div class="f-members"></div>
 
+      <h3>Chores</h3>
+      <div class="srv f-points"><p class="note">loading…</p></div>
+
       ${IN_CAR ? "" : `
       <h3>Sign in another screen</h3>
       <div class="srv">
@@ -263,6 +271,7 @@ export class Family {
       <div class="srv">
         <input type="text" class="f-iname" maxlength="40" placeholder="Their name">
         <select class="f-irole">${roles.map((r) => `<option value="${esc(r)}"${r === "adult" ? " selected" : ""}>${esc(ROLE_WORDS[r] ?? r)}</option>`).join("")}</select>
+        <details class="f-ilimits"><summary>Limits for them: until, hours, a pass (for a guest or helper)</summary><div class="f-ilbox"></div></details>
         <button class="primary f-invite">Make an invite link</button>
         <div class="reveal"></div>
         <div class="f-invites"></div>
@@ -283,6 +292,9 @@ export class Family {
 
     const mine = this.body.querySelector<HTMLElement>(".f-mine");
     if (mine) new Mine(this.key, mine, me.prefs ?? {}, !!me.haToken).render();
+    this.body.querySelector(".f-ilbox")?.appendChild(limitsForm(null));
+    this.renderPass(me);
+    void this.renderPoints(admin);
     this.renderMembers(data.members, admin, roles, scopes);
     if (admin) this.renderInvites(data.invites ?? []);
     this.wire(admin);
@@ -301,7 +313,8 @@ export class Family {
               ? `<select class="m-role">${roles.map((r) => `<option value="${esc(r)}"${r === m.role ? " selected" : ""}>${esc(r)}</option>`).join("")}</select>`
               : `<span class="chip">${esc(m.role)}</span>`}
           </div>
-          ${admin ? `<p class="note">seen ${ago(m.lastSeenAt)} · ${m.passkeys ?? 0} passkey${m.passkeys === 1 ? "" : "s"}</p>` : ""}
+          ${admin ? `<p class="note">seen ${ago(m.lastSeenAt)} · ${m.passkeys ?? 0} passkey${m.passkeys === 1 ? "" : "s"}${m.access ? ` · <b>${esc(limitsSaid(m.access))}</b>` : ""}</p>` : ""}
+          ${admin && !m.first ? `<details class="m-limits"><summary>Limits: until, hours, a pass</summary><div class="m-lbox"></div><div class="rowbtns"><button class="m-lsave">Save limits</button><button class="m-lclear">No limits</button></div></details>` : ""}
           ${admin && m.role !== "admin"
             ? `<div class="checks">${scopes
                 .map((s) => `<button class="check${m.scopes?.includes(s) ? " on" : ""}" data-scope="${esc(s)}" title="${esc(s)}">${esc(SCOPE_WORDS[s] ?? s)}</button>`)
@@ -342,6 +355,15 @@ export class Family {
           this.msg(e instanceof Error ? e.message : String(e), true);
         }
       });
+      // Limits: a guest's pass, a helper's hours, a child's quiet time (lib/access.ts).
+      const lbox = row.querySelector<HTMLElement>(".m-lbox");
+      if (lbox) {
+        const m = members.find((x) => x.id === id);
+        const form = limitsForm(m?.access ?? null);
+        lbox.appendChild(form);
+        row.querySelector(".m-lsave")!.addEventListener("click", () => void this.change({ user: id, access: readLimits(form) }, `Saved ${name}'s limits.`));
+        row.querySelector(".m-lclear")!.addEventListener("click", () => void this.change({ user: id, access: null }, `${name} has no limits now.`));
+      }
       row.querySelector(".m-psave")?.addEventListener("click", () =>
         void this.change({ user: id, presence: row.querySelector<HTMLInputElement>(".m-presence")!.value.trim() }, `Saved where ${name} is, for “when home”.`),
       );
@@ -359,6 +381,64 @@ export class Family {
           }
         });
       }
+    }
+  }
+
+  /**
+   * A guest's pass (lib/access.ts): a button for each thing they may work,
+   * and when their access ends or is limited to.
+   */
+  private renderPass(me: Me): void {
+    const box = this.body.querySelector<HTMLElement>(".f-pass");
+    const a = me.access;
+    if (!box || !a) return;
+    // When it is yours: its end and its hours; the things are the buttons below.
+    const when = limitsSaid({ until: a.until, hours: a.hours });
+    box.innerHTML = `<h3>Your pass</h3><div class="srv">
+      ${when ? `<p class="note">Jarvis is yours ${esc(when)}.</p>` : ""}
+      ${(a.allow ?? [])
+        .map(
+          (x) => `<div class="fieldfoot"><b>${esc(x.label)}</b><div class="rowbtns">${x.actions
+            .map((act) => `<button class="p-act" data-entity="${esc(x.entity)}" data-action="${esc(act)}">${esc(act[0]!.toUpperCase() + act.slice(1))}</button>`)
+            .join("")}</div></div>`,
+        )
+        .join("")}
+      <div class="res p-res"></div></div>`;
+    for (const b of box.querySelectorAll<HTMLElement>(".p-act")) {
+      b.addEventListener("click", async () => {
+        const res = box.querySelector<HTMLElement>(".p-res")!;
+        res.textContent = "…";
+        try {
+          const r = await this.api<{ text: string }>("/api/hub/pass", "POST", { entity: b.dataset.entity, action: b.dataset.action });
+          res.textContent = r.text;
+        } catch (e) {
+          res.textContent = e instanceof Error ? e.message : String(e);
+        }
+      });
+    }
+  }
+
+  /** Chore points (lib/relays.ts): earned by saying done to a chore a rota passed on. */
+  private async renderPoints(admin: boolean): Promise<void> {
+    const box = this.body.querySelector<HTMLElement>(".f-points");
+    if (!box) return;
+    try {
+      const { points } = await this.api<{ points: { name: string; points: number }[] }>("/api/hub/points");
+      const any = points.some((p) => p.points > 0);
+      box.innerHTML =
+        `<p class="note">Set up a rota by asking: “every Saturday at ten, remind Aisyah and Adam in turn to wash the car, 5 points”. ` +
+        `Saying done earns the points.</p>` +
+        (any ? points.map((p) => `<div class="fieldfoot"><span>${esc(p.name)}</span><b>${p.points}</b></div>`).join("") : `<p class="note">Nobody has points yet.</p>`) +
+        (admin && any ? `<div class="rowbtns"><button class="p-reset">Start the tally again</button></div>` : "");
+      const reset = box.querySelector<HTMLButtonElement>(".p-reset");
+      if (reset) {
+        arm(reset, "Start again?", async () => {
+          await this.api("/api/hub/points", "DELETE").catch(() => {});
+          await this.renderPoints(admin);
+        });
+      }
+    } catch {
+      box.innerHTML = `<p class="note">Chores need the family chat permission.</p>`;
     }
   }
 
@@ -490,8 +570,10 @@ export class Family {
       const name = q<HTMLInputElement>(".f-iname")!.value.trim();
       const role = q<HTMLSelectElement>(".f-irole")!.value;
       if (!name) return this.msg("Who is it for? A name helps you tell invites apart.", true);
+      const lbox = q<HTMLElement>(".f-ilbox");
+      const access = lbox && (q<HTMLDetailsElement>(".f-ilimits")!).open ? readLimits(lbox.firstElementChild as HTMLElement) : null;
       try {
-        const r = await this.api<{ url: string }>("/api/hub/invites", "POST", { name, role });
+        const r = await this.api<{ url: string }>("/api/hub/invites", "POST", { name, role, ...(access ? { access } : {}) });
         q<HTMLInputElement>(".f-iname")!.value = "";
         this.reveal(q(".reveal")!, r.url, `An invite for ${name}`, `They open it on their phone, and make a passkey.`);
         this.msg("");
