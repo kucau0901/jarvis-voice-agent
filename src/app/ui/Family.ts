@@ -189,7 +189,8 @@ export class Family {
 
     this.body.innerHTML = `
       <p class="note">${esc(me.space?.name ?? "")} · the assistant is <b>${esc(me.space?.agentName ?? "Jarvis")}</b>.
-        ${me.owner ? "You are using the owner key on this screen: sign in with your passkey to be yourself here." : ""}</p>
+        ${me.owner ? "This screen is unlocked with the owner key." : ""}</p>
+      ${me.owner ? `<div class="rowbtns"><button class="f-asme">Sign in as a person here instead</button></div>` : ""}
 
       ${me.user ? `
       <h3>You</h3>
@@ -362,6 +363,17 @@ export class Family {
 
   private wire(admin: boolean): void {
     const q = <T = HTMLElement>(c: string) => this.body.querySelector(c) as T | null;
+
+    // From the owner key to a person: this screen forgets the key and asks who is here (a passkey, or pairing).
+    const asMe = q<HTMLButtonElement>(".f-asme");
+    if (asMe) {
+      arm(asMe, "Forget the owner key here?", async () => {
+        try {
+          localStorage.removeItem("jarvis.key");
+        } catch { /* private mode */ }
+        location.reload();
+      });
+    }
 
     q(".f-rename")?.addEventListener("click", async () => {
       const name = prompt("Your name, as the family sees it:", this.me?.user?.name ?? "");
