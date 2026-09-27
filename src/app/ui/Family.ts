@@ -6,10 +6,13 @@ import { ago, arm, esc } from "./util";
 import { dropPerson, loadPeople } from "../people";
 import { Mine, type Prefs } from "./Mine";
 import { limitsForm, limitsSaid, readLimits, type Access } from "./Limits";
+import { SectionMenu, type NavGroup } from "./sections";
 
 /**
  * The family: who is in it, inviting someone, pairing a screen, and your own
- * passkeys and signed-in screens (src/worker/routes/hub.ts).
+ * passkeys and signed-in screens (src/worker/routes/hub.ts). Laid out as
+ * Settings is (sections.ts): You, The family and Screens in the menu, one
+ * section open at a time, and each member a section of their own.
  *
  * With the owner key and no family yet, this is where one is set up: the
  * holder names themselves, the family and its assistant, and makes the first
@@ -24,6 +27,8 @@ interface Me {
   role: string;
   session: string | null;
   hasPin: boolean;
+  /** What this person may reach: the app offers only that. */
+  scopes?: string[];
   prefs?: Prefs;
   haToken?: boolean;
   access?: (Omit<Access, "allow"> & { allow?: { entity: string; label: string; actions: string[] }[] }) | null;
@@ -88,6 +93,7 @@ export class Family {
   private el: HTMLElement;
   private body: HTMLElement;
   private me: Me | null = null;
+  private menu: SectionMenu;
 
   constructor(
     private readonly key: string,
@@ -106,14 +112,16 @@ export class Family {
     this.el.innerHTML = `
       <div class="sheet">
         <header>
+          <button class="back" type="button">‹ Family</button>
           <h2>Family</h2>
           <button class="close" aria-label="Close">Done</button>
         </header>
-        <div class="fbody"></div>
         <div class="msg"></div>
+        <div class="fbody"></div>
       </div>`;
     document.body.appendChild(this.el);
     this.body = this.el.querySelector(".fbody")!;
+    this.menu = new SectionMenu(this.el.querySelector<HTMLElement>(".sheet")!, "jarvis.family.section");
     this.el.querySelector(".close")!.addEventListener("click", () => this.hide());
     this.el.addEventListener("click", (e) => {
       if (e.target === this.el) this.hide();
@@ -122,6 +130,7 @@ export class Family {
 
   async show(): Promise<void> {
     this.el.classList.add("open");
+    this.menu.toList();
     this.msg("");
     await this.load();
   }
@@ -164,6 +173,8 @@ export class Family {
   /* ---------- no family yet: the owner sets it up --------------------------------- */
 
   private renderSetup(): void {
+    // One form, so no menu.
+    this.el.querySelector(".sheet")!.classList.remove("setsheet");
     this.body.innerHTML = `
       <p class="note">Share this Jarvis with your family. Each person signs in with their own
         passkey (Face ID, a fingerprint or their phone's PIN), and sees what you let them.
@@ -214,26 +225,37 @@ export class Family {
     }
     const roles = data.roles ?? [];
     const scopes = (data.scopes ?? []).filter((s) => s !== "*");
+    // Chores ride on the family's messages: not for a guest.
+    const talks = !me.scopes || me.scopes.includes("*") || me.scopes.includes("chat");
 
+    this.el.querySelector(".sheet")!.classList.add("setsheet");
     this.body.innerHTML = `
-      <p class="note">${esc(me.space?.name ?? "")} · the assistant is <b>${esc(me.space?.agentName ?? "Jarvis")}</b>.
-        ${me.owner ? "This screen is unlocked with the owner key. To make it yours, pair it with your phone: it shows a code, you approve it on your phone, and the owner key is kept until you do." : ""}</p>
-      ${me.owner && me.claimed ? `<div class="rowbtns"><button class="primary f-asme">Pair this screen with my phone</button></div>` : ""}
+      <div class="setwrap">
+      <nav class="setnav" aria-label="Family sections"></nav>
+      <div class="setbody">
+      ${me.owner ? `
+      <section class="svc" data-section="owner" data-title="This screen">
+        <h3>This screen</h3>
+        <p class="note">It is unlocked with the owner key. To make it yours, pair it with your phone: it shows a code,
+          you approve it on your phone, and the owner key is kept until you do.</p>
+        <div class="rowbtns"><button class="primary f-asme">Pair this screen with my phone</button></div>
+      </section>` : ""}
 
-      <div class="f-pass"></div>
+      ${me.access ? `<section class="svc" data-section="pass" data-title="Your pass"><h3>Your pass</h3><div class="f-pass"></div></section>` : ""}
+
       ${me.user ? `
-      <h3>You</h3>
-      <div class="srv">
-        <div class="svchead"><b>${esc(me.user.name)}</b><span class="chip">${esc(me.role)}</span></div>
+      <section class="svc" data-section="you" data-title="Profile">
+        <div class="svchead"><h3>${esc(me.user.name)}</h3><span class="chip">${esc(me.role)}</span></div>
+        <p class="note">${esc(me.space?.name ?? "")} · the assistant is <b>${esc(me.space?.agentName ?? "Jarvis")}</b>.</p>
         <div class="rowbtns">
           <button class="f-rename">Change my name</button>
           <button class="f-signout">Sign out of this screen</button>
         </div>
-      </div>
+      </section>
       <div class="f-mine"></div>
 
-      <h3>A screen you share</h3>
-      <div class="srv">
+      <section class="svc" data-section="screen" data-title="A screen you share">
+        <h3>A screen you share</h3>
         <p class="note">The car, or a tablet at home: add each person once, and tap the name at the top to switch.
           With a PIN, nobody can switch into you there${me.hasPin ? "; yours is set" : ""}. Switching away locks you, and so does
           half an hour untouched when others share the screen.</p>
@@ -247,95 +269,125 @@ export class Family {
           <button class="f-pinset">${me.hasPin ? "Change my PIN" : "Set my PIN"}</button>
           ${me.hasPin ? `<button class="f-pinoff">Remove my PIN</button>` : ""}
         </div>
-      </div>` : ""}
+      </section>` : ""}
 
-      <h3>Members</h3>
       <div class="f-members"></div>
 
-      <h3>Chores</h3>
-      <div class="srv f-points"><p class="note">loading…</p></div>
+      ${talks ? `
+      <section class="svc" data-section="chores" data-title="Chores">
+        <h3>Chores</h3>
+        <div class="f-points"><p class="note">loading…</p></div>
+      </section>` : ""}
 
       ${IN_CAR ? "" : `
-      <h3>Sign in another screen</h3>
-      <div class="srv">
+      <section class="svc" data-section="pair" data-title="Sign in a screen">
+        <h3>Sign in another screen</h3>
         <p class="note">Is the car, a tablet or another screen showing a code? Type it here, and that screen signs in.</p>
         <input type="text" class="f-code" maxlength="7" placeholder="ABC DEF" autocapitalize="characters" autocomplete="off">
         ${admin && data.members.length > 1 ? `<select class="f-for">${data.members
           .map((m) => `<option value="${esc(m.id)}"${m.you ? " selected" : ""}>as ${esc(m.you ? "me" : m.name)}</option>`)
           .join("")}</select>` : ""}
-        <button class="primary f-pair">Sign it in</button>
-      </div>`}
+        <div class="rowbtns"><button class="primary f-pair">Sign it in</button></div>
+      </section>`}
 
       ${admin ? `
-      <h3>Invite someone</h3>
-      <div class="srv">
+      <section class="svc" data-section="invite" data-title="Invite someone">
+        <h3>Invite someone</h3>
         <input type="text" class="f-iname" maxlength="40" placeholder="Their name">
         <select class="f-irole">${roles.map((r) => `<option value="${esc(r)}"${r === "adult" ? " selected" : ""}>${esc(ROLE_WORDS[r] ?? r)}</option>`).join("")}</select>
         <details class="f-ilimits"><summary>Limits for them: until, hours, a pass (for a guest or helper)</summary><div class="f-ilbox"></div></details>
-        <button class="primary f-invite">Make an invite link</button>
-        <div class="reveal"></div>
+        <div class="rowbtns"><button class="primary f-invite">Make an invite link</button></div>
+        <div class="reveal f-ireveal"></div>
         <div class="f-invites"></div>
-      </div>
+      </section>
 
-      <h3>The family</h3>
-      <div class="srv">
+      <section class="svc" data-section="names" data-title="Names">
+        <h3>The family's name, and the assistant's</h3>
         <input type="text" class="f-sname" maxlength="60" value="${esc(me.space?.name ?? "")}">
         <input type="text" class="f-aname" maxlength="24" value="${esc(me.space?.agentName ?? "")}">
-        <button class="f-ssave">Save</button>
-      </div>` : ""}
+        <div class="rowbtns"><button class="f-ssave">Save</button></div>
+      </section>` : ""}
 
       ${me.user ? `
-      <h3>Your passkeys</h3>
-      <div class="srv f-keys"></div>
-      <h3>Where you are signed in</h3>
-      <div class="srv f-sessions"></div>` : ""}`;
+      <section class="svc" data-section="signin" data-title="Passkeys and sign-ins">
+        <h3>Your passkeys</h3>
+        <div class="f-keys"></div>
+        <h4>Where you are signed in</h4>
+        <div class="f-sessions"></div>
+      </section>` : ""}
+      </div>
+      </div>`;
 
     const mine = this.body.querySelector<HTMLElement>(".f-mine");
-    if (mine) new Mine(this.key, mine, me.prefs ?? {}, !!me.haToken).render();
+    if (mine) new Mine(this.key, mine, me.prefs ?? {}, !!me.haToken, me.scopes).render();
     this.body.querySelector(".f-ilbox")?.appendChild(limitsForm(null, () => this.houseThings()));
     this.renderPass(me);
     void this.renderPoints(admin);
     this.renderMembers(data.members, admin, roles, scopes);
     if (admin) this.renderInvites(data.invites ?? []);
     this.wire(admin);
+    this.buildMenu(data.members, admin);
     if (me.user) await Promise.all([this.renderKeys(), this.renderSessions()]);
+  }
+
+  /**
+   * You, the family, and screens. An admin has a section for each member;
+   * anyone else, one list of who is in the family. Opens on a guest's pass,
+   * the owner key's pairing, or your profile.
+   */
+  private buildMenu(members: Member[], admin: boolean): void {
+    const groups: NavGroup[] = [
+      ["You", ["owner", "pass", "you", "m-accounts", "m-cars", "m-home", "m-voice", "m-alerts", "m-usage"]],
+      ["The family", [...(admin ? members.map((m) => `member:${m.id}`) : ["members"]), "invite", "chores", "names"]],
+      ["Screens", ["screen", "pair", "signin"]],
+    ];
+    this.menu.build(groups, (sections) => ["pass", "owner", "you"].find((id) => sections.some((x) => x.dataset.section === id)) ?? sections[0]?.dataset.section ?? "");
   }
 
   private renderMembers(members: Member[], admin: boolean, roles: string[], scopes: string[]): void {
     const box = this.body.querySelector<HTMLElement>(".f-members")!;
+    // Anyone but an admin: who is in the family, in one list.
+    if (!admin) {
+      box.innerHTML = `
+        <section class="svc" data-section="members" data-title="Members" data-aside="${members.length}">
+          <h3>Members</h3>
+          ${members.map((m) => `<div class="fieldfoot"><span>${esc(m.name)}${m.you ? " (you)" : ""}</span><span class="chip">${esc(m.role)}</span></div>`).join("")}
+        </section>`;
+      return;
+    }
+    // An admin: a section for each, with what they can reach and their limits.
     box.innerHTML = members
       .map(
         (m) => `
-        <div class="srv" data-id="${esc(m.id)}">
+        <section class="svc" data-section="member:${esc(m.id)}" data-title="${esc(m.name)}${m.you ? " (you)" : ""}" data-aside="${esc(m.role)}" data-id="${esc(m.id)}" data-name="${esc(m.name)}">
           <div class="svchead">
-            <b>${esc(m.name)}${m.you ? " (you)" : ""}</b>
-            ${admin && !m.you
-              ? `<select class="m-role">${roles.map((r) => `<option value="${esc(r)}"${r === m.role ? " selected" : ""}>${esc(r)}</option>`).join("")}</select>`
+            <h3>${esc(m.name)}${m.you ? " (you)" : ""}</h3>
+            ${!m.you
+              ? `<select class="m-role" aria-label="Role">${roles.map((r) => `<option value="${esc(r)}"${r === m.role ? " selected" : ""}>${esc(r)}</option>`).join("")}</select>`
               : `<span class="chip">${esc(m.role)}</span>`}
           </div>
-          ${admin ? `<p class="note">seen ${ago(m.lastSeenAt)} · ${m.passkeys ?? 0} passkey${m.passkeys === 1 ? "" : "s"}${m.access ? ` · <b>${esc(limitsSaid(m.access))}</b>` : ""}</p>` : ""}
-          ${admin && !m.first ? `<details class="m-limits"><summary>Limits: until, hours, a pass</summary><div class="m-lbox"></div><div class="rowbtns"><button class="m-lsave">Save limits</button><button class="m-lclear">No limits</button></div></details>` : ""}
-          ${admin && m.role !== "admin"
-            ? `<div class="checks">${scopes
+          <p class="note">seen ${ago(m.lastSeenAt)} · ${m.passkeys ?? 0} passkey${m.passkeys === 1 ? "" : "s"}${m.access ? ` · <b>${esc(limitsSaid(m.access))}</b>` : ""}</p>
+          ${m.role !== "admin"
+            ? `<h4>What they can reach</h4>
+               <div class="checks">${scopes
                 .map((s) => `<button class="check${m.scopes?.includes(s) ? " on" : ""}" data-scope="${esc(s)}" title="${esc(s)}">${esc(SCOPE_WORDS[s] ?? s)}</button>`)
                 .join("")}</div>
-               ${m.custom ? `<button class="m-reset">Back to what a ${esc(m.role)} gets</button>` : ""}`
+               ${m.custom ? `<div class="rowbtns"><button class="m-reset">Back to what a ${esc(m.role)} gets</button></div>` : ""}`
             : ""}
-          ${admin
-            ? `<div class="fieldfoot"><input type="text" class="m-presence" maxlength="60" placeholder="Home Assistant person, for “when home”: person.name" value="${esc(m.presence ?? "")}"><button class="m-psave">Save</button></div>`
-            : ""}
-          ${admin && !m.you
+          ${!m.first ? `<details class="m-limits"><summary>Limits: until, hours, a pass</summary><div class="m-lbox"></div><div class="rowbtns"><button class="m-lsave">Save limits</button><button class="m-lclear">No limits</button></div></details>` : ""}
+          <h4>Getting home</h4>
+          <div class="fieldfoot"><input type="text" class="m-presence" maxlength="60" placeholder="Home Assistant person, for “when home”: person.name" value="${esc(m.presence ?? "")}"><button class="m-psave">Save</button></div>
+          ${!m.you
             ? `<div class="rowbtns"><button class="m-link">New passkey link</button>${m.hasPin ? `<button class="m-clearpin">Clear their PIN</button>` : ""}<button class="m-remove">Remove</button></div>
                <div class="reveal"></div>`
             : ""}
-        </div>`,
+        </section>`,
       )
       .join("");
 
-    if (!admin) return;
     for (const row of box.querySelectorAll<HTMLElement>("[data-id]")) {
       const id = row.dataset.id!;
-      const name = row.querySelector("b")!.textContent ?? "";
+      const name = row.dataset.name ?? "";
       (row.querySelector(".m-role") as HTMLSelectElement | null)?.addEventListener("change", (e) =>
         void this.change({ user: id, role: (e.target as HTMLSelectElement).value }, `${name} is now ${(e.target as HTMLSelectElement).value}.`),
       );
@@ -394,7 +446,7 @@ export class Family {
     if (!box || !a) return;
     // When it is yours: its end and its hours; the things are the buttons below.
     const when = limitsSaid({ until: a.until, hours: a.hours });
-    box.innerHTML = `<h3>Your pass</h3><div class="srv">
+    box.innerHTML = `
       ${when ? `<p class="note">Jarvis is yours ${esc(when)}.</p>` : ""}
       ${(a.allow ?? [])
         .map(
@@ -403,7 +455,7 @@ export class Family {
             .join("")}</div></div>`,
         )
         .join("")}
-      <div class="res p-res"></div></div>`;
+      <div class="res p-res"></div>`;
     for (const b of box.querySelectorAll<HTMLElement>(".p-act")) {
       b.addEventListener("click", async () => {
         const res = box.querySelector<HTMLElement>(".p-res")!;
@@ -583,7 +635,7 @@ export class Family {
       try {
         const r = await this.api<{ url: string }>("/api/hub/invites", "POST", { name, role, ...(access ? { access } : {}) });
         q<HTMLInputElement>(".f-iname")!.value = "";
-        this.reveal(q(".reveal")!, r.url, `An invite for ${name}`, `They open it on their phone, and make a passkey.`);
+        this.reveal(q(".f-ireveal")!, r.url, `An invite for ${name}`, `They open it on their phone, and make a passkey.`);
         this.msg("");
       } catch (e) {
         this.msg(e instanceof Error ? e.message : String(e), true);

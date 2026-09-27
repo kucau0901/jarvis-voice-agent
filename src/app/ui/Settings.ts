@@ -3,9 +3,10 @@ import { Services } from "./Services";
 import { AlertsPanel } from "./AlertsPanel";
 import { LOUDNESS, loudness, setLoudness, type Loudness } from "../loud";
 import { speakText } from "../alerts";
+import { SectionMenu, type NavGroup } from "./sections";
 
 /** The settings menu: groups, and the sections in each, by id. */
-const NAV: [string, string[]][] = [
+const NAV: NavGroup[] = [
   ["Connections", ["openai", "car", "home", "hermes", "google", "spotify", "maps", "cameras", "mcp"]],
   ["How Jarvis behaves", ["router", "voice", "screen", "alerts", "locale"]],
   ["Access and advanced", ["usage", "owner", "devices", "advanced"]],
@@ -83,6 +84,7 @@ export class Settings {
   private services: Services;
   /** The version line under the menu, filled by loadVersion(). */
   private versionLine = node("p", "");
+  private menu: SectionMenu;
 
   constructor(private key: string) {
     this.el = document.createElement("div");
@@ -163,6 +165,7 @@ export class Settings {
     document.body.appendChild(this.el);
     this.list = this.el.querySelector(".list")!;
     this.router = this.el.querySelector(".router")!;
+    this.menu = new SectionMenu(this.el.querySelector<HTMLElement>(".sheet")!, SECTION_KEY);
     const alerts = new AlertsPanel(key);
     this.services = new Services(
       key,
@@ -170,7 +173,6 @@ export class Settings {
       { alerts: () => alerts.render() },
       () => this.buildNav(),
     );
-    this.el.querySelector(".back")!.addEventListener("click", () => this.sheet.classList.remove("detail"));
     this.renderLoud();
     this.el.querySelector(".hear")!.addEventListener("click", () => void this.hearLoud());
     this.buildNav();
@@ -329,85 +331,21 @@ export class Settings {
 
   /* ---------- the menu of sections ------------------------------------------ */
 
-  private get sheet(): HTMLElement {
-    return this.el.querySelector(".sheet")!;
-  }
-
   /**
-   * The list on the left (or on its own, on a narrow screen): every section,
-   * grouped, each with its state. Rebuilt whenever the sections are, so a
-   * save that sets something up turns its mark green.
+   * Every section, grouped, each with its state. Rebuilt whenever the
+   * sections are, so a save that sets something up turns its mark green.
+   * Opens on something that needs setting up, else OpenAI.
    */
   private buildNav(): void {
-    const nav = this.el.querySelector<HTMLElement>(".setnav")!;
-    const sections = [...this.el.querySelectorAll<HTMLElement>(".setbody [data-section]")];
-    const byId = new Map(sections.map((s) => [s.dataset.section!, s]));
-    const placed = new Set<string>();
-    const parts: HTMLElement[] = [];
-    NAV.forEach(([heading, ids], i) => {
-      const here = ids.filter((id) => byId.has(id));
-      // Anything the menu does not know yet goes in the last group.
-      if (i === NAV.length - 1) for (const id of byId.keys()) if (!NAV.some(([, l]) => l.includes(id))) here.push(id);
-      if (!here.length) return;
-      parts.push(node("h4", heading));
-      for (const id of here) {
-        placed.add(id);
-        const s = byId.get(id)!;
-        const b = node("button", "");
-        b.type = "button";
-        b.dataset.for = id;
-        b.appendChild(node("span", s.dataset.title ?? id));
-        const state = s.dataset.state ?? "off";
-        const mark = node("span", state === "on" ? "✓" : state === "need" ? "!" : "○");
-        mark.className = `st ${state}`;
-        mark.title = state === "on" ? "set up" : state === "need" ? "needs setting up" : "optional, not set up";
-        b.appendChild(mark);
-        b.addEventListener("click", () => this.choose(id, true));
-        parts.push(b);
-      }
-    });
     const note = node("p", "Only OpenAI is required. Everything else is optional, and switches its tools on once set up.");
     note.className = "navnote";
-    parts.push(note, this.versionLine);
-    nav.replaceChildren(...parts);
-    this.choose(this.current ?? this.firstChoice(sections), false);
-  }
-
-  private current: string | null = (() => {
-    try {
-      return sessionStorage.getItem(SECTION_KEY);
-    } catch {
-      return null;
-    }
-  })();
-
-  /** Something that needs setting up, else OpenAI. */
-  private firstChoice(sections: HTMLElement[]): string {
-    return sections.find((s) => s.dataset.state === "need")?.dataset.section ?? "openai";
-  }
-
-  private choose(id: string, open: boolean): void {
-    const sections = [...this.el.querySelectorAll<HTMLElement>(".setbody [data-section]")];
-    if (!sections.some((s) => s.dataset.section === id)) id = this.firstChoice(sections);
-    this.current = id;
-    try {
-      sessionStorage.setItem(SECTION_KEY, id);
-    } catch {
-      // the choice is just not remembered
-    }
-    for (const s of sections) s.classList.toggle("active", s.dataset.section === id);
-    for (const b of this.el.querySelectorAll<HTMLElement>(".setnav button")) b.classList.toggle("on", b.dataset.for === id);
-    // On a narrow screen, choosing opens the section in place of the list.
-    if (open) {
-      this.sheet.classList.add("detail");
-      this.sheet.scrollTop = 0;
-    }
+    this.menu.build(NAV, (sections) => sections.find((s) => s.dataset.state === "need")?.dataset.section ?? "openai", [note, this.versionLine]);
   }
 
   async show() {
     this.el.classList.add("open");
     // A narrow screen starts on the list; a wide one shows the list and a section together.
-    this.sheet.classList.remove("detail");
+    this.menu.toList();
     this.msg("loading…");
     // Independent: a slow MCP server must not hold the other sections hostage.
     void this.services.load();

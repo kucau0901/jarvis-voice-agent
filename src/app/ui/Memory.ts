@@ -1,5 +1,6 @@
 import { authHeaders } from "../key";
 import { ago, arm, esc } from "./util";
+import { SectionMenu, type NavGroup } from "./sections";
 
 /**
  * What Jarvis remembers, where the owner can see it.
@@ -9,6 +10,10 @@ import { ago, arm, esc } from "./util";
  * answer. This panel lists them, adds one, and forgets one — one fact per
  * request, never a replace-all, so a fact saved by voice while the panel is
  * open cannot be overwritten by what the page loaded earlier.
+ *
+ * Laid out as Settings is (sections.ts): each kind of fact, yours and the
+ * family's, is a section of its own in the menu, and so are adding, finding,
+ * what Jarvis reads, and what was forgotten.
  *
  * Every fact is text somebody said, so all of it goes through esc().
  */
@@ -39,7 +44,10 @@ interface Hit {
   score: number;
 }
 
-/** Display order, and what each kind is called in the list. */
+/** Whose: this person's own memory, or the family's shared one (lib/context.ts). */
+type Book = "mine" | "family";
+
+/** Display order, and what each kind is called in the menu. */
 const KINDS: [string, string][] = [
   ["place", "Places"],
   ["person", "People"],
@@ -50,15 +58,20 @@ const KINDS: [string, string][] = [
   ["reference", "Reference"],
 ];
 
+const BOOK_NOTE: Record<Book, string> = {
+  mine: "Only you see these. Tell Jarvis “remember that…”, or add one under Remember something.",
+  family: "Everyone in the family sees these, and adults can change them. Say “remember for the family that…”.",
+};
+
+const REMEMBER = "jarvis.memory.section";
+
 export class Memory {
   private el: HTMLElement;
-  private list: HTMLElement;
   private key: string;
-  private data: Loaded | null = null;
-  /** The last Test recall, ranked; null when showing the plain list. */
-  private hits: Hit[] | null = null;
-  /** Whose memory is shown: this person's own, or the family's shared one (lib/context.ts). */
-  private book: "mine" | "family" = "mine";
+  private menu: SectionMenu;
+  private data: Record<Book, Loaded | null> = { mine: null, family: null };
+  /** The last Test recall, ranked, from each book; null when not testing. */
+  private hits: { book: Book; hit: Hit }[] | null = null;
   /** Whether there is a family memory to show at all. */
   private hasFamily = false;
 
@@ -68,80 +81,85 @@ export class Memory {
     this.el.id = "memory";
     this.el.className = "panel";
     this.el.innerHTML = `
-      <div class="sheet">
+      <div class="sheet setsheet">
         <header>
+          <button class="back" type="button">‹ Memory</button>
           <h2>Memory</h2>
           <button class="close" aria-label="Close">Done</button>
         </header>
-        <div class="checks books" hidden>
-          <button class="check on" data-book="mine" type="button">Mine</button>
-          <button class="check" data-book="family" type="button">The family's</button>
-        </div>
-        <p class="note bnote">
-          What Jarvis knows about you. Tell it “remember that…” while driving, or add
-          something here. Reference material (rosters, directories) is only looked up
-          when asked; everything else rides along on every request.
-        </p>
+        <div class="setwrap">
+          <nav class="setnav" aria-label="Memory sections"></nav>
+          <div class="setbody">
+            <div class="msg"></div>
+            <div class="kinds"></div>
 
-        <div class="gauge">
-          <span class="count"></span>
-          <div class="bar"><i></i></div>
-          <span class="budget"></span>
-        </div>
-        <details class="profile">
-          <summary>What Jarvis reads on every request</summary>
-          <pre></pre>
-        </details>
+            <section class="svc" data-section="add" data-title="Remember something">
+              <h3>Remember something</h3>
+              <p class="note">One short sentence. Reference material (rosters, directories) is only looked up
+                when asked; everything else rides along on every request.</p>
+              <select class="fbook" hidden>
+                <option value="mine">For me</option>
+                <option value="family">For the family</option>
+              </select>
+              <input class="ftext" type="text" maxlength="240"
+                     placeholder="e.g. I prefer the cabin at 21°">
+              <div class="addrow">
+                <select class="fkind">
+                  ${KINDS.map(([k, label]) => `<option value="${k}"${k === "note" ? " selected" : ""}>${label}</option>`).join("")}
+                </select>
+                <label class="on fpin"><input type="checkbox"> keep forever</label>
+              </div>
+              <div class="named">
+                <input class="fname" type="text" maxlength="60" placeholder="what you call it, e.g. home">
+                <input class="faddr" type="text" maxlength="300" placeholder="full street address">
+              </div>
+              <div class="rowbtns"><button class="save primary">Remember</button></div>
+            </section>
 
-        <div class="add">
-          <input class="ftext" type="text" maxlength="240"
-                 placeholder="one short sentence, e.g. I prefer the cabin at 21°">
-          <div class="addrow">
-            <select class="fkind">
-              ${KINDS.map(([k, label]) => `<option value="${k}"${k === "note" ? " selected" : ""}>${label}</option>`).join("")}
-            </select>
-            <label class="on fpin"><input type="checkbox"> keep forever</label>
+            <section class="svc" data-section="find" data-title="Find and test recall">
+              <h3>Find and test recall</h3>
+              <p class="note">Type to find a fact. Test recall shows what Jarvis would bring to mind for a
+                question, best first, without counting it as a use.</p>
+              <div class="find">
+                <input class="q" type="text" placeholder="a word, or a question like “how long to the office”">
+                <button class="probe">Test recall</button>
+              </div>
+              <div class="found"></div>
+            </section>
+
+            <section class="svc" data-section="reads" data-title="What Jarvis reads">
+              <h3>What Jarvis reads</h3>
+              <p class="note">The summary that goes with every question you ask, so it is kept short.
+                What does not fit is still found by searching.</p>
+              <div class="gauge">
+                <span class="count"></span>
+                <div class="bar"><i></i></div>
+                <span class="budget"></span>
+              </div>
+              <pre class="profile"></pre>
+            </section>
+
+            <section class="svc" data-section="trash" data-title="Recently forgotten">
+              <h3>Recently forgotten</h3>
+              <div class="gonelist"></div>
+            </section>
           </div>
-          <div class="named">
-            <input class="fname" type="text" maxlength="60" placeholder="what you call it, e.g. home">
-            <input class="faddr" type="text" maxlength="300" placeholder="full street address">
-          </div>
-          <button class="save primary">Remember</button>
         </div>
-
-        <div class="find">
-          <input class="q" type="text" placeholder="filter, or test what a question would recall">
-          <button class="probe">Test recall</button>
-        </div>
-        <div class="msg"></div>
-        <div class="list"></div>
-
-        <details class="trash">
-          <summary>Recently forgotten</summary>
-          <div></div>
-        </details>
       </div>`;
     document.body.appendChild(this.el);
-    this.list = this.el.querySelector(".list")!;
+    this.menu = new SectionMenu(this.$(".sheet"), REMEMBER);
 
     this.el.querySelector(".close")!.addEventListener("click", () => this.hide());
-    for (const b of this.el.querySelectorAll<HTMLButtonElement>(".books .check")) {
-      b.addEventListener("click", () => {
-        this.book = b.dataset.book === "family" ? "family" : "mine";
-        this.hits = null;
-        void this.load();
-      });
-    }
     this.el.querySelector(".save")!.addEventListener("click", () => void this.add());
     this.el.querySelector(".ftext")!.addEventListener("keydown", (e) => {
       if ((e as KeyboardEvent).key === "Enter") void this.add();
     });
     this.el.querySelector(".fkind")!.addEventListener("change", () => this.shapeForm());
     this.el.querySelector(".probe")!.addEventListener("click", () => void this.probe());
-    const q = this.el.querySelector<HTMLInputElement>(".q")!;
+    const q = this.$<HTMLInputElement>(".q");
     q.addEventListener("input", () => {
       this.hits = null;
-      this.render();
+      this.renderFound();
     });
     q.addEventListener("keydown", (e) => {
       if (e.key === "Enter") void this.probe();
@@ -154,17 +172,17 @@ export class Memory {
 
   async show(): Promise<void> {
     this.el.classList.add("open");
+    this.menu.toList();
     this.msg("");
     // Is there a family memory? Only with a family, and for someone who may read memory.
     this.hasFamily = await fetch("/api/memory?book=family", { headers: authHeaders(this.key) }).then((r) => r.ok).catch(() => false);
-    this.$(".books").hidden = !this.hasFamily;
-    if (!this.hasFamily) this.book = "mine";
+    this.$(".fbook").hidden = !this.hasFamily;
     await this.load();
   }
 
-  /** A memory route for the book on show. */
-  private path(p: string): string {
-    return this.book === "family" ? `${p}?book=family` : p;
+  /** A memory route for a book. */
+  private path(p: string, book: Book): string {
+    return book === "family" ? `${p}?book=family` : p;
   }
 
   hide(): void {
@@ -192,16 +210,16 @@ export class Memory {
     this.$(".fpin").hidden = kind === "reference";
   }
 
+  private async fetchBook(book: Book): Promise<Loaded> {
+    const res = await fetch(this.path("/api/memory", book), { headers: authHeaders(this.key) });
+    if (!res.ok) throw new Error(`memory ${res.status}`);
+    return (await res.json()) as Loaded;
+  }
+
   private async load(): Promise<void> {
     try {
-      const res = await fetch(this.path("/api/memory"), { headers: authHeaders(this.key) });
-      if (!res.ok) throw new Error(`memory ${res.status}`);
-      this.data = (await res.json()) as Loaded;
-      for (const b of this.el.querySelectorAll<HTMLElement>(".books .check")) b.classList.toggle("on", b.dataset.book === this.book);
-      this.$(".bnote").textContent =
-        this.book === "family"
-          ? "What the whole family shares: the house, the family doctor, where the spare key is. Everyone who may read memory sees it; adults can change it. Say “remember for the family that…”, or add it here."
-          : "What Jarvis knows about you: only you see it. Tell it “remember that…”, or add something here. Reference material (rosters, directories) is only looked up when asked; everything else rides along on every request.";
+      const [mine, family] = await Promise.all([this.fetchBook("mine"), this.hasFamily ? this.fetchBook("family") : null]);
+      this.data = { mine, family };
       this.render();
     } catch (e) {
       this.msg(`Could not load memory: ${e instanceof Error ? e.message : String(e)}`, true);
@@ -214,6 +232,7 @@ export class Memory {
       this.msg("Type the fact first — one short sentence.", true);
       return;
     }
+    const book: Book = this.hasFamily && this.$<HTMLSelectElement>(".fbook").value === "family" ? "family" : "mine";
     const kind = this.$<HTMLSelectElement>(".fkind").value;
     const name = this.$<HTMLInputElement>(".fname").value.trim();
     const address = this.$<HTMLInputElement>(".faddr").value.trim();
@@ -225,7 +244,7 @@ export class Memory {
 
     this.msg("Saving…");
     try {
-      const res = await fetch(this.path("/api/memory"), {
+      const res = await fetch(this.path("/api/memory", book), {
         method: "POST",
         headers: authHeaders(this.key),
         body: JSON.stringify({ text, kind, name, address, pinned }),
@@ -235,7 +254,7 @@ export class Memory {
 
       for (const sel of [".ftext", ".fname", ".faddr"]) this.$<HTMLInputElement>(sel).value = "";
       this.$<HTMLInputElement>(".fpin input").checked = false;
-      this.msg(body.replaced ? `Updated what was there: “${body.replaced.text}”.` : "Saved.");
+      this.msg(body.replaced ? `Updated what was there: “${body.replaced.text}”.` : `Saved, under ${KINDS.find(([k]) => k === kind)?.[1] ?? "Notes"}.`);
       await this.load();
     } catch (e) {
       // The server's reasons already say "not saved" when they need to.
@@ -244,16 +263,16 @@ export class Memory {
     }
   }
 
-  private async forget(f: Fact): Promise<void> {
+  private async forget(f: Fact, book: Book): Promise<void> {
     try {
-      const res = await fetch(this.path("/api/memory"), {
+      const res = await fetch(this.path("/api/memory", book), {
         method: "DELETE",
         headers: authHeaders(this.key),
         body: JSON.stringify({ id: f.id }),
       });
       const body = (await res.json()) as { error?: string };
       if (!res.ok) throw new Error(body.error ?? `status ${res.status}`);
-      if (this.hits) this.hits = this.hits.filter((h) => h.id !== f.id);
+      if (this.hits) this.hits = this.hits.filter((h) => h.hit.id !== f.id);
       this.msg(`Forgot “${f.text}”.`);
       await this.load();
     } catch (e) {
@@ -262,8 +281,8 @@ export class Memory {
   }
 
   /** From this person's memory to the family's, or back (routes/memory.ts). */
-  private async move(f: Fact): Promise<void> {
-    const to = this.book === "family" ? "mine" : "family";
+  private async move(f: Fact, from: Book): Promise<void> {
+    const to = from === "family" ? "mine" : "family";
     try {
       const res = await fetch("/api/memory/move", {
         method: "POST",
@@ -280,8 +299,9 @@ export class Memory {
   }
 
   /**
-   * Run the query through the same ranking the `recall` tool uses. The server
-   * does not count it as a use, so probing never reshuffles what Jarvis carries.
+   * Run the query through the same ranking the `recall` tool uses, in each
+   * book, as Jarvis looks in both. The server does not count it as a use, so
+   * probing never reshuffles what Jarvis carries.
    */
   private async probe(): Promise<void> {
     const query = this.$<HTMLInputElement>(".q").value.trim();
@@ -289,50 +309,116 @@ export class Memory {
       this.msg("Type a question, e.g. “how long to the office”.", true);
       return;
     }
+    const books: Book[] = this.hasFamily ? ["mine", "family"] : ["mine"];
     try {
-      const res = await fetch(this.path("/api/memory/search"), {
-        method: "POST",
-        headers: authHeaders(this.key),
-        body: JSON.stringify({ query }),
-      });
-      const body = (await res.json()) as { hits?: Hit[]; error?: string };
-      if (!res.ok) throw new Error(body.error ?? `status ${res.status}`);
-      this.hits = body.hits ?? [];
-      this.msg(this.hits.length ? "" : "Nothing saved matches that — Jarvis would not recall anything.");
-      this.render();
+      const found = await Promise.all(
+        books.map(async (book) => {
+          const res = await fetch(this.path("/api/memory/search", book), {
+            method: "POST",
+            headers: authHeaders(this.key),
+            body: JSON.stringify({ query }),
+          });
+          const body = (await res.json()) as { hits?: Hit[]; error?: string };
+          if (!res.ok) throw new Error(body.error ?? `status ${res.status}`);
+          return (body.hits ?? []).map((hit) => ({ book, hit }));
+        }),
+      );
+      this.hits = found.flat().sort((a, b) => b.hit.score - a.hit.score);
+      this.msg("");
+      this.renderFound();
     } catch (e) {
       this.msg(`Could not test it: ${e instanceof Error ? e.message : String(e)}`, true);
     }
   }
 
-  private row(f: Fact, score?: number): string {
+  private row(f: Fact, book: Book, extra: string[] = []): string {
     const meta = [
+      ...extra,
       f.slug ? `<code>${esc(f.slug)}</code>` : "",
       f.address ? esc(f.address) : "",
       f.pinned ? `<span class="pin">kept forever</span>` : "",
       f.source === "ui" ? "added here" : "by voice",
       `updated ${ago(f.updatedAt)}`,
       f.useCount ? `used ${f.useCount}×` : "never used",
-      score !== undefined ? `score ${score}` : "",
     ].filter(Boolean);
     return `
-      <div class="fact" data-id="${esc(f.id)}">
+      <div class="fact" data-id="${esc(f.id)}" data-book="${book}">
         <div class="ftxt">${esc(f.text)}</div>
         <div class="meta">${meta.join(" · ")}</div>
         <div class="rowbtns">
-          ${this.hasFamily ? `<button class="move">${this.book === "family" ? "Move to mine" : "Move to the family's"}</button>` : ""}
+          ${this.hasFamily ? `<button class="move">${book === "family" ? "Move to mine" : "Move to the family's"}</button>` : ""}
           <button class="forget">Forget</button>
         </div>
       </div>`;
   }
 
-  private render(): void {
-    const d = this.data;
-    if (!d) return;
+  /** Forget and Move on every row under `box`. */
+  private armRows(box: HTMLElement): void {
+    for (const el of box.querySelectorAll<HTMLElement>(".fact")) {
+      const book: Book = el.dataset.book === "family" ? "family" : "mine";
+      const f = this.data[book]?.facts.find((x) => x.id === el.dataset.id);
+      if (!f) continue;
+      arm(el.querySelector<HTMLButtonElement>(".forget")!, "Forget it?", () => this.forget(f, book));
+      el.querySelector(".move")?.addEventListener("click", () => void this.move(f, book));
+    }
+  }
 
+  /** Each kind in each book, as a section; the tools after them. */
+  private render(): void {
+    const books: Book[] = this.hasFamily ? ["mine", "family"] : ["mine"];
+    const groups: NavGroup[] = [];
+    let html = "";
+    for (const book of books) {
+      const d = this.data[book];
+      if (!d) continue;
+      const ids: string[] = [];
+      for (const [kind, label] of KINDS) {
+        const facts = d.facts
+          .filter((f) => f.kind === kind)
+          .sort((a, b) => Number(!!b.pinned) - Number(!!a.pinned) || b.updatedAt - a.updatedAt);
+        if (!facts.length) continue;
+        const id = `${book}:${kind}`;
+        ids.push(id);
+        html += `
+          <section class="svc" data-section="${id}" data-title="${esc(label)}" data-aside="${facts.length}">
+            <div class="svchead"><h3>${esc(label)}</h3><span class="chip">${book === "family" ? "the family's" : "yours"}</span></div>
+            <p class="note">${BOOK_NOTE[book]}</p>
+            ${facts.map((f) => this.row(f, book)).join("")}
+          </section>`;
+      }
+      if (!ids.length) {
+        const id = `${book}:none`;
+        ids.push(id);
+        html += `
+          <section class="svc" data-section="${id}" data-title="Nothing yet">
+            <h3>${book === "family" ? "The family's" : "Yours"}</h3>
+            <p class="note">Nothing saved yet. ${BOOK_NOTE[book]}</p>
+          </section>`;
+      }
+      groups.push([book === "family" ? "The family's" : "Yours", ids]);
+    }
+    const kinds = this.$(".kinds");
+    kinds.innerHTML = html;
+    this.armRows(kinds);
+
+    this.renderReads();
+    this.renderFound();
+    const gone = books.flatMap((b) => (this.data[b]?.trash ?? []).map((f) => ({ f, b })));
+    this.$(".setbody [data-section=trash]").dataset.aside = String(gone.length);
+    this.$(".gonelist").innerHTML = gone.length
+      ? gone.map(({ f, b }) => `<div class="gone">${esc(f.text)}${this.hasFamily && b === "family" ? ` <span class="dim">the family's</span>` : ""}</div>`).join("")
+      : `<p class="note">Nothing forgotten lately.</p>`;
+
+    groups.push(["Add and check", ["add", "find", "reads", "trash"]]);
+    this.menu.build(groups, groups[0]?.[1][0] ?? "add");
+  }
+
+  /** The summary that rides on every request: yours, with the family's attached. */
+  private renderReads(): void {
+    const d = this.data.mine;
+    if (!d) return;
     const hot = d.facts.filter((f) => f.kind !== "reference").length;
-    this.$(".count").textContent = `${hot} of ${d.cap} saved` +
-      (d.facts.length > hot ? ` · ${d.facts.length - hot} reference` : "");
+    this.$(".count").textContent = `${hot} of ${d.cap} saved` + (d.facts.length > hot ? ` · ${d.facts.length - hot} reference` : "");
     // The budget bounds the fact lines, not the block's fixed header.
     const pct = Math.min(100, Math.round((d.profile.used / d.profile.budget) * 100));
     const left = hot - d.profile.listed;
@@ -341,51 +427,32 @@ export class Memory {
     this.$(".budget").textContent =
       `${d.profile.listed} of ${hot} in the summary · ${d.profile.used} / ${d.profile.budget} characters` +
       (left > 0 ? ` · ${left} found only by searching` : "");
-    this.$(".profile pre").textContent = d.profile.text || "(nothing yet)";
+    this.$(".profile").textContent = d.profile.text || "(nothing yet)";
+  }
 
-    const byId = new Map(d.facts.map((f) => [f.id, f]));
-    let html = "";
-
+  /** What the find box turns up: a test recall, ranked, or facts containing the words. */
+  private renderFound(): void {
+    const box = this.$(".found");
+    const q = this.$<HTMLInputElement>(".q").value.trim().toLowerCase();
+    const label = (b: Book) => (this.hasFamily ? [b === "family" ? "the family's" : "yours"] : []);
     if (this.hits) {
-      const found = this.hits.filter((h) => byId.has(h.id));
-      html = found.length
-        ? `<h3>Jarvis would recall, best first</h3>` +
-          found.map((h) => this.row(byId.get(h.id)!, h.score)).join("")
-        : "";
+      const rows = this.hits
+        .map(({ book, hit }) => {
+          const f = this.data[book]?.facts.find((x) => x.id === hit.id);
+          return f ? this.row(f, book, [...label(book), `score ${hit.score}`]) : "";
+        })
+        .join("");
+      box.innerHTML = rows ? `<h4>Jarvis would recall, best first</h4>${rows}` : `<p class="note">Nothing saved matches that: Jarvis would not recall anything.</p>`;
+    } else if (q) {
+      const books: Book[] = this.hasFamily ? ["mine", "family"] : ["mine"];
+      const match = (f: Fact) => [f.text, f.slug ?? "", f.address ?? ""].some((s) => s.toLowerCase().includes(q));
+      const rows = books
+        .flatMap((book) => (this.data[book]?.facts ?? []).filter(match).map((f) => this.row(f, book, label(book))))
+        .join("");
+      box.innerHTML = rows || `<p class="note">Nothing contains that.</p>`;
     } else {
-      const q = this.$<HTMLInputElement>(".q").value.trim().toLowerCase();
-      const match = (f: Fact) =>
-        !q || [f.text, f.slug ?? "", f.address ?? ""].some((s) => s.toLowerCase().includes(q));
-      for (const [kind, label] of KINDS) {
-        const facts = d.facts.filter((f) => f.kind === kind && match(f));
-        if (!facts.length) continue;
-        const rows = facts
-          .sort((a, b) => Number(!!b.pinned) - Number(!!a.pinned) || b.updatedAt - a.updatedAt)
-          .map((f) => this.row(f))
-          .join("");
-        const head = `${label} <span class="dim">${facts.length}</span>`;
-        // Reference can run to hundreds; fold it away unless a filter is looking in it.
-        html += kind === "reference"
-          ? `<details class="ref"${q ? " open" : ""}><summary>${head}</summary>${rows}</details>`
-          : `<h3>${head}</h3>${rows}`;
-      }
-      if (!html) {
-        html = `<p class="note">${q ? "Nothing matches that filter." : "Nothing saved yet."}</p>`;
-      }
+      box.innerHTML = "";
     }
-    this.list.innerHTML = html;
-
-    for (const el of this.list.querySelectorAll<HTMLElement>(".fact")) {
-      const f = byId.get(el.dataset.id!);
-      if (f) arm(el.querySelector<HTMLButtonElement>(".forget")!, "Forget it?", () => this.forget(f));
-      if (f) el.querySelector(".move")?.addEventListener("click", () => void this.move(f));
-    }
-
-    const trash = this.$(".trash");
-    trash.hidden = !d.trash.length;
-    trash.querySelector("summary")!.textContent = `Recently forgotten (${d.trash.length})`;
-    trash.querySelector("div")!.innerHTML = d.trash
-      .map((f) => `<div class="gone">${esc(f.text)}</div>`)
-      .join("");
+    this.armRows(box);
   }
 }

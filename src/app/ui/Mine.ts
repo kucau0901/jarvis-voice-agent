@@ -45,41 +45,48 @@ export class Mine {
   private box: HTMLElement;
   private prefs: Prefs;
   private haToken: boolean;
+  /** What this person may reach (GET /api/hub/me); absent, everything. */
+  private scopes: string[] | undefined;
 
-  constructor(key: string, box: HTMLElement, prefs: Prefs, haToken = false) {
+  constructor(key: string, box: HTMLElement, prefs: Prefs, haToken = false, scopes?: string[]) {
     this.key = key;
     this.box = box;
     this.prefs = prefs;
     this.haToken = haToken;
+    this.scopes = scopes;
   }
 
   render(): void {
+    // Each a section of Family's menu (sections.ts), under You.
     this.box.innerHTML = `
-      <h3>Your accounts</h3>
-      <div class="srv m-accounts"></div>
+      <div class="res m-res"></div>
+      <section class="svc" data-section="m-accounts" data-title="Accounts">
+        <h3>Your accounts</h3>
+        <div class="m-accounts"></div>
+      </section>
 
-      <h3>Cars</h3>
-      <div class="srv m-cars"><p class="note">loading…</p></div>
+      <section class="svc" data-section="m-cars" data-title="Cars">
+        <h3>Cars</h3>
+        <div class="m-cars"><p class="note">loading…</p></div>
+      </section>
 
-      <h3>Home Assistant</h3>
-      <div class="srv">
+      <section class="svc" data-section="m-home" data-title="Home">
+        <h3>Home</h3>
+        <h4>Getting home</h4>
+        <p class="note">So “remind her when she gets home” waits until you are: your person in Home Assistant,
+          which follows your phone. Empty, such reminders go by the time alone.</p>
+        <input type="text" class="m-presence" maxlength="60" placeholder="person.yourname" value="${esc(this.prefs.presence ?? "")}">
+        <div class="rowbtns"><button class="m-psave">Save</button></div>
+        <h4>Your own Home Assistant user</h4>
         <p class="note">Optional. With a token for your own Home Assistant user, the house answers you as yourself:
           its logbook says it was you, and whatever Home Assistant allows your user is what you can do.
           Without one, the family's is used. ${this.haToken ? "<b>Yours is set.</b>" : ""}</p>
         <input type="password" class="m-ha" autocomplete="off" placeholder="A long-lived access token from your Home Assistant profile">
         <div class="rowbtns"><button class="m-hasave">Save</button>${this.haToken ? `<button class="m-haoff">Remove mine</button>` : ""}</div>
-      </div>
+      </section>
 
-      <h3>Getting home</h3>
-      <div class="srv">
-        <p class="note">So “remind her when she gets home” waits until you are: your person in Home Assistant,
-          which follows your phone. Empty, such reminders go by the time alone.</p>
-        <input type="text" class="m-presence" maxlength="60" placeholder="person.yourname" value="${esc(this.prefs.presence ?? "")}">
-        <div class="rowbtns"><button class="m-psave">Save</button></div>
-      </div>
-
-      <h3>Your voice and language</h3>
-      <div class="srv">
+      <section class="svc" data-section="m-voice" data-title="Voice and language">
+        <h3>Your voice and language</h3>
         <p class="note">How Jarvis sounds when it answers you out loud, and the language it expects.
           Empty means the family's.</p>
         <select class="m-voice">
@@ -89,22 +96,22 @@ export class Mine {
         <input type="text" class="m-lang" maxlength="12" placeholder="Language, e.g. en, ms, en-GB (empty: the family's)"
           value="${esc(this.prefs.language ?? "")}">
         <div class="rowbtns"><button class="primary m-vsave">Save</button><button class="m-hear">Hear it</button></div>
-      </div>
+      </section>
 
-      <h3>Telegram</h3>
-      <div class="srv">
+      <section class="svc" data-section="m-alerts" data-title="Alerts">
+        <h3>Alerts</h3>
+        <div class="m-alerts"></div>
+        <h4>Telegram</h4>
         <p class="note">If your family has a Telegram bot, your alerts can reach you there too. Send the bot a message,
           and it tells you your chat number.</p>
         <input type="text" class="m-tg" maxlength="40" placeholder="Your chat number" value="${esc(this.prefs.telegram ?? "")}">
         <div class="rowbtns"><button class="m-tgsave">Save</button></div>
-      </div>
+      </section>
 
-      <h3>Alerts on this screen</h3>
-      <div class="srv m-alerts"></div>
-
-      <h3>What you have used</h3>
-      <div class="srv m-usage"><p class="note">loading…</p></div>
-      <div class="res m-res"></div>`;
+      <section class="svc" data-section="m-usage" data-title="What you have used">
+        <h3>What you have used</h3>
+        <div class="m-usage"><p class="note">loading…</p></div>
+      </section>`;
 
     this.box.querySelector(".m-vsave")!.addEventListener("click", () =>
       void this.save({
@@ -125,8 +132,18 @@ export class Mine {
     this.box.querySelector(".m-alerts")!.appendChild(new AlertsPanel(this.key).render());
     this.box.querySelector(".m-hasave")!.addEventListener("click", () => void this.setHa(this.box.querySelector<HTMLInputElement>(".m-ha")!.value.trim()));
     this.box.querySelector(".m-haoff")?.addEventListener("click", () => void this.setHa(""));
-    void this.cars();
-    void this.accounts();
+
+    // Only what this person may use: a guest has no accounts, cars or alerts to set up.
+    const may = (...need: string[]) => !this.scopes || this.scopes.includes("*") || need.some((x) => this.scopes!.includes(x));
+    const shown: Record<string, boolean> = {
+      "m-accounts": may("mail", "calendar", "media"),
+      "m-cars": may("car.read", "car.control"),
+      "m-home": may("home", "chat"),
+      "m-alerts": may("alerts"),
+    };
+    for (const [id, ok] of Object.entries(shown)) if (!ok) this.box.querySelector(`[data-section="${id}"]`)?.remove();
+    if (shown["m-cars"]) void this.cars();
+    if (shown["m-accounts"]) void this.accounts();
     void this.usage();
   }
 

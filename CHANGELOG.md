@@ -17,6 +17,18 @@ of every release, and in the [README](README.md#updating).
 
 ## [Unreleased]
 
+### Changed
+
+- **Family and Memory are laid out as Settings is**: a menu on the left, one
+  section open beside it, and on a phone the menu first. In Family, each
+  person has a page of their own; in Memory, each kind of fact (places,
+  people, notes) yours and the family's, with how many there are.
+
+### Fixed
+
+- An invite link appeared on the first person's card in Family, not under
+  the invite form, once the family had more than one person.
+
 ## [2.0.0] - 2026-09-27
 
 Jarvis becomes something a family shares: everyone signs in as themselves,

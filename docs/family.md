@@ -44,9 +44,9 @@ only to them.
 | **Child** | Their own memory, calendar, alerts and reminders; cars, as far as their owners share them; live voice, maps. |
 | **Guest** | Ask questions and live voice. |
 
-An admin can widen or narrow any member, one item at a time, from their
-card in **Members**. **Back to what an adult gets** undoes that. A family
-can have more than one admin, but never none: the last admin can neither
+An admin can widen or narrow any member, one item at a time: in
+**Family**, each person has a page of their own, under **The family**.
+**Back to what an adult gets** undoes that. A family can have more than one admin, but never none: the last admin can neither
 step down nor be removed.
 
 ## Signing in on the car, a tablet or any screen
@@ -55,7 +55,7 @@ The car's browser cannot make a passkey, and typing is a chore. Pair it
 instead:
 
 1. On the car, choose **Pair with my phone**. It shows a six-letter code.
-2. On your phone: **Family → Sign in another screen**. Type the code and
+2. On your phone: **Family → Sign in a screen**. Type the code and
    tap **Sign it in**.
 
 The car signs itself in as you within a few seconds. An admin can pair a
@@ -65,7 +65,7 @@ before tapping **Sign it in**. A code lasts ten minutes.
 On a phone or computer, **Sign in with a passkey** is quicker.
 
 A screen already unlocked with the owner key (the car, if you set it up
-before families) keeps working as it is. To make it yours: **Family → Pair
+before families) keeps working as it is. To make it yours: **Family → This screen → Pair
 this screen with my phone**, and approve the code on your phone. The owner
 key stays on that screen until you do.
 
@@ -74,8 +74,8 @@ key stays on that screen until you do.
 A phone is one person's. The car, or a tablet at home, can hold the whole
 family: each person is added once, and switching is a tap.
 
-- **Add someone:** on the car, **Family → Add someone to this screen**. It
-  shows a code; they type it on their phone (**Family → Sign in another
+- **Add someone:** on the car, **Family → A screen you share → Add someone to this screen**. It
+  shows a code; they type it on their phone (**Family → Sign in a
   screen**). You both stay signed in on the car.
 - **Switch:** tap the name at the top (**JARVIS · ADAM**), and choose who is
   using it.
@@ -87,7 +87,7 @@ family: each person is added once, and switching is a tap.
   one if your profile can do things others in the car should not: unlock
   it, open the gate.
 - **Five wrong PINs** in a row wait fifteen minutes. **Forgot yours?** An
-  admin can clear it from your card in Members, and you set a new one.
+  admin can clear it from your page in Family, and you set a new one.
 
 Without a PIN, anyone at that screen can switch to you.
 
@@ -117,8 +117,8 @@ A guest cannot answer messages, so Jarvis will tell them something but not
 remind or ask them, and they are not in the chat.
 
 **"When she gets home"** needs to know where she is: her person in Home
-Assistant, which follows her phone (Family → You → **Getting home**, or an
-admin sets it on her card, `person.aisyah`). Without it, it goes by the time
+Assistant, which follows her phone (Family → **Home**, or an
+admin sets it on her page in Family, `person.aisyah`). Without it, it goes by the time
 alone, and Jarvis says so.
 
 **Chat** (in the menu) has the family room everyone shares, and a
@@ -134,7 +134,7 @@ have it; guests do not.
 ## Guests, helpers and children
 
 An admin can put **limits** on anyone but the person who set up the family:
-on their card in Members (**Limits**), or when inviting them.
+on their page in Family (**Limits**), or when inviting them.
 
 - **Until** a date: a relative's week, a helper's month. After it they are
   signed out, and their devices stop.
@@ -185,10 +185,10 @@ person's, as they were. [Setting up G2 glasses](even-g2.md).
 
 - **A new phone with the same account** (iCloud Keychain, Google Password
   Manager): passkeys usually sync, so just sign in.
-- **Otherwise**, an admin opens the person's card and taps **New passkey
+- **Otherwise**, an admin opens the person in Family and taps **New passkey
   link**. That link adds a passkey to them; it does not make a new person.
-- **You can add passkeys yourself** while signed in: **Family → Your
-  passkeys → Add a passkey on this device**.
+- **You can add passkeys yourself** while signed in: **Family → Passkeys
+  and sign-ins → Add a passkey on this device**.
 - **The admin lost everything:** unlock with the owner key, open **Family**,
   and make yourself a **New passkey link**.
 
@@ -197,7 +197,7 @@ A screen that goes unused for six months signs itself out.
 
 ## Removing someone
 
-Tap **Remove** on their card. Their sessions end and their passkeys are
+Tap **Remove** on their page in Family. Their sessions end and their passkeys are
 deleted: within half a minute on every screen, since each server copy
 remembers a sign-in that long. Any Jarvis screen they have open stops
 receiving alerts.
@@ -207,19 +207,19 @@ receiving alerts.
 **Yours alone** — nobody else sees them, admins included:
 
 - **Memory.** "Remember that…" saves to your own. Only you see it, in
-  **Memory → Mine**.
-- **Mail, calendar and contacts.** Link your own Google in **Family → You →
-  Your accounts**. If the family's Google app is still in testing, an admin
+  **Memory → Yours**.
+- **Mail, calendar and contacts.** Link your own Google in **Family →
+  Accounts**. If the family's Google app is still in testing, an admin
   adds your Google address as a test user in Google Cloud first.
 - **Spotify.** Link your own the same way.
 - **Reminders, routines and background jobs.** They are yours, they run as
   you (your calendar, your memory), and they tell only you.
 - **Alerts.** They go to your open Jarvis screens, your phones and your own
-  Telegram chat (**Family → You → Telegram**). Never to the family's
+  Telegram chat (**Family → Alerts**). Never to the family's
   notification channels, and never to anyone else's.
-- **Your voice and language**, in **Family → You**. Empty means the family's.
+- **Your voice and language**, in **Family → Voice and language**. Empty means the family's.
 - **The conversation across your devices** ("what was that address again?").
-- **What you have used**, in **Family → You**. Admins see everyone's in
+- **What you have used**, in **Family → What you have used**. Admins see everyone's in
   Settings → Usage.
 
 **The family's**, shared by everyone:
@@ -232,7 +232,7 @@ receiving alerts.
 - **The assistant's name, and the family's defaults** (Settings, for admins).
 
 **Cars are their owners'**, shared as far as the owner chooses. In
-**Family → You → Cars**:
+**Family → Cars**:
 
 - **The car in Settings** is the first person's (whoever set up the family).
   They choose, for each person, *not shared*, *may see it* (where it is, the
@@ -247,7 +247,7 @@ receiving alerts.
 
 **The house** is the family's, for everyone with the `home` permission
 (adults, by default). Optionally, each person can give their own Home
-Assistant user's token (**Family → You → Home Assistant**): the house then
+Assistant user's token (**Family → Home**): the house then
 answers them as themselves, so Home Assistant's logbook shows who did what,
 and whatever Home Assistant allows that user is what they can do.
 
