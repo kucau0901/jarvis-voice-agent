@@ -721,6 +721,20 @@ voice, language and Telegram chat; an empty value clears one.
 - `/api/google/*`, `/api/spotify/*`, `/api/usage` and `/api/hub/*` are for
   people: any member, for their own; never a device.
 
+**Cars** are their owners', shared `see` or `drive`:
+
+| Route | |
+|---|---|
+| `GET /api/hub/cars` | the cars this person may reach (their own with its shares), and the family's people by the ids shares use |
+| `POST /api/hub/cars` | `{name, token, vin?}` adds their own; the token is checked with Tessie. With several cars on the account, `409 {choose}` lists them: send the `vin` |
+| `PATCH /api/hub/cars` | `{id, name?, shares?: {person: "see" \| "drive" \| null}}`, its owner only. The Settings car is `family`, the first person's |
+| `DELETE /api/hub/cars` | `{id}`, its owner only |
+
+`car_state` and `car_command` take a `car` (its name) when there is more than
+one; a car shared to `see` is never operated. `PATCH /api/hub/me {haToken}`
+sets a person's own Home Assistant token (checked with the house first); an
+empty one removes it.
+
 ## Not part of this contract
 
 `/api/probe`, `/api/diag`, `/api/mcp/*`, `/api/memory`, `/api/spotify/*` and

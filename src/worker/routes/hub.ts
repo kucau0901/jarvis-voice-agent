@@ -2,6 +2,7 @@ import type { Env } from "../types";
 import { err, json, publicOrigin } from "../lib/http.ts";
 import { grantsOf, isAdmin, personOf, type Principal } from "../lib/auth.ts";
 import { TTS_VOICES } from "../lib/speech.ts";
+import { tessieVehicles } from "../tools/tessie.ts";
 import { burst } from "../lib/limits.ts";
 import { SCOPES, type Grant } from "../lib/scopes.ts";
 import { ROLES, ROLE_SCOPES, type HubApi, type Prefs } from "../lib/hub.ts";
@@ -61,6 +62,13 @@ import {
  *   POST   /api/hub/lock                     put this session aside: it needs the PIN again
  *   POST   /api/hub/unlock                   {pin}: take it back up (the one thing a locked session may do)
  *   PATCH  /api/hub/members                  admin: {user, clearPin: true} for a forgotten PIN
+ *
+ * Cars (lib/hub.ts): each person's own, shared "see" or "drive".
+ *
+ *   GET    /api/hub/cars                     the cars this person may reach, and their own's shares
+ *   POST   /api/hub/cars                     {name, token, vin?}: add their own (the token is checked with Tessie)
+ *   PATCH  /api/hub/cars                     {id, name?, shares?: {person: "see" | "drive" | null}}: its owner
+ *   DELETE /api/hub/cars                     {id}: its owner
  */
 
 /** What is wrong with a person's choices, or null. An empty value clears one. */
@@ -206,6 +214,13 @@ export async function handleAuth(req: Request, env: Env): Promise<Response> {
 
 /* ---------- signed in ---------------------------------------------------------------- */
 
+/** The family, by the names cars are shared under: "owner" for the first person, else member ids. */
+async function peopleOf(hub: HubApi, space: string | null): Promise<{ id: string; name: string }[]> {
+  if (!space) return [];
+  const first = await hub.firstPerson();
+  return (await hub.members(space)).map((m) => ({ id: m.user === first ? "owner" : m.user, name: m.name }));
+}
+
 /** Which family a request acts on: a member's own, or for the owner key, the first. */
 async function spaceOf(hub: HubApi, p: Principal): Promise<string | null> {
   if (p.kind === "member") return p.space;
@@ -228,6 +243,21 @@ export async function handleHub(req: Request, env: Env, principal: Principal): P
   if (p === "/api/hub/me") {
     if (m === "PATCH") {
       if (!me) return err(400, "the owner key is not a person; sign in with a passkey to have a name");
+      if (b.haToken !== undefined) {
+        // Their own Home Assistant user: checked with the house before it is kept.
+        const token = str(b.haToken).trim();
+        if (token) {
+          if (!env.HA_BASE_URL) return err(400, "the family's Home Assistant address is not set up yet");
+          const ok = await fetch(new URL("/api/", env.HA_BASE_URL), { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(10_000) })
+            .then((r) => r.ok)
+            .catch(() => false);
+          if (!ok) return err(400, "Home Assistant did not accept that token");
+        }
+        const r = await hub.setHaToken(me.id, token || null);
+        if (r !== true) return err(400, r.error);
+        forgetPerson(personOf(principal));
+        return json({ ok: true, haToken: !!token });
+      }
       if (b.prefs !== undefined) {
         // Their own voice, language and Telegram chat (lib/context.ts), checked before they are kept.
         const raw = (b.prefs && typeof b.prefs === "object" ? b.prefs : {}) as Record<string, unknown>;
@@ -251,6 +281,7 @@ export async function handleHub(req: Request, env: Env, principal: Principal): P
       user: me ? { id: me.id, name: me.name } : null,
       role: me ? me.role : "admin",
       prefs: me?.place?.prefs ?? {},
+      haToken: me ? await hub.hasHaToken(me.id) : false,
       // What this person may reach, so the app offers only that.
       scopes: me?.locked ? [] : grantsOf(principal),
       session: me ? me.session : null,
@@ -281,6 +312,42 @@ export async function handleHub(req: Request, env: Env, principal: Principal): P
     // This screen sees the change at once; their others within half a minute.
     forgetSessions([await sessionDigest(req)]);
     return r === true ? json({ ok: true }) : err(400, r.error);
+  }
+
+  if (p === "/api/hub/cars") {
+    const person = personOf(principal);
+    if (m === "GET") return json({ cars: await hub.carsView(person), people: await peopleOf(hub, space) });
+    if (m === "POST") {
+      const token = str(b.token).trim();
+      if (!token) return err(400, "the Tessie token is needed: dash.tessie.com → Settings → API");
+      let found: { vin: string; name: string }[];
+      try {
+        found = await tessieVehicles(token, AbortSignal.timeout(12_000));
+      } catch (e) {
+        return err(400, `Tessie did not accept that token: ${(e instanceof Error ? e.message : String(e)).slice(0, 160)}`);
+      }
+      if (!found.length) return err(400, "Tessie knows no active car for that token");
+      const vin = str(b.vin).trim();
+      const pick = vin ? found.find((v) => v.vin === vin) : found.length === 1 ? found[0] : null;
+      if (!pick) return json({ choose: found.map((v) => ({ vin: v.vin, name: v.name })) }, { status: 409 });
+      const r = await hub.addCar(person, { name: str(b.name).trim() || pick.name, vin: pick.vin, token }, now);
+      forgetPerson(person);
+      return "error" in r ? err(400, r.error) : json({ car: r }, { status: 201 });
+    }
+    if (m === "PATCH") {
+      const shares = b.shares && typeof b.shares === "object" ? (b.shares as Record<string, unknown>) : undefined;
+      const r = await hub.updateCar(person, str(b.id), { name: b.name, shares });
+      if (r !== true) return err(400, r.error);
+      // Whoever it is now shared with, or not, sees it at their next request here; elsewhere within half a minute.
+      for (const who of [person, ...Object.keys(shares ?? {})]) forgetPerson(who);
+      return json({ ok: true });
+    }
+    if (m === "DELETE") {
+      const r = await hub.removeCar(person, str(b.id));
+      forgetPerson(person);
+      return r === true ? json({ ok: true }) : err(400, r.error);
+    }
+    return err(405, "method not allowed");
   }
 
   if (p === "/api/hub/signout" && m === "POST") {

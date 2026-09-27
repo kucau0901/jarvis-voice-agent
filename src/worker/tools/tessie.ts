@@ -1,6 +1,7 @@
 import type { Env } from "../types";
 import { localeOf } from "../lib/locale.ts";
 import type { Tool, ToolContext } from "./registry";
+import { carsOf, type CarKey } from "../lib/context.ts";
 
 /**
  * The Tesla, through Tessie.
@@ -27,6 +28,51 @@ export function tessieConfig(env: Env): TessieConfig | null {
   if (!env.TESSIE_TOKEN || !env.TESSIE_VIN) return null;
   return { token: env.TESSIE_TOKEN.trim(), vin: env.TESSIE_VIN.trim() };
 }
+
+/**
+ * Which car a question is about (lib/context.ts): the one named, among those
+ * this person may reach, or their usual one. A string says why there is none.
+ */
+export function pickCar(env: Env, named?: unknown): { cfg: TessieConfig; car: CarKey | null } | string {
+  const cars = carsOf(env);
+  const want = typeof named === "string" ? named.trim().toLowerCase() : "";
+  if (!cars.length) {
+    // No family: the car in the settings, as it always was.
+    const cfg = tessieConfig(env);
+    return cfg ? { cfg, car: null } : "No car is connected for this person.";
+  }
+  const car = !want
+    ? cars[0]!
+    : (cars.find((c) => c.name.toLowerCase() === want) ??
+      cars.find((c) => c.name.toLowerCase().includes(want) || want.includes(c.name.toLowerCase())));
+  if (!car) return `There is no car called "${String(named)}" that this person can reach. Theirs: ${cars.map((c) => c.name).join(", ")}.`;
+  return { cfg: { token: car.token, vin: car.vin }, car };
+}
+
+/**
+ * The cars a Tessie token can reach, for adding one (routes/hub.ts): each
+ * VIN and the name the owner gave it. Throws with Tessie's answer if the
+ * token is refused.
+ */
+export async function tessieVehicles(token: string, signal?: AbortSignal): Promise<{ vin: string; name: string }[]> {
+  const body = (await call({ token, vin: "" }, "/vehicles?only_active=true", { signal })) as {
+    results?: { vin?: unknown; last_state?: { display_name?: unknown; vehicle_state?: { vehicle_name?: unknown } } }[];
+  };
+  return (body.results ?? [])
+    .filter((v) => typeof v.vin === "string")
+    .map((v) => ({
+      vin: v.vin as string,
+      name: String(v.last_state?.display_name ?? v.last_state?.vehicle_state?.vehicle_name ?? "").trim(),
+    }));
+}
+
+/** The `car` parameter both tools take. */
+const CAR_PARAM = {
+  type: ["string", "null"],
+  description:
+    "Which car, by its name, when the user has more than one they can reach (see CARS in the context) " +
+    "or names someone else's: \"Mum's car\". Null for their usual car.",
+};
 
 async function call(
   cfg: TessieConfig,
@@ -193,13 +239,15 @@ export const carState: Tool = {
           "it is in — not where it is; that is location. odometer is the total " +
           "distance driven. Use everything only if you genuinely need the full state.",
       },
+      car: CAR_PARAM,
     },
-    required: ["what"],
+    required: ["what", "car"],
     additionalProperties: false,
   },
   async run(args, ctx) {
-    const cfg = tessieConfig(ctx.env);
-    if (!cfg) return "The car is not connected to me.";
+    const picked = pickCar(ctx.env, args.car);
+    if (typeof picked === "string") return picked;
+    const cfg = picked.cfg;
     const what = String(args.what ?? "summary");
     const units = localeOf(ctx.env).units;
 
@@ -357,13 +405,19 @@ export const carCommand: Tool = {
         type: ["integer", "null"],
         description: "set_charge_limit only: 50 to 100.",
       },
+      car: CAR_PARAM,
     },
-    required: ["command", "value", "temperature", "percent"],
+    required: ["command", "value", "temperature", "percent", "car"],
     additionalProperties: false,
   },
   async run(args, ctx) {
-    const cfg = tessieConfig(ctx.env);
-    if (!cfg) return "The car is not connected to me.";
+    const picked = pickCar(ctx.env, args.car);
+    if (typeof picked === "string") return picked;
+    // Shared to see is not shared to drive: the owner chose (hub.ts cars).
+    if (picked.car?.level === "see") {
+      return `${picked.car.name} is shared with this person to see, not to operate. Its owner can share it for driving in Family.`;
+    }
+    const cfg = picked.cfg;
 
     const name = String(args.command ?? "");
     const spec = COMMANDS[name];

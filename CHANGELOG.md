@@ -38,6 +38,15 @@ of every release, and in the [README](README.md#updating).
 - **Family memory**: "remember for the family that the spare key is under
   the blue pot". Everyone sees it; adults change it. Memory has Mine and The
   family's, and a fact can be moved between them.
+- **Cars, shared as far as their owner wants.** Each car has an owner, who
+  shares it with each person to see (where it is, the battery) or to drive
+  (climate, locks, navigation too). Anyone adds their own car with their
+  Tessie token, in Family → You → Cars. Jarvis uses your own car, or one
+  shared with you, and "is Mum's car charged?" names another. A car shared
+  to see is never operated.
+- **Your own Home Assistant user**, if you like: give its token in Family →
+  You, and the house answers you as yourself, in Home Assistant's logbook
+  and under its rules for you.
 - **The assistant goes by the family's name for it**, and knows who it is
   talking to.
 - **Settings → Usage** shows each person's part.

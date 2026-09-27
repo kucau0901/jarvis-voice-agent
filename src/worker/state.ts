@@ -64,7 +64,7 @@ export class JarvisState extends DurableObject<Env> {
   private async personEnv(env: Env, who: string): Promise<Env> {
     const person = personOfWho(who);
     const v = await this.people.personView(person).catch(() => null);
-    return withPerson(env, { person, name: v?.name, space: v?.space, prefs: v?.prefs });
+    return withPerson(env, { person, name: v?.name, space: v?.space, prefs: v?.prefs, cars: v?.space ? v.cars : undefined, haToken: v?.haToken });
   }
 
   /** A member's own Telegram chat, for their alerts (lib/alerts.ts). */

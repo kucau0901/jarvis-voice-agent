@@ -7,9 +7,10 @@ reach. The family chooses what the assistant is called: "Jarvis", or any
 name you like.
 
 Each person has their own memory, mail, calendar, music, reminders and
-alerts, and the family has a memory it shares. Coming next: sharing the car
-and the house with levels; Jarvis passing messages and reminders between
-you; and a family chat. See [What is yours, and what is shared](#what-is-yours-and-what-is-shared).
+alerts; the family has a memory it shares; and cars are shared by their
+owners, to see or to drive. Coming next: Jarvis passing messages and
+reminders between you, and a family chat. See
+[What is yours, and what is shared](#what-is-yours-and-what-is-shared).
 
 ## Setting it up
 
@@ -37,9 +38,9 @@ only to them.
 
 | Role | Can, until you change it |
 |---|---|
-| **Admin** | Everything, and manage the family: invite, remove, change roles, settings, devices, the car, Hermes. |
-| **Adult** | The house (Home Assistant); their own memory, mail, calendar, Spotify, alerts and reminders; changing what the family shares; live voice, maps. |
-| **Child** | Their own memory, calendar, alerts and reminders; live voice, maps. |
+| **Admin** | Everything, and manage the family: invite, remove, change roles, settings, devices, Hermes. |
+| **Adult** | The house (Home Assistant); their own memory, mail, calendar, Spotify, alerts and reminders; changing what the family shares; cars, as far as their owners share them; live voice, maps. |
+| **Child** | Their own memory, calendar, alerts and reminders; cars, as far as their owners share them; live voice, maps. |
 | **Guest** | Ask questions and live voice. |
 
 An admin can widen or narrow any member, one item at a time, from their
@@ -139,10 +140,29 @@ receiving alerts.
 - **The house**, through Home Assistant: adults get it by default.
 - **The assistant's name, and the family's defaults** (Settings, for admins).
 
-**Still the admin's**, until they can be shared in the next update: the car,
-and Hermes. What Jarvis kept before there was a family (your memory, your
-Google, your reminders) is the admin's who set the family up, where it
-always was.
+**Cars are their owners'**, shared as far as the owner chooses. In
+**Family → You → Cars**:
+
+- **The car in Settings** is the first person's (whoever set up the family).
+  They choose, for each person, *not shared*, *may see it* (where it is, the
+  battery, whether it is locked) or *may drive it* (climate, locks,
+  navigation too).
+- **Anyone can add their own car** with their Tessie token (dash.tessie.com →
+  Settings → API), and share it the same way. A daughter who gets a car adds
+  it, and decides who sees or drives it.
+- Asked about "the car", Jarvis uses your own if you have one, else one
+  shared with you. Name another: "is **Mum's car** charged?". A car shared to
+  see is never operated.
+
+**The house** is the family's, for everyone with the `home` permission
+(adults, by default). Optionally, each person can give their own Home
+Assistant user's token (**Family → You → Home Assistant**): the house then
+answers them as themselves, so Home Assistant's logbook shows who did what,
+and whatever Home Assistant allows that user is what they can do.
+
+**Still the admin's**: Hermes, which can run commands on its machine. What
+Jarvis kept before there was a family (your memory, your Google, your
+reminders) is the first person's, where it always was.
 
 Two things changed with families:
 

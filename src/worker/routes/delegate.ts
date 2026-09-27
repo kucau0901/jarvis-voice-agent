@@ -12,7 +12,7 @@ import { originOf, sharedBlock, type Origin, type SharedTurn } from "../lib/shar
 import type { Principal } from "../lib/auth";
 import { stateStub } from "../lib/state-client";
 import { memoryFor, type MemoryStore } from "../lib/memory";
-import { bookOf } from "../lib/context.ts";
+import { bookOf, carsOf } from "../lib/context.ts";
 import { allows, type Grant } from "../lib/scopes";
 import { countryName, localeOf, utcOffset } from "../lib/locale.ts";
 import { DEFAULT_CHAR_BUDGET, glassesInstructions } from "../lib/glasses";
@@ -296,14 +296,24 @@ function nowLine(env: Env): string {
 function whoLine(env: Env): string {
   const agent = env.JARVIS_AGENT_NAME && env.JARVIS_AGENT_NAME !== "Jarvis" ? env.JARVIS_AGENT_NAME : "";
   const name = env.JARVIS_PERSON_NAME;
-  if (!agent && !name) return "";
+  // The cars this person may reach, when there is a choice to make (tools/tessie.ts pickCar).
+  const cars = carsOf(env);
+  const carLine =
+    cars.length > 1 || cars.some((c) => !c.mine)
+      ? "\n\nCARS THEY CAN REACH (name one in the car tools' `car`; null means the first)\n" +
+        cars
+          .map((c) => `- ${c.name}: ${c.mine ? "theirs" : c.level === "drive" ? "shared with them, they may drive it" : "shared with them to see only, not to operate"}`)
+          .join("\n")
+      : "";
+  if (!agent && !name) return carLine;
   return (
     "\n\nWHO YOU ARE" +
     (agent ? `\nThe family calls you ${agent}: that is your name.` : "") +
     (name
       ? `\nYou are answering ${name}. Their mail, calendar, memory and reminders are theirs; ` +
         "never reveal another person's, even when asked."
-      : "")
+      : "") +
+    carLine
   );
 }
 

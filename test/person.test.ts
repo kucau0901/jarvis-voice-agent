@@ -1,4 +1,5 @@
-import { OWNER, bookOf, familyBook, isTheirs, personOfWho, voiceWho, withPerson } from "../src/worker/lib/context.ts";
+import { OWNER, bookOf, carsOf, familyBook, isTheirs, personOfWho, voiceWho, withPerson } from "../src/worker/lib/context.ts";
+import { carCommand, pickCar } from "../src/worker/tools/tessie.ts";
 import { personOf, whoOf, type Principal } from "../src/worker/lib/auth.ts";
 import { MemoryStore, memoryFor } from "../src/worker/lib/memory.ts";
 import { forget, recall, remember } from "../src/worker/tools/memory.ts";
@@ -74,6 +75,31 @@ console.log("\nthe environment, per person");
   check("their own, if they gave one", own.TELEGRAM_CHAT_ID === "12345");
   const owner = withPerson(base, { person: OWNER });
   check("the first person keeps the family's", owner.TELEGRAM_CHAT_ID === "999" && owner.VOICE_TTS_VOICE === "cedar");
+}
+
+console.log("\ncars: only those shared, as far as they are shared");
+{
+  const base = fakeEnv({ TESSIE_TOKEN: "family-token", TESSIE_VIN: "VINFAMILY" }) as never;
+  const none = withPerson(base, { person: "u_sara", cars: [] });
+  check("someone with no car shared has none, not the family's", none.TESSIE_TOKEN === "" && carsOf(none).length === 0);
+  check("and the tools say so", typeof pickCar(none) === "string");
+  const shared = withPerson(base, {
+    person: "u_sara",
+    cars: [
+      { id: "family", name: "Adam's Model Y", owner: OWNER, level: "see" },
+      { id: "c_1", name: "Sara's car", owner: "u_sara", level: "own", vin: "VINSARA", token: "sara-token" },
+    ],
+  });
+  const keys = carsOf(shared);
+  check("her own car is her usual one", shared.TESSIE_TOKEN === "sara-token" && keys[0]!.name === "Sara's car");
+  check("the family car's key comes from the settings", keys.find((c) => c.id === "family")?.token === "family-token");
+  const picked = pickCar(shared, "adam's model y");
+  check("a car is picked by its name", typeof picked !== "string" && picked.cfg.vin === "VINFAMILY" && picked.car?.level === "see");
+  check("an unknown name says which there are", String(pickCar(shared, "the boat")).includes("Sara's car"));
+  const refused = await carCommand.run({ command: "unlock", value: null, temperature: null, percent: null, car: "Adam's Model Y" }, { env: shared, signal: AbortSignal.timeout(1000), progress() {} } as never);
+  check("a car shared to see is not operated", String(refused).includes("to see, not to operate"), refused);
+  const before = withPerson(base, { person: OWNER });
+  check("without a family, the settings car is the owner's, as before", before.TESSIE_TOKEN === "family-token" && !before.JARVIS_CARS);
 }
 
 console.log("\nmemory: each their own, and the family's");

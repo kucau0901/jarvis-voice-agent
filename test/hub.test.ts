@@ -91,7 +91,8 @@ let memberId = "";
   check("the name they give is used", joined.user.name === "Sara M");
   const who = await lookup(hub, memberToken, T0 + 13);
   check("an adult reaches what the role allows", who?.member.role === "adult" && who.scopes.join() === ROLE_SCOPES.adult.join());
-  check("their own memory and mail, but not the car or Hermes", who!.scopes.includes("memory.read") && who!.scopes.includes("mail") && !who!.scopes.some((s) => s.startsWith("car") || s === "hermes"));
+  // Cars are reached only as far as their owners share them, so the car scopes are just the ceiling.
+  check("their own memory and mail, but not Hermes", who!.scopes.includes("memory.read") && who!.scopes.includes("mail") && !who!.scopes.includes("hermes"));
   check("used invites are no longer listed", (await hub.invites(space, T0 + 14)).length === 0);
 
   const late = ok(await hub.createInvite(space, { role: "child", name: "Kid" }, adminId, T0));
@@ -208,6 +209,32 @@ console.log("\nthe first person, and what each person chooses");
   check("and ride along with their session", (await lookup(hub, adminToken, T0 + 901))?.place.prefs.language === "ms");
   const cleared = await hub.setPrefs(adminId, { language: "" });
   check("an empty value clears one", !("error" in cleared) && cleared.language === undefined && cleared.voice === "marin");
+}
+
+console.log("\ncars, each with an owner, shared see or drive");
+{
+  const inv = ok(await hub.createInvite(space, { role: "adult", name: "Mia" }, adminId, T0 + 1000));
+  const mia = ok(await hub.redeemInvite(inv.token, { name: "Mia", key: { ...key(), id: "cred-mia" }, label: "phone" }, T0 + 1001));
+  const miaId = mia.user.id;
+  check("the first person has the family car, whole", (await hub.carsFor("owner")).some((c) => c.id === "family" && c.level === "own"));
+  check("nobody else reaches it until it is shared", (await hub.carsFor(miaId)).length === 0);
+  check("only its owner shares the family car", errorOf(await hub.updateCar(miaId, "family", { shares: { [miaId]: "drive" } })).includes("only its owner"));
+  check("the owner shares it to see", (await hub.updateCar("owner", "family", { name: "Adam's Model Y", shares: { [miaId]: "see" } })) === true);
+  const seen = await hub.carsFor(miaId);
+  check("and Mia may see it, by its name, without its key", seen.length === 1 && seen[0]!.level === "see" && seen[0]!.name === "Adam's Model Y" && !seen[0]!.token);
+  check("a share to someone outside the family is ignored", (await hub.updateCar("owner", "family", { shares: { u_stranger: "drive" } })) === true && !(await hub.carsFor("u_stranger")).length);
+  const added = ok(await hub.addCar(miaId, { name: "Mia's car", vin: "5YJ3000000000001", token: "tessie-mia" }, T0 + 1002));
+  check("Mia adds her own car", added.level === "own" && added.vinHint === "…0001");
+  check("its key is hers, for her requests", (await hub.carsFor(miaId)).some((c) => c.id === added.id && c.token === "tessie-mia"));
+  check("the same car cannot be added twice", errorOf(await hub.addCar(adminId, { name: "x", vin: "5YJ3000000000001", token: "t" }, T0)).includes("already here"));
+  check("she shares it with Adam to drive", (await hub.updateCar(miaId, added.id, { shares: { owner: "drive" } })) === true);
+  check("Adam reaches both, his own first", (await hub.carsFor("owner")).map((c) => `${c.id === "family" ? "family" : "mia"}:${c.level}`).join() === "family:own,mia:drive");
+  check("Adam cannot change Mia's car", errorOf(await hub.updateCar("owner", added.id, { name: "mine now" })).includes("only its owner"));
+  const view = await hub.carsView(miaId);
+  check("the app is never given a key", !JSON.stringify(view).includes("tessie-mia") && view.find((c) => c.id === added.id)?.shares?.owner === "drive");
+  check("and names who owns what", view.find((c) => c.id === "family")?.ownerName === "Adam");
+  ok(await hub.removeMember(space, miaId));
+  check("when Mia leaves, her car goes, and so does her share of Adam's", (await hub.carsFor("owner")).length === 1 && !(await hub.carsView("owner"))[0]!.shares?.[miaId]);
 }
 
 console.log("\nPINs, for a screen several people share");

@@ -36,14 +36,15 @@ export const ROLES: readonly Role[] = ["admin", "adult", "child", "guest"];
  *
  * Memory, mail, the calendar, Spotify, alerts and routines are each person's
  * own (lib/context.ts): an adult has all of theirs, and changes what the
- * family shares; a child their memory, calendar, alerts and routines. The
- * car and Hermes stay the admin's until they are shared, and a guest only
- * asks. An admin can widen or narrow anyone, as with a device.
+ * family shares; a child their memory, calendar, alerts and routines. Cars
+ * are reached only as far as their owner shares them ("see" or "drive"), so
+ * the car scopes are only the ceiling. Hermes stays the admin's, and a guest
+ * only asks. An admin can widen or narrow anyone, as with a device.
  */
 export const ROLE_SCOPES: Readonly<Record<Role, readonly Grant[]>> = {
   admin: [WILDCARD],
-  adult: ["ask", "home", "voice", "screen", "memory.read", "memory.write", "family", "mail", "calendar", "media", "alerts", "routines"],
-  child: ["ask", "voice", "screen", "memory.read", "memory.write", "calendar", "alerts", "routines"],
+  adult: ["ask", "home", "voice", "screen", "memory.read", "memory.write", "family", "mail", "calendar", "media", "alerts", "routines", "car.read", "car.control"],
+  child: ["ask", "voice", "screen", "memory.read", "memory.write", "calendar", "alerts", "routines", "car.read", "car.control"],
   guest: ["ask", "voice"],
 };
 
@@ -90,6 +91,68 @@ export interface Prefs {
 interface StoredUser extends User {
   pin?: PinRecord;
   prefs?: Prefs;
+  /**
+   * Their own Home Assistant user's token, if they gave one: the house then
+   * answers them as themselves, so Home Assistant's logbook says who did
+   * it, and its own rules for that user apply. Never leaves the Worker.
+   */
+  haToken?: string;
+}
+
+/*
+ * Cars (Tessie), each with an owner and shares. The car set up in Settings
+ * is the first person's, "family", as it always was: only its name and
+ * shares are kept here, its token stays a setting. Anyone else adds their own
+ * in Family → You, and shares it: "see" (where it is, the battery) or "drive"
+ * (climate, locks, navigation too).
+ */
+export type CarLevel = "see" | "drive";
+export const FAMILY_CAR = "family";
+
+interface StoredCar {
+  id: string;
+  /** Whose: "owner" for the first person, else a member's id. */
+  owner: string;
+  name: string;
+  vin: string;
+  /** The Tessie token. Never leaves the Worker. */
+  token: string;
+  shares: Record<string, CarLevel>;
+  createdAt: number;
+}
+
+/** A car someone may reach, as a request is given it: with the key, for the Worker only. */
+export interface Reach {
+  id: string;
+  name: string;
+  owner: string;
+  level: "own" | CarLevel;
+  /** Absent for the family car, whose token is a setting. */
+  vin?: string;
+  token?: string;
+}
+
+/** A car as the app shows it: no token. */
+export interface CarView {
+  id: string;
+  name: string;
+  owner: string;
+  ownerName: string;
+  level: "own" | CarLevel;
+  vinHint?: string;
+  /** For the owner: who it is shared with, and how far. */
+  shares?: Record<string, CarLevel>;
+}
+
+/** A person as a request made on their behalf needs them (hub.ts personView). */
+export interface PersonView {
+  space: Space | null;
+  name: string | null;
+  prefs: Prefs;
+  /** The cars they may reach, with the keys, for the Worker only. */
+  cars: Reach[];
+  /** Their own Home Assistant token, for the Worker only. */
+  haToken?: string;
 }
 
 /** Everything about one sign-in that a request needs to know. */
@@ -218,6 +281,7 @@ const K = {
   invite: (digest: string) => `hub:inv:${digest}`,
   session: (digest: string) => `hub:sess:${digest}`,
   pairing: (poll: string) => `hub:pair:${poll}`,
+  car: (id: string) => `hub:car:${id}`,
   pairCode: (code: string) => `hub:paircode:${code}`,
   challenge: (c: string) => `hub:ch:${c}`,
 };
@@ -289,13 +353,13 @@ export class HubHost {
    * devices act as them — and gives what there is before anyone has claimed
    * the hub: no name, no family.
    */
-  async personView(person: string): Promise<{ space: Space | null; name: string | null; prefs: Prefs }> {
+  async personView(person: string): Promise<PersonView> {
     const meta = await this.meta();
     const space = meta.space ? await this.space(meta.space) : null;
     const id = person === "owner" ? await this.firstPerson() : person;
     const u = id ? await this.storedUser(id) : null;
-    if (person !== "owner" && (!u || !space || !(await this.member(space.id, person)))) return { space: null, name: null, prefs: {} };
-    return { space, name: u?.name ?? null, prefs: u?.prefs ?? {} };
+    if (person !== "owner" && (!u || !space || !(await this.member(space.id, person)))) return { space: null, name: null, prefs: {}, cars: [] };
+    return { space, name: u?.name ?? null, prefs: u?.prefs ?? {}, cars: await this.carsFor(person), ...(u?.haToken ? { haToken: u.haToken } : {}) };
   }
 
   private async membersOf(space: string): Promise<Member[]> {
@@ -420,8 +484,149 @@ export class HubHost {
     return next;
   }
 
+  /** Their own Home Assistant token, already checked with the house; null removes it. */
+  async setHaToken(id: string, token: string | null): Promise<true | Fail> {
+    const u = await this.storedUser(id);
+    if (!u) return fail("no such person");
+    const { haToken: _, ...rest } = u;
+    await this.storage.put(K.user(id), token ? { ...rest, haToken: token } : rest);
+    return true;
+  }
+
+  async hasHaToken(id: string): Promise<boolean> {
+    return !!(await this.storedUser(id))?.haToken;
+  }
+
   async prefsOf(id: string): Promise<Prefs> {
     return (await this.storedUser(id))?.prefs ?? {};
+  }
+
+  /* ---------- cars ------------------------------------------------------------- */
+
+  private async storedCars(): Promise<StoredCar[]> {
+    // The family car's record (its name and shares only) is not one of these.
+    return [...(await this.storage.list<StoredCar>({ prefix: "hub:car:" })).entries()]
+      .filter(([k, c]) => k !== K.car(FAMILY_CAR) && typeof c.vin === "string")
+      .map(([, c]) => c);
+  }
+
+  /** The Settings car's name and shares; it belongs to the first person. */
+  private async familyCar(): Promise<{ name: string; shares: Record<string, CarLevel> }> {
+    const meta = await this.storage.get<{ name?: string; shares?: Record<string, CarLevel> }>(K.car(FAMILY_CAR));
+    return { name: meta?.name || "the family car", shares: meta?.shares ?? {} };
+  }
+
+  /**
+   * The cars `person` may reach: their own, whole, and those shared with
+   * them, as far as they were shared. The family car (Settings) is listed
+   * without its key, which the Worker fills from the settings.
+   */
+  async carsFor(person: string): Promise<Reach[]> {
+    const out: Reach[] = [];
+    const fam = await this.familyCar();
+    const famLevel = person === "owner" ? "own" : fam.shares[person];
+    if (famLevel) out.push({ id: FAMILY_CAR, name: fam.name, owner: "owner", level: famLevel });
+    for (const c of await this.storedCars()) {
+      const level = c.owner === person ? "own" : c.shares[person];
+      if (level) out.push({ id: c.id, name: c.name, owner: c.owner, level, vin: c.vin, token: c.token });
+    }
+    return out;
+  }
+
+  /** The same, for the app: names and levels, the owner's shares, never a token. */
+  async carsView(person: string): Promise<CarView[]> {
+    const names = new Map<string, string>();
+    const first = await this.firstPerson();
+    const meta = await this.meta();
+    if (meta.space) {
+      for (const m of await this.membersOf(meta.space)) {
+        const u = await this.storedUser(m.user);
+        if (u) names.set(m.user === first ? "owner" : m.user, u.name);
+      }
+    }
+    const fam = await this.familyCar();
+    const reach = await this.carsFor(person);
+    const stored = new Map((await this.storedCars()).map((c) => [c.id, c]));
+    return reach.map((r) => {
+      const c = stored.get(r.id);
+      const shares = r.level === "own" ? (r.id === FAMILY_CAR ? fam.shares : c?.shares) : undefined;
+      return {
+        id: r.id,
+        name: r.name,
+        owner: r.owner,
+        ownerName: names.get(r.owner) ?? "someone",
+        level: r.level,
+        ...(c ? { vinHint: `…${c.vin.slice(-4)}` } : {}),
+        ...(shares ? { shares } : {}),
+      };
+    });
+  }
+
+  /** A person's own car, its token already checked with Tessie. */
+  async addCar(owner: string, input: { name: unknown; vin: string; token: string }, now: number): Promise<CarView | Fail> {
+    const name = cleanName(input.name, 40);
+    if (!name) return fail("give the car a name, like \"Aisyah's car\"");
+    const mine = (await this.storedCars()).filter((c) => c.owner === owner);
+    if (mine.length >= 5) return fail("five cars each is plenty; remove one first");
+    if ((await this.storedCars()).some((c) => c.vin === input.vin)) return fail("that car is already here; ask its owner to share it");
+    const car: StoredCar = { id: newId("c_"), owner, name, vin: input.vin, token: input.token, shares: {}, createdAt: now };
+    await this.storage.put(K.car(car.id), car);
+    return (await this.carsView(owner)).find((c) => c.id === car.id)!;
+  }
+
+  /**
+   * Rename a car or change who it is shared with: its owner only. A share is
+   * to a member of the family, "see" or "drive"; null takes it away.
+   */
+  async updateCar(person: string, id: string, patch: { name?: unknown; shares?: Record<string, unknown> }): Promise<true | Fail> {
+    const meta = await this.meta();
+    const members = new Set<string>();
+    const first = await this.firstPerson();
+    if (meta.space) for (const m of await this.membersOf(meta.space)) members.add(m.user === first ? "owner" : m.user);
+    const nextShares = (had: Record<string, CarLevel>) => {
+      const out = { ...had };
+      for (const [who, level] of Object.entries(patch.shares ?? {})) {
+        if (who === person || !members.has(who)) continue;
+        if (level === "see" || level === "drive") out[who] = level;
+        else delete out[who];
+      }
+      return out;
+    };
+    const name = patch.name === undefined ? undefined : cleanName(patch.name, 40);
+    if (name === "") return fail("a car needs a name");
+    if (id === FAMILY_CAR) {
+      if (person !== "owner") return fail("only its owner can change that car");
+      const fam = await this.familyCar();
+      await this.storage.put(K.car(FAMILY_CAR), { name: name ?? fam.name, shares: nextShares(fam.shares) });
+      return true;
+    }
+    const c = await this.storage.get<StoredCar>(K.car(id));
+    if (!c || c.owner !== person) return fail("only its owner can change that car");
+    await this.storage.put(K.car(id), { ...c, name: name ?? c.name, shares: nextShares(c.shares) });
+    return true;
+  }
+
+  async removeCar(person: string, id: string): Promise<true | Fail> {
+    const c = await this.storage.get<StoredCar>(K.car(id));
+    if (id === FAMILY_CAR || !c || c.owner !== person) return fail("only its owner can remove that car");
+    await this.storage.delete(K.car(id));
+    return true;
+  }
+
+  /** Someone leaves: their cars go, and nothing stays shared with them. */
+  private async forgetCarsOf(person: string): Promise<void> {
+    for (const c of await this.storedCars()) {
+      if (c.owner === person) await this.storage.delete(K.car(c.id));
+      else if (c.shares[person]) {
+        const { [person]: _, ...rest } = c.shares;
+        await this.storage.put(K.car(c.id), { ...c, shares: rest });
+      }
+    }
+    const fam = await this.familyCar();
+    if (fam.shares[person]) {
+      const { [person]: _, ...rest } = fam.shares;
+      await this.storage.put(K.car(FAMILY_CAR), { name: fam.name, shares: rest });
+    }
   }
 
   /* ---------- PINs, for shared screens ------------------------------------------ */
@@ -513,6 +718,7 @@ export class HubHost {
     if ((await this.firstPerson()) === user) return fail("the person who set up the family holds what Jarvis kept before it, so they cannot be removed");
     if (m.role === "admin" && (await this.admins(space)) < 2) return fail("the last admin cannot be removed");
     await this.storage.delete(K.member(space, user));
+    await this.forgetCarsOf(user);
     const ended = await this.endSessionsOf(user);
     for (const [k, p] of await this.storage.list<Passkey>({ prefix: "hub:pk:" })) {
       if (p.user === user) await this.storage.delete(k);
@@ -879,6 +1085,13 @@ export const HUB_METHODS = [
   "firstPerson",
   "personView",
   "setPrefs",
+  "setHaToken",
+  "hasHaToken",
+  "carsFor",
+  "carsView",
+  "addCar",
+  "updateCar",
+  "removeCar",
   "prefsOf",
   "setPin",
   "lockSession",

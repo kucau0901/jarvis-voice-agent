@@ -133,7 +133,10 @@ export const GROUPS: readonly GroupDef[] = [
   {
     id: "car",
     title: "Car (Tessie)",
-    intro: "A Tessie access token from dash.tessie.com → Settings → API, and the car's VIN.",
+    intro:
+      "A Tessie access token from dash.tessie.com → Settings → API, and the car's VIN. With a family, " +
+      "this car is its first person's: they share it (see, or drive) in Family → You → Cars, where " +
+      "anyone else adds their own.",
     needs: ["TESSIE_TOKEN", "TESSIE_VIN"],
     testable: true,
   },
@@ -507,6 +510,7 @@ export const NOT_SETTINGS: Readonly<Record<string, string>> = {
   JARVIS_PERSON_NAME: "per request: who is asking (lib/context.ts)",
   JARVIS_AGENT_NAME: "per request: the family's name for the assistant (lib/context.ts)",
   JARVIS_FAMILY: "per request: the family's shared memory (lib/context.ts)",
+  JARVIS_CARS: "per request: the cars this person may reach (lib/context.ts)",
   ROUTER_MODEL: "has its own section, with a live probe before saving",
   G2_FASTPATH: "renamed HA_ASSIST; the old name is still read",
   G2_HA_LANGUAGE: "renamed HA_ASSIST_LANGUAGE; the old name is still read",

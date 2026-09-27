@@ -22,6 +22,18 @@ export interface Prefs {
 /** The voices the server accepts (lib/speech.ts TTS_VOICES). */
 const VOICES = ["cedar", "marin", "alloy", "ash", "ballad", "coral", "echo", "fable", "nova", "onyx", "sage", "shimmer", "verse"];
 
+interface CarView {
+  id: string;
+  name: string;
+  owner: string;
+  ownerName: string;
+  level: "own" | "see" | "drive";
+  vinHint?: string;
+  shares?: Record<string, "see" | "drive">;
+}
+
+const LEVEL_WORDS: Record<string, string> = { "": "not shared", see: "may see it", drive: "may drive it" };
+
 const ACCOUNTS: { id: "google" | "spotify"; name: string; what: string }[] = [
   { id: "google", name: "Google", what: "your mail, calendar and contacts" },
   { id: "spotify", name: "Spotify", what: "your music" },
@@ -31,17 +43,31 @@ export class Mine {
   private key: string;
   private box: HTMLElement;
   private prefs: Prefs;
+  private haToken: boolean;
 
-  constructor(key: string, box: HTMLElement, prefs: Prefs) {
+  constructor(key: string, box: HTMLElement, prefs: Prefs, haToken = false) {
     this.key = key;
     this.box = box;
     this.prefs = prefs;
+    this.haToken = haToken;
   }
 
   render(): void {
     this.box.innerHTML = `
       <h3>Your accounts</h3>
       <div class="srv m-accounts"></div>
+
+      <h3>Cars</h3>
+      <div class="srv m-cars"><p class="note">loading…</p></div>
+
+      <h3>Home Assistant</h3>
+      <div class="srv">
+        <p class="note">Optional. With a token for your own Home Assistant user, the house answers you as yourself:
+          its logbook says it was you, and whatever Home Assistant allows your user is what you can do.
+          Without one, the family's is used. ${this.haToken ? "<b>Yours is set.</b>" : ""}</p>
+        <input type="password" class="m-ha" autocomplete="off" placeholder="A long-lived access token from your Home Assistant profile">
+        <div class="rowbtns"><button class="m-hasave">Save</button>${this.haToken ? `<button class="m-haoff">Remove mine</button>` : ""}</div>
+      </div>
 
       <h3>Your voice and language</h3>
       <div class="srv">
@@ -85,6 +111,9 @@ export class Mine {
       void this.save({ telegram: this.box.querySelector<HTMLInputElement>(".m-tg")!.value.trim() }, "Saved."),
     );
     this.box.querySelector(".m-alerts")!.appendChild(new AlertsPanel(this.key).render());
+    this.box.querySelector(".m-hasave")!.addEventListener("click", () => void this.setHa(this.box.querySelector<HTMLInputElement>(".m-ha")!.value.trim()));
+    this.box.querySelector(".m-haoff")?.addEventListener("click", () => void this.setHa(""));
+    void this.cars();
     void this.accounts();
     void this.usage();
   }
@@ -102,6 +131,116 @@ export class Mine {
       if (!res.ok) throw new Error(body.error ?? `the server said ${res.status}`);
       this.prefs = body.prefs ?? this.prefs;
       this.say(ok);
+    } catch (e) {
+      this.say(e instanceof Error ? e.message : String(e), true);
+    }
+  }
+
+  private async setHa(token: string): Promise<void> {
+    try {
+      const res = await fetch("/api/hub/me", { method: "PATCH", headers: authHeaders(this.key), body: JSON.stringify({ haToken: token }) });
+      const body = (await res.json()) as { error?: string };
+      if (!res.ok) throw new Error(body.error ?? `the server said ${res.status}`);
+      this.haToken = !!token;
+      this.say(token ? "Saved: the house now answers you as yourself." : "Removed: the family's is used again.");
+      this.render();
+    } catch (e) {
+      this.say(e instanceof Error ? e.message : String(e), true);
+    }
+  }
+
+  /**
+   * Cars (routes/hub.ts): your own, with who you share each with and how far,
+   * those shared with you, and adding yours.
+   */
+  private async cars(): Promise<void> {
+    const box = this.box.querySelector<HTMLElement>(".m-cars")!;
+    let data: { cars: CarView[]; people: { id: string; name: string }[] };
+    try {
+      const res = await fetch("/api/hub/cars", { headers: authHeaders(this.key) });
+      if (!res.ok) throw new Error(String(res.status));
+      data = await res.json();
+    } catch {
+      box.innerHTML = `<p class="note">Could not load cars.</p>`;
+      return;
+    }
+    const mine = data.cars.filter((c) => c.level === "own");
+    const shared = data.cars.filter((c) => c.level !== "own");
+    const others = (c: CarView) => data.people.filter((p) => p.id !== c.owner);
+    box.innerHTML = `
+      ${mine.length ? "" : `<p class="note">No car of your own here yet.</p>`}
+      ${mine
+        .map(
+          (c) => `<div class="m-car" data-id="${esc(c.id)}">
+            <div class="svchead"><b>${esc(c.name)}</b><span class="chip">yours${c.vinHint ? ` · ${esc(c.vinHint)}` : ""}</span></div>
+            ${others(c).length ? `<p class="note">Shared with:</p>` : ""}
+            ${others(c)
+              .map(
+                (p) => `<div class="fieldfoot"><span class="help">${esc(p.name)}</span>
+                  <select class="m-share" data-who="${esc(p.id)}">${["", "see", "drive"]
+                    .map((l) => `<option value="${l}"${(c.shares?.[p.id] ?? "") === l ? " selected" : ""}>${LEVEL_WORDS[l]}</option>`)
+                    .join("")}</select></div>`,
+              )
+              .join("")}
+            ${c.id === "family" ? `<p class="note">The car in Settings. To change its token, use Settings.</p>` : `<div class="rowbtns"><button class="m-carrm">Remove</button></div>`}
+          </div>`,
+        )
+        .join("")}
+      ${shared.length ? `<p class="note">Shared with you:</p>` : ""}
+      ${shared.map((c) => `<p class="note"><b>${esc(c.name)}</b>, ${esc(c.ownerName)}'s: you ${c.level === "drive" ? "may drive it" : "may see it (where it is, the battery), not operate it"}.</p>`).join("")}
+      <details class="m-addcar"><summary>Add my car (Tessie)</summary>
+        <input type="text" class="m-carname" maxlength="40" placeholder="Its name, e.g. Aisyah's car">
+        <input type="password" class="m-cartoken" autocomplete="off" placeholder="Tessie token: dash.tessie.com → Settings → API">
+        <select class="m-carvin" hidden></select>
+        <div class="rowbtns"><button class="primary m-caradd">Add</button></div>
+      </details>`;
+
+    for (const row of box.querySelectorAll<HTMLElement>(".m-car")) {
+      const id = row.dataset.id!;
+      for (const sel of [...row.querySelectorAll(".m-share")] as unknown as HTMLSelectElement[]) {
+        sel.addEventListener("change", () => void this.carPatch({ id, shares: { [sel.dataset.who!]: sel.value || null } }, "Shared as you chose."));
+      }
+      row.querySelector(".m-carrm")?.addEventListener("click", async () => {
+        await fetch("/api/hub/cars", { method: "DELETE", headers: authHeaders(this.key), body: JSON.stringify({ id }) }).catch(() => {});
+        this.say("Removed.");
+        await this.cars();
+      });
+    }
+    box.querySelector(".m-caradd")!.addEventListener("click", () => void this.addCar(box));
+  }
+
+  private async carPatch(body: unknown, ok: string): Promise<void> {
+    try {
+      const res = await fetch("/api/hub/cars", { method: "PATCH", headers: authHeaders(this.key), body: JSON.stringify(body) });
+      const b = (await res.json()) as { error?: string };
+      if (!res.ok) throw new Error(b.error ?? `the server said ${res.status}`);
+      this.say(ok);
+    } catch (e) {
+      this.say(e instanceof Error ? e.message : String(e), true);
+      await this.cars();
+    }
+  }
+
+  private async addCar(box: HTMLElement): Promise<void> {
+    const vinSel = box.querySelector(".m-carvin") as unknown as HTMLSelectElement;
+    const body = {
+      name: box.querySelector<HTMLInputElement>(".m-carname")!.value.trim(),
+      token: box.querySelector<HTMLInputElement>(".m-cartoken")!.value.trim(),
+      ...(vinSel.hidden ? {} : { vin: vinSel.value }),
+    };
+    try {
+      const res = await fetch("/api/hub/cars", { method: "POST", headers: authHeaders(this.key), body: JSON.stringify(body) });
+      const b = (await res.json()) as { error?: string; choose?: { vin: string; name: string }[] };
+      if (res.status === 409 && b.choose) {
+        // More than one car on that Tessie account: which is this one?
+        vinSel.innerHTML = b.choose.map((v) => `<option value="${esc(v.vin)}">${esc(v.name || v.vin)}</option>`).join("");
+        vinSel.hidden = false;
+        this.say("That Tessie account has more than one car: choose which, and Add again.");
+        return;
+      }
+      if (!res.ok) throw new Error(b.error ?? `the server said ${res.status}`);
+      this.say("Added. Share it with the family below, if you like.");
+      await this.cars();
     } catch (e) {
       this.say(e instanceof Error ? e.message : String(e), true);
     }

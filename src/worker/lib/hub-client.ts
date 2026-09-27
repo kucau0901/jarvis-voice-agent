@@ -1,6 +1,6 @@
 import type { Env } from "../types";
 import { sha256Hex } from "./devices.ts";
-import type { HubApi, Prefs, SignedIn, Space } from "./hub.ts";
+import type { HubApi, PersonView, SignedIn } from "./hub.ts";
 
 /**
  * Reaching lib/hub.ts in the Durable Object from the Worker.
@@ -54,14 +54,14 @@ export function _clearSessionCache(): void {
 }
 
 /** A person's name, family and choices (hub.ts personView), kept a little while per isolate like a sign-in. */
-const views = new Map<string, { at: number; view: { space: Space | null; name: string | null; prefs: Prefs } }>();
+const views = new Map<string, { at: number; view: PersonView }>();
 
-export async function personView(env: Env, person: string): Promise<{ space: Space | null; name: string | null; prefs: Prefs }> {
+export async function personView(env: Env, person: string): Promise<PersonView> {
   const hit = views.get(person);
   if (hit && Date.now() - hit.at < CACHE_MS) return hit.view;
   const hub = hubStub(env);
   const view = hub ? await hub.personView(person).catch(() => null) : null;
-  const v = view ?? { space: null, name: null, prefs: {} };
+  const v: PersonView = view ?? { space: null, name: null, prefs: {}, cars: [] };
   if (views.size > 200) views.clear();
   views.set(person, { at: Date.now(), view: v });
   return v;

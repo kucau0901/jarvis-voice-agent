@@ -35,11 +35,13 @@ export { JarvisState } from "./state";
  * the family's details it runs as it always did.
  */
 async function forPerson(env: Env, p: Principal): Promise<Env> {
+  const person = personOf(p);
+  // Their cars (and, for the owner key and devices, who the first person is), kept a little while per isolate.
+  const v = await personView(env, person).catch(() => null);
   if (p.kind === "member" && p.place) {
-    return withPerson(env, { person: personOf(p), name: p.name, space: p.place.space, prefs: p.place.prefs });
+    return withPerson(env, { person, name: p.name, space: p.place.space, prefs: p.place.prefs, cars: v?.space ? v.cars : undefined, haToken: v?.haToken });
   }
-  const v = await personView(env, "owner").catch(() => null);
-  return withPerson(env, { person: "owner", name: v?.name, space: v?.space, prefs: v?.prefs });
+  return withPerson(env, { person: "owner", name: v?.name, space: v?.space, prefs: v?.prefs, cars: v?.space ? v.cars : undefined, haToken: v?.haToken });
 }
 
 /** What a locked profile may still do: say who it is, be unlocked, or be signed out. */

@@ -24,6 +24,7 @@ interface Me {
   session: string | null;
   hasPin: boolean;
   prefs?: Prefs;
+  haToken?: boolean;
 }
 
 interface Member {
@@ -280,7 +281,7 @@ export class Family {
       <div class="srv f-sessions"></div>` : ""}`;
 
     const mine = this.body.querySelector<HTMLElement>(".f-mine");
-    if (mine) new Mine(this.key, mine, me.prefs ?? {}).render();
+    if (mine) new Mine(this.key, mine, me.prefs ?? {}, !!me.haToken).render();
     this.renderMembers(data.members, admin, roles, scopes);
     if (admin) this.renderInvites(data.invites ?? []);
     this.wire(admin);

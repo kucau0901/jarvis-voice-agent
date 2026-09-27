@@ -23,6 +23,12 @@ export interface Env {
   JARVIS_AGENT_NAME?: string;
   /** The family's shared memory book, when there is a family. */
   JARVIS_FAMILY?: string;
+  /**
+   * The cars this person may reach, as JSON (lib/context.ts): their own and
+   * those shared with them, each with its level. TESSIE_TOKEN and TESSIE_VIN
+   * are then the one used when no car is named.
+   */
+  JARVIS_CARS?: string;
 
   /** OpenAI key. Worker-only — it must never be sent to the browser. */
   OPENAI_API_KEY: string;

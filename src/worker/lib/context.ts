@@ -1,5 +1,5 @@
 import type { Env } from "../types";
-import type { Prefs, Space } from "./hub.ts";
+import type { Prefs, Reach, Space } from "./hub.ts";
 
 /**
  * Who a request is for, laid over the environment every route already reads.
@@ -38,9 +38,37 @@ export const familyBook = (space: Pick<Space, "id">): string => `fam:${space.id}
 /** A person's own storage name, or "" for the first person's, which keeps the name it always had. */
 export const bookOf = (person: string | undefined): string => (!person || person === OWNER ? "" : person);
 
+/** A car as a request carries it: which, whose, how far, and its key. */
+export interface CarKey {
+  id: string;
+  name: string;
+  level: "own" | "see" | "drive";
+  mine: boolean;
+  vin: string;
+  token: string;
+}
+
+/**
+ * The cars a request may reach, keys filled in: the family car's from the
+ * settings, anyone else's from where they were added. The first is the one
+ * used when no car is named: their own, else one they may drive, else one
+ * they may see.
+ */
+export function carKeys(env: Env, reach: readonly Reach[]): CarKey[] {
+  const out: CarKey[] = [];
+  for (const r of reach) {
+    const token = r.token ?? env.TESSIE_TOKEN?.trim();
+    const vin = r.vin ?? env.TESSIE_VIN?.trim();
+    if (!token || !vin) continue;
+    out.push({ id: r.id, name: r.name, level: r.level, mine: r.level === "own", vin, token });
+  }
+  const rank = (c: CarKey) => (c.level === "own" ? 0 : c.level === "drive" ? 1 : 2);
+  return out.sort((a, b) => rank(a) - rank(b));
+}
+
 export function withPerson(
   env: Env,
-  o: { person: string; name?: string | null; space?: Space | null; prefs?: Prefs },
+  o: { person: string; name?: string | null; space?: Space | null; prefs?: Prefs; cars?: readonly Reach[]; haToken?: string },
 ): Env {
   const out: Env = { ...env, JARVIS_PERSON: o.person };
   if (o.name) out.JARVIS_PERSON_NAME = o.name;
@@ -55,5 +83,28 @@ export function withPerson(
   // A member's messages go to their own chat, or nowhere: never the first person's.
   if (o.person !== OWNER) out.TELEGRAM_CHAT_ID = p.telegram ?? "";
   else if (p.telegram) out.TELEGRAM_CHAT_ID = p.telegram;
+  /*
+   * Cars: only those this person may reach. Without a family (no list), the
+   * first person has the car in the settings, as before. Anyone else's
+   * default is their own, else one shared with them; with none, no car.
+   */
+  // Their own Home Assistant user, if they gave one: the house answers them as themselves.
+  if (o.haToken) out.HA_TOKEN = o.haToken;
+  if (o.cars || o.person !== OWNER) {
+    const keys = carKeys(env, o.cars ?? []);
+    out.JARVIS_CARS = JSON.stringify(keys);
+    out.TESSIE_TOKEN = keys[0]?.token ?? "";
+    out.TESSIE_VIN = keys[0]?.vin ?? "";
+  }
   return out;
+}
+
+/** The cars a request carries (withPerson). */
+export function carsOf(env: Env): CarKey[] {
+  try {
+    const v = JSON.parse(env.JARVIS_CARS ?? "null") as CarKey[] | null;
+    return Array.isArray(v) ? v : [];
+  } catch {
+    return [];
+  }
 }
