@@ -63,8 +63,9 @@ before tapping **Pair**. A code lasts ten minutes.
 On a phone or computer, **Sign in with a passkey** is quicker.
 
 A screen already unlocked with the owner key (the car, if you set it up
-before families) keeps working as it is. To make it yours: **Family → Sign
-in as a person here instead**, then pair it.
+before families) keeps working as it is. To make it yours: **Family → Pair
+this screen with my phone**, and approve the code on your phone. The owner
+key stays on that screen until you do.
 
 ## Lost phone, new phone
 

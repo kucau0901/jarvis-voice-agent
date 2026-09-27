@@ -639,8 +639,14 @@ unlock.passkey.addEventListener("click", async () => {
 });
 
 let pairing: AbortController | null = null;
-unlock.pair.addEventListener("click", async () => {
+/**
+ * Show a code for a signed-in phone to approve. From the sign-in screen, or
+ * from Family on a screen still unlocked with the owner key: that key stays
+ * until the phone says yes, so the screen is never left signed out.
+ */
+async function pairHere() {
   unlock.err.textContent = "";
+  unlock.wrap.classList.add("show");
   unlockView("pair");
   unlock.pairCode.textContent = "······";
   pairing = new AbortController();
@@ -657,16 +663,28 @@ unlock.pair.addEventListener("click", async () => {
     }, pairing.signal);
     signedIn(r.token);
   } catch (e) {
-    if (!pairing?.signal.aborted) unlock.err.textContent = e instanceof Error ? e.message : String(e);
-    unlockView("signin");
+    const why = e instanceof Error ? e.message : String(e);
+    if (!pairing?.signal.aborted) {
+      if (key) status(why, true);
+      else unlock.err.textContent = why;
+    }
+    leavePairing();
   } finally {
     clearInterval(tick);
     pairing = null;
   }
-});
+}
+
+/** Back to where pairing began: the app, if this screen is still unlocked; else signing in. */
+function leavePairing() {
+  if (key) unlock.wrap.classList.remove("show");
+  else unlockView("signin");
+}
+
+unlock.pair.addEventListener("click", () => void pairHere());
 unlock.pairCancel.addEventListener("click", () => {
   pairing?.abort();
-  unlockView("signin");
+  leavePairing();
 });
 
 async function showInvite() {
@@ -711,7 +729,7 @@ unlock.joinGo.addEventListener("click", async () => {
 let family: Family | null = null;
 function openFamily() {
   if (!key) { void requireKey(); return; }
-  family ??= new Family(key, signedIn);
+  family ??= new Family(key, signedIn, () => void pairHere());
   void family.show();
 }
 $("openFamily").addEventListener("click", openFamily);

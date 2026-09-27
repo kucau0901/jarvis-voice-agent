@@ -71,7 +71,12 @@ export class Family {
   private body: HTMLElement;
   private me: Me | null = null;
 
-  constructor(private readonly key: string, private readonly onSignedIn: (token: string) => void) {
+  constructor(
+    private readonly key: string,
+    private readonly onSignedIn: (token: string) => void,
+    /** Show a pairing code on this screen (main.ts): how a screen on the owner key becomes a person's. */
+    private readonly onPairHere: () => void,
+  ) {
     this.el = document.createElement("div");
     this.el.id = "family";
     this.el.className = "panel";
@@ -189,8 +194,8 @@ export class Family {
 
     this.body.innerHTML = `
       <p class="note">${esc(me.space?.name ?? "")} · the assistant is <b>${esc(me.space?.agentName ?? "Jarvis")}</b>.
-        ${me.owner ? "This screen is unlocked with the owner key." : ""}</p>
-      ${me.owner ? `<div class="rowbtns"><button class="f-asme">Sign in as a person here instead</button></div>` : ""}
+        ${me.owner ? "This screen is unlocked with the owner key. To make it yours, pair it with your phone: it shows a code, you approve it on your phone, and the owner key is kept until you do." : ""}</p>
+      ${me.owner && me.claimed ? `<div class="rowbtns"><button class="primary f-asme">Pair this screen with my phone</button></div>` : ""}
 
       ${me.user ? `
       <h3>You</h3>
@@ -364,16 +369,11 @@ export class Family {
   private wire(admin: boolean): void {
     const q = <T = HTMLElement>(c: string) => this.body.querySelector(c) as T | null;
 
-    // From the owner key to a person: this screen forgets the key and asks who is here (a passkey, or pairing).
-    const asMe = q<HTMLButtonElement>(".f-asme");
-    if (asMe) {
-      arm(asMe, "Forget the owner key here?", async () => {
-        try {
-          localStorage.removeItem("jarvis.key");
-        } catch { /* private mode */ }
-        location.reload();
-      });
-    }
+    // From the owner key to a person: a code to approve on the phone (main.ts).
+    q(".f-asme")?.addEventListener("click", () => {
+      this.hide();
+      this.onPairHere();
+    });
 
     q(".f-rename")?.addEventListener("click", async () => {
       const name = prompt("Your name, as the family sees it:", this.me?.user?.name ?? "");
