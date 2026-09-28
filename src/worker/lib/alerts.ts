@@ -1,6 +1,7 @@
 import type { Env } from "../types";
 import { OWNER } from "./context.ts";
 import { MAX_PAYLOAD, sendPush, type Subscription, type VapidKeys } from "./webpush.ts";
+import { haUrl } from "./ha.ts";
 
 /**
  * How Jarvis reaches you when it speaks first.
@@ -362,7 +363,7 @@ const SEND: Record<Channel, Sender> = {
     // The Android Companion app reads a message of exactly "TTS" aloud; any
     // other notify service would just show those three letters, hence opt-in.
     const spoken = env.HA_NOTIFY_SPEAK === "1" && alert.speak;
-    const r = await fetch(new URL(`/api/services/notify/${env.HA_NOTIFY_SERVICE}`, env.HA_BASE_URL), {
+    const r = await fetch(haUrl(env.HA_BASE_URL, `/api/services/notify/${env.HA_NOTIFY_SERVICE}`), {
       method: "POST",
       headers: { authorization: `Bearer ${env.HA_TOKEN}`, "content-type": "application/json" },
       body: JSON.stringify(

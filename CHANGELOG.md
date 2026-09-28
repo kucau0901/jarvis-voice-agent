@@ -26,6 +26,10 @@ of every release, and in the [README](README.md#updating).
 
 ### Fixed
 
+- A Home Assistant reached through an address with a path (behind a proxy,
+  such as https://example.com/ha) worked for the house but not for alerts
+  sent through Home Assistant, the Settings test, or checking a personal
+  Home Assistant token: those dropped the path. All of them now keep it.
 - When the car left a reading out, Jarvis said it anyway: "Battery
   undefined%", "Inside undefined°C", a location of "undefined, undefined" —
   and the summary said the car was locked when it had not said. A missing

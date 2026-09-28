@@ -24,6 +24,7 @@ import { probe as mcpProbe } from "./mcp";
 import { deliver, makeAlert, summarise } from "../lib/alerts";
 import { recognitionHints, speechConfig, synthesize, transcribe } from "../lib/speech";
 import { listCameras, snapshot } from "../lib/cameras";
+import { haUrl } from "../lib/ha.ts";
 
 /**
  * The settings panel's API. Owner-only (lib/scopes.ts).
@@ -205,7 +206,7 @@ const TESTS: Partial<Record<Group, (eff: Env, origin: string) => Promise<TestRes
       parts.push("No MCP URL set.");
     }
     if (eff.HA_BASE_URL && eff.HA_TOKEN) {
-      const r = await fetch(new URL("/api/", eff.HA_BASE_URL), {
+      const r = await fetch(haUrl(eff.HA_BASE_URL, "/api/"), {
         headers: { Authorization: `Bearer ${eff.HA_TOKEN}` },
         signal: timeout(),
       });
