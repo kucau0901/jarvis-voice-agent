@@ -5,6 +5,12 @@
 // and the styles the stylesheet gives it. The text and the looks are compared
 // between runs; the pictures are for a person to look at when they differ.
 //
+// Then a screen two people share, and the three ways the one in use is put
+// aside (main.ts): someone else is picked, the app is opened while they are
+// locked, and the screen is left alone for half an hour. For each: the calls
+// the page made, whether its live-alerts socket is still open, whose key it
+// keeps, and what it shows.
+//
 // Plain Node and the Chrome already on the machine, driven over the DevTools
 // protocol: nothing to install.
 //
@@ -159,6 +165,90 @@ for (const [person, token] of Object.entries(tokens)) {
   }
   seen[person] = out;
 }
+
+/* ---------- a screen two people share: putting the one in use aside ---------- */
+
+const net = { calls: new Set(), open: new Set(), made: 0 };
+let budgetSpent = null;
+ws.addEventListener("message", (e) => {
+  const m = JSON.parse(e.data);
+  if (m.method === "Network.requestWillBeSent") {
+    const u = new URL(m.params.request.url);
+    if (u.pathname.startsWith("/api/")) net.calls.add(`${m.params.request.method} ${u.pathname}`);
+  } else if (m.method === "Network.webSocketCreated") {
+    net.open.add(m.params.requestId);
+    net.made++;
+  } else if (m.method === "Network.webSocketClosed") {
+    net.open.delete(m.params.requestId);
+  } else if (m.method === "Emulation.virtualTimeBudgetExpired") {
+    budgetSpent?.();
+  }
+});
+await send("Network.enable");
+
+const api = async (token, method, path, body) =>
+  (await fetch(`${BASE.replace(/\/$/, "")}${path}`, { method, headers: { "Content-Type": "application/json", "X-Jarvis-Key": token }, ...(body ? { body: JSON.stringify(body) } : {}) })).json();
+const PIN = "2468";
+const adam = (await api(tokens.Adam, "GET", "/api/hub/me")).user;
+const sara = (await api(tokens.Sara, "GET", "/api/hub/me")).user;
+await api(tokens.Adam, "POST", "/api/hub/pin", { pin: PIN });
+const screenPeople = [
+  { id: adam.id, name: adam.name, token: tokens.Adam, hasPin: true },
+  { id: sara.id, name: sara.name, token: tokens.Sara, hasPin: false },
+];
+
+/** The shared screen, opened with Adam in use; what the page does from here on is what is recorded. */
+async function sharedScreen() {
+  await send("Page.navigate", { url: BASE });
+  await sleep(1500);
+  await js(`localStorage.clear(); sessionStorage.clear();
+    localStorage.setItem("jarvis.people", ${JSON.stringify(JSON.stringify(screenPeople))});
+    localStorage.setItem("jarvis.key", ${JSON.stringify(tokens.Adam)}); true`);
+  net.calls.clear();
+  net.open.clear();
+  net.made = 0;
+  await send("Page.navigate", { url: BASE });
+  await sleep(3500);
+}
+
+async function afterwards() {
+  await sleep(2500);
+  const key = await js(`localStorage.getItem("jarvis.key") ?? ""`);
+  return {
+    calls: [...net.calls].sort(),
+    liveSocketsMade: net.made,
+    liveSocketsOpen: net.open.size,
+    keyKept: key === tokens.Adam ? "Adam's" : key === tokens.Sara ? "Sara's" : key ? "another" : "none",
+    shows: await settled(`(() => {
+      const u = document.getElementById("unlock");
+      return u?.classList.contains("show") ? "the unlock sheet: " + u.innerText : "the app: " + (document.getElementById("title")?.textContent ?? "");
+    })()`),
+  };
+}
+
+const aside = {};
+// Picking someone else: Adam, who has a PIN, is put aside; Sara, who has none, is taken up.
+await sharedScreen();
+net.calls.clear();
+await js(`document.getElementById("title").click(); true`);
+await sleep(800);
+await js(`[...document.querySelectorAll("#unlock button")].find((b) => b.querySelector("span")?.textContent === ${JSON.stringify(sara.name)})?.click(); true`);
+await sleep(3500);
+aside.switching = await afterwards();
+
+// Opened while Adam's sign-in here is put aside (the switch above locked it).
+await sharedScreen();
+aside.openedLocked = await afterwards();
+
+// Left alone for half an hour, with Adam in use again: the clock is run on.
+await api(tokens.Adam, "POST", "/api/hub/unlock", { pin: PIN });
+await sharedScreen();
+net.calls.clear();
+const spent = new Promise((r) => (budgetSpent = r));
+await send("Emulation.setVirtualTimePolicy", { policy: "pauseIfNetworkFetchesPending", budget: 31 * 60_000 });
+await Promise.race([spent, sleep(60_000)]);
+aside.leftIdle = await afterwards();
+seen.sharedScreen = aside;
 
 writeFileSync(join(OUT, "ui.raw.json"), JSON.stringify(seen, null, 1));
 ws.close();
