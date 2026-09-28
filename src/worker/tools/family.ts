@@ -1,7 +1,7 @@
 import type { Tool } from "./registry.ts";
 import { stateStub } from "../lib/state-client.ts";
 import { localeOf } from "../lib/locale.ts";
-import { whenSaid, zonedToUtc } from "../lib/routines.ts";
+import { LOCAL, whenSaid, zonedToUtc } from "../lib/routines.ts";
 import type { Relay } from "../lib/relays.ts";
 
 /**
@@ -10,7 +10,6 @@ import type { Relay } from "../lib/relays.ts";
  * what you sent. Only with a family, for people with `chat`.
  */
 
-const LOCAL = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})$/;
 const person = (env: { JARVIS_PERSON?: string }) => env.JARVIS_PERSON || "owner";
 
 const STATUS: Record<Relay["status"], string> = {
