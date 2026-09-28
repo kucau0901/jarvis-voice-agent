@@ -104,6 +104,9 @@ of every release, and in the [README](README.md#updating).
 - On a shared tablet, a profile put aside kept getting its notifications
   there. Putting someone aside now lets go of them; the next person to use
   the screen gets theirs.
+- Put aside on a shared screen, a person's live alerts still reached it
+  while the page stayed open: only their pushed notifications were let go.
+  Their live connection is now closed as well.
 
 ## [2.0.0] - 2026-09-27
 
