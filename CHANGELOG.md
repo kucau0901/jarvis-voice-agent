@@ -157,6 +157,10 @@ of every release, and in the [README](README.md#updating).
 
 ### Security
 
+- A device's token could end up in the Worker's logs: the voice debugging
+  helper, the example request under Routines and one example in docs/api.md
+  sent it as X-Jarvis-Key, which the logs do not scrub. They now use
+  Authorization: Bearer, which they do.
 - When a voice session could not start, OpenAI's error was passed back to
   the app as it came, and such a message can quote the key it was given.
   Keys and tokens are now cut from it first; the rest of the reason still
