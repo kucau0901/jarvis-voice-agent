@@ -26,6 +26,10 @@ of every release, and in the [README](README.md#updating).
 
 ### Fixed
 
+- Losing signal more than once, or stopping and starting again before it
+  came back, could open a second live conversation when it did come back,
+  billed alongside the first. Only one is ever reopened now, and none after
+  you stop.
 - When the house could not list its things, a guest pass's existing items
   were shown to be typed over, but clearing one did not remove it and
   renaming one was ignored. Both now take effect.

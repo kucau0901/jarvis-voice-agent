@@ -415,7 +415,12 @@ function scheduleReconnect(reason: string) {
   // browser to say it is back instead.
   if (!navigator.onLine) {
     status("no signal — waiting…", true);
-    addEventListener("online", () => { attempt = 0; void reconnect(); }, { once: true });
+    // One wait at a time, taken back if the user stops: each drop used to add another,
+    // and each came back as its own session.
+    if (!onlineWait) {
+      onlineWait = () => { onlineWait = null; attempt = 0; void reconnect(); };
+      addEventListener("online", onlineWait, { once: true });
+    }
     return;
   }
 
@@ -424,8 +429,12 @@ function scheduleReconnect(reason: string) {
   reconnectTimer = setTimeout(() => void reconnect(), wait) as unknown as number;
 }
 
+/** Waiting for the signal to come back, to reconnect: at most one (scheduleReconnect). */
+let onlineWait: (() => void) | null = null;
+
 async function reconnect() {
-  if (!userWantsSession || !key) return;
+  // Not while one is open: a second would bill alongside it, and nothing could close the first.
+  if (!userWantsSession || !key || session) return;
   const gapSec = Math.round((Date.now() - droppedAt) / 1000);
   await openSession(history.snapshot(), gapSec);
 }
@@ -434,6 +443,8 @@ async function toggle() {
   if (session || userWantsSession) {
     userWantsSession = false;
     clearTimeout(reconnectTimer);
+    if (onlineWait) removeEventListener("online", onlineWait);
+    onlineWait = null;
     attempt = 0;
     history.clear();          // an explicit end really does end the conversation
     delegateAbort?.abort();
