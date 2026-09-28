@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Behavior checks for the refactor (CLAUDE.md, REFACTOR_PLAN.md): a build of
+// Behavior checks for the refactor (CLAUDE.md): a build of
 // the app runs locally against stand-ins for OpenAI and Home Assistant
 // (fakes.mjs), with a fresh local store and made-up keys — nothing real — and
 // is driven through its API (scenario.ts) and its screens (ui.mjs). What it

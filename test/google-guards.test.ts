@@ -1,6 +1,6 @@
 // What the Gmail and Calendar tools say when they cannot work, word for word:
 // not set up, not linked, needing linking again, and any other failure.
-// Written before their guards are shared (REFACTOR_PLAN.md step 21), so the
+// Written before their guards were shared (lib/google.ts guardTool), so the
 // sharing can be seen to change none of it. Spotify's are pinned in
 // family-spotify-tools.test.ts.
 import { mailCheck } from "../src/worker/tools/gmail.ts";

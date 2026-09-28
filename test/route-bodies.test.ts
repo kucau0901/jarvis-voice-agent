@@ -1,7 +1,7 @@
 // How four routes read a request's body, as they do today: what a bad body,
 // a body of the wrong shape, and one over each route's size limit get back.
-// Written before their readers are shared (REFACTOR_PLAN.md steps 17-19), so
-// the sharing can be seen to change nothing.
+// Written before their readers were shared (lib/http.ts), so the sharing can
+// be seen to change nothing.
 import { handleAlertApi } from "../src/worker/routes/alerts.ts";
 import { handleRoutines } from "../src/worker/routes/routines.ts";
 import { handleJobs } from "../src/worker/routes/jobs.ts";

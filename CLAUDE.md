@@ -39,10 +39,10 @@ Tests load source files straight into Node (type stripping), so:
   `eslint-disable` or `as unknown as`. Don't loosen `tsconfig.json`.
 - **Don't change what a test checks to make it pass.** Fixing an import after
   a move is fine. If a check fails, fix the change or revert it.
-- **Bugs noticed along the way** go under "Bugs found" in `REFACTOR_PLAN.md`.
-  They are not fixed on this branch.
+- **Bugs noticed along the way** are noted in the refactor plan (kept out of
+  the repository) and fixed on `main`, not on this branch.
 - **One step at a time:** one commit per step, `refactor: <step>`, and tick the
-  step in `REFACTOR_PLAN.md`. Subagents only for read-only investigation.
+  step in the plan. Subagents only for read-only investigation.
 
 ### Behavior checks
 
@@ -94,7 +94,7 @@ saved beside the text for a person to look at; they are not compared.
   and `node test/behavior/check.mjs verify` reports the same behavior as the
   baseline.
 - **If anything differs and cannot be fixed:** revert the step and mark it
-  blocked in `REFACTOR_PLAN.md`, with the reason. Never commit an unverified
+  blocked in the plan, with the reason. Never commit an unverified
   step.
 
 ## Always

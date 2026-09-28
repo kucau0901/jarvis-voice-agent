@@ -1,8 +1,8 @@
 // Two tools no test reached, as they behave today: pass_on's reading of when
 // and how long (tools/family.ts), and what the Spotify tools say when they
 // cannot work (tools/spotify.ts guard). Written before the Google and Spotify
-// guards are shared and before pass_on's time pattern moves (REFACTOR_PLAN.md
-// steps 21 and 22).
+// guards were shared and before pass_on's time pattern moved, so neither can
+// be seen to change anything.
 import { familyTools } from "../src/worker/tools/family.ts";
 import { spotifyTools } from "../src/worker/tools/spotify.ts";
 import { zonedToUtc } from "../src/worker/lib/routines.ts";

@@ -1,5 +1,5 @@
-// What the router is given, pinned before it moves out of routes/delegate.ts
-// (REFACTOR_PLAN.md steps 23-24): the tools each kind of person is offered,
+// What the router is given, pinned before it moved out of routes/delegate.ts
+// (to lib/router.ts): the tools each kind of person is offered,
 // what it is told about who is asking (the family, a guest's pass, the cars
 // they can reach, what waits for their answer), and ROUTER_PROMPT itself.
 // Only the clock is taken out of what is compared.
