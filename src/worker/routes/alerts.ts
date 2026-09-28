@@ -1,11 +1,11 @@
-import type { Env } from "../types";
-import { isAdmin, whoOf, type Principal } from "../lib/auth";
-import { err, json, publicOrigin } from "../lib/http";
-import { stateFetch, stateStub } from "../lib/state-client";
-import { deliver, makeAlert, parseOrder } from "../lib/alerts";
-import { cleanLabel } from "../lib/live";
-import { TICKET_MS, TICKET_SHAPE } from "../lib/state-host";
-import { pushEndpointAllowed } from "../lib/webpush";
+import type { Env } from "../types.ts";
+import { isAdmin, whoOf, type Principal } from "../lib/auth.ts";
+import { err, json, publicOrigin } from "../lib/http.ts";
+import { stateFetch, stateStub } from "../lib/state-client.ts";
+import { deliver, makeAlert, parseOrder } from "../lib/alerts.ts";
+import { cleanLabel } from "../lib/live.ts";
+import { TICKET_MS, TICKET_SHAPE } from "../lib/state-host.ts";
+import { pushEndpointAllowed } from "../lib/webpush.ts";
 
 /**
  * The alerts surface (lib/alerts.ts). Every path here needs the `alerts`

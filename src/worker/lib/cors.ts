@@ -1,4 +1,4 @@
-import type { Env } from "../types";
+import type { Env } from "../types.ts";
 
 /**
  * Cross-origin access, for clients that are browsers somewhere else.

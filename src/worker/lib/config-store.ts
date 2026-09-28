@@ -1,4 +1,4 @@
-import type { Env } from "../types";
+import type { Env } from "../types.ts";
 import seed from "../../../config/mcp-servers.json";
 import {
   expandTemplate,
@@ -8,7 +8,7 @@ import {
   sane,
   type ConfigSource,
   type McpServerConfig,
-} from "./mcp-config";
+} from "./mcp-config.ts";
 
 /**
  * MCP server configuration.
@@ -16,7 +16,7 @@ import {
  * The file in the repo seeds it; a KV entry written from the settings UI
  * overrides it, so servers can be added from a phone without a redeploy.
  */
-export type { McpServerConfig, ConfigSource } from "./mcp-config";
+export type { McpServerConfig, ConfigSource } from "./mcp-config.ts";
 
 const KV_KEY = "config:mcp-servers";
 

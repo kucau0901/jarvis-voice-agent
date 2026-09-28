@@ -1,4 +1,4 @@
-import type { Env } from "../types";
+import type { Env } from "../types.ts";
 import type { Turn } from "./history.ts";
 import {
   applyChanges as applySettingChanges,

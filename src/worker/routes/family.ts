@@ -1,4 +1,4 @@
-import type { Env } from "../types";
+import type { Env } from "../types.ts";
 import { err, json } from "../lib/http.ts";
 import { grantsOf, isAdmin, personOf, type Principal } from "../lib/auth.ts";
 import { allows, SCOPES, WILDCARD } from "../lib/scopes.ts";
@@ -6,7 +6,7 @@ import { stateStub } from "../lib/state-client.ts";
 import { deliver, makeAlert } from "../lib/alerts.ts";
 import { AGENT, FAMILY_ROOM, mayRead, namesAgent, type ChatMessage } from "../lib/chat.ts";
 import { Collector } from "../lib/collector.ts";
-import { run } from "./delegate";
+import { run } from "./delegate.ts";
 
 /**
  * The family talking (lib/chat.ts), and answering what was passed on to them

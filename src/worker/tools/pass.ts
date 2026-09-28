@@ -1,5 +1,5 @@
-import type { Tool } from "./registry";
-import type { Env } from "../types";
+import type { Tool } from "./registry.ts";
+import type { Env } from "../types.ts";
 import { haConfig, callService } from "../lib/ha.ts";
 import { passService } from "../lib/access.ts";
 

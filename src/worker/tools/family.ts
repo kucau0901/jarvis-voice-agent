@@ -1,4 +1,4 @@
-import type { Tool } from "./registry";
+import type { Tool } from "./registry.ts";
 import { stateStub } from "../lib/state-client.ts";
 import { localeOf } from "../lib/locale.ts";
 import { whenSaid, zonedToUtc } from "../lib/routines.ts";

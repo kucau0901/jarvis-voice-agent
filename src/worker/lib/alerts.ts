@@ -1,4 +1,4 @@
-import type { Env } from "../types";
+import type { Env } from "../types.ts";
 import { OWNER } from "./context.ts";
 import { MAX_PAYLOAD, sendPush, type Subscription, type VapidKeys } from "./webpush.ts";
 

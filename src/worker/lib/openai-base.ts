@@ -1,4 +1,4 @@
-import type { Env } from "../types";
+import type { Env } from "../types.ts";
 
 /**
  * Where OpenAI is reached: OpenAI itself, or an OpenAI-compatible gateway

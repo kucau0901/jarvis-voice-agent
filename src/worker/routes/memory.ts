@@ -1,4 +1,4 @@
-import type { Env } from "../types";
+import type { Env } from "../types.ts";
 import { json, err } from "../lib/http.ts";
 import { MemoryStore, memoryFor, sane, sanitise, PROFILE_BUDGET, type Kind } from "../lib/memory.ts";
 import { allows, type Grant } from "../lib/scopes.ts";

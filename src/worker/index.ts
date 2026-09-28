@@ -1,36 +1,36 @@
-import type { Env } from "./types";
-import { err, json } from "./lib/http";
-import { authorize, grantsOf, isAdmin, personOf, type Principal } from "./lib/auth";
+import type { Env } from "./types.ts";
+import { err, json } from "./lib/http.ts";
+import { authorize, grantsOf, isAdmin, personOf, type Principal } from "./lib/auth.ts";
 import { withPerson } from "./lib/context.ts";
 import { allowedNow } from "./lib/access.ts";
 import { localeOf } from "./lib/locale.ts";
 import { personView } from "./lib/hub-client.ts";
-import { allows, requiredScope } from "./lib/scopes";
-import { preflight, withCors } from "./lib/cors";
-import * as limits from "./lib/limits";
-import { handleProbe } from "./routes/probe";
-import { handleSession, VOICES } from "./routes/session";
-import { handleDiag } from "./routes/diag";
-import { handleDelegate } from "./routes/delegate";
-import { handleTts } from "./routes/tts";
-import { handleMcp } from "./routes/mcp";
-import { handleMemory } from "./routes/memory";
-import { handleMap } from "./routes/map";
-import { handleCamera } from "./routes/camera";
-import { handleSpotify } from "./routes/spotify";
-import { handleGoogle } from "./routes/google";
-import { handleV1 } from "./routes/v1";
-import { handleRouter } from "./routes/router";
-import { handleSettings } from "./routes/settings";
-import { withSettings } from "./lib/settings-store";
-import { JARVIS_VERSION, handleVersion } from "./routes/version";
-import { handleUsage } from "./routes/usage";
-import { handleAlertsAdmin, isTicketedSocket, openTicketedSocket } from "./routes/alerts";
-import { handleAuth, handleHub } from "./routes/hub";
-import { handleFamily } from "./routes/family";
+import { allows, requiredScope } from "./lib/scopes.ts";
+import { preflight, withCors } from "./lib/cors.ts";
+import * as limits from "./lib/limits.ts";
+import { handleProbe } from "./routes/probe.ts";
+import { handleSession, VOICES } from "./routes/session.ts";
+import { handleDiag } from "./routes/diag.ts";
+import { handleDelegate } from "./routes/delegate.ts";
+import { handleTts } from "./routes/tts.ts";
+import { handleMcp } from "./routes/mcp.ts";
+import { handleMemory } from "./routes/memory.ts";
+import { handleMap } from "./routes/map.ts";
+import { handleCamera } from "./routes/camera.ts";
+import { handleSpotify } from "./routes/spotify.ts";
+import { handleGoogle } from "./routes/google.ts";
+import { handleV1 } from "./routes/v1.ts";
+import { handleRouter } from "./routes/router.ts";
+import { handleSettings } from "./routes/settings.ts";
+import { withSettings } from "./lib/settings-store.ts";
+import { JARVIS_VERSION, handleVersion } from "./routes/version.ts";
+import { handleUsage } from "./routes/usage.ts";
+import { handleAlertsAdmin, isTicketedSocket, openTicketedSocket } from "./routes/alerts.ts";
+import { handleAuth, handleHub } from "./routes/hub.ts";
+import { handleFamily } from "./routes/family.ts";
 
 // The Durable Object class must be exported from the entry for the runtime to find it.
-export { JarvisState } from "./state";
+export { JarvisState } from "./state.ts";
 
 /**
  * Who this request is for (lib/context.ts): a member from their sign-in; the

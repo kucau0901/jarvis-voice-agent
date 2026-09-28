@@ -1,4 +1,4 @@
-import type { Env } from "../types";
+import type { Env } from "../types.ts";
 import { err, json, publicOrigin } from "../lib/http.ts";
 import { grantsOf, isAdmin, personOf, type Principal } from "../lib/auth.ts";
 import { TTS_VOICES } from "../lib/speech.ts";

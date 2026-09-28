@@ -1,4 +1,4 @@
-import type { Tool } from "./registry";
+import type { Tool } from "./registry.ts";
 import { localeOf } from "../lib/locale.ts";
 import { carWaypoint, drive, type Waypoint } from "../lib/travel.ts";
 

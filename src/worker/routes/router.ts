@@ -1,7 +1,7 @@
 import { openaiBase } from "../lib/openai-base.ts";
 import OpenAI from "openai";
-import type { Env } from "../types";
-import { json, err, redact } from "../lib/http";
+import type { Env } from "../types.ts";
+import { json, err, redact } from "../lib/http.ts";
 import {
   DEFAULT_ROUTER_MODEL,
   builtinTools,
@@ -12,7 +12,7 @@ import {
   saneModelId,
   storeRouterModel,
   type FallbackRecord,
-} from "../lib/router-model";
+} from "../lib/router-model.ts";
 
 /**
  * The router model setting.

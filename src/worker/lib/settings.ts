@@ -1,4 +1,4 @@
-import type { Env } from "../types";
+import type { Env } from "../types.ts";
 import { DEFAULT_ORDER, validateOrder } from "./alerts.ts";
 import { validateCameraList } from "./cameras.ts";
 import { DEFAULT_STYLE, DEFAULT_VOICE, STT_PROVIDERS, TTS_PROVIDERS, TTS_VOICES } from "./speech.ts";

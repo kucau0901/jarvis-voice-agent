@@ -1,4 +1,4 @@
-import type { Env } from "../types";
+import type { Env } from "../types.ts";
 import { looksLikeToken, lookup, touch, type Device } from "./devices.ts";
 import { WILDCARD, narrow, type Grant } from "./scopes.ts";
 import { looksLikeSession, type Place, type Role } from "./hub.ts";

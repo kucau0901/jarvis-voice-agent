@@ -1,4 +1,4 @@
-import type { Tool } from "./registry";
+import type { Tool } from "./registry.ts";
 import { deliver, makeAlert } from "../lib/alerts.ts";
 import { stateStub } from "../lib/state-client.ts";
 

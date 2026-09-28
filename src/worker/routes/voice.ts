@@ -1,12 +1,12 @@
-import type { Env } from "../types";
-import { whoOf, type Principal } from "../lib/auth";
-import { err, json } from "../lib/http";
-import { SseStream, type EventSink, type SseEvent } from "../lib/sse";
-import { Collector, type Collected } from "../lib/collector";
-import { buildHistory, type Turn } from "../lib/history";
-import { MemoryStore } from "../lib/memory";
-import { stateStub } from "../lib/state-client";
-import { allows, SCOPES, WILDCARD, type Grant } from "../lib/scopes";
+import type { Env } from "../types.ts";
+import { whoOf, type Principal } from "../lib/auth.ts";
+import { err, json } from "../lib/http.ts";
+import { SseStream, type EventSink, type SseEvent } from "../lib/sse.ts";
+import { Collector, type Collected } from "../lib/collector.ts";
+import { buildHistory, type Turn } from "../lib/history.ts";
+import { MemoryStore } from "../lib/memory.ts";
+import { stateStub } from "../lib/state-client.ts";
+import { allows, SCOPES, WILDCARD, type Grant } from "../lib/scopes.ts";
 import {
   AUDIO_FORMATS,
   MAX_AUDIO_BYTES,
@@ -19,11 +19,11 @@ import {
   transcribe,
   type AudioFormat,
   type Spoken,
-} from "../lib/speech";
-import { run } from "./delegate";
-import { MAX_PHOTOS, MAX_PHOTO_CHARS, photosFrom } from "../lib/photos";
-import { dataUrl } from "../lib/cameras";
-import { originOf, type Origin } from "../lib/shared";
+} from "../lib/speech.ts";
+import { run } from "./delegate.ts";
+import { MAX_PHOTOS, MAX_PHOTO_CHARS, photosFrom } from "../lib/photos.ts";
+import { dataUrl } from "../lib/cameras.ts";
+import { originOf, type Origin } from "../lib/shared.ts";
 
 /**
  * Push-to-talk: one spoken question in, one spoken answer out, paid per

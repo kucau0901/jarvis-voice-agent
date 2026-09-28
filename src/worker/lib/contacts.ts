@@ -1,4 +1,4 @@
-import type { Env } from "../types";
+import type { Env } from "../types.ts";
 import { call, PEOPLE, type GoogleConfig } from "./google.ts";
 
 /**

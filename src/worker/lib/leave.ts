@@ -1,4 +1,4 @@
-import type { Env } from "../types";
+import type { Env } from "../types.ts";
 import { CALENDAR, call, explain, googleConfig, NeedsRelink } from "./google.ts";
 
 /**

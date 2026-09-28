@@ -1,4 +1,4 @@
-import type { Tool, ToolContext } from "./registry";
+import type { Tool, ToolContext } from "./registry.ts";
 import { localeOf } from "../lib/locale.ts";
 import { asQuotedData } from "../lib/quote.ts";
 

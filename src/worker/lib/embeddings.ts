@@ -1,5 +1,5 @@
 import { openaiBase } from "./openai-base.ts";
-import type { Env } from "../types";
+import type { Env } from "../types.ts";
 import type { Fact, Hit } from "./memory.ts";
 
 /**

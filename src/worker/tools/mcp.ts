@@ -1,8 +1,8 @@
 import { Client, StreamableHTTPClientTransport, SSEClientTransport } from "@modelcontextprotocol/client";
-import type { Env } from "../types";
-import { loadServers, type McpServerConfig } from "../lib/config-store";
-import type { Tool, ToolContext } from "./registry";
-import { McpSessions } from "../lib/mcp-sessions";
+import type { Env } from "../types.ts";
+import { loadServers, type McpServerConfig } from "../lib/config-store.ts";
+import type { Tool, ToolContext } from "./registry.ts";
+import { McpSessions } from "../lib/mcp-sessions.ts";
 
 /**
  * Third-party MCP servers, exposed to the delegation router as ordinary tools.

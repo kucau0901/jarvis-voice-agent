@@ -1,4 +1,4 @@
-import type { Env } from "../types";
+import type { Env } from "../types.ts";
 
 /**
  * Home Assistant over its REST API, for what needs no model: rendering a

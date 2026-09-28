@@ -1,18 +1,18 @@
 import { openaiBase } from "../lib/openai-base.ts";
 import OpenAI from "openai";
-import type { Env } from "../types";
-import { whoOf, grantsOf, personOf, type Principal } from "../lib/auth";
+import type { Env } from "../types.ts";
+import { whoOf, grantsOf, personOf, type Principal } from "../lib/auth.ts";
 import { isTheirs } from "../lib/context.ts";
-import type { EventSink } from "../lib/sse";
-import { err, json } from "../lib/http";
-import { stateStub } from "../lib/state-client";
-import { allows, type Grant } from "../lib/scopes";
-import { builtinTools, explicitCache, researchModel } from "../lib/router-model";
-import { toToolSchema } from "../tools/registry";
-import * as hermes from "../tools/hermes";
-import { RESEARCH_MONTHLY_DEFAULT, jobTool, usageEntry, withSources, type Job, type JobDeps, type Step } from "../lib/jobs";
-import { prepareRouter, runCalls } from "./delegate";
-import { recordUsage } from "./usage";
+import type { EventSink } from "../lib/sse.ts";
+import { err, json } from "../lib/http.ts";
+import { stateStub } from "../lib/state-client.ts";
+import { allows, type Grant } from "../lib/scopes.ts";
+import { builtinTools, explicitCache, researchModel } from "../lib/router-model.ts";
+import { toToolSchema } from "../tools/registry.ts";
+import * as hermes from "../tools/hermes.ts";
+import { RESEARCH_MONTHLY_DEFAULT, jobTool, usageEntry, withSources, type Job, type JobDeps, type Step } from "../lib/jobs.ts";
+import { prepareRouter, runCalls } from "./delegate.ts";
+import { recordUsage } from "./usage.ts";
 import { costOf } from "../lib/usage.ts";
 
 /**

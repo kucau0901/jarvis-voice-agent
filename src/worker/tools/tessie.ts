@@ -1,6 +1,6 @@
-import type { Env } from "../types";
+import type { Env } from "../types.ts";
 import { localeOf } from "../lib/locale.ts";
-import type { Tool, ToolContext } from "./registry";
+import type { Tool, ToolContext } from "./registry.ts";
 import { carsOf, type CarKey } from "../lib/context.ts";
 
 /**

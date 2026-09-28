@@ -1,8 +1,8 @@
-import type { Env } from "../types";
+import type { Env } from "../types.ts";
 import { localeOf } from "../lib/locale.ts";
 import { CALENDAR, call, explain, googleConfig, NeedsRelink, type GoogleConfig } from "../lib/google.ts";
 import { localParts, zonedToUtc } from "../lib/routines.ts";
-import type { Tool, ToolContext } from "./registry";
+import type { Tool, ToolContext } from "./registry.ts";
 
 /**
  * The user's Google Calendar.

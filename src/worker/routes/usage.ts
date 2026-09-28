@@ -1,6 +1,6 @@
-import type { Env } from "../types";
-import { err, json } from "../lib/http";
-import { stateStub } from "../lib/state-client";
+import type { Env } from "../types.ts";
+import { err, json } from "../lib/http.ts";
+import { stateStub } from "../lib/state-client.ts";
 import { localeOf } from "../lib/locale.ts";
 import { PRICES_AS_OF } from "../lib/prices.ts";
 import { dayOf, type UsageEntry } from "../lib/usage.ts";

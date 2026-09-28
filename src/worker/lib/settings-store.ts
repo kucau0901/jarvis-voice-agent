@@ -1,4 +1,4 @@
-import type { Env } from "../types";
+import type { Env } from "../types.ts";
 import { stateStub } from "./state-client.ts";
 import { effectiveEnv, type Changes, type SavedSettings } from "./settings.ts";
 

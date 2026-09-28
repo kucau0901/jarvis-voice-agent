@@ -1,4 +1,4 @@
-import type { Env } from "../types";
+import type { Env } from "../types.ts";
 import { localeOf } from "../lib/locale.ts";
 import {
   b64urlDecode,
@@ -13,7 +13,7 @@ import {
 } from "../lib/google.ts";
 import { resolveContact } from "../lib/contacts.ts";
 import { asQuotedData } from "../lib/quote.ts";
-import type { Tool, ToolContext } from "./registry";
+import type { Tool, ToolContext } from "./registry.ts";
 
 /**
  * Gmail, by voice.

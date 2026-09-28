@@ -1,4 +1,4 @@
-import type { Env } from "../types";
+import type { Env } from "../types.ts";
 
 /**
  * Client for a self-hosted Nous Research hermes-agent.

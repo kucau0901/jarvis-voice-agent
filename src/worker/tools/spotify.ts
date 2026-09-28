@@ -1,5 +1,5 @@
-import type { Tool, ToolContext } from "./registry";
-import { call, explain, spotifyConfig, type SpotifyConfig } from "../lib/spotify";
+import type { Tool, ToolContext } from "./registry.ts";
+import { call, explain, spotifyConfig, type SpotifyConfig } from "../lib/spotify.ts";
 
 /**
  * Spotify, by voice.

@@ -1,5 +1,5 @@
-import type { Env } from "../types";
-import { json, err } from "../lib/http";
+import type { Env } from "../types.ts";
+import { json, err } from "../lib/http.ts";
 
 const KEY = (gear: string) => `probe:${gear}`;
 const INDEX = "probe:index";

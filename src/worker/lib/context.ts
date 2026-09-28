@@ -1,4 +1,4 @@
-import type { Env } from "../types";
+import type { Env } from "../types.ts";
 import type { Prefs, Reach, Space } from "./hub.ts";
 import type { Access } from "./access.ts";
 

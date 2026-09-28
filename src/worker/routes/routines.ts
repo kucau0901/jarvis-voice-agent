@@ -1,16 +1,16 @@
-import type { Env } from "../types";
-import { whoOf, grantsOf, isAdmin, personOf, type Principal } from "../lib/auth";
+import type { Env } from "../types.ts";
+import { whoOf, grantsOf, isAdmin, personOf, type Principal } from "../lib/auth.ts";
 import { isTheirs } from "../lib/context.ts";
-import { err, json } from "../lib/http";
-import { stateStub } from "../lib/state-client";
-import { localeOf } from "../lib/locale";
-import { Collector } from "../lib/collector";
-import { memoryFor } from "../lib/memory";
-import { carWaypoint, drive } from "../lib/travel";
-import { EVENT_NAME, describeAction, describeTrigger, type Routine } from "../lib/routines";
-import type { Travel } from "../lib/scheduler";
-import { SCOPES, WILDCARD, type Grant } from "../lib/scopes";
-import { run } from "./delegate";
+import { err, json } from "../lib/http.ts";
+import { stateStub } from "../lib/state-client.ts";
+import { localeOf } from "../lib/locale.ts";
+import { Collector } from "../lib/collector.ts";
+import { memoryFor } from "../lib/memory.ts";
+import { carWaypoint, drive } from "../lib/travel.ts";
+import { EVENT_NAME, describeAction, describeTrigger, type Routine } from "../lib/routines.ts";
+import type { Travel } from "../lib/scheduler.ts";
+import { SCOPES, WILDCARD, type Grant } from "../lib/scopes.ts";
+import { run } from "./delegate.ts";
 
 /**
  * Routines over HTTP (lib/routines.ts). All need the `routines` scope.

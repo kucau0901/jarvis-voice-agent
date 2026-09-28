@@ -1,25 +1,25 @@
 import { openaiBase } from "../lib/openai-base.ts";
 import OpenAI from "openai";
-import type { Env } from "../types";
-import { err, redact } from "../lib/http";
-import { SseStream, type EventSink } from "../lib/sse";
-import { buildHistory, type Turn } from "../lib/history";
-import { baseTools, outputText, toToolSchema, type Tool, type ToolContext, type ToolOutput } from "../tools/registry";
-import { mcpSessions, mcpTools } from "../tools/mcp";
-import { assistConfig, lastAsk, tryAssist } from "../lib/assist";
-import { routerLoop } from "../lib/router-loop";
-import { recordUsage } from "./usage";
-import { originOf, sharedBlock, type Origin, type SharedTurn } from "../lib/shared";
-import type { Principal } from "../lib/auth";
-import { stateStub } from "../lib/state-client";
-import { memoryFor, type MemoryStore } from "../lib/memory";
+import type { Env } from "../types.ts";
+import { err, redact } from "../lib/http.ts";
+import { SseStream, type EventSink } from "../lib/sse.ts";
+import { buildHistory, type Turn } from "../lib/history.ts";
+import { baseTools, outputText, toToolSchema, type Tool, type ToolContext, type ToolOutput } from "../tools/registry.ts";
+import { mcpSessions, mcpTools } from "../tools/mcp.ts";
+import { assistConfig, lastAsk, tryAssist } from "../lib/assist.ts";
+import { routerLoop } from "../lib/router-loop.ts";
+import { recordUsage } from "./usage.ts";
+import { originOf, sharedBlock, type Origin, type SharedTurn } from "../lib/shared.ts";
+import type { Principal } from "../lib/auth.ts";
+import { stateStub } from "../lib/state-client.ts";
+import { memoryFor, type MemoryStore } from "../lib/memory.ts";
 import { bookOf, carsOf } from "../lib/context.ts";
 import { passOf } from "../tools/pass.ts";
-import { allows, type Grant } from "../lib/scopes";
+import { allows, type Grant } from "../lib/scopes.ts";
 import { countryName, localeOf, utcOffset } from "../lib/locale.ts";
-import { DEFAULT_CHAR_BUDGET, glassesInstructions } from "../lib/glasses";
-import { spokenReplyInstructions } from "../lib/prompt";
-import { photosFrom } from "../lib/photos";
+import { DEFAULT_CHAR_BUDGET, glassesInstructions } from "../lib/glasses.ts";
+import { spokenReplyInstructions } from "../lib/prompt.ts";
+import { photosFrom } from "../lib/photos.ts";
 import {
   DEFAULT_ROUTER_MODEL,
   builtinTools,
@@ -28,7 +28,7 @@ import {
   explicitCache,
   recordFallback,
   resolveRouterModel,
-} from "../lib/router-model";
+} from "../lib/router-model.ts";
 
 const ROUTER_PROMPT = `You are the backend behind Jarvis, a voice assistant. It usually
 runs in the user's car, but it is also reached from a phone, a laptop and small

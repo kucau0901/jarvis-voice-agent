@@ -1,24 +1,24 @@
-import type { Env } from "../types";
-import { err, json } from "../lib/http";
-import { Collector, type Collected } from "../lib/collector";
-import { buildHistory, type Turn } from "../lib/history";
-import { run, handleDelegate, type RunOptions } from "./delegate";
-import { whoOf, grantsOf, isAdmin, personOf, type Principal } from "../lib/auth";
+import type { Env } from "../types.ts";
+import { err, json } from "../lib/http.ts";
+import { Collector, type Collected } from "../lib/collector.ts";
+import { buildHistory, type Turn } from "../lib/history.ts";
+import { run, handleDelegate, type RunOptions } from "./delegate.ts";
+import { whoOf, grantsOf, isAdmin, personOf, type Principal } from "../lib/auth.ts";
 import { deviceWho } from "../lib/context.ts";
 import { hubStub } from "../lib/hub-client.ts";
-import { stateStub } from "../lib/state-client";
-import { charBudget, forGlasses, latestUserText, toChatCompletion, waitSeconds } from "../lib/glasses";
-import { allows, saneGrants, SCOPES, WILDCARD, type Grant } from "../lib/scopes";
-import { handleAlertApi } from "./alerts";
-import { handleRoutines } from "./routines";
-import { handleVoice } from "./voice";
-import { handleJobs } from "./jobs";
+import { stateStub } from "../lib/state-client.ts";
+import { charBudget, forGlasses, latestUserText, toChatCompletion, waitSeconds } from "../lib/glasses.ts";
+import { allows, saneGrants, SCOPES, WILDCARD, type Grant } from "../lib/scopes.ts";
+import { handleAlertApi } from "./alerts.ts";
+import { handleRoutines } from "./routines.ts";
+import { handleVoice } from "./voice.ts";
+import { handleJobs } from "./jobs.ts";
 
 /** Everything a wildcard grant covers, minus the screen this route does not have. */
 const SCREENLESS: Grant[] = SCOPES.filter((s) => s !== "screen");
-import * as devices from "../lib/devices";
-import { handleLiveUsage } from "./usage";
-import { originOf } from "../lib/shared";
+import * as devices from "../lib/devices.ts";
+import { handleLiveUsage } from "./usage.ts";
+import { originOf } from "../lib/shared.ts";
 
 /**
  * The versioned surface other things talk to.

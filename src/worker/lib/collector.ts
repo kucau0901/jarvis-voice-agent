@@ -1,4 +1,4 @@
-import type { EventSink, SseEvent } from "./sse";
+import type { EventSink, SseEvent } from "./sse.ts";
 
 /** A pathological loop must not be able to balloon memory before it is cut off. */
 const MAX_EVENTS = 200;

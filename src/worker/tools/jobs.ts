@@ -1,4 +1,4 @@
-import type { Tool } from "./registry";
+import type { Tool } from "./registry.ts";
 import { stateStub } from "../lib/state-client.ts";
 import { voiceWho } from "../lib/context.ts";
 import { allows } from "../lib/scopes.ts";

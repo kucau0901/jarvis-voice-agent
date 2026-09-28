@@ -1,4 +1,4 @@
-import type { Tool } from "./registry";
+import type { Tool } from "./registry.ts";
 import { sanitise, type Kind } from "../lib/memory.ts";
 
 /** One spoken answer's worth. Beyond this it is a database, not a memory. */
