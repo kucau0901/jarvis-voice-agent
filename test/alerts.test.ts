@@ -321,6 +321,13 @@ function fakeStorage() {
 
 console.log("\nstorage: notifications");
 {
+  // Nobody has turned notifications on yet: nothing to send to, and no keys made to sign with.
+  const empty = fakeStorage();
+  const none = await new StateHost(empty, {} as never).pushTargets();
+  check("no browsers: no targets", none.subs.length === 0 && none.vapid.publicKey === "", none);
+  check("and no key pair is made for them", (await empty.get("vapid:v1")) === undefined);
+}
+{
   const store = fakeStorage();
   const host = new StateHost(store, {} as never);
   const k1 = await host.vapid();
