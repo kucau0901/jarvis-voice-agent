@@ -230,7 +230,7 @@ async function route(
     case "/api/map":
       return await handleMap(req, env);
     case "/api/diag":
-      return await handleDiag(req, env);
+      return await handleDiag(env);
     case "/api/router":
     case "/api/router/test":
       return await handleRouter(req, env);

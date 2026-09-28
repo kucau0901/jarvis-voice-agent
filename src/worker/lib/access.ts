@@ -136,7 +136,7 @@ export function passService(entity: string, action: string): { domain: string; s
   };
   const service = map[domain]?.[action];
   if (!service) return `a ${domain} cannot be told to ${action}`;
-  return { domain: domain === "input_button" ? "input_button" : domain, service };
+  return { domain, service };
 }
 
 /** The actions a thing offers, for its buttons. */

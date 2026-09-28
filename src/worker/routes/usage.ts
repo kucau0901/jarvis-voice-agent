@@ -24,7 +24,7 @@ export async function recordUsage(env: Env, e: UsageEntry): Promise<void> {
 }
 
 /** Admins see everyone's, with each person's part; anyone else their own (lib/context.ts). */
-export async function handleUsage(req: Request, env: Env, everyone = true): Promise<Response> {
+export async function handleUsage(req: Request, env: Env, everyone: boolean): Promise<Response> {
   if (req.method !== "GET") return err(405, "GET only");
   const state = stateStub(env);
   if (!state) return err(503, "usage needs the STATE Durable Object");

@@ -373,8 +373,8 @@ export async function handleDelegate(
   req: Request,
   env: Env,
   ctx: ExecutionContext,
-  grants: readonly Grant[] = ["*"],
-  principal: Principal = { kind: "owner" },
+  grants: readonly Grant[],
+  principal: Principal,
 ): Promise<Response> {
   if (req.method !== "POST") return err(405, "method not allowed");
   // No OpenAI key is not refused here: Home Assistant's Assist can still
@@ -507,8 +507,8 @@ export async function prepareRouter(
   env: Env,
   turns: Turn[],
   signal: AbortSignal,
-  grants: readonly Grant[] = ["*"],
-  opts: RunOptions = {},
+  grants: readonly Grant[],
+  opts: RunOptions,
   /** Connections held for this question; without it each house call connects on its own. */
   sessions?: ReturnType<typeof mcpSessions>,
 ): Promise<Prepared> {
@@ -533,7 +533,7 @@ export async function prepareRouter(
     memory.load().catch((e) => {
       console.warn("memory unavailable:", e instanceof Error ? e.message : String(e));
     }),
-    (wantsMcp ? mcpTools(env, signal, sessions, opts.waitUntil) : Promise.resolve([] as Tool[])).catch((e) => {
+    (wantsMcp ? mcpTools(env, sessions, opts.waitUntil) : Promise.resolve([] as Tool[])).catch((e) => {
       console.warn("mcp tools unavailable:", e instanceof Error ? e.message : String(e));
       return [] as typeof tools;
     }),
@@ -661,8 +661,8 @@ export async function run(
   turns: Turn[],
   sse: EventSink,
   signal: AbortSignal,
-  grants: readonly Grant[] = ["*"],
-  opts: RunOptions = {},
+  grants: readonly Grant[],
+  opts: RunOptions,
 ) {
   const assist = opts.assist && !opts.images?.length ? assistConfig(env, grants) : null;
   const ask = assist ? (opts.assistAsk?.trim() || lastAsk(turns)) : null;

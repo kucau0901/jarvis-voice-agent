@@ -12,7 +12,7 @@ import { orderCandidates, readFallback, resolveRouterModel } from "../lib/router
  * Hermes credentials — are invisible from the driver's seat, and "Jarvis went
  * quiet" is not a diagnosis.
  */
-export async function handleDiag(_req: Request, env: Env): Promise<Response> {
+export async function handleDiag(env: Env): Promise<Response> {
   const out: Record<string, unknown> = { ts: new Date().toISOString() };
   out.localTools = toolAvailability(env);
   out.router = { ...(await resolveRouterModel(env)), fallback: await readFallback(env) };

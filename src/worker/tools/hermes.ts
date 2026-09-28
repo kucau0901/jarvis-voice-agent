@@ -120,7 +120,7 @@ export async function ping(env: Env, signal?: AbortSignal) {
 export async function ask(
   env: Env,
   question: string,
-  opts: { signal?: AbortSignal; system?: string; onFirstToken?: () => void } = {},
+  opts: { signal?: AbortSignal; system?: string } = {},
 ): Promise<string> {
   const cfg = hermesConfig(env);
   if (!cfg) throw new HermesNotConfigured();
@@ -157,7 +157,6 @@ export async function ask(
   const decoder = new TextDecoder();
   let buffer = "";
   let text = "";
-  let sawFirst = false;
 
   for (;;) {
     const { done, value } = await reader.read();
@@ -179,10 +178,7 @@ export async function ask(
         };
         const piece =
           chunk.choices?.[0]?.delta?.content ?? chunk.choices?.[0]?.message?.content ?? "";
-        if (piece) {
-          if (!sawFirst) { sawFirst = true; opts.onFirstToken?.(); }
-          text += piece;
-        }
+        if (piece) text += piece;
       } catch {
         // A partial frame split across reads; the next read completes it.
       }

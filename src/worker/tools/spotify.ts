@@ -113,7 +113,7 @@ const musicState: Tool = {
         `${p.item?.album?.name ? ` (${p.item.album.name})` : ""} on ${where}. ` +
         `All devices Spotify can see: ${names}.`
       );
-    }))!;
+    }));
   },
 };
 
@@ -180,7 +180,7 @@ const musicPlay: Tool = {
 
       const by = (hit.artists ?? []).map((a) => a.name).join(", ");
       return `Playing ${type === "track" ? "" : type + " "}"${hit.name}"${by ? ` by ${by}` : ""}.`;
-    }))!;
+    }));
   },
 };
 
@@ -240,7 +240,7 @@ const musicControl: Tool = {
 
       const res = await call(ctx.env, cfg, spec.path, { method: spec.method, signal: ctx.signal });
       return explain(res) ?? spec.said;
-    }))!;
+    }));
   },
 };
 

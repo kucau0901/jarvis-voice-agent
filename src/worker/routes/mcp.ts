@@ -91,8 +91,7 @@ export async function handleMcp(req: Request, env: Env): Promise<Response> {
     let live: { name: string; description: string }[] = [];
     let liveError: string | null = null;
     try {
-      const ac = new AbortController();
-      live = (await mcpTools(env, ac.signal)).map((t) => ({
+      live = (await mcpTools(env)).map((t) => ({
         name: t.name,
         description: t.description.slice(0, 160),
       }));

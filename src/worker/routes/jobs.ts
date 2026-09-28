@@ -69,7 +69,7 @@ const researchLimit = (raw: string | undefined): number => {
 };
 
 /** The engine, bound to an environment: what the Durable Object runs jobs with. */
-export function jobEngine(env: Env, deliver: JobDeps["deliver"], envFor: (job: Job) => Promise<Env> = async () => env): JobDeps {
+export function jobEngine(env: Env, deliver: JobDeps["deliver"], envFor: (job: Job) => Promise<Env>): JobDeps {
   const client = () => new OpenAI({ apiKey: env.OPENAI_API_KEY, baseURL: openaiBase(env) });
   const signal = () => AbortSignal.timeout(60_000);
 

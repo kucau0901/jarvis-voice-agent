@@ -31,7 +31,7 @@ const CATALOG_FRESH_MS = 10 * 60_000;
 const CATALOG_STALE_MS = 24 * 3_600_000;
 const CATALOG_KEEP_S = 7 * 24 * 3_600;
 
-async function connect(server: McpServerConfig, signal?: AbortSignal): Promise<Client> {
+async function connect(server: McpServerConfig): Promise<Client> {
   const client = new Client({ name: "jarvis", version: "1.0.0" });
   const opts = { requestInit: { headers: server.headers ?? {} } };
 
@@ -40,17 +40,15 @@ async function connect(server: McpServerConfig, signal?: AbortSignal): Promise<C
     await client.connect(new StreamableHTTPClientTransport(new URL(server.url), opts));
     console.log(`mcp: ${server.label} connected (http) ${Date.now() - t0}ms`);
     return client;
-  } catch (e) {
+  } catch {
     // Home Assistant's MCP Server integration still speaks the older SSE
     // transport, so falling back is not optional here.
-    void e;
     const failedAfter = Date.now() - t0;
     const fallback = new Client({ name: "jarvis", version: "1.0.0" });
     await fallback.connect(new SSEClientTransport(new URL(server.url), opts));
     console.log(`mcp: ${server.label} connected (sse, http failed after ${failedAfter}ms) ${Date.now() - t0}ms`);
     return fallback;
   }
-  void signal;
 }
 
 interface CatalogEntry {
@@ -186,7 +184,6 @@ const toolName = (label: string, name: string) =>
  */
 export async function mcpTools(
   env: Env,
-  signal: AbortSignal,
   sessions?: McpSessions<McpServerConfig, Client>,
   waitUntil?: (p: Promise<unknown>) => void,
 ): Promise<Tool[]> {
@@ -224,7 +221,6 @@ export async function mcpTools(
       }
     }
   }
-  void signal;
   return out;
 }
 

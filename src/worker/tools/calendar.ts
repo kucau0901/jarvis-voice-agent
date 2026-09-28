@@ -235,7 +235,7 @@ export const calendarCheck: Tool = {
         `\n\nAnswer in one or two sentences. If the user wants to know when to set off, ` +
         `take the location above and call directions with it.`
       );
-    }))!;
+    }));
   },
 };
 
@@ -330,7 +330,7 @@ export const calendarAdd: Tool = {
       }
 
       return `Added "${title}" for ${whenSpoken(tz, { dateTime: startAt.toISOString() })}${location ? `, at ${location}` : ""}.`;
-    }))!;
+    }));
   },
 };
 
