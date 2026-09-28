@@ -142,9 +142,11 @@ export function jobEngine(env: Env, deliver: JobDeps["deliver"], envFor: (job: J
     },
 
     async hermes(job) {
-      if (!hermes.hermesConfig(env)) return { ok: false, text: "Hermes is not set up" };
+      // As whoever started it, like the other engines: their own Hermes memory (hermes.ts sessionKey).
+      const theirs = await envFor(job);
+      if (!hermes.hermesConfig(theirs)) return { ok: false, text: "Hermes is not set up" };
       try {
-        const text = await hermes.ask(env, job.task, { signal: AbortSignal.timeout(6 * 60_000) });
+        const text = await hermes.ask(theirs, job.task, { signal: AbortSignal.timeout(6 * 60_000) });
         return text.trim() ? { ok: true, text } : { ok: false, text: "Hermes answered with nothing" };
       } catch (e) {
         return { ok: false, text: `Hermes did not answer: ${e instanceof Error ? e.message : String(e)}`.slice(0, 300) };

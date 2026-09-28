@@ -26,6 +26,11 @@ of every release, and in the [README](README.md#updating).
 
 ### Fixed
 
+- Hermes could lose the last words of an answer when its stream ended
+  without a final newline. And everyone Hermes was shared with talked to one
+  Hermes memory, so what the first person told Hermes, anyone else could ask
+  it about. Each person now has their own; the first person keeps the one
+  they had.
 - A Home Assistant reached through an address with a path (behind a proxy,
   such as https://example.com/ha) worked for the house but not for alerts
   sent through Home Assistant, the Settings test, or checking a personal
