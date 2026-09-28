@@ -17,5 +17,7 @@
     "resolveJsonModule": true,
     "verbatimModuleSyntax": true
   },
-  "include": ["src/**/*.ts", "worker-configuration.d.ts"]
+  // The app's half: the browser's types. The Worker's is tsconfig.worker.json,
+  // with the Workers runtime's types instead; npm run typecheck runs both.
+  "include": ["src/app/**/*.ts", "src/shared/**/*.ts"]
 }

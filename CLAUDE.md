@@ -4,7 +4,7 @@
 
 | What | Command | Notes |
 | --- | --- | --- |
-| Typecheck | `npm run typecheck` | `tsc --noEmit`. A fresh clone first needs `cp wrangler.example.jsonc wrangler.jsonc` and `npx wrangler types`, which generates `worker-configuration.d.ts` (as CI does). |
+| Typecheck | `npm run typecheck` | `tsc --noEmit` twice: the app (`tsconfig.json`, DOM types) and the Worker (`tsconfig.worker.json`, the Workers runtime's types). A fresh clone first needs `cp wrangler.example.jsonc wrangler.jsonc` and `npx wrangler types`, which generates `worker-configuration.d.ts` (as CI does). |
 | Test | `npm test` | Plain Node, no runner: each `test/*.test.ts` is run with `node`. 32 files. |
 | Build | `npm run build` | `vite build` into `dist/`. The "chunks larger than 500 kB" warning is expected. |
 | Lint | none | There is no linter configured, and none is to be added. |

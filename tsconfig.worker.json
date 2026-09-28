@@ -1,0 +1,11 @@
+// The Worker's half of the typecheck (npm run typecheck runs both): the
+// Workers runtime's types, and no DOM. tsconfig.json is the app's half, and the
+// one the build reads; their compiler options are the same but for these.
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2022"],
+    "types": []
+  },
+  "include": ["src/worker/**/*.ts", "src/shared/**/*.ts", "worker-configuration.d.ts"]
+}
