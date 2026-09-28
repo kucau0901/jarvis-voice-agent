@@ -391,7 +391,7 @@ export function b64urlDecode(data: string): string {
     const bin = atob(padded);
     const bytes = new Uint8Array(bin.length);
     for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-    return new TextDecoder("utf-8", { fatal: false }).decode(bytes);
+    return new TextDecoder("utf-8", { fatal: false, ignoreBOM: false }).decode(bytes);
   } catch {
     return "";
   }

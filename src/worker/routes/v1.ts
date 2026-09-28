@@ -128,7 +128,8 @@ async function collectWithDeadline(
    */
   ctx.waitUntil(work);
 
-  let timer: number | undefined;
+  // Set at once: a Promise runs its executor before returning.
+  let timer!: number;
   const timeout = new Promise<"timeout">((resolve) => {
     timer = setTimeout(() => resolve("timeout"), waitS * 1000);
   });

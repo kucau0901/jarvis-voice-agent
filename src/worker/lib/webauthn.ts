@@ -154,7 +154,8 @@ const ALGORITHMS = [ES256, EDDSA, RS256];
 interface Imported {
   key: CryptoKey;
   alg: number;
-  verify: AlgorithmIdentifier | EcdsaParams;
+  /** What crypto.subtle.verify takes: a name, and the hash for ECDSA. */
+  verify: { name: string; hash?: string };
 }
 
 /** A COSE public key made usable by WebCrypto. */

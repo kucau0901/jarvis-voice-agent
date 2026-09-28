@@ -428,7 +428,7 @@ export class StateHost {
   async pushTargets(person?: string): Promise<{ vapid: VapidKeys; subs: PushTarget[] }> {
     // One person's browsers: the first person's are the owner key's and the devices' (lib/context.ts).
     const subs = (await this.listPushSubs()).filter((s) => person === undefined || personOfWho(s.who) === person);
-    if (!subs.length) return { vapid: { publicKey: "", privateJwk: {} }, subs: [] };
+    if (!subs.length) return { vapid: { publicKey: "", privateJwk: { kty: "EC" } }, subs: [] };
     return {
       vapid: await this.vapid(),
       subs: subs.map(({ id, endpoint, p256dh, auth, subject, label }) => ({ id, endpoint, p256dh, auth, subject, label })),
