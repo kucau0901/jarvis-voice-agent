@@ -63,7 +63,8 @@ function tidier() {
     t = t.replace(new RegExp(`\\b(?:${NAMES})(?:(?:, | and )(?:${NAMES}))+\\b`, "g"), (m) => m.split(/, | and /).sort().join(", "));
     // Lines each about one of them ("Sara: …", "for Sara"), in the same order for the same reason.
     // The slowest questions (Settings → Usage) are a matter of timing: left out.
-    const lines = t.split("\n").filter((l) => !/^\d+(\.\d+)? s · /.test(l));
+    // So is the version line in Settings: whether a newer release is out is asked of GitHub.
+    const lines = t.split("\n").filter((l) => !/^\d+(\.\d+)? s · /.test(l) && !/^Jarvis \d+\.\d+\.\d+ · /.test(l));
     const named = (l) => new RegExp(`^(?:for )?(?:${NAMES})\\b`).test(l);
     for (let i = 0; i < lines.length; ) {
       let j = i;
