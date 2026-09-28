@@ -280,6 +280,65 @@ export class Memory {
     }
   }
 
+  /**
+   * Change a fact where it is: its words, and a place's or person's name (and a
+   * place's address). One fact, by its id (PATCH), so nothing else is touched.
+   */
+  private editIn(el: HTMLElement, f: Fact, book: Book): void {
+    if (el.querySelector(".fedit")) return;
+    const named = f.kind === "place" || f.kind === "person";
+    const form = document.createElement("div");
+    form.className = "fedit";
+    form.innerHTML = `
+      <input type="text" class="etext" maxlength="240" value="${esc(f.text)}" aria-label="What Jarvis remembers">
+      ${named ? `<input type="text" class="ename" maxlength="60" value="${esc(f.slug ?? "")}" placeholder="${f.kind === "place" ? "What you call it, e.g. home" : "Their name"}" aria-label="Name">` : ""}
+      ${f.kind === "place" ? `<input type="text" class="eaddr" maxlength="300" value="${esc(f.address ?? "")}" placeholder="Its full address" aria-label="Address">` : ""}
+      <div class="rowbtns"><button class="primary esave">Save</button><button class="ecancel">Cancel</button></div>`;
+    // Hidden by style: .rowbtns sets display, which would win over the hidden attribute.
+    const shown = [...el.children] as HTMLElement[];
+    for (const c of shown) c.style.display = "none";
+    el.appendChild(form);
+    const close = () => {
+      form.remove();
+      for (const c of shown) c.style.display = "";
+    };
+    form.querySelector(".ecancel")!.addEventListener("click", close);
+    form.querySelector(".esave")!.addEventListener("click", () => void this.edit(f, book, form));
+    form.querySelector<HTMLInputElement>(".etext")!.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") void this.edit(f, book, form);
+      if (e.key === "Escape") close();
+    });
+    form.querySelector<HTMLInputElement>(".etext")!.focus();
+  }
+
+  private async edit(f: Fact, book: Book, form: HTMLElement): Promise<void> {
+    const text = form.querySelector<HTMLInputElement>(".etext")!.value.trim();
+    const name = form.querySelector<HTMLInputElement>(".ename")?.value.trim();
+    const address = form.querySelector<HTMLInputElement>(".eaddr")?.value.trim();
+    if (!text) {
+      this.msg("Say what it is, or Forget it instead.", true);
+      return;
+    }
+    if (f.kind === "place" && (!name || !address)) {
+      this.msg("A place needs what you call it and its address, so directions can use it.", true);
+      return;
+    }
+    this.msg("Saving…");
+    try {
+      const res = await fetch(this.path("/api/memory", book), {
+        method: "PATCH",
+        headers: authHeaders(this.key),
+        body: JSON.stringify({ id: f.id, text, ...(name === undefined ? {} : { name }), ...(address === undefined ? {} : { address }) }),
+      });
+      const body = (await res.json()) as { ok?: boolean; error?: string };
+      if (!res.ok || !body.ok) throw new Error(body.error ?? `status ${res.status}`);
+      this.msg(`Changed to “${text}”.`);
+      await this.load();
+    } catch (e) {
+      this.msg(`Not changed: ${e instanceof Error ? e.message : String(e)}`, true);
+    }
+  }
+
   /** From this person's memory to the family's, or back (routes/memory.ts). */
   private async move(f: Fact, from: Book): Promise<void> {
     const to = from === "family" ? "mine" : "family";
@@ -346,13 +405,14 @@ export class Memory {
         <div class="ftxt">${esc(f.text)}</div>
         <div class="meta">${meta.join(" · ")}</div>
         <div class="rowbtns">
+          <button class="edit">Edit</button>
           ${this.hasFamily ? `<button class="move">${book === "family" ? "Move to mine" : "Move to the family's"}</button>` : ""}
           <button class="forget">Forget</button>
         </div>
       </div>`;
   }
 
-  /** Forget and Move on every row under `box`. */
+  /** Edit, Forget and Move on every row under `box`. */
   private armRows(box: HTMLElement): void {
     for (const el of box.querySelectorAll<HTMLElement>(".fact")) {
       const book: Book = el.dataset.book === "family" ? "family" : "mine";
@@ -360,6 +420,7 @@ export class Memory {
       if (!f) continue;
       arm(el.querySelector<HTMLButtonElement>(".forget")!, "Forget it?", () => this.forget(f, book));
       el.querySelector(".move")?.addEventListener("click", () => void this.move(f, book));
+      el.querySelector(".edit")?.addEventListener("click", () => this.editIn(el, f, book));
     }
   }
 

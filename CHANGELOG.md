@@ -17,6 +17,13 @@ of every release, and in the [README](README.md#updating).
 
 ## [Unreleased]
 
+### Added
+
+- **Edit a memory** in Memory: each saved fact has an Edit button beside
+  Forget, to change its words where it is, and a person's or place's name
+  and a place's address. It keeps everything else about the fact: when it
+  was saved, how often it has been used, and whether it is kept forever.
+
 ## [2.1.0] - 2026-09-28
 
 ### Changed

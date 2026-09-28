@@ -1,6 +1,6 @@
 import type { Env } from "../types.ts";
 import { json, err } from "../lib/http.ts";
-import { MemoryStore, memoryFor, sane, sanitise, PROFILE_BUDGET, type Kind } from "../lib/memory.ts";
+import { MemoryStore, memoryFor, sane, sanitise, slugify, PROFILE_BUDGET, type Kind } from "../lib/memory.ts";
 import { allows, type Grant } from "../lib/scopes.ts";
 
 const KINDS: readonly Kind[] = ["place", "person", "preference", "vehicle", "routine", "note", "reference"];
@@ -130,6 +130,47 @@ export async function handleMemory(req: Request, env: Env, grants: readonly Gran
     });
     await store.save();
     return json({ ok: true, fact, replaced: replaced ?? null });
+  }
+
+  /*
+   * Editing one fact, from the panel: its words, and a place's or person's
+   * name, and a place's address. Through the same path as adding, so it keeps
+   * its id, when it was made, how often it was used and whether it is kept
+   * forever, and nothing else is touched: a fact saved by voice meanwhile stays.
+   */
+  if (req.method === "PATCH") {
+    const b = await body(req);
+    const id = typeof b?.id === "string" ? b.id : "";
+    if (!b || !id) return err(400, "id is required");
+    const clean = sanitise(b.text);
+    if (!clean.ok) return err(400, clean.why);
+    const hot = store.facts.find((f) => f.id === id);
+    const fact = hot ?? (await store.allFacts()).find((f) => f.id === id);
+    if (!fact) return err(404, "no saved fact with that id");
+
+    const named = fact.kind === "place" || fact.kind === "person";
+    const name = named && typeof b.name === "string" ? b.name.trim().slice(0, 60) : undefined;
+    const slug = name === undefined ? fact.slug : name ? slugify(name) : undefined;
+    const address =
+      fact.kind === "place" ? (typeof b.address === "string" ? b.address.trim().slice(0, 300) || undefined : fact.address) : undefined;
+    if (fact.kind === "place" && (!slug || !address)) return err(400, "a place needs what you call it and its address");
+    // Two of them by the same name would contradict each other.
+    if (slug && named && store.facts.some((f) => f.id !== id && f.kind === fact.kind && f.slug === slug)) {
+      return err(409, `another ${fact.kind} is already called "${slug}"`);
+    }
+
+    let saved;
+    if (hot) {
+      ({ fact: saved } = store.add({ text: clean.text, kind: fact.kind, slug, address, replaces: id, pinned: fact.pinned, source: fact.source }));
+    } else {
+      // Reference lives apart and is replaced whole: a new id, the rest kept.
+      await store.removeReference(id);
+      ({ fact: saved } = store.add({ text: clean.text, kind: "reference", slug, address: fact.address, source: fact.source }));
+      saved.createdAt = fact.createdAt;
+      saved.useCount = fact.useCount;
+    }
+    await store.save();
+    return json({ ok: true, fact: saved });
   }
 
   if (req.method === "DELETE") {
