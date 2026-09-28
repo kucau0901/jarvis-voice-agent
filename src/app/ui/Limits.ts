@@ -81,10 +81,15 @@ export function limitsForm(a: Access | null | undefined, loadThings?: () => Prom
       })
       .catch((e) => {
         things.innerHTML = `<p class="note">The house could not list its things (${esc(e instanceof Error ? e.message : String(e))}). Type them below.</p>`;
-        for (const [entity, label] of chosen) addTyped(entity, label);
+        typeOut();
       });
   } else {
+    typeOut();
+  }
+  /** What is on the pass, as typed rows: then those rows are all there is, so clearing or renaming one takes. */
+  function typeOut() {
     for (const [entity, label] of chosen) addTyped(entity, label);
+    chosen.clear();
   }
   function addTyped(entity = "", label = "") {
     const row = document.createElement("div");

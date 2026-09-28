@@ -26,6 +26,9 @@ of every release, and in the [README](README.md#updating).
 
 ### Fixed
 
+- When the house could not list its things, a guest pass's existing items
+  were shown to be typed over, but clearing one did not remove it and
+  renaming one was ignored. Both now take effect.
 - If your passkeys or the list of where you are signed in could not be
   loaded, Family left those places empty without a word. It now says it
   could not load them, and why.
