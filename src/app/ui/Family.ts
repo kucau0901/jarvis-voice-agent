@@ -7,6 +7,7 @@ import { dropPerson, loadPeople } from "../people";
 import { Mine, type Prefs } from "./Mine";
 import { limitsForm, limitsSaid, readLimits, type Access } from "./Limits";
 import { SectionMenu, type NavGroup } from "./sections";
+import { inCar } from "../client";
 
 /**
  * The family: who is in it, inviting someone, pairing a screen, and your own
@@ -61,7 +62,7 @@ interface Invite {
  * The car is the screen that shows a code, never the one that types another
  * screen's in: that is a job for the phone in your hand.
  */
-const IN_CAR = /Tesla/i.test(navigator.userAgent);
+const IN_CAR = inCar();
 
 const ROLE_WORDS: Record<string, string> = {
   admin: "Admin — everything, and manages the family",

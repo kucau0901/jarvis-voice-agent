@@ -1,4 +1,4 @@
-import { detectClient } from "../src/app/client.ts";
+import { detectClient, isCar } from "../src/app/client.ts";
 import { jarvisPrompt, isClientKind } from "../src/worker/lib/prompt.ts";
 
 let pass = 0;
@@ -37,6 +37,20 @@ console.log("detectClient — against what the real dashboard reports");
   check("a nonsense override is ignored",
     detectClient({ ...DESKTOP, override: "toaster" }) === "desktop");
   check("no override behaves as before", detectClient({ ...TESLA, override: null }) === "car");
+}
+
+console.log("\nisCar — the car's screen, for what it is called and offered");
+{
+  const TESLA = { pointerCoarse: false, anyPointerCoarse: true };
+  const CAR_UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36";
+  const WINDOWS_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36";
+  const ANDROID_UA = "Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Mobile Safari/537.36";
+  check("the real car, which sends no Tesla token, is the car", isCar(CAR_UA, TESLA));
+  check("a touchscreen Windows laptop is not", !isCar(WINDOWS_UA, TESLA));
+  check("an Android phone is not", !isCar(ANDROID_UA, { pointerCoarse: true, anyPointerCoarse: true }));
+  check("a Linux computer with no touchscreen is not", !isCar(CAR_UA, { pointerCoarse: false, anyPointerCoarse: false }));
+  check("?client=car makes any screen the car", isCar(WINDOWS_UA, { pointerCoarse: false, anyPointerCoarse: false, override: "car" }));
+  check("?client=desktop makes the car not the car", !isCar(CAR_UA, { ...TESLA, override: "desktop" }));
 }
 
 console.log("\nthe prompt actually changes with it");

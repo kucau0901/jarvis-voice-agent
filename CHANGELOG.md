@@ -26,6 +26,11 @@ of every release, and in the [README](README.md#updating).
 
 ### Fixed
 
+- The car was never recognised as the car: its browser does not say
+  "Tesla", which is what was looked for. Its notifications were labelled
+  "Linux computer", and Family offered to sign in another screen from the
+  dashboard. The car is now told apart by its screen, as the voice already
+  was.
 - Saving or removing your own Home Assistant token in Family → Home closed
   the section, and the message saying it had worked went with it. The
   section now stays open and says so.
