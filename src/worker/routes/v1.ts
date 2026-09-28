@@ -38,7 +38,11 @@ const MAX_WAIT_S = 120;
 const AFTER_TIMEOUT_GRACE_MS = 20_000;
 
 /** Reject an oversized body before parsing it, which no route did before. */
-async function readJson(req: Request): Promise<{ ok: true; body: any } | { ok: false; res: Response }> {
+// The parsed value as it came: any JSON at all. Callers read fields off it, which are
+// undefined for an array, a number or a string, just as for an object without them.
+type JsonBody = Record<string, unknown> | null;
+
+async function readJson(req: Request): Promise<{ ok: true; body: JsonBody } | { ok: false; res: Response }> {
   const len = Number(req.headers.get("content-length") ?? "0");
   if (Number.isFinite(len) && len > MAX_BODY) {
     return { ok: false, res: err(413, `body must be under ${MAX_BODY} bytes`) };
@@ -48,7 +52,7 @@ async function readJson(req: Request): Promise<{ ok: true; body: any } | { ok: f
     return { ok: false, res: err(413, `body must be under ${MAX_BODY} bytes`) };
   }
   try {
-    return { ok: true, body: JSON.parse(raw) };
+    return { ok: true, body: JSON.parse(raw) as JsonBody };
   } catch {
     return { ok: false, res: err(400, "body is not valid JSON") };
   }

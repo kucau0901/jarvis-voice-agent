@@ -76,7 +76,7 @@ export class Routines {
     m.classList.toggle("bad", bad);
   }
 
-  private async api(method: string, path: string, body?: unknown): Promise<any> {
+  private async api(method: string, path: string, body?: unknown): Promise<unknown> {
     const r = await fetch(path, { method, headers: authHeaders(this.key), ...(body ? { body: JSON.stringify(body) } : {}) });
     const data = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error((data as { error?: string }).error ?? `server said ${r.status}`);
