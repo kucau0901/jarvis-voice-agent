@@ -4,7 +4,7 @@
 // they can reach, what waits for their answer), and ROUTER_PROMPT itself.
 // Only the clock is taken out of what is compared.
 import { createHash } from "node:crypto";
-import { prepareRouter } from "../src/worker/routes/delegate.ts";
+import { prepareRouter } from "../src/worker/lib/router.ts";
 import { ROLE_SCOPES } from "../src/worker/lib/hub.ts";
 const kv = new Map<string, string>();
 const CONFIG = { get: async (k: string) => kv.get(k) ?? null, put: async (k: string, v: string) => void kv.set(k, v), delete: async () => {}, list: async () => ({ keys: [] }) };

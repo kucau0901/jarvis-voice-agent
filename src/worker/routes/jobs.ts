@@ -11,7 +11,7 @@ import { builtinTools, explicitCache, researchModel } from "../lib/router-model.
 import { toToolSchema } from "../tools/registry.ts";
 import * as hermes from "../tools/hermes.ts";
 import { RESEARCH_MONTHLY_DEFAULT, jobTool, usageEntry, withSources, type Job, type JobDeps, type Step } from "../lib/jobs.ts";
-import { prepareRouter, runCalls } from "./delegate.ts";
+import { prepareRouter, runCalls } from "../lib/router.ts";
 import { recordUsage } from "./usage.ts";
 import { costOf } from "../lib/usage.ts";
 

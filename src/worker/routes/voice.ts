@@ -20,7 +20,7 @@ import {
   type AudioFormat,
   type Spoken,
 } from "../lib/speech.ts";
-import { run } from "./delegate.ts";
+import { run } from "../lib/router.ts";
 import { MAX_PHOTOS, MAX_PHOTO_CHARS, photosFrom } from "../lib/photos.ts";
 import { dataUrl } from "../lib/cameras.ts";
 import { originOf, type Origin } from "../lib/shared.ts";

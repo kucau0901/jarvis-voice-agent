@@ -6,7 +6,7 @@ import { stateStub } from "../lib/state-client.ts";
 import { deliver, makeAlert } from "../lib/alerts.ts";
 import { AGENT, FAMILY_ROOM, mayRead, namesAgent, type ChatMessage } from "../lib/chat.ts";
 import { Collector } from "../lib/collector.ts";
-import { run } from "./delegate.ts";
+import { run } from "../lib/router.ts";
 
 /**
  * The family talking (lib/chat.ts), and answering what was passed on to them

@@ -10,7 +10,7 @@ import { carWaypoint, drive } from "../lib/travel.ts";
 import { EVENT_NAME, describeAction, describeTrigger, type Routine } from "../lib/routines.ts";
 import type { Travel } from "../lib/scheduler.ts";
 import { SCOPES, WILDCARD, type Grant } from "../lib/scopes.ts";
-import { run } from "./delegate.ts";
+import { run } from "../lib/router.ts";
 
 /**
  * Routines over HTTP (lib/routines.ts). All need the `routines` scope.
