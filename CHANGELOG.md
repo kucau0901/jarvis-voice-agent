@@ -115,6 +115,10 @@ of every release, and in the [README](README.md#updating).
 
 ### Security
 
+- When a voice session could not start, OpenAI's error was passed back to
+  the app as it came, and such a message can quote the key it was given.
+  Keys and tokens are now cut from it first; the rest of the reason still
+  shows, to debug from.
 - An MCP server added in Settings could name any of Jarvis's keys in a
   header, as `${OPENAI_API_KEY}` or `${HERMES_API_KEY}`, and Jarvis filled it
   in and sent it to that server. Jarvis's own keys are now filled in only for

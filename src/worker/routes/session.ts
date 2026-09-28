@@ -1,7 +1,7 @@
 import { openaiBase } from "../lib/openai-base.ts";
 import OpenAI from "openai";
 import type { Env } from "../types";
-import { json, err } from "../lib/http";
+import { json, err, redact } from "../lib/http";
 import { isClientKind, jarvisPrompt } from "../lib/prompt";
 import { buildHistory } from "../lib/history";
 
@@ -90,7 +90,8 @@ export async function handleSession(req: Request, env: Env): Promise<Response> {
     const msg = e instanceof Error ? e.message : String(e);
     console.error("live.create failed:", msg);
     // Surface the reason — this is the call most likely to fail in the car, and
-    // a bare 500 would leave nothing to debug from the driver's seat.
-    return err(502, "could not start the Live session", { detail: msg.slice(0, 400) });
+    // a bare 500 would leave nothing to debug from the driver's seat. Redacted
+    // first: OpenAI's message can quote the key it was given (index.ts).
+    return err(502, "could not start the Live session", { detail: redact(msg).slice(0, 400) });
   }
 }
