@@ -157,6 +157,10 @@ async function record(src, out) {
   const cfgPath = join(work, "dist", workerDir, "wrangler.json");
   const cfg = JSON.parse(readFileSync(cfgPath, "utf8"));
   delete cfg.routes;
+  // No rate limits: the scenario signs in more than twenty times a minute from one address,
+  // and whether a limiter lets the next one through is a matter of timing (lib/limits.ts
+  // treats a missing binding as no limit).
+  delete cfg.ratelimits;
   cfg.name = "jarvis-behavior";
   writeFileSync(cfgPath, JSON.stringify(cfg));
   writeFileSync(join(work, "dist", workerDir, ".dev.vars"), [

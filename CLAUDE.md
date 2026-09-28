@@ -60,7 +60,8 @@ does:
   and a guest, and reads every panel, and every section of a panel with a
   menu, as text.
 
-Times, ids, tokens and relative times ("5m ago") are ignored when comparing,
+It runs without the rate-limit binding, so no answer depends on how fast
+requests came. Times, ids, tokens and relative times ("5m ago") are ignored when comparing,
 and so is the order of lists that come in random-id order. Screenshots are
 saved beside the text for a person to look at; they are not compared.
 
