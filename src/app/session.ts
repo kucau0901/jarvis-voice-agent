@@ -111,7 +111,7 @@ export class JarvisSession {
             if (!this.stopping && pc.connectionState !== "connected") {
               this.drop("connection lost");
             }
-          }, DISCONNECT_GRACE_MS) as unknown as number;
+          }, DISCONNECT_GRACE_MS);
         }
       };
       pc.oniceconnectionstatechange = () =>

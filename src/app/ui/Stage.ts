@@ -147,7 +147,7 @@ export class Stage {
       const ok = await draw();
       if (mine !== this.token || failures >= GIVE_UP) return;
       const wait = ok ? Math.max(500, 1100 - (Date.now() - started)) : 3000;
-      this.refreshTimer = setTimeout(loop, wait) as unknown as number;
+      this.refreshTimer = setTimeout(loop, wait);
     };
     await loop();
   }
@@ -168,7 +168,7 @@ export class Stage {
     this.dismissTimer = setTimeout(
       () => this.hide(),
       driving ? 45_000 : 180_000,
-    ) as unknown as number;
+    );
   }
 
   private showEmbed(p: DisplayPayload, mine: number): void {
@@ -183,7 +183,7 @@ export class Stage {
     this.embedTimer = setTimeout(() => {
       if (mine !== this.token) return;
       void this.showStatic(p, mine);
-    }, 6000) as unknown as number;
+    }, 6000);
   }
 
   private async showStatic(p: DisplayPayload, mine: number): Promise<void> {

@@ -213,7 +213,7 @@ export class PushToTalk {
         return;
       }
       if (now - started > MAX_MS) this.finishListening();
-    }, 100) as unknown as number;
+    }, 100);
   }
 
   private finishListening(): void {

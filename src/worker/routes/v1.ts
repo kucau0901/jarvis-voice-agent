@@ -129,7 +129,7 @@ async function collectWithDeadline(
 
   let timer: number | undefined;
   const timeout = new Promise<"timeout">((resolve) => {
-    timer = setTimeout(() => resolve("timeout"), waitS * 1000) as unknown as number;
+    timer = setTimeout(() => resolve("timeout"), waitS * 1000);
   });
   const outcome = await Promise.race([work.then(() => "done" as const), timeout]);
   clearTimeout(timer);

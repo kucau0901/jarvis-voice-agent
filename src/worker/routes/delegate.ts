@@ -880,7 +880,7 @@ async function callTool(
   const timers = ladder.map((w) =>
     setTimeout(() => {
       if (!sse.isClosed) sse.send({ type: "progress", text: w.say });
-    }, w.after) as unknown as number,
+    }, w.after),
   );
 
   try {

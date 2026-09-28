@@ -140,7 +140,7 @@ export class Jobs {
     }
     // Keep up with running jobs while the panel is open.
     if (this.el.classList.contains("open") && jobs.some((j) => j.status === "running")) {
-      this.timer = setTimeout(() => void this.load(), 5000) as unknown as number;
+      this.timer = setTimeout(() => void this.load(), 5000);
     }
   }
 

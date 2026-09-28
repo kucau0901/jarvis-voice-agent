@@ -38,7 +38,7 @@ export class SseStream {
         this.heartbeat = setInterval(() => {
           // A comment line: valid SSE, ignored by EventSource, keeps the pipe warm.
           this.raw(": ping\n\n");
-        }, this.heartbeatMs) as unknown as number;
+        }, this.heartbeatMs);
       },
       cancel: () => this.close(),
     });

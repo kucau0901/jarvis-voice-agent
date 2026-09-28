@@ -107,7 +107,7 @@ const settle = (who: "you" | "jarvis") =>
 let settleTimers: Partial<Record<"you" | "jarvis", number>> = {};
 function touch(who: "you" | "jarvis") {
   clearTimeout(settleTimers[who]);
-  settleTimers[who] = settle(who) as unknown as number;
+  settleTimers[who] = settle(who);
 }
 
 /* ---------- raw event log ---------------------------------------------- */
@@ -405,7 +405,7 @@ function scheduleReconnect(reason: string) {
 
   status(`reconnecting (${attempt}/${BACKOFF_MS.length})…`);
   clearTimeout(reconnectTimer);
-  reconnectTimer = setTimeout(() => void reconnect(), wait) as unknown as number;
+  reconnectTimer = setTimeout(() => void reconnect(), wait);
 }
 
 async function reconnect() {
@@ -791,7 +791,7 @@ async function pairHere() {
         unlock.pairLeft.textContent = `Waiting for your phone… ${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
       };
       left();
-      tick = setInterval(left, 1000) as unknown as number;
+      tick = setInterval(left, 1000);
     }, pairing.signal);
     signedIn(r.token);
   } catch (e) {
@@ -1290,7 +1290,7 @@ document.addEventListener("click", (e) => {
   if (t.closest("button, a, input, select, textarea, label, #orbWrap, .panel, #stage, #alerts, #transcript, #logWrap")) return;
   document.body.classList.add("peek");
   clearTimeout(peekTimer);
-  peekTimer = setTimeout(() => document.body.classList.remove("peek"), 6000) as unknown as number;
+  peekTimer = setTimeout(() => document.body.classList.remove("peek"), 6000);
 });
 
 els.toggleLog.addEventListener("click", () => {
@@ -1333,7 +1333,7 @@ function noteDriverSpoke() {
     userWantsSession = false;
     session?.stop(`idle for ${IDLE_MS / 1000}s`);
     status("tap to start");
-  }, IDLE_MS) as unknown as number;
+  }, IDLE_MS);
 }
 
 addEventListener("pagehide", () => { userWantsSession = false; session?.stop("page unloaded"); });
@@ -1348,7 +1348,7 @@ addEventListener("visibilitychange", () => {
       // History is deliberately kept: tapping the orb again resumes
       // the conversation rather than starting from nothing.
       session?.stop(`hidden for ${HIDDEN_GRACE_MS / 1000}s`);
-    }, HIDDEN_GRACE_MS) as unknown as number;
+    }, HIDDEN_GRACE_MS);
   } else {
     clearTimeout(hiddenTimer);
   }

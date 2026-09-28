@@ -137,7 +137,7 @@ export class LiveLink {
       this.attempt = 0;
       this.presence();
       clearInterval(this.pingTimer);
-      this.pingTimer = setInterval(() => ws.readyState === WebSocket.OPEN && ws.send("ping"), PING_MS) as unknown as number;
+      this.pingTimer = setInterval(() => ws.readyState === WebSocket.OPEN && ws.send("ping"), PING_MS);
     };
     ws.onmessage = (e) => {
       if (typeof e.data !== "string" || e.data === "pong") return;
@@ -167,7 +167,7 @@ export class LiveLink {
     if (this.stopped) return;
     const wait = BACKOFF_S[Math.min(this.attempt++, BACKOFF_S.length - 1)]! * 1000;
     clearTimeout(this.retryTimer);
-    this.retryTimer = setTimeout(() => void this.connect(), wait) as unknown as number;
+    this.retryTimer = setTimeout(() => void this.connect(), wait);
   }
 
   private presence(): void {

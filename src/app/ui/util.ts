@@ -40,7 +40,7 @@ export function arm(btn: HTMLButtonElement, ask: string, go: () => Promise<void>
     armed = true;
     btn.textContent = ask;
     btn.classList.add("armed");
-    timer = setTimeout(reset, 4000) as unknown as number;
+    timer = setTimeout(reset, 4000);
   });
 }
 
