@@ -26,6 +26,9 @@ of every release, and in the [README](README.md#updating).
 
 ### Fixed
 
+- A camera whose password had a stray "%" or a character such as "€" in it
+  could not be shown, and the failure went unhandled. Such passwords now
+  work; they are sent as UTF-8.
 - Cancelling a car command while the car was waking left the wake-up request
   running for up to 100 seconds. It now stops with the question.
 - A connection to Home Assistant (or another MCP server) that opened only

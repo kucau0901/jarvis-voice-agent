@@ -203,6 +203,27 @@ export function _forgetFrames(): void {
   recent.clear();
 }
 
+/**
+ * user:password for Basic auth, from a URL's (percent-encoded) parts. A stray
+ * "%" is taken as written, and the pair goes as UTF-8, so a password with
+ * "%zz" or "€" in it neither throws nor fails: btoa() alone takes Latin-1 only.
+ * For plain ASCII it is what btoa() gives.
+ */
+export function basicCredentials(user: string, password: string): string {
+  // Each run of escapes on its own, so one stray "%" does not keep the rest encoded.
+  const decode = (s: string) =>
+    s.replace(/(%[0-9A-Fa-f]{2})+/g, (run) => {
+      try {
+        return decodeURIComponent(run);
+      } catch {
+        return run;
+      }
+    });
+  let bin = "";
+  for (const b of new TextEncoder().encode(`${decode(user)}:${decode(password)}`)) bin += String.fromCharCode(b);
+  return btoa(bin);
+}
+
 /** Long enough for a full frame over a slow link; a stall beyond it is reported, not waited out. */
 export const FRAME_TIMEOUT_MS = 20_000;
 
@@ -214,7 +235,7 @@ async function fetchFrame(env: Env, id: string, height?: number): Promise<Snapsh
     if (!cam) return { ok: false, error: "no such camera" };
     const u = new URL(cam.url);
     if (u.username || u.password) {
-      headers.Authorization = `Basic ${btoa(`${decodeURIComponent(u.username)}:${decodeURIComponent(u.password)}`)}`;
+      headers.Authorization = `Basic ${basicCredentials(u.username, u.password)}`;
       u.username = "";
       u.password = "";
     }
