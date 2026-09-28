@@ -352,6 +352,15 @@ export class Settings {
     void this.loadRouter();
     void this.loadVersion();
     void this.loadUsage();
+    await this.loadMcp();
+  }
+
+  /**
+   * The MCP servers: what is saved, and what they offer now. On its own after
+   * saving them: showing the whole sheet again went back to the list on a phone
+   * and reloaded every section, losing whatever was typed in the others.
+   */
+  private async loadMcp() {
     try {
       const res = await fetch("/api/mcp", { headers: authHeaders(this.key) });
       const data = (await res.json()) as {
@@ -637,7 +646,7 @@ export class Settings {
         body: JSON.stringify({ servers: payload }),
       });
       if (!res.ok) throw new Error(`server said ${res.status}`);
-      await this.show();
+      await this.loadMcp();
     } catch (e) {
       this.msg(e instanceof Error ? e.message : String(e), true);
     }

@@ -26,6 +26,9 @@ of every release, and in the [README](README.md#updating).
 
 ### Fixed
 
+- Saving the MCP servers in Settings reloaded the whole sheet: on a phone it
+  jumped back to the list, and anything typed but not yet saved in other
+  sections was lost. Only the server list is reloaded now.
 - A message in the family chat could show twice, when the chat's regular
   check and the one after sending overlapped. Each message now shows once.
 - When a shared screen locked itself after half an hour idle with the family
