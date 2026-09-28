@@ -1,4 +1,5 @@
 import { b64urlDecode, b64urlEncode } from "../src/worker/lib/google.ts";
+import { whenSpoken } from "../src/worker/tools/gmail.ts";
 import { asQuotedData } from "../src/worker/lib/quote.ts";
 import {
   buildRaw,
@@ -393,6 +394,20 @@ console.log("\ncontacts_lookup — asking, rather than only sending");
   check("the miss wording says a search happened",
     /No contact matching/i.test(await contactsLookup.run({ name: "Nobody" }, ctx())) ||
     /not configured|not linked/i.test(await contactsLookup.run({ name: "Nobody" }, ctx())));
+}
+
+console.log("\nhow old a mail is, said aloud");
+{
+  const KL = "Asia/Kuala_Lumpur";
+  // 00:30 on Thursday 1 October in Kuala Lumpur.
+  const now = new Date(Date.UTC(2026, 8, 30, 16, 30));
+  const at = (y: number, mo: number, d: number, h: number, mi: number) => String(Date.UTC(y, mo - 1, d, h, mi) - 8 * 3_600_000);
+  check("today", whenSpoken(at(2026, 10, 1, 0, 10), KL, now) === "today 00:10", whenSpoken(at(2026, 10, 1, 0, 10), KL, now));
+  check("yesterday", whenSpoken(at(2026, 9, 30, 8, 0), KL, now) === "yesterday 08:00", whenSpoken(at(2026, 9, 30, 8, 0), KL, now));
+  check("late the day before yesterday, 25 hours before: two days ago, not \"1 days ago\"", whenSpoken(at(2026, 9, 29, 23, 30), KL, now) === "2 days ago", whenSpoken(at(2026, 9, 29, 23, 30), KL, now));
+  check("early that day: still two days ago", whenSpoken(at(2026, 9, 29, 1, 0), KL, now) === "2 days ago", whenSpoken(at(2026, 9, 29, 1, 0), KL, now));
+  check("six days ago", whenSpoken(at(2026, 9, 25, 12, 0), KL, now) === "6 days ago", whenSpoken(at(2026, 9, 25, 12, 0), KL, now));
+  check("a week or more: the date", whenSpoken(at(2026, 9, 24, 12, 0), KL, now) === "24 Sept" || whenSpoken(at(2026, 9, 24, 12, 0), KL, now) === "24 Sep", whenSpoken(at(2026, 9, 24, 12, 0), KL, now));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

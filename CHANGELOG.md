@@ -26,6 +26,9 @@ of every release, and in the [README](README.md#updating).
 
 ### Fixed
 
+- A mail from late the day before yesterday, read just after midnight, was
+  said to be from "1 days ago". Mail is now dated by the days on the
+  calendar, so it is two days ago.
 - Asked to keep a roster or a list of numbers for looking up later, voice
   filed it as a note, which is carried into every question, because
   "reference" was missing from the kinds it could choose. It can now, as its

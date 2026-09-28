@@ -144,7 +144,7 @@ function senderName(from: string): string {
  * Local time, 24-hour, in the user's zone (lib/locale.ts) — the same convention the router
  * prompt asks for out loud. An ISO timestamp read aloud in a car is useless.
  */
-function whenSpoken(internalDate: string | undefined, tz: string): string {
+export function whenSpoken(internalDate: string | undefined, tz: string, now = new Date()): string {
   const ms = Number(internalDate);
   if (!Number.isFinite(ms) || ms <= 0) return "";
   const d = new Date(ms);
@@ -157,12 +157,16 @@ function whenSpoken(internalDate: string | undefined, tz: string): string {
     hour12: false,
   }).format(d);
 
-  const now = new Date();
   if (dayOf(d) === dayOf(now)) return `today ${time}`;
   const yesterday = new Date(now.getTime() - 86_400_000);
   if (dayOf(d) === dayOf(yesterday)) return `yesterday ${time}`;
 
-  const days = Math.round((now.getTime() - ms) / 86_400_000);
+  // Calendar days in their zone, not 24-hour spans: late on Monday, read just after midnight on Wednesday, is two days ago.
+  const dayNumber = (x: Date) => {
+    const [dd, mm, yyyy] = dayOf(x).split("/").map(Number);
+    return Date.UTC(yyyy!, mm! - 1, dd!) / 86_400_000;
+  };
+  const days = dayNumber(now) - dayNumber(d);
   if (days > 0 && days < 7) return `${days} days ago`;
   return new Intl.DateTimeFormat("en-GB", { timeZone: tz, day: "numeric", month: "short" }).format(d);
 }
