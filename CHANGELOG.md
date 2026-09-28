@@ -26,6 +26,10 @@ of every release, and in the [README](README.md#updating).
 
 ### Fixed
 
+- A message posted through the API to a direct conversation written the
+  other way round ("dm:b|a" rather than "dm:a|b"), or to a conversation with
+  oneself, was accepted and then never shown to anyone. Such a conversation
+  is now refused as not existing.
 - A routine's alert kept for someone's quiet time showed in the routine's
   history as failed, saying "nothing is set up to receive it". It now says
   it is held until their quiet time ends; one dropped because it would be

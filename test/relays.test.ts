@@ -155,6 +155,8 @@ console.log("\nchat");
   check("a direct conversation is the same from either side", dmId("owner", "u_sara") === dmId("u_sara", "owner"));
   check("only its two may read it; everyone the room", mayRead(dmId("owner", "u_sara"), "u_sara") && !mayRead(dmId("owner", "u_sara"), "u_aisyah") && mayRead(FAMILY_ROOM, "u_aisyah"));
   check("a made-up conversation is nobody's", !mayRead("dm:nonsense", "owner"));
+  check("the same two written the other way round is not theirs to post to", !mayRead(`dm:u_sara|owner`, "u_sara") && dmId("u_sara", "owner") === "dm:owner|u_sara");
+  check("nor a conversation with oneself", !mayRead("dm:u_sara|u_sara", "u_sara"));
   await chat.post(FAMILY_ROOM, { from: "owner", name: "Adam", text: "Dinner at eight" }, T0);
   await chat.post(FAMILY_ROOM, { from: "u_sara", name: "Sara", text: "Jarvis, add rice to the list" }, T0 + 1000);
   const c = await chat.convos("owner", [{ id: "owner", name: "Adam" }, { id: "u_sara", name: "Sara" }]);
