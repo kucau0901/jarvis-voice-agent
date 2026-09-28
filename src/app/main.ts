@@ -124,7 +124,7 @@ function logEvent(ev: ServerEvent) {
   line.className = "ln";
   const isErr = ev.type === "error" || ev.type === "__unparseable";
   line.innerHTML =
-    `<span class="t ${isErr ? "e" : ""}">${ev.type}</span>` +
+    `<span class="t ${isErr ? "e" : ""}">${escapeHtml(ev.type)}</span>` +
     `<span class="j">${escapeHtml(summarise(ev))}</span>`;
   els.log.appendChild(line);
   els.log.scrollTop = els.log.scrollHeight;

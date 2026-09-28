@@ -26,6 +26,12 @@ of every release, and in the [README](README.md#updating).
 
 ### Fixed
 
+- Four small things: in Family, a button waiting for its second tap (Remove
+  it?, Sign out here?) now turns red as it does elsewhere; when the
+  browser's own speech recognition failed, push-to-talk said it had not
+  heard anything instead of why; a key given in the address could be misread
+  on a browser with no storage; and the debug event log wrote an event's
+  name into the page unescaped.
 - Losing signal more than once, or stopping and starting again before it
   came back, could open a second live conversation when it did come back,
   billed alongside the first. Only one is ever reopened now, and none after

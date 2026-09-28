@@ -41,7 +41,13 @@ export function loadKey(): string {
     }
     return localStorage.getItem(STORAGE_KEY) ?? "";
   } catch {
-    return normalise(/key=([^&]+)/.exec(location.hash)?.[1] ?? "");
+    // No storage here (or a key that will not decode): read it as the try does, raw only if it must be.
+    const raw = /key=([^&]+)/.exec(location.hash)?.[1] ?? "";
+    try {
+      return normalise(decodeURIComponent(raw));
+    } catch {
+      return normalise(raw);
+    }
   }
 }
 
