@@ -117,6 +117,22 @@ export class NeedsRelink extends Error {
   }
 }
 
+/**
+ * A tool's work, and what it says when that fails: `notLinked` when the
+ * person has not linked their account, `relink` when the link has lapsed
+ * (NeedsRelink; only where given), else the error after `prefix`. Each tool
+ * passes its own words (tools/gmail.ts, calendar.ts, spotify.ts).
+ */
+export async function guardTool<T>(fn: () => Promise<T>, say: { notLinked: string; relink?: string; prefix: string }): Promise<T | string> {
+  try {
+    return await fn();
+  } catch (e) {
+    if (say.relink !== undefined && e instanceof NeedsRelink) return say.relink;
+    const msg = e instanceof Error ? e.message : String(e);
+    return /not linked/i.test(msg) ? say.notLinked : `${say.prefix}: ${msg}`;
+  }
+}
+
 /* ---------- the one-time authorisation ------------------------------------ */
 
 /**

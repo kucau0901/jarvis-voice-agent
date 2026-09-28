@@ -1,6 +1,6 @@
 import type { Env } from "../types.ts";
 import { localeOf } from "../lib/locale.ts";
-import { CALENDAR, call, explain, googleConfig, NeedsRelink, type GoogleConfig } from "../lib/google.ts";
+import { CALENDAR, call, explain, googleConfig, guardTool, type GoogleConfig } from "../lib/google.ts";
 import { localParts, zonedToUtc } from "../lib/routines.ts";
 import { tidy } from "../lib/quote.ts";
 import { clampLimit } from "./args.ts";
@@ -50,19 +50,14 @@ const cfgOf = (ctx: ToolContext): GoogleConfig => {
 };
 
 /** Same split as tools/gmail.ts: a dead token needs a person, not a retry. */
-async function guard<T>(fn: () => Promise<T>): Promise<T | string> {
-  try {
-    return await fn();
-  } catch (e) {
-    if (e instanceof NeedsRelink) {
-      return (
-        "The Google authorisation has expired and needs linking again from a phone: " +
-        "Family → Accounts (or Settings → Google). Say that plainly; retrying will not help."
-      );
-    }
-    const msg = e instanceof Error ? e.message : String(e);
-    return /not linked/i.test(msg) ? NOT_LINKED : `Calendar error: ${msg}`;
-  }
+function guard<T>(fn: () => Promise<T>): Promise<T | string> {
+  return guardTool(fn, {
+    notLinked: NOT_LINKED,
+    relink:
+      "The Google authorisation has expired and needs linking again from a phone: " +
+      "Family → Accounts (or Settings → Google). Say that plainly; retrying will not help.",
+    prefix: "Calendar error",
+  });
 }
 
 

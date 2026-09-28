@@ -1,5 +1,6 @@
 import type { Tool, ToolContext } from "./registry.ts";
 import { call, explain, spotifyConfig, type SpotifyConfig } from "../lib/spotify.ts";
+import { guardTool } from "../lib/google.ts";
 
 /**
  * Spotify, by voice.
@@ -34,13 +35,11 @@ const NOT_LINKED =
   "or laptop and approve access. Tell them that plainly; do not retry.";
 
 /** Every path here can hit an unlinked account; say so rather than leaking a stack. */
-async function guard<T>(fn: () => Promise<T>): Promise<T | string> {
-  try {
-    return await fn();
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    return /not linked/i.test(msg) ? NOT_LINKED : `Spotify error: ${msg}`;
-  }
+function guard<T>(fn: () => Promise<T>): Promise<T | string> {
+  return guardTool(fn, {
+    notLinked: NOT_LINKED,
+    prefix: "Spotify error",
+  });
 }
 
 /* ---------- shapes, narrowed to what is actually read ---------------------- */

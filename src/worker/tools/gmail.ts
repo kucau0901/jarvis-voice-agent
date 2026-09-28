@@ -6,7 +6,7 @@ import {
   call,
   explain,
   googleConfig,
-  NeedsRelink,
+  guardTool,
   type GoogleConfig,
   // Explicit .ts, as in lib/auth.ts: the tests load this file through Node's
   // own resolver rather than the bundler, and that resolver wants the extension.
@@ -92,19 +92,14 @@ const cfgOf = (ctx: ToolContext): GoogleConfig => {
  * the Google password revokes any token carrying Gmail scopes. Both need the
  * user to do something, so the answer says so instead of suggesting a retry.
  */
-async function guard<T>(fn: () => Promise<T>): Promise<T | string> {
-  try {
-    return await fn();
-  } catch (e) {
-    if (e instanceof NeedsRelink) {
-      return (
-        "Gmail's authorisation has expired and needs linking again from a phone: " +
-        "Family → Accounts (or Settings → Google). Say that plainly; retrying will not help."
-      );
-    }
-    const msg = e instanceof Error ? e.message : String(e);
-    return /not linked/i.test(msg) ? NOT_LINKED : `Gmail error: ${msg}`;
-  }
+function guard<T>(fn: () => Promise<T>): Promise<T | string> {
+  return guardTool(fn, {
+    notLinked: NOT_LINKED,
+    relink:
+      "Gmail's authorisation has expired and needs linking again from a phone: " +
+      "Family → Accounts (or Settings → Google). Say that plainly; retrying will not help.",
+    prefix: "Gmail error",
+  });
 }
 
 /* ---------- Gmail's shapes, narrowed to what is actually read ------------- */
