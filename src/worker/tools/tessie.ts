@@ -115,6 +115,13 @@ async function ensureAwake(cfg: TessieConfig, ctx: ToolContext): Promise<void> {
 
 const num = (v: unknown): number | undefined => (typeof v === "number" ? v : undefined);
 
+/** A clause only when its reading is there: a missing one is left out, never said as "undefined". */
+const said = (v: unknown, say: (n: number) => string): string | null => {
+  const n = num(v);
+  return n === undefined ? null : say(n);
+};
+const cap = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1);
+
 /* ---------- units --------------------------------------------------------- */
 
 /*
@@ -260,12 +267,9 @@ export const carState: Tool = {
         latitude?: number;
         longitude?: number;
       };
-      return [
-        loc.saved_location ? `At ${loc.saved_location}.` : null,
-        loc.address ?? `${loc.latitude}, ${loc.longitude}`,
-      ]
-        .filter(Boolean)
-        .join(" ");
+      const coords = num(loc.latitude) !== undefined && num(loc.longitude) !== undefined ? `${loc.latitude}, ${loc.longitude}` : null;
+      const parts = [loc.saved_location ? `At ${loc.saved_location}.` : null, loc.address ?? coords].filter(Boolean);
+      return parts.length ? parts.join(" ") : "The car did not say where it is.";
     }
 
     if (what === "battery") {
@@ -273,12 +277,8 @@ export const carState: Tool = {
         string,
         unknown
       >;
-      return [
-        `Battery ${num(b.battery_level)}%`,
-        rangeClause(b.battery_range, units, (d) => `range ${d.n} ${d.unit}`),
-      ]
-        .filter(Boolean)
-        .join(", ") + ".";
+      const parts = [said(b.battery_level, (n) => `Battery ${n}%`), rangeClause(b.battery_range, units, (d) => `range ${d.n} ${d.unit}`)].filter(Boolean);
+      return parts.length ? cap(parts.join(", ")) + "." : "The car did not report its battery.";
     }
 
     const state = (await call(cfg, `/${cfg.vin}/state?use_cache=true`, {
@@ -306,34 +306,33 @@ export const carState: Tool = {
     }
 
     if (what === "climate") {
-      return [
-        `Inside ${num(climate.inside_temp)}°C, outside ${num(climate.outside_temp)}°C.`,
-        climate.is_climate_on ? "Climate is on." : "Climate is off.",
-        `Set to ${num(climate.driver_temp_setting)}°C.`,
-      ].join(" ");
+      const temps = [said(climate.inside_temp, (n) => `Inside ${n}°C`), said(climate.outside_temp, (n) => `outside ${n}°C`)].filter(Boolean);
+      const parts = [
+        temps.length ? cap(temps.join(", ")) + "." : null,
+        climate.is_climate_on === true ? "Climate is on." : climate.is_climate_on === false ? "Climate is off." : null,
+        said(climate.driver_temp_setting, (n) => `Set to ${n}°C.`),
+      ].filter(Boolean);
+      return parts.length ? parts.join(" ") : "The car did not report its climate.";
     }
 
     if (what === "charge") {
-      return [
-        `Battery ${num(charge.battery_level)}%, limit ${num(charge.charge_limit_soc)}%.`,
-        `Charging state: ${charge.charging_state}.`,
+      const levels = [said(charge.battery_level, (n) => `Battery ${n}%`), said(charge.charge_limit_soc, (n) => `limit ${n}%`)].filter(Boolean);
+      const parts = [
+        levels.length ? cap(levels.join(", ")) + "." : null,
+        typeof charge.charging_state === "string" ? `Charging state: ${charge.charging_state}.` : null,
         num(charge.minutes_to_full_charge)
           ? `${num(charge.minutes_to_full_charge)} minutes to full.`
           : null,
-      ]
-        .filter(Boolean)
-        .join(" ");
+      ].filter(Boolean);
+      return parts.length ? parts.join(" ") : "The car did not report its charge.";
     }
 
+    const first = [said(charge.battery_level, (n) => `Battery ${n}%`), rangeClause(charge.battery_range, units, (d) => `about ${d.n} ${d.unit} of range`)].filter(Boolean);
     return [
-      [
-        `Battery ${num(charge.battery_level)}%`,
-        rangeClause(charge.battery_range, units, (d) => `about ${d.n} ${d.unit} of range`),
-      ]
-        .filter(Boolean)
-        .join(", ") + ".",
+      first.length ? cap(first.join(", ")) + "." : null,
       charge.charging_state === "Charging" ? "It is charging." : null,
-      vehicle.locked === false ? "It is unlocked." : "It is locked.",
+      // Not said at all when the car did not say: "It is locked" is a claim someone may walk away on.
+      vehicle.locked === false ? "It is unlocked." : vehicle.locked === true ? "It is locked." : null,
       drive.shift_state ? `Shift state ${drive.shift_state}.` : "It is parked.",
       drive.active_route_destination ? `Navigating to ${drive.active_route_destination}.` : null,
     ]

@@ -26,6 +26,11 @@ of every release, and in the [README](README.md#updating).
 
 ### Fixed
 
+- When the car left a reading out, Jarvis said it anyway: "Battery
+  undefined%", "Inside undefined°C", a location of "undefined, undefined" —
+  and the summary said the car was locked when it had not said. A missing
+  reading is now left out, an unknown lock is not claimed, and a reading
+  with nothing in it says the car did not report it.
 - When Google Maps refused to look a place up (a key not allowed to find
   addresses, or over its quota), Jarvis said it could not find the place and
   asked for the full address. It now says Google Maps refused, and why.
