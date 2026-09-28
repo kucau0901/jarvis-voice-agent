@@ -60,6 +60,12 @@ of every release, and in the [README](README.md#updating).
 
 ### Security
 
+- An MCP server added in Settings could name any of Jarvis's keys in a
+  header, as `${OPENAI_API_KEY}` or `${HERMES_API_KEY}`, and Jarvis filled it
+  in and sent it to that server. Jarvis's own keys are now filled in only for
+  a server at an address the key already goes to, such as the Home Assistant
+  token for Home Assistant's own MCP server. If a server of yours used one of
+  them, give it a Worker secret of its own and name that instead.
 - A calendar event's title could end the fence that marks the events as
   data, not instructions: whoever sent an invitation could write text the
   assistant read as though it came from outside the calendar. Events are now

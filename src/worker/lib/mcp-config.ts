@@ -12,6 +12,8 @@
  * runner will not load a bare JSON import, and this is the part worth testing.
  */
 
+import { NOT_SETTINGS, SETTINGS, settingDef } from "./settings.ts";
+
 export interface McpServerConfig {
   label: string;
   url: string;
@@ -88,6 +90,62 @@ export function expandTemplate(template: string, lookup: Record<string, unknown>
     const v = lookup[name];
     return typeof v === "string" ? v : "";
   });
+}
+
+/**
+ * What `${NAME}` may be filled with, for a server at `url`.
+ *
+ * Placeholders are for secrets set for MCP servers. Jarvis's own keys are
+ * another matter: each is only ever sent where its own address points (the
+ * rule settings.ts guarded() keeps), and anyone who can edit this list can
+ * point a server anywhere. So one of them is filled only for a server at an
+ * address it is already sent to (the Home Assistant token for a server on the
+ * Home Assistant address), and never in a URL, where it would be sent to
+ * whatever host the rest of the URL names. The owner key and the
+ * per-request values are never filled.
+ */
+export function fillable(env: Record<string, unknown>, url: string | null): Record<string, unknown> {
+  const origin = originOf(url);
+  const out: Record<string, unknown> = {};
+  for (const [name, v] of Object.entries(env)) {
+    if (name in NOT_SETTINGS) continue;
+    if (settingDef(name)?.kind === "secret") {
+      const sentThere = SETTINGS.some((d) => d.bindsTo?.includes(name) && origin !== null && originOf(env[d.name]) === origin);
+      if (!sentThere) continue;
+    }
+    out[name] = v;
+  }
+  return out;
+}
+
+function originOf(url: unknown): string | null {
+  if (typeof url !== "string" || !url) return null;
+  try {
+    return new URL(url).origin;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * A server's URL with its placeholders filled.
+ *
+ * A URL that is one placeholder and nothing else, such as the seeded Home
+ * Assistant server's `${HA_MCP_URL}`, is filled from anything: a request to
+ * an address tells that address nothing it does not know. Anything else only
+ * from what `fillable` allows.
+ */
+export function expandUrlTemplate(template: string, env: Record<string, unknown>): string {
+  const whole = /^\$\{[A-Z0-9_]+\}$/.test(template.trim());
+  return expandTemplate(template, whole ? env : fillable(env, null));
+}
+
+/** Header values with their placeholders filled, for a server at `url` (already expanded). */
+export function expandHeaderTemplates(headers: Record<string, string> | undefined, env: Record<string, unknown>, url: string): Record<string, string> {
+  const lookup = fillable(env, url);
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(headers ?? {})) out[k] = expandTemplate(v, lookup);
+  return out;
 }
 
 /**

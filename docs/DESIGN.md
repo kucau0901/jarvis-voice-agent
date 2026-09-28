@@ -500,7 +500,11 @@ tools and reports the transport and latency. Use it from a phone or laptop rathe
 than the car; typing a URL and a token on the Tesla keyboard is miserable. A URL
 or header value written as `${NAME}` is filled at call time from a Worker secret
 or a value saved in the settings panel, so the secret itself is never written
-into the server list or the repo.
+into the server list or the repo. Jarvis's own keys are the exception: the
+OpenAI key, the owner key and the rest are filled in only for a server at an
+address that key is already sent to (the Home Assistant token for a server on
+the Home Assistant address), so whoever edits the list cannot aim one at a
+server of their own. A secret meant for an MCP server gets a name of its own.
 
 MCP tools are registered **non-strict**. Strict mode demands
 `additionalProperties: false` and a full `required` list on every nested object,
