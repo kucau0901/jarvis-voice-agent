@@ -63,8 +63,8 @@ export interface CarKey {
 /**
  * The cars a request may reach, keys filled in: the family car's from the
  * settings, anyone else's from where they were added. The first is the one
- * used when no car is named: their own, else one they may drive, else one
- * they may see.
+ * used when no car is named: their own, else one they may control, else one
+ * they may check.
  */
 function carKeys(env: Env, reach: readonly Reach[]): CarKey[] {
   const out: CarKey[] = [];

@@ -122,7 +122,7 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
    "show_place",
    "start_job"
   ],
-  "input": "50af82a7da439070"
+  "input": "8a479f675d659285" // car levels said as check/control (28 Sep 2026)
  },
  "child": {
   "model": "gpt-6-luna",
@@ -179,7 +179,7 @@ try {
     check("  the tools it is offered", JSON.stringify(p.tools.map((t) => t.name).sort()) === JSON.stringify(want.tools), p.tools.map((t) => t.name).sort());
     check("  what it is told, word for word (but the clock)", sha(input).slice(0, 16) === want.input);
     if (name === "adult") {
-      check("  (who is asking, the family, their cars, what waits for them)", ["You are answering Sara", "THE FAMILY: Adam, Sara (the person asking), Siti.", "CARS THEY CAN REACH", "shared with them to see only", "WAITING FOR THEIR ANSWER", "The family calls you Friday"].every((s) => input.includes(s)));
+      check("  (who is asking, the family, their cars, what waits for them)", ["You are answering Sara", "THE FAMILY: Adam, Sara (the person asking), Siti.", "CARS THEY CAN REACH", "shared with them to check only", "WAITING FOR THEIR ANSWER", "The family calls you Friday"].every((s) => input.includes(s)));
     }
     if (name === "guest with a pass") check("  (the guest's pass)", input.includes("PASS: this person is a guest. In the house they may work only: Main gate (use_pass). Nothing else."));
   }

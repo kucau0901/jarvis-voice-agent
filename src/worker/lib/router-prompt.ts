@@ -311,7 +311,7 @@ function whoLine(env: Env): string {
     cars.length > 1 || cars.some((c) => !c.mine)
       ? "\n\nCARS THEY CAN REACH (name one in the car tools' `car`; null means the first)\n" +
         cars
-          .map((c) => `- ${c.name}: ${c.mine ? "theirs" : c.level === "drive" ? "shared with them, they may drive it" : "shared with them to see only, not to operate"}`)
+          .map((c) => `- ${c.name}: ${c.mine ? "theirs" : c.level === "drive" ? "shared with them, they may control it (commands too)" : "shared with them to check only, not to control"}`)
           .join("\n")
       : "";
   if (!agent && !name) return carLine + passLine;

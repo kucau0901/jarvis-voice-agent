@@ -33,7 +33,8 @@ interface CarView {
   shares?: Record<string, "see" | "drive">;
 }
 
-const LEVEL_WORDS: Record<string, string> = { "": "not shared", see: "may see it", drive: "may drive it" };
+/** What Jarvis will do with the car for them: nothing to do with who can drive it, which is the Tesla app's or key's. */
+const LEVEL_WORDS: Record<string, string> = { "": "not shared", see: "can check it", drive: "can control it" };
 
 const ACCOUNTS: { id: "google" | "spotify"; name: string; what: string }[] = [
   { id: "google", name: "Google", what: "your mail, calendar and contacts" },
@@ -226,12 +227,13 @@ export class Mine {
                     .join("")}</select></div>`,
               )
               .join("")}
+            ${others(c).length ? `<p class="note">Check: where it is, the battery, the climate. Control: that too, and commands such as lock and unlock, climate, charging and navigation. This is only what Jarvis will do for them. Driving the car is up to the Tesla app or key.</p>` : ""}
             ${c.id === "family" ? `<p class="note">The car in Settings. To change its token, use Settings.</p>` : `<div class="rowbtns"><button class="m-carrm">Remove</button></div>`}
           </div>`,
         )
         .join("")}
       ${shared.length ? `<p class="note">Shared with you:</p>` : ""}
-      ${shared.map((c) => `<p class="note"><b>${esc(c.name)}</b>, ${esc(c.ownerName)}'s: you ${c.level === "drive" ? "may drive it" : "may see it (where it is, the battery), not operate it"}.</p>`).join("")}
+      ${shared.map((c) => `<p class="note"><b>${esc(c.name)}</b>, ${esc(c.ownerName)}'s: through Jarvis you ${c.level === "drive" ? "can control it, locking and unlocking it too" : "can check it (where it is, the battery), not control it"}.</p>`).join("")}
       <details class="m-addcar"><summary>Add my car (Tessie)</summary>
         <input type="text" class="m-carname" maxlength="40" placeholder="Its name, e.g. Aisyah's car">
         <input type="password" class="m-cartoken" autocomplete="off" placeholder="Tessie token: dash.tessie.com → Settings → API">

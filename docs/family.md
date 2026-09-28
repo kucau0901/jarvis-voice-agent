@@ -237,12 +237,13 @@ is waited on any more.
 **Family → Cars**:
 
 - **The car in Settings** is the first person's (whoever set up the family).
-  They choose, for each person, *not shared*, *may see it* (where it is, the
-  battery, whether it is locked) or *may drive it* (climate, locks,
-  navigation too).
+  They choose, for each person, *not shared*, *can check it* (where it is, the
+  battery, whether it is locked) or *can control it* (climate, locks,
+  navigation too). This is only what Jarvis will do for them: who can drive
+  the car is up to the Tesla app or key, not Jarvis.
 - **Anyone can add their own car** with their Tessie token (dash.tessie.com →
   Settings → API), and share it the same way. A daughter who gets a car adds
-  it, and decides who sees or drives it.
+  it, and decides who can check or control it.
 - Asked about "the car", Jarvis uses your own if you have one, else one
   shared with you. Name another: "is **Mum's car** charged?". A car shared to
   see is never operated.
