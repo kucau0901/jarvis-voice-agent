@@ -62,3 +62,9 @@ export async function readObject(req: Request, max: number): Promise<Record<stri
     return null;
   }
 }
+
+/** A request's body as a JSON object; anything else (not JSON, an array, a number, null) is an empty one. */
+export async function readObjectOrEmpty(req: Request): Promise<Record<string, unknown>> {
+  const b = (await req.json().catch(() => null)) as unknown;
+  return b && typeof b === "object" && !Array.isArray(b) ? (b as Record<string, unknown>) : {};
+}
