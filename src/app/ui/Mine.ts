@@ -80,9 +80,9 @@ export class Mine {
         <h4>Your own Home Assistant user</h4>
         <p class="note">Optional. With a token for your own Home Assistant user, the house answers you as yourself:
           its logbook says it was you, and whatever Home Assistant allows your user is what you can do.
-          Without one, the family's is used. ${this.haToken ? "<b>Yours is set.</b>" : ""}</p>
+          Without one, the family's is used. <b class="m-haset"></b></p>
         <input type="password" class="m-ha" autocomplete="off" placeholder="A long-lived access token from your Home Assistant profile">
-        <div class="rowbtns"><button class="m-hasave">Save</button>${this.haToken ? `<button class="m-haoff">Remove mine</button>` : ""}</div>
+        <div class="rowbtns m-harow"><button class="m-hasave">Save</button></div>
       </section>
 
       <section class="svc" data-section="m-voice" data-title="Voice and language">
@@ -131,7 +131,7 @@ export class Mine {
     );
     this.box.querySelector(".m-alerts")!.appendChild(new AlertsPanel(this.key).render());
     this.box.querySelector(".m-hasave")!.addEventListener("click", () => void this.setHa(this.box.querySelector<HTMLInputElement>(".m-ha")!.value.trim()));
-    this.box.querySelector(".m-haoff")?.addEventListener("click", () => void this.setHa(""));
+    this.showHa();
 
     // Only what this person may use: a guest has no accounts, cars or alerts to set up.
     const may = (...need: string[]) => !this.scopes || this.scopes.includes("*") || need.some((x) => this.scopes!.includes(x));
@@ -171,11 +171,26 @@ export class Mine {
       const body = (await res.json()) as { error?: string };
       if (!res.ok) throw new Error(body.error ?? `the server said ${res.status}`);
       this.haToken = !!token;
+      // In place: rendering the whole box again would close its section in Family's menu, and this message with it.
+      this.box.querySelector<HTMLInputElement>(".m-ha")!.value = "";
+      this.showHa();
       this.say(token ? "Saved: the house now answers you as yourself." : "Removed: the family's is used again.");
-      this.render();
     } catch (e) {
       this.say(e instanceof Error ? e.message : String(e), true);
     }
+  }
+
+  /** Whether your own Home Assistant token is set, and the button to remove it if so. */
+  private showHa(): void {
+    this.box.querySelector(".m-haset")!.textContent = this.haToken ? "Yours is set." : "";
+    const row = this.box.querySelector<HTMLElement>(".m-harow")!;
+    row.querySelector(".m-haoff")?.remove();
+    if (!this.haToken) return;
+    const off = document.createElement("button");
+    off.className = "m-haoff";
+    off.textContent = "Remove mine";
+    off.addEventListener("click", () => void this.setHa(""));
+    row.appendChild(off);
   }
 
   /**

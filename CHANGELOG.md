@@ -26,6 +26,9 @@ of every release, and in the [README](README.md#updating).
 
 ### Fixed
 
+- Saving or removing your own Home Assistant token in Family → Home closed
+  the section, and the message saying it had worked went with it. The
+  section now stays open and says so.
 - When a long voice conversation reconnected, it kept its oldest turns and
   forgot the newest, so Jarvis lost track of what was just said. It now
   keeps the most recent end.
