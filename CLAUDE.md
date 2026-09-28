@@ -8,6 +8,7 @@
 | Test | `npm test` | Plain Node, no runner: each `test/*.test.ts` is run with `node`. 32 files. |
 | Build | `npm run build` | `vite build` into `dist/`. The "chunks larger than 500 kB" warning is expected. |
 | Lint | none | There is no linter configured, and none is to be added. |
+| Behavior check | `node test/behavior/check.mjs verify` | About 1½ minutes. Builds this checkout, runs it locally and compares what it does with `.refactor-baseline/`. Exit 0 means the same behavior. See below. |
 
 Tests load source files straight into Node (type stripping), so:
 
@@ -42,6 +43,58 @@ Tests load source files straight into Node (type stripping), so:
   They are not fixed on this branch.
 - **One step at a time:** one commit per step, `refactor: <step>`, and tick the
   step in `REFACTOR_PLAN.md`. Subagents only for read-only investigation.
+
+### Behavior checks
+
+`test/behavior/check.mjs` runs a build of the app locally and records what it
+does:
+
+- It runs against stand-ins, never anything real: a fake OpenAI and a fake
+  Home Assistant (`fakes.mjs`), a fresh local store, and made-up keys.
+- **API** (`scenario.ts`): a family of five is made and uses the API, about
+  105 requests. That covers sign-in, invites, pairing, PINs, memory, cars,
+  passing things on, chat, a guest's pass, devices, routines, usage,
+  settings, hours and removal. It also records which tools each question was
+  offered and which house calls were made.
+- **Screens** (`ui.mjs`): headless Chrome opens the app as an admin, an adult
+  and a guest, and reads every panel, and every section of a panel with a
+  menu, as text.
+
+Times, ids, tokens and relative times ("5m ago") are ignored when comparing,
+and so is the order of lists that come in random-id order. Screenshots are
+saved beside the text for a person to look at; they are not compared.
+
+- **The baseline** is `.refactor-baseline/` (git-ignored). It was recorded from
+  `main` at `fc83556`, the code before this branch. To record it again:
+  `git worktree add --detach /tmp/jarvis-main main`, then
+  `node test/behavior/check.mjs record /tmp/jarvis-main .refactor-baseline`,
+  then `git worktree remove --force /tmp/jarvis-main`.
+- **Checking a change:** `node test/behavior/check.mjs verify`. On a difference
+  it lists each request or screen that changed, and keeps that run for
+  inspection.
+- **What it needs:** the repository's `node_modules`, Google Chrome
+  (`CHROME=<path>` for another), and free ports 8791, 8792, 8798 and 9333.
+- **What it does not cover:**
+  - the live voice session (WebRTC), push-to-talk audio and spoken alerts;
+  - real Google, Spotify and Tessie;
+  - anything that waits on the clock: scheduled reminders, routines firing,
+    nudges;
+  - background jobs;
+  - how a screen looks, as opposed to what it says.
+
+  A step touching those needs tests of its own first.
+
+### [med] and [high] steps
+
+- **Before the step:** if the code it touches has no tests, write tests for
+  its current behavior, confirm they pass, and commit them on their own
+  (`refactor: test <what> before step <n>`).
+- **After the step:** typecheck, tests and build pass (there is no linter),
+  and `node test/behavior/check.mjs verify` reports the same behavior as the
+  baseline.
+- **If anything differs and cannot be fixed:** revert the step and mark it
+  blocked in `REFACTOR_PLAN.md`, with the reason. Never commit an unverified
+  step.
 
 ## Always
 
