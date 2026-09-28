@@ -26,6 +26,9 @@ of every release, and in the [README](README.md#updating).
 
 ### Fixed
 
+- An MCP server saved with a header value typed as a number (8123 rather
+  than "8123") made every question fail to load the house's tools. Such a
+  value is now kept as text.
 - A camera whose password had a stray "%" or a character such as "€" in it
   could not be shown, and the failure went unhandled. Such passwords now
   work; they are sent as UTF-8.

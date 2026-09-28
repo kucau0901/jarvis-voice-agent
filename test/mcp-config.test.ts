@@ -191,5 +191,14 @@ console.log("\n${NAME} never hands one of Jarvis's own keys to a server that is 
   check("a key as a whole URL is not an https address, so no server is called", !/^https:\/\//.test(u("${OPENAI_API_KEY}")));
 }
 
+console.log("\na header typed as a number does not break the list");
+{
+  const list = sane([{ label: "x", url: "https://mcp.example/sse", headers: { "X-Port": 8123, "X-On": true, "X-Obj": { a: 1 }, Authorization: "Bearer ${GITHUB_TOKEN}" } }]);
+  check("numbers and true/false are kept as text; anything else is dropped", JSON.stringify(list[0]!.headers) === JSON.stringify({ "X-Port": "8123", "X-On": "true", Authorization: "Bearer ${GITHUB_TOKEN}" }), list[0]!.headers);
+  const filled = expandHeaderTemplates(list[0]!.headers, { GITHUB_TOKEN: "gh-token-0123456789abcdef" }, "https://mcp.example/sse");
+  check("and filling in placeholders works on them", filled["X-Port"] === "8123" && filled.Authorization === "Bearer gh-token-0123456789abcdef", filled);
+  check("a list of headers is not headers", sane([{ label: "y", url: "https://mcp.example/sse", headers: ["a"] }])[0]!.headers === undefined);
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
