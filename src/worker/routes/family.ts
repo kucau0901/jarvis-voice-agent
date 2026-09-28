@@ -1,12 +1,12 @@
-import type { Env } from "../types";
-import { err, json } from "../lib/http.ts";
+import type { Env } from "../types.ts";
+import { err, json, readObjectOrEmpty } from "../lib/http.ts";
 import { grantsOf, isAdmin, personOf, type Principal } from "../lib/auth.ts";
 import { allows, SCOPES, WILDCARD } from "../lib/scopes.ts";
 import { stateStub } from "../lib/state-client.ts";
 import { deliver, makeAlert } from "../lib/alerts.ts";
 import { AGENT, FAMILY_ROOM, mayRead, namesAgent, type ChatMessage } from "../lib/chat.ts";
 import { Collector } from "../lib/collector.ts";
-import { run } from "./delegate";
+import { run } from "../lib/router.ts";
 
 /**
  * The family talking (lib/chat.ts), and answering what was passed on to them
@@ -23,10 +23,6 @@ import { run } from "./delegate";
  *   DELETE /api/hub/points                    admin: start the tally again
  */
 
-const body = async (req: Request): Promise<Record<string, unknown>> => {
-  const b = (await req.json().catch(() => null)) as unknown;
-  return b && typeof b === "object" && !Array.isArray(b) ? (b as Record<string, unknown>) : {};
-};
 
 export async function handleFamily(req: Request, env: Env, ctx: ExecutionContext, principal: Principal): Promise<Response | null> {
   const url = new URL(req.url);
@@ -61,7 +57,7 @@ export async function handleFamily(req: Request, env: Env, ctx: ExecutionContext
       return json({ messages });
     }
     if (m !== "POST") return err(405, "method not allowed");
-    const b = await body(req);
+    const b = await readObjectOrEmpty(req);
     const convo = typeof b.c === "string" ? b.c : "";
     const text = typeof b.text === "string" ? b.text.trim() : "";
     if (!mayRead(convo, me)) return err(404, "no such conversation");
@@ -106,7 +102,7 @@ export async function handleFamily(req: Request, env: Env, ctx: ExecutionContext
   }
 
   if (p === "/api/hub/relays" && m === "POST") {
-    const b = await body(req);
+    const b = await readObjectOrEmpty(req);
     const kind = b.kind === "remind" || b.kind === "ask" ? b.kind : "tell";
     const at = typeof b.at === "number" && Number.isFinite(b.at) ? b.at : undefined;
     const r = await state.relayCreate({
@@ -123,7 +119,7 @@ export async function handleFamily(req: Request, env: Env, ctx: ExecutionContext
   }
 
   if (p === "/api/hub/relays/answer" && m === "POST") {
-    const b = await body(req);
+    const b = await readObjectOrEmpty(req);
     const status = b.status === "done" || b.status === "declined" || b.status === "answered" ? b.status : null;
     if (!status) return err(400, "status is done, declined or answered");
     const r = await state.relayAnswer(String(b.id ?? ""), me, { status, ...(typeof b.answer === "string" ? { answer: b.answer } : {}) });
@@ -131,7 +127,7 @@ export async function handleFamily(req: Request, env: Env, ctx: ExecutionContext
   }
 
   if (p === "/api/hub/relays" && m === "DELETE") {
-    const b = await body(req);
+    const b = await readObjectOrEmpty(req);
     const r = await state.relayCancel(String(b.id ?? ""), me);
     return typeof r === "string" ? err(400, r) : json({ relay: r });
   }

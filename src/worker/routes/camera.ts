@@ -1,6 +1,6 @@
-import type { Env } from "../types";
-import { err } from "../lib/http";
-import { camerasConfigured, snapshot } from "../lib/cameras";
+import type { Env } from "../types.ts";
+import { err } from "../lib/http.ts";
+import { camerasConfigured, snapshot } from "../lib/cameras.ts";
 
 /**
  * A camera frame — Home Assistant's, or from a listed snapshot address — proxied.

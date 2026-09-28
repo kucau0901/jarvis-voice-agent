@@ -104,14 +104,14 @@ export interface WatchState {
 }
 
 export const MAX_WATCHES = 10;
-export const MAX_TEMPLATE = 500;
+const MAX_TEMPLATE = 500;
 
 export const MAX_ROUTINES = 50;
-export const MAX_TEXT = 1000;
+const MAX_TEXT = 1000;
 const MAX_NAME = 60;
 export const EVENT_NAME = /^[a-z0-9][a-z0-9_.:-]{0,39}$/;
 const HHMM = /^([01]\d|2[0-3]):([0-5]\d)$/;
-const LOCAL = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})$/;
+export const LOCAL = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})$/;
 
 /* ---------- time zones ------------------------------------------------------ */
 
@@ -372,7 +372,7 @@ export function buildRoutine(input: RoutineInput, timeZone: string, now: number)
 }
 
 const ALPHABET = "0123456789abcdefghjkmnpqrstvwxyz";
-export function newRoutineId(): string {
+function newRoutineId(): string {
   let s = "r";
   for (const b of crypto.getRandomValues(new Uint8Array(9))) s += ALPHABET[b & 31];
   return s;

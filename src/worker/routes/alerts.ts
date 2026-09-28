@@ -1,11 +1,11 @@
-import type { Env } from "../types";
-import { isAdmin, whoOf, type Principal } from "../lib/auth";
-import { err, json, publicOrigin } from "../lib/http";
-import { stateFetch, stateStub } from "../lib/state-client";
-import { deliver, makeAlert, parseOrder } from "../lib/alerts";
-import { cleanLabel } from "../lib/live";
-import { TICKET_MS, TICKET_SHAPE } from "../lib/state-host";
-import { pushEndpointAllowed } from "../lib/webpush";
+import type { Env } from "../types.ts";
+import { isAdmin, whoOf, type Principal } from "../lib/auth.ts";
+import { err, json, publicOrigin, readObject } from "../lib/http.ts";
+import { stateFetch, stateStub } from "../lib/state-client.ts";
+import { deliver, makeAlert, parseOrder } from "../lib/alerts.ts";
+import { cleanLabel } from "../lib/live.ts";
+import { TICKET_MS, TICKET_SHAPE } from "../lib/state-host.ts";
+import { pushEndpointAllowed } from "../lib/webpush.ts";
 
 /**
  * The alerts surface (lib/alerts.ts). Every path here needs the `alerts`
@@ -22,16 +22,6 @@ import { pushEndpointAllowed } from "../lib/webpush";
 
 const MAX_BODY = 8 * 1024;
 
-async function body(req: Request): Promise<Record<string, unknown> | null> {
-  const raw = await req.text();
-  if (raw.length > MAX_BODY) return null;
-  try {
-    const v = JSON.parse(raw || "{}");
-    return v && typeof v === "object" && !Array.isArray(v) ? v : null;
-  } catch {
-    return null;
-  }
-}
 
 /** What a screen is called in the panel and in "shown on …". A device is its own name. */
 function identity(principal: Principal, label: unknown, fallback: string) {
@@ -83,7 +73,7 @@ export async function handleAlertApi(
 
   if (p === "/api/v1/events/ticket") {
     if (req.method !== "POST") return err(405, "method not allowed");
-    const b = await body(req);
+    const b = await readObject(req, MAX_BODY);
     if (!b) return err(400, "body must be a small JSON object");
     const ticket = await state.mintTicket(identity(principal, b.label, "a screen"));
     return json({ ticket, expiresIn: TICKET_MS / 1000 });
@@ -91,7 +81,7 @@ export async function handleAlertApi(
 
   if (p === "/api/v1/push") {
     if (req.method === "GET") return json({ publicKey: await state.vapidPublicKey() });
-    const b = await body(req);
+    const b = await readObject(req, MAX_BODY);
     if (!b) return err(400, "body must be a small JSON object");
 
     if (req.method === "POST") {
@@ -127,7 +117,7 @@ export async function handleAlertApi(
 
   if (p === "/api/v1/notify") {
     if (req.method !== "POST") return err(405, "method not allowed");
-    const b = await body(req);
+    const b = await readObject(req, MAX_BODY);
     if (!b) return err(400, "body must be a small JSON object");
     const alert = makeAlert(b, "api", Date.now(), env.JARVIS_PERSON);
     if (!alert) return err(400, "text is required");

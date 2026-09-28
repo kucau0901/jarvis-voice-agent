@@ -1,18 +1,18 @@
 import { openaiBase } from "../lib/openai-base.ts";
 import OpenAI from "openai";
-import type { Env } from "../types";
-import { whoOf, grantsOf, personOf, type Principal } from "../lib/auth";
+import type { Env } from "../types.ts";
+import { whoOf, grantsOf, personOf, type Principal } from "../lib/auth.ts";
 import { isTheirs } from "../lib/context.ts";
-import type { EventSink } from "../lib/sse";
-import { err, json } from "../lib/http";
-import { stateStub } from "../lib/state-client";
-import { allows, withoutScreen, type Grant } from "../lib/scopes";
-import { builtinTools, explicitCache, researchModel } from "../lib/router-model";
-import { toToolSchema } from "../tools/registry";
-import * as hermes from "../tools/hermes";
-import { RESEARCH_MONTHLY_DEFAULT, jobTool, usageEntry, withSources, type Job, type JobDeps, type Step } from "../lib/jobs";
-import { prepareRouter, runCalls } from "./delegate";
-import { recordUsage } from "./usage";
+import type { EventSink } from "../lib/sse.ts";
+import { err, json, readObject } from "../lib/http.ts";
+import { stateStub } from "../lib/state-client.ts";
+import { allows, withoutScreen, type Grant } from "../lib/scopes.ts";
+import { builtinTools, explicitCache, researchModel } from "../lib/router-model.ts";
+import { toToolSchema } from "../tools/registry.ts";
+import * as hermes from "../tools/hermes.ts";
+import { RESEARCH_MONTHLY_DEFAULT, jobTool, usageEntry, withSources, type Job, type JobDeps, type Step } from "../lib/jobs.ts";
+import { prepareRouter, runCalls } from "../lib/router.ts";
+import { recordUsage } from "./usage.ts";
 import { costOf } from "../lib/usage.ts";
 
 /**
@@ -69,7 +69,7 @@ const researchLimit = (raw: string | undefined): number => {
 };
 
 /** The engine, bound to an environment: what the Durable Object runs jobs with. */
-export function jobEngine(env: Env, deliver: JobDeps["deliver"], envFor: (job: Job) => Promise<Env> = async () => env): JobDeps {
+export function jobEngine(env: Env, deliver: JobDeps["deliver"], envFor: (job: Job) => Promise<Env>): JobDeps {
   const client = () => new OpenAI({ apiKey: env.OPENAI_API_KEY, baseURL: openaiBase(env) });
   const signal = () => AbortSignal.timeout(60_000);
 
@@ -159,19 +159,9 @@ export function jobEngine(env: Env, deliver: JobDeps["deliver"], envFor: (job: J
 
 const MAX_BODY = 16 * 1024;
 
-async function body(req: Request): Promise<Record<string, unknown> | null> {
-  const raw = await req.text();
-  if (raw.length > MAX_BODY) return null;
-  try {
-    const v = JSON.parse(raw || "{}");
-    return v && typeof v === "object" && !Array.isArray(v) ? v : null;
-  } catch {
-    return null;
-  }
-}
 
 /** The panel's view: everything but the grants and the internals. */
-export function jobView(j: Job, whole = false) {
+function jobView(j: Job, whole = false) {
   const { grants: _g, responseId: _r, ...rest } = j;
   void _g;
   void _r;
@@ -194,7 +184,7 @@ export async function handleJobs(req: Request, env: Env, url: URL, principal: Pr
 
   if (p === "/api/v1/jobs/cancel") {
     if (req.method !== "POST") return err(405, "method not allowed");
-    const b = await body(req);
+    const b = await readObject(req, MAX_BODY);
     const j = await state.getJob(typeof b?.id === "string" ? b.id : "");
     if (!j || !mine(j)) return err(404, "no such job");
     const r = await state.cancelJob(j.id);
@@ -218,7 +208,7 @@ export async function handleJobs(req: Request, env: Env, url: URL, principal: Pr
   }
 
   if (req.method === "POST") {
-    const b = await body(req);
+    const b = await readObject(req, MAX_BODY);
     if (!b) return err(400, "body must be a small JSON object");
     if (b.engine === "hermes" && !allows(grants, "hermes")) return err(403, 'a Hermes job needs "hermes"', { need: "hermes" });
     // Research spends the family's monthly allowance (Settings → OpenAI): not a guest's to spend.

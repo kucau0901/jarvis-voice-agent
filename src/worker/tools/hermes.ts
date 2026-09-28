@@ -1,4 +1,4 @@
-import type { Env } from "../types";
+import type { Env } from "../types.ts";
 import { OWNER } from "../lib/context.ts";
 
 /**
@@ -15,7 +15,7 @@ import { OWNER } from "../lib/context.ts";
  */
 
 /** Stable per-device key so Hermes accumulates memory across drives. */
-export const SESSION_KEY = "jarvis:tesla";
+const SESSION_KEY = "jarvis:tesla";
 
 /**
  * Hermes's long-term memory is kept per session key, so each person has their
@@ -27,7 +27,7 @@ export function sessionKey(env: Env): string {
   return !person || person === OWNER ? SESSION_KEY : `${SESSION_KEY}:${person}`;
 }
 
-export class HermesNotConfigured extends Error {
+class HermesNotConfigured extends Error {
   constructor() {
     super("Hermes is not configured on this Worker");
     this.name = "HermesNotConfigured";
@@ -131,7 +131,7 @@ export async function ping(env: Env, signal?: AbortSignal) {
 export async function ask(
   env: Env,
   question: string,
-  opts: { signal?: AbortSignal; system?: string; onFirstToken?: () => void } = {},
+  opts: { signal?: AbortSignal; system?: string } = {},
 ): Promise<string> {
   const cfg = hermesConfig(env);
   if (!cfg) throw new HermesNotConfigured();
@@ -168,7 +168,6 @@ export async function ask(
   const decoder = new TextDecoder();
   let buffer = "";
   let text = "";
-  let sawFirst = false;
 
   const take = (raw: string) => {
     const line = raw.trim();
@@ -181,10 +180,7 @@ export async function ask(
       };
       const piece =
         chunk.choices?.[0]?.delta?.content ?? chunk.choices?.[0]?.message?.content ?? "";
-      if (piece) {
-        if (!sawFirst) { sawFirst = true; opts.onFirstToken?.(); }
-        text += piece;
-      }
+      if (piece) text += piece;
     } catch {
       // A partial frame split across reads; the next read completes it.
     }

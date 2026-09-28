@@ -1,5 +1,20 @@
 /** Small pieces the panels share. */
 
+export function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls = "", text?: string): HTMLElementTagNameMap[K] {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined) e.textContent = text;
+  return e;
+}
+
+/** A button that is not a form's submit button. (AlertsPanel and Mine keep their own.) */
+export function button(text: string, onClick: () => void, cls = ""): HTMLButtonElement {
+  const b = el("button", cls, text);
+  b.type = "button";
+  b.addEventListener("click", onClick);
+  return b;
+}
+
 export const esc = (s: string) =>
   s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 
@@ -40,7 +55,7 @@ export function arm(btn: HTMLButtonElement, ask: string, go: () => Promise<void>
     armed = true;
     btn.textContent = ask;
     btn.classList.add("armed");
-    timer = setTimeout(reset, 4000) as unknown as number;
+    timer = setTimeout(reset, 4000);
   });
 }
 

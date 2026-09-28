@@ -1,4 +1,4 @@
-import type { Tool, ToolContext } from "./registry";
+import type { Tool, ToolContext } from "./registry.ts";
 import { localeOf } from "../lib/locale.ts";
 
 /**
@@ -61,7 +61,7 @@ async function locate(query: string, ctx: ToolContext): Promise<Located | string
   };
 }
 
-export const showPlace: Tool = {
+const showPlace: Tool = {
   name: "show_place",
   scope: "screen",
   pace: "fast",
@@ -164,7 +164,7 @@ export const showPlace: Tool = {
  * Reaching across to a Close button while driving is exactly what this whole
  * panel should not require, so the driver can simply say so instead.
  */
-export const hideDisplay: Tool = {
+const hideDisplay: Tool = {
   name: "hide_display",
   scope: "screen",
   pace: "fast",

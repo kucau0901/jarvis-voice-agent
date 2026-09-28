@@ -46,3 +46,25 @@ export function redact(s: string): string {
     .replace(/\b(sk|ek)-[A-Za-z0-9_-]{8,}/g, "$1-***")
     .replace(/Bearer\s+[A-Za-z0-9._~+/-]+=*/gi, "Bearer ***");
 }
+
+/**
+ * A request's body as a JSON object of at most `max` characters, or null for
+ * anything else: not JSON, not an object (an array, a number, null), or too
+ * big. An empty body is an empty object.
+ */
+export async function readObject(req: Request, max: number): Promise<Record<string, unknown> | null> {
+  const raw = await req.text();
+  if (raw.length > max) return null;
+  try {
+    const v = JSON.parse(raw || "{}");
+    return v && typeof v === "object" && !Array.isArray(v) ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+/** A request's body as a JSON object; anything else (not JSON, an array, a number, null) is an empty one. */
+export async function readObjectOrEmpty(req: Request): Promise<Record<string, unknown>> {
+  const b = (await req.json().catch(() => null)) as unknown;
+  return b && typeof b === "object" && !Array.isArray(b) ? (b as Record<string, unknown>) : {};
+}

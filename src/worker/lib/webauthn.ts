@@ -148,17 +148,18 @@ export function parseAuthData(d: Uint8Array): AuthData {
 
 export const ES256 = -7;
 export const EDDSA = -8;
-export const RS256 = -257;
-export const ALGORITHMS = [ES256, EDDSA, RS256];
+const RS256 = -257;
+const ALGORITHMS = [ES256, EDDSA, RS256];
 
 interface Imported {
   key: CryptoKey;
   alg: number;
-  verify: AlgorithmIdentifier | EcdsaParams;
+  /** What crypto.subtle.verify takes: a name, and the hash for ECDSA. */
+  verify: { name: string; hash?: string };
 }
 
 /** A COSE public key made usable by WebCrypto. */
-export async function importCose(cose: Uint8Array): Promise<Imported> {
+async function importCose(cose: Uint8Array): Promise<Imported> {
   const m = decodeCbor(cose).value;
   if (!(m instanceof Map)) throw new Error("public key is not a COSE map");
   const kty = m.get(1);

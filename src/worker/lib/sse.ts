@@ -30,15 +30,18 @@ export class SseStream {
   private heartbeat = 0;
   private closed = false;
   readonly body: ReadableStream<Uint8Array>;
+  private heartbeatMs: number;
 
-  constructor(private heartbeatMs = 15_000) {
+  // A plain field, not a parameter property: Node's type stripping (the tests) cannot run those.
+  constructor(heartbeatMs = 15_000) {
+    this.heartbeatMs = heartbeatMs;
     this.body = new ReadableStream({
       start: (c) => {
         this.controller = c;
         this.heartbeat = setInterval(() => {
           // A comment line: valid SSE, ignored by EventSource, keeps the pipe warm.
           this.raw(": ping\n\n");
-        }, this.heartbeatMs) as unknown as number;
+        }, this.heartbeatMs);
       },
       cancel: () => this.close(),
     });

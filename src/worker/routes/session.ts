@@ -1,9 +1,9 @@
 import { openaiBase } from "../lib/openai-base.ts";
 import OpenAI from "openai";
-import type { Env } from "../types";
-import { json, err, redact } from "../lib/http";
-import { isClientKind, jarvisPrompt } from "../lib/prompt";
-import { buildHistory } from "../lib/history";
+import type { Env } from "../types.ts";
+import { json, err, redact } from "../lib/http.ts";
+import { isClientKind, jarvisPrompt } from "../lib/prompt.ts";
+import { buildHistory } from "../lib/history.ts";
 
 /** Confirmed against openai@7 `BuiltInVoice`. Default is `marin`. */
 export const VOICES = [

@@ -1,6 +1,6 @@
-import type { Env } from "../types";
-import { err, json } from "../lib/http";
-import { stateStub } from "../lib/state-client";
+import type { Env } from "../types.ts";
+import { err, json } from "../lib/http.ts";
+import { stateStub } from "../lib/state-client.ts";
 import { localeOf } from "../lib/locale.ts";
 import { PRICES_AS_OF } from "../lib/prices.ts";
 import { dayOf, type UsageEntry } from "../lib/usage.ts";
@@ -24,7 +24,7 @@ export async function recordUsage(env: Env, e: UsageEntry): Promise<void> {
 }
 
 /** Admins see everyone's, with each person's part; anyone else their own (lib/context.ts). */
-export async function handleUsage(req: Request, env: Env, everyone = true): Promise<Response> {
+export async function handleUsage(req: Request, env: Env, everyone: boolean): Promise<Response> {
   if (req.method !== "GET") return err(405, "GET only");
   const state = stateStub(env);
   if (!state) return err(503, "usage needs the STATE Durable Object");

@@ -1,24 +1,25 @@
-import type { Env } from "../types";
-import { err, json } from "../lib/http";
-import { Collector, type Collected } from "../lib/collector";
-import { buildHistory, type Turn } from "../lib/history";
-import { run, handleDelegate, type RunOptions } from "./delegate";
-import { whoOf, grantsOf, isAdmin, personOf, type Principal } from "../lib/auth";
+import type { Env } from "../types.ts";
+import { err, json } from "../lib/http.ts";
+import { Collector, type Collected } from "../lib/collector.ts";
+import { buildHistory, type Turn } from "../lib/history.ts";
+import { handleDelegate } from "./delegate.ts";
+import { run, type RunOptions } from "../lib/router.ts";
+import { whoOf, grantsOf, isAdmin, personOf, type Principal } from "../lib/auth.ts";
 import { deviceWho } from "../lib/context.ts";
 import { hubStub } from "../lib/hub-client.ts";
-import { stateStub } from "../lib/state-client";
-import { charBudget, forGlasses, latestUserText, toChatCompletion, waitSeconds } from "../lib/glasses";
-import { allows, saneGrants, SCOPES, WILDCARD, type Grant } from "../lib/scopes";
-import { handleAlertApi } from "./alerts";
-import { handleRoutines } from "./routines";
-import { handleVoice } from "./voice";
-import { handleJobs } from "./jobs";
+import { stateStub } from "../lib/state-client.ts";
+import { charBudget, forGlasses, latestUserText, toChatCompletion, waitSeconds } from "../lib/glasses.ts";
+import { allows, saneGrants, SCOPES, WILDCARD, type Grant } from "../lib/scopes.ts";
+import { handleAlertApi } from "./alerts.ts";
+import { handleRoutines } from "./routines.ts";
+import { handleVoice } from "./voice.ts";
+import { handleJobs } from "./jobs.ts";
 
 /** Everything a wildcard grant covers, minus the screen this route does not have. */
 const SCREENLESS: Grant[] = SCOPES.filter((s) => s !== "screen");
-import * as devices from "../lib/devices";
-import { handleLiveUsage } from "./usage";
-import { originOf } from "../lib/shared";
+import * as devices from "../lib/devices.ts";
+import { handleLiveUsage } from "./usage.ts";
+import { originOf } from "../lib/shared.ts";
 
 /**
  * The versioned surface other things talk to.
@@ -38,7 +39,11 @@ const MAX_WAIT_S = 120;
 const AFTER_TIMEOUT_GRACE_MS = 20_000;
 
 /** Reject an oversized body before parsing it, which no route did before. */
-async function readJson(req: Request): Promise<{ ok: true; body: any } | { ok: false; res: Response }> {
+// The parsed value as it came: any JSON at all. Callers read fields off it, which are
+// undefined for an array, a number or a string, just as for an object without them.
+type JsonBody = Record<string, unknown> | null;
+
+async function readJson(req: Request): Promise<{ ok: true; body: JsonBody } | { ok: false; res: Response }> {
   const len = Number(req.headers.get("content-length") ?? "0");
   if (Number.isFinite(len) && len > MAX_BODY) {
     return { ok: false, res: err(413, `body must be under ${MAX_BODY} bytes`) };
@@ -48,7 +53,7 @@ async function readJson(req: Request): Promise<{ ok: true; body: any } | { ok: f
     return { ok: false, res: err(413, `body must be under ${MAX_BODY} bytes`) };
   }
   try {
-    return { ok: true, body: JSON.parse(raw) };
+    return { ok: true, body: JSON.parse(raw) as JsonBody };
   } catch {
     return { ok: false, res: err(400, "body is not valid JSON") };
   }
@@ -123,9 +128,10 @@ async function collectWithDeadline(
    */
   ctx.waitUntil(work);
 
-  let timer: number | undefined;
+  // Set at once: a Promise runs its executor before returning.
+  let timer!: number;
   const timeout = new Promise<"timeout">((resolve) => {
-    timer = setTimeout(() => resolve("timeout"), waitS * 1000) as unknown as number;
+    timer = setTimeout(() => resolve("timeout"), waitS * 1000);
   });
   const outcome = await Promise.race([work.then(() => "done" as const), timeout]);
   clearTimeout(timer);
@@ -301,7 +307,7 @@ async function handleDevices(req: Request, env: Env, principal: Principal): Prom
 
   // A DELETE may name the device in the query alone, with no body at all.
   const bare = req.method === "DELETE" && !(await req.clone().text()).trim();
-  const parsed = bare ? ({ ok: true, body: {} } as const) : await readJson(req);
+  const parsed: Awaited<ReturnType<typeof readJson>> = bare ? { ok: true, body: {} } : await readJson(req);
   if (!parsed.ok) return parsed.res;
   const body = parsed.body ?? {};
 

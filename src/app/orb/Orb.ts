@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { CORE_VERT, CORE_FRAG, SHELL_VERT, SHELL_FRAG, HALO_VERT, HALO_FRAG } from "./shaders";
 
-export interface OrbInputs {
+interface OrbInputs {
   user: number;   // driver's voice, 0..1
   agent: number;  // Jarvis's voice, 0..1
   think: number;  // delegation in flight, 0..1
@@ -37,7 +37,6 @@ export class Orb {
   private shell!: THREE.Points;
   private halo!: THREE.Mesh;
   private uniforms: Record<string, THREE.IUniform>;
-  private raf = 0;
   private clock = new THREE.Clock();
   private frames: number[] = [];
   private detail: number;
@@ -70,7 +69,6 @@ export class Orb {
       uAgent: { value: 0 },
       uThink: { value: 0 },
       uError: { value: 0 },
-      uDetail: { value: 1 },
       uIdle: { value: PALETTE.idle },
       uListen: { value: PALETTE.listen },
       uSpeak: { value: PALETTE.speak },
@@ -200,15 +198,10 @@ export class Orb {
     this.clock.start();
     const loop = () => {
       if (!this.running) return;
-      this.raf = requestAnimationFrame(loop);
+      requestAnimationFrame(loop);
       this.frame();
     };
-    this.raf = requestAnimationFrame(loop);
-  }
-
-  stop() {
-    this.running = false;
-    cancelAnimationFrame(this.raf);
+    requestAnimationFrame(loop);
   }
 
   private frame() {
@@ -272,15 +265,5 @@ export class Orb {
 
   get quality() {
     return { tier: this.tier, detail: this.detail, veins: this.uniforms.uVeinQuality!.value };
-  }
-
-  dispose() {
-    this.stop();
-    this.observer?.disconnect();
-    cancelAnimationFrame(this.resizePending);
-    this.core?.geometry.dispose();
-    this.shell?.geometry.dispose();
-    this.halo?.geometry.dispose();
-    this.renderer.dispose();
   }
 }

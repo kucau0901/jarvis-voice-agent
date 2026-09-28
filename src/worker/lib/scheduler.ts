@@ -82,11 +82,11 @@ export const WATCH_ERRORS_SLOW = 5;
 /** A daily routine this late is skipped, not run: a 7:30 briefing at noon helps nobody. */
 export const DAILY_GRACE_MS = 30 * 60_000;
 /** A reminder this late is still given, marked late; beyond it, it is recorded as missed. */
-export const ONCE_GRACE_MS = 12 * 3_600_000;
+const ONCE_GRACE_MS = 12 * 3_600_000;
 /** An event-triggered routine runs at most once a minute, however often the event arrives. */
 export const EVENT_COOLDOWN_MS = 60_000;
 /** A fired one-off stays listed this long, so the panel can show it ran, then goes. */
-export const KEEP_DONE_MS = 7 * 86_400_000;
+const KEEP_DONE_MS = 7 * 86_400_000;
 
 type Stored = Record<string, LeavePlan>;
 

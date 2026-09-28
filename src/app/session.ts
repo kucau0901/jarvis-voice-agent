@@ -7,7 +7,7 @@ const DISCONNECT_GRACE_MS = 4000;
 
 export type ServerEvent = { type: string; [k: string]: unknown };
 
-export interface SessionHandlers {
+interface SessionHandlers {
   onEvent(ev: ServerEvent): void;
   onState(state: SessionState, detail?: string): void;
   onDiagnostic(type: string, data: Record<string, unknown>): void;
@@ -18,7 +18,7 @@ export interface SessionHandlers {
 }
 
 export type SessionState =
-  | "idle" | "requesting-mic" | "connecting" | "live" | "closed" | "error";
+  | "requesting-mic" | "connecting" | "live" | "closed" | "error";
 
 /**
  * The microphone, or an error that says what to do about it.
@@ -62,7 +62,6 @@ export class JarvisSession {
   private stopReason = "";
   private dropTimer = 0;
   private dropped = false;
-  sessionId: string | null = null;
 
   constructor(private key: string, private h: SessionHandlers) {}
 
@@ -70,7 +69,7 @@ export class JarvisSession {
     return this.dc?.readyState === "open";
   }
 
-  async start(opts: { voice?: string; history?: Turn[] } = {}): Promise<void> {
+  async start(opts: { history?: Turn[] } = {}): Promise<void> {
     try {
       this.h.onState("requesting-mic");
       // Must be called from the user gesture that started this.
@@ -112,7 +111,7 @@ export class JarvisSession {
             if (!this.stopping && pc.connectionState !== "connected") {
               this.drop("connection lost");
             }
-          }, DISCONNECT_GRACE_MS) as unknown as number;
+          }, DISCONNECT_GRACE_MS);
         }
       };
       pc.oniceconnectionstatechange = () =>
@@ -146,7 +145,6 @@ export class JarvisSession {
         headers: authHeaders(this.key),
         body: JSON.stringify({
           sdp: pc.localDescription!.sdp,
-          voice: opts.voice,
           history: opts.history,
           // Where this is running, so the model is told whose attention it is
           // spending — a driver's or a reader's.
@@ -163,8 +161,7 @@ export class JarvisSession {
             : `${body.error ?? res.statusText}${body.detail ? ` — ${body.detail}` : ""}`,
         );
       }
-      const { sdp, sessionId } = (await res.json()) as { sdp: string; sessionId: string };
-      this.sessionId = sessionId;
+      const { sdp } = (await res.json()) as { sdp: string; sessionId: string };
       await pc.setRemoteDescription({ type: "answer", sdp });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);

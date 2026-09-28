@@ -1,22 +1,22 @@
 import { DurableObject } from "cloudflare:workers";
-import type { Env } from "./types";
-import { StateHost } from "./lib/state-host";
-import type { Changeset, RefChangeset } from "./lib/memory";
-import type { Turn } from "./lib/history";
-import type { Changes } from "./lib/settings";
-import { LiveHub, type LiveClient, type LiveSocket } from "./lib/live";
-import type { Alert, Delivery } from "./lib/alerts";
-import type { PushRecord } from "./lib/state-host";
-import { deliver } from "./lib/alerts";
-import { effectiveEnv } from "./lib/settings";
-import { localeOf } from "./lib/locale";
-import { upcomingEvents } from "./lib/leave";
-import { Scheduler, type SchedulerDeps } from "./lib/scheduler";
-import type { RoutineInput } from "./lib/routines";
-import { narrow, type Grant } from "./lib/scopes";
-import { askForRoutine, travelFor } from "./routes/routines";
-import { Jobs } from "./lib/jobs";
-import { jobEngine } from "./routes/jobs";
+import type { Env } from "./types.ts";
+import { StateHost } from "./lib/state-host.ts";
+import type { Changeset, RefChangeset } from "./lib/memory.ts";
+import type { Turn } from "./lib/history.ts";
+import type { Changes } from "./lib/settings.ts";
+import { LiveHub, type LiveClient, type LiveSocket } from "./lib/live.ts";
+import type { Alert, Delivery } from "./lib/alerts.ts";
+import type { PushRecord } from "./lib/state-host.ts";
+import { deliver } from "./lib/alerts.ts";
+import { effectiveEnv } from "./lib/settings.ts";
+import { localeOf } from "./lib/locale.ts";
+import { upcomingEvents } from "./lib/leave.ts";
+import { Scheduler, type SchedulerDeps } from "./lib/scheduler.ts";
+import type { RoutineInput } from "./lib/routines.ts";
+import { narrow, type Grant } from "./lib/scopes.ts";
+import { askForRoutine, travelFor } from "./routes/routines.ts";
+import { Jobs } from "./lib/jobs.ts";
+import { jobEngine } from "./routes/jobs.ts";
 import type { UsageEntry } from "./lib/usage.ts";
 import type { SharedTurn } from "./lib/shared.ts";
 import { haConfig, renderTemplate, truthy } from "./lib/ha.ts";
@@ -26,18 +26,20 @@ import { Chat, dmId, type ChatMessage } from "./lib/chat.ts";
 import { personOfWho, withPerson } from "./lib/context.ts";
 import { nextAllowed } from "./lib/access.ts";
 
-/**
- * The Durable Object. Deliberately thin: everything it does lives in
- * lib/state-host.ts, where Node can test it.
- *
- * SQLite-backed (see the `new_sqlite_classes` migration in wrangler.jsonc),
- * because that is the only kind the Workers free plan allows.
- */
 /** Chore points, per person (lib/relays.ts award). */
 const POINTS = "chore:points";
 /** Alerts kept for someone's quiet time (lib/alerts.ts). */
 const HELD = "held:";
 
+/**
+ * The Durable Object. Memory, settings and push live in lib/state-host.ts,
+ * where Node can test them; this class adds the sockets, the alarm (routines,
+ * jobs, relays and held alerts), the family's chat and the hub's RPC.
+ *
+ * SQLite-backed (see the `new_sqlite_classes` migration in
+ * wrangler.example.jsonc), because that is the only kind the Workers free
+ * plan allows.
+ */
 export class JarvisState extends DurableObject<Env> {
   private host: StateHost;
   /** Who uses this Jarvis and how they sign in (lib/hub.ts). */
@@ -289,7 +291,7 @@ export class JarvisState extends DurableObject<Env> {
     };
   }
 
-  /** Point the one alarm at whatever is due first: a routine or a job. */
+  /** Point the one alarm at whatever is due first: a routine, a job, a relay or a held alert. */
   private async rearm(): Promise<void> {
     const held = [...(await this.ctx.storage.list<{ until: number }>({ prefix: HELD })).values()].map((h) => h.until);
     const wakes = [...(await Promise.all([this.scheduler.nextWake(), this.jobs.nextWake(), this.relays.nextWake()])), ...held].filter(
@@ -301,7 +303,7 @@ export class JarvisState extends DurableObject<Env> {
   }
 
   async alarm() {
-    // Both catch per item, so this only throws on a storage failure — and then
+    // Each catches per item, so this only throws on a storage failure — and then
     // the runtime retries, which is what is wanted.
     await this.scheduler.tick();
     await this.jobs.tick();

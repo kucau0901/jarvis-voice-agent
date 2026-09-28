@@ -1,4 +1,4 @@
-import type { Tool } from "./registry";
+import type { Tool } from "./registry.ts";
 import { stateStub } from "../lib/state-client.ts";
 import { voiceWho } from "../lib/context.ts";
 import { allows } from "../lib/scopes.ts";
@@ -7,7 +7,7 @@ import { allows } from "../lib/scopes.ts";
  * Starting a background job by voice (lib/jobs.ts). The job keeps the
  * caller's grants, and reads but never acts.
  */
-export const startJob: Tool = {
+const startJob: Tool = {
   name: "start_job",
   pace: "fast",
   description:

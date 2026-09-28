@@ -1,9 +1,10 @@
-import type { Env } from "../types";
+import type { Env } from "../types.ts";
 import { localeOf } from "../lib/locale.ts";
-import { CALENDAR, call, explain, googleConfig, NeedsRelink, type GoogleConfig } from "../lib/google.ts";
+import { CALENDAR, call, explain, googleConfig, guardTool, type GoogleConfig } from "../lib/google.ts";
 import { localParts, zonedToUtc } from "../lib/routines.ts";
-import { asQuotedData } from "../lib/quote.ts";
-import type { Tool, ToolContext } from "./registry";
+import { asQuotedData, tidy } from "../lib/quote.ts";
+import { clampLimit } from "./args.ts";
+import type { Tool, ToolContext } from "./registry.ts";
 
 /**
  * The user's Google Calendar.
@@ -49,23 +50,15 @@ const cfgOf = (ctx: ToolContext): GoogleConfig => {
 };
 
 /** Same split as tools/gmail.ts: a dead token needs a person, not a retry. */
-async function guard<T>(fn: () => Promise<T>): Promise<T | string> {
-  try {
-    return await fn();
-  } catch (e) {
-    if (e instanceof NeedsRelink) {
-      return (
-        "The Google authorisation has expired and needs linking again from a phone: " +
-        "Family → Accounts (or Settings → Google). Say that plainly; retrying will not help."
-      );
-    }
-    const msg = e instanceof Error ? e.message : String(e);
-    return /not linked/i.test(msg) ? NOT_LINKED : `Calendar error: ${msg}`;
-  }
+function guard<T>(fn: () => Promise<T>): Promise<T | string> {
+  return guardTool(fn, {
+    notLinked: NOT_LINKED,
+    relink:
+      "The Google authorisation has expired and needs linking again from a phone: " +
+      "Family → Accounts (or Settings → Google). Say that plainly; retrying will not help.",
+    prefix: "Calendar error",
+  });
 }
-
-const tidy = (s: string): string =>
-  s.replace(/[\x00-\x1f\x7f]/g, " ").replace(/\s+/g, " ").trim();
 
 /* ---------- time ---------------------------------------------------------- */
 
@@ -139,11 +132,6 @@ export function rangeWindow(range: string, now: number, tz: string): { from: num
   return { from: now, to: now + 14 * 86_400_000 };
 }
 
-const clampLimit = (v: unknown): number => {
-  const n = Math.round(Number(v));
-  if (!Number.isFinite(n) || n <= 0) return DEFAULT_EVENTS;
-  return Math.min(MAX_EVENTS, n);
-};
 
 export const calendarCheck: Tool = {
   name: "calendar_check",
@@ -179,7 +167,7 @@ export const calendarCheck: Tool = {
     return (await guard(async () => {
       const cfg = cfgOf(ctx);
       const range = (RANGES as readonly string[]).includes(String(args.range)) ? String(args.range) : "next";
-      const limit = clampLimit(args.limit);
+      const limit = clampLimit(args.limit, DEFAULT_EVENTS, MAX_EVENTS);
 
       const now = new Date();
       // "today" and "tomorrow" mean calendar days, not "the next 24 hours" — a
@@ -232,7 +220,7 @@ export const calendarCheck: Tool = {
         `\n\nAnswer in one or two sentences. If the user wants to know when to set off, ` +
         `take the location above and call directions with it.`
       );
-    }))!;
+    }));
   },
 };
 
@@ -327,7 +315,7 @@ export const calendarAdd: Tool = {
       }
 
       return `Added "${title}" for ${whenSpoken(tz, { dateTime: startAt.toISOString() })}${location ? `, at ${location}` : ""}.`;
-    }))!;
+    }));
   },
 };
 

@@ -1,5 +1,8 @@
 // Hermes (tools/hermes.ts): each person's own memory there, and every line of its answer.
-import { ask, sessionKey, SESSION_KEY } from "../src/worker/tools/hermes.ts";
+import { ask, sessionKey } from "../src/worker/tools/hermes.ts";
+
+/** The key Hermes has always been asked with (tools/hermes.ts SESSION_KEY). */
+const SESSION_KEY = "jarvis:tesla";
 
 let pass = 0;
 let fail = 0;

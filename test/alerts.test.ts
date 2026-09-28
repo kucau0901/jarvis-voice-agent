@@ -14,7 +14,8 @@ import {
   type PushTarget,
 } from "../src/worker/lib/alerts.ts";
 import { LiveHub, cleanLabel, type LiveClient, type LiveSocket } from "../src/worker/lib/live.ts";
-import { MAX_PAYLOAD, b64url, generateVapid } from "../src/worker/lib/webpush.ts";
+import { MAX_PAYLOAD, generateVapid } from "../src/worker/lib/webpush.ts";
+import { b64u as b64url } from "../src/worker/lib/webauthn.ts";
 import { StateHost, DELIVERY_LOG_MAX, MAX_PUSH_SUBS, TICKET_MS } from "../src/worker/lib/state-host.ts";
 import { requiredScope } from "../src/worker/lib/scopes.ts";
 import { validateChanges } from "../src/worker/lib/settings.ts";
@@ -322,6 +323,13 @@ function fakeStorage() {
 }
 
 console.log("\nstorage: notifications");
+{
+  // Nobody has turned notifications on yet: nothing to send to, and no keys made to sign with.
+  const empty = fakeStorage();
+  const none = await new StateHost(empty, {} as never).pushTargets();
+  check("no browsers: no targets", none.subs.length === 0 && none.vapid.publicKey === "", none);
+  check("and no key pair is made for them", (await empty.get("vapid:v1")) === undefined);
+}
 {
   const store = fakeStorage();
   const host = new StateHost(store, {} as never);

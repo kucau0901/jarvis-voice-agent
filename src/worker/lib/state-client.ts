@@ -1,4 +1,4 @@
-import type { Env } from "../types";
+import type { Env } from "../types.ts";
 import type { StateApi } from "./state-host.ts";
 
 /**

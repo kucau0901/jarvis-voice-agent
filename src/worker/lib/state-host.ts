@@ -1,4 +1,5 @@
-import type { Env } from "../types";
+import type { Role } from "./hub.ts";
+import type { Env } from "../types.ts";
 import type { Turn } from "./history.ts";
 import {
   applyChanges as applySettingChanges,
@@ -427,7 +428,7 @@ export class StateHost {
   async pushTargets(person?: string): Promise<{ vapid: VapidKeys; subs: PushTarget[] }> {
     // One person's browsers: the first person's are the owner key's and the devices' (lib/context.ts).
     const subs = (await this.listPushSubs()).filter((s) => person === undefined || personOfWho(s.who) === person);
-    if (!subs.length) return { vapid: { publicKey: "", privateJwk: {} }, subs: [] };
+    if (!subs.length) return { vapid: { publicKey: "", privateJwk: { kty: "EC" } }, subs: [] };
     return {
       vapid: await this.vapid(),
       subs: subs.map(({ id, endpoint, p256dh, auth, subject, label }) => ({ id, endpoint, p256dh, auth, subject, label })),
@@ -493,7 +494,7 @@ export class StateHost {
 }
 
 /** Routines, which the object runs from its alarm (lib/scheduler.ts, state.ts). */
-export interface RoutineApi {
+interface RoutineApi {
   listRoutines(): Promise<Routine[]>;
   addRoutine(input: RoutineInput, by: { who: string; grants: readonly Grant[] }): Promise<Routine | string>;
   updateRoutine(id: string, patch: { enabled?: boolean; name?: string }): Promise<Routine | string>;
@@ -503,7 +504,7 @@ export interface RoutineApi {
 }
 
 /** Background jobs, which the object runs from the same alarm (lib/jobs.ts). */
-export interface JobApi {
+interface JobApi {
   listJobs(): Promise<Job[]>;
   getJob(id: string): Promise<Job | undefined>;
   createJob(input: { title?: unknown; task?: unknown; engine?: unknown }, by: { who: string; grants: readonly Grant[] }): Promise<Job | string>;
@@ -512,7 +513,7 @@ export interface JobApi {
 }
 
 /** The family's messages, passed on and chatted (lib/relays.ts, lib/chat.ts; state.ts). */
-export interface FamilyApi {
+interface FamilyApi {
   relayCreate(input: {
     kind: RelayKind;
     from: string;
@@ -531,13 +532,13 @@ export interface FamilyApi {
   chatMessages(convo: string, since?: number): Promise<ChatMessage[]>;
   chatConvos(person: string, family: { id: string; name: string }[]): Promise<{ id: string; title: string; last: ChatMessage | null; unread: number }[]>;
   chatSeen(person: string, convo: string, at: number): Promise<void>;
-  familyPeople(): Promise<{ person: string; name: string; role: string; chat: boolean; presence?: string }[]>;
+  familyPeople(): Promise<{ person: string; name: string; role: Role; chat: boolean; presence?: string }[]>;
   choresPoints(): Promise<{ person: string; name: string; points: number }[]>;
   resetPoints(): Promise<void>;
 }
 
 /** What the object adds itself, because it holds the sockets (state.ts). */
-export interface LiveApi {
+interface LiveApi {
   broadcast(alert: Alert, waitMs: number): Promise<LiveResult>;
   liveClients(): Promise<LiveClient[]>;
   /** Close a device's open screens and drop its notifications, when it is revoked or narrowed. */

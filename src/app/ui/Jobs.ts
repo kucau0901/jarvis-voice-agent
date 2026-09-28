@@ -1,5 +1,5 @@
-import { authHeaders } from "../key";
-import { richText } from "./util";
+import { api } from "../key";
+import { button, el, richText } from "./util";
 
 /**
  * Background jobs (src/worker/lib/jobs.ts): what is running, what came back,
@@ -77,7 +77,7 @@ export class Jobs {
     form.appendChild(
       button("Start", () =>
         void this.act(async () => {
-          await this.api("POST", "/api/v1/jobs", { task: task.value, ...(deepBox.checked ? { engine: "research" } : {}) });
+          await api(this.key, "POST", "/api/v1/jobs", { task: task.value, ...(deepBox.checked ? { engine: "research" } : {}) });
           task.value = "";
           deepBox.checked = false;
         }, "Started — it arrives as an alert when done."), "primary"),
@@ -107,13 +107,6 @@ export class Jobs {
     m.classList.toggle("bad", bad);
   }
 
-  private async api(method: string, path: string, body?: unknown): Promise<any> {
-    const r = await fetch(path, { method, headers: authHeaders(this.key), ...(body ? { body: JSON.stringify(body) } : {}) });
-    const data = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error((data as { error?: string }).error ?? `server said ${r.status}`);
-    return data;
-  }
-
   private async act(fn: () => Promise<unknown>, done = ""): Promise<void> {
     try {
       await fn();
@@ -128,7 +121,7 @@ export class Jobs {
     clearTimeout(this.timer);
     let jobs: JobView[];
     try {
-      jobs = ((await this.api("GET", "/api/v1/jobs")) as { jobs: JobView[] }).jobs;
+      jobs = ((await api(this.key, "GET", "/api/v1/jobs")) as { jobs: JobView[] }).jobs;
     } catch (e) {
       this.list.replaceChildren(el("p", "warn", `Could not load jobs: ${e instanceof Error ? e.message : String(e)}`));
       return;
@@ -140,7 +133,7 @@ export class Jobs {
     }
     // Keep up with running jobs while the panel is open.
     if (this.el.classList.contains("open") && jobs.some((j) => j.status === "running")) {
-      this.timer = setTimeout(() => void this.load(), 5000) as unknown as number;
+      this.timer = setTimeout(() => void this.load(), 5000);
     }
   }
 
@@ -177,15 +170,15 @@ export class Jobs {
         }),
       );
     }
-    if (j.status === "running") btns.appendChild(button("Cancel", () => void this.act(() => this.api("POST", "/api/v1/jobs/cancel", { id: j.id }))));
-    else btns.appendChild(button("Remove", () => void this.act(() => this.api("DELETE", `/api/v1/jobs?id=${encodeURIComponent(j.id)}`))));
+    if (j.status === "running") btns.appendChild(button("Cancel", () => void this.act(() => api(this.key, "POST", "/api/v1/jobs/cancel", { id: j.id }))));
+    else btns.appendChild(button("Remove", () => void this.act(() => api(this.key, "DELETE", `/api/v1/jobs?id=${encodeURIComponent(j.id)}`))));
     row.appendChild(btns);
     return row;
   }
 
   private async fill(id: string, box: HTMLElement): Promise<void> {
     try {
-      const j = ((await this.api("GET", `/api/v1/jobs?id=${encodeURIComponent(id)}`)) as { job: JobView }).job;
+      const j = ((await api(this.key, "GET", `/api/v1/jobs?id=${encodeURIComponent(id)}`)) as { job: JobView }).job;
       box.replaceChildren();
       if (j.result) box.appendChild(richText(j.result, "jobtext"));
       const asked = el("details", "");
@@ -196,20 +189,6 @@ export class Jobs {
       box.textContent = e instanceof Error ? e.message : String(e);
     }
   }
-}
-
-function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls = "", text?: string): HTMLElementTagNameMap[K] {
-  const e = document.createElement(tag);
-  if (cls) e.className = cls;
-  if (text !== undefined) e.textContent = text;
-  return e;
-}
-
-function button(text: string, onClick: () => void, cls = ""): HTMLButtonElement {
-  const b = el("button", cls, text);
-  b.type = "button";
-  b.addEventListener("click", onClick);
-  return b;
 }
 
 const when = (ts: number) =>

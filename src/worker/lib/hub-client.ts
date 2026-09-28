@@ -1,4 +1,4 @@
-import type { Env } from "../types";
+import type { Env } from "../types.ts";
 import { sha256Hex } from "./devices.ts";
 import type { HubApi, PersonView, SignedIn } from "./hub.ts";
 

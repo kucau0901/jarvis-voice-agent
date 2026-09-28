@@ -1,4 +1,4 @@
-import type { Env } from "../types";
+import type { Env } from "../types.ts";
 import { CALENDAR, call, explain, googleConfig, NeedsRelink } from "./google.ts";
 
 /**
@@ -20,13 +20,13 @@ import { CALENDAR, call, explain, googleConfig, NeedsRelink } from "./google.ts"
  */
 
 /** How far ahead the calendar is read. */
-export const HORIZON_MS = 4 * 3_600_000;
+const HORIZON_MS = 4 * 3_600_000;
 /** How often the calendar is read while a leave routine is on. */
 export const SCAN_MS = 15 * 60_000;
 /** Drive times are fetched only this close to an event… */
-export const TRAVEL_WINDOW_MS = 2 * 3_600_000;
+const TRAVEL_WINDOW_MS = 2 * 3_600_000;
 /** …and not more often than this. */
-export const RECHECK_MS = 30 * 60_000;
+const RECHECK_MS = 30 * 60_000;
 /** At the moment of warning, a drive time older than this is fetched again. */
 export const FRESH_MS = 10 * 60_000;
 /** With no drive time to go on, warn this long before the start (plus the spare minutes). */

@@ -1,5 +1,5 @@
-import type { Env } from "../types";
-import { err, json, publicOrigin } from "../lib/http.ts";
+import type { Env } from "../types.ts";
+import { err, json, publicOrigin, readObjectOrEmpty } from "../lib/http.ts";
 import { grantsOf, isAdmin, personOf, type Principal } from "../lib/auth.ts";
 import { TTS_VOICES } from "../lib/speech.ts";
 import { tessieVehicles } from "../tools/tessie.ts";
@@ -98,10 +98,6 @@ async function sessionDigest(req: Request): Promise<string> {
   return sha256Hex(raw);
 }
 
-const body = async (req: Request): Promise<Record<string, unknown>> => {
-  const b = (await req.json().catch(() => null)) as unknown;
-  return b && typeof b === "object" && !Array.isArray(b) ? (b as Record<string, unknown>) : {};
-};
 
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
 
@@ -141,7 +137,7 @@ export async function handleAuth(req: Request, env: Env): Promise<Response> {
     return json({ claimed: s.claimed, agentName: s.agentName });
   }
   if (req.method !== "POST") return err(405, "POST only");
-  const b = await body(req);
+  const b = await readObjectOrEmpty(req);
 
   switch (p) {
     case "/api/auth/login/options": {
@@ -244,7 +240,7 @@ export async function handleHub(req: Request, env: Env, principal: Principal): P
   const now = Date.now();
   const admin = isAdmin(principal);
   const me = principal.kind === "member" ? principal : null;
-  const b = m === "GET" ? {} : await body(req);
+  const b = m === "GET" ? {} : await readObjectOrEmpty(req);
   const space = await spaceOf(hub, principal);
 
   if (p === "/api/hub/me") {
@@ -441,7 +437,7 @@ export async function handleHub(req: Request, env: Env, principal: Principal): P
       // A screen of theirs still open stops hearing alerts, and their phones stop being sent them.
       await stateStub(env)?.forgetDevice(user).catch(() => {});
       // What they set going stops: their routines, their turns in a rota, messages waiting on them.
-      await Promise.resolve(stateStub(env)?.forgetMember?.(user)).catch(() => {});
+      await stateStub(env)?.forgetMember(user).catch(() => {});
       // Their glasses and ESP32s are revoked, and theirs close too.
       for (const d of await devices.list(env)) {
         if (d.owner !== user || d.revokedAt) continue;

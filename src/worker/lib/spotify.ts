@@ -1,4 +1,4 @@
-import type { Env } from "../types";
+import type { Env } from "../types.ts";
 import { publicOrigin } from "./http.ts";
 import { bookOf } from "./context.ts";
 
@@ -13,7 +13,7 @@ import { bookOf } from "./context.ts";
 
 const AUTH = "https://accounts.spotify.com/authorize";
 const TOKEN = "https://accounts.spotify.com/api/token";
-export const API = "https://api.spotify.com/v1";
+const API = "https://api.spotify.com/v1";
 
 const TOKEN_KEY = "spotify:refresh";
 const STATE_PREFIX = "spotify:state:";
@@ -22,7 +22,7 @@ const STATE_PREFIX = "spotify:state:";
 const tokenKey = (env: Env) => (bookOf(env.JARVIS_PERSON) ? `${TOKEN_KEY}:${bookOf(env.JARVIS_PERSON)}` : TOKEN_KEY);
 
 /** Enough to see what is playing, control it, and reach saved music. */
-export const SCOPES = [
+const SCOPES = [
   "user-read-playback-state",
   "user-modify-playback-state",
   "user-read-currently-playing",

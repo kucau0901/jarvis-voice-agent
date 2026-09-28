@@ -100,7 +100,7 @@ export class Chat {
     await this.loadConvos();
     await this.openConvo(convo ?? this.open ?? "family");
     clearInterval(this.timer);
-    this.timer = setInterval(() => void this.poll(), POLL_MS) as unknown as number;
+    this.timer = setInterval(() => void this.poll(), POLL_MS);
   }
 
   hide(): void {

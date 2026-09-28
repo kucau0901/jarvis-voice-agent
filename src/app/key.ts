@@ -68,3 +68,14 @@ export function authHeaders(key: string): Record<string, string> {
     ? { "Content-Type": "application/json", Authorization: `Bearer ${key}` }
     : { "Content-Type": "application/json", "X-Jarvis-Key": key };
 }
+
+/**
+ * A JSON request to Jarvis with this key: what it answered, or an Error with
+ * the server's reason (else its status). For the Jobs and Routines panels.
+ */
+export async function api(key: string, method: string, path: string, body?: unknown): Promise<unknown> {
+  const r = await fetch(path, { method, headers: authHeaders(key), ...(body ? { body: JSON.stringify(body) } : {}) });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error((data as { error?: string }).error ?? `server said ${r.status}`);
+  return data;
+}

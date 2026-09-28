@@ -22,7 +22,8 @@ export interface Closable {
  * is closed as soon as it does, not left open with nothing to use it.
  */
 export function openWithin<C extends Closable>(opening: Promise<C>, ms: number, what: string): Promise<C> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
+  // Set at once: a Promise runs its executor before returning.
+  let timer!: ReturnType<typeof setTimeout>;
   const late = new Promise<never>((_, rej) => {
     timer = setTimeout(() => {
       opening.then((c) => c.close()).catch(() => {});

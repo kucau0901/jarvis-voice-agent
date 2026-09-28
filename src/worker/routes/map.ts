@@ -1,5 +1,5 @@
-import type { Env } from "../types";
-import { err } from "../lib/http";
+import type { Env } from "../types.ts";
+import { err } from "../lib/http.ts";
 
 /**
  * Map and Street View imagery, proxied.

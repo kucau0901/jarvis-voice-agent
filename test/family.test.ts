@@ -52,6 +52,7 @@ const env = {
     get: () => ({
       hubCall: (m: string, a: unknown[]) => (people as unknown as Record<string, (...x: unknown[]) => unknown>)[m]!(...a),
       forgetDevice: async (who: string) => void forgotten.push(who),
+      forgetMember: async () => {},
     }),
   },
 } as never;

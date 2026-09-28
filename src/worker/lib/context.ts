@@ -1,4 +1,4 @@
-import type { Env } from "../types";
+import type { Env } from "../types.ts";
 import type { Prefs, Reach, Space } from "./hub.ts";
 import type { Access } from "./access.ts";
 
@@ -66,7 +66,7 @@ export interface CarKey {
  * used when no car is named: their own, else one they may drive, else one
  * they may see.
  */
-export function carKeys(env: Env, reach: readonly Reach[]): CarKey[] {
+function carKeys(env: Env, reach: readonly Reach[]): CarKey[] {
   const out: CarKey[] = [];
   for (const r of reach) {
     const token = r.token ?? env.TESSIE_TOKEN?.trim();

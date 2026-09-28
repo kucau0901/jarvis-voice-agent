@@ -1,4 +1,4 @@
-import type { Env } from "../types";
+import type { Env } from "../types.ts";
 import { allows, type Grant } from "./scopes.ts";
 
 /**

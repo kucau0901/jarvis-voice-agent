@@ -1,6 +1,6 @@
-import type { Env } from "../types";
-import { err } from "../lib/http";
-import { speechConfig, synthesize } from "../lib/speech";
+import type { Env } from "../types.ts";
+import { err } from "../lib/http.ts";
+import { speechConfig, synthesize } from "../lib/speech.ts";
 
 /**
  * Text to speech for what Jarvis says by itself, outside a live session:

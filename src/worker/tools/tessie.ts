@@ -1,6 +1,6 @@
-import type { Env } from "../types";
+import type { Env } from "../types.ts";
 import { localeOf } from "../lib/locale.ts";
-import type { Tool, ToolContext } from "./registry";
+import type { Tool, ToolContext } from "./registry.ts";
 import { carsOf, type CarKey } from "../lib/context.ts";
 
 /**
@@ -24,7 +24,7 @@ export interface TessieConfig {
   vin: string;
 }
 
-export function tessieConfig(env: Env): TessieConfig | null {
+function tessieConfig(env: Env): TessieConfig | null {
   if (!env.TESSIE_TOKEN || !env.TESSIE_VIN) return null;
   return { token: env.TESSIE_TOKEN.trim(), vin: env.TESSIE_VIN.trim() };
 }

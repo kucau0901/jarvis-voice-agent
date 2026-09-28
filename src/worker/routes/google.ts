@@ -1,6 +1,6 @@
-import type { Env } from "../types";
-import { err, escapeHtml, HTML_PAGE_HEADERS } from "../lib/http";
-import { withSettings } from "../lib/settings-store";
+import type { Env } from "../types.ts";
+import { err, escapeHtml, HTML_PAGE_HEADERS } from "../lib/http.ts";
+import { withSettings } from "../lib/settings-store.ts";
 import {
   beginAuth,
   call,
@@ -10,7 +10,7 @@ import {
   googleConfig,
   isLinked,
   unlink,
-} from "../lib/google";
+} from "../lib/google.ts";
 
 /**
  * Linking Gmail, once.

@@ -1,8 +1,9 @@
-import type { Env } from "../types";
+import type { Env } from "../types.ts";
 import { DEFAULT_ORDER, validateOrder } from "./alerts.ts";
 import { validateCameraList } from "./cameras.ts";
 import { DEFAULT_STYLE, DEFAULT_VOICE, STT_PROVIDERS, TTS_PROVIDERS, TTS_VOICES } from "./speech.ts";
 import { EFFORTS } from "./router-model.ts";
+import { sha256Hex } from "./devices.ts";
 
 /**
  * Every setting Jarvis reads, in one list.
@@ -37,7 +38,7 @@ export type Group =
   | "devices"
   | "advanced";
 
-export type Kind = "secret" | "url" | "text" | "number" | "bool" | "enum";
+type Kind = "secret" | "url" | "text" | "number" | "bool" | "enum";
 
 export interface SettingDef {
   name: string;
@@ -543,7 +544,7 @@ export const settingDef = (name: string): SettingDef | undefined => BY_NAME.get(
 
 /* ---------- stored shape --------------------------------------------------- */
 
-export interface Saved {
+interface Saved {
   v: string;
   /** When it was saved. The rebinding guard compares these. */
   at: number;
@@ -692,13 +693,6 @@ export function effectiveEnv(env: Env, saved: SavedSettings): Env {
 
 /* ---------- what the panel is shown --------------------------------------- */
 
-const enc = new TextEncoder();
-async function sha256Hex(s: string): Promise<string> {
-  const d = new Uint8Array(await crypto.subtle.digest("SHA-256", enc.encode(s)));
-  let out = "";
-  for (const b of d) out += b.toString(16).padStart(2, "0");
-  return out;
-}
 
 /**
  * How a secret is shown: never the value. A fingerprint tells you WHICH key is
@@ -711,7 +705,7 @@ export async function maskSecret(v: string): Promise<string> {
   return v.length >= 24 ? `••••${v.slice(-4)} · sha256 ${fp}` : `•••• · sha256 ${fp}`;
 }
 
-export type Source = "saved" | "deployment" | "default" | "unset";
+type Source = "saved" | "deployment" | "default" | "unset";
 
 export interface SettingView {
   name: string;

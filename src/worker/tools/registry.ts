@@ -1,21 +1,21 @@
-import type { Env } from "../types";
-import type { MemoryStore } from "../lib/memory";
-import { allows, type Grant, type Scope } from "../lib/scopes";
-import * as hermes from "./hermes";
-import { memoryTools } from "./memory";
-import { tessieTools } from "./tessie";
-import { directionsTools } from "./directions";
-import { placeTools } from "./place";
+import type { Env } from "../types.ts";
+import type { MemoryStore } from "../lib/memory.ts";
+import { allows, type Grant, type Scope } from "../lib/scopes.ts";
+import * as hermes from "./hermes.ts";
+import { memoryTools } from "./memory.ts";
+import { tessieTools } from "./tessie.ts";
+import { directionsTools } from "./directions.ts";
+import { placeTools } from "./place.ts";
 import { placesTools } from "./places.ts";
-import { cameraTools } from "./camera";
-import { spotifyTools } from "./spotify";
-import { gmailTools } from "./gmail";
-import { calendarTools } from "./calendar";
-import { sendNote } from "./notes";
-import { routineTools } from "./routines";
-import { jobTools } from "./jobs";
-import { familyTools } from "./family";
-import { passTool } from "./pass";
+import { cameraTools } from "./camera.ts";
+import { spotifyTools } from "./spotify.ts";
+import { gmailTools } from "./gmail.ts";
+import { calendarTools } from "./calendar.ts";
+import { sendNote } from "./notes.ts";
+import { routineTools } from "./routines.ts";
+import { jobTools } from "./jobs.ts";
+import { familyTools } from "./family.ts";
+import { passTool } from "./pass.ts";
 import { stateStub } from "../lib/state-client.ts";
 import { voiceWho } from "../lib/context.ts";
 
@@ -43,7 +43,7 @@ export interface ToolContext {
 }
 
 /** A picture for the router to look at, as a data: URL. */
-export interface ToolImage {
+interface ToolImage {
   url: string;
   detail?: "low" | "high" | "auto";
 }
@@ -94,7 +94,7 @@ export interface Tool {
 const str = (v: unknown, fallback = ""): string =>
   typeof v === "string" && v.trim() ? v.trim() : fallback;
 
-export const askHermes: Tool = {
+const askHermes: Tool = {
   name: "ask_hermes",
   scope: "hermes",
   available: (env) => !!hermes.hermesConfig(env),
@@ -142,7 +142,7 @@ export const askHermes: Tool = {
   },
 };
 
-export const controlHome: Tool = {
+const controlHome: Tool = {
   name: "control_home",
   scope: "hermes",
   available: (env) => !!hermes.hermesConfig(env),

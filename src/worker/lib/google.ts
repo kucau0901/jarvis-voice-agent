@@ -1,4 +1,4 @@
-import type { Env } from "../types";
+import type { Env } from "../types.ts";
 import { publicOrigin } from "./http.ts";
 import { bookOf } from "./context.ts";
 
@@ -114,6 +114,22 @@ export class NeedsRelink extends Error {
   constructor(detail: string) {
     super(`Gmail needs re-linking: ${detail}`);
     this.name = "NeedsRelink";
+  }
+}
+
+/**
+ * A tool's work, and what it says when that fails: `notLinked` when the
+ * person has not linked their account, `relink` when the link has lapsed
+ * (NeedsRelink; only where given), else the error after `prefix`. Each tool
+ * passes its own words (tools/gmail.ts, calendar.ts, spotify.ts).
+ */
+export async function guardTool<T>(fn: () => Promise<T>, say: { notLinked: string; relink?: string; prefix: string }): Promise<T | string> {
+  try {
+    return await fn();
+  } catch (e) {
+    if (say.relink !== undefined && e instanceof NeedsRelink) return say.relink;
+    const msg = e instanceof Error ? e.message : String(e);
+    return /not linked/i.test(msg) ? say.notLinked : `${say.prefix}: ${msg}`;
   }
 }
 
@@ -375,7 +391,7 @@ export function b64urlDecode(data: string): string {
     const bin = atob(padded);
     const bytes = new Uint8Array(bin.length);
     for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-    return new TextDecoder("utf-8", { fatal: false }).decode(bytes);
+    return new TextDecoder("utf-8", { fatal: false, ignoreBOM: false }).decode(bytes);
   } catch {
     return "";
   }

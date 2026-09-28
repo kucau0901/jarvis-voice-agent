@@ -1,5 +1,7 @@
 // show_place (tools/place.ts): Google refusing is not a place that does not exist.
-import { showPlace } from "../src/worker/tools/place.ts";
+import { placeTools } from "../src/worker/tools/place.ts";
+
+const showPlace = placeTools.find((t) => t.name === "show_place")!;
 
 let pass = 0;
 let fail = 0;

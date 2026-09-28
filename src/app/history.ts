@@ -23,16 +23,6 @@ export class History {
     else this.turns.push({ role, text: delta });
   }
 
-  /** Close the current turn so the next utterance starts a new one. */
-  break(): void {
-    const last = this.turns[this.turns.length - 1];
-    if (last && last.text.trim()) this.turns.push({ role: last.role, text: "" });
-  }
-
-  get length(): number {
-    return this.turns.filter((t) => t.text.trim()).length;
-  }
-
   /** Newest-first trim, then restored to chronological order. */
   snapshot(): Turn[] {
     const kept: Turn[] = [];

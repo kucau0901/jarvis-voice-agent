@@ -1,5 +1,6 @@
-import type { Tool, ToolContext } from "./registry";
+import type { Tool, ToolContext } from "./registry.ts";
 import { call, explain, spotifyConfig, type SpotifyConfig } from "../lib/spotify.ts";
+import { guardTool } from "../lib/google.ts";
 
 /**
  * Spotify, by voice.
@@ -34,13 +35,11 @@ const NOT_LINKED =
   "or laptop and approve access. Tell them that plainly; do not retry.";
 
 /** Every path here can hit an unlinked account; say so rather than leaking a stack. */
-async function guard<T>(fn: () => Promise<T>): Promise<T | string> {
-  try {
-    return await fn();
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    return /not linked/i.test(msg) ? NOT_LINKED : `Spotify error: ${msg}`;
-  }
+function guard<T>(fn: () => Promise<T>): Promise<T | string> {
+  return guardTool(fn, {
+    notLinked: NOT_LINKED,
+    prefix: "Spotify error",
+  });
 }
 
 /* ---------- shapes, narrowed to what is actually read ---------------------- */
@@ -68,7 +67,7 @@ const artistsOf = (p: Playback): string =>
 
 /* ---------- what is playing ----------------------------------------------- */
 
-export const musicState: Tool = {
+const musicState: Tool = {
   name: "music_state",
   scope: "media",
   pace: "fast",
@@ -114,7 +113,7 @@ export const musicState: Tool = {
         `${p.item?.album?.name ? ` (${p.item.album.name})` : ""} on ${where}. ` +
         `All devices Spotify can see: ${names}.`
       );
-    }))!;
+    }));
   },
 };
 
@@ -122,7 +121,7 @@ export const musicState: Tool = {
 
 const TYPES = ["track", "album", "artist", "playlist"] as const;
 
-export const musicPlay: Tool = {
+const musicPlay: Tool = {
   name: "music_play",
   scope: "media",
   pace: "fast",
@@ -141,7 +140,7 @@ export const musicPlay: Tool = {
       },
       type: {
         type: "string",
-        enum: TYPES as unknown as string[],
+        enum: [...TYPES],
         description: "What kind of thing to look for.",
       },
     },
@@ -181,7 +180,7 @@ export const musicPlay: Tool = {
 
       const by = (hit.artists ?? []).map((a) => a.name).join(", ");
       return `Playing ${type === "track" ? "" : type + " "}"${hit.name}"${by ? ` by ${by}` : ""}.`;
-    }))!;
+    }));
   },
 };
 
@@ -196,7 +195,7 @@ const ACTIONS = {
   shuffle_off: { method: "PUT", path: "/me/player/shuffle?state=false", said: "Shuffle off." },
 } as const;
 
-export const musicControl: Tool = {
+const musicControl: Tool = {
   name: "music_control",
   scope: "media",
   pace: "fast",
@@ -241,7 +240,7 @@ export const musicControl: Tool = {
 
       const res = await call(ctx.env, cfg, spec.path, { method: spec.method, signal: ctx.signal });
       return explain(res) ?? spec.said;
-    }))!;
+    }));
   },
 };
 

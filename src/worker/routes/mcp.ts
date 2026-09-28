@@ -1,8 +1,8 @@
-import type { Env } from "../types";
-import { json, err, redact } from "../lib/http";
-import { readServersForUi, writeServers, expand, expandUrl, headersForTest } from "../lib/config-store";
-import { MASK, unexpand } from "../lib/mcp-config";
-import { mcpTools } from "../tools/mcp";
+import type { Env } from "../types.ts";
+import { json, err, redact } from "../lib/http.ts";
+import { readServersForUi, writeServers, expand, expandUrl, headersForTest } from "../lib/config-store.ts";
+import { MASK, unexpand } from "../lib/mcp-config.ts";
+import { mcpTools } from "../tools/mcp.ts";
 
 /** GET/PUT the MCP server list, and a connectivity test for the settings UI. */
 export async function handleMcp(req: Request, env: Env): Promise<Response> {
@@ -95,8 +95,7 @@ export async function handleMcp(req: Request, env: Env): Promise<Response> {
     let live: { name: string; description: string }[] = [];
     let liveError: string | null = null;
     try {
-      const ac = new AbortController();
-      live = (await mcpTools(env, ac.signal)).map((t) => ({
+      live = (await mcpTools(env)).map((t) => ({
         name: t.name,
         description: t.description.slice(0, 160),
       }));

@@ -44,7 +44,7 @@ export type Grant = Scope | typeof WILDCARD;
 
 const KNOWN = new Set<string>(SCOPES);
 
-export function isScope(v: unknown): v is Grant {
+function isScope(v: unknown): v is Grant {
   return typeof v === "string" && (v === WILDCARD || KNOWN.has(v));
 }
 

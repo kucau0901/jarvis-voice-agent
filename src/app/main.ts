@@ -1,5 +1,5 @@
 import { JarvisSession, type ServerEvent, type SessionState } from "./session";
-import { loadKey, saveKey, clearKey, authHeaders } from "./key";
+import { loadKey, saveKey, clearKey, authHeaders, isSession } from "./key";
 import { History } from "./history";
 import { Settings } from "./ui/Settings";
 import { Devices } from "./ui/Devices";
@@ -21,7 +21,6 @@ import { relayActions } from "./relay";
 import { hubStatus, inviteInfo, joinWithInvite, pairThisScreen, signInWithPasskey } from "./account";
 import { passkeyError, passkeysSupported } from "./passkey";
 import { describe, dropPerson, endSignIn, keepPerson, loadPeople, lockPerson, unlockPerson, type Person } from "./people";
-import { isSession } from "./key";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -108,7 +107,7 @@ const settle = (who: "you" | "jarvis") =>
 let settleTimers: Partial<Record<"you" | "jarvis", number>> = {};
 function touch(who: "you" | "jarvis") {
   clearTimeout(settleTimers[who]);
-  settleTimers[who] = settle(who) as unknown as number;
+  settleTimers[who] = settle(who);
 }
 
 /* ---------- raw event log ---------------------------------------------- */
@@ -162,11 +161,7 @@ let orbOverride: { user?: number; agent?: number; think?: number; error?: number
 
 function setOrb(...states: string[]) {
   // Only the pre-session states still need CSS; everything else is the shader.
-  els.orb.className = "orb " + states.filter((s) => s === "connecting" || s === "reconnecting").join(" ");
-}
-
-function refreshOrb() {
-  /* levels are sampled every frame in tick(); nothing to do here */
+  els.orb.className = "orb " + states.filter((s) => s === "connecting").join(" ");
 }
 
 function tick() {
@@ -323,7 +318,6 @@ function onState(s: SessionState, detail?: string) {
       if (!liveSince) liveSince = Date.now();
       status("listening — tap to end");
       els.hint.textContent = "";
-      refreshOrb();
       // Start the meter now, not on first speech: a session opened and never
       // spoken to is exactly the one worth closing, and it would otherwise
       // bill until the tab did.
@@ -426,7 +420,7 @@ function scheduleReconnect(reason: string) {
 
   status(`reconnecting (${attempt}/${BACKOFF_MS.length})…`);
   clearTimeout(reconnectTimer);
-  reconnectTimer = setTimeout(() => void reconnect(), wait) as unknown as number;
+  reconnectTimer = setTimeout(() => void reconnect(), wait);
 }
 
 /** Waiting for the signal to come back, to reconnect: at most one (scheduleReconnect). */
@@ -712,6 +706,18 @@ function showPeople(why = "") {
   unlock.peopleBack.hidden = !key;
 }
 
+/**
+ * The one in use steps aside on this screen, and their notifications with
+ * them: pushed ones, and the live ones this screen was listening for. Nobody
+ * is in use until someone is picked.
+ */
+async function putAside(): Promise<void> {
+  await releasePush(key);
+  live.stop();
+  clearKey();
+  key = "";
+}
+
 let pinFor: Person | null = null;
 async function switchTo(p: Person) {
   unlock.err.textContent = "";
@@ -724,14 +730,8 @@ async function switchTo(p: Person) {
     dropPerson(p.token);
     return showPeople(`${p.name}'s sign-in here has ended. Add them again.`);
   }
-  // The one in use steps aside first, and their notifications with them:
-  // pushed ones, and the live ones this screen was listening for.
-  if (isSession(key) && (await lockPerson(key))) {
-    await releasePush(key);
-    live.stop();
-    clearKey();
-    key = "";
-  }
+  // The one in use steps aside first.
+  if (isSession(key) && (await lockPerson(key))) await putAside();
   if (d?.locked) {
     pinFor = p;
     unlockView("pin");
@@ -820,7 +820,7 @@ async function pairHere() {
         unlock.pairLeft.textContent = `Waiting for your phone… ${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
       };
       left();
-      tick = setInterval(left, 1000) as unknown as number;
+      tick = setInterval(left, 1000);
     }, pairing.signal);
     signedIn(r.token);
   } catch (e) {
@@ -1203,10 +1203,7 @@ async function whoAmI() {
     if (me.user) keepPerson({ id: me.user.id, name: me.user.name, hasPin: me.hasPin, token: key });
     // Put aside on this screen (a shared one, left idle): choose who is using it.
     if (me.locked) {
-      await releasePush(key);
-      live.stop();
-      clearKey();
-      key = "";
+      await putAside();
       return showPeople();
     }
     // On a screen several people share, the title says whose Jarvis this is now.
@@ -1243,10 +1240,7 @@ setInterval(async () => {
   if (people.length < 2 || !me?.hasPin || Date.now() - touchedAt < IDLE_LOCK_MS) return;
   if (session || userWantsSession || ptt?.busy || typedAbort) return;
   if (await lockPerson(key)) {
-    await releasePush(key);
-    live.stop();
-    clearKey();
-    key = "";
+    await putAside();
     // Closed the way their own close buttons close them: Chat stops asking for messages as the one put aside.
     document.querySelectorAll<HTMLElement>(".panel.open").forEach((el) => {
       el.querySelector<HTMLElement>(".close")?.click();
@@ -1325,7 +1319,7 @@ document.addEventListener("click", (e) => {
   if (t.closest("button, a, input, select, textarea, label, #orbWrap, .panel, #stage, #alerts, #transcript, #logWrap")) return;
   document.body.classList.add("peek");
   clearTimeout(peekTimer);
-  peekTimer = setTimeout(() => document.body.classList.remove("peek"), 6000) as unknown as number;
+  peekTimer = setTimeout(() => document.body.classList.remove("peek"), 6000);
 });
 
 els.toggleLog.addEventListener("click", () => {
@@ -1368,7 +1362,7 @@ function noteDriverSpoke() {
     userWantsSession = false;
     session?.stop(`idle for ${IDLE_MS / 1000}s`);
     status("tap to start");
-  }, IDLE_MS) as unknown as number;
+  }, IDLE_MS);
 }
 
 addEventListener("pagehide", () => { userWantsSession = false; session?.stop("page unloaded"); });
@@ -1383,7 +1377,7 @@ addEventListener("visibilitychange", () => {
       // History is deliberately kept: tapping the orb again resumes
       // the conversation rather than starting from nothing.
       session?.stop(`hidden for ${HIDDEN_GRACE_MS / 1000}s`);
-    }, HIDDEN_GRACE_MS) as unknown as number;
+    }, HIDDEN_GRACE_MS);
   } else {
     clearTimeout(hiddenTimer);
   }

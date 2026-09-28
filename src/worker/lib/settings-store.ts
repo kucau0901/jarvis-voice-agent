@@ -1,4 +1,4 @@
-import type { Env } from "../types";
+import type { Env } from "../types.ts";
 import { stateStub } from "./state-client.ts";
 import { effectiveEnv, type Changes, type SavedSettings } from "./settings.ts";
 
@@ -13,7 +13,7 @@ import { effectiveEnv, type Changes, type SavedSettings } from "./settings.ts";
 const CACHE_MS = 15_000;
 let cache: { at: number; saved: SavedSettings } | null = null;
 
-export async function loadSaved(env: Env): Promise<SavedSettings> {
+async function loadSaved(env: Env): Promise<SavedSettings> {
   const state = stateStub(env);
   if (!state) return {};
   if (cache && Date.now() - cache.at < CACHE_MS) return cache.saved;

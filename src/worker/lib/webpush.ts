@@ -18,15 +18,13 @@
  * example in RFC 8291 Appendix A.
  */
 
+import { b64u } from "./webauthn.ts";
+
 const enc = new TextEncoder();
+/** A TextEncoder's bytes are always on a fresh ArrayBuffer, which the Workers types do not say. */
+const utf8 = (s: string) => enc.encode(s) as Uint8Array<ArrayBuffer>;
 
 /* ---------- bytes ----------------------------------------------------------- */
-
-export function b64url(bytes: Uint8Array): string {
-  let s = "";
-  for (const b of bytes) s += String.fromCharCode(b);
-  return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-}
 
 export function fromB64url(s: string): Uint8Array<ArrayBuffer> {
   const std = s.replace(/-/g, "+").replace(/_/g, "/");
@@ -66,7 +64,7 @@ export async function generateVapid(): Promise<VapidKeys> {
   ])) as CryptoKeyPair;
   const raw = new Uint8Array((await crypto.subtle.exportKey("raw", pair.publicKey)) as ArrayBuffer);
   const privateJwk = (await crypto.subtle.exportKey("jwk", pair.privateKey)) as JsonWebKey;
-  return { publicKey: b64url(raw), privateJwk };
+  return { publicKey: b64u(raw), privateJwk };
 }
 
 /**
@@ -82,8 +80,8 @@ export async function vapidHeader(
   subject: string,
   now = Date.now(),
 ): Promise<string> {
-  const head = b64url(enc.encode(JSON.stringify({ typ: "JWT", alg: "ES256" })));
-  const body = b64url(
+  const head = b64u(enc.encode(JSON.stringify({ typ: "JWT", alg: "ES256" })));
+  const body = b64u(
     enc.encode(
       JSON.stringify({
         aud: new URL(endpoint).origin,
@@ -105,7 +103,7 @@ export async function vapidHeader(
   const sig = new Uint8Array(
     await crypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, key, enc.encode(`${head}.${body}`)),
   );
-  return `vapid t=${head}.${body}.${b64url(sig)}, k=${vapid.publicKey}`;
+  return `vapid t=${head}.${body}.${b64u(sig)}, k=${vapid.publicKey}`;
 }
 
 /* ---------- message encryption (RFC 8291, aes128gcm) ------------------------ */
@@ -135,15 +133,16 @@ export async function encrypt(
 
   const uaKey = await crypto.subtle.importKey("raw", uaPublic, { name: "ECDH", namedCurve: "P-256" }, false, []);
   const ecdh = new Uint8Array(
-    await crypto.subtle.deriveBits({ name: "ECDH", public: uaKey } as EcdhKeyDeriveParams, asKeys.privateKey, 256),
+    // The Workers types call this field `$public` (`public` is reserved where they are made); the runtime reads `public`.
+    await crypto.subtle.deriveBits({ name: "ECDH", public: uaKey } as SubtleCryptoDeriveKeyAlgorithm, asKeys.privateKey, 256),
   );
 
   // Combine the ECDH secret with the subscription's auth secret…
   const keyInfo = concat(enc.encode("WebPush: info\0"), uaPublic, asPublic);
   const ikm = await hkdf(authSecret, ecdh, keyInfo, 32);
   // …then derive this message's key and nonce from it and the salt.
-  const cek = await hkdf(salt, ikm, enc.encode("Content-Encoding: aes128gcm\0"), 16);
-  const nonce = await hkdf(salt, ikm, enc.encode("Content-Encoding: nonce\0"), 12);
+  const cek = await hkdf(salt, ikm, utf8("Content-Encoding: aes128gcm\0"), 16);
+  const nonce = await hkdf(salt, ikm, utf8("Content-Encoding: nonce\0"), 12);
 
   const key = await crypto.subtle.importKey("raw", cek, "AES-GCM", false, ["encrypt"]);
   // 0x02 marks the last (here, only) record, with no padding after it.

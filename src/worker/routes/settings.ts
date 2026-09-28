@@ -1,8 +1,8 @@
 import { openaiBase } from "../lib/openai-base.ts";
-import type { Env } from "../types";
-import { err, json, redact } from "../lib/http";
-import { stateStub } from "../lib/state-client";
-import { saveSettings } from "../lib/settings-store";
+import type { Env } from "../types.ts";
+import { err, json, redact } from "../lib/http.ts";
+import { stateStub } from "../lib/state-client.ts";
+import { saveSettings } from "../lib/settings-store.ts";
 import {
   GROUPS,
   SETTINGS,
@@ -14,16 +14,16 @@ import {
   validateChanges,
   type Group,
   type SavedSettings,
-} from "../lib/settings";
-import { carState } from "../tools/tessie";
-import { ping as hermesPing, hermesConfig } from "../tools/hermes";
-import * as google from "../lib/google";
-import * as spotify from "../lib/spotify";
-import { loadServers } from "../lib/config-store";
-import { probe as mcpProbe } from "./mcp";
-import { deliver, makeAlert, summarise } from "../lib/alerts";
-import { recognitionHints, speechConfig, synthesize, transcribe } from "../lib/speech";
-import { listCameras, snapshot } from "../lib/cameras";
+} from "../lib/settings.ts";
+import { carState } from "../tools/tessie.ts";
+import { ping as hermesPing, hermesConfig } from "../tools/hermes.ts";
+import * as google from "../lib/google.ts";
+import * as spotify from "../lib/spotify.ts";
+import { loadServers } from "../lib/config-store.ts";
+import { probe as mcpProbe } from "./mcp.ts";
+import { deliver, makeAlert, summarise } from "../lib/alerts.ts";
+import { recognitionHints, speechConfig, synthesize, transcribe } from "../lib/speech.ts";
+import { listCameras, snapshot } from "../lib/cameras.ts";
 import { haUrl } from "../lib/ha.ts";
 
 /**

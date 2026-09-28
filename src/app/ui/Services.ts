@@ -1,4 +1,5 @@
 import { authHeaders } from "../key";
+import { button, el } from "./util";
 
 /**
  * Every setting Jarvis reads, shown and edited in the settings sheet.
@@ -56,7 +57,7 @@ const REDIRECT: Record<string, string> = {
 };
 
 /** A section's own content beyond its settings, drawn under its intro. */
-export type Extras = Partial<Record<string, () => HTMLElement>>;
+type Extras = Partial<Record<string, () => HTMLElement>>;
 
 export class Services {
   private key: string;
@@ -294,20 +295,6 @@ function tag(box: HTMLElement, id: string, title: string, state: "on" | "need" |
   box.dataset.section = id;
   box.dataset.title = title;
   box.dataset.state = state;
-}
-
-function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls = "", text?: string): HTMLElementTagNameMap[K] {
-  const e = document.createElement(tag);
-  if (cls) e.className = cls;
-  if (text !== undefined) e.textContent = text;
-  return e;
-}
-
-function button(text: string, onClick: () => void, cls = ""): HTMLButtonElement {
-  const b = el("button", cls, text);
-  b.type = "button";
-  b.addEventListener("click", onClick);
-  return b;
 }
 
 function say(res: HTMLElement, text: string, bad = false) {

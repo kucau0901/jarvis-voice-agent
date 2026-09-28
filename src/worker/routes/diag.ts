@@ -1,9 +1,9 @@
 import { openaiBase } from "../lib/openai-base.ts";
-import type { Env } from "../types";
-import { json } from "../lib/http";
-import { ping, hermesConfig, orderAccessPair } from "../tools/hermes";
-import { toolAvailability } from "../tools/registry";
-import { orderCandidates, readFallback, resolveRouterModel } from "../lib/router-model";
+import type { Env } from "../types.ts";
+import { json } from "../lib/http.ts";
+import { ping, hermesConfig, orderAccessPair } from "../tools/hermes.ts";
+import { toolAvailability } from "../tools/registry.ts";
+import { orderCandidates, readFallback, resolveRouterModel } from "../lib/router-model.ts";
 
 /**
  * Reachability check for both backends.
@@ -12,7 +12,7 @@ import { orderCandidates, readFallback, resolveRouterModel } from "../lib/router
  * Hermes credentials — are invisible from the driver's seat, and "Jarvis went
  * quiet" is not a diagnosis.
  */
-export async function handleDiag(_req: Request, env: Env): Promise<Response> {
+export async function handleDiag(env: Env): Promise<Response> {
   const out: Record<string, unknown> = { ts: new Date().toISOString() };
   out.localTools = toolAvailability(env);
   out.router = { ...(await resolveRouterModel(env)), fallback: await readFallback(env) };

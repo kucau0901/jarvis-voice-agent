@@ -1,5 +1,5 @@
 import { openaiBase } from "./openai-base.ts";
-import type { Env } from "../types";
+import type { Env } from "../types.ts";
 import { localeOf } from "./locale.ts";
 import type { MemoryDoc } from "./memory.ts";
 
@@ -28,8 +28,8 @@ import type { MemoryDoc } from "./memory.ts";
 
 export const STT_PROVIDERS = ["openai", "workers-ai", "browser"] as const;
 export const TTS_PROVIDERS = ["openai", "workers-ai", "browser"] as const;
-export type SttProvider = (typeof STT_PROVIDERS)[number];
-export type TtsProvider = (typeof TTS_PROVIDERS)[number];
+type SttProvider = (typeof STT_PROVIDERS)[number];
+type TtsProvider = (typeof TTS_PROVIDERS)[number];
 
 /** OpenAI's text-to-speech voices; cedar and marin are the ones GPT-Live uses. */
 export const TTS_VOICES = [
@@ -58,7 +58,7 @@ export const MAX_SPEAK_CHARS = 1500;
 interface Ai {
   run(model: string, input: unknown): Promise<unknown>;
 }
-const aiOf = (env: Env): Ai | null => ((env as unknown as { AI?: Ai }).AI ?? null);
+const aiOf = (env: Env): Ai | null => env.AI ?? null;
 
 export interface SpeechConfig {
   stt: SttProvider;

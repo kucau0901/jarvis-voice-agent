@@ -201,6 +201,3 @@ export function jarvisPrompt(client: ClientKind = "car", o: { agentName?: string
     : "";
   return `${opening}${who}\n\n${MANNER}\n\n${ATTENTION[client]}\n\n${REST}`;
 }
-
-/** The car remains the default, because that is where it is used unattended. */
-export const JARVIS_PROMPT = jarvisPrompt("car");

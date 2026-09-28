@@ -1,4 +1,4 @@
-import type { Env } from "../types";
+import type { Env } from "../types.ts";
 
 /**
  * Cameras Jarvis can look at, from wherever they are.
@@ -31,7 +31,7 @@ interface UrlCamera {
   url: string;
 }
 
-export const slugOf = (name: string): string =>
+const slugOf = (name: string): string =>
   name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
 
 /** The CAMERAS setting, parsed; a string says what is wrong with it. */
@@ -155,7 +155,7 @@ export function pickCamera(list: Camera[], want: string): Camera | undefined {
 }
 
 /** A picture's worth, and no more: a page or a stream by mistake must not be read into memory. */
-export const MAX_SNAPSHOT_BYTES = 4 * 1024 * 1024;
+const MAX_SNAPSHOT_BYTES = 4 * 1024 * 1024;
 const IMAGE = /^image\/(jpeg|png|webp|gif)/;
 
 export type Snapshot = { ok: true; bytes: ArrayBuffer; mime: string } | { ok: false; error: string };
@@ -225,7 +225,7 @@ export function basicCredentials(user: string, password: string): string {
 }
 
 /** Long enough for a full frame over a slow link; a stall beyond it is reported, not waited out. */
-export const FRAME_TIMEOUT_MS = 20_000;
+const FRAME_TIMEOUT_MS = 20_000;
 
 async function fetchFrame(env: Env, id: string, height?: number): Promise<Snapshot> {
   let url: string;

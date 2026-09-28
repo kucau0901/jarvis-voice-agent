@@ -1,4 +1,4 @@
-import type { Env } from "../types";
+import type { Env } from "../types.ts";
 import { saneGrants, type Grant } from "./scopes.ts";
 
 /**
@@ -93,7 +93,7 @@ export function looksLikeToken(raw: string): boolean {
   return SHAPE.test(raw);
 }
 
-export function hintOf(token: string): string {
+function hintOf(token: string): string {
   return `${token.slice(0, TOKEN_PREFIX.length + 4)}…${token.slice(-4)}`;
 }
 

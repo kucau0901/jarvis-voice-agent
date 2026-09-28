@@ -1,4 +1,5 @@
-import { authHeaders } from "../key";
+import { api } from "../key";
+import { button, el } from "./util";
 
 /**
  * Routines: things Jarvis does by itself (src/worker/lib/routines.ts). Listed,
@@ -76,16 +77,9 @@ export class Routines {
     m.classList.toggle("bad", bad);
   }
 
-  private async api(method: string, path: string, body?: unknown): Promise<any> {
-    const r = await fetch(path, { method, headers: authHeaders(this.key), ...(body ? { body: JSON.stringify(body) } : {}) });
-    const data = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error((data as { error?: string }).error ?? `server said ${r.status}`);
-    return data;
-  }
-
   private async load(): Promise<void> {
     try {
-      const data = (await this.api("GET", "/api/v1/routines")) as { timeZone: string; routines: RoutineView[] };
+      const data = (await api(this.key, "GET", "/api/v1/routines")) as { timeZone: string; routines: RoutineView[] };
       this.tz = data.timeZone;
       this.el.querySelector<HTMLElement>(".tzline")!.textContent = `Times are in ${this.tz}, from Settings → Where you are.`;
       this.render(data.routines);
@@ -107,7 +101,7 @@ export class Routines {
       const box = document.createElement("input");
       box.type = "checkbox";
       box.checked = r.enabled;
-      box.addEventListener("change", () => void this.act(() => this.api("PATCH", "/api/v1/routines", { id: r.id, enabled: box.checked })));
+      box.addEventListener("change", () => void this.act(() => api(this.key, "PATCH", "/api/v1/routines", { id: r.id, enabled: box.checked })));
       toggle.appendChild(box);
       toggle.appendChild(document.createTextNode(" on"));
       top.appendChild(toggle);
@@ -126,8 +120,8 @@ export class Routines {
       if (r.createdBy !== "owner" && r.createdBy !== "voice") facts.push("made by a device");
       if (facts.length) row.appendChild(el("div", `rfacts${r.lastRun && !r.lastRun.ok ? " bad" : ""}`, facts.join(" · ")));
       const btns = el("div", "rowbtns");
-      btns.appendChild(button("Run now", () => void this.act(() => this.api("POST", "/api/v1/routines/run", { id: r.id }), "Running — it arrives as an alert.")));
-      btns.appendChild(button("Remove", () => void this.act(() => this.api("DELETE", `/api/v1/routines?id=${encodeURIComponent(r.id)}`))));
+      btns.appendChild(button("Run now", () => void this.act(() => api(this.key, "POST", "/api/v1/routines/run", { id: r.id }), "Running — it arrives as an alert.")));
+      btns.appendChild(button("Remove", () => void this.act(() => api(this.key, "DELETE", `/api/v1/routines?id=${encodeURIComponent(r.id)}`))));
       row.appendChild(btns);
       return row;
     });
@@ -204,7 +198,7 @@ export class Routines {
         if (kind.value === "event") body.event = event.value;
         if (kind.value === "leave") body.bufferMin = Number(buffer.value);
         else body[doKind.value] = text.value;
-        await this.api("POST", "/api/v1/routines", body);
+        await api(this.key, "POST", "/api/v1/routines", body);
         name.value = "";
         text.value = "";
       }, "Added."), "primary");
@@ -225,20 +219,6 @@ export class Routines {
 }
 
 /* ---------- small DOM helpers ---------------------------------------------- */
-
-function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls = "", text?: string): HTMLElementTagNameMap[K] {
-  const e = document.createElement(tag);
-  if (cls) e.className = cls;
-  if (text !== undefined) e.textContent = text;
-  return e;
-}
-
-function button(text: string, onClick: () => void, cls = ""): HTMLButtonElement {
-  const b = el("button", cls, text);
-  b.type = "button";
-  b.addEventListener("click", onClick);
-  return b;
-}
 
 function input(type: string, placeholder: string): HTMLInputElement {
   const i = document.createElement("input");
