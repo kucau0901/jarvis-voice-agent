@@ -60,6 +60,10 @@ of every release, and in the [README](README.md#updating).
 
 ### Security
 
+- A calendar event's title could end the fence that marks the events as
+  data, not instructions: whoever sent an invitation could write text the
+  assistant read as though it came from outside the calendar. Events are now
+  fenced as mail is, with a marker no one can guess.
 - Anyone who could change settings could point the OpenAI address (Settings
   → Advanced) at a server of their own, and Jarvis sent the stored OpenAI key
   there with every question. The OpenAI key now follows the rule the other
