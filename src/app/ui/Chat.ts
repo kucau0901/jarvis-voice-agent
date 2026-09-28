@@ -163,12 +163,14 @@ export class Chat {
     const convo = this.open;
     try {
       const { messages } = await this.api<{ messages: Message[] }>(`/api/hub/chat/messages?c=${encodeURIComponent(convo)}&since=${this.last}`);
-      if (convo !== this.open || !messages.length) return;
+      // Two polls can overlap (the timer's, and one after sending): what the other has shown is not shown again.
+      const fresh = messages.filter((m) => m.at > this.last);
+      if (convo !== this.open || !fresh.length) return;
       const box = this.$(".msgs");
       const atEnd = box.scrollHeight - box.scrollTop - box.clientHeight < 60;
-      for (const m of messages) box.appendChild(this.row(m));
-      this.last = messages[messages.length - 1]!.at;
-      if (atEnd || messages.some((m) => m.from === this.me)) box.scrollTop = box.scrollHeight;
+      for (const m of fresh) box.appendChild(this.row(m));
+      this.last = fresh[fresh.length - 1]!.at;
+      if (atEnd || fresh.some((m) => m.from === this.me)) box.scrollTop = box.scrollHeight;
     } catch {
       // A missed poll is caught up by the next.
     }
