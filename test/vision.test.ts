@@ -1,5 +1,6 @@
 import {
   _forgetFrames,
+  basicCredentials,
   dataUrl,
   listCameras,
   parseCameraList,
@@ -103,6 +104,16 @@ console.log("\none frame");
   check("Home Assistant: its proxy, scaled by width AND height (it ignores width alone), with the token", calls[0]!.url === "https://ha.example.com/api/camera_proxy/camera.porch?width=960&height=540" && calls[0]!.headers.Authorization === "Bearer tok", calls[0]);
   calls = [];
   check("a crafted id is refused before any call", !(await snapshot(e, "camera.porch/../../api/states")).ok && calls.length === 0);
+
+  // A password a person might really choose: a stray % and a euro sign. Both used to throw before the camera was asked.
+  const odd = env({ CAMERAS: "Porch = http://admin:50%zz\u20ac@192.168.1.21/snap.jpg" });
+  _forgetFrames();
+  calls = [];
+  const got = await snapshot(odd, "url:porch");
+  check("a password with a stray % and a euro sign still reaches the camera", got.ok && calls.length === 1, got);
+  check("sent as UTF-8, the stray % as written", calls[0]!.headers.Authorization === `Basic ${Buffer.from("admin:50%zz\u20ac", "utf8").toString("base64")}`, calls[0]);
+  check("plain ASCII is what btoa gives, as before", basicCredentials("admin", "p%40ss") === btoa("admin:p@ss"));
+  calls = [];
   check("an unknown listed camera is refused", !(await snapshot(e, "url:nope")).ok);
   answer = () => new Response("<html>login</html>", { headers: { "content-type": "text/html" } });
   _forgetFrames();

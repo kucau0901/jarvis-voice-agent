@@ -26,6 +26,102 @@ of every release, and in the [README](README.md#updating).
 
 ### Fixed
 
+- Four small things: in Family, a button waiting for its second tap (Remove
+  it?, Sign out here?) now turns red as it does elsewhere; when the
+  browser's own speech recognition failed, push-to-talk said it had not
+  heard anything instead of why; a key given in the address could be misread
+  on a browser with no storage; and the debug event log wrote an event's
+  name into the page unescaped.
+- Losing signal more than once, or stopping and starting again before it
+  came back, could open a second live conversation when it did come back,
+  billed alongside the first. Only one is ever reopened now, and none after
+  you stop.
+- When the house could not list its things, a guest pass's existing items
+  were shown to be typed over, but clearing one did not remove it and
+  renaming one was ignored. Both now take effect.
+- If your passkeys or the list of where you are signed in could not be
+  loaded, Family left those places empty without a word. It now says it
+  could not load them, and why.
+- Removing a car or unlinking an account in Family said it was done even
+  when the server refused, and cancelling an invite, ending another sign-in,
+  starting the chores tally again, or removing a device from notifications
+  failed without a word. Each now says what went wrong.
+- Saving the MCP servers in Settings reloaded the whole sheet: on a phone it
+  jumped back to the list, and anything typed but not yet saved in other
+  sections was lost. Only the server list is reloaded now.
+- A message in the family chat could show twice, when the chat's regular
+  check and the one after sending overlapped. Each message now shows once.
+- When a shared screen locked itself after half an hour idle with the family
+  chat open, the chat kept checking for messages as the person put aside.
+  Panels are now closed properly when the screen locks.
+- Switching from push-to-talk to typing or to a live conversation while it
+  was still listening sent what had been heard so far as a question anyway.
+  Putting it down now drops it.
+- When a voice conversation failed to start (the microphone blocked, the
+  server unreachable), the screen stayed in focus mode, the next tap only
+  cleared it instead of trying again, and the idle lock and new-version
+  reload waited on it. Now a failed start ends cleanly, the next tap tries
+  again, and a failed reconnect keeps retrying as a dropped connection does.
+- An MCP server saved with a header value typed as a number (8123 rather
+  than "8123") made every question fail to load the house's tools. Such a
+  value is now kept as text.
+- A camera whose password had a stray "%" or a character such as "€" in it
+  could not be shown, and the failure went unhandled. Such passwords now
+  work; they are sent as UTF-8.
+- Cancelling a car command while the car was waking left the wake-up request
+  running for up to 100 seconds. It now stops with the question.
+- A connection to Home Assistant (or another MCP server) that opened only
+  after Jarvis had given up waiting for it was left open. It is now closed
+  when it arrives.
+- Hermes could lose the last words of an answer when its stream ended
+  without a final newline. And everyone Hermes was shared with talked to one
+  Hermes memory, so what the first person told Hermes, anyone else could ask
+  it about. Each person now has their own; the first person keeps the one
+  they had.
+- A Home Assistant reached through an address with a path (behind a proxy,
+  such as https://example.com/ha) worked for the house but not for alerts
+  sent through Home Assistant, the Settings test, or checking a personal
+  Home Assistant token: those dropped the path. All of them now keep it.
+- When the car left a reading out, Jarvis said it anyway: "Battery
+  undefined%", "Inside undefined°C", a location of "undefined, undefined" —
+  and the summary said the car was locked when it had not said. A missing
+  reading is now left out, an unknown lock is not claimed, and a reading
+  with nothing in it says the car did not report it.
+- When Google Maps refused to look a place up (a key not allowed to find
+  addresses, or over its quota), Jarvis said it could not find the place and
+  asked for the full address. It now says Google Maps refused, and why.
+- When Spotify itself failed (overloaded, or down behind an error page),
+  Jarvis said nothing was playing. It now says Spotify failed, in Spotify's
+  words where it gave any.
+- Sending the JSON value null as a request's body made eight routes (probe,
+  speech, starting a voice session, typed questions, the MCP test and call,
+  memory search and saving) fail with an internal error. They now answer
+  that the body must be a JSON object.
+- Removing a device with DELETE /api/v1/devices?id=… and no body was refused
+  as "body is not valid JSON". The id in the address is enough now, as the
+  API documents.
+- Through the API, changing your Home Assistant token in the same request as
+  your name or your voice and language saved the token alone and silently
+  dropped the rest. Everything sent is now kept, and a bad choice refuses
+  the request before anything is saved.
+- A background job started by an admin was not told it has no screen, so it
+  could try to show a map or a photo that nobody would see. It is now told,
+  as everyone else's jobs are.
+- A message posted through the API to a direct conversation written the
+  other way round ("dm:b|a" rather than "dm:a|b"), or to a conversation with
+  oneself, was accepted and then never shown to anyone. Such a conversation
+  is now refused as not existing.
+- A routine's alert kept for someone's quiet time showed in the routine's
+  history as failed, saying "nothing is set up to receive it". It now says
+  it is held until their quiet time ends; one dropped because it would be
+  out of date by then says that.
+- A mail from late the day before yesterday, read just after midnight, was
+  said to be from "1 days ago". Mail is now dated by the days on the
+  calendar, so it is two days ago.
+- Asked to keep a roster or a list of numbers for looking up later, voice
+  filed it as a note, which is carried into every question, because
+  "reference" was missing from the kinds it could choose. It can now, as its
+  instructions always said.
 - The car was never recognised as the car: its browser does not say
   "Tesla", which is what was looked for. Its notifications were labelled
   "Linux computer", and Family offered to sign in another screen from the
@@ -71,6 +167,14 @@ of every release, and in the [README](README.md#updating).
 
 ### Security
 
+- A device's token could end up in the Worker's logs: the voice debugging
+  helper, the example request under Routines and one example in docs/api.md
+  sent it as X-Jarvis-Key, which the logs do not scrub. They now use
+  Authorization: Bearer, which they do.
+- When a voice session could not start, OpenAI's error was passed back to
+  the app as it came, and such a message can quote the key it was given.
+  Keys and tokens are now cut from it first; the rest of the reason still
+  shows, to debug from.
 - An MCP server added in Settings could name any of Jarvis's keys in a
   header, as `${OPENAI_API_KEY}` or `${HERMES_API_KEY}`, and Jarvis filled it
   in and sent it to that server. Jarvis's own keys are now filled in only for

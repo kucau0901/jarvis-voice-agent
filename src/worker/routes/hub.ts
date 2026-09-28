@@ -4,7 +4,7 @@ import { grantsOf, isAdmin, personOf, type Principal } from "../lib/auth.ts";
 import { TTS_VOICES } from "../lib/speech.ts";
 import { tessieVehicles } from "../tools/tessie.ts";
 import { usePass } from "../tools/pass.ts";
-import { haConfig, passThings } from "../lib/ha.ts";
+import { haConfig, haUrl, passThings } from "../lib/ha.ts";
 import { passActions } from "../lib/access.ts";
 import { burst } from "../lib/limits.ts";
 import { SCOPES, type Grant } from "../lib/scopes.ts";
@@ -246,12 +246,16 @@ export async function handleHub(req: Request, env: Env, principal: Principal): P
   if (p === "/api/hub/me") {
     if (m === "PATCH") {
       if (!me) return err(400, "the owner key is not a person; sign in with a passkey to have a name");
+      // Everything sent is kept, not only the first thing: so choices are checked before anything is.
+      const rawPrefs = b.prefs === undefined ? undefined : ((b.prefs && typeof b.prefs === "object" ? b.prefs : {}) as Record<string, unknown>);
+      const badPrefs = rawPrefs && prefsProblem(rawPrefs);
+      if (badPrefs) return err(400, badPrefs);
       if (b.haToken !== undefined) {
         // Their own Home Assistant user: checked with the house before it is kept.
         const token = str(b.haToken).trim();
         if (token) {
           if (!env.HA_BASE_URL) return err(400, "the family's Home Assistant address is not set up yet");
-          const ok = await fetch(new URL("/api/", env.HA_BASE_URL), { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(10_000) })
+          const ok = await fetch(haUrl(env.HA_BASE_URL, "/api/"), { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(10_000) })
             .then((r) => r.ok)
             .catch(() => false);
           if (!ok) return err(400, "Home Assistant did not accept that token");
@@ -259,14 +263,11 @@ export async function handleHub(req: Request, env: Env, principal: Principal): P
         const r = await hub.setHaToken(me.id, token || null);
         if (r !== true) return err(400, r.error);
         forgetPerson(personOf(principal));
-        return json({ ok: true, haToken: !!token });
+        if (rawPrefs === undefined && b.name === undefined) return json({ ok: true, haToken: !!token });
       }
-      if (b.prefs !== undefined) {
-        // Their own voice, language and Telegram chat (lib/context.ts), checked before they are kept.
-        const raw = (b.prefs && typeof b.prefs === "object" ? b.prefs : {}) as Record<string, unknown>;
-        const bad = prefsProblem(raw);
-        if (bad) return err(400, bad);
-        const r = await hub.setPrefs(me.id, raw as Prefs);
+      if (rawPrefs !== undefined) {
+        // Their own voice, language and Telegram chat (lib/context.ts), checked above.
+        const r = await hub.setPrefs(me.id, rawPrefs as Prefs);
         if ("error" in r) return err(400, r.error);
         forgetSessions([await sessionDigest(req)]);
         forgetPerson(personOf(principal));

@@ -113,10 +113,19 @@ export class PushToTalk {
     }
   }
 
+  /** Put down, not finished: what was heard so far is not sent (their end handlers would send it). */
   stop(): void {
     this.abort?.abort();
-    this.recognition?.stop();
-    this.recorder?.state === "recording" && this.recorder.stop();
+    if (this.recognition) {
+      this.recognition.onend = null;
+      this.recognition.stop();
+      this.recognition = null;
+    }
+    if (this.recorder) {
+      this.recorder.onstop = null;
+      if (this.recorder.state === "recording") this.recorder.stop();
+    }
+    this.chunks = [];
     this.silence();
     this.release();
     this.state = "idle";
@@ -232,13 +241,19 @@ export class PushToTalk {
     rec.interimResults = false;
     rec.continuous = false;
     let text = "";
+    let failed = "";
     rec.onresult = (e) => {
       for (let i = 0; i < e.results.length; i++) text += e.results[i]![0]!.transcript;
     };
-    rec.onerror = (e) => this.hooks.status(`speech recognition: ${e.error}`, true);
+    rec.onerror = (e) => {
+      failed = e.error;
+      this.hooks.status(`speech recognition: ${e.error}`, true);
+    };
     rec.onend = () => {
       this.recognition = null;
       if (text.trim()) void this.ask({ text: text.trim() });
+      // Its reason stays said: "didn't hear anything" over a refused microphone sent people looking for the wrong fault.
+      else if (failed) this.done(`speech recognition: ${failed} — tap to ask`, true);
       else this.done("didn't hear anything — tap to ask");
     };
     rec.start();

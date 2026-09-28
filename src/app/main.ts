@@ -123,7 +123,7 @@ function logEvent(ev: ServerEvent) {
   line.className = "ln";
   const isErr = ev.type === "error" || ev.type === "__unparseable";
   line.innerHTML =
-    `<span class="t ${isErr ? "e" : ""}">${ev.type}</span>` +
+    `<span class="t ${isErr ? "e" : ""}">${escapeHtml(ev.type)}</span>` +
     `<span class="j">${escapeHtml(summarise(ev))}</span>`;
   els.log.appendChild(line);
   els.log.scrollTop = els.log.scrollHeight;
@@ -356,10 +356,20 @@ function onState(s: SessionState, detail?: string) {
       setOrb();
       break;
     case "error":
+      // Only a session that failed to start says this (session.ts). A reconnect
+      // that failed tries again, as a drop does. A first start that failed is
+      // over: left wanted, focus mode stuck, the idle lock and a new build waited
+      // on it, and the next tap only "stopped" it.
+      session = null;
+      if (userWantsSession && attempt > 0 && !detail?.includes("unauthorized")) {
+        scheduleReconnect(detail ?? "could not reconnect");
+        break;
+      }
+      userWantsSession = false;
+      attempt = 0;
       errorFlash = 1;
       status(detail ?? "something went wrong", true);
       setOrb("error");
-      session = null;
       // A stored key can stop working (rotated, revoked). Re-prompt rather than
       // leaving the driver tapping an orb that will never start.
       if (detail?.includes("unauthorized")) { clearKey(); key = ""; void requireKey(); }
@@ -399,7 +409,12 @@ function scheduleReconnect(reason: string) {
   // browser to say it is back instead.
   if (!navigator.onLine) {
     status("no signal — waiting…", true);
-    addEventListener("online", () => { attempt = 0; void reconnect(); }, { once: true });
+    // One wait at a time, taken back if the user stops: each drop used to add another,
+    // and each came back as its own session.
+    if (!onlineWait) {
+      onlineWait = () => { onlineWait = null; attempt = 0; void reconnect(); };
+      addEventListener("online", onlineWait, { once: true });
+    }
     return;
   }
 
@@ -408,8 +423,12 @@ function scheduleReconnect(reason: string) {
   reconnectTimer = setTimeout(() => void reconnect(), wait);
 }
 
+/** Waiting for the signal to come back, to reconnect: at most one (scheduleReconnect). */
+let onlineWait: (() => void) | null = null;
+
 async function reconnect() {
-  if (!userWantsSession || !key) return;
+  // Not while one is open: a second would bill alongside it, and nothing could close the first.
+  if (!userWantsSession || !key || session) return;
   const gapSec = Math.round((Date.now() - droppedAt) / 1000);
   await openSession(history.snapshot(), gapSec);
 }
@@ -418,6 +437,8 @@ async function toggle() {
   if (session || userWantsSession) {
     userWantsSession = false;
     clearTimeout(reconnectTimer);
+    if (onlineWait) removeEventListener("online", onlineWait);
+    onlineWait = null;
     attempt = 0;
     history.clear();          // an explicit end really does end the conversation
     delegateAbort?.abort();
@@ -1220,7 +1241,11 @@ setInterval(async () => {
   if (session || userWantsSession || ptt?.busy || typedAbort) return;
   if (await lockPerson(key)) {
     await putAside();
-    document.querySelectorAll(".panel.open").forEach((el) => el.classList.remove("open"));
+    // Closed the way their own close buttons close them: Chat stops asking for messages as the one put aside.
+    document.querySelectorAll<HTMLElement>(".panel.open").forEach((el) => {
+      el.querySelector<HTMLElement>(".close")?.click();
+      el.classList.remove("open");
+    });
     showPeople();
   }
 }, 60_000);

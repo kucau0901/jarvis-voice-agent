@@ -213,7 +213,7 @@ export class Routines {
     box.appendChild(el("p", "note",
       "Make a device token with the routines scope (devices panel), then have the other system POST to this address. " +
       "Every enabled routine waiting for that event runs, at most once a minute. text is optional and is passed along."));
-    box.appendChild(el("pre", "", `POST ${location.origin}/api/v1/trigger\nX-Jarvis-Key: <device token>\nContent-Type: application/json\n\n{"event": "arrived_home", "text": "optional detail"}`));
+    box.appendChild(el("pre", "", `POST ${location.origin}/api/v1/trigger\nAuthorization: Bearer <device token>\nContent-Type: application/json\n\n{"event": "arrived_home", "text": "optional detail"}`));
     return box;
   }
 }

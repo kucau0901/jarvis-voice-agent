@@ -1,4 +1,4 @@
-import { McpSessions } from "../src/worker/lib/mcp-sessions.ts";
+import { McpSessions, openWithin } from "../src/worker/lib/mcp-sessions.ts";
 
 let pass = 0;
 let fail = 0;
@@ -74,6 +74,22 @@ console.log("\nwhen a call fails mid-question");
   check("and not handed out again", second !== first && log.opened === 2, log);
   await s.close();
   check("closing the question closes the new one only", log.closed === 2, log);
+}
+
+console.log("\nopenWithin: a connection too slow to use is still closed when it comes");
+{
+  const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  let closed = 0;
+  const conn = { close: async () => void closed++ };
+  const opens = (ms: number) => new Promise<typeof conn>((r) => setTimeout(() => r(conn), ms));
+
+  check("in time: the connection", (await openWithin(opens(5), 200, "a")) === conn && closed === 0);
+  const slow = await openWithin(opens(80), 20, "b").then(() => "opened", (e: Error) => e.message);
+  check("too slow: timed out, by name", slow === "timed out: b", slow);
+  await wait(120);
+  check("and closed when it did open", closed === 1, closed);
+  const refused = await openWithin(Promise.reject(new Error("refused")), 50, "c").then(() => "opened", (e: Error) => e.message);
+  check("a refusal is the refusal, not a time-out", refused === "refused", refused);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

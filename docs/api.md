@@ -328,7 +328,7 @@ board should use.
 POST /api/v1/voice?format=wav&thread=kitchen
 Content-Type: audio/wav            (or audio/webm, audio/ogg, audio/mpeg, audio/mp4…)
 Accept: audio/wav
-X-Jarvis-Key: <device token with voice and ask>
+Authorization: Bearer <device token with voice and ask>
 
 <the recording, up to 3 MB>
 ```

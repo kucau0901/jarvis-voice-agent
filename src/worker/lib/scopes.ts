@@ -78,6 +78,11 @@ export function allows(grants: readonly Grant[], needed: Scope): boolean {
   return grants.includes(WILDCARD) || grants.includes(needed);
 }
 
+/** The same grants for somewhere with nothing to show things on: a wildcard becomes every scope but the screen. */
+export function withoutScreen(grants: readonly Grant[]): Grant[] {
+  return grants.includes(WILDCARD) ? SCOPES.filter((s) => s !== "screen") : grants.filter((g) => g !== "screen");
+}
+
 /* ---------- the HTTP surface --------------------------------------------- */
 
 /**

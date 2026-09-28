@@ -18,7 +18,7 @@ import { localeOf, utcOffset, countryName } from "../src/worker/lib/locale.ts";
 import { StateHost } from "../src/worker/lib/state-host.ts";
 import { withSettings, saveSettings, _resetSettingsCache } from "../src/worker/lib/settings-store.ts";
 import { requiredScope } from "../src/worker/lib/scopes.ts";
-import { publicOrigin } from "../src/worker/lib/http.ts";
+import { publicOrigin, redact } from "../src/worker/lib/http.ts";
 import { googleConfig } from "../src/worker/lib/google.ts";
 import { carState, distanceIn, imperialState } from "../src/worker/tools/tessie.ts";
 
@@ -250,6 +250,14 @@ console.log("\nonly the owner reaches it");
   for (const [p, m] of [["/api/settings", "GET"], ["/api/settings", "PUT"], ["/api/settings/test", "POST"]] as const) {
     check(`${m} ${p} is owner-only`, requiredScope(p, m) === "owner");
   }
+}
+
+console.log("\nredact: keys never go back in an error");
+{
+  const said = redact("401 Incorrect API key provided: sk-proj-AbCdEf0123456789xyz. You can find your API key at https://platform.openai.com");
+  check("an OpenAI key is cut to its kind", !/AbCdEf0123456789/.test(said) && /sk-\*\*\*/.test(said), said);
+  check("a bearer token too", redact("sent Authorization: Bearer abc.def.ghi") === "sent Authorization: Bearer ***");
+  check("the rest of the message stays, to debug from", /Incorrect API key provided/.test(said) && /platform\.openai\.com/.test(said), said);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

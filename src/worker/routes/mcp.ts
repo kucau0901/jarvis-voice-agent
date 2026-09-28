@@ -16,6 +16,8 @@ export async function handleMcp(req: Request, env: Env): Promise<Response> {
     } catch {
       return err(400, "body is not valid JSON");
     }
+    // null is JSON too, and the rest reads fields off it.
+    if (body === null || typeof body !== "object") return err(400, "body must be a JSON object");
     if (typeof body.url !== "string") return err(400, "url must be https");
     // Expand ${NAME} exactly as a real call would — in the URL as well as the
     // headers. The URL was missed: the seeded Home Assistant server is
@@ -53,6 +55,8 @@ export async function handleMcp(req: Request, env: Env): Promise<Response> {
     } catch {
       return err(400, "body is not valid JSON");
     }
+    // null is JSON too, and the rest reads fields off it.
+    if (body === null || typeof body !== "object") return err(400, "body must be a JSON object");
     if (typeof body.url !== "string" || !/^https:\/\//i.test(body.url)) {
       return err(400, "url must be https");
     }
@@ -108,6 +112,8 @@ export async function handleMcp(req: Request, env: Env): Promise<Response> {
     } catch {
       return err(400, "body is not valid JSON");
     }
+    // null is JSON too, and the rest reads fields off it.
+    if (body === null || typeof body !== "object") return err(400, "body must be a JSON object");
     const saved = await writeServers(env, body.servers);
     // Stale catalogs would mask a server that just changed.
     await Promise.all(

@@ -24,6 +24,8 @@ export async function handleTts(req: Request, env: Env): Promise<Response> {
   } catch {
     return err(400, "body is not valid JSON");
   }
+  // null is JSON too, and the rest reads fields off it.
+  if (body === null || typeof body !== "object") return err(400, "body must be a JSON object");
   const text = typeof body.text === "string" ? body.text.trim().slice(0, 1000) : "";
   if (!text) return err(400, "text is required");
 

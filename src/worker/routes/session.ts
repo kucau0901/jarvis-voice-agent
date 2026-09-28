@@ -1,7 +1,7 @@
 import { openaiBase } from "../lib/openai-base.ts";
 import OpenAI from "openai";
 import type { Env } from "../types.ts";
-import { json, err } from "../lib/http.ts";
+import { json, err, redact } from "../lib/http.ts";
 import { isClientKind, jarvisPrompt } from "../lib/prompt.ts";
 import { buildHistory } from "../lib/history.ts";
 
@@ -30,6 +30,8 @@ export async function handleSession(req: Request, env: Env): Promise<Response> {
   } catch {
     return err(400, "body is not valid JSON");
   }
+  // null is JSON too, and the rest reads fields off it.
+  if (body === null || typeof body !== "object") return err(400, "body must be a JSON object");
   if (typeof body.sdp !== "string" || !body.sdp.includes("v=0")) {
     return err(400, "missing or malformed sdp offer");
   }
@@ -88,7 +90,8 @@ export async function handleSession(req: Request, env: Env): Promise<Response> {
     const msg = e instanceof Error ? e.message : String(e);
     console.error("live.create failed:", msg);
     // Surface the reason — this is the call most likely to fail in the car, and
-    // a bare 500 would leave nothing to debug from the driver's seat.
-    return err(502, "could not start the Live session", { detail: msg.slice(0, 400) });
+    // a bare 500 would leave nothing to debug from the driver's seat. Redacted
+    // first: OpenAI's message can quote the key it was given (index.ts).
+    return err(502, "could not start the Live session", { detail: redact(msg).slice(0, 400) });
   }
 }

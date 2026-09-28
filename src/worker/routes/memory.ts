@@ -51,6 +51,8 @@ export async function handleMemory(req: Request, env: Env, grants: readonly Gran
     } catch {
       return err(400, "body is not valid JSON");
     }
+    // null is JSON too, and the rest reads fields off it.
+    if (body === null || typeof body !== "object") return err(400, "body must be a JSON object");
     const query = typeof body.query === "string" ? body.query : "";
     if (!query.trim()) return err(400, "query is required");
 
@@ -148,6 +150,8 @@ export async function handleMemory(req: Request, env: Env, grants: readonly Gran
     } catch {
       return err(400, "body is not valid JSON");
     }
+    // null is JSON too, and the rest reads fields off it.
+    if (body === null || typeof body !== "object") return err(400, "body must be a JSON object");
     // Same validator as the write path: edits from the UI are no more trusted
     // than speech from the car.
     const facts = sane(body.facts);

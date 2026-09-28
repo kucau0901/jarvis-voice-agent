@@ -1,6 +1,7 @@
 import type { Env } from "../types.ts";
 import { OWNER } from "./context.ts";
 import { MAX_PAYLOAD, sendPush, type Subscription, type VapidKeys } from "./webpush.ts";
+import { haUrl } from "./ha.ts";
 
 /**
  * How Jarvis reaches you when it speaks first.
@@ -74,6 +75,8 @@ export interface Delivery {
   deliveredBy: Channel | null;
   /** Kept for someone's quiet time, until then (ms). */
   heldUntil?: number;
+  /** Not kept for their quiet time: it would be no use by the time they could have it. */
+  stale?: true;
 }
 
 /* ---------- the list ------------------------------------------------------- */
@@ -205,7 +208,7 @@ export async function deliver(
     if (until) {
       // Worth nothing by the time they could have it ("leave now" for something already begun): not kept.
       if (alert.expiresAt !== undefined && alert.expiresAt <= until) {
-        const d: Delivery = { alert, attempts: [], deliveredBy: null };
+        const d: Delivery = { alert, attempts: [], deliveredBy: null, stale: true };
         await state.logDelivery(d).catch(() => {});
         return d;
       }
@@ -360,7 +363,7 @@ const SEND: Record<Channel, Sender> = {
     // The Android Companion app reads a message of exactly "TTS" aloud; any
     // other notify service would just show those three letters, hence opt-in.
     const spoken = env.HA_NOTIFY_SPEAK === "1" && alert.speak;
-    const r = await fetch(new URL(`/api/services/notify/${env.HA_NOTIFY_SERVICE}`, env.HA_BASE_URL), {
+    const r = await fetch(haUrl(env.HA_BASE_URL, `/api/services/notify/${env.HA_NOTIFY_SERVICE}`), {
       method: "POST",
       headers: { authorization: `Bearer ${env.HA_TOKEN}`, "content-type": "application/json" },
       body: JSON.stringify(

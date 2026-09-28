@@ -1,4 +1,4 @@
-import { carState, milesToKm, metricState, KM_PER_MILE } from "../src/worker/tools/tessie.ts";
+import { carCommand, carState, milesToKm, metricState, KM_PER_MILE } from "../src/worker/tools/tessie.ts";
 
 let pass = 0;
 let fail = 0;
@@ -91,6 +91,32 @@ console.log("\ncar_state — summary");
   check("no range reading means no range claim", /^Battery 69%\. /.test(missing) && !/km/.test(missing), missing);
 }
 
+console.log("\ncar_state — a reading the car did not give is left out, never said as undefined");
+{
+  stubTessie(BATTERY, STATE);
+  check("with everything reported, climate reads as before", (await read("climate")) === "Inside 31.5°C, outside 29°C. Climate is off. Set to 22°C.", await read("climate"));
+  check("charge with no limit reported leaves the limit out", (await read("charge")) === "Battery 69%. Charging state: Disconnected.", await read("charge"));
+
+  stubTessie({}, { charge_state: {}, climate_state: {}, drive_state: {}, vehicle_state: {} });
+  const outs: Record<string, string> = {};
+  for (const what of ["battery", "climate", "charge", "summary"]) outs[what] = await read(what);
+  check("no \"undefined\" anywhere", !Object.values(outs).some((o) => /undefined|NaN/.test(o)), outs);
+  check("battery: says it did not report", outs.battery === "The car did not report its battery.", outs.battery);
+  check("climate: says it did not report", outs.climate === "The car did not report its climate.", outs.climate);
+  check("charge: says it did not report", outs.charge === "The car did not report its charge.", outs.charge);
+  check("summary: an unknown lock is not said to be locked", !/locked/.test(outs.summary!), outs.summary);
+
+  stubTessie(BATTERY, { ...STATE, climate_state: { outside_temp: 29 } });
+  check("one temperature alone reads as a sentence", (await read("climate")) === "Outside 29°C.", await read("climate"));
+
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async () => new Response(JSON.stringify({}), { status: 200 })) as typeof fetch;
+  check("location with nothing reported says so", (await read("location")) === "The car did not say where it is.", await read("location"));
+  globalThis.fetch = (async () => new Response(JSON.stringify({ latitude: 3.1, longitude: 101.7 }), { status: 200 })) as typeof fetch;
+  check("location with only coordinates gives them", (await read("location")) === "3.1, 101.7", await read("location"));
+  globalThis.fetch = realFetch;
+}
+
 console.log("\ncar_state — everything");
 {
   stubTessie();
@@ -164,6 +190,24 @@ console.log("\nmetricState on its own");
   const input = { odometer: 10 };
   metricState(input);
   check("the input is not mutated", input.odometer === 10);
+}
+
+console.log("\ncar_command — waking the car stops when the question does");
+{
+  const realFetch = globalThis.fetch;
+  // Asleep; and a wake that takes as long as it is allowed to.
+  globalThis.fetch = (async (input: string | URL | Request, init: RequestInit = {}) => {
+    if (String(input).includes("/status")) return Response.json({ status: "asleep" });
+    return new Promise<Response>((_, rej) => init.signal?.addEventListener("abort", () => rej(init.signal!.reason), { once: true }));
+  }) as typeof fetch;
+  const stop = new AbortController();
+  const cctx = { env: { TESSIE_TOKEN: "test-token", TESSIE_VIN: "LRWTEST0000000000" }, signal: stop.signal, progress() {} } as never;
+  const t0 = Date.now();
+  const running = carCommand.run({ command: "honk", temperature: null, percent: null, value: null }, cctx) as Promise<string>;
+  setTimeout(() => stop.abort(new Error("the question was cancelled")), 50);
+  const out = await Promise.race([running, new Promise<string>((r) => setTimeout(() => r("still waking after 3 s"), 3000))]);
+  globalThis.fetch = realFetch;
+  check("cancelled while waking: it stops at once", /^Could not wake the car/.test(out) && Date.now() - t0 < 2000, { out, ms: Date.now() - t0 });
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

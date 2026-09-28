@@ -29,6 +29,20 @@ export interface McpServerConfig {
   spokenAs?: string;
 }
 
+/**
+ * Header values as text. A number or true/false typed without quotes is what
+ * was meant; anything else is dropped. Left as it was, one of them broke
+ * filling in placeholders, and with it every load of the list.
+ */
+function headerValues(h: object): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(h)) {
+    if (typeof v === "string") out[k] = v;
+    else if ((typeof v === "number" && Number.isFinite(v)) || typeof v === "boolean") out[k] = String(v);
+  }
+  return out;
+}
+
 /** "saved" came from the settings panel; "default" is config/mcp-servers.json. */
 export type ConfigSource = "saved" | "default";
 
@@ -47,10 +61,7 @@ export function sane(raw: unknown): McpServerConfig[] {
     out.push({
       label: label.trim().slice(0, 60),
       url: url.trim(),
-      headers:
-        headers && typeof headers === "object"
-          ? (headers as Record<string, string>)
-          : undefined,
+      headers: headers && typeof headers === "object" && !Array.isArray(headers) ? headerValues(headers) : undefined,
       allowedTools: Array.isArray(allowedTools)
         ? allowedTools.filter((t): t is string => typeof t === "string")
         : undefined,

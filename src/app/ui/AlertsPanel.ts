@@ -111,7 +111,12 @@ export class AlertsPanel {
         el("span", "", s.label),
         el("small", "", `${s.who === "owner" ? "" : "device · "}${worked}${s.failures ? ` · ${s.failures} refused` : ""}`),
         button("Remove", async () => {
-          await fetch(`/api/alerts?sub=${encodeURIComponent(s.id)}`, { method: "DELETE", headers: authHeaders(this.key) });
+          const res = await fetch(`/api/alerts?sub=${encodeURIComponent(s.id)}`, { method: "DELETE", headers: authHeaders(this.key) }).catch(() => null);
+          if (!res?.ok) {
+            li.querySelector(".res")?.remove();
+            li.appendChild(el("div", "res bad", res ? `Not removed: the server said ${res.status}.` : "Not removed: the server could not be reached."));
+            return;
+          }
           await this.load();
         }),
       );

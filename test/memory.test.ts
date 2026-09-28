@@ -250,6 +250,22 @@ console.log("\nremember's schema — strict mode is unforgiving");
   check("more accepts a list or null", JSON.stringify(p.properties.more).includes("array"));
 }
 
+console.log("\nremember can file something as reference, as its description asks");
+{
+  const p = remember.parameters as { properties: { kind: { enum: string[] } } };
+  check("reference is one of the kinds offered", p.properties.kind.enum.includes("reference"), p.properties.kind.enum);
+  const m = new MemoryStore(fakeEnv());
+  await m.load();
+  const out = await remember.run(
+    { text: "Lina — ext 1104, lina@example.com", kind: "reference", place: null, replaces: null, pin: null, more: ["Omar — ext 1105, omar@example.com"] },
+    { memory: m } as never,
+  );
+  await m.save(); // as the request that ran the tool does when it ends
+  const all = await m.allFacts();
+  check("both are saved as reference", all.length === 2 && all.every((f) => f.kind === "reference"), { out, kinds: all.map((f) => f.kind) });
+  check("and kept out of what every question carries", m.facts.length === 0, m.facts.length);
+}
+
 console.log("\nsaving a list in one call");
 {
   const env = fakeEnv();

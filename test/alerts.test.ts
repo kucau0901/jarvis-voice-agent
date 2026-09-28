@@ -242,6 +242,8 @@ console.log("\nwhat each channel sends");
 
   const ha = await one({ ALERT_ORDER: "homeassistant", HA_NOTIFY_SERVICE: "mobile_app_pixel_9", HA_BASE_URL: "https://ha.example.com", HA_TOKEN: "t" });
   check("HA: the notify service", ha.url === "https://ha.example.com/api/services/notify/mobile_app_pixel_9");
+  const behind = await one({ ALERT_ORDER: "homeassistant", HA_NOTIFY_SERVICE: "mobile_app_pixel_9", HA_BASE_URL: "https://proxy.example.com/ha/", HA_TOKEN: "t" });
+  check("HA behind a path keeps it, as the house tools do", behind.url === "https://proxy.example.com/ha/api/services/notify/mobile_app_pixel_9", behind.url);
   check("HA: shown, not spoken, unless asked", JSON.parse(String(ha.init.body)).message === a.text);
   const hs = await one({ ALERT_ORDER: "homeassistant", HA_NOTIFY_SERVICE: "mobile_app_pixel_9", HA_BASE_URL: "https://ha.example.com", HA_TOKEN: "t", HA_NOTIFY_SPEAK: "1" });
   const hsBody = JSON.parse(String(hs.init.body));

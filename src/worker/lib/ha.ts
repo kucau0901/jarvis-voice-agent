@@ -14,6 +14,13 @@ export interface HaConfig {
   token: string;
 }
 
+/**
+ * An address on Home Assistant, joined as every call here joins it. Not
+ * `new URL(path, base)`, which drops a path in the base: a Home Assistant
+ * behind https://example.com/ha would be asked at https://example.com/api/.
+ */
+export const haUrl = (base: string, path: string): string => `${base.replace(/\/+$/, "")}${path}`;
+
 export function haConfig(env: Env): HaConfig | null {
   const base = env.HA_BASE_URL?.replace(/\/+$/, "");
   const token = env.HA_TOKEN;

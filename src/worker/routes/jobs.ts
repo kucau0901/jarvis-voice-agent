@@ -6,7 +6,7 @@ import { isTheirs } from "../lib/context.ts";
 import type { EventSink } from "../lib/sse.ts";
 import { err, json, readObject } from "../lib/http.ts";
 import { stateStub } from "../lib/state-client.ts";
-import { allows, type Grant } from "../lib/scopes.ts";
+import { allows, withoutScreen, type Grant } from "../lib/scopes.ts";
 import { builtinTools, explicitCache, researchModel } from "../lib/router-model.ts";
 import { toToolSchema } from "../tools/registry.ts";
 import * as hermes from "../tools/hermes.ts";
@@ -26,8 +26,8 @@ import { costOf } from "../lib/usage.ts";
  *   DELETE /api/v1/jobs?id=
  */
 
-/** Nowhere to show anything: a job's result is read later. */
-const jobGrants = (g: readonly Grant[]): Grant[] => g.filter((x) => x !== "screen");
+/** Nowhere to show anything: a job's result is read later. An admin's wildcard too, or the job was never told. */
+const jobGrants = (g: readonly Grant[]): Grant[] => withoutScreen(g);
 
 const quiet: EventSink = { send() {}, isClosed: false };
 
@@ -142,9 +142,11 @@ export function jobEngine(env: Env, deliver: JobDeps["deliver"], envFor: (job: J
     },
 
     async hermes(job) {
-      if (!hermes.hermesConfig(env)) return { ok: false, text: "Hermes is not set up" };
+      // As whoever started it, like the other engines: their own Hermes memory (hermes.ts sessionKey).
+      const theirs = await envFor(job);
+      if (!hermes.hermesConfig(theirs)) return { ok: false, text: "Hermes is not set up" };
       try {
-        const text = await hermes.ask(env, job.task, { signal: AbortSignal.timeout(6 * 60_000) });
+        const text = await hermes.ask(theirs, job.task, { signal: AbortSignal.timeout(6 * 60_000) });
         return text.trim() ? { ok: true, text } : { ok: false, text: "Hermes answered with nothing" };
       } catch (e) {
         return { ok: false, text: `Hermes did not answer: ${e instanceof Error ? e.message : String(e)}`.slice(0, 300) };

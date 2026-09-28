@@ -1,4 +1,5 @@
 import type { Env } from "../types.ts";
+import { OWNER } from "../lib/context.ts";
 
 /**
  * Client for a self-hosted Nous Research hermes-agent.
@@ -15,6 +16,16 @@ import type { Env } from "../types.ts";
 
 /** Stable per-device key so Hermes accumulates memory across drives. */
 const SESSION_KEY = "jarvis:tesla";
+
+/**
+ * Hermes's long-term memory is kept per session key, so each person has their
+ * own: someone Hermes is shared with does not read what the first person told
+ * it. The first person keeps the key Hermes has always had.
+ */
+export function sessionKey(env: Env): string {
+  const person = env.JARVIS_PERSON;
+  return !person || person === OWNER ? SESSION_KEY : `${SESSION_KEY}:${person}`;
+}
 
 class HermesNotConfigured extends Error {
   constructor() {
@@ -142,7 +153,7 @@ export async function ask(
    */
   const res = await fetch(`${cfg.baseUrl}/v1/chat/completions`, {
     method: "POST",
-    headers: headers(cfg, { "X-Hermes-Session-Key": SESSION_KEY }),
+    headers: headers(cfg, { "X-Hermes-Session-Key": sessionKey(env) }),
     body: JSON.stringify({ model: cfg.model, messages, stream: true }),
     signal: opts.signal,
   });
@@ -158,6 +169,23 @@ export async function ask(
   let buffer = "";
   let text = "";
 
+  const take = (raw: string) => {
+    const line = raw.trim();
+    if (!line.startsWith("data:")) return;
+    const payload = line.slice(5).trim();
+    if (payload === "[DONE]") return;
+    try {
+      const chunk = JSON.parse(payload) as {
+        choices?: { delta?: { content?: string }; message?: { content?: string } }[];
+      };
+      const piece =
+        chunk.choices?.[0]?.delta?.content ?? chunk.choices?.[0]?.message?.content ?? "";
+      if (piece) text += piece;
+    } catch {
+      // A partial frame split across reads; the next read completes it.
+    }
+  };
+
   for (;;) {
     const { done, value } = await reader.read();
     if (done) break;
@@ -165,25 +193,12 @@ export async function ask(
 
     let nl: number;
     while ((nl = buffer.indexOf("\n")) !== -1) {
-      const line = buffer.slice(0, nl).trim();
+      take(buffer.slice(0, nl));
       buffer = buffer.slice(nl + 1);
-      if (!line.startsWith("data:")) continue;
-
-      const payload = line.slice(5).trim();
-      if (payload === "[DONE]") continue;
-
-      try {
-        const chunk = JSON.parse(payload) as {
-          choices?: { delta?: { content?: string }; message?: { content?: string } }[];
-        };
-        const piece =
-          chunk.choices?.[0]?.delta?.content ?? chunk.choices?.[0]?.message?.content ?? "";
-        if (piece) text += piece;
-      } catch {
-        // A partial frame split across reads; the next read completes it.
-      }
     }
   }
+  // The last line may end without a newline: it is still part of the answer.
+  take(buffer + decoder.decode());
 
   const trimmed = text.trim();
   if (!trimmed) throw new Error("Hermes returned an empty answer.");

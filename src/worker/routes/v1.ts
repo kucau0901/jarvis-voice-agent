@@ -305,7 +305,9 @@ async function handleDevices(req: Request, env: Env, principal: Principal): Prom
     return json({ devices: list, scopes: offer, people: admin ? family.map((p) => ({ id: p.person, name: p.name })) : [] });
   }
 
-  const parsed = await readJson(req);
+  // A DELETE may name the device in the query alone, with no body at all.
+  const bare = req.method === "DELETE" && !(await req.clone().text()).trim();
+  const parsed: Awaited<ReturnType<typeof readJson>> = bare ? { ok: true, body: {} } : await readJson(req);
   if (!parsed.ok) return parsed.res;
   const body = parsed.body ?? {};
 

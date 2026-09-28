@@ -15,7 +15,7 @@ import {
   type LeaveEvent,
 } from "../src/worker/lib/leave.ts";
 import { DAILY_GRACE_MS, EVENT_COOLDOWN_MS, Scheduler, WATCH_ERRORS_SLOW, WATCH_EVERY_MS, WATCH_SLOW_MS, type SchedulerDeps } from "../src/worker/lib/scheduler.ts";
-import { haConfig, renderTemplate, truthy } from "../src/worker/lib/ha.ts";
+import { haConfig, haUrl, renderTemplate, truthy } from "../src/worker/lib/ha.ts";
 import type { Alert, Delivery } from "../src/worker/lib/alerts.ts";
 import { requiredScope } from "../src/worker/lib/scopes.ts";
 
@@ -582,6 +582,14 @@ console.log("\nHome Assistant templates");
   let msg = "";
   await renderTemplate({ base: "https://ha.example", token: "t" }, "{{ x.y }}", bad).catch((e: Error) => { msg = e.message; });
   check("its complaint about a bad template is kept", msg === "Home Assistant said 400: Error rendering template: UndefinedError", msg);
+}
+
+console.log("\nhaUrl: one way to join a Home Assistant address");
+{
+  check("a plain address", haUrl("https://ha.example.com", "/api/") === "https://ha.example.com/api/");
+  check("a trailing slash is not doubled", haUrl("https://ha.example.com/", "/api/") === "https://ha.example.com/api/");
+  check("a path is kept", haUrl("https://proxy.example.com/ha", "/api/states") === "https://proxy.example.com/ha/api/states");
+  check("the same as haConfig's base joins", `${haConfig({ HA_BASE_URL: "https://proxy.example.com/ha/", HA_TOKEN: "t" } as never)!.base}/api/` === haUrl("https://proxy.example.com/ha/", "/api/"));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

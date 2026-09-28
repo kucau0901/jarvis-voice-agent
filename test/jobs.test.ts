@@ -18,7 +18,7 @@ import {
   type Step,
 } from "../src/worker/lib/jobs.ts";
 import type { Alert, Delivery } from "../src/worker/lib/alerts.ts";
-import { requiredScope } from "../src/worker/lib/scopes.ts";
+import { allows, requiredScope, withoutScreen } from "../src/worker/lib/scopes.ts";
 
 let pass = 0;
 let fail = 0;
@@ -355,6 +355,14 @@ console.log("\nwhat a job spent");
 {
   const u = addUsage(addUsage(undefined, { input: 100, cached: 50, output: 10, written: 20, searches: 2, model: "gpt-6-sol" }), { input: 200, cached: 150, output: 5, searches: 1 });
   check("tokens, cache writes and searches add up, the model kept", u.input === 300 && u.cached === 200 && u.written === 20 && u.searches === 3 && u.output === 15 && u.model === "gpt-6-sol", u);
+}
+
+console.log("\na job has no screen, whoever asked for it");
+{
+  check("a member's grants lose the screen", !allows(withoutScreen(["ask", "screen", "home"]), "screen") && allows(withoutScreen(["ask", "screen", "home"]), "home"));
+  const admin = withoutScreen(["*"]);
+  check("an admin's wildcard loses it too", !allows(admin, "screen"), admin);
+  check("and keeps everything else", allows(admin, "hermes") && allows(admin, "mail") && allows(admin, "routines"), admin);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

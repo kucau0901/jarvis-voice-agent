@@ -43,7 +43,8 @@ export const dmId = (a: string, b: string): string => `dm:${[a, b].sort().join("
 export function mayRead(convo: string, person: string): boolean {
   if (convo === FAMILY_ROOM) return true;
   const m = /^dm:(.+)\|(.+)$/.exec(convo);
-  return !!m && (m[1] === person || m[2] === person);
+  // Only as dmId() writes it, between two people: any other spelling would be kept where nothing lists it.
+  return !!m && m[1] !== m[2] && convo === dmId(m[1]!, m[2]!) && (m[1] === person || m[2] === person);
 }
 
 const K = {

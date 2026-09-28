@@ -90,6 +90,9 @@ const SCOPE_WORDS: Record<string, string> = {
   routines: "routines",
 };
 
+/** What went wrong, to say once the section is drawn again. */
+const why = (e: unknown): string => (e instanceof Error ? e.message : String(e));
+
 export class Family {
   private el: HTMLElement;
   private body: HTMLElement;
@@ -486,8 +489,9 @@ export class Family {
       const reset = box.querySelector<HTMLButtonElement>(".p-reset");
       if (reset) {
         arm(reset, "Start again?", async () => {
-          await this.api("/api/hub/points", "DELETE").catch(() => {});
+          const failed = await this.api("/api/hub/points", "DELETE").then(() => null, why);
           await this.renderPoints(admin);
+          if (failed) this.msg(failed, true);
         });
       }
     } catch {
@@ -527,8 +531,9 @@ export class Family {
       : "";
     for (const row of box.querySelectorAll<HTMLElement>("[data-id]")) {
       row.querySelector(".i-cancel")!.addEventListener("click", async () => {
-        await this.api("/api/hub/invites", "DELETE", { id: row.dataset.id }).catch(() => {});
+        const failed = await this.api("/api/hub/invites", "DELETE", { id: row.dataset.id }).then(() => null, why);
         await this.render();
+        if (failed) this.msg(failed, true);
       });
     }
   }
@@ -658,7 +663,13 @@ export class Family {
   private async renderKeys(): Promise<void> {
     const box = this.body.querySelector<HTMLElement>(".f-keys");
     if (!box) return;
-    const { passkeys } = await this.api<{ passkeys: { id: string; label: string; createdAt: number; lastUsedAt?: number; synced: boolean }[] }>("/api/hub/passkeys");
+    let passkeys: { id: string; label: string; createdAt: number; lastUsedAt?: number; synced: boolean }[];
+    try {
+      ({ passkeys } = await this.api<{ passkeys: typeof passkeys }>("/api/hub/passkeys"));
+    } catch (e) {
+      box.innerHTML = `<p class="note">Could not load your passkeys: ${esc(why(e))}</p>`;
+      return;
+    }
     box.innerHTML =
       passkeys
         .map(
@@ -691,7 +702,13 @@ export class Family {
   private async renderSessions(): Promise<void> {
     const box = this.body.querySelector<HTMLElement>(".f-sessions");
     if (!box) return;
-    const { sessions } = await this.api<{ sessions: { id: string; label: string; via: string; lastSeenAt: number; current: boolean }[] }>("/api/hub/sessions");
+    let sessions: { id: string; label: string; via: string; lastSeenAt: number; current: boolean }[];
+    try {
+      ({ sessions } = await this.api<{ sessions: typeof sessions }>("/api/hub/sessions"));
+    } catch (e) {
+      box.innerHTML = `<p class="note">Could not load where you are signed in: ${esc(why(e))}</p>`;
+      return;
+    }
     box.innerHTML = sessions
       .map(
         (s) => `<div class="fieldfoot" data-id="${esc(s.id)}">
@@ -701,8 +718,9 @@ export class Family {
       .join("");
     for (const row of box.querySelectorAll<HTMLElement>("[data-id]")) {
       row.querySelector(".s-end")?.addEventListener("click", async () => {
-        await this.api("/api/hub/sessions", "DELETE", { id: row.dataset.id }).catch(() => {});
+        const failed = await this.api("/api/hub/sessions", "DELETE", { id: row.dataset.id }).then(() => null, why);
         await this.renderSessions();
+        if (failed) this.msg(failed, true);
       });
     }
   }

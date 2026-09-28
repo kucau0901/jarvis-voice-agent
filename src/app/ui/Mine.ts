@@ -245,8 +245,7 @@ export class Mine {
         sel.addEventListener("change", () => void this.carPatch({ id, shares: { [sel.dataset.who!]: sel.value || null } }, "Shared as you chose."));
       }
       row.querySelector(".m-carrm")?.addEventListener("click", async () => {
-        await fetch("/api/hub/cars", { method: "DELETE", headers: authHeaders(this.key), body: JSON.stringify({ id }) }).catch(() => {});
-        this.say("Removed.");
+        await this.said(fetch("/api/hub/cars", { method: "DELETE", headers: authHeaders(this.key), body: JSON.stringify({ id }) }), "Removed.");
         await this.cars();
       });
     }
@@ -343,9 +342,20 @@ export class Mine {
   }
 
   private async unlink(id: string): Promise<void> {
-    await fetch(`/api/${id}/unlink`, { method: "POST", headers: authHeaders(this.key), body: "{}" }).catch(() => {});
-    this.say("Unlinked.");
+    await this.said(fetch(`/api/${id}/unlink`, { method: "POST", headers: authHeaders(this.key), body: "{}" }), "Unlinked.");
     await this.accounts();
+  }
+
+  /** `ok` if the server agreed; its reason if not. Never "done" for something that was not. */
+  private async said(req: Promise<Response>, ok: string): Promise<void> {
+    try {
+      const res = await req;
+      if (res.ok) return this.say(ok);
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      this.say(body.error ?? `the server said ${res.status}`, true);
+    } catch (e) {
+      this.say(e instanceof Error ? e.message : String(e), true);
+    }
   }
 
   /** This month, for this person (routes/usage.ts). */

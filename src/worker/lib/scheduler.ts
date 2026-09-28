@@ -536,8 +536,11 @@ export class Scheduler {
   }
 }
 
-function outcome(d: Delivery, now: number): RunRecord {
+export function outcome(d: Delivery, now: number): RunRecord {
   if (d.deliveredBy) return { at: now, ok: true, detail: `sent by ${d.deliveredBy}` };
+  // Kept for their quiet time, as it should be: it reaches them when that ends.
+  if (d.heldUntil) return { at: now, ok: true, detail: "held for their quiet time: it reaches them when that ends" };
+  if (d.stale) return { at: now, ok: false, detail: "not sent: it would have been out of date by the end of their quiet time" };
   return {
     at: now,
     ok: false,

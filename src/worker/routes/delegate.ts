@@ -25,6 +25,8 @@ export async function handleDelegate(
   } catch {
     return err(400, "body is not valid JSON");
   }
+  // null is JSON too, and the rest reads fields off it.
+  if (body === null || typeof body !== "object") return err(400, "body must be a JSON object");
 
   const turns = normaliseTranscript(body.transcript);
   if (!turns.length) return err(400, "transcript is empty");

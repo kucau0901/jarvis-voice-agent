@@ -229,7 +229,8 @@ export class JarvisSession {
 
     const res = await fetch("/api/tts", {
       method: "POST",
-      headers: { "Content-Type": "application/json", "X-Jarvis-Key": key },
+      // As every other request goes: a device token as Bearer, which the Worker's log redaction strips (key.ts).
+      headers: authHeaders(key),
       // Real audio, whatever voice is chosen: this is fed into the session.
       body: JSON.stringify({ text, audio: true }),
     });
