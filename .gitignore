@@ -13,3 +13,6 @@ worker-configuration.d.ts
 # Your deployment's own config: worker name, KV namespace id, custom domain.
 # Copy wrangler.example.jsonc to start one; it never needs committing.
 wrangler.jsonc
+
+# Behavior-check recordings (test/behavior/check.mjs): made locally, never committed.
+.refactor-baseline/
