@@ -1,11 +1,11 @@
 import {
-  b64url,
   encrypt,
   fromB64url,
   generateVapid,
   pushEndpointAllowed,
   vapidHeader,
 } from "../src/worker/lib/webpush.ts";
+import { b64u as b64url } from "../src/worker/lib/webauthn.ts";
 
 let pass = 0;
 let fail = 0;

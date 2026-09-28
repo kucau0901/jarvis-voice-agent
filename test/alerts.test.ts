@@ -14,7 +14,8 @@ import {
   type PushTarget,
 } from "../src/worker/lib/alerts.ts";
 import { LiveHub, cleanLabel, type LiveClient, type LiveSocket } from "../src/worker/lib/live.ts";
-import { MAX_PAYLOAD, b64url, generateVapid } from "../src/worker/lib/webpush.ts";
+import { MAX_PAYLOAD, generateVapid } from "../src/worker/lib/webpush.ts";
+import { b64u as b64url } from "../src/worker/lib/webauthn.ts";
 import { StateHost, DELIVERY_LOG_MAX, MAX_PUSH_SUBS, TICKET_MS } from "../src/worker/lib/state-host.ts";
 import { requiredScope } from "../src/worker/lib/scopes.ts";
 import { validateChanges } from "../src/worker/lib/settings.ts";
