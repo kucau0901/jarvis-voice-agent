@@ -685,6 +685,18 @@ function showPeople(why = "") {
   unlock.peopleBack.hidden = !key;
 }
 
+/**
+ * The one in use steps aside on this screen, and their notifications with
+ * them: pushed ones, and the live ones this screen was listening for. Nobody
+ * is in use until someone is picked.
+ */
+async function putAside(): Promise<void> {
+  await releasePush(key);
+  live.stop();
+  clearKey();
+  key = "";
+}
+
 let pinFor: Person | null = null;
 async function switchTo(p: Person) {
   unlock.err.textContent = "";
@@ -697,14 +709,8 @@ async function switchTo(p: Person) {
     dropPerson(p.token);
     return showPeople(`${p.name}'s sign-in here has ended. Add them again.`);
   }
-  // The one in use steps aside first, and their notifications with them:
-  // pushed ones, and the live ones this screen was listening for.
-  if (isSession(key) && (await lockPerson(key))) {
-    await releasePush(key);
-    live.stop();
-    clearKey();
-    key = "";
-  }
+  // The one in use steps aside first.
+  if (isSession(key) && (await lockPerson(key))) await putAside();
   if (d?.locked) {
     pinFor = p;
     unlockView("pin");
@@ -1176,10 +1182,7 @@ async function whoAmI() {
     if (me.user) keepPerson({ id: me.user.id, name: me.user.name, hasPin: me.hasPin, token: key });
     // Put aside on this screen (a shared one, left idle): choose who is using it.
     if (me.locked) {
-      await releasePush(key);
-      live.stop();
-      clearKey();
-      key = "";
+      await putAside();
       return showPeople();
     }
     // On a screen several people share, the title says whose Jarvis this is now.
@@ -1216,10 +1219,7 @@ setInterval(async () => {
   if (people.length < 2 || !me?.hasPin || Date.now() - touchedAt < IDLE_LOCK_MS) return;
   if (session || userWantsSession || ptt?.busy || typedAbort) return;
   if (await lockPerson(key)) {
-    await releasePush(key);
-    live.stop();
-    clearKey();
-    key = "";
+    await putAside();
     document.querySelectorAll(".panel.open").forEach((el) => el.classList.remove("open"));
     showPeople();
   }
