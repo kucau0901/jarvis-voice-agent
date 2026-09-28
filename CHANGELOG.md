@@ -26,6 +26,9 @@ of every release, and in the [README](README.md#updating).
 
 ### Fixed
 
+- Removing a device with DELETE /api/v1/devices?id=… and no body was refused
+  as "body is not valid JSON". The id in the address is enough now, as the
+  API documents.
 - Through the API, changing your Home Assistant token in the same request as
   your name or your voice and language saved the token alone and silently
   dropped the rest. Everything sent is now kept, and a bad choice refuses
