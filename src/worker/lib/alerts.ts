@@ -24,7 +24,7 @@ import { MAX_PAYLOAD, sendPush, type Subscription, type VapidKeys } from "./webp
  * Kept free of runtime imports beyond fetch and WebCrypto, so Node tests it.
  */
 
-export const CHANNELS = ["live", "push", "telegram", "ntfy", "webhook", "homeassistant"] as const;
+const CHANNELS = ["live", "push", "telegram", "ntfy", "webhook", "homeassistant"] as const;
 export type Channel = (typeof CHANNELS)[number];
 export const DEFAULT_ORDER = CHANNELS.join(",");
 
@@ -61,7 +61,7 @@ export interface Alert {
   expiresAt?: number;
 }
 
-export interface Attempt {
+interface Attempt {
   channel: Channel;
   ok: boolean;
   detail: string;
@@ -98,7 +98,7 @@ export function validateOrder(v: string): string | null {
 }
 
 const ALPHABET = "0123456789abcdefghjkmnpqrstvwxyz";
-export function newAlertId(): string {
+function newAlertId(): string {
   let s = "";
   for (const b of crypto.getRandomValues(new Uint8Array(12))) s += ALPHABET[b & 31];
   return s;
@@ -174,7 +174,7 @@ export interface AlertState {
 }
 
 /** How long a visible screen has to say it got the alert before the next channel is tried. */
-export const LIVE_WAIT_MS = 4_000;
+const LIVE_WAIT_MS = 4_000;
 
 /* ---------- delivery ------------------------------------------------------- */
 

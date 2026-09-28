@@ -43,7 +43,7 @@ export interface ToolContext {
 }
 
 /** A picture for the router to look at, as a data: URL. */
-export interface ToolImage {
+interface ToolImage {
   url: string;
   detail?: "low" | "high" | "auto";
 }
@@ -94,7 +94,7 @@ export interface Tool {
 const str = (v: unknown, fallback = ""): string =>
   typeof v === "string" && v.trim() ? v.trim() : fallback;
 
-export const askHermes: Tool = {
+const askHermes: Tool = {
   name: "ask_hermes",
   scope: "hermes",
   available: (env) => !!hermes.hermesConfig(env),
@@ -142,7 +142,7 @@ export const askHermes: Tool = {
   },
 };
 
-export const controlHome: Tool = {
+const controlHome: Tool = {
   name: "control_home",
   scope: "hermes",
   available: (env) => !!hermes.hermesConfig(env),

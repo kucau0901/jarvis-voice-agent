@@ -16,7 +16,7 @@ function said(r: Routine, tz: string): string {
   return `"${r.name}" — ${describeTrigger(r.trigger, tz)}; ${describeAction(r.action)}.${next}`;
 }
 
-export const routineAdd: Tool = {
+const routineAdd: Tool = {
   name: "routine_add",
   scope: "routines",
   pace: "fast",
@@ -131,7 +131,7 @@ export const routineAdd: Tool = {
   },
 };
 
-export const routineList: Tool = {
+const routineList: Tool = {
   name: "routine_list",
   scope: "routines",
   pace: "fast",
@@ -148,7 +148,7 @@ export const routineList: Tool = {
   },
 };
 
-export const routineRemove: Tool = {
+const routineRemove: Tool = {
   name: "routine_remove",
   scope: "routines",
   pace: "fast",

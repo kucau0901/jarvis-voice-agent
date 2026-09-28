@@ -110,7 +110,7 @@ async function listModels(env: Env): Promise<{ ids?: string[]; error?: string }>
 
 /* ---------- the probe ------------------------------------------------------ */
 
-export interface ProbeResult {
+interface ProbeResult {
   ok: boolean;
   model: string;
   /** Where it failed: the call itself, calling the tool, or following up after it. */

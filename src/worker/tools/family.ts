@@ -23,7 +23,7 @@ const STATUS: Record<Relay["status"], string> = {
   cancelled: "taken back",
 };
 
-export const passOn: Tool = {
+const passOn: Tool = {
   name: "pass_on",
   scope: "chat",
   pace: "fast",
@@ -104,7 +104,7 @@ export const passOn: Tool = {
   },
 };
 
-export const answerMessage: Tool = {
+const answerMessage: Tool = {
   name: "answer_message",
   scope: "chat",
   pace: "fast",
@@ -140,7 +140,7 @@ export const answerMessage: Tool = {
   },
 };
 
-export const familyMessages: Tool = {
+const familyMessages: Tool = {
   name: "family_messages",
   scope: "chat",
   pace: "fast",
@@ -163,7 +163,7 @@ export const familyMessages: Tool = {
   },
 };
 
-export const chorePoints: Tool = {
+const chorePoints: Tool = {
   name: "chore_points",
   scope: "chat",
   pace: "fast",

@@ -493,7 +493,7 @@ export class StateHost {
 }
 
 /** Routines, which the object runs from its alarm (lib/scheduler.ts, state.ts). */
-export interface RoutineApi {
+interface RoutineApi {
   listRoutines(): Promise<Routine[]>;
   addRoutine(input: RoutineInput, by: { who: string; grants: readonly Grant[] }): Promise<Routine | string>;
   updateRoutine(id: string, patch: { enabled?: boolean; name?: string }): Promise<Routine | string>;
@@ -503,7 +503,7 @@ export interface RoutineApi {
 }
 
 /** Background jobs, which the object runs from the same alarm (lib/jobs.ts). */
-export interface JobApi {
+interface JobApi {
   listJobs(): Promise<Job[]>;
   getJob(id: string): Promise<Job | undefined>;
   createJob(input: { title?: unknown; task?: unknown; engine?: unknown }, by: { who: string; grants: readonly Grant[] }): Promise<Job | string>;
@@ -512,7 +512,7 @@ export interface JobApi {
 }
 
 /** The family's messages, passed on and chatted (lib/relays.ts, lib/chat.ts; state.ts). */
-export interface FamilyApi {
+interface FamilyApi {
   relayCreate(input: {
     kind: RelayKind;
     from: string;
@@ -537,7 +537,7 @@ export interface FamilyApi {
 }
 
 /** What the object adds itself, because it holds the sockets (state.ts). */
-export interface LiveApi {
+interface LiveApi {
   broadcast(alert: Alert, waitMs: number): Promise<LiveResult>;
   liveClients(): Promise<LiveClient[]>;
   /** Close a device's open screens and drop its notifications, when it is revoked or narrowed. */

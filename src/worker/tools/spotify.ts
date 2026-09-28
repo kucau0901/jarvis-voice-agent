@@ -68,7 +68,7 @@ const artistsOf = (p: Playback): string =>
 
 /* ---------- what is playing ----------------------------------------------- */
 
-export const musicState: Tool = {
+const musicState: Tool = {
   name: "music_state",
   scope: "media",
   pace: "fast",
@@ -121,7 +121,7 @@ export const musicState: Tool = {
 
 const TYPES = ["track", "album", "artist", "playlist"] as const;
 
-export const musicPlay: Tool = {
+const musicPlay: Tool = {
   name: "music_play",
   scope: "media",
   pace: "fast",
@@ -195,7 +195,7 @@ const ACTIONS = {
   shuffle_off: { method: "PUT", path: "/me/player/shuffle?state=false", said: "Shuffle off." },
 } as const;
 
-export const musicControl: Tool = {
+const musicControl: Tool = {
   name: "music_control",
   scope: "media",
   pace: "fast",

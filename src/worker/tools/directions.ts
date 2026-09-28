@@ -18,7 +18,7 @@ function looksLikeAddress(v: string): boolean {
   return /\d/.test(s) || s.split(/\s+/).length >= 3 || s.includes(",");
 }
 
-export const directions: Tool = {
+const directions: Tool = {
   name: "directions",
   scope: "car.read",
   pace: "fast",

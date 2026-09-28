@@ -169,7 +169,7 @@ async function body(req: Request): Promise<Record<string, unknown> | null> {
 }
 
 /** The panel's view: everything but the grants and the internals. */
-export function jobView(j: Job, whole = false) {
+function jobView(j: Job, whole = false) {
   const { grants: _g, responseId: _r, ...rest } = j;
   void _g;
   void _r;

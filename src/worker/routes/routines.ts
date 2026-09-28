@@ -41,7 +41,7 @@ async function body(req: Request): Promise<Record<string, unknown> | null> {
 const creator = (p: Principal) => ({ who: whoOf(p), grants: grantsOf(p) });
 
 /** A routine as the panel and the API show it. */
-export function view(r: Routine, timeZone: string) {
+function view(r: Routine, timeZone: string) {
   return { ...r, when: describeTrigger(r.trigger, timeZone), does: describeAction(r.action) };
 }
 

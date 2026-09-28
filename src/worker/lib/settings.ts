@@ -37,7 +37,7 @@ export type Group =
   | "devices"
   | "advanced";
 
-export type Kind = "secret" | "url" | "text" | "number" | "bool" | "enum";
+type Kind = "secret" | "url" | "text" | "number" | "bool" | "enum";
 
 export interface SettingDef {
   name: string;
@@ -542,7 +542,7 @@ export const settingDef = (name: string): SettingDef | undefined => BY_NAME.get(
 
 /* ---------- stored shape --------------------------------------------------- */
 
-export interface Saved {
+interface Saved {
   v: string;
   /** When it was saved. The rebinding guard compares these. */
   at: number;
@@ -710,7 +710,7 @@ export async function maskSecret(v: string): Promise<string> {
   return v.length >= 24 ? `••••${v.slice(-4)} · sha256 ${fp}` : `•••• · sha256 ${fp}`;
 }
 
-export type Source = "saved" | "deployment" | "default" | "unset";
+type Source = "saved" | "deployment" | "default" | "unset";
 
 export interface SettingView {
   name: string;

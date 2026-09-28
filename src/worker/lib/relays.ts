@@ -24,7 +24,7 @@ import { whenSaid } from "./routines.ts";
  */
 
 export type RelayKind = "tell" | "remind" | "ask";
-export type RelayStatus = "waiting" | "sent" | "done" | "declined" | "answered" | "expired" | "cancelled";
+type RelayStatus = "waiting" | "sent" | "done" | "declined" | "answered" | "expired" | "cancelled";
 
 export interface Relay {
   id: string;
@@ -84,7 +84,7 @@ export interface RelayDeps {
 }
 
 /** How long someone has to answer, unless said otherwise: nudged halfway, the sender told at the end. */
-export const ANSWER_MIN = 60;
+const ANSWER_MIN = 60;
 export const FOLLOW_MS = (ANSWER_MIN / 2) * 60_000;
 /** Half the time to answer, for a relay: when the nudge goes. */
 const halfOf = (r: Relay) => ((r.answerMin ?? ANSWER_MIN) / 2) * 60_000;
@@ -97,7 +97,7 @@ const MAX_TEXT = 500;
 const R = "relay:";
 const newId = () => `r_${Math.random().toString(36).slice(2, 10)}`;
 
-export const isOpen = (r: Relay) => r.status === "waiting" || (r.status === "sent" && r.kind !== "tell");
+const isOpen = (r: Relay) => r.status === "waiting" || (r.status === "sent" && r.kind !== "tell");
 
 /** What the sender is told when an answer comes, under the answerer's name. */
 function answerLine(r: Relay): string {

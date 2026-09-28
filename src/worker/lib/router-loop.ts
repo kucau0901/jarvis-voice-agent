@@ -17,7 +17,7 @@ import { DEFAULT_ROUTER_MODEL, shouldFallBack } from "./router-model.ts";
 export const MAX_STEPS = 6;
 
 /** What a question cost, summed over every hop, and reported with the answer. */
-export interface Usage {
+interface Usage {
   input: number;
   cached: number;
   written: number;
@@ -28,7 +28,7 @@ export interface Usage {
 }
 
 /** A tool call the model asked for. */
-export interface FunctionCall {
+interface FunctionCall {
   type: "function_call";
   name: string;
   call_id: string;

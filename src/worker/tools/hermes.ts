@@ -14,9 +14,9 @@ import type { Env } from "../types";
  */
 
 /** Stable per-device key so Hermes accumulates memory across drives. */
-export const SESSION_KEY = "jarvis:tesla";
+const SESSION_KEY = "jarvis:tesla";
 
-export class HermesNotConfigured extends Error {
+class HermesNotConfigured extends Error {
   constructor() {
     super("Hermes is not configured on this Worker");
     this.name = "HermesNotConfigured";

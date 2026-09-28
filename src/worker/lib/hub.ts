@@ -110,7 +110,7 @@ interface StoredUser extends User {
  * (climate, locks, navigation too).
  */
 export type CarLevel = "see" | "drive";
-export const FAMILY_CAR = "family";
+const FAMILY_CAR = "family";
 
 interface StoredCar {
   id: string;
@@ -172,9 +172,9 @@ export interface Place {
   access?: Access;
 }
 
-export const PIN_SHAPE = /^\d{4,8}$/;
-export const PIN_TRIES = 5;
-export const PIN_WAIT_MS = 15 * 60_000;
+const PIN_SHAPE = /^\d{4,8}$/;
+const PIN_TRIES = 5;
+const PIN_WAIT_MS = 15 * 60_000;
 const PIN_ITERATIONS = 100_000;
 
 export interface Member {
@@ -233,7 +233,7 @@ export interface Session {
   locked?: boolean;
 }
 
-export interface Pairing {
+interface Pairing {
   poll: string;
   code: string;
   label: string;
@@ -270,9 +270,9 @@ async function pinHash(pin: string, salt: string): Promise<string> {
   return hex(await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt: enc.encode(salt), iterations: PIN_ITERATIONS }, key, 256));
 }
 
-export const SESSION_TOKEN = "jss1_";
-export const INVITE_TOKEN = "jin1_";
-export const POLL_TOKEN = "jpp1_";
+const SESSION_TOKEN = "jss1_";
+const INVITE_TOKEN = "jin1_";
+const POLL_TOKEN = "jpp1_";
 const ALPHABET = "abcdefghijkmnpqrstuvwxyz23456789";
 /** For pairing codes, read off a screen and typed on a phone: no I, O, 0 or 1. */
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -281,7 +281,7 @@ export const INVITE_MS = 7 * 86_400_000;
 /** A session lasts this long after it was last used. */
 export const SESSION_IDLE_MS = 180 * 86_400_000;
 export const PAIRING_MS = 10 * 60_000;
-export const CHALLENGE_MS = 5 * 60_000;
+const CHALLENGE_MS = 5 * 60_000;
 /** Challenges and pairings anyone can start: capped, so strangers cannot fill storage. */
 const MAX_PENDING = 200;
 const TOUCH_MS = 60 * 60_000;
@@ -309,10 +309,10 @@ function random(alphabet: string, n: number): string {
   return s;
 }
 
-export const mintSecret = (prefix: string) => prefix + random(ALPHABET, 32);
+const mintSecret = (prefix: string) => prefix + random(ALPHABET, 32);
 const newId = (prefix: string) => prefix + random(ALPHABET, 10);
 
-export const tokenShape = (prefix: string) => new RegExp(`^${prefix}[${ALPHABET}]{32}$`);
+const tokenShape = (prefix: string) => new RegExp(`^${prefix}[${ALPHABET}]{32}$`);
 const SESSION_SHAPE = tokenShape(SESSION_TOKEN);
 export const looksLikeSession = (s: string) => SESSION_SHAPE.test(s);
 
@@ -321,7 +321,7 @@ export function cleanName(raw: unknown, max = 40): string {
   return typeof raw === "string" ? raw.replace(/[\u0000-\u001f\u007f<>]/g, " ").replace(/\s+/g, " ").trim().slice(0, max) : "";
 }
 
-export const isRole = (r: unknown): r is Role => typeof r === "string" && (ROLES as readonly string[]).includes(r);
+const isRole = (r: unknown): r is Role => typeof r === "string" && (ROLES as readonly string[]).includes(r);
 
 /**
  * What each role has gained since families began, in order. Someone an
@@ -336,7 +336,7 @@ const GAINS: { v: number; roles: Role[]; scopes: Grant[] }[] = [
   { v: 2, roles: ["adult", "child"], scopes: ["car.read", "car.control"] },
   { v: 3, roles: ["adult", "child"], scopes: ["chat"] },
 ];
-export const SCOPES_V = 3;
+const SCOPES_V = 3;
 
 export function scopesOf(m: Member): Grant[] {
   if (m.role === "admin") return [WILDCARD];

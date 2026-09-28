@@ -15,8 +15,8 @@ import type { Storage } from "./state-host.ts";
 
 export const FAMILY_ROOM = "family";
 export const AGENT = "agent";
-export const KEEP = 300;
-export const MAX_TEXT = 2000;
+const KEEP = 300;
+const MAX_TEXT = 2000;
 
 export interface ChatMessage {
   id: string;

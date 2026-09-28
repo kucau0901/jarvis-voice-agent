@@ -211,7 +211,7 @@ export function search(facts: Fact[], query: string, limit = 6): Hit[] {
 
 /* ---------- validation ---------------------------------------------------- */
 
-export function newId(): string {
+function newId(): string {
   return "m_" + crypto.randomUUID().replace(/-/g, "").slice(0, 8);
 }
 
@@ -263,7 +263,7 @@ export interface RefDoc {
 }
 
 /** id -> { latest use, how many uses }, as pairs so it survives RPC. */
-export type Usage = [string, { at: number; n: number }][];
+type Usage = [string, { at: number; n: number }][];
 
 export interface Changeset {
   /** The owner's PUT: a wholesale replacement, not a merge. */

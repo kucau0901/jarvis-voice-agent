@@ -38,7 +38,7 @@ import type { UsageEntry } from "./usage.ts";
  * dollar.
  */
 export type JobEngine = "jarvis" | "hermes" | "research";
-export type JobStatus = "running" | "done" | "failed" | "cancelled";
+type JobStatus = "running" | "done" | "failed" | "cancelled";
 
 export interface Job {
   id: string;
@@ -152,9 +152,9 @@ export const RESEARCH_MONTHLY_DEFAULT = 10;
 const RESEARCH_MONTH = "jobs:research:month";
 /** And this long, whatever it is doing. */
 export const MAX_JOB_MS = 20 * 60_000;
-export const MAX_TASK = 4000;
+const MAX_TASK = 4000;
 /** Kept whole in the Jobs panel; the alert carries only the summary. */
-export const MAX_RESULT = 20_000;
+const MAX_RESULT = 20_000;
 /** How long to wait before looking again: quickly at first, then less often. */
 const BACKOFF_S = [4, 6, 10, 15, 20, 30];
 

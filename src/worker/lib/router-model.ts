@@ -38,7 +38,7 @@ const KV_FALLBACK_KEY = "config:router-model:fallback";
 /** Long enough to be seen, short enough that a one-off failure does not linger. */
 const FALLBACK_TTL_S = 7 * 24 * 3600;
 
-export type ModelSource = "ui" | "env" | "default";
+type ModelSource = "ui" | "env" | "default";
 
 export interface ResolvedModel {
   model: string;
@@ -142,7 +142,7 @@ export function effortFor(surface: string | undefined, setting: string | undefin
  * The model a research job runs on (RESEARCH_MODEL): stronger than the router,
  * because it is asked for depth and nobody is waiting on it.
  */
-export const DEFAULT_RESEARCH_MODEL = "gpt-6-sol";
+const DEFAULT_RESEARCH_MODEL = "gpt-6-sol";
 export const researchModel = (setting: string | undefined): string => saneModelId(setting) ?? DEFAULT_RESEARCH_MODEL;
 
 /**

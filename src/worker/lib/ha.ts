@@ -60,7 +60,7 @@ export async function callService(
 }
 
 /** What can go on a guest's pass (lib/access.ts): things that open, switch, run or lock. */
-export const PASS_DOMAINS = ["cover", "lock", "switch", "light", "fan", "button", "input_button", "input_boolean", "script", "scene"];
+const PASS_DOMAINS = ["cover", "lock", "switch", "light", "fan", "button", "input_button", "input_boolean", "script", "scene"];
 
 /**
  * The house's things a pass can work, by name, for an admin choosing a
