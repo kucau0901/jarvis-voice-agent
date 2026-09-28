@@ -259,6 +259,16 @@ console.log("\neach person's own choices");
   check("good ones are kept", ok.status === 200 && ok.body.prefs.voice === "marin" && ok.body.prefs.telegram === "123456");
   const owner = await call("/api/hub/me", { prefs: { voice: "marin" } }, { method: "PATCH", principal: OWNER });
   check("the owner key has no choices of its own", owner.status === 400);
+
+  // Sent together, everything is kept: a Home Assistant token no longer swallows the rest.
+  // (What comes back is what was saved: setPrefs and renameUser answer with it.)
+  const both = await call("/api/hub/me", { haToken: "", prefs: { voice: "cedar", language: "en" } }, { method: "PATCH", principal: admin });
+  check("a token with choices: the choices are kept too", both.status === 200 && both.body.prefs?.voice === "cedar", both.body);
+  const named = await call("/api/hub/me", { haToken: "", name: "Adam R" }, { method: "PATCH", principal: admin });
+  check("a token with a name: the name is kept too", named.status === 200 && named.body.name === "Adam R", named.body);
+  const badBoth = await call("/api/hub/me", { haToken: "", prefs: { voice: "robot" } }, { method: "PATCH", principal: admin });
+  check("a bad choice refuses the lot, before anything is kept", badBoth.status === 400 && /voice must be one of/.test(badBoth.body.error));
+  await call("/api/hub/me", { name: "Adam" }, { method: "PATCH", principal: admin });
 }
 
 console.log("\nscopes and devices");

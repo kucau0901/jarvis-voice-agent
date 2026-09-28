@@ -26,6 +26,10 @@ of every release, and in the [README](README.md#updating).
 
 ### Fixed
 
+- Through the API, changing your Home Assistant token in the same request as
+  your name or your voice and language saved the token alone and silently
+  dropped the rest. Everything sent is now kept, and a bad choice refuses
+  the request before anything is saved.
 - A background job started by an admin was not told it has no screen, so it
   could try to show a map or a photo that nobody would see. It is now told,
   as everyone else's jobs are.
