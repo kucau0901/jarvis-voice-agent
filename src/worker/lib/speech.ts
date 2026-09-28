@@ -58,7 +58,7 @@ export const MAX_SPEAK_CHARS = 1500;
 interface Ai {
   run(model: string, input: unknown): Promise<unknown>;
 }
-const aiOf = (env: Env): Ai | null => ((env as unknown as { AI?: Ai }).AI ?? null);
+const aiOf = (env: Env): Ai | null => env.AI ?? null;
 
 export interface SpeechConfig {
   stt: SttProvider;

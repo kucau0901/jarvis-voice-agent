@@ -61,8 +61,7 @@ export function limitsForm(a: Access | null | undefined, loadThings: () => Promi
           ${esc(t.name)} <small>${esc(t.entity)}</small></label>`,
       )
       .join("") || `<p class="note">Nothing in the house matches.</p>`;
-    for (const c of things.querySelectorAll("input")) {
-      const box2 = c as unknown as HTMLInputElement;
+    for (const box2 of things.querySelectorAll<HTMLInputElement>("input")) {
       box2.addEventListener("change", () => {
         if (box2.checked) chosen.set(box2.value, box2.dataset.name ?? box2.value);
         else chosen.delete(box2.value);
@@ -97,19 +96,19 @@ export function limitsForm(a: Access | null | undefined, loadThings: () => Promi
 
 /** What the form says, as the server takes it; null for no limits. */
 export function readLimits(box: HTMLElement): Access | null {
-  const q = <T,>(c: string) => box.querySelector(c) as unknown as T;
+  const q = (c: string) => box.querySelector<HTMLInputElement>(c)!;
   const out: Access = {};
-  if (q<HTMLInputElement>(".l-until-on").checked && q<HTMLInputElement>(".l-until").value) out.until = endOf(q<HTMLInputElement>(".l-until").value);
-  if (q<HTMLInputElement>(".l-hours-on").checked) {
-    const days = [...box.querySelectorAll(".l-day")].filter((d) => (d as unknown as HTMLInputElement).checked).map((d) => Number((d as unknown as HTMLInputElement).value));
-    out.hours = { from: q<HTMLInputElement>(".l-from").value, to: q<HTMLInputElement>(".l-to").value, ...(days.length < 7 ? { days } : {}) };
+  if (q(".l-until-on").checked && q(".l-until").value) out.until = endOf(q(".l-until").value);
+  if (q(".l-hours-on").checked) {
+    const days = [...box.querySelectorAll<HTMLInputElement>(".l-day")].filter((d) => d.checked).map((d) => Number(d.value));
+    out.hours = { from: q(".l-from").value, to: q(".l-to").value, ...(days.length < 7 ? { days } : {}) };
   }
-  if (q<HTMLInputElement>(".l-pass-on").checked) {
+  if (q(".l-pass-on").checked) {
     // Ticked in the house's list, and any typed.
     const ticked = [...((box as HTMLElement & { chosen?: Map<string, string> }).chosen ?? new Map<string, string>())].map(([entity, label]) => ({ entity, label }));
     const typed = [...box.querySelectorAll(".l-typed .fieldfoot")].map((r) => ({
-      label: (r.querySelector(".l-label") as unknown as HTMLInputElement).value.trim(),
-      entity: (r.querySelector(".l-entity") as unknown as HTMLInputElement).value.trim(),
+      label: r.querySelector<HTMLInputElement>(".l-label")!.value.trim(),
+      entity: r.querySelector<HTMLInputElement>(".l-entity")!.value.trim(),
     }));
     const allow = [...ticked, ...typed.filter((r) => r.entity && !ticked.some((t) => t.entity === r.entity))].map((r) => ({ ...r, label: r.label || r.entity }));
     if (allow.length) out.allow = allow;

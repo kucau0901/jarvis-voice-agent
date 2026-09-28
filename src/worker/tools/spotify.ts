@@ -140,7 +140,7 @@ const musicPlay: Tool = {
       },
       type: {
         type: "string",
-        enum: TYPES as unknown as string[],
+        enum: [...TYPES],
         description: "What kind of thing to look for.",
       },
     },

@@ -129,7 +129,7 @@ export async function runDelegation(
             break;
 
           case "display":
-            h.display(ev as unknown as Record<string, unknown>);
+            h.display(ev);
             break;
 
           case "used":
