@@ -2,7 +2,7 @@ import { Client, StreamableHTTPClientTransport, SSEClientTransport } from "@mode
 import type { Env } from "../types";
 import { loadServers, type McpServerConfig } from "../lib/config-store";
 import type { Tool, ToolContext } from "./registry";
-import { McpSessions } from "../lib/mcp-sessions";
+import { McpSessions, openWithin } from "../lib/mcp-sessions";
 
 /**
  * Third-party MCP servers, exposed to the delegation router as ordinary tools.
@@ -62,7 +62,7 @@ interface CatalogEntry {
 /** A question's connections, one per server (lib/mcp-sessions.ts). */
 export const mcpSessions = () =>
   new McpSessions<McpServerConfig, Client>((server) =>
-    withTimeout(connect(server), CONNECT_TIMEOUT_MS, `connect to ${server.label}`));
+    openWithin(connect(server), CONNECT_TIMEOUT_MS, `connect to ${server.label}`));
 
 /** Tool catalogs are cached: re-listing on every turn costs latency and CPU. See CATALOG_FRESH_MS. */
 async function listTools(
@@ -98,7 +98,7 @@ async function fetchCatalog(
   const t0 = Date.now();
   const client = sessions
     ? await sessions.client(server)
-    : await withTimeout(connect(server), CONNECT_TIMEOUT_MS, `connect to ${server.label}`);
+    : await openWithin(connect(server), CONNECT_TIMEOUT_MS, `connect to ${server.label}`);
   try {
     const { tools } = await client.listTools();
     const catalog: CatalogEntry[] = tools.map((t) => ({
@@ -121,13 +121,6 @@ async function fetchCatalog(
   } finally {
     if (!sessions) await client.close().catch(() => {});
   }
-}
-
-function withTimeout<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
-  return Promise.race([
-    p,
-    new Promise<T>((_, rej) => setTimeout(() => rej(new Error(`timed out: ${what}`)), ms)),
-  ]);
 }
 
 
@@ -260,7 +253,7 @@ async function callRemote(
   ctx.progress(`checking ${server.spokenAs ?? server.label}`);
   const client = sessions
     ? await sessions.client(server)
-    : await withTimeout(connect(server), CONNECT_TIMEOUT_MS, `connect to ${server.label}`);
+    : await openWithin(connect(server), CONNECT_TIMEOUT_MS, `connect to ${server.label}`);
   const t0 = Date.now();
   try {
     const result = await client.callTool({ name, arguments: args });

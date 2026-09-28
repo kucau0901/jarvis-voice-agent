@@ -26,6 +26,9 @@ of every release, and in the [README](README.md#updating).
 
 ### Fixed
 
+- A connection to Home Assistant (or another MCP server) that opened only
+  after Jarvis had given up waiting for it was left open. It is now closed
+  when it arrives.
 - Hermes could lose the last words of an answer when its stream ended
   without a final newline. And everyone Hermes was shared with talked to one
   Hermes memory, so what the first person told Hermes, anyone else could ask

@@ -17,6 +17,21 @@ export interface Closable {
   close(): Promise<void>;
 }
 
+/**
+ * A connection, or an error once `ms` have passed. One that opens after that
+ * is closed as soon as it does, not left open with nothing to use it.
+ */
+export function openWithin<C extends Closable>(opening: Promise<C>, ms: number, what: string): Promise<C> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<never>((_, rej) => {
+    timer = setTimeout(() => {
+      opening.then((c) => c.close()).catch(() => {});
+      rej(new Error(`timed out: ${what}`));
+    }, ms);
+  });
+  return Promise.race([opening, late]).finally(() => clearTimeout(timer));
+}
+
 export class McpSessions<S extends { label: string }, C extends Closable> {
   private open = new Map<string, Promise<C>>();
   private readonly connect: (server: S) => Promise<C>;
