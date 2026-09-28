@@ -495,6 +495,7 @@ export const SETTINGS: readonly SettingDef[] = [
         return "is not a URL";
       }
     },
+    bindsTo: ["OPENAI_API_KEY"],
   },
   {
     name: "PUBLIC_URL", group: "advanced", kind: "url",

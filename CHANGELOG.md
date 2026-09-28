@@ -56,6 +56,12 @@ of every release, and in the [README](README.md#updating).
 
 ### Security
 
+- Anyone who could change settings could point the OpenAI address (Settings
+  → Advanced) at a server of their own, and Jarvis sent the stored OpenAI key
+  there with every question. The OpenAI key now follows the rule the other
+  addresses already had: when the address is changed in the panel, the key
+  is held back until it is entered again. If you set the OpenAI address in
+  Settings yourself, enter the OpenAI key again after updating.
 - Named in the family room, the assistant read the room's recent messages
   as requests, while holding the asker's mail, memory and house: something
   one person wrote could be carried out the next time another asked. Only
