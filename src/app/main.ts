@@ -362,10 +362,20 @@ function onState(s: SessionState, detail?: string) {
       setOrb();
       break;
     case "error":
+      // Only a session that failed to start says this (session.ts). A reconnect
+      // that failed tries again, as a drop does. A first start that failed is
+      // over: left wanted, focus mode stuck, the idle lock and a new build waited
+      // on it, and the next tap only "stopped" it.
+      session = null;
+      if (userWantsSession && attempt > 0 && !detail?.includes("unauthorized")) {
+        scheduleReconnect(detail ?? "could not reconnect");
+        break;
+      }
+      userWantsSession = false;
+      attempt = 0;
       errorFlash = 1;
       status(detail ?? "something went wrong", true);
       setOrb("error");
-      session = null;
       // A stored key can stop working (rotated, revoked). Re-prompt rather than
       // leaving the driver tapping an orb that will never start.
       if (detail?.includes("unauthorized")) { clearKey(); key = ""; void requireKey(); }

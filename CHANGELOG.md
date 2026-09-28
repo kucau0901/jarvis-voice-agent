@@ -26,6 +26,11 @@ of every release, and in the [README](README.md#updating).
 
 ### Fixed
 
+- When a voice conversation failed to start (the microphone blocked, the
+  server unreachable), the screen stayed in focus mode, the next tap only
+  cleared it instead of trying again, and the idle lock and new-version
+  reload waited on it. Now a failed start ends cleanly, the next tap tries
+  again, and a failed reconnect keeps retrying as a dropped connection does.
 - An MCP server saved with a header value typed as a number (8123 rather
   than "8123") made every question fail to load the house's tools. Such a
   value is now kept as text.
