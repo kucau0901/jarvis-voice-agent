@@ -1,5 +1,5 @@
 import type { Env } from "../types.ts";
-import seed from "../../../config/mcp-servers.json";
+import seed from "../../../config/mcp-servers.json" with { type: "json" };
 import {
   expandTemplate,
   maskForUi,
