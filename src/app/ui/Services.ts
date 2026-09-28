@@ -56,7 +56,7 @@ const REDIRECT: Record<string, string> = {
 };
 
 /** A section's own content beyond its settings, drawn under its intro. */
-export type Extras = Partial<Record<string, () => HTMLElement>>;
+type Extras = Partial<Record<string, () => HTMLElement>>;
 
 export class Services {
   private key: string;

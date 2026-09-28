@@ -19,7 +19,7 @@ async function post<T>(path: string, body: unknown, key?: string): Promise<T> {
   return data;
 }
 
-export interface HubStatus {
+interface HubStatus {
   claimed: boolean;
   agentName: string | null;
 }
@@ -40,7 +40,7 @@ export async function signInWithPasskey(): Promise<{ token: string; name: string
   return post("/api/auth/login/verify", { credential, label: screenLabel() });
 }
 
-export interface InviteInfo {
+interface InviteInfo {
   spaceName: string;
   agentName: string;
   role: string;

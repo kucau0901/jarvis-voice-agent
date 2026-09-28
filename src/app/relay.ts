@@ -5,7 +5,7 @@ import { authHeaders } from "./key";
  * Done or Can't for a reminder, words for a question. Used by the alert card
  * and by the chat.
  */
-export async function answerRelay(key: string, id: string, status: "done" | "declined" | "answered", answer?: string): Promise<void> {
+async function answerRelay(key: string, id: string, status: "done" | "declined" | "answered", answer?: string): Promise<void> {
   const res = await fetch("/api/hub/relays/answer", {
     method: "POST",
     headers: authHeaders(key),

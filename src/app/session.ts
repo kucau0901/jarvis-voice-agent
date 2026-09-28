@@ -7,7 +7,7 @@ const DISCONNECT_GRACE_MS = 4000;
 
 export type ServerEvent = { type: string; [k: string]: unknown };
 
-export interface SessionHandlers {
+interface SessionHandlers {
   onEvent(ev: ServerEvent): void;
   onState(state: SessionState, detail?: string): void;
   onDiagnostic(type: string, data: Record<string, unknown>): void;

@@ -9,7 +9,7 @@ import type { Turn } from "./history";
  * nothing stands between the question and the tools.
  */
 
-export interface ChatHooks {
+interface ChatHooks {
   progress(text: string): void;
   display(payload: Record<string, unknown>): void;
   answer(text: string, ok: boolean): void;

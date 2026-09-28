@@ -39,7 +39,7 @@ import type { ClientKind } from "../worker/lib/prompt.ts";
  * shorter answers, and `?client=` settles it for anyone who minds.
  */
 
-export interface Signals {
+interface Signals {
   /** `(pointer: coarse)` — the PRIMARY input is a finger. */
   pointerCoarse: boolean;
   /** `(any-pointer: coarse)` — some input is a finger, primary or not. */

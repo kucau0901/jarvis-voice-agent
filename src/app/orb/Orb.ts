@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { CORE_VERT, CORE_FRAG, SHELL_VERT, SHELL_FRAG, HALO_VERT, HALO_FRAG } from "./shaders";
 
-export interface OrbInputs {
+interface OrbInputs {
   user: number;   // driver's voice, 0..1
   agent: number;  // Jarvis's voice, 0..1
   think: number;  // delegation in flight, 0..1

@@ -19,7 +19,7 @@ import { originHere } from "./alerts";
 // and its answer arrives later as an alert (src/worker/lib/jobs.ts).
 const SLOW_TOOLS = new Set(["control_home"]);
 
-export interface DelegateHandlers {
+interface DelegateHandlers {
   /** Something to look at, rather than something to say. */
   display(payload: Record<string, unknown>): void;
   /** Spoken aloud by Jarvis, in his own words. */

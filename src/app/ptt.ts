@@ -17,7 +17,7 @@ import { originHere } from "./alerts";
  * the deployment says "browser" and this browser can.
  */
 
-export interface PttHooks {
+interface PttHooks {
   status(text: string, bad?: boolean): void;
   heard(text: string): void;
   answered(text: string, ok: boolean): void;

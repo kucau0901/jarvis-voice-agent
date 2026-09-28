@@ -2,7 +2,7 @@
  * Ashima's 3D simplex noise (MIT). Used for surface displacement; cheap enough
  * to run per-vertex on a 20k-triangle sphere in an in-car GPU budget.
  */
-export const SIMPLEX = /* glsl */ `
+const SIMPLEX = /* glsl */ `
 vec3 mod289(vec3 x){return x-floor(x*(1.0/289.0))*289.0;}
 vec4 mod289(vec4 x){return x-floor(x*(1.0/289.0))*289.0;}
 vec4 permute(vec4 x){return mod289(((x*34.0)+1.0)*x);}
