@@ -26,18 +26,20 @@ import { Chat, dmId, type ChatMessage } from "./lib/chat.ts";
 import { personOfWho, withPerson } from "./lib/context.ts";
 import { nextAllowed } from "./lib/access.ts";
 
-/**
- * The Durable Object. Deliberately thin: everything it does lives in
- * lib/state-host.ts, where Node can test it.
- *
- * SQLite-backed (see the `new_sqlite_classes` migration in wrangler.jsonc),
- * because that is the only kind the Workers free plan allows.
- */
 /** Chore points, per person (lib/relays.ts award). */
 const POINTS = "chore:points";
 /** Alerts kept for someone's quiet time (lib/alerts.ts). */
 const HELD = "held:";
 
+/**
+ * The Durable Object. Memory, settings and push live in lib/state-host.ts,
+ * where Node can test them; this class adds the sockets, the alarm (routines,
+ * jobs, relays and held alerts), the family's chat and the hub's RPC.
+ *
+ * SQLite-backed (see the `new_sqlite_classes` migration in
+ * wrangler.example.jsonc), because that is the only kind the Workers free
+ * plan allows.
+ */
 export class JarvisState extends DurableObject<Env> {
   private host: StateHost;
   /** Who uses this Jarvis and how they sign in (lib/hub.ts). */
@@ -289,7 +291,7 @@ export class JarvisState extends DurableObject<Env> {
     };
   }
 
-  /** Point the one alarm at whatever is due first: a routine or a job. */
+  /** Point the one alarm at whatever is due first: a routine, a job, a relay or a held alert. */
   private async rearm(): Promise<void> {
     const held = [...(await this.ctx.storage.list<{ until: number }>({ prefix: HELD })).values()].map((h) => h.until);
     const wakes = [...(await Promise.all([this.scheduler.nextWake(), this.jobs.nextWake(), this.relays.nextWake()])), ...held].filter(
@@ -301,7 +303,7 @@ export class JarvisState extends DurableObject<Env> {
   }
 
   async alarm() {
-    // Both catch per item, so this only throws on a storage failure — and then
+    // Each catches per item, so this only throws on a storage failure — and then
     // the runtime retries, which is what is wanted.
     await this.scheduler.tick();
     await this.jobs.tick();

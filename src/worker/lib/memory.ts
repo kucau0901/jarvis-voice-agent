@@ -29,7 +29,7 @@ export type Kind =
    * Looked up, not lived with.
    *
    * A staff roster, a supplier list — anything consulted occasionally rather
-   * than carried around. These live in a SEPARATE KV document that is never
+   * than carried around. These live in a SEPARATE document that is never
    * read unless something searches, so a thousand of them cost nothing on a
    * question about the car battery. Every other kind is loaded on every single
    * request, which is why the hot store has to stay small.
@@ -897,14 +897,6 @@ export class MemoryStore {
   }
 
   /**
-   * The block injected into every delegation.
-   *
-   * Curated, not "most recent": pinned first, then every place and person —
-   * which is what resolves "home" and "my wife" — then the best of the rest.
-   * Capped hard, because this rides on every request including the ones that
-   * never touch memory.
-   */
-  /**
    * The fact lines the profile block carries, within PROFILE_BUDGET. Facts that
    * do not fit are still saved; they are found only through recall.
    */
@@ -937,6 +929,14 @@ export class MemoryStore {
     return lines;
   }
 
+  /**
+   * The block injected into every delegation.
+   *
+   * Curated, not "most recent": pinned first, then every place and person —
+   * which is what resolves "home" and "my wife" — then the best of the rest.
+   * Capped hard, because this rides on every request including the ones that
+   * never touch memory.
+   */
   buildProfile(): string {
     const own = this.ownProfile();
     const lines = this.family?.profileLines() ?? [];

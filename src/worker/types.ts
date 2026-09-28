@@ -2,9 +2,9 @@ export interface Env {
   ASSETS: Fetcher;
   CONFIG: KVNamespace;
   /**
-   * The Durable Object holding memory and the daily device counter
-   * (src/worker/state.ts). Optional so the Node tests, which have no such
-   * thing, fall back to KV.
+   * The Durable Object (src/worker/state.ts): memory, the family, messages,
+   * routines, jobs and the daily device counter. Optional so the Node tests,
+   * which have no such thing, fall back to KV.
    */
   STATE?: DurableObjectNamespace;
 

@@ -411,18 +411,6 @@ export async function handleDelegate(
     ac.abort();
   });
 
-  /*
-   * Not awaited — the response must start streaming immediately so the first
-   * progress note reaches the driver while the work is still running — but it
-   * MUST be registered with waitUntil.
-   *
-   * Without it the runtime is free to tear the Worker down as soon as the client
-   * disconnects, and ending a session aborts the in-flight delegation. The KV
-   * write that saves memory would start and then be killed, which is exactly why
-   * a fact remembered during a drive was gone by the next one. waitUntil keeps
-   * the isolate alive until the work finishes, whether or not anyone is still
-   * listening.
-   */
   // A photo the user took with the phone to ask about, in a live session.
   const images = photosFrom(body.images);
   const origin = originOf(principal, body.origin);
@@ -434,6 +422,14 @@ export async function handleDelegate(
     ...(origin ? { origin } : {}),
     waitUntil: (p) => ctx.waitUntil(p),
   };
+  /*
+   * Not awaited — the response must start streaming immediately so the first
+   * progress note reaches the driver while the work is still running — but
+   * registered with waitUntil. Without it the runtime may tear the Worker down
+   * as soon as the client disconnects, and the write that saves memory would be
+   * killed half-way: a fact remembered during a drive was gone by the next one.
+   * It does not keep the work alive indefinitely (see the note above).
+   */
   ctx.waitUntil(run(env, turns, sse, ac.signal, grants, opts).finally(() => sse.close()));
 
   return sse.response();
@@ -553,11 +549,9 @@ export async function prepareRouter(
 
 
   const client = new OpenAI({ apiKey: env.OPENAI_API_KEY, baseURL: openaiBase(env) });
-  // Chosen in settings (lib/router-model.ts). `let`, because a first hop the
-  // chosen model rejects is retried on the default and the rest follows it.
+  // Chosen in settings (lib/router-model.ts). A first hop the chosen model
+  // rejects is retried on the default, and the rest follows it (run()).
   const model = chosen.model;
-  // Resolved once per delegation, not per hop: a multi-step turn should not
-  // watch the clock move underneath it mid-answer.
   const noScreen = !allows(grants, "screen");
   /*
    * Prompt caching. The router prompt and the tool list are ~20k tokens and
@@ -573,6 +567,8 @@ export async function prepareRouter(
    * minutes and read at a tenth of the price after that.
    */
   const instructions = ROUTER_PROMPT;
+  // Resolved once per delegation, not per hop: a multi-step turn should not
+  // watch the clock move underneath it mid-answer.
   const context =
     nowLine(env).trim() +
     (noScreen
@@ -758,13 +754,6 @@ export async function run(
 }
 
 /**
- * Run a tool, narrating the wait.
- *
- * Hermes has no timeout by design — a local model can take minutes, and the
- * instruction was that Jarvis waits rather than giving up. So the silence is
- * filled instead of cut short.
- */
-/**
  * Run the tools a response asked for and hand back their outputs, in order.
  * Shared by run() and background jobs (routes/jobs.ts).
  *
@@ -866,6 +855,13 @@ const RESEARCH_INSTRUCTIONS =
   "headings, then what you would recommend and why. Do not list your sources: the pages you " +
   "searched are added at the end automatically.";
 
+/**
+ * Run a tool, narrating the wait.
+ *
+ * Hermes has no timeout by design — a local model can take minutes, and the
+ * instruction was that Jarvis waits rather than giving up. So the silence is
+ * filled instead of cut short.
+ */
 async function callTool(
   tool: Tool,
   rawArgs: string,
