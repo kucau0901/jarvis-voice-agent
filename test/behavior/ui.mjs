@@ -1,8 +1,9 @@
 // The screen half of the behavior checks (test/behavior/check.mjs): the app is
 // opened in headless Chrome as three people (an admin, an adult, a guest), and
 // each panel, and each section of a panel with a menu, is read as text and
-// photographed. The text is compared between runs; the pictures are for a
-// person to look at when the text differs.
+// photographed. How each element looks is read too: its tag, classes and type,
+// and the styles the stylesheet gives it. The text and the looks are compared
+// between runs; the pictures are for a person to look at when they differ.
 //
 // Plain Node and the Chrome already on the machine, driven over the DevTools
 // protocol: nothing to install.
@@ -72,6 +73,39 @@ async function settled(expression, maxMs = 8000) {
   return last;
 }
 
+/**
+ * How the elements under a root look, counted: "tag.classes[type] styles" for
+ * each. Sizes that follow the words are left out. Each button is also seen
+ * armed for a moment (the two-tap confirm, ui/util.ts arm()), since nothing
+ * here taps one.
+ */
+const STYLES = [
+  "display", "position", "color", "background-color", "border-top-width", "border-top-style", "border-top-color",
+  "border-radius", "padding", "margin", "font-size", "font-weight", "gap", "grid-template-columns", "flex-wrap",
+  "justify-content", "align-items", "min-height", "overflow-x", "white-space", "overflow-wrap", "text-align", "opacity",
+];
+const looks = (root, outsidePanels = false) => `(() => {
+  const root = ${root};
+  if (!root) return {};
+  const seen = {};
+  const one = (e, extra) => {
+    const cs = getComputedStyle(e);
+    const cls = typeof e.className === "string" && e.className.trim() ? "." + e.className.trim().split(/\\s+/).sort().join(".") : "";
+    const type = e.getAttribute("type") ? "[type=" + e.getAttribute("type") + "]" : "";
+    const k = e.tagName.toLowerCase() + cls + type + extra + " " + ${JSON.stringify(STYLES)}.map((p) => cs.getPropertyValue(p)).join(";");
+    seen[k] = (seen[k] ?? 0) + 1;
+  };
+  const els = [...root.querySelectorAll("*")].filter((e) => !${outsidePanels} || !e.closest(".panel"));
+  for (const e of els) one(e, "");
+  for (const b of els) {
+    if (b.tagName !== "BUTTON" || b.classList.contains("armed")) continue;
+    b.classList.add("armed");
+    one(b, ":armed");
+    b.classList.remove("armed");
+  }
+  return seen;
+})()`;
+
 async function shot(name) {
   const { data } = await send("Page.captureScreenshot", { format: "png" });
   writeFileSync(join(OUT, "screens", `${name}.png`), Buffer.from(data, "base64"));
@@ -94,6 +128,7 @@ for (const [person, token] of Object.entries(tokens)) {
     const menu = [...document.querySelectorAll("#topbtns button")].filter((b) => !b.hidden).map((b) => b.textContent.trim());
     return JSON.stringify({ title: document.getElementById("title")?.textContent ?? "", status: document.getElementById("status")?.textContent ?? "", menu });
   })()`);
+  out.homeLooks = await js(looks("document.body", true));
   await shot(`${person}-home`);
   for (const id of PANELS) {
     const offered = await js(`(() => { const b = document.getElementById(${JSON.stringify(id)}); return !!b && !b.hidden; })()`);
@@ -116,6 +151,7 @@ for (const [person, token] of Object.entries(tokens)) {
           await settled(`document.querySelector(".panel.open .setbody [data-section].active")?.innerText ?? ""`, 3000);
       }
     }
+    panel.looks = await js(looks(`document.querySelector(".panel.open")`));
     await shot(`${person}-${id.slice(4).toLowerCase()}`);
     out[id.slice(4)] = panel;
     await js(`(() => { const p = document.querySelector(".panel.open"); p?.querySelector(".close")?.click(); p?.classList.remove("open"); return true; })()`);
