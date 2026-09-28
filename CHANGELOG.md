@@ -26,6 +26,8 @@ of every release, and in the [README](README.md#updating).
 
 ### Fixed
 
+- Cancelling a car command while the car was waking left the wake-up request
+  running for up to 100 seconds. It now stops with the question.
 - A connection to Home Assistant (or another MCP server) that opened only
   after Jarvis had given up waiting for it was left open. It is now closed
   when it arrives.

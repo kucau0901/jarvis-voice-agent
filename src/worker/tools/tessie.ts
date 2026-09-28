@@ -107,8 +107,8 @@ async function ensureAwake(cfg: TessieConfig, ctx: ToolContext): Promise<void> {
   ctx.progress("waking the car");
   const woke = (await call(cfg, `/${cfg.vin}/wake`, {
     method: "POST",
-    // Tessie returns false after its own 90s timeout, so allow for that.
-    signal: AbortSignal.timeout(100_000),
+    // Tessie returns false after its own 90s timeout, so allow for that; and stop when the question does.
+    signal: AbortSignal.any([ctx.signal, AbortSignal.timeout(100_000)]),
   })) as { result?: boolean };
   if (woke.result === false) throw new Error("the car did not wake within 90 seconds");
 }

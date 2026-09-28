@@ -1,4 +1,4 @@
-import { carState, milesToKm, metricState, KM_PER_MILE } from "../src/worker/tools/tessie.ts";
+import { carCommand, carState, milesToKm, metricState, KM_PER_MILE } from "../src/worker/tools/tessie.ts";
 
 let pass = 0;
 let fail = 0;
@@ -190,6 +190,24 @@ console.log("\nmetricState on its own");
   const input = { odometer: 10 };
   metricState(input);
   check("the input is not mutated", input.odometer === 10);
+}
+
+console.log("\ncar_command — waking the car stops when the question does");
+{
+  const realFetch = globalThis.fetch;
+  // Asleep; and a wake that takes as long as it is allowed to.
+  globalThis.fetch = (async (input: string | URL | Request, init: RequestInit = {}) => {
+    if (String(input).includes("/status")) return Response.json({ status: "asleep" });
+    return new Promise<Response>((_, rej) => init.signal?.addEventListener("abort", () => rej(init.signal!.reason), { once: true }));
+  }) as typeof fetch;
+  const stop = new AbortController();
+  const cctx = { env: { TESSIE_TOKEN: "test-token", TESSIE_VIN: "LRWTEST0000000000" }, signal: stop.signal, progress() {} } as never;
+  const t0 = Date.now();
+  const running = carCommand.run({ command: "honk", temperature: null, percent: null, value: null }, cctx) as Promise<string>;
+  setTimeout(() => stop.abort(new Error("the question was cancelled")), 50);
+  const out = await Promise.race([running, new Promise<string>((r) => setTimeout(() => r("still waking after 3 s"), 3000))]);
+  globalThis.fetch = realFetch;
+  check("cancelled while waking: it stops at once", /^Could not wake the car/.test(out) && Date.now() - t0 < 2000, { out, ms: Date.now() - t0 });
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);
