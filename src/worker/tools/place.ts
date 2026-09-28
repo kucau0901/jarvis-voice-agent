@@ -39,8 +39,13 @@ async function locate(query: string, ctx: ToolContext): Promise<Located | string
 
   const j = (await res.json()) as {
     status?: string;
+    error_message?: string;
     results?: { formatted_address?: string; geometry?: { location?: { lat: number; lng: number } } }[];
   };
+  // Google answers 200 when it refuses, too: a key not allowed Geocoding, or over its quota, is not a place that does not exist.
+  if (j.status && j.status !== "OK" && j.status !== "ZERO_RESULTS") {
+    return `Could not look that place up: Google Maps said ${j.status}${j.error_message ? ` (${j.error_message})` : ""}.`;
+  }
   const hit = j.results?.[0];
   const loc = hit?.geometry?.location;
   if (!loc) {

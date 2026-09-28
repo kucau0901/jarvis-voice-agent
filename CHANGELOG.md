@@ -26,6 +26,9 @@ of every release, and in the [README](README.md#updating).
 
 ### Fixed
 
+- When Google Maps refused to look a place up (a key not allowed to find
+  addresses, or over its quota), Jarvis said it could not find the place and
+  asked for the full address. It now says Google Maps refused, and why.
 - When Spotify itself failed (overloaded, or down behind an error page),
   Jarvis said nothing was playing. It now says Spotify failed, in Spotify's
   words where it gave any.
