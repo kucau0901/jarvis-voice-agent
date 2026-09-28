@@ -3,6 +3,7 @@ import { DEFAULT_ORDER, validateOrder } from "./alerts.ts";
 import { validateCameraList } from "./cameras.ts";
 import { DEFAULT_STYLE, DEFAULT_VOICE, STT_PROVIDERS, TTS_PROVIDERS, TTS_VOICES } from "./speech.ts";
 import { EFFORTS } from "./router-model.ts";
+import { sha256Hex } from "./devices.ts";
 
 /**
  * Every setting Jarvis reads, in one list.
@@ -691,13 +692,6 @@ export function effectiveEnv(env: Env, saved: SavedSettings): Env {
 
 /* ---------- what the panel is shown --------------------------------------- */
 
-const enc = new TextEncoder();
-async function sha256Hex(s: string): Promise<string> {
-  const d = new Uint8Array(await crypto.subtle.digest("SHA-256", enc.encode(s)));
-  let out = "";
-  for (const b of d) out += b.toString(16).padStart(2, "0");
-  return out;
-}
 
 /**
  * How a secret is shown: never the value. A fingerprint tells you WHICH key is
