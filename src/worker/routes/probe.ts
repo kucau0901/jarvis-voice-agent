@@ -27,6 +27,8 @@ export async function handleProbe(req: Request, env: Env): Promise<Response> {
   } catch {
     return err(400, "body is not valid JSON");
   }
+  // null is JSON too, and the rest reads fields off it.
+  if (body === null || typeof body !== "object") return err(400, "body must be a JSON object");
 
   const meta = (body._meta ?? {}) as { gear?: string };
   const gear = typeof meta.gear === "string" ? meta.gear : "UNKNOWN";

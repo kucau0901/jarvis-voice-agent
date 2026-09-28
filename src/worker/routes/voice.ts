@@ -143,6 +143,7 @@ async function readInput(req: Request, url: URL): Promise<Input | Response> {
   } catch {
     return err(400, "send a recording (audio/*), a form with an audio file, or JSON with text");
   }
+  if (body === null || typeof body !== "object") return err(400, "send a recording (audio/*), a form with an audio file, or JSON with text");
   const text = typeof body.text === "string" ? body.text.trim().slice(0, 2000) : "";
   const photos = photosFrom(body.images);
   return { ...(text ? { text } : {}), ...(photos.length ? { photos } : {}), opts: options(body) };

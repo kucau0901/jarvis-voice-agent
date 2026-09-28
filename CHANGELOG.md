@@ -26,6 +26,10 @@ of every release, and in the [README](README.md#updating).
 
 ### Fixed
 
+- Sending the JSON value null as a request's body made eight routes (probe,
+  speech, starting a voice session, typed questions, the MCP test and call,
+  memory search and saving) fail with an internal error. They now answer
+  that the body must be a JSON object.
 - Removing a device with DELETE /api/v1/devices?id=… and no body was refused
   as "body is not valid JSON". The id in the address is enough now, as the
   API documents.
