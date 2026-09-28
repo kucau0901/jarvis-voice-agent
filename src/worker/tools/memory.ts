@@ -1,5 +1,5 @@
 import type { Tool } from "./registry";
-import { sanitise, type Kind } from "../lib/memory.ts";
+import { KINDS, sanitise, type Kind } from "../lib/memory.ts";
 
 /** One spoken answer's worth. Beyond this it is a database, not a memory. */
 const MAX_BATCH = 12;
@@ -12,8 +12,6 @@ const MAX_BATCH = 12;
  * make the injected profile block useless long before any cap bites — so the
  * guidance about what NOT to save matters more than the storage does.
  */
-
-const KINDS: Kind[] = ["place", "person", "preference", "vehicle", "routine", "note"];
 
 export const remember: Tool = {
   name: "remember",
@@ -41,7 +39,7 @@ export const remember: Tool = {
     type: "object",
     properties: {
       text: { type: "string", description: "The fact, as one short sentence." },
-      kind: { type: "string", enum: KINDS, description: "What sort of fact this is." },
+      kind: { type: "string", enum: [...KINDS], description: "What sort of fact this is." },
       place: {
         type: ["object", "null"],
         description: "For kind=place: the name it is called by, and a full street address.",
@@ -85,7 +83,7 @@ export const remember: Tool = {
     const clean = sanitise(args.text);
     if (!clean.ok) return `Not saved: ${clean.why}.`;
 
-    const kind = (KINDS as string[]).includes(String(args.kind)) ? (args.kind as Kind) : "note";
+    const kind = (KINDS as readonly string[]).includes(String(args.kind)) ? (args.kind as Kind) : "note";
     const place = args.place as { name?: string; address?: string } | null | undefined;
 
     // The family's book, or this person's own.

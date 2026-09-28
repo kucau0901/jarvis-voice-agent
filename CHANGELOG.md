@@ -26,6 +26,10 @@ of every release, and in the [README](README.md#updating).
 
 ### Fixed
 
+- Asked to keep a roster or a list of numbers for looking up later, voice
+  filed it as a note, which is carried into every question, because
+  "reference" was missing from the kinds it could choose. It can now, as its
+  instructions always said.
 - The car was never recognised as the car: its browser does not say
   "Tesla", which is what was looked for. Its notifications were labelled
   "Linux computer", and Family offered to sign in another screen from the

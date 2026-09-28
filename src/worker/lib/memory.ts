@@ -75,7 +75,7 @@ const MAX_TEXT = 240;
 export const PROFILE_BUDGET = 1500;
 const PROFILE_MAX_FACTS = 25;
 
-const KINDS: readonly Kind[] = [
+export const KINDS: readonly Kind[] = [
   "place",
   "person",
   "preference",
