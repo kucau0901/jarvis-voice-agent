@@ -1,6 +1,6 @@
 import type { Tool, ToolContext } from "./registry.ts";
 import { localeOf } from "../lib/locale.ts";
-import { asQuotedData } from "../lib/quote.ts";
+import { asQuotedData, tidy } from "../lib/quote.ts";
 
 /**
  * What a place is actually like.
@@ -79,8 +79,6 @@ const PRICE: Record<string, string> = {
   PRICE_LEVEL_VERY_EXPENSIVE: "very expensive",
 };
 
-const tidy = (s: string): string =>
-  s.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, " ").replace(/\s+/g, " ").trim();
 
 export const placeInfo: Tool = {
   name: "place_info",

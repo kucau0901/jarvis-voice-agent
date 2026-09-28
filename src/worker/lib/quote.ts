@@ -38,3 +38,6 @@ export const asQuotedData = (label: string, text: string): string => {
     `--- end ${label}:${nonce} ---`
   );
 };
+
+/** Someone else's text on one line: control characters and runs of whitespace become one space. */
+export const tidy = (s: string): string => s.replace(/[\x00-\x1f\x7f]/g, " ").replace(/\s+/g, " ").trim();

@@ -13,6 +13,7 @@ import {
 } from "../lib/google.ts";
 import { resolveContact } from "../lib/contacts.ts";
 import { asQuotedData } from "../lib/quote.ts";
+import { clampLimit } from "./args.ts";
 import type { Tool, ToolContext } from "./registry.ts";
 
 /**
@@ -267,11 +268,6 @@ async function hydrate(
   return out;
 }
 
-const clampLimit = (v: unknown): number => {
-  const n = Math.round(Number(v));
-  if (!Number.isFinite(n) || n <= 0) return DEFAULT_RESULTS;
-  return Math.min(MAX_RESULTS, n);
-};
 
 /* ---------- what is in the inbox ------------------------------------------ */
 
@@ -304,7 +300,7 @@ export const mailCheck: Tool = {
     return (await guard(async () => {
       const cfg = cfgOf(ctx);
       const unreadOnly = args.unread_only !== false;
-      const limit = clampLimit(args.limit);
+      const limit = clampLimit(args.limit, DEFAULT_RESULTS, MAX_RESULTS);
       const q = unreadOnly ? "in:inbox is:unread" : "in:inbox";
 
       // The label read gives an EXACT unread count in one cheap call;
@@ -390,7 +386,7 @@ export const mailSearch: Tool = {
       const query = typeof args.query === "string" ? args.query.trim() : "";
       if (!query) return "No search terms were supplied.";
       const open = args.open === true;
-      const limit = clampLimit(args.limit);
+      const limit = clampLimit(args.limit, DEFAULT_RESULTS, MAX_RESULTS);
 
       const listRes = await call(
         ctx.env,
