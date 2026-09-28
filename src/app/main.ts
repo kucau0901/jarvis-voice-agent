@@ -1236,7 +1236,11 @@ setInterval(async () => {
     live.stop();
     clearKey();
     key = "";
-    document.querySelectorAll(".panel.open").forEach((el) => el.classList.remove("open"));
+    // Closed the way their own close buttons close them: Chat stops asking for messages as the one put aside.
+    document.querySelectorAll<HTMLElement>(".panel.open").forEach((el) => {
+      el.querySelector<HTMLElement>(".close")?.click();
+      el.classList.remove("open");
+    });
     showPeople();
   }
 }, 60_000);

@@ -26,6 +26,9 @@ of every release, and in the [README](README.md#updating).
 
 ### Fixed
 
+- When a shared screen locked itself after half an hour idle with the family
+  chat open, the chat kept checking for messages as the person put aside.
+  Panels are now closed properly when the screen locks.
 - Switching from push-to-talk to typing or to a live conversation while it
   was still listening sent what had been heard so far as a question anyway.
   Putting it down now drops it.
