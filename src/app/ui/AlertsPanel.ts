@@ -1,5 +1,6 @@
 import { authHeaders } from "../key";
 import { disablePush, enablePush, pushState, setSpeakHere, speakHere, type PushState } from "../alerts";
+import { el } from "./util";
 
 /**
  * The part of Settings → Alerts that is not a setting: whether THIS device
@@ -134,13 +135,6 @@ export class AlertsPanel {
 }
 
 /* ---------- small DOM helpers ---------------------------------------------- */
-
-function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls = "", text?: string): HTMLElementTagNameMap[K] {
-  const e = document.createElement(tag);
-  if (cls) e.className = cls;
-  if (text !== undefined) e.textContent = text;
-  return e;
-}
 
 /** appendChild, several at once. (`append` is shadowed by the Workers types' Element.) */
 function add(parent: Node, ...kids: Node[]): void {

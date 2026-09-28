@@ -1,5 +1,5 @@
 import { api } from "../key";
-import { richText } from "./util";
+import { button, el, richText } from "./util";
 
 /**
  * Background jobs (src/worker/lib/jobs.ts): what is running, what came back,
@@ -189,20 +189,6 @@ export class Jobs {
       box.textContent = e instanceof Error ? e.message : String(e);
     }
   }
-}
-
-function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls = "", text?: string): HTMLElementTagNameMap[K] {
-  const e = document.createElement(tag);
-  if (cls) e.className = cls;
-  if (text !== undefined) e.textContent = text;
-  return e;
-}
-
-function button(text: string, onClick: () => void, cls = ""): HTMLButtonElement {
-  const b = el("button", cls, text);
-  b.type = "button";
-  b.addEventListener("click", onClick);
-  return b;
 }
 
 const when = (ts: number) =>

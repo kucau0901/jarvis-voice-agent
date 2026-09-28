@@ -1,4 +1,5 @@
 import { api } from "../key";
+import { button, el } from "./util";
 
 /**
  * Routines: things Jarvis does by itself (src/worker/lib/routines.ts). Listed,
@@ -218,20 +219,6 @@ export class Routines {
 }
 
 /* ---------- small DOM helpers ---------------------------------------------- */
-
-function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls = "", text?: string): HTMLElementTagNameMap[K] {
-  const e = document.createElement(tag);
-  if (cls) e.className = cls;
-  if (text !== undefined) e.textContent = text;
-  return e;
-}
-
-function button(text: string, onClick: () => void, cls = ""): HTMLButtonElement {
-  const b = el("button", cls, text);
-  b.type = "button";
-  b.addEventListener("click", onClick);
-  return b;
-}
 
 function input(type: string, placeholder: string): HTMLInputElement {
   const i = document.createElement("input");
