@@ -24,6 +24,11 @@ of every release, and in the [README](README.md#updating).
   and a place's address. It keeps everything else about the fact: when it
   was saved, how often it has been used, and whether it is kept forever.
 
+### Fixed
+
+- A memory moved to the family's, or back, was labelled "added here" even
+  when it had come by voice. It keeps saying where it came from now.
+
 ## [2.1.0] - 2026-09-28
 
 ### Changed

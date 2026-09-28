@@ -156,6 +156,7 @@ console.log("\nmemory: each their own, and the family's");
   await mine.load();
   check("a fact moves to the family's", moved.status === 200 && fam.facts.some((f) => /oat milk/.test(f.text)) && !mine.facts.some((f) => /oat milk/.test(f.text)));
   check("and is not in the trash of the book it left", !mine.trash.some((f) => /oat milk/.test(f.text)), mine.trash);
+  check("and still says it came by voice, not that it was added here", fam.facts.find((f) => /oat milk/.test(f.text))?.source === "voice", fam.facts.find((f) => /oat milk/.test(f.text)));
   mine.add({ text: "Plumber: Ali, 012-345", kind: "reference" });
   await mine.save();
   const refId = (await mine.allFacts()).find((f) => /Plumber/.test(f.text))!.id;

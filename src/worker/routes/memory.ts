@@ -251,7 +251,8 @@ async function move(req: Request, env: Env, grants: readonly Grant[]): Promise<R
     slug: fact.slug,
     address: fact.address,
     pinned: fact.pinned,
-    source: "ui",
+    // Still said by voice if it was: moving is not adding it here.
+    source: fact.source,
   });
   // Out of the old book without going in its trash: it was moved, not forgotten.
   await from.moveOut(id);
