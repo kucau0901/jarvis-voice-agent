@@ -6,7 +6,7 @@ import { isTheirs } from "../lib/context.ts";
 import type { EventSink } from "../lib/sse";
 import { err, json } from "../lib/http";
 import { stateStub } from "../lib/state-client";
-import { allows, type Grant } from "../lib/scopes";
+import { allows, withoutScreen, type Grant } from "../lib/scopes";
 import { builtinTools, explicitCache, researchModel } from "../lib/router-model";
 import { toToolSchema } from "../tools/registry";
 import * as hermes from "../tools/hermes";
@@ -26,8 +26,8 @@ import { costOf } from "../lib/usage.ts";
  *   DELETE /api/v1/jobs?id=
  */
 
-/** Nowhere to show anything: a job's result is read later. */
-const jobGrants = (g: readonly Grant[]): Grant[] => g.filter((x) => x !== "screen");
+/** Nowhere to show anything: a job's result is read later. An admin's wildcard too, or the job was never told. */
+const jobGrants = (g: readonly Grant[]): Grant[] => withoutScreen(g);
 
 const quiet: EventSink = { send() {}, isClosed: false };
 

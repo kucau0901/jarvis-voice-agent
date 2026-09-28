@@ -26,6 +26,9 @@ of every release, and in the [README](README.md#updating).
 
 ### Fixed
 
+- A background job started by an admin was not told it has no screen, so it
+  could try to show a map or a photo that nobody would see. It is now told,
+  as everyone else's jobs are.
 - A message posted through the API to a direct conversation written the
   other way round ("dm:b|a" rather than "dm:a|b"), or to a conversation with
   oneself, was accepted and then never shown to anyone. Such a conversation
