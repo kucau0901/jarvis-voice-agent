@@ -15,8 +15,8 @@ const DAY_S = 24 * 3600;
 
 export interface UsageEntry {
   at: number;
-  /** "voice", "glasses", "chat", "app" (Live and the API), "routine", "job", "live". */
-  surface: string;
+  /** "app" is Live and the API; "live" a Live session's own time. */
+  surface: "app" | "voice" | "glasses" | "chat" | "routine" | "job" | "research" | "live";
   /** The model that answered, "home-assistant", or "gpt-live-1". */
   by: string;
   ok: boolean;

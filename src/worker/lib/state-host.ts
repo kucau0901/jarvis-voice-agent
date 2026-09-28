@@ -1,3 +1,4 @@
+import type { Role } from "./hub.ts";
 import type { Env } from "../types.ts";
 import type { Turn } from "./history.ts";
 import {
@@ -531,7 +532,7 @@ interface FamilyApi {
   chatMessages(convo: string, since?: number): Promise<ChatMessage[]>;
   chatConvos(person: string, family: { id: string; name: string }[]): Promise<{ id: string; title: string; last: ChatMessage | null; unread: number }[]>;
   chatSeen(person: string, convo: string, at: number): Promise<void>;
-  familyPeople(): Promise<{ person: string; name: string; role: string; chat: boolean; presence?: string }[]>;
+  familyPeople(): Promise<{ person: string; name: string; role: Role; chat: boolean; presence?: string }[]>;
   choresPoints(): Promise<{ person: string; name: string; points: number }[]>;
   resetPoints(): Promise<void>;
 }
