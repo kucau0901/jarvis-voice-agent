@@ -1,7 +1,7 @@
 import type { Env } from "../types.ts";
 import { whoOf, grantsOf, isAdmin, personOf, type Principal } from "../lib/auth.ts";
 import { isTheirs } from "../lib/context.ts";
-import { err, json } from "../lib/http.ts";
+import { err, json, readObject } from "../lib/http.ts";
 import { stateStub } from "../lib/state-client.ts";
 import { localeOf } from "../lib/locale.ts";
 import { Collector } from "../lib/collector.ts";
@@ -27,16 +27,6 @@ import { run } from "./delegate.ts";
 
 const MAX_BODY = 8 * 1024;
 
-async function body(req: Request): Promise<Record<string, unknown> | null> {
-  const raw = await req.text();
-  if (raw.length > MAX_BODY) return null;
-  try {
-    const v = JSON.parse(raw || "{}");
-    return v && typeof v === "object" && !Array.isArray(v) ? v : null;
-  } catch {
-    return null;
-  }
-}
 
 const creator = (p: Principal) => ({ who: whoOf(p), grants: grantsOf(p) });
 
@@ -54,7 +44,7 @@ export async function handleRoutines(req: Request, env: Env, url: URL, principal
 
   if (p === "/api/v1/trigger") {
     if (req.method !== "POST") return err(405, "method not allowed");
-    const b = await body(req);
+    const b = await readObject(req, MAX_BODY);
     const event = typeof b?.event === "string" ? b.event.trim().toLowerCase() : "";
     if (!EVENT_NAME.test(event)) return err(400, "event is required: letters, digits and _ . : - , like arrived_home");
     const text = typeof b?.text === "string" ? b.text.trim().slice(0, 500) : undefined;
@@ -75,7 +65,7 @@ export async function handleRoutines(req: Request, env: Env, url: URL, principal
 
   if (p === "/api/v1/routines/run") {
     if (req.method !== "POST") return err(405, "method not allowed");
-    const b = await body(req);
+    const b = await readObject(req, MAX_BODY);
     if (!(await theirs(typeof b?.id === "string" ? b.id : ""))) return err(404, "no such routine");
     const r = await state.runRoutine(typeof b?.id === "string" ? b.id : "");
     return typeof r === "string" ? err(404, r) : json({ ok: true, routine: view(r, tz) });
@@ -87,12 +77,12 @@ export async function handleRoutines(req: Request, env: Env, url: URL, principal
     return json({ timeZone: tz, routines: all.map((r) => view(r, tz)) });
   }
   if (req.method === "DELETE") {
-    const b = req.headers.get("content-type")?.includes("json") ? await body(req) : null;
+    const b = req.headers.get("content-type")?.includes("json") ? await readObject(req, MAX_BODY) : null;
     const id = typeof b?.id === "string" ? b.id : url.searchParams.get("id") ?? "";
     if (!(await theirs(id))) return err(404, "no such routine");
     return (await state.removeRoutine(id)) ? json({ ok: true, id }) : err(404, "no such routine");
   }
-  const b = await body(req);
+  const b = await readObject(req, MAX_BODY);
   if (!b) return err(400, "body must be a small JSON object");
   if (req.method === "POST") {
     const r = await state.addRoutine(b, creator(principal));
