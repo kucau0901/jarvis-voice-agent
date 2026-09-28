@@ -116,7 +116,7 @@
   #chat .ctext { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 15px; }
   #chat .compose { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; margin-top: 10px; }
   #chat .compose input { background: #0e151d; color: var(--fg); border: 1px solid #1d2835; border-radius: 8px;
-    padding: 11px 12px; font: 16px inherit; min-height: 44px; }
+    padding: 11px 12px; font-size: 16px; font-family: inherit; min-height: 44px; }
   #chat .back { display: none; }
   .relayacts { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; align-items: center; }
   .relayacts input { flex: 1 1 160px; background: #0e151d; color: var(--fg); border: 1px solid #1d2835;
@@ -206,7 +206,7 @@
     border: 1px solid #16202c; border-radius: 10px; background: #070b11; }
   .panel input[type=text], .panel .srv input:not([type=checkbox]) {
     background: #0e151d; color: var(--fg); border: 1px solid #1d2835;
-    border-radius: 8px; padding: 11px 12px; font: 16px inherit; min-height: 44px; width: 100%; }
+    border-radius: 8px; padding: 11px 12px; font-size: 16px; font-family: inherit; min-height: 44px; width: 100%; }
   .panel .on { color: var(--dim); font-size: 13px; display: flex; align-items: center; gap: 8px; }
   .panel .rowbtns { display: flex; gap: 8px; flex-wrap: wrap; }
   .panel button { background: #1a242f; color: var(--fg); border: 1px solid #243140;
@@ -226,7 +226,7 @@
   .panel .warn { color: var(--red); font-size: 13px; line-height: 1.45; }
   /* 16px so iOS and Android do not zoom the page when it takes focus. */
   .panel select { background: #0e151d; color: var(--fg); border: 1px solid #1d2835;
-    border-radius: 8px; padding: 11px 12px; font: 16px inherit; min-height: 44px; width: 100%; }
+    border-radius: 8px; padding: 11px 12px; font-size: 16px; font-family: inherit; min-height: 44px; width: 100%; }
   .panel button:disabled, .panel select:disabled { opacity: .45; cursor: default; }
 
   /* Every setting (src/app/ui/Services.ts). Secrets are never on this page —
@@ -264,7 +264,7 @@
   .panel .cmd { display: block; padding: 8px 10px; font-size: 13px; overflow-x: auto; white-space: nowrap; }
   .panel .svc input:not([type=checkbox]) {
     background: #0e151d; color: var(--fg); border: 1px solid #1d2835;
-    border-radius: 8px; padding: 11px 12px; font: 16px inherit; min-height: 44px; width: 100%; }
+    border-radius: 8px; padding: 11px 12px; font-size: 16px; font-family: inherit; min-height: 44px; width: 100%; }
 
   /* Devices. Minting a credential is a phone-or-laptop job, never a driving one. */
   #devices .mint { display: grid; gap: 10px; padding: 14px; margin-bottom: 14px;

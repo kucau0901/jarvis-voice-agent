@@ -26,6 +26,10 @@ of every release, and in the [README](README.md#updating).
 
 ### Fixed
 
+- The text boxes and pickers in the panels (and the family chat's message
+  box) were in the browser's small default type, not 16px, so a phone zoomed
+  the page in when one was tapped. The rule meant to set them was not valid
+  CSS and was ignored.
 - An invite link appeared on the first person's card in Family, not under
   the invite form, once the family had more than one person.
 - Something passed on to a child in their quiet time counted as sent at
