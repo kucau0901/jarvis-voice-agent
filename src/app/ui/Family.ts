@@ -90,6 +90,9 @@ const SCOPE_WORDS: Record<string, string> = {
   routines: "routines",
 };
 
+/** What went wrong, to say once the section is drawn again. */
+const why = (e: unknown): string => (e instanceof Error ? e.message : String(e));
+
 export class Family {
   private el: HTMLElement;
   private body: HTMLElement;
@@ -486,8 +489,9 @@ export class Family {
       const reset = box.querySelector<HTMLButtonElement>(".p-reset");
       if (reset) {
         arm(reset, "Start again?", async () => {
-          await this.api("/api/hub/points", "DELETE").catch(() => {});
+          const failed = await this.api("/api/hub/points", "DELETE").then(() => null, why);
           await this.renderPoints(admin);
+          if (failed) this.msg(failed, true);
         });
       }
     } catch {
@@ -527,8 +531,9 @@ export class Family {
       : "";
     for (const row of box.querySelectorAll<HTMLElement>("[data-id]")) {
       row.querySelector(".i-cancel")!.addEventListener("click", async () => {
-        await this.api("/api/hub/invites", "DELETE", { id: row.dataset.id }).catch(() => {});
+        const failed = await this.api("/api/hub/invites", "DELETE", { id: row.dataset.id }).then(() => null, why);
         await this.render();
+        if (failed) this.msg(failed, true);
       });
     }
   }
@@ -701,8 +706,9 @@ export class Family {
       .join("");
     for (const row of box.querySelectorAll<HTMLElement>("[data-id]")) {
       row.querySelector(".s-end")?.addEventListener("click", async () => {
-        await this.api("/api/hub/sessions", "DELETE", { id: row.dataset.id }).catch(() => {});
+        const failed = await this.api("/api/hub/sessions", "DELETE", { id: row.dataset.id }).then(() => null, why);
         await this.renderSessions();
+        if (failed) this.msg(failed, true);
       });
     }
   }

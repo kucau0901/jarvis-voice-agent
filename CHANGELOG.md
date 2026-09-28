@@ -26,6 +26,10 @@ of every release, and in the [README](README.md#updating).
 
 ### Fixed
 
+- Removing a car or unlinking an account in Family said it was done even
+  when the server refused, and cancelling an invite, ending another sign-in,
+  starting the chores tally again, or removing a device from notifications
+  failed without a word. Each now says what went wrong.
 - Saving the MCP servers in Settings reloaded the whole sheet: on a phone it
   jumped back to the list, and anything typed but not yet saved in other
   sections was lost. Only the server list is reloaded now.
