@@ -697,9 +697,11 @@ async function switchTo(p: Person) {
     dropPerson(p.token);
     return showPeople(`${p.name}'s sign-in here has ended. Add them again.`);
   }
-  // The one in use steps aside first, and their notifications with them.
+  // The one in use steps aside first, and their notifications with them:
+  // pushed ones, and the live ones this screen was listening for.
   if (isSession(key) && (await lockPerson(key))) {
     await releasePush(key);
+    live.stop();
     clearKey();
     key = "";
   }
@@ -1175,6 +1177,7 @@ async function whoAmI() {
     // Put aside on this screen (a shared one, left idle): choose who is using it.
     if (me.locked) {
       await releasePush(key);
+      live.stop();
       clearKey();
       key = "";
       return showPeople();
@@ -1214,6 +1217,7 @@ setInterval(async () => {
   if (session || userWantsSession || ptt?.busy || typedAbort) return;
   if (await lockPerson(key)) {
     await releasePush(key);
+    live.stop();
     clearKey();
     key = "";
     document.querySelectorAll(".panel.open").forEach((el) => el.classList.remove("open"));

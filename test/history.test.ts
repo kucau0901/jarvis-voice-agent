@@ -60,5 +60,13 @@ const tail = buildHistory([
 check("keeps the most recent turn when trimming",
   tail!.some((i: any) => i.content[0].text === "the most recent thing"), tail?.length);
 
+// Over the budget for real: six turns of 4,000 characters, then the newest.
+const texts = (h: typeof tail) => (h ?? []).map((i: any) => i.content[0].text as string);
+const long = buildHistory([..."abcdef"].map((c) => ({ role: "user", text: c.repeat(4000) })).concat({ role: "assistant", text: "the newest reply" }));
+check("over the budget, the newest turn is kept", texts(long).at(-1) === "the newest reply", texts(long).map((t) => t.slice(0, 20)));
+check("and the oldest ones are what is dropped", !texts(long).includes("a".repeat(4000)) && texts(long).includes("f".repeat(4000)), texts(long).map((t) => t[0]));
+check("in the order they were said", texts(long).map((t) => t[0]).join("") === "cdeft", texts(long).map((t) => t[0]));
+check("within the budget", texts(long).join("").length <= 20_000, texts(long).join("").length);
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

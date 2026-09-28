@@ -16,9 +16,10 @@ export type Turn = { role: "user" | "assistant"; text: string };
 export function buildHistory(raw: unknown): OpenAI.Live.InitialItem[] | undefined {
   if (!Array.isArray(raw) || raw.length === 0) return undefined;
 
+  // Newest first, so a long conversation keeps its recent end; put back in order below.
   const turns: Turn[] = [];
   let chars = 0;
-  for (const item of raw.slice(-MAX_HISTORY_ITEMS)) {
+  for (const item of raw.slice(-MAX_HISTORY_ITEMS).reverse()) {
     if (!item || typeof item !== "object") continue;
     const { role, text } = item as Partial<Turn>;
     if (role !== "user" && role !== "assistant") continue;
@@ -30,6 +31,7 @@ export function buildHistory(raw: unknown): OpenAI.Live.InitialItem[] | undefine
     turns.push({ role, text: trimmed });
   }
   if (!turns.length) return undefined;
+  turns.reverse();
 
   return turns.map((t) =>
     t.role === "user"

@@ -1,7 +1,8 @@
 import type { Env } from "../types.ts";
 import seed from "../../../config/mcp-servers.json" with { type: "json" };
 import {
-  expandTemplate,
+  expandHeaderTemplates,
+  expandUrlTemplate,
   maskForUi,
   resolveConfigured,
   restoreMasked,
@@ -20,15 +21,13 @@ export type { McpServerConfig, ConfigSource } from "./mcp-config.ts";
 
 const KV_KEY = "config:mcp-servers";
 
-/** `${NAME}` in a header value is filled from Worker secrets, never stored inline. */
-export function expand(headers: Record<string, string> | undefined, env: Env): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const [k, v] of Object.entries(headers ?? {})) {
-    out[k] = v.replace(/\$\{([A-Z0-9_]+)\}/g, (_m, name: string) => {
-      const val = (env as unknown as Record<string, string | undefined>)[name];
-      return typeof val === "string" ? val : "";
-    });
-  }
+/**
+ * `${NAME}` in a header value is filled from Worker secrets, never stored
+ * inline: for a server at `url` (expanded), and never with one of Jarvis's own
+ * keys that is not already sent there (mcp-config.ts fillable()).
+ */
+export function expand(headers: Record<string, string> | undefined, env: Env, url: string): Record<string, string> {
+  const out = expandHeaderTemplates(headers, env as unknown as Record<string, unknown>, url);
   // Drop any header whose secret is missing, rather than sending "Bearer ".
   for (const [k, v] of Object.entries(out)) {
     if (/^\s*(Bearer|Basic)?\s*$/i.test(v)) delete out[k];
@@ -38,7 +37,7 @@ export function expand(headers: Record<string, string> | undefined, env: Env): R
 
 /** A server URL with its `${NAME}` placeholders filled from Worker secrets. */
 export function expandUrl(url: string, env: Env): string {
-  return expandTemplate(url, env as unknown as Record<string, unknown>);
+  return expandUrlTemplate(url, env as unknown as Record<string, unknown>);
 }
 
 export async function loadServers(env: Env): Promise<McpServerConfig[]> {
@@ -46,7 +45,10 @@ export async function loadServers(env: Env): Promise<McpServerConfig[]> {
   const configured = resolveConfigured(await readStored(env), seed.servers).servers;
 
   return configured
-    .map((s) => ({ ...s, url: expandUrl(s.url, env), headers: expand(s.headers, env) }))
+    .map((s) => {
+      const url = expandUrl(s.url, env);
+      return { ...s, url, headers: expand(s.headers, env, url) };
+    })
     // A server whose URL secret is unset would otherwise be called with a
     // half-expanded address.
     .filter((s) => s.enabled && /^https:\/\//i.test(s.url));

@@ -62,15 +62,39 @@ export function detectClient(s: Signals): ClientKind {
   return "desktop";
 }
 
+/**
+ * Whether this is the car's own screen: for what a screen is called and what
+ * it is offered, not only how long answers are. Stricter than detectClient,
+ * whose one wrong guess, a touchscreen laptop, only costs shorter answers:
+ * the car's browser says Linux, so a Windows or Mac one is never the car
+ * here. `?client=car` settles it.
+ */
+export function isCar(ua: string, s: Signals): boolean {
+  if (detectClient(s) !== "car") return false;
+  return s.override === "car" || (/Linux/i.test(ua) && !/Android/i.test(ua));
+}
+
+function signals(): Signals {
+  return {
+    pointerCoarse: matchMedia("(pointer: coarse)").matches,
+    anyPointerCoarse: matchMedia("(any-pointer: coarse)").matches,
+    override: new URLSearchParams(location.search).get("client"),
+  };
+}
+
+/** Whether this browser is the car's (isCar). */
+export function inCar(): boolean {
+  try {
+    return isCar(navigator.userAgent, signals());
+  } catch {
+    return false;
+  }
+}
+
 /** Read what this browser reports. */
 export function currentClient(): ClientKind {
   try {
-    const override = new URLSearchParams(location.search).get("client");
-    return detectClient({
-      pointerCoarse: matchMedia("(pointer: coarse)").matches,
-      anyPointerCoarse: matchMedia("(any-pointer: coarse)").matches,
-      override,
-    });
+    return detectClient(signals());
   } catch {
     // The car is the safe default: its instructions are the briefest, and
     // brevity is never the thing that causes harm.

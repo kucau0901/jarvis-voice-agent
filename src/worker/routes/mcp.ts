@@ -29,7 +29,7 @@ export async function handleMcp(req: Request, env: Env): Promise<Response> {
     // leave it out and trust this route to "use the stored one", which it never
     // did — so Test on a server with a pasted token always answered 401.
     const stored = await headersForTest(env, { label: body.label, url: body.url, headers: body.headers });
-    const headers = expand(stored, env);
+    const headers = expand(stored, env, target);
     const result = await probe(target, headers);
     // Nothing secret goes back to the panel in an error: not the expanded URL,
     // which can be the credential itself, and not a header value this route
@@ -61,7 +61,7 @@ export async function handleMcp(req: Request, env: Env): Promise<Response> {
     const { Client, StreamableHTTPClientTransport, SSEClientTransport } = await import(
       "@modelcontextprotocol/client"
     );
-    const opts = { requestInit: { headers: expand(body.headers as Record<string, string>, env) } };
+    const opts = { requestInit: { headers: expand(body.headers as Record<string, string>, env, body.url) } };
     const client = new Client({ name: "jarvis-diag", version: "1.0.0" });
     try {
       try {

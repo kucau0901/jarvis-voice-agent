@@ -26,6 +26,21 @@ of every release, and in the [README](README.md#updating).
 
 ### Fixed
 
+- The car was never recognised as the car: its browser does not say
+  "Tesla", which is what was looked for. Its notifications were labelled
+  "Linux computer", and Family offered to sign in another screen from the
+  dashboard. The car is now told apart by its screen, as the voice already
+  was.
+- Saving or removing your own Home Assistant token in Family → Home closed
+  the section, and the message saying it had worked went with it. The
+  section now stays open and says so.
+- When a long voice conversation reconnected, it kept its oldest turns and
+  forgot the newest, so Jarvis lost track of what was just said. It now
+  keeps the most recent end.
+- The text boxes and pickers in the panels (and the family chat's message
+  box) were in the browser's small default type, not 16px, so a phone zoomed
+  the page in when one was tapped. The rule meant to set them was not valid
+  CSS and was ignored.
 - An invite link appeared on the first person's card in Family, not under
   the invite form, once the family had more than one person.
 - Something passed on to a child in their quiet time counted as sent at
@@ -56,6 +71,22 @@ of every release, and in the [README](README.md#updating).
 
 ### Security
 
+- An MCP server added in Settings could name any of Jarvis's keys in a
+  header, as `${OPENAI_API_KEY}` or `${HERMES_API_KEY}`, and Jarvis filled it
+  in and sent it to that server. Jarvis's own keys are now filled in only for
+  a server at an address the key already goes to, such as the Home Assistant
+  token for Home Assistant's own MCP server. If a server of yours used one of
+  them, give it a Worker secret of its own and name that instead.
+- A calendar event's title could end the fence that marks the events as
+  data, not instructions: whoever sent an invitation could write text the
+  assistant read as though it came from outside the calendar. Events are now
+  fenced as mail is, with a marker no one can guess.
+- Anyone who could change settings could point the OpenAI address (Settings
+  → Advanced) at a server of their own, and Jarvis sent the stored OpenAI key
+  there with every question. The OpenAI key now follows the rule the other
+  addresses already had: when the address is changed in the panel, the key
+  is held back until it is entered again. If you set the OpenAI address in
+  Settings yourself, enter the OpenAI key again after updating.
 - Named in the family room, the assistant read the room's recent messages
   as requests, while holding the asker's mail, memory and house: something
   one person wrote could be carried out the next time another asked. Only
@@ -73,6 +104,9 @@ of every release, and in the [README](README.md#updating).
 - On a shared tablet, a profile put aside kept getting its notifications
   there. Putting someone aside now lets go of them; the next person to use
   the screen gets theirs.
+- Put aside on a shared screen, a person's live alerts still reached it
+  while the page stayed open: only their pushed notifications were let go.
+  Their live connection is now closed as well.
 
 ## [2.0.0] - 2026-09-27
 

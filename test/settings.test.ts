@@ -146,6 +146,17 @@ console.log("\nthe rebinding guard: a secret never follows a changed address");
   check("Hermes: key and Access pair all withheld", hermes.HERMES_API_KEY === "" && hermes.CF_ACCESS_CLIENT_SECRET === "");
   check("the MCP URL is guarded too", token({ HA_MCP_URL: { v: "https://evil.example/mcp", at: 10 } }) === "");
 
+  // The OpenAI key goes wherever the OpenAI address points: every question, embedding and voice.
+  const DEPLOY_KEY = "sk-deploy-0123456789abcdefghijkl";
+  const openaiKey = (saved: SavedSettings) =>
+    (effectiveEnv(env({ OPENAI_API_KEY: DEPLOY_KEY }), saved) as unknown as { OPENAI_API_KEY: string }).OPENAI_API_KEY;
+  check("OpenAI address untouched: the deployment key is used", openaiKey({}) === DEPLOY_KEY);
+  check("OpenAI address changed alone: the deployment key is withheld", openaiKey({ OPENAI_BASE_URL: { v: "https://evil.example/v1", at: 10 } }) === "");
+  check("a saved OpenAI key from before the address changed is withheld",
+    openaiKey({ OPENAI_API_KEY: { v: "sk-saved-0123456789abcdefghijkl", at: 5 }, OPENAI_BASE_URL: { v: "https://evil.example/v1", at: 10 } }) === "");
+  check("an OpenAI key saved with the new address is used",
+    openaiKey({ OPENAI_BASE_URL: { v: "https://gateway.example/v1", at: 10 }, OPENAI_API_KEY: { v: "sk-gateway-0123456789abcdefghij", at: 10 } }) === "sk-gateway-0123456789abcdefghij");
+
   const d = await describe(env(), { HA_BASE_URL: { v: "https://evil.example", at: 10 } });
   check("the panel says why a token is not being used", /changed/.test(d.find((x) => x.name === "HA_TOKEN")!.withheld ?? ""));
   check("guarded() and effectiveEnv agree", guarded(env() as never, { HA_BASE_URL: { v: "https://evil.example", at: 10 } }).has("HA_TOKEN"));

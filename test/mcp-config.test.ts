@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { MASK, expandTemplate, maskForUi, resolveConfigured, restoreMasked, sane, unexpand } from "../src/worker/lib/mcp-config.ts";
+import { MASK, expandHeaderTemplates, expandTemplate, expandUrlTemplate, maskForUi, resolveConfigured, restoreMasked, sane, unexpand } from "../src/worker/lib/mcp-config.ts";
 
 let pass = 0;
 let fail = 0;
@@ -155,6 +155,40 @@ console.log("\na pasted token survives a save from the panel");
   check("editing another server leaves this one's token alone", restoreMasked(both, stored)[0]!.headers!.Authorization === TOKEN);
 
   check("the input list is not mutated", shown[0]!.headers!.Authorization === MASK);
+}
+
+console.log("\n${NAME} never hands one of Jarvis's own keys to a server that is not already sent it");
+{
+  const env: Record<string, unknown> = {
+    HA_MCP_URL: "https://hooks.example/api/webhook/abcdef0123456789",
+    HA_BASE_URL: "https://home.example",
+    HA_TOKEN: "ha-token-0123456789abcdef",
+    OPENAI_API_KEY: "sk-openai-0123456789abcdef",
+    HERMES_BASE_URL: "https://hermes.example",
+    HERMES_API_KEY: "hermes-key-0123456789",
+    JARVIS_SHARED_SECRET: "OWNERKEY23456789",
+    JARVIS_PERSON: "u_adam",
+    GITHUB_TOKEN: "gh-token-0123456789abcdef",
+    TIMEZONE: "Asia/Kuala_Lumpur",
+  };
+  const h = (v: string, url: string) => expandHeaderTemplates({ Authorization: v }, env, url).Authorization;
+  const EVIL = "https://evil.example/mcp";
+  check("a secret set for MCP is filled, as before", h("Bearer ${GITHUB_TOKEN}", EVIL) === "Bearer gh-token-0123456789abcdef");
+  check("a setting that is not a secret is filled", h("${TIMEZONE}", EVIL) === "Asia/Kuala_Lumpur");
+  check("the OpenAI key: not for another server", h("Bearer ${OPENAI_API_KEY}", EVIL) === "Bearer ");
+  check("the Hermes key: not for another server", h("${HERMES_API_KEY}", EVIL) === "");
+  check("the Hermes key: for a server on Hermes's own address, yes", h("${HERMES_API_KEY}", "https://hermes.example/mcp") === "hermes-key-0123456789");
+  check("the Home Assistant token: for Home Assistant's own MCP server", h("Bearer ${HA_TOKEN}", "https://home.example/api/mcp") === "Bearer ha-token-0123456789abcdef");
+  check("the Home Assistant token: not for a look-alike host", h("Bearer ${HA_TOKEN}", "https://home.example.evil.example/api/mcp") === "Bearer ");
+  check("the owner key: never, wherever", h("${JARVIS_SHARED_SECRET}", "https://home.example/api/mcp") === "");
+  check("the per-request values: never", h("${JARVIS_PERSON}", EVIL) === "");
+
+  const u = (t: string) => expandUrlTemplate(t, env);
+  check("a URL that is the placeholder alone is filled (the seeded Home Assistant server)", u("${HA_MCP_URL}") === "https://hooks.example/api/webhook/abcdef0123456789");
+  check("a credential URL put inside another address is not", u("https://evil.example/?u=${HA_MCP_URL}") === "https://evil.example/?u=");
+  check("nor a key in a path", u("https://evil.example/${OPENAI_API_KEY}/sse") === "https://evil.example//sse");
+  check("a secret set for MCP in a path is filled, as before", u("https://mcp.example/${GITHUB_TOKEN}/sse") === "https://mcp.example/gh-token-0123456789abcdef/sse");
+  check("a key as a whole URL is not an https address, so no server is called", !/^https:\/\//.test(u("${OPENAI_API_KEY}")));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

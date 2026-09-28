@@ -1,5 +1,6 @@
 import { authHeaders } from "./key";
 import { routeElement } from "./loud";
+import { inCar } from "./client";
 
 /**
  * This screen's end of alerts: a live socket to the Worker while the page is
@@ -28,7 +29,8 @@ export interface Alert {
 /** What this screen is called in "shown on …" and in the list of devices. */
 export function screenLabel(): string {
   const ua = navigator.userAgent;
-  if (/Tesla/i.test(ua)) return "the car";
+  // The car's browser has no "Tesla" in its user agent (client.ts): its screen is told apart another way.
+  if (inCar()) return "the car";
   if (/iPhone/i.test(ua)) return "iPhone";
   if (/iPad/i.test(ua)) return "iPad";
   if (/Android/i.test(ua)) return matchMedia("(min-width: 700px)").matches ? "Android tablet" : "Android phone";
