@@ -1,10 +1,9 @@
 import type { Env } from "./types";
-import { err } from "./lib/http";
+import { err, json } from "./lib/http";
 import { authorize, grantsOf, isAdmin, personOf, type Principal } from "./lib/auth";
 import { withPerson } from "./lib/context.ts";
 import { allowedNow } from "./lib/access.ts";
 import { localeOf } from "./lib/locale.ts";
-import { json } from "./lib/http";
 import { personView } from "./lib/hub-client.ts";
 import { allows, requiredScope } from "./lib/scopes";
 import { preflight, withCors } from "./lib/cors";

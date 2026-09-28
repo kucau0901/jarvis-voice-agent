@@ -1,5 +1,5 @@
 import { JarvisSession, type ServerEvent, type SessionState } from "./session";
-import { loadKey, saveKey, clearKey, authHeaders } from "./key";
+import { loadKey, saveKey, clearKey, authHeaders, isSession } from "./key";
 import { History } from "./history";
 import { Settings } from "./ui/Settings";
 import { Devices } from "./ui/Devices";
@@ -21,7 +21,6 @@ import { relayActions } from "./relay";
 import { hubStatus, inviteInfo, joinWithInvite, pairThisScreen, signInWithPasskey } from "./account";
 import { passkeyError, passkeysSupported } from "./passkey";
 import { describe, dropPerson, endSignIn, keepPerson, loadPeople, lockPerson, unlockPerson, type Person } from "./people";
-import { isSession } from "./key";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
