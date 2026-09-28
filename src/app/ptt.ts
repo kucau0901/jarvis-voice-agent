@@ -113,10 +113,19 @@ export class PushToTalk {
     }
   }
 
+  /** Put down, not finished: what was heard so far is not sent (their end handlers would send it). */
   stop(): void {
     this.abort?.abort();
-    this.recognition?.stop();
-    this.recorder?.state === "recording" && this.recorder.stop();
+    if (this.recognition) {
+      this.recognition.onend = null;
+      this.recognition.stop();
+      this.recognition = null;
+    }
+    if (this.recorder) {
+      this.recorder.onstop = null;
+      if (this.recorder.state === "recording") this.recorder.stop();
+    }
+    this.chunks = [];
     this.silence();
     this.release();
     this.state = "idle";

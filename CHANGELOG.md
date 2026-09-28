@@ -26,6 +26,9 @@ of every release, and in the [README](README.md#updating).
 
 ### Fixed
 
+- Switching from push-to-talk to typing or to a live conversation while it
+  was still listening sent what had been heard so far as a question anyway.
+  Putting it down now drops it.
 - When a voice conversation failed to start (the microphone blocked, the
   server unreachable), the screen stayed in focus mode, the next tap only
   cleared it instead of trying again, and the idle lock and new-version
