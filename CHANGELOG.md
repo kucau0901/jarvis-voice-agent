@@ -26,6 +26,9 @@ of every release, and in the [README](README.md#updating).
 
 ### Fixed
 
+- When Spotify itself failed (overloaded, or down behind an error page),
+  Jarvis said nothing was playing. It now says Spotify failed, in Spotify's
+  words where it gave any.
 - Sending the JSON value null as a request's body made eight routes (probe,
   speech, starting a voice session, typed questions, the MCP test and call,
   memory search and saving) fail with an internal error. They now answer

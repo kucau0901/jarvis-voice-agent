@@ -1,5 +1,5 @@
 import type { Tool, ToolContext } from "./registry";
-import { call, explain, spotifyConfig, type SpotifyConfig } from "../lib/spotify";
+import { call, explain, spotifyConfig, type SpotifyConfig } from "../lib/spotify.ts";
 
 /**
  * Spotify, by voice.
@@ -94,12 +94,13 @@ export const musicState: Tool = {
         ? devices.map((d) => `${d.name} (${d.type}${d.is_active ? ", active" : ""})`).join("; ")
         : "none";
 
+      // A failure first: a 429, or a 502's HTML page, has no body either, and is not "nothing playing".
+      const e = explain(playerRes);
+      if (e) return e;
       // 204 means Spotify knows the account but nothing is playing anywhere.
       if (playerRes.status === 204 || !playerRes.body) {
         return `Nothing is playing on Spotify. Devices Spotify can see: ${names}.`;
       }
-      const e = explain(playerRes);
-      if (e) return e;
 
       const p = playerRes.body as Playback;
       const track = p.item?.name;
