@@ -74,6 +74,8 @@ export interface Delivery {
   deliveredBy: Channel | null;
   /** Kept for someone's quiet time, until then (ms). */
   heldUntil?: number;
+  /** Not kept for their quiet time: it would be no use by the time they could have it. */
+  stale?: true;
 }
 
 /* ---------- the list ------------------------------------------------------- */
@@ -205,7 +207,7 @@ export async function deliver(
     if (until) {
       // Worth nothing by the time they could have it ("leave now" for something already begun): not kept.
       if (alert.expiresAt !== undefined && alert.expiresAt <= until) {
-        const d: Delivery = { alert, attempts: [], deliveredBy: null };
+        const d: Delivery = { alert, attempts: [], deliveredBy: null, stale: true };
         await state.logDelivery(d).catch(() => {});
         return d;
       }

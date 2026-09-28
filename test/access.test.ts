@@ -6,6 +6,7 @@ import { sha256Hex } from "../src/worker/lib/devices.ts";
 import { withPerson } from "../src/worker/lib/context.ts";
 import { passOf, usePass } from "../src/worker/tools/pass.ts";
 import { buildRoutine, describeAction } from "../src/worker/lib/routines.ts";
+import { outcome } from "../src/worker/lib/scheduler.ts";
 import { Relays, type RelayDeps } from "../src/worker/lib/relays.ts";
 import type { Alert } from "../src/worker/lib/alerts.ts";
 
@@ -103,6 +104,14 @@ console.log("\nquiet time holds alerts");
   check("someone in their hours gets theirs at once", held.length === 1 && pushed.includes("u_adult"));
   const stale = await deliverAlert(env, state, alertOf({ text: "Leave now for swimming", expiresAt: at(2026, 9, 28, 23, 30) }, "routine", MON_10, "u_child")!);
   check("one that is no use by the morning is not kept", held.length === 1 && stale.deliveredBy === null && !stale.heldUntil);
+
+  // What the routine's history then says: not "nothing is set up to receive it".
+  const heldRun = outcome(quiet, MON_10);
+  check("a routine's alert held for quiet time is recorded as held, not failed", heldRun.ok && /held for their quiet time/.test(heldRun.detail), heldRun);
+  const staleRun = outcome(stale, MON_10);
+  check("one dropped as out of date says so", !staleRun.ok && /out of date/.test(staleRun.detail), staleRun);
+  const nowhere = outcome({ alert: quiet.alert, attempts: [], deliveredBy: null }, MON_10);
+  check("with nowhere to send it, it still says to turn notifications on", !nowhere.ok && /nothing is set up/.test(nowhere.detail), nowhere);
 }
 
 console.log("\nwhat a pass may do");

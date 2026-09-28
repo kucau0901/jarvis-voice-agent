@@ -26,6 +26,10 @@ of every release, and in the [README](README.md#updating).
 
 ### Fixed
 
+- A routine's alert kept for someone's quiet time showed in the routine's
+  history as failed, saying "nothing is set up to receive it". It now says
+  it is held until their quiet time ends; one dropped because it would be
+  out of date by then says that.
 - A mail from late the day before yesterday, read just after midnight, was
   said to be from "1 days ago". Mail is now dated by the days on the
   calendar, so it is two days ago.
