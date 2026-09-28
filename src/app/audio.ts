@@ -64,11 +64,4 @@ export class VoiceLevels {
     this.smoothed[which] = raw > prev ? prev + (raw - prev) * 0.5 : prev + (raw - prev) * 0.12;
     return this.smoothed[which];
   }
-
-  close(): void {
-    this.analysers.clear();
-    this.buffers.clear();
-    void this.ctx?.close().catch(() => {});
-    this.ctx = null;
-  }
 }

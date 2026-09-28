@@ -35,7 +35,7 @@ float snoise(vec3 v){
 
 /** Shared displacement so the core and the shell ripple as one object. */
 const FIELD = /* glsl */ `
-uniform float uTime, uUser, uAgent, uThink, uDetail;
+uniform float uTime, uUser, uAgent, uThink;
 
 float field(vec3 p, out float ridge) {
   // Three octaves, each drifting at its own rate: the surface never repeats and

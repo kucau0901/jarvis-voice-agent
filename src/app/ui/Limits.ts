@@ -25,7 +25,7 @@ const dateOf = (t: number) => {
  * `loadThings` lists what the house has that a pass can work (GET
  * /api/hub/house): chosen from a list, by name, rather than typed.
  */
-export function limitsForm(a: Access | null | undefined, loadThings?: () => Promise<{ entity: string; name: string }[]>): HTMLElement {
+export function limitsForm(a: Access | null | undefined, loadThings: () => Promise<{ entity: string; name: string }[]>): HTMLElement {
   const box = document.createElement("div");
   box.className = "limits";
   box.innerHTML = `
@@ -69,23 +69,19 @@ export function limitsForm(a: Access | null | undefined, loadThings?: () => Prom
       });
     }
   };
-  if (loadThings) {
-    things.innerHTML = `<p class="note">Asking the house what there is…</p>`;
-    void loadThings()
-      .then((list) => {
-        filter.hidden = false;
-        // Anything already on the pass that the house no longer lists stays, as typed.
-        for (const [entity, label] of chosen) if (!list.some((t) => t.entity === entity)) list.unshift({ entity, name: label });
-        draw(list);
-        filter.addEventListener("input", () => draw(list));
-      })
-      .catch((e) => {
-        things.innerHTML = `<p class="note">The house could not list its things (${esc(e instanceof Error ? e.message : String(e))}). Type them below.</p>`;
-        for (const [entity, label] of chosen) addTyped(entity, label);
-      });
-  } else {
-    for (const [entity, label] of chosen) addTyped(entity, label);
-  }
+  things.innerHTML = `<p class="note">Asking the house what there is…</p>`;
+  void loadThings()
+    .then((list) => {
+      filter.hidden = false;
+      // Anything already on the pass that the house no longer lists stays, as typed.
+      for (const [entity, label] of chosen) if (!list.some((t) => t.entity === entity)) list.unshift({ entity, name: label });
+      draw(list);
+      filter.addEventListener("input", () => draw(list));
+    })
+    .catch((e) => {
+      things.innerHTML = `<p class="note">The house could not list its things (${esc(e instanceof Error ? e.message : String(e))}). Type them below.</p>`;
+      for (const [entity, label] of chosen) addTyped(entity, label);
+    });
   function addTyped(entity = "", label = "") {
     const row = document.createElement("div");
     row.className = "fieldfoot";

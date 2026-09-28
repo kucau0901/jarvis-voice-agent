@@ -162,11 +162,7 @@ let orbOverride: { user?: number; agent?: number; think?: number; error?: number
 
 function setOrb(...states: string[]) {
   // Only the pre-session states still need CSS; everything else is the shader.
-  els.orb.className = "orb " + states.filter((s) => s === "connecting" || s === "reconnecting").join(" ");
-}
-
-function refreshOrb() {
-  /* levels are sampled every frame in tick(); nothing to do here */
+  els.orb.className = "orb " + states.filter((s) => s === "connecting").join(" ");
 }
 
 function tick() {
@@ -323,7 +319,6 @@ function onState(s: SessionState, detail?: string) {
       if (!liveSince) liveSince = Date.now();
       status("listening — tap to end");
       els.hint.textContent = "";
-      refreshOrb();
       // Start the meter now, not on first speech: a session opened and never
       // spoken to is exactly the one worth closing, and it would otherwise
       // bill until the tab did.

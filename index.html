@@ -159,7 +159,7 @@
   #orb { position: absolute; inset: 0; border-radius: 50%; cursor: pointer;
     background: transparent; border: 0; -webkit-appearance: none; appearance: none; }
   #orb:focus-visible { outline: 2px solid var(--cyan); outline-offset: 6px; }
-  #orb.connecting, #orb.reconnecting { animation: pulse 1.3s ease-in-out infinite; }
+  #orb.connecting { animation: pulse 1.3s ease-in-out infinite; }
   @keyframes pulse { 0%,100% { opacity: .9 } 50% { opacity: 1 } }
   /* Fallback if WebGL is unavailable: the app must still be usable. */
   #orbWrap.nogl #orb { background: radial-gradient(circle at 50% 45%, #16323c 0%, #0a1620 60%, #070d14 100%);
@@ -249,7 +249,6 @@
   .panel .checks { display: flex; flex-wrap: wrap; gap: 8px; }
   .panel .check { min-height: 36px; padding: 6px 12px; font-size: 13px; }
   .panel .check.on { color: #4ade80; border-color: #1f4d33; }
-  .panel .check.need { color: var(--red); border-color: #5a2323; }
   .panel .field { display: grid; gap: 6px; padding: 10px 0; border-top: 1px solid #111a24; }
   .panel .fieldtop { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
   .panel .fieldtop label { font-size: 14px; color: var(--fg); }
