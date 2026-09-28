@@ -26,6 +26,9 @@ of every release, and in the [README](README.md#updating).
 
 ### Fixed
 
+- When a long voice conversation reconnected, it kept its oldest turns and
+  forgot the newest, so Jarvis lost track of what was just said. It now
+  keeps the most recent end.
 - The text boxes and pickers in the panels (and the family chat's message
   box) were in the browser's small default type, not 16px, so a phone zoomed
   the page in when one was tapped. The rule meant to set them was not valid
