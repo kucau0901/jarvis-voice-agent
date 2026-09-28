@@ -26,6 +26,9 @@ of every release, and in the [README](README.md#updating).
 
 ### Fixed
 
+- If your passkeys or the list of where you are signed in could not be
+  loaded, Family left those places empty without a word. It now says it
+  could not load them, and why.
 - Removing a car or unlinking an account in Family said it was done even
   when the server refused, and cancelling an invite, ending another sign-in,
   starting the chores tally again, or removing a device from notifications
