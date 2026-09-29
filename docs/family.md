@@ -192,8 +192,11 @@ person's, as they were. [Setting up G2 glasses](even-g2.md).
 - **The admin lost everything:** unlock with the owner key, open **Family**,
   and make yourself a **New passkey link**.
 
-**Where you are signed in** lists your screens, and signs any of them out.
-A screen that goes unused for six months signs itself out.
+**Where you are signed in** lists your screens, and signs any of them out:
+that screen's notifications stop, and if Jarvis is open there, it signs out
+too. A screen that goes unused for six months signs itself out, and its
+notifications stop with it; opening Jarvis there, or tapping one of its
+notifications, keeps it going.
 
 ## Removing someone
 

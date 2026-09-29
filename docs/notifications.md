@@ -48,7 +48,10 @@ takes one off.
 
 No. A notification is carried by your phone's own push service (Google's on
 Android, Apple's on iPhone) and shown by the browser in the background. With
-Jarvis closed, the phone locked, or after a restart, it still arrives. The text
+Jarvis closed, the phone locked, or after a restart, it still arrives. In a
+family, a member's notifications last as long as their sign-in on that
+screen, which ends after six months without opening Jarvis there; tapping a
+notification counts as opening it. The text
 is encrypted for your browser; the push service carries it without being able
 to read it. Tap a notification and Jarvis opens on that alert.
 

@@ -566,7 +566,19 @@ function onAlert(a: Alert) {
   void speakAlert(key, a).then((played) => card.classList.toggle("unplayed", !played));
 }
 
-const live = new LiveLink(key, onAlert);
+const live = new LiveLink(key, onAlert, signedOutElsewhere);
+
+/**
+ * This screen's sign-in was ended from another screen (a lost or lent one,
+ * from Where you are signed in): it signs out here too, rather than go on
+ * showing what it had. Reloading, as signing in does, leaves nothing behind.
+ */
+function signedOutElsewhere() {
+  if (isSession(key)) dropPerson(key);
+  clearKey();
+  key = "";
+  location.reload();
+}
 if (key) {
   live.start();
   void syncPush(key);

@@ -77,10 +77,13 @@ export class LiveLink {
   private retryTimer = 0;
   private pingTimer = 0;
   private stopped = true;
+  /** This screen's sign-in was ended from another screen (routes/hub.ts closeSession). */
+  private onSignedOut: () => void;
 
-  constructor(key: string, onAlert: (a: Alert) => void) {
+  constructor(key: string, onAlert: (a: Alert) => void, onSignedOut: () => void = () => {}) {
     this.key = key;
     this.onAlert = onAlert;
+    this.onSignedOut = onSignedOut;
     addEventListener("visibilitychange", () => this.presence());
     addEventListener("online", () => {
       if (!this.stopped && !this.ws) {
@@ -159,8 +162,9 @@ export class LiveLink {
     ws.onclose = (e) => {
       clearInterval(this.pingTimer);
       if (this.ws === ws) this.ws = null;
-      // 4001: this device was revoked. Anything else is the network.
+      // 4001: this device was revoked, or this sign-in ended ("signed out"). Anything else is the network.
       if (e.code === 4001) this.stopped = true;
+      if (e.code === 4001 && e.reason === "signed out") this.onSignedOut();
       if (!this.stopped) this.again();
     };
   }

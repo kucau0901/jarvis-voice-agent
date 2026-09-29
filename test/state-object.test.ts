@@ -62,11 +62,15 @@ const env = {
 } as never;
 /** Open screens, by their tags (who, and a member's sign-in), for closeSession below. */
 const sockets: { tags: string[]; closed?: number; close(code: number): void }[] = [];
+/** The tags each accepted screen was given (JarvisState.fetch). */
+const accepted: string[][] = [];
+const storage = fakeStorage();
 const ctx = {
-  storage: fakeStorage(),
+  storage,
   blockConcurrencyWhile: async (fn: () => Promise<unknown>) => fn(),
   setWebSocketAutoResponse() {},
   getWebSockets: (tag?: string) => (tag ? sockets.filter((s) => s.tags.includes(tag)) : []),
+  acceptWebSocket: (_ws: unknown, tags: string[]) => void accepted.push(tags),
 } as never;
 const jarvis = new JarvisState(ctx, env);
 await new Promise((r) => setTimeout(r, 0));
@@ -136,6 +140,23 @@ console.log("\nsigning out closes that sign-in's open screens, and no others");
   check("that sign-in's screen closes, told not to reconnect (4001)", phone.closed === 4001, phone);
   check("her other sign-in's, and anyone else's, stay open", tablet.closed === undefined && car.closed === undefined);
   sockets.length = 0;
+
+  // A screen opening after its sign-in ended (a Worker may hold the sign-in for 30 s) is refused.
+  const g = globalThis as { WebSocketPair?: unknown };
+  g.WebSocketPair = function () {
+    return [{}, { serializeAttachment() {}, send() {} }];
+  };
+  const open = async (session: string) => {
+    const ticket = await jarvis.mintTicket({ who: "u_sara", label: "phone", session });
+    try {
+      return (await jarvis.fetch(new Request(`https://jarvis.test/?ticket=${ticket}`, { headers: { upgrade: "websocket" } }))).status;
+    } catch {
+      return "accepted"; // Node cannot make the 101 answer itself; the object got as far as accepting it
+    }
+  };
+  await storage.put("hub:sess:dg-live", { id: "x_live", digest: "dg-live", user: "u_sara", expiresAt: Date.now() + 86_400_000 });
+  check("a screen for a sign-in that has ended is refused", (await open("x_gone")) === 401);
+  check("one for a live sign-in is accepted, tagged with it", (await open("x_live")) === "accepted" && accepted.at(-1)?.join() === "u_sara,s:x_live", accepted);
 }
 
 console.log("\nevery pass-through to StateHost forwards what it is given");

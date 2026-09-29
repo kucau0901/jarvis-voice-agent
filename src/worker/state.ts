@@ -20,7 +20,7 @@ import { jobEngine } from "./routes/jobs.ts";
 import type { UsageEntry } from "./lib/usage.ts";
 import type { SharedTurn } from "./lib/shared.ts";
 import { haConfig, renderTemplate, truthy } from "./lib/ha.ts";
-import { HUB_METHODS, HubHost } from "./lib/hub.ts";
+import { HUB_METHODS, HubHost, liveSessionIds } from "./lib/hub.ts";
 import { Relays, type Relay, type RelayDeps, type RelayKind } from "./lib/relays.ts";
 import { Chat, dmId, type ChatMessage } from "./lib/chat.ts";
 import { personOfWho, withPerson } from "./lib/context.ts";
@@ -172,7 +172,9 @@ export class JarvisState extends DurableObject<Env> {
       return new Response("expected a WebSocket", { status: 426 });
     }
     const who = await this.host.takeTicket(new URL(req.url).searchParams.get("ticket") ?? "");
-    if (!who) return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401 });
+    // A sign-in that has ended since the ticket was made (a Worker may still hold it for 30 s): no screen for it.
+    const ended = who?.session !== undefined && !(await liveSessionIds(this.ctx.storage, Date.now())).has(who.session);
+    if (!who || ended) return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401 });
 
     const pair = new WebSocketPair();
     const client = pair[0];
