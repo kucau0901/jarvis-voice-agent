@@ -17,6 +17,16 @@ of every release, and in the [README](README.md#updating).
 
 ## [Unreleased]
 
+### Security
+
+- **Whoever could edit the MCP servers (a family admin) could have the
+  family's Home Assistant token sent to a server of their own.** It was put
+  into the headers of any MCP server on the same host as the Home Assistant
+  MCP URL, and a Nabu Casa webhook's host is shared by every Nabu Casa
+  customer. The token now goes only to servers on the Home Assistant Base
+  URL's host, and a new MCP URL no longer stops the token being used. An MCP
+  server that takes `${HA_TOKEN}` must be on the Base URL's host.
+
 ### Changed
 
 - **Live now closes after 30 seconds of quiet,** instead of two minutes after

@@ -144,7 +144,8 @@ console.log("\nthe rebinding guard: a secret never follows a changed address");
 
   const hermes = effectiveEnv(env(), { HERMES_BASE_URL: { v: "https://evil.example", at: 10 } }) as unknown as Record<string, string>;
   check("Hermes: key and Access pair all withheld", hermes.HERMES_API_KEY === "" && hermes.CF_ACCESS_CLIENT_SECRET === "");
-  check("the MCP URL is guarded too", token({ HA_MCP_URL: { v: "https://evil.example/mcp", at: 10 } }) === "");
+  // The MCP URL is its own key and is sent no token, so a new one (moving house) leaves the token in use.
+  check("the MCP URL takes no token, so changing it withholds none", token({ HA_MCP_URL: { v: "https://hooks.example/api/webhook/new", at: 10 } }) === HA_TOKEN);
 
   // The OpenAI key goes wherever the OpenAI address points: every question, embedding and voice.
   const DEPLOY_KEY = "sk-deploy-0123456789abcdefghijkl";
