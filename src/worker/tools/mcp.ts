@@ -3,6 +3,7 @@ import type { Env } from "../types.ts";
 import { loadServers, type McpServerConfig } from "../lib/config-store.ts";
 import type { Tool, ToolContext } from "./registry.ts";
 import { McpSessions, openWithin } from "../lib/mcp-sessions.ts";
+import { sha256Hex } from "../lib/devices.ts";
 
 /**
  * Third-party MCP servers, exposed to the delegation router as ordinary tools.
@@ -57,6 +58,18 @@ interface CatalogEntry {
   inputSchema?: Record<string, unknown>;
 }
 
+/**
+ * When a catalog was listed, and at what address: its SHA-256, since the
+ * address can be the credential. A catalog listed at another address is not
+ * used. For some seconds after a new address is saved, a Worker still on the
+ * old settings (lib/settings-store.ts) can list the old server and write it
+ * back, and it would be offered for up to a day.
+ */
+interface CatalogMeta {
+  at?: number;
+  urlSha256?: string;
+}
+
 /** A question's connections, one per server (lib/mcp-sessions.ts). */
 export const mcpSessions = () =>
   new McpSessions<McpServerConfig, Client>((server) =>
@@ -70,9 +83,9 @@ async function listTools(
   waitUntil?: (p: Promise<unknown>) => void,
 ): Promise<CatalogEntry[]> {
   const hit = await env.CONFIG
-    .getWithMetadata<CatalogEntry[], { at?: number }>(catalogKey(server), "json")
+    .getWithMetadata<CatalogEntry[], CatalogMeta>(catalogKey(server), "json")
     .catch(() => null);
-  if (hit?.value) {
+  if (hit?.value && hit.metadata?.urlSha256 === (await sha256Hex(server.url))) {
     const age = Date.now() - (hit.metadata?.at ?? 0);
     if (age < CATALOG_FRESH_MS) return hit.value;
     if (waitUntil) {
@@ -107,9 +120,10 @@ async function fetchCatalog(
     // A cache, so a failed write costs a repeat fetch, never the tools. On the
     // free plan KV allows 1,000 writes a day; once they ran out this put threw,
     // and every house tool vanished until the quota reset at 08:00 Malaysia time.
+    const meta: CatalogMeta = { at: Date.now(), urlSha256: await sha256Hex(server.url) };
     await env.CONFIG.put(catalogKey(server), JSON.stringify(catalog), {
       expirationTtl: CATALOG_KEEP_S,
-      metadata: { at: Date.now() },
+      metadata: meta,
     }).catch((e) => console.warn("mcp: catalog not cached:", e instanceof Error ? e.message : String(e)));
     console.log(`mcp: ${server.label} catalog fetched ${Date.now() - t0}ms`);
     return catalog;

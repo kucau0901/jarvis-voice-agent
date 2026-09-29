@@ -1,4 +1,5 @@
 import { McpSessions, openWithin } from "../src/worker/lib/mcp-sessions.ts";
+import { mcpTools } from "../src/worker/tools/mcp.ts";
 
 let pass = 0;
 let fail = 0;
@@ -90,6 +91,40 @@ console.log("\nopenWithin: a connection too slow to use is still closed when it 
   check("and closed when it did open", closed === 1, closed);
   const refused = await openWithin(Promise.reject(new Error("refused")), 50, "c").then(() => "opened", (e: Error) => e.message);
   check("a refusal is the refusal, not a time-out", refused === "refused", refused);
+}
+
+console.log("\njust after a new MCP address is saved, a Worker still on the old settings");
+{
+  // Home Assistant's MCP server, wherever it is asked: each house lists a tool of its own.
+  let listedAt: string[] = [];
+  globalThis.fetch = (async (input: string | URL, init: RequestInit = {}) => {
+    const url = String(input);
+    const msg = JSON.parse(String(init.body ?? "{}")) as { id?: number; method?: string };
+    if (msg.id === undefined) return new Response(null, { status: 202 });
+    if (msg.method === "tools/list") listedAt.push(url);
+    const result = msg.method === "tools/list"
+      ? { tools: [{ name: url.includes("new-house") ? "ha_get_state" : "ha_search", inputSchema: { type: "object" } }] }
+      : { protocolVersion: "2025-11-25", capabilities: { tools: {} }, serverInfo: { name: "house", version: "1" } };
+    return Response.json({ jsonrpc: "2.0", id: msg.id, result });
+  }) as typeof fetch;
+  const m = new Map<string, { v: string; md: unknown }>();
+  const CONFIG = {
+    get: async () => null,
+    getWithMetadata: async (k: string) => ({ value: m.has(k) ? JSON.parse(m.get(k)!.v) : null, metadata: m.get(k)?.md ?? null }),
+    put: async (k: string, v: string, o?: { metadata?: unknown }) => void m.set(k, { v, md: o?.metadata ?? null }),
+  };
+  const oldHouse = { CONFIG, HA_MCP_URL: "https://old-house.example/mcp" } as never;
+  const newHouse = { CONFIG, HA_MCP_URL: "https://new-house.example/mcp" } as never;
+  const names = async (env: never) => (await mcpTools(env)).map((t) => t.name).join();
+
+  check("lists the old server's tools, and writes them back", (await names(oldHouse)) === "home-assistant__ha_search");
+  listedAt = [];
+  const now = await names(newHouse);
+  check("the new server's are not those: its own are asked for", now === "home-assistant__ha_get_state" && listedAt.length === 1, { now, listedAt });
+  await names(newHouse);
+  check("…and then kept", listedAt.length === 1, listedAt);
+  const meta = JSON.stringify(m.get("mcp:catalog:home-assistant")?.md);
+  check("the address is kept only as a hash: it can be the credential", !meta.includes("new-house"), meta);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

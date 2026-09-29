@@ -72,6 +72,12 @@ const urlCameras = (env: Env): UrlCamera[] => {
 /**
  * Cached in KV for an hour: cameras are added about as often as walls are.
  * v2 since the list began coming from a template (below).
+ *
+ * The address it was listed at goes with it, in the entry's metadata, and a
+ * list from any other address is not used. For some seconds after a new
+ * address is saved, a Worker still on the old settings (lib/settings-store.ts)
+ * can list the old house and write it back; the Settings panel's Test lists an
+ * address not yet saved. Neither is offered to the house in use.
  */
 const CACHE_KEY = "cams:v2";
 const CACHE_TTL_S = 3600;
@@ -89,8 +95,10 @@ async function haCameras(env: Env): Promise<Camera[]> {
   const token = env.HA_TOKEN;
   if (!base || !token) return [];
   try {
-    const hit = (await env.CONFIG.get(CACHE_KEY, "json")) as { entity: string; name: string }[] | null;
-    if (hit?.length) return hit.map((c) => ({ id: c.entity, name: c.name, source: "ha" as const }));
+    const hit = await env.CONFIG.getWithMetadata<{ entity: string; name: string }[], { base?: string }>(CACHE_KEY, "json");
+    if (hit.value?.length && hit.metadata?.base === base) {
+      return hit.value.map((c) => ({ id: c.entity, name: c.name, source: "ha" as const }));
+    }
   } catch {
     // a cache miss is not a failure
   }
@@ -125,12 +133,17 @@ async function haCameras(env: Env): Promise<Camera[]> {
       }));
   }
   if (list.length) {
-    await env.CONFIG.put(CACHE_KEY, JSON.stringify(list), { expirationTtl: CACHE_TTL_S }).catch(() => {});
+    await env.CONFIG.put(CACHE_KEY, JSON.stringify(list), { expirationTtl: CACHE_TTL_S, metadata: { base } }).catch(() => {});
   }
   return list.map((c) => ({ id: c.entity, name: c.name, source: "ha" as const }));
 }
 
-/** A new Home Assistant address or token (routes/settings.ts): the next list is asked for, not the last house's. */
+/**
+ * A new Home Assistant token (routes/settings.ts): the same address may now
+ * lead to another house. A new address needs nothing, as the list says where
+ * it was made. A Worker still on the old token cannot list another house, so
+ * nothing stale is written back after this.
+ */
 export const forgetCameras = (env: Env): Promise<void> => env.CONFIG.delete(CACHE_KEY);
 
 export async function listCameras(env: Env): Promise<Camera[]> {
