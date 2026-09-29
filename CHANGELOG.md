@@ -46,6 +46,9 @@ of every release, and in the [README](README.md#updating).
 
 ### Fixed
 
+- **After a new Home Assistant address or token was saved, the cameras of the
+  old one were offered** for up to an hour. The new one's are now asked for
+  at once.
 - **Live could go on billing for a session it had let go of.** A connection
   given up on in a tunnel could come back once a new session had opened, and
   stay open beside it until the tab closed: billed, writing what was said on

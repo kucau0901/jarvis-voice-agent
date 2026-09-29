@@ -130,6 +130,9 @@ async function haCameras(env: Env): Promise<Camera[]> {
   return list.map((c) => ({ id: c.entity, name: c.name, source: "ha" as const }));
 }
 
+/** A new Home Assistant address or token (routes/settings.ts): the next list is asked for, not the last house's. */
+export const forgetCameras = (env: Env): Promise<void> => env.CONFIG.delete(CACHE_KEY);
+
 export async function listCameras(env: Env): Promise<Camera[]> {
   const listed = urlCameras(env).map((c) => ({ id: `url:${c.slug}`, name: c.name, source: "url" as const }));
   return [...listed, ...(await haCameras(env))];
