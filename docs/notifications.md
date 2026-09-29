@@ -18,7 +18,8 @@ Jarvis tries, in order, and stops at the first that reaches you:
    screen is set not to (**Settings → Alerts → This device**). It counts only
    if the screen confirms within four seconds; a tab in the background does
    not.
-2. **Notifications**, on every device where you turned them on, all at once.
+2. **Notifications**, on every device of yours where you turned them on, all
+   at once. With a family, each person's go only to their own devices.
 3. **The optional extras** set up in **Settings → Alerts**: Telegram, ntfy, a
    webhook, Home Assistant. Used only if nothing before them worked.
 
@@ -77,6 +78,10 @@ notifications. Jarvis notices a device that has gone and takes it off the list.
 1. On your phone, close Jarvis and lock the screen.
 2. On another screen, the car or a laptop: **Settings → Alerts → Test**.
 3. The notification should arrive within seconds.
+
+The Test is the house's, so it reaches the first person's devices (whoever set
+up the family). Anyone else checks their own by asking Jarvis to "send a note
+to my phone".
 
 **Settings → Alerts** also shows the last few alerts and how each one went:
 "shown on the car", "1 of 1 device accepted", or what failed.

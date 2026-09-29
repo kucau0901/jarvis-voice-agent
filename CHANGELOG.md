@@ -40,11 +40,19 @@ of every release, and in the [README](README.md#updating).
 
 ### Security
 
-- With a family, a notification for one person also went to every other
-  browser and phone where notifications were on: their reminders, notes
-  sent to their phone, finished jobs and answers from Hermes. It now reaches
-  only that person's own. Open Jarvis screens and Telegram already went only
-  to them.
+- **Since 2.0.0, with a family, each person's notifications also reached
+  everyone else's browsers and phones** where notifications were on:
+  reminders, notes sent to a phone, finished jobs and answers from Hermes,
+  family chat messages (direct ones between two other people included),
+  passed-on messages and their answers, routines and leave-time warnings.
+  Quiet hours did not stop other people's. Each person's now reach only their
+  own devices; open Jarvis screens, and each member's own Telegram chat,
+  already went only to them. Notifications already delivered stay where they
+  arrived, and a phone that was off may still receive one for up to a day.
+  An alert raised with the owner key or the first person's device (Home
+  Assistant calling `/api/v1/notify`, for one) now reaches only the first
+  person's devices; to tell the whole house, use Home Assistant's notify or
+  ntfy.
 
 ## [2.1.0] - 2026-09-28
 

@@ -1,9 +1,36 @@
 # Working on this repository
 
-One Cloudflare Worker serves the app and `/api/*`; one Durable Object holds
-the state. Why it is built the way it is: `docs/DESIGN.md`. Before changing an
-area, read its section there: most of what looks odd is a decision, with the
-reason written down.
+One Cloudflare Worker serves the app and `/api/*`. One Durable Object holds
+most of the state (memory, the family, messages, routines, jobs, settings); KV
+holds device tokens, linked-account tokens, the MCP server list and the router
+model. Why it is built the way it is: `docs/DESIGN.md`, and for the family
+`docs/family.md`, for alerts `docs/notifications.md`, for the device API
+`docs/api.md`. Before changing an area, read its section: most of what looks
+odd is a decision, with the reason written down.
+
+## Project rules
+
+These come from the owner and hold for every change.
+
+- **An OpenAI key is all Jarvis needs.** Every feature works with only
+  `OPENAI_API_KEY` set. Home Assistant, Tessie, Hermes, Google, Spotify,
+  Telegram, ntfy and MCP servers are optional: a tool that needs one declares
+  `available(env)` and disappears without it, and nothing else may assume it.
+- **House safety lives in Home Assistant.** What the house may do is set
+  there. No keyword lists, confirmation steps or second model call in front of
+  it: scopes decide who reaches the house, Home Assistant what it does. Model
+  calls cost the owner money, so take the cheap direct path.
+- **Hermes can run terminal commands** where it lives. The `hermes` scope is
+  never granted by default: not in a role, a device preset, a guest's pass,
+  sharing the house or `READ_TOOLS`.
+- **The repository is public.** Never commit the owner's real data (family
+  names, addresses, domain, emails, KV or account ids, keys, tokens) in code,
+  tests, docs, example configs, CHANGELOG, commit messages or PR descriptions:
+  invented stand-ins only (`example.com`, made-up names). No session links in
+  commit messages. Read the staged diff and the message before every commit.
+- **Releases and deploys are the owner's call.** Release only when the owner
+  says "release" (`npm run release -- patch|minor|major`), confirm before
+  pushing the tag, and deploy (`npm run deploy`) only when asked.
 
 ## Commands
 
@@ -13,24 +40,26 @@ reason written down.
 | Test | `npm test` | Plain Node, no runner: each `test/*.test.ts` is run with `node`, one after another. **A new test file must be added to the `test` script in `package.json`**, or it never runs. |
 | Build | `npm run build` | `vite build` into `dist/`. Two warnings are expected: "chunks larger than 500 kB", and `INEFFECTIVE_DYNAMIC_IMPORT` for `@modelcontextprotocol/client`. |
 | Lint | none | None is configured, and none is to be added. |
-| Behavior check | `node test/behavior/check.mjs verify` | About 1½ minutes. See "Checking a feature". |
+| Behavior check | `node test/behavior/check.mjs verify` | About 3 minutes. See "Checking a feature". |
 
 Tests load source files straight into Node (type stripping), so:
 
 - imports between Worker files, and in anything a test loads, use an explicit
   `.ts` extension;
 - no TypeScript-only runtime syntax in those files (no parameter properties,
-  enums or namespaces): Node's strip-only mode rejects them.
+  enums or namespaces): Node's strip-only mode rejects them;
+- a JSON import carries `with { type: "json" }`, as `lib/config-store.ts`'s
+  does: Node rejects a bare one.
 
 ## Where things go
 
 | Path | What it holds |
 | --- | --- |
-| `src/worker/index.ts` | The gate (credentials, locked profiles, hours, scopes, device limits), then `route()`. A new top-level route adds one line here, nothing else. |
+| `src/worker/index.ts` | The gate (credentials, locked profiles, hours, scopes, device limits), then `route()`. A new top-level route is one line in `route()` plus its import. A third-party redirect (an OAuth callback, which carries no credential) goes before the gate, as the Google and Spotify callbacks do. |
 | `src/worker/routes/` | HTTP: read the request, check it, call `lib/`, shape the reply. One file per area. |
 | `src/worker/lib/` | The logic, as plain functions and classes Node can test. New logic goes here, not in a route. |
-| `src/worker/tools/` | What the router model can call: one file per service, listed in `ALL` in `tools/registry.ts`. |
-| `src/worker/state.ts` | The Durable Object: a thin class over `lib/` classes that do the work (`StateHost`, `HubHost`, `Scheduler`, `Jobs`, `Relays`, `Chat`). |
+| `src/worker/tools/` | What the router model can call: one file per service, listed in `ALL` in `tools/registry.ts`. Hermes's two tools are in `registry.ts` itself; MCP tools are added at request time. |
+| `src/worker/state.ts` | The Durable Object: a thin class over `lib/` classes that do the work (`StateHost`, `HubHost`, `LiveHub`, `Scheduler`, `Jobs`, `Relays`, `Chat`). It still keeps chore points and held alerts itself; add nothing more there. |
 | `src/app/main.ts` | The app's wiring: the voice session, unlocking, modes, the menu. Wiring only. |
 | `src/app/ui/` | One class per panel, built in code. |
 | `src/shared/` | Only what both halves need. |
@@ -56,7 +85,10 @@ Add it to `ALL` in `tools/registry.ts`.
   `title` is in `notes.ts`.
 - `scope` (from `lib/scopes.ts`) decides who is even shown the tool; none means
   anyone with `ask`. Ask before adding a scope: it changes what every role and
-  device can reach.
+  device can reach. If one is agreed: `SCOPES` (`lib/scopes.ts`), `ROLE_SCOPES` plus a
+  `GAINS` entry and a `SCOPES_V` bump (`lib/hub.ts`), its label in
+  `ui/Devices.ts` and `ui/Family.ts`, and `docs/api.md`. Every `*` device gets
+  it at once.
 - Text someone else wrote (mail, reviews, calendar invitations) goes back to
   the model through `asQuotedData()` in `lib/quote.ts`.
 - Tools using a person's linked Google or Spotify account wrap their work in
@@ -64,10 +96,12 @@ Add it to `ALL` in `tools/registry.ts`.
 - Background jobs are offered only the local tools named in `READ_TOOLS`
   (`lib/jobs.ts`). Add a new tool there if it only reads and jobs should have
   it; never one that sends, changes or unlocks anything.
-- `test/router-inputs.test.ts` pins each role's tool list and the hash of
-  `ROUTER_PROMPT`. A feature that adds a tool or changes the prompt updates
-  `EXPECTED` or `PROMPT_SHA256` in the same commit and says so in the message.
-  Anything else changing there is a regression.
+- `test/router-inputs.test.ts` pins, for each case (owner key, admin, adult,
+  child, guest), the model, the tool names and a hash of what the router is
+  told, and `PROMPT_SHA256`. A feature that adds a tool, changes the prompt or
+  changes what the router is told updates the matching `EXPECTED` field or
+  `PROMPT_SHA256` in the same commit, with a short comment, and says so in the
+  message. Anything else changing there is a regression.
 
 **An endpoint.** In its area's file in `src/worker/routes/`, plus:
 
@@ -98,16 +132,19 @@ setting someone asked to change; a value with one sensible choice is a
 constant.
 
 **Stored data.** In the Durable Object, not KV: the free plan allows KV 1,000
-writes a day. Under a new key; never a new shape under an existing key, since
-running copies already have data there.
+writes a day, so the existing KV keys stay and no new ones are added. Under a
+new key; never a new shape under an existing key, since running copies already
+have data there.
 
 - The logic goes in a class Node can test, given a `Storage`, like the ones
   above. Then add a pass-through method in `state.ts`, and in
   `lib/state-host.ts` the method's name in `StateApi` (for `StateHost`) or its
   signature in `RoutineApi`, `JobApi` or `FamilyApi` (for the others).
-- **Nothing checks the pass-throughs.** `stateStub()` casts to `StateApi`, so
+- **Forward every argument.** `stateStub()` casts to `StateApi`, so
   TypeScript catches neither a missing pass-through nor one that drops an
-  argument. Forward every argument.
+  argument; one that did sent every person's notifications to every phone.
+  `test/state-object.test.ts` loads the object in Node and checks each
+  pass-through to `StateHost`; those to the other classes are not checked.
 - People and sign-in go through `lib/hub.ts` instead: add the method to
   `HubHost` and its name to `HUB_METHODS`. There is no pass-through to write.
 - Anything that wakes at a time runs from the object's one alarm: a
@@ -142,21 +179,30 @@ something. So:
     (`lib/webauthn.ts`); `stateStub` (`lib/state-client.ts`); `allows`,
     `narrow` (`lib/scopes.ts`); `localeOf` (`lib/locale.ts`); `OWNER`,
     `personOfWho`, `isTheirs`, `bookOf` (`lib/context.ts`); `LOCAL`
-    (`lib/routines.ts`).
+    (`lib/routines.ts`); `withoutScreen` (`lib/scopes.ts`); `haConfig`,
+    `haUrl` (`lib/ha.ts`).
   - App: `api`, `authHeaders` (`key.ts`); `el`, `button`, `esc`, `ago`,
     `arm`, `richText` (`ui/util.ts`).
   - Much of the older app code calls `fetch` with `authHeaders` itself. New
     JSON requests use `api()`, even in those files; don't copy the old pattern.
+    Older copies of listed helpers exist too (`readJson` and `SCREENLESS` in
+    `routes/v1.ts`, `tidy` in `lib/leave.ts`, `esc` in `ui/Settings.ts`,
+    `escapeHtml` in `main.ts`): not examples to follow.
 - **Don't grow the largest files**: `src/app/main.ts`, `lib/hub.ts`,
   `lib/memory.ts`, `tools/gmail.ts`, `ui/Family.ts`, `ui/Settings.ts`. New code
   goes in its own module and is called from there. If a feature needs more
   than about 40 new lines in one of them, stop and propose where it should
-  live.
+  live. `lib/settings.ts` and the `<style>` block in `index.html` grow only by
+  the `SETTINGS` entry or the CSS rules a feature needs.
 - **No new layers without asking**: no base classes, managers, plugin systems,
   event buses or generic frameworks. The extension points already exist:
   `ALL`, `SETTINGS`, `SCOPES`, `HUB_METHODS`, and `route()` with
   `requiredScope()`.
-- **No new dependencies** without asking.
+- **No new dependencies** without asking. Don't edit generated files
+  (`worker-configuration.d.ts`; `package-lock.json` only with an agreed
+  dependency). A new binding, Durable Object class or migration in
+  `wrangler.example.jsonc` makes a major release (`docs/RELEASING.md`): ask
+  first.
 - **No speculative code**: no options, parameters or branches for cases nobody
   asked for, and no fallbacks for things that cannot happen.
 - **Replace, don't keep both.** When a feature changes how something works, the
@@ -170,9 +216,11 @@ something. So:
 
 ## Checking a feature
 
-- **Tests** go beside the area's existing ones, in the same `check()` style.
-  Don't change what an unrelated test checks to make it pass: if one fails,
-  the change is wrong.
+- **New logic comes with tests** in the same commit, beside the area's
+  existing ones, in the same `check()` style. A fixed bug comes with a test
+  that fails without the fix; where Node cannot reach the code, say in the
+  commit message how it was checked. Don't change what an unrelated test
+  checks to make it pass: if one fails, the change is wrong.
 - **After each change**, typecheck, tests and build pass.
 - **Behavior check.** Before starting, record a baseline from `main`:
   `git worktree add --detach /tmp/jarvis-main main`, then
@@ -185,7 +233,8 @@ something. So:
     (`fakes.mjs`), fresh storage, made-up keys. It makes about 105 API
     requests as a family of five (`scenario.ts`), and opens the panels listed
     in `PANELS` as an admin, an adult and a guest in headless Chrome
-    (`ui.mjs`), comparing their text and each element's classes and styles.
+    (`ui.mjs`), comparing their text and each element's classes and styles,
+    then puts the person in use aside on a shared screen three ways.
     It needs `node_modules`, Google Chrome at its macOS path (`CHROME=<path>`
     for another) and free ports 8791, 8792, 8798 and 9333.
   - It does not cover the live voice session (WebRTC), push-to-talk audio,
@@ -197,12 +246,13 @@ something. So:
 
 ## Always
 
-- This repository is public: invented names only in code, tests and docs
-  (never the owner's family, address, domain, keys or accounts).
 - A change a self-hoster would notice gets a line under `## [Unreleased]` in
-  `CHANGELOG.md` (`docs/RELEASING.md`). One they cannot notice needs none.
+  `CHANGELOG.md` **in the same commit**, under Added, Changed, Fixed, Removed
+  or Security; *Action needed* only for a step on update, which makes the
+  release major (`docs/RELEASING.md`). One they cannot notice needs none.
 - Don't loosen a security boundary to make a feature fit: routes are
   owner-only unless opened, tools are filtered by scope rather than by
   instruction, outside text is quoted as data, secrets never reach the
   browser, and a secret whose address was changed stays withheld (`guarded()`
-  in `lib/settings.ts`). `docs/DESIGN.md` ("Security", "Mail") says why.
+  in `lib/settings.ts`). Why: `docs/DESIGN.md` ("Security", "Mail"), the
+  README's settings section, and the header of `lib/scopes.ts`.

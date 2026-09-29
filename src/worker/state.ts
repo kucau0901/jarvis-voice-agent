@@ -519,7 +519,7 @@ export class JarvisState extends DurableObject<Env> {
   }
 
   /** Whose browsers: an alert for one person reaches only theirs (lib/alerts.ts). */
-  pushTargets(person?: string) {
+  pushTargets(person: string) {
     return this.host.pushTargets(person);
   }
 
