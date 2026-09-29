@@ -109,24 +109,38 @@ export function expandTemplate(template: string, lookup: Record<string, unknown>
  * Placeholders are for secrets set for MCP servers. Jarvis's own keys are
  * another matter: each is only ever sent where its own address points (the
  * rule settings.ts guarded() keeps), and anyone who can edit this list can
- * point a server anywhere. So one of them is filled only for a server at an
- * address it is already sent to (the Home Assistant token for a server on the
- * Home Assistant address), and never in a URL, where it would be sent to
- * whatever host the rest of the URL names. The owner key and the
- * per-request values are never filled.
+ * point a server anywhere. So one of them is filled only for a server at or
+ * under an address it is already sent to (the Home Assistant token for Home
+ * Assistant's own MCP server, under its Base URL), and never in a URL, where
+ * it would be sent to whatever host the rest of the URL names. Under the
+ * address, not merely on its host: a host can be shared by path, as a gateway
+ * serving many accounts is. The owner key and the per-request values are
+ * never filled.
  */
 export function fillable(env: Record<string, unknown>, url: string | null): Record<string, unknown> {
-  const origin = originOf(url);
   const out: Record<string, unknown> = {};
   for (const [name, v] of Object.entries(env)) {
     if (name in NOT_SETTINGS) continue;
     if (settingDef(name)?.kind === "secret") {
-      const sentThere = SETTINGS.some((d) => d.bindsTo?.includes(name) && origin !== null && originOf(env[d.name]) === origin);
+      const sentThere = SETTINGS.some((d) => d.bindsTo?.includes(name) && under(url, env[d.name]));
       if (!sentThere) continue;
     }
     out[name] = v;
   }
   return out;
+}
+
+/** Whether `url` is `base` or below it: the same origin, and `base`'s path whole segments of `url`'s. */
+function under(url: string | null, base: unknown): boolean {
+  if (!url || typeof base !== "string" || !base) return false;
+  try {
+    const u = new URL(url);
+    const b = new URL(base);
+    const prefix = b.pathname.endsWith("/") ? b.pathname : `${b.pathname}/`;
+    return u.origin === b.origin && `${u.pathname}/`.startsWith(prefix);
+  } catch {
+    return false;
+  }
 }
 
 /** An address's origin as fetch reaches it (a look-alike name in its xn-- form, no user part), or null. */

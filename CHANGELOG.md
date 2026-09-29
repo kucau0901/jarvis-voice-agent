@@ -23,9 +23,11 @@ of every release, and in the [README](README.md#updating).
   family's Home Assistant token sent to a server of their own.** It was put
   into the headers of any MCP server on the same host as the Home Assistant
   MCP URL, and a Nabu Casa webhook's host is shared by every Nabu Casa
-  customer. The token now goes only to servers on the Home Assistant Base
-  URL's host, and a new MCP URL no longer stops the token being used. An MCP
-  server that takes `${HA_TOKEN}` must be on the Base URL's host.
+  customer. The token now goes only to servers at or under the Home
+  Assistant Base URL, and a new MCP URL no longer stops the token being
+  used. An MCP server that takes `${HA_TOKEN}` must be under the Base URL.
+  The same holds for Jarvis's other keys: each goes only to MCP servers at
+  or under the address it is already sent to, not anywhere on that host.
 - **A token pasted into an MCP server's header could be sent to another
   address.** Any family admin could keep the server's name, give it a new
   URL, and press **Test** or **Save**: the saved token went to the new

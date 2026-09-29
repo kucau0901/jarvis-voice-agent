@@ -501,10 +501,10 @@ than the car; typing a URL and a token on the Tesla keyboard is miserable. A URL
 or header value written as `${NAME}` is filled at call time from a Worker secret
 or a value saved in the settings panel, so the secret itself is never written
 into the server list or the repo. Jarvis's own keys are the exception: the
-OpenAI key, the owner key and the rest are filled in only for a server at an
-address that key is already sent to (the Home Assistant token for a server on
-the Home Assistant address), so whoever edits the list cannot aim one at a
-server of their own. A secret meant for an MCP server gets a name of its own,
+OpenAI key, the owner key and the rest are filled in only for a server at or
+under an address that key is already sent to (the Home Assistant token for
+Home Assistant's own MCP server, under its Base URL), so whoever edits the list
+cannot aim one at a server of their own. A secret meant for an MCP server gets a name of its own,
 and only the owner key can send one to a URL the list does not already send
 it to: any admin can edit the list, and such a secret has no address of its
 own to keep to. (Not the person who set up the family, signed in as

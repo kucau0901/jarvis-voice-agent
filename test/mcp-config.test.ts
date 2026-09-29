@@ -417,6 +417,12 @@ console.log("\n${NAME} never hands one of Jarvis's own keys to a server that is 
   check("the Home Assistant token: not for a look-alike host", h("Bearer ${HA_TOKEN}", "https://home.example.evil.example/api/mcp") === "Bearer ");
   // A webhook's host is shared (Nabu Casa's is every customer's): someone else's webhook there is someone else's server.
   check("the Home Assistant token: not for another webhook on the MCP URL's host", h("Bearer ${HA_TOKEN}", "https://hooks.example/api/webhook/someone-elses") === "Bearer ");
+  // A host can be shared by path (a gateway serving many accounts; Home Assistant behind a proxy).
+  const onPath = (v: string, url: string) => expandHeaderTemplates({ Authorization: v }, { ...env, HA_BASE_URL: "https://proxy.example/ha" }, url).Authorization;
+  check("the Home Assistant token: under its Base URL, yes", onPath("Bearer ${HA_TOKEN}", "https://proxy.example/ha/api/mcp") === "Bearer ha-token-0123456789abcdef");
+  check("the Home Assistant token: not for another path on the same host", onPath("Bearer ${HA_TOKEN}", "https://proxy.example/collect/mcp") === "Bearer ");
+  check("nor for a path that only starts the same", onPath("Bearer ${HA_TOKEN}", "https://proxy.example/hax/mcp") === "Bearer ");
+  check("nor for one that climbs out", onPath("Bearer ${HA_TOKEN}", "https://proxy.example/ha/../collect/mcp") === "Bearer ");
   check("the owner key: never, wherever", h("${JARVIS_SHARED_SECRET}", "https://home.example/api/mcp") === "");
   check("the per-request values: never", h("${JARVIS_PERSON}", EVIL) === "");
 
