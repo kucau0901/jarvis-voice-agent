@@ -30,10 +30,10 @@ of every release, and in the [README](README.md#updating).
   to a server of their own** by changing the Home Assistant Base URL: a token
   given in Family → Home went to whatever address the house had. Each
   person's own token is now used only at the address it was checked with.
-  When the address changes (moving house, say), the family's token is used
-  for them, and Family → Home asks them to enter theirs again. Tokens given
-  before this version are tied to no address, so each person who gave one
-  enters it once more.
+  When the address changes (moving house, say), theirs is no longer used,
+  and Family → Home asks them to enter it again. Tokens given before this
+  version are tied to no address, so each person who gave one enters it once
+  more.
 
 ### Changed
 

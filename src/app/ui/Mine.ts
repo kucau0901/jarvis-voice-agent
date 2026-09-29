@@ -187,7 +187,7 @@ export class Mine {
   /** Whether your own Home Assistant token is set (or to be entered again), and the button to remove it if so. */
   private showHa(): void {
     this.box.querySelector(".m-haset")!.textContent =
-      this.ha === "yours" ? "Yours is set." : this.ha === "again" ? "Home Assistant's address has changed since you gave yours, so the family's is used: enter yours again to be yourself." : "";
+      this.ha === "yours" ? "Yours is set." : this.ha === "again" ? "Yours is not in use: it was not checked with the family's Home Assistant address as it is now. Enter it again to be yourself." : "";
     const row = this.box.querySelector<HTMLElement>(".m-harow")!;
     row.querySelector(".m-haoff")?.remove();
     if (!this.ha) return;

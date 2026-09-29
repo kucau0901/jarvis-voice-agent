@@ -35,7 +35,8 @@ const kv = new Map<string, string>();
 const forgotten: string[] = [];
 /** Sign-ins whose open screens the object was told to close (routes/hub.ts). */
 const closed: string[] = [];
-const people = new HubHost(fakeStorage());
+const peopleStorage = fakeStorage();
+const people = new HubHost(peopleStorage);
 const env = {
   JARVIS_SHARED_SECRET: "NOTAREALKEY12345",
   CONFIG: {
@@ -312,6 +313,13 @@ console.log("\ntheir own Home Assistant token: kept for the address it was check
   check("a token the house refuses is not kept", refused.status === 400 && (await people.haTokenFor(id)) === "https://home.example");
   await at("https://new-house.example", { haToken: TOKEN });
   check("entered again, it is kept for the new address", (await people.haTokenFor(id)) === "https://new-house.example" && (await at("https://new-house.example")).body.haToken === true);
+
+  // One given before the address was kept: not in use, asked for again, and it can still be removed.
+  const record = (await peopleStorage.get<Record<string, unknown>>(`hub:user:${id}`))!;
+  const { haTokenFor: _, ...legacy } = record;
+  await peopleStorage.put(`hub:user:${id}`, legacy);
+  const old = await at("https://new-house.example");
+  check("one saved before the address was kept: asked for again", old.body.haToken === false && old.body.haTokenStale === true && (await people.haTokenFor(id)) === "", old.body);
 
   await at("https://new-house.example", { haToken: "" });
   const gone = await at("https://new-house.example");

@@ -771,8 +771,9 @@ device acts as them, with the scopes it was given narrowed to theirs. `PATCH /ap
 sets a person's own Home Assistant token (checked with the house first); an
 empty one removes it. It is used only at the Home Assistant address it was
 checked with: `GET /api/hub/me` says `haToken: true` while it is in use, and
-`haTokenStale: true` once that address has changed and it must be entered
-again.
+`haTokenStale: true` when it was not checked with the current address (the
+address changed, or it was saved before addresses were kept) and must be
+entered again.
 
 ## Not part of this contract
 
