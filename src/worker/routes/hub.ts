@@ -285,16 +285,19 @@ export async function handleHub(req: Request, env: Env, principal: Principal): P
     }
     const status = await hub.status();
     const s = space ? await hub.space(space) : null;
-    const haFor = me ? await hub.haTokenFor(me.id) : null;
+    // Locked on a shared screen: only what choosing who is using it and unlocking need
+    // (who this is, whether they have a PIN), nothing of their choices, pass or reach.
+    const locked = !!me?.locked;
+    const haFor = me && !locked ? await hub.haTokenFor(me.id) : null;
     return json({
       owner: principal.kind === "owner",
       claimed: status.claimed,
       space: s ? { name: s.name, agentName: s.agentName } : null,
       user: me ? { id: me.id, name: me.name } : null,
       role: me ? me.role : "admin",
-      prefs: me?.place?.prefs ?? {},
+      prefs: locked ? {} : (me?.place?.prefs ?? {}),
       // A guest's limits: until when, which hours, and the pass's things with what each can do.
-      access: me?.place?.access
+      access: !locked && me?.place?.access
         ? { ...me.place.access, allow: me.place.access.allow?.map((a) => ({ ...a, actions: passActions(a.entity) })) }
         : null,
       // Their own Home Assistant token: in use, or given for an address the house no longer has (enter it again).
@@ -302,12 +305,12 @@ export async function handleHub(req: Request, env: Env, principal: Principal): P
       haTokenStale: haFor !== null && !haTokenFits(haFor, env),
       // Where their own token is checked and sent, to see before giving it: for those who may use the house.
       // Its origin, as fetch reaches it, so a look-alike name shows as the xn-- one it is.
-      haAddress: me && !me.locked && allows(grantsOf(principal), "home") ? originOf(env.HA_BASE_URL) : null,
+      haAddress: me && !locked && allows(grantsOf(principal), "home") ? originOf(env.HA_BASE_URL) : null,
       // What this person may reach, so the app offers only that.
-      scopes: me?.locked ? [] : grantsOf(principal),
+      scopes: locked ? [] : grantsOf(principal),
       session: me ? me.session : null,
       hasPin: !!me?.hasPin,
-      locked: !!me?.locked,
+      locked,
     });
   }
 

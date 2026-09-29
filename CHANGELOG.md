@@ -59,6 +59,11 @@ of every release, and in the [README](README.md#updating).
   choices changed** by whoever was at the screen: where its Telegram
   messages go, its name, and its own Home Assistant token. A locked profile
   now changes nothing until its PIN is given.
+- **A profile locked on a shared screen still told who it was.** Anyone who
+  copied a locked sign-in from the screen could read that person's Telegram
+  chat, their Home Assistant person, their voice and language, and a guest's
+  pass (its hours, end and what it opens). A locked sign-in now says only
+  who it is and whether it has a PIN, until the PIN is given.
 - **Any family admin could sign in as the person who set up the family,**
   and so act as the owner, with their memory, mail and calendar: by signing
   a screen in as them, making them a new passkey link, clearing their PIN on
