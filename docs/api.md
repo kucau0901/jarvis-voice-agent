@@ -425,7 +425,8 @@ and the runtime answers the pings itself.
 registers the browser, `DELETE` with `{"endpoint"}` removes it. Only the push
 services browsers use (Google, Apple, Mozilla, Microsoft) are accepted as
 endpoints. A tapped notification carries only the alert's id; the text is
-`GET /api/v1/alerts?id=…` for about the last thirty alerts. On iPhone and
+`GET /api/v1/alerts?id=…` for about the last thirty alerts, each only to the
+person it was for (admins included). On iPhone and
 iPad, notifications need the app added to the Home Screen first.
 
 Every push is sent with `Urgency: high`, so Android delivers it to an idle

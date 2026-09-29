@@ -40,6 +40,11 @@ of every release, and in the [README](README.md#updating).
 
 ### Security
 
+- Settings → Alerts showed every admin the text of everyone's recent alerts,
+  direct messages between two other people included, and an admin could
+  open anyone's alert by its id, though each person's alerts are meant to be
+  theirs alone. An admin now sees when and how another person's alert went,
+  not what it said.
 - Settings → Google and Settings → Spotify showed, and **Test** used, the
   first person's linked account whoever was looking: Test told another admin
   the first person's Gmail address or Spotify name. Each admin now sees and

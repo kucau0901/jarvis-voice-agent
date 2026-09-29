@@ -18,6 +18,7 @@ import { MAX_PAYLOAD, generateVapid } from "../src/worker/lib/webpush.ts";
 import { b64u as b64url } from "../src/worker/lib/webauthn.ts";
 import { StateHost, DELIVERY_LOG_MAX, MAX_PUSH_SUBS, TICKET_MS } from "../src/worker/lib/state-host.ts";
 import { requiredScope } from "../src/worker/lib/scopes.ts";
+import { handleAlertApi, handleAlertsAdmin } from "../src/worker/routes/alerts.ts";
 import { validateChanges } from "../src/worker/lib/settings.ts";
 
 let pass = 0;
@@ -450,6 +451,38 @@ console.log("\nscopes");
   check("the overview is the owner's", requiredScope("/api/alerts", "GET") === "owner");
   check("so is removing a subscription", requiredScope("/api/alerts", "DELETE") === "owner");
   check("a lookalike path is the owner's", requiredScope("/api/v1/notifyx", "POST") === "owner");
+}
+
+console.log("\nan admin sees that other people's alerts went, not what they said");
+{
+  const mk = (id: string, text: string, forWhom?: string) => ({
+    alert: { id, at: 1_000, title: "Jarvis", text, speak: false, urgent: false, source: "chat", ...(forWhom ? { for: forWhom } : {}) },
+    attempts: [{ channel: "push", ok: true, detail: "1 of 1 device accepted" }],
+    deliveredBy: "push",
+  });
+  const recent = [mk("a_sara", "Sara: the spare key is under the mat", "u_sara"), mk("a_adam", "Adam: pick me up at 5", "u_adam"), mk("a_first", "Your parcel is at the door")];
+  const stub = {
+    listPushSubs: async () => [],
+    liveClients: async () => [],
+    deliveries: async () => recent,
+    findAlert: async (id: string) => recent.find((d) => d.alert.id === id)?.alert ?? null,
+  };
+  const env = { STATE: { idFromName: () => "jarvis", get: () => stub } };
+  const overview = async (person?: string) =>
+    ((await (await handleAlertsAdmin(new Request("https://j.test/api/alerts"), { ...env, JARVIS_PERSON: person } as never)).json()) as {
+      recent: { alert: { id: string; text?: string }; hidden?: boolean; deliveredBy: string }[];
+    }).recent;
+  const asSara = await overview("u_sara");
+  check("an admin who is a member: her own in full", asSara.find((d) => d.alert.id === "a_sara")?.alert.text === "Sara: the spare key is under the mat", asSara);
+  check("another member's: when and how, not what", asSara.find((d) => d.alert.id === "a_adam")?.hidden === true && asSara.find((d) => d.alert.id === "a_adam")?.alert.text === undefined && asSara.find((d) => d.alert.id === "a_adam")?.deliveredBy === "push", asSara);
+  check("the first person's: not hers to read either", asSara.find((d) => d.alert.id === "a_first")?.alert.text === undefined, asSara);
+  const asFirst = await overview(undefined);
+  check("the first person reads theirs, and not the members'", asFirst.find((d) => d.alert.id === "a_first")?.alert.text === "Your parcel is at the door" && asFirst.every((d) => d.alert.id === "a_first" || d.hidden === true), asFirst);
+
+  const admin = { kind: "member", id: "u_sara", name: "Sara", scopes: ["*"], role: "admin", space: "s_fam", session: "x_1" } as never;
+  const open = async (id: string) => (await handleAlertApi(new Request(`https://j.test/api/v1/alerts?id=${id}`), { ...env, JARVIS_PERSON: "u_sara" } as never, new URL(`https://j.test/api/v1/alerts?id=${id}`), admin))!.status;
+  check("an admin opens her own alert by its id", (await open("a_sara")) === 200);
+  check("but not another person's, admin or not", (await open("a_adam")) === 404 && (await open("a_first")) === 404);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

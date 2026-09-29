@@ -16,7 +16,9 @@ interface Overview {
   push: { id: string; label: string; who: string; service: string; createdAt: number; okAt?: number; failures: number }[];
   live: { who: string; label: string; visible: boolean; since: number }[];
   recent: {
-    alert: { id: string; at: number; title: string; text: string; source: string };
+    /** Someone else's (an admin sees that it went, not what it said): no title or text. */
+    alert: { id: string; at: number; title?: string; text?: string; source: string };
+    hidden?: boolean;
     attempts: { channel: string; ok: boolean; detail: string }[];
     deliveredBy: string | null;
   }[];
@@ -126,7 +128,8 @@ export class AlertsPanel {
     out.push(el("h4", "", "Recent alerts"));
     out.push(list(o.recent.slice(0, 5), "None yet. Press Test below to send one.", (d) => {
       const li = el("li", "");
-      const text = d.alert.text.length > 70 ? d.alert.text.slice(0, 70) + "…" : d.alert.text;
+      const said = d.alert.text ?? "";
+      const text = d.hidden ? "someone else's, not shown" : said.length > 70 ? said.slice(0, 70) + "…" : said;
       add(
         li,
         el("span", "", `${time(d.alert.at)} · ${text}`),

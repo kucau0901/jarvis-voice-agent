@@ -1,9 +1,10 @@
 import type { Env } from "../types.ts";
-import { isAdmin, whoOf, type Principal } from "../lib/auth.ts";
+import { whoOf, type Principal } from "../lib/auth.ts";
 import { err, json, publicOrigin, readObject } from "../lib/http.ts";
 import { stateFetch, stateStub } from "../lib/state-client.ts";
 import { deliver, makeAlert, parseOrder } from "../lib/alerts.ts";
 import { cleanLabel } from "../lib/live.ts";
+import { OWNER } from "../lib/context.ts";
 import { TICKET_MS, TICKET_SHAPE } from "../lib/state-host.ts";
 import { pushEndpointAllowed } from "../lib/webpush.ts";
 
@@ -129,8 +130,8 @@ export async function handleAlertApi(
   if (req.method !== "GET") return err(405, "method not allowed");
   const id = url.searchParams.get("id") ?? "";
   const found = id ? await state.findAlert(id) : null;
-  // Someone's own alerts only; an admin (and the owner key) may open anyone's.
-  const alert = found && (isAdmin(principal) || (found.for ?? "owner") === (env.JARVIS_PERSON ?? "owner")) ? found : null;
+  // Someone's own alerts only, admins included: each person's are theirs alone (docs/family.md).
+  const alert = found && (found.for ?? OWNER) === (env.JARVIS_PERSON ?? OWNER) ? found : null;
   return alert ? json({ alert }) : err(404, "no such recent alert");
 }
 
@@ -157,6 +158,12 @@ export async function handleAlertsAdmin(req: Request, env: Env): Promise<Respons
       createdAt: s.createdAt, okAt: s.okAt, failures: s.failures,
     })),
     live,
-    recent: deliveries.slice(0, 10),
+    // Each person's alerts are theirs alone, admins included (docs/family.md): someone
+    // else's shows when and how it went, not what it said.
+    recent: deliveries.slice(0, 10).map((d) =>
+      (d.alert.for ?? OWNER) === (env.JARVIS_PERSON ?? OWNER)
+        ? d
+        : { ...d, alert: { id: d.alert.id, at: d.alert.at, source: d.alert.source, for: d.alert.for }, hidden: true },
+    ),
   });
 }
