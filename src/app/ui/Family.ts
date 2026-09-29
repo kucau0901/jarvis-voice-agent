@@ -230,6 +230,8 @@ export class Family {
     }
     const roles = data.roles ?? [];
     const scopes = (data.scopes ?? []).filter((s) => s !== "*");
+    // A screen as the person who set up the family is the owner key's to sign in, or theirs.
+    const pairable = data.members.filter((m) => !m.first || m.you || me.owner);
     // Chores ride on the family's messages: not for a guest.
     const talks = !me.scopes || me.scopes.includes("*") || me.scopes.includes("chat");
 
@@ -289,7 +291,7 @@ export class Family {
         <h3>Sign in another screen</h3>
         <p class="note">Is the car, a tablet or another screen showing a code? Type it here, and that screen signs in.</p>
         <input type="text" class="f-code" maxlength="7" placeholder="ABC DEF" autocapitalize="characters" autocomplete="off">
-        ${admin && data.members.length > 1 ? `<select class="f-for">${data.members
+        ${admin && pairable.length > 1 ? `<select class="f-for">${pairable
           .map((m) => `<option value="${esc(m.id)}"${m.you ? " selected" : ""}>as ${esc(m.you ? "me" : m.name)}</option>`)
           .join("")}</select>` : ""}
         <div class="rowbtns"><button class="primary f-pair">Sign it in</button></div>
@@ -361,6 +363,8 @@ export class Family {
       return;
     }
     // An admin: a section for each, with what they can reach and their limits.
+    // The first person's way back in (a passkey link, their PIN) is the owner key's (routes/hub.ts).
+    const ownerKey = !!this.me?.owner;
     box.innerHTML = members
       .map(
         (m) => `
@@ -383,7 +387,8 @@ export class Family {
           <h4>Getting home</h4>
           <div class="fieldfoot"><input type="text" class="m-presence" maxlength="60" placeholder="Home Assistant person, for “when home”: person.name" value="${esc(m.presence ?? "")}"><button class="m-psave">Save</button></div>
           ${!m.you
-            ? `<div class="rowbtns"><button class="m-link">New passkey link</button>${m.hasPin ? `<button class="m-clearpin">Clear their PIN</button>` : ""}<button class="m-remove">Remove</button></div>
+            ? `${m.first && !ownerKey ? `<p class="note">A new passkey link or PIN for them needs the owner key.</p>` : ""}
+               <div class="rowbtns">${!m.first || ownerKey ? `<button class="m-link">New passkey link</button>${m.hasPin ? `<button class="m-clearpin">Clear their PIN</button>` : ""}` : ""}<button class="m-remove">Remove</button></div>
                <div class="reveal"></div>`
             : ""}
         </section>`,

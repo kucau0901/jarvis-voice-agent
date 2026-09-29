@@ -391,6 +391,10 @@ export async function handleHub(req: Request, env: Env, principal: Principal): P
 
   if (!space) return err(409, "there is no family yet: set one up with the owner key first");
 
+  // The first person is who the owner key acts as (lib/auth.ts): a way in as them (a screen, a
+  // passkey, a cleared PIN) comes from the owner key or from them, never from another admin.
+  const ownerKeyOnly = async (user: string) => principal.kind !== "owner" && user !== me?.id && user === (await hub.firstPerson());
+
   if (p === "/api/hub/members") {
     if (m === "GET") {
       const first = await hub.firstPerson();
@@ -423,6 +427,7 @@ export async function handleHub(req: Request, env: Env, principal: Principal): P
     if (m === "PATCH" && b.clearPin === true) {
       // A forgotten PIN: the admin takes it off, and the member sets a new one.
       if (!(await hub.member(space, user))) return err(400, "not a member");
+      if (await ownerKeyOnly(user)) return err(403, "only the owner key can clear the PIN of the person who set up the family");
       const r = await hub.setPin(user, null);
       return r === true ? json({ ok: true }) : err(400, r.error);
     }
@@ -454,6 +459,7 @@ export async function handleHub(req: Request, env: Env, principal: Principal): P
     if (!admin) return err(403, "only an admin can invite");
     if (m === "POST") {
       const by = me?.id ?? "owner";
+      if (str(b.user) && (await ownerKeyOnly(str(b.user)))) return err(403, "only the owner key can make a passkey link for the person who set up the family");
       const r = await hub.createInvite(space, { role: b.role, name: b.name, user: str(b.user) || undefined, access: b.access }, by, now);
       if ("error" in r) return err(400, r.error);
       const origin = publicOrigin(env, url.origin);
@@ -470,10 +476,11 @@ export async function handleHub(req: Request, env: Env, principal: Principal): P
   }
 
   if (p === "/api/hub/pair" && m === "POST") {
-    // For yourself; an admin (or the owner key) may pair a screen for any member.
+    // For yourself; an admin (or the owner key) may pair a screen for any member but the first person.
     const forUser = str(b.user) || me?.id;
     if (!forUser) return err(400, "whose screen is it?");
     if (forUser !== me?.id && !admin) return err(403, "only an admin can pair a screen for someone else");
+    if (await ownerKeyOnly(forUser)) return err(403, "only the owner key can pair a screen for the person who set up the family");
     const r = await hub.approvePairing(b.code, { user: forUser, space }, me?.id ?? "owner", now);
     return "error" in r ? err(400, r.error) : json(r);
   }

@@ -30,6 +30,13 @@ of every release, and in the [README](README.md#updating).
   or `/api/mcp/call`. Now only the owner (the owner key, or the person who
   set up the family) can send one to an address it is not already sent to;
   other admins can still rename, turn off or remove servers using one.
+- **Any family admin could sign in as the person who set up the family,**
+  and so act as the owner, with their memory, mail and calendar: by signing
+  a screen in as them, making them a new passkey link, clearing their PIN on
+  a shared screen, or making a device for them. Now only the owner key, or
+  that person, can do these for them. Admins can still do them for everyone
+  else, to get someone back in, and Sharing Jarvis with your family now says
+  that plainly.
 
 ### Changed
 
