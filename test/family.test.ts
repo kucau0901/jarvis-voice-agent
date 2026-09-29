@@ -299,7 +299,7 @@ console.log("\ntheir own Home Assistant token: kept for the address it was check
       body: body === undefined ? undefined : JSON.stringify(body),
     });
     const res = await handleHub(req, { ...env, HA_BASE_URL: base } as never, who);
-    return { status: res.status, body: (await res.json()) as Record<string, any> };
+    return { status: res.status, body: (await res.json()) as Record<string, unknown> };
   };
   const id = admin.kind === "member" ? admin.id : "";
 
