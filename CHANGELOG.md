@@ -17,6 +17,16 @@ of every release, and in the [README](README.md#updating).
 
 ## [Unreleased]
 
+### Security
+
+- **A token pasted into an MCP server's header could be sent to another
+  address.** Any family admin could keep the server's name, give it a new
+  URL, and press **Test** or **Save**: the saved token went to the new
+  address. A saved token is now only sent to the address it was saved for:
+  a server moved to another host needs its token typed again, and Settings
+  says so. Moving it to another path on the same host keeps the token.
+  A header written as `${NAME}` works as before.
+
 ### Changed
 
 - **Live now closes after 30 seconds of quiet,** instead of two minutes after

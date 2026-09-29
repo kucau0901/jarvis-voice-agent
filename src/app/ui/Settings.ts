@@ -646,7 +646,12 @@ export class Settings {
         body: JSON.stringify({ servers: payload }),
       });
       if (!res.ok) throw new Error(`server said ${res.status}`);
+      const { retype } = (await res.json()) as { retype?: string[] };
       await this.loadMcp();
+      // A token stays with the host it was saved for (lib/mcp-config.ts).
+      if (retype?.length) {
+        this.msg(`Saved, but not the token for ${retype.join(", ")}: a saved token is only sent to the address it was saved for, so type it again for the new one.`, true);
+      }
     } catch (e) {
       this.msg(e instanceof Error ? e.message : String(e), true);
     }

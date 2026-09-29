@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { MASK, expandHeaderTemplates, expandTemplate, expandUrlTemplate, maskForUi, resolveConfigured, restoreMasked, sane, unexpand } from "../src/worker/lib/mcp-config.ts";
+import { MASK, expandHeaderTemplates, expandTemplate, expandUrlTemplate, leftBehind, maskForUi, resolveConfigured, restoreMasked, sane, unexpand } from "../src/worker/lib/mcp-config.ts";
 
 let pass = 0;
 let fail = 0;
@@ -116,11 +116,14 @@ console.log("\na pasted token survives a save from the panel");
     { label: "weather", url: "https://example.com/mcp", headers: { Authorization: TOKEN, "X-Extra": "extra-secret-value" } },
     HA,
   ]);
+  // URLs filled as a call fills them, which is what config-store.ts passes in.
+  const filled = (u: string) => expandUrlTemplate(u, { HA_MCP_URL: "https://hooks.example/api/webhook/abcdef0123456789" });
+  const restore = (incoming: typeof stored) => restoreMasked(incoming, stored, filled);
 
   // Exactly what the panel holds and sends back: masked values, via JSON.
   const shown = JSON.parse(JSON.stringify(maskForUi(stored))) as typeof stored;
   check("the panel only ever sees the mask", shown[0]!.headers!.Authorization === MASK);
-  const saved = restoreMasked(sane(shown), stored);
+  const saved = restore(sane(shown));
   check("THE BUG: saving what the panel shows keeps the token", saved[0]!.headers!.Authorization === TOKEN, saved[0]);
   check("and every other masked header on that server", saved[0]!.headers!["X-Extra"] === "extra-secret-value");
   check("a literal mask is never what gets stored", !JSON.stringify(saved).includes(MASK));
@@ -128,33 +131,110 @@ console.log("\na pasted token survives a save from the panel");
   // What the panel used to send: the masked header filtered out entirely.
   const oldPayload = sane(shown.map((x) => ({ ...x, headers: {} })));
   check("(the old payload, with the header dropped, lost it — why the mask must travel)",
-    !restoreMasked(oldPayload, stored)[0]!.headers!.Authorization);
+    !restore(oldPayload)[0]!.headers!.Authorization);
 
   const edited = sane([{ ...shown[0]!, headers: { Authorization: "Bearer new-token-0000" } }]);
-  check("typing a new token replaces the old one", restoreMasked(edited, stored)[0]!.headers!.Authorization === "Bearer new-token-0000");
+  check("typing a new token replaces the old one", restore(edited)[0]!.headers!.Authorization === "Bearer new-token-0000");
 
   const cleared = sane([{ ...shown[0]!, headers: {} }]);
-  check("clearing the field removes the token", !("Authorization" in restoreMasked(cleared, stored)[0]!.headers!));
+  check("clearing the field removes the token", !("Authorization" in restore(cleared)[0]!.headers!));
 
   const renamed = sane([{ ...shown[0]!, label: "forecast" }]);
-  check("renaming a server keeps its token (matched by URL)", restoreMasked(renamed, stored)[0]!.headers!.Authorization === TOKEN);
+  check("renaming a server keeps its token (matched by URL)", restore(renamed)[0]!.headers!.Authorization === TOKEN);
 
-  const moved = sane([{ ...shown[0]!, url: "https://example.org/v2/mcp" }]);
-  check("moving it keeps its token (matched by label)", restoreMasked(moved, stored)[0]!.headers!.Authorization === TOKEN);
+  const moved = sane([{ ...shown[0]!, url: "https://example.com/v2/mcp" }]);
+  check("moving it within its host keeps its token (matched by label)", restore(moved)[0]!.headers!.Authorization === TOKEN);
 
   const stranger = sane([{ label: "new", url: "https://new.example/mcp", headers: { Authorization: MASK } }]);
   check("a mask with nothing behind it is dropped, not stored",
-    !("Authorization" in restoreMasked(stranger, stored)[0]!.headers!));
+    !("Authorization" in restore(stranger)[0]!.headers!));
 
   const placeholder = sane([{ label: "p", url: "https://p.example/mcp", headers: { Authorization: "Bearer ${P_TOKEN}" } }]);
   check("a placeholder passes through untouched",
-    restoreMasked(placeholder, stored)[0]!.headers!.Authorization === "Bearer ${P_TOKEN}");
+    restore(placeholder)[0]!.headers!.Authorization === "Bearer ${P_TOKEN}");
 
   // Editing a DIFFERENT server must not cost this one its token either.
   const both = sane([shown[0]!, { ...HA, enabled: false }]);
-  check("editing another server leaves this one's token alone", restoreMasked(both, stored)[0]!.headers!.Authorization === TOKEN);
+  check("editing another server leaves this one's token alone", restore(both)[0]!.headers!.Authorization === TOKEN);
 
   check("the input list is not mutated", shown[0]!.headers!.Authorization === MASK);
+}
+
+console.log("\na pasted token stays with the host it was saved for");
+{
+  /*
+   * Every family admin can edit this list. Matched by label alone, the owner's
+   * server kept under its label with a new URL took its pasted token there.
+   */
+  const env = { HA_MCP_URL: "https://hooks.example/api/webhook/abcdef0123456789", OTHER_MCP_URL: "https://evil.example/mcp" };
+  const filled = (u: string) => expandUrlTemplate(u, env);
+  const stored = sane([
+    { label: "home", url: "https://ha.example.com/api/mcp", headers: { Authorization: "Bearer literal-token" } },
+    { label: "hook", url: "${HA_MCP_URL}", headers: { "X-Key": "hook-key-0123456789" } },
+  ]);
+  const aim = (label: string, url: string, header = "Authorization", fill = filled) => {
+    const incoming = sane([{ label, url, headers: { [header]: MASK } }]);
+    const out = restoreMasked(incoming, stored, fill);
+    return { value: out[0]!.headers![header], retype: leftBehind(incoming, out) };
+  };
+
+  const evil = aim("home", "https://evil.example/mcp");
+  check("THE BUG: same label, another host: the token is not put back", evil.value === undefined, evil);
+  check("and the panel is told whose to ask for again", JSON.stringify(evil.retype) === '["home"]', evil.retype);
+  const along = aim("home", "https://ha.example.com/v2/mcp");
+  check("same label, same host: kept", along.value === "Bearer literal-token", along);
+  check("with nothing to type again", along.retype.length === 0, along.retype);
+  check("a look-alike host is another host", aim("home", "https://ha.example.com.evil.example/api/mcp").value === undefined);
+  check("so is one behind a user name", aim("home", "https://ha.example.com@evil.example/api/mcp").value === undefined);
+  check("so is another port", aim("home", "https://ha.example.com:8443/api/mcp").value === undefined);
+  check("a URL secret is compared once filled", aim("home", "${OTHER_MCP_URL}").value === undefined);
+
+  check("a server whose URL is a secret keeps its header at that URL", aim("hook", "${HA_MCP_URL}", "X-Key").value === "hook-key-0123456789");
+  check("even while the secret is unset: it is the same address",
+    aim("hook", "${HA_MCP_URL}", "X-Key", (u) => expandUrlTemplate(u, {})).value === "hook-key-0123456789");
+  check("and at the address the secret holds, written out", aim("hook", env.HA_MCP_URL, "X-Key").value === "hook-key-0123456789");
+  check("but not at another host", aim("hook", "https://evil.example/mcp", "X-Key").value === undefined);
+}
+
+console.log("\nthrough the route: an admin's moved server never sends the token");
+{
+  const { handleMcp } = await import("../src/worker/routes/mcp.ts");
+  const kv = new Map<string, string>([["config:mcp-servers", JSON.stringify({ servers: [
+    { label: "home", url: "https://ha.example.com/api/mcp", headers: { Authorization: "Bearer literal-token" } },
+  ] })]]);
+  const env = {
+    CONFIG: {
+      get: async (k: string, type?: string) => (kv.has(k) ? (type === "json" ? JSON.parse(kv.get(k)!) : kv.get(k)) : null),
+      put: async (k: string, v: string) => void kv.set(k, v),
+      delete: async (k: string) => void kv.delete(k),
+    },
+  };
+  const call = (method: string, path: string, body: unknown) =>
+    handleMcp(new Request(`https://jarvis.example${path}`, { method, body: JSON.stringify(body) }), env as never);
+  const moved = { label: "home", url: "https://evil.example/mcp", headers: { Authorization: MASK } };
+
+  const sent: { url: string; auth: string | null }[] = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    sent.push({ url: String(input instanceof Request ? input.url : input), auth: new Headers(init?.headers).get("authorization") });
+    throw new Error("offline");
+  }) as typeof fetch;
+  try {
+    const test = (await (await call("POST", "/api/mcp/test", moved)).json()) as { ok: boolean; error?: string };
+    check("Test: nothing carries the token", !sent.some((r) => r.auth?.includes("literal-token")), sent);
+    check("and the panel is told why", !test.ok && /type it again/.test(test.error ?? ""), test);
+
+    sent.length = 0;
+    await call("POST", "/api/mcp/test", { ...moved, url: "https://ha.example.com/api/mcp" });
+    check("Test at its own host still sends it there",
+      sent.length > 0 && sent.every((r) => new URL(r.url).host === "ha.example.com" && r.auth === "Bearer literal-token"), sent);
+
+    const put = (await (await call("PUT", "/api/mcp", { servers: [moved] })).json()) as { retype?: string[] };
+    check("Save: the token is not stored for the new host", !kv.get("config:mcp-servers")!.includes("literal-token"), kv.get("config:mcp-servers"));
+    check("and the reply names the server to type it again for", JSON.stringify(put.retype) === '["home"]', put);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
 }
 
 console.log("\n${NAME} never hands one of Jarvis's own keys to a server that is not already sent it");

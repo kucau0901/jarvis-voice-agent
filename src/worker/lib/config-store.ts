@@ -3,6 +3,7 @@ import seed from "../../../config/mcp-servers.json" with { type: "json" };
 import {
   expandHeaderTemplates,
   expandUrlTemplate,
+  leftBehind,
   maskForUi,
   resolveConfigured,
   restoreMasked,
@@ -71,18 +72,21 @@ async function readConfigured(env: Env): Promise<McpServerConfig[]> {
 /**
  * Header values for a Test from the panel, with any masked one filled from
  * the stored server — the panel cannot send a secret it was never given.
+ * `null` when one cannot be: the server has moved to another host, and its
+ * token is not sent there until it is typed again (mcp-config.ts restoreMasked()).
  */
 export async function headersForTest(
   env: Env,
   server: { label?: unknown; url: string; headers?: unknown },
-): Promise<Record<string, string>> {
+): Promise<Record<string, string> | null> {
   const headers =
     server.headers && typeof server.headers === "object"
       ? (server.headers as Record<string, string>)
       : {};
   const label = typeof server.label === "string" ? server.label.trim() : "";
-  const [restored] = restoreMasked([{ label, url: server.url, headers }], await readConfigured(env));
-  return restored!.headers ?? {};
+  const incoming = [{ label, url: server.url, headers }];
+  const restored = restoreMasked(incoming, await readConfigured(env), (u) => expandUrl(u, env));
+  return leftBehind(incoming, restored).length ? null : restored[0]!.headers ?? {};
 }
 
 /**
@@ -96,10 +100,12 @@ export async function readServersForUi(
   return { servers: maskForUi(servers), source };
 }
 
-export async function writeServers(env: Env, raw: unknown): Promise<McpServerConfig[]> {
+/** Saves the list; `retype` names the servers whose token stayed at their old host. */
+export async function writeServers(env: Env, raw: unknown): Promise<{ saved: McpServerConfig[]; retype: string[] }> {
   // Against what is in force, not merely what is saved: when the panel is
   // showing the repo defaults, those are what its masks stand for.
-  const list = restoreMasked(sane(raw), await readConfigured(env));
-  await env.CONFIG.put(KV_KEY, JSON.stringify({ servers: list }));
-  return list;
+  const incoming = sane(raw);
+  const saved = restoreMasked(incoming, await readConfigured(env), (u) => expandUrl(u, env));
+  await env.CONFIG.put(KV_KEY, JSON.stringify({ servers: saved }));
+  return { saved, retype: leftBehind(incoming, saved) };
 }

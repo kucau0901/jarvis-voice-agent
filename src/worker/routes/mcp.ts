@@ -4,6 +4,9 @@ import { readServersForUi, writeServers, expand, expandUrl, headersForTest } fro
 import { MASK, unexpand } from "../lib/mcp-config.ts";
 import { mcpTools } from "../tools/mcp.ts";
 
+/** Why a moved server's Test is not run: its saved token stays with its old host. */
+const RETYPE = "a saved token is only sent to the address it was saved for: type it again to use it at this one";
+
 /** GET/PUT the MCP server list, and a connectivity test for the settings UI. */
 export async function handleMcp(req: Request, env: Env): Promise<Response> {
   const url = new URL(req.url);
@@ -31,6 +34,7 @@ export async function handleMcp(req: Request, env: Env): Promise<Response> {
     // leave it out and trust this route to "use the stored one", which it never
     // did — so Test on a server with a pasted token always answered 401.
     const stored = await headersForTest(env, { label: body.label, url: body.url, headers: body.headers });
+    if (!stored) return json({ ok: false, error: RETYPE });
     const headers = expand(stored, env, target);
     const result = await probe(target, headers);
     // Nothing secret goes back to the panel in an error: not the expanded URL,
@@ -114,12 +118,12 @@ export async function handleMcp(req: Request, env: Env): Promise<Response> {
     }
     // null is JSON too, and the rest reads fields off it.
     if (body === null || typeof body !== "object") return err(400, "body must be a JSON object");
-    const saved = await writeServers(env, body.servers);
+    const { saved, retype } = await writeServers(env, body.servers);
     // Stale catalogs would mask a server that just changed.
     await Promise.all(
       saved.map((s) => env.CONFIG.delete(`mcp:catalog:${s.label}`).catch(() => {})),
     );
-    return json({ ok: true, servers: saved.length });
+    return json({ ok: true, servers: saved.length, retype });
   }
 
   return err(405, "method not allowed");

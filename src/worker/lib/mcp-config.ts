@@ -210,16 +210,26 @@ export function maskForUi(list: McpServerConfig[]): McpServerConfig[] {
  * and this restores it from what is in force. A header the user cleared is
  * absent rather than masked, so removing one still works.
  *
- * Matched by label, then by URL, so renaming a server or moving it keeps its
- * token; changing both at once is a new server as far as this can tell, and
- * the mask is dropped rather than stored as a literal "***".
+ * Matched by label, then by URL, so renaming a server keeps its token. But a
+ * token is put back only for the address it was saved for: every family admin
+ * can edit this list, and a server kept under its label with a new URL must
+ * not carry the owner's token to that URL's host — the rule settings.ts
+ * guarded() keeps for Jarvis's own keys. So the URLs, filled by `expandUrl` as
+ * a call would fill them, must share an origin: a server moved within its host
+ * keeps its token, one moved to another host needs it typed again (the panel
+ * is told which, by `leftBehind`). Where nothing matches, the mask is dropped
+ * rather than stored as a literal "***".
  */
 export function restoreMasked(
   incoming: McpServerConfig[],
   current: McpServerConfig[],
+  expandUrl: (url: string) => string,
 ): McpServerConfig[] {
+  const at = (url: string) => originOf(expandUrl(url));
   return incoming.map((s) => {
-    const was = current.find((c) => c.label === s.label) ?? current.find((c) => c.url === s.url);
+    const match = current.find((c) => c.label === s.label) ?? current.find((c) => c.url === s.url);
+    const here = at(s.url);
+    const was = match && (match.url === s.url || (here !== null && at(match.url) === here)) ? match : undefined;
     const headers: Record<string, string> = {};
     for (const [k, v] of Object.entries(s.headers ?? {})) {
       if (v !== MASK) {
@@ -231,4 +241,11 @@ export function restoreMasked(
     }
     return { ...s, headers };
   });
+}
+
+/** The labels of servers sent with a mask that `restoreMasked` did not fill. */
+export function leftBehind(incoming: McpServerConfig[], restored: McpServerConfig[]): string[] {
+  return incoming
+    .filter((s, i) => Object.entries(s.headers ?? {}).some(([k, v]) => v === MASK && !(k in (restored[i]?.headers ?? {}))))
+    .map((s) => s.label);
 }
