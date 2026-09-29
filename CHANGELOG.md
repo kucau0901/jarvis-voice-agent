@@ -17,7 +17,23 @@ of every release, and in the [README](README.md#updating).
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-09-29
+
 ### Security
+
+- **Since 2.0.0, with a family, each person's notifications also reached
+  everyone else's browsers and phones** where notifications were on:
+  reminders, notes sent to a phone, finished jobs and answers from Hermes,
+  family chat messages (direct ones between two other people included),
+  passed-on messages and their answers, routines and leave-time warnings.
+  Quiet hours did not stop other people's. Each person's now reach only their
+  own devices; open Jarvis screens, and each member's own Telegram chat,
+  already went only to them. Notifications already delivered stay where they
+  arrived, and a phone that was off may still receive one for up to a day.
+  An alert raised with the owner key or the first person's device (Home
+  Assistant calling `/api/v1/notify`, for one) now reaches only the first
+  person's devices; to tell the whole house, use Home Assistant's notify or
+  ntfy.
 
 - Signing out did not stop that person's notifications on that browser:
   whoever used it next still got them, and signing out a lost or lent
@@ -38,19 +54,6 @@ of every release, and in the [README](README.md#updating).
   the first person's Gmail address or Spotify name. Each admin now sees and
   tests their own. And changing the Google or Spotify app in Settings now
   unlinks everyone's accounts, not only the first person's.
-- **Since 2.0.0, with a family, each person's notifications also reached
-  everyone else's browsers and phones** where notifications were on:
-  reminders, notes sent to a phone, finished jobs and answers from Hermes,
-  family chat messages (direct ones between two other people included),
-  passed-on messages and their answers, routines and leave-time warnings.
-  Quiet hours did not stop other people's. Each person's now reach only their
-  own devices; open Jarvis screens, and each member's own Telegram chat,
-  already went only to them. Notifications already delivered stay where they
-  arrived, and a phone that was off may still receive one for up to a day.
-  An alert raised with the owner key or the first person's device (Home
-  Assistant calling `/api/v1/notify`, for one) now reaches only the first
-  person's devices; to tell the whole house, use Home Assistant's notify or
-  ntfy.
 
 ### Added
 
@@ -521,7 +524,8 @@ updating to this one needs nothing doing.
 - A camera picture in Type mode was drawn under the chat; the chat now keeps
   its newest message in view above the phone's keyboard.
 
-[Unreleased]: https://github.com/kucau0901/jarvis-voice-agent/compare/v2.1.0...HEAD
+[Unreleased]: https://github.com/kucau0901/jarvis-voice-agent/compare/v2.2.0...HEAD
+[2.2.0]: https://github.com/kucau0901/jarvis-voice-agent/compare/v2.1.0...v2.2.0
 [2.1.0]: https://github.com/kucau0901/jarvis-voice-agent/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/kucau0901/jarvis-voice-agent/compare/v1.1.0...v2.0.0
 [1.1.0]: https://github.com/kucau0901/jarvis-voice-agent/compare/v1.0.0...v1.1.0
