@@ -29,11 +29,13 @@ of every release, and in the [README](README.md#updating).
 - **A family admin could have another person's own Home Assistant token sent
   to a server of their own** by changing the Home Assistant Base URL: a token
   given in Family → Home went to whatever address the house had. Each
-  person's own token is now used only at the address it was checked with.
-  When the address changes (moving house, say), theirs is no longer used,
-  and Family → Home asks them to enter it again. Tokens given before this
-  version are tied to no address, so each person who gave one enters it once
-  more.
+  person's own token is now used only at the address it was checked with,
+  and Family → Home shows that address before a token is given: it is sent
+  only to the address shown. When the address changes (moving house, say),
+  theirs is no longer used, and Family → Home asks them to enter it again,
+  showing the new address. Only people who may use the house see the
+  address or give a token. Tokens given before this version are tied to no
+  address, so each person who gave one enters it once more.
 
 ### Changed
 

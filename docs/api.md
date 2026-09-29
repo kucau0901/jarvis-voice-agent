@@ -767,13 +767,17 @@ starts it again. Routines take `passTo` (names), `passKind`, `points` and
 **Devices are people's.** `/api/v1/devices` is for people, never a device: a
 member lists and manages their own, an admin everyone's (each with its
 `ownerName`), and `POST` may name an `owner` (a member's id). A member's
-device acts as them, with the scopes it was given narrowed to theirs. `PATCH /api/hub/me {haToken}`
+device acts as them, with the scopes it was given narrowed to theirs. `PATCH /api/hub/me {haToken, haBase}`
 sets a person's own Home Assistant token (checked with the house first); an
-empty one removes it. It is used only at the Home Assistant address it was
-checked with: `GET /api/hub/me` says `haToken: true` while it is in use, and
-`haTokenStale: true` when it was not checked with the current address (the
-address changed, or it was saved before addresses were kept) and must be
-entered again.
+empty one removes it. `haBase` is the address they were shown: `haAddress` in
+`GET /api/hub/me`, the Home Assistant address's origin (so a look-alike name
+shows in its `xn--` form), given only to people with `home`, who alone may set
+one, and not to a locked profile. If it is no longer the house's address, the
+answer is `409` with the new `haAddress`, and the token is sent nowhere. It is
+used only at the address it was checked with: `GET /api/hub/me` says
+`haToken: true` while it is in use, and `haTokenStale: true` when it was not
+checked with the current address (the address changed, or it was saved before
+addresses were kept) and must be entered again.
 
 ## Not part of this contract
 

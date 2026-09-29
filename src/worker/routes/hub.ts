@@ -7,12 +7,13 @@ import { usePass } from "../tools/pass.ts";
 import { haConfig, haUrl, passThings } from "../lib/ha.ts";
 import { passActions } from "../lib/access.ts";
 import { burst } from "../lib/limits.ts";
-import { SCOPES, type Grant } from "../lib/scopes.ts";
+import { SCOPES, allows, type Grant } from "../lib/scopes.ts";
 import { ROLES, ROLE_SCOPES, type HubApi, type Prefs } from "../lib/hub.ts";
 import { forgetPerson, forgetSessions, hubStub } from "../lib/hub-client.ts";
 import * as devices from "../lib/devices.ts";
 import { sha256Hex } from "../lib/devices.ts";
 import { deviceWho, haTokenFits } from "../lib/context.ts";
+import { originOf } from "../lib/mcp-config.ts";
 import { stateStub } from "../lib/state-client.ts";
 import {
   creationOptions,
@@ -256,6 +257,9 @@ export async function handleHub(req: Request, env: Env, principal: Principal): P
         const base = env.HA_BASE_URL ?? "";
         if (token) {
           if (!base) return err(400, "the family's Home Assistant address is not set up yet");
+          if (!allows(grantsOf(principal), "home")) return err(403, "your own Home Assistant token is for those who may use the house");
+          // Sent only to where they were shown (haAddress below): an admin may have changed it since.
+          if (b.haBase !== originOf(base)) return err(409, "Home Assistant's address has changed: check it, then save again", { haAddress: originOf(base) });
           const ok = await fetch(haUrl(base, "/api/"), { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(10_000) })
             .then((r) => r.ok)
             .catch(() => false);
@@ -294,6 +298,9 @@ export async function handleHub(req: Request, env: Env, principal: Principal): P
       // Their own Home Assistant token: in use, or given for an address the house no longer has (enter it again).
       haToken: haTokenFits(haFor, env),
       haTokenStale: haFor !== null && !haTokenFits(haFor, env),
+      // Where their own token is checked and sent, to see before giving it: for those who may use the house.
+      // Its origin, as fetch reaches it, so a look-alike name shows as the xn-- one it is.
+      haAddress: me && !me.locked && allows(grantsOf(principal), "home") ? originOf(env.HA_BASE_URL) : null,
       // What this person may reach, so the app offers only that.
       scopes: me?.locked ? [] : grantsOf(principal),
       session: me ? me.session : null,

@@ -129,7 +129,8 @@ export function fillable(env: Record<string, unknown>, url: string | null): Reco
   return out;
 }
 
-function originOf(url: unknown): string | null {
+/** An address's origin as fetch reaches it (a look-alike name in its xn-- form, no user part), or null. */
+export function originOf(url: unknown): string | null {
   if (typeof url !== "string" || !url) return null;
   try {
     return new URL(url).origin;

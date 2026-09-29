@@ -34,6 +34,7 @@ interface Me {
   prefs?: Prefs;
   haToken?: boolean;
   haTokenStale?: boolean;
+  haAddress?: string | null;
   access?: (Omit<Access, "allow"> & { allow?: { entity: string; label: string; actions: string[] }[] }) | null;
 }
 
@@ -325,7 +326,7 @@ export class Family {
       </div>`;
 
     const mine = this.body.querySelector<HTMLElement>(".f-mine");
-    if (mine) new Mine(this.key, mine, me.prefs ?? {}, me.haToken ? "yours" : me.haTokenStale ? "again" : "", me.scopes).render();
+    if (mine) new Mine(this.key, mine, me.prefs ?? {}, me.haToken ? "yours" : me.haTokenStale ? "again" : "", me.scopes, me.haAddress ?? null).render();
     this.body.querySelector(".f-ilbox")?.appendChild(limitsForm(null, () => this.houseThings()));
     this.renderPass(me);
     void this.renderPoints(admin);
