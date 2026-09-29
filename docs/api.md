@@ -702,7 +702,7 @@ Signed in (a member or the owner key; never a device):
 | `PATCH /api/hub/members` | admin | `{user, clearPin: true}`: clear a forgotten PIN |
 
 A locked session is answered `423` with `{locked: true}` everywhere except
-`/api/hub/me`, `/api/hub/unlock` and `/api/hub/signout`. Five wrong PINs in a
+`GET /api/hub/me`, `/api/hub/unlock` and `/api/hub/signout`. Five wrong PINs in a
 row wait fifteen minutes. This is how a screen several people share (the
 family car) keeps each person's profile theirs.
 

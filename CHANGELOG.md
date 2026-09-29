@@ -36,6 +36,10 @@ of every release, and in the [README](README.md#updating).
   showing the new address. Only people who may use the house see the
   address or give a token. Tokens given before this version are tied to no
   address, so each person who gave one enters it once more.
+- **On a shared screen, a profile locked with a PIN could still have its own
+  choices changed** by whoever was at the screen: where its Telegram
+  messages go, its name, and its own Home Assistant token. A locked profile
+  now changes nothing until its PIN is given.
 
 ### Changed
 

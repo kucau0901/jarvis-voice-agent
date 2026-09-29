@@ -246,6 +246,11 @@ console.log("\na shared screen, with PINs");
   check("a locked session says so", (locked as { locked?: boolean }).locked === true);
   const me = await call("/api/hub/me", undefined, { principal: locked });
   check("and reaches nothing", me.body.locked === true && me.body.scopes.length === 0);
+  // Nor changes anything of hers from the shared screen: where her messages go, her name, her own Home Assistant token.
+  const nurId = (locked as { id: string }).id;
+  const changed = await call("/api/hub/me", { prefs: { telegram: "123456789" }, name: "Someone else", haToken: "" }, { method: "PATCH", principal: locked });
+  const kept = await people.personView(nurId);
+  check("nor changes her choices, her name or her token", changed.status === 423 && kept.prefs.telegram === undefined && kept.name === "Nur", { status: changed.status, kept });
   check("a wrong PIN is refused", (await withToken("/api/hub/unlock", { pin: "1357" })).status === 403);
   check("the right one unlocks her at once", (await withToken("/api/hub/unlock", { pin: "2468" })).status === 200 && !(await as() as { locked?: boolean }).locked);
   const clear = await call("/api/hub/members", { user: (await as() as { id: string }).id, clearPin: true }, { method: "PATCH", principal: admin });

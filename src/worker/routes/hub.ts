@@ -247,6 +247,8 @@ export async function handleHub(req: Request, env: Env, principal: Principal): P
   if (p === "/api/hub/me") {
     if (m === "PATCH") {
       if (!me) return err(400, "the owner key is not a person; sign in with a passkey to have a name");
+      // A locked profile may say who it is (index.ts LOCKED_MAY), not change anything: not where its messages go, nor its token.
+      if (me.locked) return err(423, "locked: enter this person's PIN", { locked: true });
       // Everything sent is kept, not only the first thing: so choices are checked before anything is.
       const rawPrefs = b.prefs === undefined ? undefined : ((b.prefs && typeof b.prefs === "object" ? b.prefs : {}) as Record<string, unknown>);
       const badPrefs = rawPrefs && prefsProblem(rawPrefs);
