@@ -25,11 +25,12 @@ const KV_KEY = "config:mcp-servers";
 
 /**
  * `${NAME}` in a header value is filled from Worker secrets, never stored
- * inline: for a server at `url` (expanded), and never with one of Jarvis's own
- * keys that is not already sent there (mcp-config.ts fillable()).
+ * inline: for a server whose URL is written as `template`, never with one of
+ * Jarvis's own keys that is not already sent there, and, when a setting decides
+ * that URL, with nothing of the server's own (mcp-config.ts expandHeaderTemplates()).
  */
-export function expand(headers: Record<string, string> | undefined, env: Env, url: string): Record<string, string> {
-  const out = expandHeaderTemplates(headers, env as unknown as Record<string, unknown>, url);
+export function expand(headers: Record<string, string> | undefined, env: Env, template: string): Record<string, string> {
+  const out = expandHeaderTemplates(headers, env as unknown as Record<string, unknown>, template);
   // Drop any header whose secret is missing, rather than sending "Bearer ".
   for (const [k, v] of Object.entries(out)) {
     if (/^\s*(Bearer|Basic)?\s*$/i.test(v)) delete out[k];
@@ -48,8 +49,7 @@ export async function loadServers(env: Env): Promise<McpServerConfig[]> {
 
   return configured
     .map((s) => {
-      const url = expandUrl(s.url, env);
-      return { ...s, url, headers: expand(s.headers, env, url) };
+      return { ...s, url: expandUrl(s.url, env), headers: expand(s.headers, env, s.url) };
     })
     // A server whose URL secret is unset would otherwise be called with a
     // half-expanded address.
@@ -73,8 +73,8 @@ async function readConfigured(env: Env): Promise<McpServerConfig[]> {
 /**
  * Header values for a Test from the panel, with any masked one filled from
  * the stored server — the panel cannot send a secret it was never given.
- * `null` when one cannot be: the server has a new address, and its
- * token is not sent there until it is typed again (mcp-config.ts restoreMasked()).
+ * `null` when one cannot be: the server has a new URL, and its token is
+ * not sent there until it is typed again (mcp-config.ts restoreMasked()).
  */
 export async function headersForTest(
   env: Env,
@@ -86,13 +86,13 @@ export async function headersForTest(
       : {};
   const label = typeof server.label === "string" ? server.label.trim() : "";
   const incoming = [{ label, url: server.url, headers }];
-  const restored = restoreMasked(incoming, await readConfigured(env), (u) => expandUrl(u, env));
+  const restored = restoreMasked(incoming, await readConfigured(env));
   return leftBehind(incoming, restored).length ? null : restored[0]!.headers ?? {};
 }
 
 /** Which of these servers would send a Worker secret somewhere new (mcp-config.ts aimedAnew()). */
 export async function aimingAnew(env: Env, servers: McpServerConfig[]): Promise<string[]> {
-  return aimedAnew(servers, await readConfigured(env), (u) => expandUrl(u, env));
+  return aimedAnew(servers, await readConfigured(env));
 }
 
 /**
@@ -111,7 +111,7 @@ export async function writeServers(env: Env, raw: unknown): Promise<{ saved: Mcp
   // Against what is in force, not merely what is saved: when the panel is
   // showing the repo defaults, those are what its masks stand for.
   const incoming = sane(raw);
-  const saved = restoreMasked(incoming, await readConfigured(env), (u) => expandUrl(u, env));
+  const saved = restoreMasked(incoming, await readConfigured(env));
   await env.CONFIG.put(KV_KEY, JSON.stringify({ servers: saved }));
   return { saved, retype: leftBehind(incoming, saved) };
 }

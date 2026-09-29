@@ -139,25 +139,66 @@ export function originOf(url: unknown): string | null {
   }
 }
 
+/** A Worker secret set for MCP servers: neither a setting nor one of Jarvis's own values. */
+const isMcpSecret = (name: string): boolean => !(name in NOT_SETTINGS) && !settingDef(name);
+
+/**
+ * Whether a server's address stays put until the owner redeploys: written out
+ * in full, or naming only Worker secrets. One that names a setting, such as
+ * the seeded `${HA_MCP_URL}`, points wherever whoever changes settings (any
+ * family admin) points it, the list untouched.
+ */
+function fixedAddress(template: string): boolean {
+  return [...template.matchAll(PLACEHOLDER)].every((m) => isMcpSecret(m[1]!));
+}
+
+/** `lookup` without the Worker secrets set for MCP servers. */
+function settingsOnly(lookup: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(lookup).filter(([name]) => !isMcpSecret(name)));
+}
+
 /**
  * A server's URL with its placeholders filled.
  *
  * A URL that is one placeholder and nothing else, such as the seeded Home
  * Assistant server's `${HA_MCP_URL}`, is filled from anything: a request to
  * an address tells that address nothing it does not know. Anything else only
- * from what `fillable` allows.
+ * from what `fillable` allows, and a Worker secret only into an address that
+ * stays put (`fixedAddress`).
  */
 export function expandUrlTemplate(template: string, env: Record<string, unknown>): string {
   const whole = /^\$\{[A-Z0-9_]+\}$/.test(template.trim());
-  return expandTemplate(template, whole ? env : fillable(env, null));
+  if (whole) return expandTemplate(template, env);
+  const lookup = fillable(env, null);
+  return expandTemplate(template, fixedAddress(template) ? lookup : settingsOnly(lookup));
 }
 
-/** Header values with their placeholders filled, for a server at `url` (already expanded). */
-export function expandHeaderTemplates(headers: Record<string, string> | undefined, env: Record<string, unknown>, url: string): Record<string, string> {
-  const lookup = fillable(env, url);
+/**
+ * Header values with their placeholders filled, for a server whose URL is
+ * written as `template`.
+ *
+ * A server whose address a setting decides gets no secret of its own: not a
+ * header typed in as-is, not a Worker secret. Checking where it pointed when
+ * the list was saved is not enough, since a setting can be changed later, so
+ * this is decided here, on every call, as settings.ts guarded() is. What such
+ * a server still gets is Jarvis's own keys that `fillable` allows, which keep
+ * to their own addresses.
+ */
+export function expandHeaderTemplates(headers: Record<string, string> | undefined, env: Record<string, unknown>, template: string): Record<string, string> {
+  const fixed = fixedAddress(template);
+  const lookup = fillable(env, expandUrlTemplate(template, env));
   const out: Record<string, string> = {};
-  for (const [k, v] of Object.entries(headers ?? {})) out[k] = expandTemplate(v, lookup);
+  for (const [k, v] of Object.entries(headers ?? {})) {
+    if (!fixed && !/\$\{/.test(v)) continue;
+    out[k] = expandTemplate(v, fixed ? lookup : settingsOnly(lookup));
+  }
   return out;
+}
+
+/** Whether `expandHeaderTemplates` withholds any of these headers from a server whose URL is written as `template`. */
+export function withheldFrom(template: string, headers: Record<string, string>): boolean {
+  return !fixedAddress(template) &&
+    Object.values(headers).some((v) => !/\$\{/.test(v) || [...v.matchAll(PLACEHOLDER)].some((m) => isMcpSecret(m[1]!)));
 }
 
 /**
@@ -212,24 +253,20 @@ export function maskForUi(list: McpServerConfig[]): McpServerConfig[] {
  * absent rather than masked, so removing one still works.
  *
  * Matched by label, then by URL, so renaming a server keeps its token. But a
- * token is put back only for the address it was saved for: every family admin
- * can edit this list, and a server kept under its label with a new URL must
- * not carry the owner's token there — the rule settings.ts guarded() keeps for
- * Jarvis's own keys. The whole address, filled by `expandUrl` as a call would
- * fill it, not only its host: a host can be shared, as Nabu Casa's webhook
- * host is by all its customers. So a server moved anywhere needs its token
- * typed again (the panel is told which, by `leftBehind`). Where nothing
- * matches, the mask is dropped rather than stored as a literal "***".
+ * token is put back only for the URL it was saved with, exactly as written:
+ * every family admin can edit this list, and a server kept under its label
+ * with a new URL must not carry the owner's token there, the rule settings.ts
+ * guarded() keeps for Jarvis's own keys. Not only the host, which can be
+ * shared (Nabu Casa's webhook host is all its customers'), and not where a
+ * new URL points today: a `${SETTING}` pointing at the old address now can be
+ * pointed elsewhere later. So a server given any new URL needs its token typed
+ * again (the panel is told which, by `leftBehind`). Where nothing matches,
+ * the mask is dropped rather than stored as a literal "***".
  */
-export function restoreMasked(
-  incoming: McpServerConfig[],
-  current: McpServerConfig[],
-  expandUrl: (url: string) => string,
-): McpServerConfig[] {
+export function restoreMasked(incoming: McpServerConfig[], current: McpServerConfig[]): McpServerConfig[] {
   return incoming.map((s) => {
     const match = current.find((c) => c.label === s.label) ?? current.find((c) => c.url === s.url);
-    const here = sentTo(s.url, expandUrl);
-    const was = match && (match.url === s.url || (here !== null && sentTo(match.url, expandUrl) === here)) ? match : undefined;
+    const was = match?.url === s.url ? match : undefined;
     const headers: Record<string, string> = {};
     for (const [k, v] of Object.entries(s.headers ?? {})) {
       if (v !== MASK) {
@@ -243,29 +280,22 @@ export function restoreMasked(
   });
 }
 
-/** Where a call to `url` goes: the address with its placeholders filled, or null if that is not an https one. */
-function sentTo(url: string, expandUrl: (url: string) => string): string | null {
-  const u = expandUrl(url);
-  return /^https:\/\//i.test(u) ? u : null;
-}
-
 /* ---------- Worker secrets set for MCP servers ---------------------------- */
 
 /**
- * Where a server sends each `${NAME}` that is a Worker secret set for MCP
- * servers rather than a setting (settings keep to their own addresses, by
- * `fillable`): "NAME address", for each one in its headers or inside its URL.
- * A URL that is one placeholder and nothing else is sent only to the address
- * it holds, so it is not counted.
+ * Where a server sends each Worker secret set for MCP servers (settings keep
+ * to their own addresses, by `fillable`): "NAME URL", for each one in its
+ * headers or inside its URL, the URL as written, for the reasons
+ * `restoreMasked` gives. A URL that is one placeholder and nothing else is
+ * sent only to the address it holds, so it is not counted.
  */
-function aimed(s: McpServerConfig, expandUrl: (url: string) => string): string[] {
-  const where = sentTo(s.url, expandUrl) ?? s.url;
+function aimed(s: McpServerConfig): string[] {
   const whole = /^\$\{[A-Z0-9_]+\}$/.test(s.url.trim());
   const text = [...Object.values(s.headers ?? {}), whole ? "" : s.url].join(" ");
   return [...text.matchAll(PLACEHOLDER)]
     .map((m) => m[1]!)
-    .filter((name) => !(name in NOT_SETTINGS) && !settingDef(name))
-    .map((name) => `${name} ${where}`);
+    .filter(isMcpSecret)
+    .map((name) => `${name} ${s.url}`);
 }
 
 /**
@@ -274,18 +304,14 @@ function aimed(s: McpServerConfig, expandUrl: (url: string) => string): string[]
  *
  * Such a secret was set with `wrangler secret put` by whoever deploys Jarvis,
  * and has no address of its own to keep to, while every family admin can edit
- * this list. So only the owner may aim one somewhere new (routes/mcp.ts),
- * anywhere else on the same host included (a host can be shared); any admin
- * may keep, rename, turn off or remove a server already using one. Removing
- * it first does not help: then nothing uses it.
+ * this list. So only the owner key may aim one somewhere new (routes/mcp.ts),
+ * anywhere else on the same host included; any admin may keep, rename, turn
+ * off or remove a server already using one. Removing it first does not help:
+ * then nothing uses it.
  */
-export function aimedAnew(
-  incoming: McpServerConfig[],
-  current: McpServerConfig[],
-  expandUrl: (url: string) => string,
-): string[] {
-  const known = new Set(current.flatMap((c) => aimed(c, expandUrl)));
-  return incoming.filter((s) => aimed(s, expandUrl).some((a) => !known.has(a))).map((s) => s.label);
+export function aimedAnew(incoming: McpServerConfig[], current: McpServerConfig[]): string[] {
+  const known = new Set(current.flatMap(aimed));
+  return incoming.filter((s) => aimed(s).some((a) => !known.has(a))).map((s) => s.label);
 }
 
 /** The labels of servers sent with a mask that `restoreMasked` did not fill. */

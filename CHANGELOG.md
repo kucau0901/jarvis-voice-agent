@@ -34,9 +34,15 @@ of every release, and in the [README](README.md#updating).
   says so.
 - Any family admin could also send a Worker secret set for an MCP server
   (written as `${NAME}`) to a server of their own, with **Test**, **Save**
-  or `/api/mcp/call`. Now only the owner (the owner key, or the person who
-  set up the family) can send one to an address it is not already sent to;
-  other admins can still rename, turn off or remove servers using one.
+  or `/api/mcp/call`. Now only the owner key can send one to an address it
+  is not already sent to; other admins can still rename, turn off or remove
+  servers using one.
+- And an admin could change the setting an MCP server's address names (the
+  Home Assistant MCP URL, for one) and have that server's token or Worker
+  secret sent to the new address. A server whose address is a setting is
+  now sent neither; Jarvis's own keys still reach it under their own rule.
+  If one of yours needs a token of its own, write its address out in full
+  in Settings → MCP servers, and type the token again.
 - **A family admin could have another person's own Home Assistant token sent
   to a server of their own** by changing the Home Assistant Base URL: a token
   given in Family → Home went to whatever address the house had. Each

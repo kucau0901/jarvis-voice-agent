@@ -1,14 +1,17 @@
 import type { Env } from "../types.ts";
 import { json, err, redact } from "../lib/http.ts";
 import { readServersForUi, writeServers, expand, expandUrl, headersForTest, aimingAnew } from "../lib/config-store.ts";
-import { MASK, sane, unexpand, type McpServerConfig } from "../lib/mcp-config.ts";
+import { MASK, sane, unexpand, withheldFrom, type McpServerConfig } from "../lib/mcp-config.ts";
 import { mcpTools } from "../tools/mcp.ts";
 
 /** Why a moved server's Test is not run: its saved token stays at its old address. */
 const RETYPE = "a saved token is only sent to the address it was saved for: type it again to use it at this one";
 
 /** Why an admin's change is refused: it sends a Worker secret somewhere new (lib/mcp-config.ts aimedAnew()). */
-const OWNER_ONLY = "only the person who set up the family can send a Worker secret to a new address";
+const OWNER_ONLY = "only the owner key can send a Worker secret to a new address";
+
+/** Why a Test is not run: the server's address is a setting (lib/mcp-config.ts expandHeaderTemplates()). */
+const NOT_OWN = "a server whose address is a setting is sent no token or Worker secret of its own: write its address out in full";
 
 /** A server as the panel's Test or /call sends it, for aimingAnew(). */
 const asServer = (label: unknown, url: string, headers: unknown): McpServerConfig => ({
@@ -19,8 +22,9 @@ const asServer = (label: unknown, url: string, headers: unknown): McpServerConfi
 
 /**
  * GET/PUT the MCP server list, and a connectivity test for the settings UI.
- * `owner`: the owner key or the person who set up the family, rather than
- * another admin.
+ * `owner`: the caller holds the owner key. Not the person who set up the
+ * family signed in as themselves: any admin can pair a screen or make a
+ * passkey link for them, so their session proves nothing here.
  */
 export async function handleMcp(req: Request, env: Env, owner: boolean): Promise<Response> {
   const url = new URL(req.url);
@@ -52,7 +56,8 @@ export async function handleMcp(req: Request, env: Env, owner: boolean): Promise
     // did — so Test on a server with a pasted token always answered 401.
     const stored = await headersForTest(env, { label: body.label, url: body.url, headers: body.headers });
     if (!stored) return json({ ok: false, error: RETYPE });
-    const headers = expand(stored, env, target);
+    if (withheldFrom(body.url, stored)) return json({ ok: false, error: NOT_OWN });
+    const headers = expand(stored, env, body.url);
     const result = await probe(target, headers);
     // Nothing secret goes back to the panel in an error: not the expanded URL,
     // which can be the credential itself, and not a header value this route

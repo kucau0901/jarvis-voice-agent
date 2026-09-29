@@ -505,12 +505,19 @@ OpenAI key, the owner key and the rest are filled in only for a server at an
 address that key is already sent to (the Home Assistant token for a server on
 the Home Assistant address), so whoever edits the list cannot aim one at a
 server of their own. A secret meant for an MCP server gets a name of its own,
-and only the owner (the owner key, or the person who set up the family) can
-send one to an address the list does not already send it to: any admin can
-edit the list, and such a secret has no address of its own to keep to. A
-token typed into a header as-is stays with the address it was typed for: a
-server given a new address needs it typed again. The whole address, not only
-its host, in both cases: a host can be shared, as Nabu Casa's webhook host is.
+and only the owner key can send one to a URL the list does not already send
+it to: any admin can edit the list, and such a secret has no address of its
+own to keep to. (Not the person who set up the family, signed in as
+themselves: any admin can pair a screen or make a passkey link for them.) A
+token typed into a header as-is stays with the URL it was typed for: a server
+given a new URL needs it typed again. The URL as written, in both cases: not
+only its host, which can be shared, as Nabu Casa's webhook host is, and not
+where a new URL points today. And a server whose address is a setting, such as
+the seeded `${HA_MCP_URL}`, is sent neither, whoever saved it: any admin can
+change a setting, the list untouched, so this is decided on every call, as
+`guarded()` is for settings. It still gets Jarvis's own keys under their own
+rule. A server that needs a token of its own has its address written out in
+full, or in a Worker secret.
 
 MCP tools are registered **non-strict**. Strict mode demands
 `additionalProperties: false` and a full `required` list on every nested object,

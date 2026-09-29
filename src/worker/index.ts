@@ -1,7 +1,7 @@
 import type { Env } from "./types.ts";
 import { err, json } from "./lib/http.ts";
 import { authorize, grantsOf, isAdmin, personOf, type Principal } from "./lib/auth.ts";
-import { OWNER, withPerson } from "./lib/context.ts";
+import { withPerson } from "./lib/context.ts";
 import { allowedNow } from "./lib/access.ts";
 import { localeOf } from "./lib/locale.ts";
 import { personView } from "./lib/hub-client.ts";
@@ -206,7 +206,7 @@ async function route(
     return (await handleFamily(req, env, ctx, principal))!;
   }
   if (url.pathname.startsWith("/api/hub/")) return await handleHub(req, env, principal);
-  if (url.pathname.startsWith("/api/mcp")) return await handleMcp(req, env, personOf(principal) === OWNER);
+  if (url.pathname.startsWith("/api/mcp")) return await handleMcp(req, env, principal.kind === "owner");
   if (url.pathname.startsWith("/api/memory")) return await handleMemory(req, env, grantsOf(principal), principal.kind === "device");
   if (url.pathname.startsWith("/api/spotify")) return await handleSpotify(req, env);
   if (url.pathname.startsWith("/api/google")) return await handleGoogle(req, env);
