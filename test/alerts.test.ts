@@ -326,7 +326,7 @@ console.log("\nstorage: notifications");
 {
   // Nobody has turned notifications on yet: nothing to send to, and no keys made to sign with.
   const empty = fakeStorage();
-  const none = await new StateHost(empty, {} as never).pushTargets();
+  const none = await new StateHost(empty, {} as never).pushTargets("owner");
   check("no browsers: no targets", none.subs.length === 0 && none.vapid.publicKey === "", none);
   check("and no key pair is made for them", (await empty.get("vapid:v1")) === undefined);
 }
@@ -349,8 +349,20 @@ console.log("\nstorage: notifications");
   check("capped", all.length === MAX_PUSH_SUBS, all.length);
   check("the stalest went first", !all.some((x) => x.id === a.id));
 
-  const t = await host.pushTargets();
+  const t = await host.pushTargets("owner");
   check("targets carry what sending needs, and the key", t.subs.length === MAX_PUSH_SUBS && !!t.vapid.privateJwk.d && !("who" in t.subs[0]!));
+
+  // Each person's own, and never anyone else's (state.ts once dropped whose they were).
+  const people = fakeStorage();
+  const book = new StateHost(people, {} as never);
+  for (const [n, who] of [["o", "owner"], ["g", "d_glasses"], ["s", "u_sara"], ["sp", "u_sara~d_phone"], ["a", "u_adam"]] as const) {
+    const sub = await browserSub(n, n);
+    await book.addPushSub({ endpoint: `https://fcm.googleapis.com/fcm/send/p-${n}`, p256dh: sub.p256dh, auth: sub.auth, subject: sub.subject, who, label: n }, 1);
+  }
+  const labels = async (p: string) => (await book.pushTargets(p)).subs.map((x) => x.label).sort().join(",");
+  check("a member's: their browsers and their devices", (await labels("u_sara")) === "s,sp", await labels("u_sara"));
+  check("the first person's: the owner key's and the bare devices, no member's", (await labels("owner")) === "g,o", await labels("owner"));
+  check("someone with none: nothing, not everyone's", (await labels("u_nobody")) === "", await labels("u_nobody"));
 
   const victim = all[0]!.id;
   await host.pushResults([{ id: victim, ok: false, gone: true }]);

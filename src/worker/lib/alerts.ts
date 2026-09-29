@@ -169,7 +169,7 @@ export interface AlertState {
   /** To the open screens of whoever the alert is for. */
   broadcast(alert: Alert, waitMs: number): Promise<LiveResult>;
   /** The browsers of this person ("owner" for the first person) that turned notifications on. */
-  pushTargets(person?: string): Promise<{ vapid: VapidKeys; subs: PushTarget[] }>;
+  pushTargets(person: string): Promise<{ vapid: VapidKeys; subs: PushTarget[] }>;
   /** A member's own Telegram chat, if they gave one (hub.ts prefs). */
   chatFor?(person: string): Promise<string | null>;
   pushResults(results: { id: string; ok: boolean; gone: boolean }[]): Promise<void>;

@@ -425,9 +425,11 @@ export class StateHost {
     return report(days, (await this.storage.get<UsageEntry[]>(USAGE_RECENT)) ?? [], today, person);
   }
 
-  async pushTargets(person?: string): Promise<{ vapid: VapidKeys; subs: PushTarget[] }> {
+  async pushTargets(person: string): Promise<{ vapid: VapidKeys; subs: PushTarget[] }> {
     // One person's browsers: the first person's are the owner key's and the devices' (lib/context.ts).
-    const subs = (await this.listPushSubs()).filter((s) => person === undefined || personOfWho(s.who) === person);
+    // Always one person's: when no person meant everyone's, a dropped argument sent
+    // every alert to every phone in the family (state.ts, 2.0.0 to 2.1.0).
+    const subs = (await this.listPushSubs()).filter((s) => personOfWho(s.who) === person);
     if (!subs.length) return { vapid: { publicKey: "", privateJwk: { kty: "EC" } }, subs: [] };
     return {
       vapid: await this.vapid(),

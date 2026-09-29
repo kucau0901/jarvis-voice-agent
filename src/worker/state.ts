@@ -518,8 +518,9 @@ export class JarvisState extends DurableObject<Env> {
     return this.host.removePushSub(idOrEndpoint, byOwner);
   }
 
-  pushTargets() {
-    return this.host.pushTargets();
+  /** Whose browsers: an alert for one person reaches only theirs (lib/alerts.ts). */
+  pushTargets(person: string) {
+    return this.host.pushTargets(person);
   }
 
   pushResults(results: { id: string; ok: boolean; gone: boolean }[]) {

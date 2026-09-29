@@ -8,7 +8,7 @@
 //
 //   node test/behavior/check.mjs record <source dir> <out dir>   run that checkout's code, save what it did
 //   node test/behavior/check.mjs compare <dir a> <dir b>         what differs between two recordings
-//   node test/behavior/check.mjs verify                          record this checkout and compare with .refactor-baseline/
+//   node test/behavior/check.mjs verify                          record this checkout and compare with .behavior-baseline/
 //
 // Needs the repository's own node_modules (wrangler, vite) and Google Chrome
 // for the screens (CHROME=<path> to use another). Ports 8791, 8792, 8798 and
@@ -244,7 +244,7 @@ if (cmd === "record" && x && y) {
   console.log(d.length ? `DIFFERENT (${d.length}${d.length >= 40 ? "+" : ""}):\n${d.join("\n")}` : "same behavior");
   process.exit(d.length ? 1 : 0);
 } else if (cmd === "verify") {
-  const baseline = join(ROOT, ".refactor-baseline");
+  const baseline = join(ROOT, ".behavior-baseline");
   if (!existsSync(join(baseline, "api.raw.json"))) {
     console.error("no baseline: record one from main first (see CLAUDE.md)");
     process.exit(2);

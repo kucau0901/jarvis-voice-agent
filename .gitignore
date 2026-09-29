@@ -15,4 +15,4 @@ worker-configuration.d.ts
 wrangler.jsonc
 
 # Behavior-check recordings (test/behavior/check.mjs): made locally, never committed.
-.refactor-baseline/
+.behavior-baseline/
