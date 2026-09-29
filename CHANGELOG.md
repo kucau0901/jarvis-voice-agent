@@ -17,27 +17,6 @@ of every release, and in the [README](README.md#updating).
 
 ## [Unreleased]
 
-### Added
-
-- **Edit a memory** in Memory: each saved fact has an Edit button beside
-  Forget, to change its words where it is, and a person's or place's name
-  and a place's address. It keeps everything else about the fact: when it
-  was saved, how often it has been used, and whether it is kept forever.
-
-### Changed
-
-- **Sharing a car says what it shares.** In Family → Cars the levels are now
-  *can check it* (where it is, the battery, the climate) and *can control it*
-  (commands too, lock and unlock among them), not "may see it" and "may drive
-  it": they only ever decided what Jarvis will do with the car for someone,
-  and who can drive it is up to the Tesla app or key. What each level allows
-  is unchanged.
-
-### Fixed
-
-- A memory moved to the family's, or back, was labelled "added here" even
-  when it had come by voice. It keeps saying where it came from now.
-
 ### Security
 
 - Signing out did not stop that person's notifications on that browser:
@@ -72,6 +51,27 @@ of every release, and in the [README](README.md#updating).
   Assistant calling `/api/v1/notify`, for one) now reaches only the first
   person's devices; to tell the whole house, use Home Assistant's notify or
   ntfy.
+
+### Added
+
+- **Edit a memory** in Memory: each saved fact has an Edit button beside
+  Forget, to change its words where it is, and a person's or place's name
+  and a place's address. It keeps everything else about the fact: when it
+  was saved, how often it has been used, and whether it is kept forever.
+
+### Changed
+
+- **Sharing a car says what it shares.** In Family → Cars the levels are now
+  *can check it* (where it is, the battery, the climate) and *can control it*
+  (commands too, lock and unlock among them), not "may see it" and "may drive
+  it": they only ever decided what Jarvis will do with the car for someone,
+  and who can drive it is up to the Tesla app or key. What each level allows
+  is unchanged.
+
+### Fixed
+
+- A memory moved to the family's, or back, was labelled "added here" even
+  when it had come by voice. It keeps saying where it came from now.
 
 ## [2.1.0] - 2026-09-28
 
