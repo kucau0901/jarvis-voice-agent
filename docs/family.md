@@ -60,7 +60,8 @@ instead:
 
 The car signs itself in as you within a few seconds. An admin can pair a
 screen for someone else, a grandparent's tablet say, by choosing them
-before tapping **Sign it in**. A code lasts ten minutes.
+before tapping **Sign it in**; for the person who set up the family, only
+the owner key can. A code lasts ten minutes.
 
 On a phone or computer, **Sign in with a passkey** is quicker.
 
@@ -87,7 +88,8 @@ family: each person is added once, and switching is a tap.
   one if your profile can do things others in the car should not: unlock
   it, open the gate.
 - **Five wrong PINs** in a row wait fifteen minutes. **Forgot yours?** An
-  admin can clear it from your page in Family, and you set a new one.
+  admin can clear it from your page in Family, and you set a new one. The
+  PIN of the person who set up the family is cleared with the owner key.
 
 Without a PIN, anyone at that screen can switch to you.
 
@@ -177,7 +179,8 @@ theirs. In **Devices** (in the menu), anyone makes a token for their own: it
 acts as them — their memory, their mail, their reminders, what is passed on
 to them — and never reaches further than they may, whatever it was given.
 An admin sees everyone's devices, whose each is, and can make one for
-someone else (a child's ESP32, say). When someone leaves the family, their
+someone else (a child's ESP32, say), except for the person who set up the
+family: only the owner key, or they, can. When someone leaves the family, their
 devices stop working. The devices you had before the family are the first
 person's, as they were. [Setting up G2 glasses](even-g2.md).
 
@@ -189,8 +192,10 @@ person's, as they were. [Setting up G2 glasses](even-g2.md).
   link**. That link adds a passkey to them; it does not make a new person.
 - **You can add passkeys yourself** while signed in: **Family → Passkeys
   and sign-ins → Add a passkey on this device**.
-- **The admin lost everything:** unlock with the owner key, open **Family**,
-  and make yourself a **New passkey link**.
+- **The person who set up the family, or the only admin, lost everything:**
+  unlock with the owner key, open **Family**, and make them a **New passkey
+  link**. For the person who set up the family, only the owner key can: a
+  screen signed in as them acts as the owner.
 
 **Where you are signed in** lists your screens, and signs any of them out:
 that screen's notifications stop, and if Jarvis is open there, it signs out
@@ -209,7 +214,11 @@ is waited on any more.
 
 ## What is yours, and what is shared
 
-**Yours alone** — nobody else sees them, admins included:
+**Yours alone** — nobody else sees them, admins included. An admin can,
+though, sign a screen in as you, to get you back in after a lost phone or a
+forgotten PIN (above), and that screen then sees what you do: make admin only
+someone you would trust with that. For the person who set up the family,
+only the owner key can.
 
 - **Memory.** "Remember that…" saves to your own. Only you see it, in
   **Memory → Yours**.

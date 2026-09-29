@@ -5,7 +5,7 @@ import { buildHistory, type Turn } from "../lib/history.ts";
 import { handleDelegate } from "./delegate.ts";
 import { run, type RunOptions } from "../lib/router.ts";
 import { whoOf, grantsOf, isAdmin, personOf, type Principal } from "../lib/auth.ts";
-import { deviceWho } from "../lib/context.ts";
+import { deviceWho, OWNER } from "../lib/context.ts";
 import { hubStub } from "../lib/hub-client.ts";
 import { stateStub } from "../lib/state-client.ts";
 import { charBudget, forGlasses, latestUserText, toChatCompletion, waitSeconds } from "../lib/glasses.ts";
@@ -302,7 +302,8 @@ async function handleDevices(req: Request, env: Env, principal: Principal): Prom
     const list = (await devices.list(env)).filter(theirs).map((d) => ({ ...d, ownerName: names.get(d.owner ?? "owner") ?? null }));
     // What a new one may be given: everything for an admin, a member's own reach otherwise.
     const offer = admin ? [WILDCARD, ...SCOPES] : grantsOf(principal);
-    return json({ devices: list, scopes: offer, people: admin ? family.map((p) => ({ id: p.person, name: p.name })) : [] });
+    const forWhom = family.filter((p) => p.person !== OWNER || me === OWNER);
+    return json({ devices: list, scopes: offer, people: admin ? forWhom.map((p) => ({ id: p.person, name: p.name })) : [] });
   }
 
   // A DELETE may name the device in the query alone, with no body at all.
@@ -323,6 +324,8 @@ async function handleDevices(req: Request, env: Env, principal: Principal): Prom
       typeof body.expiresAt === "number" && body.expiresAt > Date.now() ? body.expiresAt : undefined;
     // Whose: the maker's own, or for an admin, any member of the family.
     const owner = admin && typeof body.owner === "string" && family.some((p) => p.person === body.owner) ? body.owner : me;
+    // A device of the first person's acts as the owner: only the owner key, or they, make one (routes/hub.ts).
+    if (owner === OWNER && me !== OWNER) return err(403, "only the owner key can make a device for the person who set up the family");
 
     const { device, token } = await devices.create(env, name, scopes, expiresAt, owner);
     return json(

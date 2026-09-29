@@ -6,6 +6,7 @@ import { create as createDevice, lookup, sha256Hex } from "../src/worker/lib/dev
 import { deviceWho, personOfWho } from "../src/worker/lib/context.ts";
 import { narrow } from "../src/worker/lib/scopes.ts";
 import { handleAuth, handleHub } from "../src/worker/routes/hub.ts";
+import { handleV1 } from "../src/worker/routes/v1.ts";
 import { makeFake, register, signIn } from "./fake-authenticator.ts";
 
 let pass = 0;
@@ -258,6 +259,51 @@ console.log("\na shared screen, with PINs");
   check("an admin can clear a forgotten PIN", clear.status === 200 && (await as() as { hasPin?: boolean }).hasPin === false);
   const notAdmin = await call("/api/hub/members", { user: (admin as { id: string }).id, clearPin: true }, { method: "PATCH", principal: await as() });
   check("nobody else can", notAdmin.status === 403);
+}
+
+console.log("\na second admin, and the person who set up the family");
+{
+  // Signed in as the first person, a screen acts as the owner: only the owner key, or they, open one.
+  const inv = await call("/api/hub/invites", { role: "admin", name: "Bea" }, { principal: admin });
+  const bea = (await who((await join(inv.body.token, "Bea")).done.body.token))!;
+  const adamId = (admin as { id: string }).id;
+  const nurId = (await call("/api/hub/members", undefined, { principal: admin })).body.members.find((x: { name: string }) => x.name === "Nur").id as string;
+  check("she is an admin too", isAdmin(bea) && (bea as { place?: { first?: boolean } }).place?.first !== true);
+  await people.setPin(adamId, "1357");
+  const adamsPin = async () => (await call("/api/hub/members", undefined, { principal: OWNER })).body.members.find((x: { id: string }) => x.id === adamId).hasPin as boolean;
+
+  const car = await call("/api/auth/pair/start", { label: "Car" });
+  const asAdam = await call("/api/hub/pair", { code: car.body.code, user: adamId }, { principal: bea });
+  check("another admin cannot pair a screen as the first person", asAdam.status === 403 && /owner key/.test(asAdam.body.error), asAdam.body);
+  check("and the screen is not signed in", (await call("/api/auth/pair/poll", { poll: car.body.poll })).body.status === "waiting");
+  const asNur = await call("/api/hub/pair", { code: car.body.code, user: nurId }, { principal: bea });
+  const nurCar = await call("/api/auth/pair/poll", { poll: car.body.poll });
+  check("but can for anyone else", asNur.status === 200 && ((await who(nurCar.body.token)) as { id: string } | null)?.id === nurId);
+
+  check("nor make them a new passkey link", (await call("/api/hub/invites", { user: adamId }, { principal: bea })).status === 403);
+  check("but can for anyone else", (await call("/api/hub/invites", { user: nurId }, { principal: bea })).status === 200);
+  check("nor clear their PIN", (await call("/api/hub/members", { user: adamId, clearPin: true }, { method: "PATCH", principal: bea })).status === 403 && (await adamsPin()));
+
+  check("they may still make one for themselves", (await call("/api/hub/invites", { user: adamId }, { principal: admin })).status === 200);
+  const tablet = await call("/api/auth/pair/start", { label: "Tablet" });
+  const byKey = await call("/api/hub/pair", { code: tablet.body.code, user: adamId }, { principal: OWNER });
+  const adamTablet = await call("/api/auth/pair/poll", { poll: tablet.body.poll });
+  check("the owner key pairs a screen as them", byKey.status === 200 && ((await who(adamTablet.body.token)) as { id: string } | null)?.id === adamId);
+  check("makes them a new passkey link", (await call("/api/hub/invites", { user: adamId }, { principal: OWNER })).status === 200);
+  const cleared = await call("/api/hub/members", { user: adamId, clearPin: true }, { method: "PATCH", principal: OWNER });
+  check("and clears their PIN", cleared.status === 200 && !(await adamsPin()));
+
+  const devices = async (principal: Principal, body?: unknown) => {
+    const req = new Request(SITE + "/api/v1/devices", { method: body ? "POST" : "GET", headers: { "content-type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
+    const res = await handleV1(req, env, { waitUntil() {} } as never, principal);
+    return { status: res.status, body: (await res.json()) as Record<string, any> };
+  };
+  const theirs = await devices(bea, { name: "ESP32", scopes: ["*"], owner: "owner" });
+  check("another admin cannot make a device for the first person", theirs.status === 403 && /owner key/.test(theirs.body.error), theirs.body);
+  check("nor is offered them", !(await devices(bea)).body.people.some((p: { id: string }) => p.id === "owner"));
+  check("but can for anyone else", (await devices(bea, { name: "ESP32", scopes: ["ask"], owner: nurId })).body.owner === nurId);
+  check("the first person makes their own", (await devices(admin, { name: "G2", scopes: ["*"], owner: "owner" })).status === 201);
+  check("and the owner key makes one for them", (await devices(OWNER, { name: "G2", scopes: ["*"], owner: "owner" })).status === 201);
 }
 
 console.log("\neach person's own choices");

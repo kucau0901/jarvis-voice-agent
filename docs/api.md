@@ -690,16 +690,16 @@ Signed in (a member or the owner key; never a device):
 | `GET /api/hub/members` | anyone | names and roles; for admins also reach and pending invites |
 | `PATCH /api/hub/members` | admin | `{user, role?, scopes?}`; `scopes: null` resets to the role's |
 | `DELETE /api/hub/members` | admin | `{user}` |
-| `POST /api/hub/invites` | admin | `{role, name}`, or `{user}` for a new passkey for them → `{token, url}` |
+| `POST /api/hub/invites` | admin | `{role, name}`, or `{user}` for a new passkey for them (the first person's: the owner key only) → `{token, url}` |
 | `DELETE /api/hub/invites` | admin | `{id}` |
 | `PATCH /api/hub/space` | admin | `{name?, agentName?}` |
-| `POST /api/hub/pair` | anyone | `{code, user?}`: approve a screen; `user` only for admins |
+| `POST /api/hub/pair` | anyone | `{code, user?}`: approve a screen; `user` only for admins, and the first person only by the owner key |
 | `GET/DELETE /api/hub/passkeys`, `POST /api/hub/passkeys/options`, `POST /api/hub/passkeys/verify` | a member | their own passkeys |
 | `GET/DELETE /api/hub/sessions` | a member | their own sessions |
 | `POST /api/hub/pin` | a member | `{pin}` (4 to 8 digits) sets theirs; `{pin: null}` removes it |
 | `POST /api/hub/lock` | a member | put this session aside: with a PIN, it is locked → `{locked}` |
 | `POST /api/hub/unlock` | a member | `{pin}`: take a locked session back up |
-| `PATCH /api/hub/members` | admin | `{user, clearPin: true}`: clear a forgotten PIN |
+| `PATCH /api/hub/members` | admin | `{user, clearPin: true}`: clear a forgotten PIN (the first person's: the owner key only) |
 
 A locked session is answered `423` with `{locked: true}` everywhere except
 `GET /api/hub/me`, `/api/hub/unlock` and `/api/hub/signout`. Five wrong PINs in a
@@ -766,7 +766,8 @@ starts it again. Routines take `passTo` (names), `passKind`, `points` and
 
 **Devices are people's.** `/api/v1/devices` is for people, never a device: a
 member lists and manages their own, an admin everyone's (each with its
-`ownerName`), and `POST` may name an `owner` (a member's id). A member's
+`ownerName`), and `POST` may name an `owner` (a member's id; `"owner"`, the
+first person, only with the owner key or by them). A member's
 device acts as them, with the scopes it was given narrowed to theirs. `PATCH /api/hub/me {haToken, haBase}`
 sets a person's own Home Assistant token (checked with the house first); an
 empty one removes it. `haBase` is the address they were shown: `haAddress` in
