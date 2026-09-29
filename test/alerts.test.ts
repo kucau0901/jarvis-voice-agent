@@ -485,5 +485,41 @@ console.log("\nan admin sees that other people's alerts went, not what they said
   check("but not another person's, admin or not", (await open("a_adam")) === 404 && (await open("a_first")) === 404);
 }
 
+console.log("\na browser's notifications end with the sign-in they were turned on under");
+{
+  const store = fakeStorage();
+  const host = new StateHost(store, {} as never);
+  const session = (id: string, expiresAt: number) => ({ id, digest: `dg-${id}`, user: "u_sara", space: "s_fam", label: "", via: "passkey", createdAt: 1, lastSeenAt: 1, expiresAt });
+  await store.put("hub:sess:dg-x_phone", session("x_phone", Date.now() + 86_400_000));
+  await store.put("hub:sess:dg-x_laptop", session("x_laptop", Date.now() - 1));
+  const add = async (name: string, signIn?: string) => {
+    const sub = await browserSub(name, name);
+    await host.addPushSub({ endpoint: `https://fcm.googleapis.com/fcm/send/q-${name}`, p256dh: sub.p256dh, auth: sub.auth, subject: sub.subject, who: "u_sara", label: name, ...(signIn ? { session: signIn } : {}) }, 1);
+  };
+  await add("phone", "x_phone");
+  await add("laptop", "x_laptop");
+  await add("older"); // turned on before sign-ins were kept with it
+  const labels = async () => (await host.pushTargets("u_sara")).subs.map((x) => x.label).sort().join(",");
+  check("signed in: hers; one whose sign-in expired: not", (await labels()) === "older,phone", await labels());
+  check("and the expired one is gone from the list", !(await host.listPushSubs()).some((x) => x.label === "laptop"));
+  await store.delete("hub:sess:dg-x_phone"); // signed out, on that screen or from another
+  check("signed out: that browser's stop; one with no sign-in kept goes on", (await labels()) === "older", await labels());
+  const ticket = await host.mintTicket({ who: "u_sara", label: "phone", session: "x_phone" });
+  check("a screen's ticket carries its sign-in", (await host.takeTicket(ticket))?.session === "x_phone");
+
+  // Turning notifications on as a member keeps the sign-in with them (routes/alerts.ts).
+  const captured: Record<string, unknown>[] = [];
+  const stub = { addPushSub: async (input: Record<string, unknown>) => (captured.push(input), { id: "p1", label: input.label }) };
+  const env = { STATE: { idFromName: () => "jarvis", get: () => stub }, JARVIS_PERSON: "u_sara" } as never;
+  const member = { kind: "member", id: "u_sara", name: "Sara", scopes: ["alerts"], role: "adult", space: "s_fam", session: "x_phone" } as never;
+  const sub = await browserSub("m", "m");
+  const req = new Request("https://j.test/api/v1/push", {
+    method: "POST",
+    body: JSON.stringify({ subscription: { endpoint: "https://fcm.googleapis.com/fcm/send/m", keys: { p256dh: sub.p256dh, auth: sub.auth } }, label: "Sara's phone" }),
+  });
+  const res = await handleAlertApi(req, env, new URL(req.url), member);
+  check("a member turning notifications on: the sign-in is kept with them", res?.status === 201 && captured[0]?.session === "x_phone", { status: res?.status, captured });
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

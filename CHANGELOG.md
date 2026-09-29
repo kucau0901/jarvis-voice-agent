@@ -40,6 +40,13 @@ of every release, and in the [README](README.md#updating).
 
 ### Security
 
+- Signing out did not stop that person's notifications on that browser:
+  whoever used it next still got them, and signing out a lost or lent
+  screen from **Where you are signed in** left it receiving their alerts
+  while it stayed open. Signing out, here or from another screen, now ends
+  that browser's notifications and closes its open Jarvis, and so does a
+  sign-in left unused for six months. Notifications turned on before this
+  update end when you sign out on that screen itself.
 - Settings → Alerts showed every admin the text of everyone's recent alerts,
   direct messages between two other people included, and an admin could
   open anyone's alert by its id, though each person's alerts are meant to be

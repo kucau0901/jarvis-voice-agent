@@ -28,7 +28,12 @@ const MAX_BODY = 8 * 1024;
 function identity(principal: Principal, label: unknown, fallback: string) {
   return principal.kind === "device"
     ? { who: whoOf(principal), label: cleanLabel(principal.name, "a device") }
-    : { who: whoOf(principal), label: cleanLabel(label, fallback) };
+    : {
+        who: whoOf(principal),
+        label: cleanLabel(label, fallback),
+        // A member's sign-in: signing out ends this browser's notifications and closes its screens.
+        ...(principal.kind === "member" ? { session: principal.session } : {}),
+      };
 }
 
 const isUpgrade = (req: Request) => req.headers.get("upgrade")?.toLowerCase() === "websocket";

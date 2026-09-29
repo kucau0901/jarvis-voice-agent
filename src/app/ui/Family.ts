@@ -8,6 +8,7 @@ import { Mine, type Prefs } from "./Mine";
 import { limitsForm, limitsSaid, readLimits, type Access } from "./Limits";
 import { SectionMenu, type NavGroup } from "./sections";
 import { inCar } from "../client";
+import { releasePush } from "../alerts";
 
 /**
  * The family: who is in it, inviting someone, pairing a screen, and your own
@@ -583,6 +584,8 @@ export class Family {
     const out = q<HTMLButtonElement>(".f-signout");
     if (out) {
       arm(out, "Sign out here?", async () => {
+        // This browser's notifications go with it (as putAside in main.ts), before the key does.
+        await releasePush(this.key);
         await this.api("/api/hub/signout", "POST", {}).catch(() => {});
         dropPerson(this.key);
         try {

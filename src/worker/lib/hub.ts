@@ -215,6 +215,16 @@ export interface Invite {
   usedAt?: number;
 }
 
+/**
+ * The ids of the sign-ins still good at `now`. A browser's notifications end
+ * with the sign-in it turned them on under (lib/state-host.ts listPushSubs).
+ */
+export async function liveSessionIds(storage: Storage, now: number): Promise<Set<string>> {
+  const out = new Set<string>();
+  for (const s of (await storage.list<Session>({ prefix: "hub:sess:" })).values()) if (s.expiresAt >= now) out.add(s.id);
+  return out;
+}
+
 export interface Session {
   id: string;
   digest: string;

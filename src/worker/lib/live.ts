@@ -27,6 +27,8 @@ export interface LiveClient {
   who: string;
   /** How it describes itself: "car", "phone", or a device's name. */
   label: string;
+  /** A family member's sign-in (lib/hub.ts), so its screens close when it ends. */
+  session?: string;
   visible: boolean;
   since: number;
 }

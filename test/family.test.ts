@@ -33,6 +33,8 @@ function fakeStorage() {
 
 const kv = new Map<string, string>();
 const forgotten: string[] = [];
+/** Sign-ins whose open screens the object was told to close (routes/hub.ts). */
+const closed: string[] = [];
 const people = new HubHost(fakeStorage());
 const env = {
   JARVIS_SHARED_SECRET: "NOTAREALKEY12345",
@@ -52,6 +54,7 @@ const env = {
     get: () => ({
       hubCall: (m: string, a: unknown[]) => (people as unknown as Record<string, (...x: unknown[]) => unknown>)[m]!(...a),
       forgetDevice: async (who: string) => void forgotten.push(who),
+      closeSession: async (session: string) => void closed.push(session),
       forgetMember: async () => {},
     }),
   },
@@ -218,6 +221,7 @@ console.log("\nsigning out");
   await call("/api/hub/signout", {}, { principal: p });
   _clearSessionCache();
   check("signing out ends that session", (await who(v.body.token)) === null);
+  check("and closes that sign-in's open screens", closed.includes((p as { session: string }).session), closed);
   check("and only that one", (await who((await call("/api/auth/login/verify", {})).body.token ?? "")) === null && (await call("/api/hub/sessions", undefined, { principal: admin })).body.sessions.length >= 1);
 }
 

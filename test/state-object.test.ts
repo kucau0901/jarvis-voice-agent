@@ -60,11 +60,13 @@ const env = {
   },
   ALERT_ORDER: "live,push",
 } as never;
+/** Open screens, by their tags (who, and a member's sign-in), for closeSession below. */
+const sockets: { tags: string[]; closed?: number; close(code: number): void }[] = [];
 const ctx = {
   storage: fakeStorage(),
   blockConcurrencyWhile: async (fn: () => Promise<unknown>) => fn(),
   setWebSocketAutoResponse() {},
-  getWebSockets: () => [],
+  getWebSockets: (tag?: string) => (tag ? sockets.filter((s) => s.tags.includes(tag)) : []),
 } as never;
 const jarvis = new JarvisState(ctx, env);
 await new Promise((r) => setTimeout(r, 0));
@@ -121,6 +123,19 @@ try {
   check("an urgent one for Sara: urgent tries every channel, but still only hers", got === "sara-browser,sara-phone", got);
 } finally {
   globalThis.fetch = realFetch;
+}
+
+console.log("\nsigning out closes that sign-in's open screens, and no others");
+{
+  const screen = (tags: string[]) => ({ tags, closed: undefined as number | undefined, close(code: number) { this.closed = code; } });
+  const phone = screen(["u_sara", "s:x_phone"]);
+  const tablet = screen(["u_sara", "s:x_tablet"]);
+  const car = screen(["owner"]);
+  sockets.push(phone, tablet, car);
+  await jarvis.closeSession("x_phone");
+  check("that sign-in's screen closes, told not to reconnect (4001)", phone.closed === 4001, phone);
+  check("her other sign-in's, and anyone else's, stay open", tablet.closed === undefined && car.closed === undefined);
+  sockets.length = 0;
 }
 
 console.log("\nevery pass-through to StateHost forwards what it is given");

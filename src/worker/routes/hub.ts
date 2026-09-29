@@ -379,6 +379,7 @@ export async function handleHub(req: Request, env: Env, principal: Principal): P
     if (!me) return json({ ok: true });
     const d = await hub.endSession(me.id, me.session);
     if (d) forgetSessions([d]);
+    await stateStub(env)?.closeSession(me.session).catch(() => {});
     return json({ ok: true });
   }
 
@@ -527,6 +528,7 @@ export async function handleHub(req: Request, env: Env, principal: Principal): P
     if (m === "DELETE") {
       const d = await hub.endSession(me.id, str(b.id));
       if (d) forgetSessions([d]);
+      if (d) await stateStub(env)?.closeSession(str(b.id)).catch(() => {});
       return json({ ok: !!d });
     }
     return err(405, "method not allowed");

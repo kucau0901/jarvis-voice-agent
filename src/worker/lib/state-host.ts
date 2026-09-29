@@ -1,4 +1,4 @@
-import type { Role } from "./hub.ts";
+import { liveSessionIds, type Role } from "./hub.ts";
 import type { Env } from "../types.ts";
 import type { Turn } from "./history.ts";
 import {
@@ -119,6 +119,12 @@ const PUSH_GIVE_UP = 10;
 export interface PushRecord extends PushTarget {
   /** "owner" or the device id that subscribed, so revoking the device ends its notifications. */
   who: string;
+  /**
+   * The sign-in it was turned on under (a session id, lib/hub.ts), for a
+   * family member's browser: signing out, here or from another screen, or
+   * six months unused, ends its notifications too.
+   */
+  session?: string;
   createdAt: number;
   okAt?: number;
   failures: number;
@@ -339,8 +345,17 @@ export class StateHost {
     return (await this.vapid()).publicKey;
   }
 
-  async listPushSubs(): Promise<PushRecord[]> {
-    return [...(await this.storage.list<PushRecord>({ prefix: PUSH })).values()];
+  async listPushSubs(now = Date.now()): Promise<PushRecord[]> {
+    const all = [...(await this.storage.list<PushRecord>({ prefix: PUSH })).values()];
+    if (!all.some((s) => s.session)) return all;
+    // One whose sign-in has ended goes: whoever has that browser now is not that person.
+    const live = await liveSessionIds(this.storage, now);
+    const kept: PushRecord[] = [];
+    for (const s of all) {
+      if (s.session && !live.has(s.session)) await this.storage.delete(PUSH + s.id);
+      else kept.push(s);
+    }
+    return kept;
   }
 
   /** Subscribing again from the same browser replaces its record rather than adding one. */
@@ -477,21 +492,21 @@ export class StateHost {
    * an authenticated request and opens the socket with that. Single use, and
    * short-lived, because it travels in a URL.
    */
-  async mintTicket(client: Pick<LiveClient, "who" | "label">, now = Date.now()): Promise<string> {
+  async mintTicket(client: Pick<LiveClient, "who" | "label" | "session">, now = Date.now()): Promise<string> {
     for (const [k, t] of await this.storage.list<{ exp: number }>({ prefix: TICKET })) {
       if (t.exp < now) await this.storage.delete(k);
     }
     const id = randomId(32);
-    await this.storage.put(TICKET + id, { who: client.who, label: client.label, exp: now + TICKET_MS });
+    await this.storage.put(TICKET + id, { who: client.who, label: client.label, ...(client.session ? { session: client.session } : {}), exp: now + TICKET_MS });
     return id;
   }
 
-  async takeTicket(id: string, now = Date.now()): Promise<Pick<LiveClient, "who" | "label"> | null> {
+  async takeTicket(id: string, now = Date.now()): Promise<Pick<LiveClient, "who" | "label" | "session"> | null> {
     if (!TICKET_SHAPE.test(id)) return null;
-    const t = await this.storage.get<{ who: string; label: string; exp: number }>(TICKET + id);
+    const t = await this.storage.get<{ who: string; label: string; session?: string; exp: number }>(TICKET + id);
     if (!t) return null;
     await this.storage.delete(TICKET + id);
-    return t.exp >= now ? { who: t.who, label: t.label } : null;
+    return t.exp >= now ? { who: t.who, label: t.label, ...(t.session ? { session: t.session } : {}) } : null;
   }
 }
 
@@ -545,6 +560,8 @@ interface LiveApi {
   liveClients(): Promise<LiveClient[]>;
   /** Close a device's open screens and drop its notifications, when it is revoked or narrowed. */
   forgetDevice(who: string): Promise<void>;
+  /** Close the open screens of one sign-in, when it ends (its notifications end by themselves: listPushSubs). */
+  closeSession(session: string): Promise<void>;
   /** Someone left the family: their routines stop, and nothing more is passed on to or from them. */
   forgetMember(person: string): Promise<void>;
 }

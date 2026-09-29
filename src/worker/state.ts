@@ -178,7 +178,7 @@ export class JarvisState extends DurableObject<Env> {
     const client = pair[0];
     const server = pair[1];
     // Hibernatable: the object can leave memory while the socket stays open.
-    this.ctx.acceptWebSocket(server, [who.who]);
+    this.ctx.acceptWebSocket(server, who.session ? [who.who, `s:${who.session}`] : [who.who]);
     const c: LiveClient = { ...who, visible: false, since: Date.now() };
     server.serializeAttachment(c);
     server.send(JSON.stringify({ type: "hello", label: c.label }));
@@ -225,6 +225,17 @@ export class JarvisState extends DurableObject<Env> {
     await this.scheduler.forget(person);
     await this.relays.forget(person);
     await this.rearm();
+  }
+
+  /** One sign-in ended (routes/hub.ts): its open screens close; 4001 stops them reconnecting. */
+  async closeSession(session: string) {
+    for (const ws of this.ctx.getWebSockets(`s:${session}`)) {
+      try {
+        ws.close(4001, "signed out");
+      } catch {
+        // already gone
+      }
+    }
   }
 
   async forgetDevice(who: string) {
