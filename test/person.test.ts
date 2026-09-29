@@ -7,6 +7,8 @@ import { handleMemory } from "../src/worker/routes/memory.ts";
 import { beginAuth, consumeState, isLinked, unlinkEveryone } from "../src/worker/lib/google.ts";
 import { unlinkEveryone as unlinkEveryoneSpotify } from "../src/worker/lib/spotify.ts";
 import { handleSettings } from "../src/worker/routes/settings.ts";
+import { StateHost } from "../src/worker/lib/state-host.ts";
+import { _resetSettingsCache } from "../src/worker/lib/settings-store.ts";
 import { deliver, makeAlert, type Alert, type AlertState } from "../src/worker/lib/alerts.ts";
 import { LiveHub, type LiveClient, type LiveSocket } from "../src/worker/lib/live.ts";
 import { addToDay, emptyDay, report, type UsageEntry } from "../src/worker/lib/usage.ts";
@@ -204,6 +206,28 @@ console.log("\neach person's own Google");
     check("a new Google client unlinks everyone", !left.some((k) => /^google:(refresh|access)/.test(k)), left);
     check("and a new Spotify client, everyone's Spotify", !left.some((k) => k.startsWith("spotify:refresh")), left);
     check("and nothing else", left.includes("google:state:xyz"), left);
+
+    // Through the real save path: changing the Google app in Settings unlinks everyone.
+    const m = new Map<string, unknown>();
+    const storage = {
+      get: async (k: string) => structuredClone(m.get(k)),
+      put: async (k: string, v: unknown) => void m.set(k, structuredClone(v)),
+      delete: async (k: string) => m.delete(k),
+      list: async ({ prefix = "" }: { prefix?: string } = {}) => new Map([...m].filter(([k]) => k.startsWith(prefix))),
+    };
+    const saving = fakeEnv({ GOOGLE_CLIENT_ID: "old.apps.googleusercontent.com", GOOGLE_CLIENT_SECRET: "secret" });
+    saving.STATE = { idFromName: () => "jarvis", get: () => new StateHost(storage as never, saving as never) };
+    saving._kv.set("google:refresh", "first");
+    saving._kv.set("google:refresh:u_sara", "sara");
+    _resetSettingsCache();
+    const put = await handleSettings(
+      new Request("https://j.test/api/settings", { method: "PUT", body: JSON.stringify({ changes: { GOOGLE_CLIENT_ID: "new.apps.googleusercontent.com" } }) }),
+      saving as never,
+      "u_sara",
+    );
+    const after = [...saving._kv.keys()].filter((k) => k.startsWith("google:refresh"));
+    check("saving a new Google app in Settings unlinks every person's Google", put.status === 200 && after.length === 0, { status: put.status, after });
+    _resetSettingsCache();
   } finally {
     globalThis.fetch = realFetch;
   }
