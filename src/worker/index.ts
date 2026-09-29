@@ -183,7 +183,7 @@ export default {
       // The settings route alone needs the Worker's own environment, to tell a
       // value saved in the panel from one the deployment supplies.
       if (url.pathname === "/api/settings" || url.pathname === "/api/settings/test") {
-        return withCors(await handleSettings(req, raw), origin, env);
+        return withCors(await handleSettings(req, raw, env.JARVIS_PERSON), origin, env);
       }
       return withCors(await route(req, env, ctx, url, principal), origin, env);
     } catch (e) {

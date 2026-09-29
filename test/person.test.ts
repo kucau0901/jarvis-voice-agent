@@ -4,7 +4,9 @@ import { personOf, whoOf, type Principal } from "../src/worker/lib/auth.ts";
 import { MemoryStore, memoryFor } from "../src/worker/lib/memory.ts";
 import { forget, recall, remember } from "../src/worker/tools/memory.ts";
 import { handleMemory } from "../src/worker/routes/memory.ts";
-import { beginAuth, consumeState, isLinked } from "../src/worker/lib/google.ts";
+import { beginAuth, consumeState, isLinked, unlinkEveryone } from "../src/worker/lib/google.ts";
+import { unlinkEveryone as unlinkEveryoneSpotify } from "../src/worker/lib/spotify.ts";
+import { handleSettings } from "../src/worker/routes/settings.ts";
 import { deliver, makeAlert, type Alert, type AlertState } from "../src/worker/lib/alerts.ts";
 import { LiveHub, type LiveClient, type LiveSocket } from "../src/worker/lib/live.ts";
 import { addToDay, emptyDay, report, type UsageEntry } from "../src/worker/lib/usage.ts";
@@ -36,6 +38,7 @@ function fakeEnv(extra: Record<string, unknown> = {}) {
       },
       put: async (k: string, v: string) => void kv.set(k, v),
       delete: async (k: string) => void kv.delete(k),
+      list: async ({ prefix = "" }: { prefix?: string } = {}) => ({ keys: [...kv.keys()].filter((k) => k.startsWith(prefix)).map((name) => ({ name })), list_complete: true }),
     },
     _kv: kv,
     ...extra,
@@ -179,6 +182,31 @@ console.log("\neach person's own Google");
   env._kv.set("google:refresh:u_sara", "tok");
   check("Sara's link is hers", (await isLinked(sara)) === true);
   check("not the first person's", (await isLinked({ ...env, JARVIS_PERSON: OWNER } as never)) === false);
+
+  // Settings shows each asker their own link, not the first person's (routes/settings.ts).
+  const shown = async (person?: string) => {
+    const res = await handleSettings(new Request("https://j.test/api/settings"), env as never, person);
+    const body = (await res.json()) as { groups?: { id: string; linked?: boolean }[] };
+    return body.groups?.find((g) => g.id === "google")?.linked;
+  };
+  check("Settings shows Sara her own Google link", (await shown("u_sara")) === true, await shown("u_sara"));
+  check("and the first person theirs, which is not linked", (await shown(undefined)) === false && (await shown(OWNER)) === false);
+
+  // A new OAuth client: every person's link goes, not only the first person's.
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async () => new Response(null, { status: 200 })) as typeof fetch;
+  try {
+    for (const [k, v] of [["google:refresh", "a"], ["google:access", "b"], ["google:refresh:u_adam", "c"], ["google:access:u_adam", "d"], ["spotify:refresh", "e"], ["spotify:refresh:u_sara", "f"]]) env._kv.set(k!, v!);
+    env._kv.set("google:state:xyz", "u_sara");
+    await unlinkEveryone(env as never);
+    await unlinkEveryoneSpotify(env as never);
+    const left = [...env._kv.keys()];
+    check("a new Google client unlinks everyone", !left.some((k) => /^google:(refresh|access)/.test(k)), left);
+    check("and a new Spotify client, everyone's Spotify", !left.some((k) => k.startsWith("spotify:refresh")), left);
+    check("and nothing else", left.includes("google:state:xyz"), left);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
 }
 
 console.log("\nalerts go to whoever they are for");

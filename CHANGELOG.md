@@ -40,6 +40,11 @@ of every release, and in the [README](README.md#updating).
 
 ### Security
 
+- Settings → Google and Settings → Spotify showed, and **Test** used, the
+  first person's linked account whoever was looking: Test told another admin
+  the first person's Gmail address or Spotify name. Each admin now sees and
+  tests their own. And changing the Google or Spotify app in Settings now
+  unlinks everyone's accounts, not only the first person's.
 - **Since 2.0.0, with a family, each person's notifications also reached
   everyone else's browsers and phones** where notifications were on:
   reminders, notes sent to a phone, finished jobs and answers from Hermes,

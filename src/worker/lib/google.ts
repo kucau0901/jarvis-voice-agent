@@ -242,6 +242,29 @@ export async function unlink(env: Env): Promise<void> {
   }
 }
 
+/**
+ * Every person's link, for a change of OAuth client: tokens the old client
+ * issued are no use to the new one, whoever linked them.
+ */
+export async function unlinkEveryone(env: Env): Promise<void> {
+  for (const key of await keysStartingWith(env, REFRESH_KEY)) {
+    const person = key === REFRESH_KEY ? undefined : key.slice(REFRESH_KEY.length + 1);
+    await unlink({ ...env, JARVIS_PERSON: person });
+  }
+}
+
+/** Every KV key under a prefix, across pages. */
+export async function keysStartingWith(env: Env, prefix: string): Promise<string[]> {
+  const out: string[] = [];
+  let cursor: string | undefined;
+  do {
+    const page = await env.CONFIG.list({ prefix, ...(cursor ? { cursor } : {}) });
+    out.push(...page.keys.map((k) => k.name).filter((n) => n === prefix || n.startsWith(`${prefix}:`)));
+    cursor = page.list_complete ? undefined : page.cursor;
+  } while (cursor);
+  return out;
+}
+
 /* ---------- using it ------------------------------------------------------ */
 
 interface CachedAccess {

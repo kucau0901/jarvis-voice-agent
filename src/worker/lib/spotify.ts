@@ -1,6 +1,7 @@
 import type { Env } from "../types.ts";
 import { publicOrigin } from "./http.ts";
 import { bookOf } from "./context.ts";
+import { keysStartingWith } from "./google.ts";
 
 /**
  * Spotify Web API access.
@@ -122,6 +123,13 @@ export async function isLinked(env: Env): Promise<boolean> {
 
 export async function unlink(env: Env): Promise<void> {
   await env.CONFIG.delete(tokenKey(env)).catch(() => {});
+}
+
+/** Every person's link, for a change of OAuth client (as lib/google.ts's). */
+export async function unlinkEveryone(env: Env): Promise<void> {
+  for (const key of await keysStartingWith(env, TOKEN_KEY)) {
+    await unlink({ ...env, JARVIS_PERSON: key === TOKEN_KEY ? undefined : key.slice(TOKEN_KEY.length + 1) });
+  }
 }
 
 /* ---------- using it ------------------------------------------------------ */

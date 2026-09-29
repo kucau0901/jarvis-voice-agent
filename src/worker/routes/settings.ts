@@ -36,16 +36,19 @@ import { haUrl } from "../lib/ha.ts";
  *
  * `env` here is the Worker's OWN environment, not the effective one the other
  * routes get: this route has to tell a saved value from a deployment value.
+ * `person` is who is asking: Google and Spotify are linked per person, and an
+ * admin sees and tests their own, not the first person's.
  */
-export async function handleSettings(req: Request, env: Env): Promise<Response> {
+export async function handleSettings(req: Request, env: Env, person?: string): Promise<Response> {
   const url = new URL(req.url);
+  const asker = (e: Env): Env => ({ ...e, JARVIS_PERSON: person });
 
   if (url.pathname === "/api/settings/test") {
     if (req.method !== "POST") return err(405, "POST a group to test");
-    return test(req, env, url.origin);
+    return test(req, env, url.origin, asker);
   }
 
-  if (req.method === "GET") return json(await view(env, await freshSaved(env)));
+  if (req.method === "GET") return json(await view(env, await freshSaved(env), asker));
 
   if (req.method === "PUT") {
     const body = (await req.json().catch(() => null)) as { changes?: unknown } | null;
@@ -61,7 +64,7 @@ export async function handleSettings(req: Request, env: Env): Promise<Response> 
     }
     const after = effectiveEnv(env, saved);
     await sideEffects(env, before, after);
-    return json({ saved: true, ...(await view(env, saved)) });
+    return json({ saved: true, ...(await view(env, saved, asker)) });
   }
 
   return err(405, "GET, PUT, or POST /api/settings/test");
@@ -73,13 +76,13 @@ async function freshSaved(env: Env): Promise<SavedSettings> {
   return state ? await state.getSettings() : {};
 }
 
-async function view(env: Env, saved: SavedSettings) {
+async function view(env: Env, saved: SavedSettings, asker: (e: Env) => Env) {
   const eff = effectiveEnv(env, saved);
   const [settings, owner, googleLinked, spotifyLinked] = await Promise.all([
     describe(env, saved),
     ownerFingerprint(env),
-    google.isLinked(env).catch(() => false),
-    spotify.isLinked(env).catch(() => false),
+    google.isLinked(asker(env)).catch(() => false),
+    spotify.isLinked(asker(env)).catch(() => false),
   ]);
   return {
     owner: {
@@ -111,8 +114,9 @@ async function view(env: Env, saved: SavedSettings) {
 async function sideEffects(env: Env, before: Env, after: Env): Promise<void> {
   const changed = (k: keyof Env) => (before[k] ?? "") !== (after[k] ?? "");
   const jobs: Promise<unknown>[] = [];
-  if (changed("GOOGLE_CLIENT_ID") || changed("GOOGLE_CLIENT_SECRET")) jobs.push(google.unlink(env));
-  if (changed("SPOTIFY_CLIENT_ID") || changed("SPOTIFY_CLIENT_SECRET")) jobs.push(spotify.unlink(env));
+  // Everyone's links, not only the first person's: the old client's tokens are no use to the new one.
+  if (changed("GOOGLE_CLIENT_ID") || changed("GOOGLE_CLIENT_SECRET")) jobs.push(google.unlinkEveryone(env));
+  if (changed("SPOTIFY_CLIENT_ID") || changed("SPOTIFY_CLIENT_SECRET")) jobs.push(spotify.unlinkEveryone(env));
   if (changed("HA_MCP_URL") || changed("HA_TOKEN")) {
     const labels = (await loadServers(before).catch(() => [])).map((s) => s.label);
     for (const l of new Set([...labels, "home-assistant"])) {
@@ -129,7 +133,7 @@ interface TestResult {
   detail: string;
 }
 
-async function test(req: Request, env: Env, origin: string): Promise<Response> {
+async function test(req: Request, env: Env, origin: string, asker: (e: Env) => Env): Promise<Response> {
   const body = (await req.json().catch(() => null)) as { group?: unknown; values?: unknown } | null;
   const group = GROUPS.find((g) => g.id === body?.group);
   if (!group) return err(400, "group must be one of " + GROUPS.map((g) => g.id).join(", "));
@@ -148,7 +152,7 @@ async function test(req: Request, env: Env, origin: string): Promise<Response> {
 
   let result: TestResult;
   try {
-    result = await TESTS[group.id as Group]!(eff, origin);
+    result = await TESTS[group.id as Group]!(asker(eff), origin);
   } catch (e) {
     result = { ok: false, detail: e instanceof Error ? e.message : String(e) };
   }
