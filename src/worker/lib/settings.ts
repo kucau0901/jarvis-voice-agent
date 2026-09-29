@@ -267,7 +267,10 @@ export const SETTINGS: readonly SettingDef[] = [
   {
     name: "HA_MCP_URL", group: "home", kind: "secret",
     label: "MCP URL", help: "The Home Assistant MCP address. Kept secret: a webhook URL IS the credential.",
-    validate: httpsUrl, bindsTo: ["HA_TOKEN"],
+    // No token goes here: the URL is its own key. Bound to one, the token would
+    // be offered to every MCP server on this host (mcp-config.ts fillable), and
+    // a Nabu Casa webhook's host is shared by every Nabu Casa customer.
+    validate: httpsUrl,
   },
   {
     name: "HA_BASE_URL", group: "home", kind: "url",

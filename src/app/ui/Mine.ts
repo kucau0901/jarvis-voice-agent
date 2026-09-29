@@ -1,7 +1,7 @@
 import { authHeaders } from "../key";
 import { speakText } from "../alerts";
 import { AlertsPanel } from "./AlertsPanel";
-import { esc } from "./util";
+import { el, esc } from "./util";
 
 /**
  * What is a person's own, in Family → You (lib/context.ts on the server):
@@ -33,6 +33,9 @@ interface CarView {
   shares?: Record<string, "see" | "drive">;
 }
 
+/** Your own Home Assistant token (GET /api/hub/me): in use, given for an address the house no longer has, or none. */
+type OwnHa = "yours" | "again" | "";
+
 /** What Jarvis will do with the car for them: nothing to do with who can drive it, which is the Tesla app's or key's. */
 const LEVEL_WORDS: Record<string, string> = { "": "not shared", see: "can check it", drive: "can control it" };
 
@@ -45,16 +48,19 @@ export class Mine {
   private key: string;
   private box: HTMLElement;
   private prefs: Prefs;
-  private haToken: boolean;
+  private ha: OwnHa;
+  /** Where their own token is checked and sent (GET /api/hub/me); null if they may not use the house, or it is not set up. */
+  private haAddress: string | null;
   /** What this person may reach (GET /api/hub/me); absent, everything. */
   private scopes: string[] | undefined;
 
-  constructor(key: string, box: HTMLElement, prefs: Prefs, haToken = false, scopes?: string[]) {
+  constructor(key: string, box: HTMLElement, prefs: Prefs, ha: OwnHa = "", scopes?: string[], haAddress: string | null = null) {
     this.key = key;
     this.box = box;
     this.prefs = prefs;
-    this.haToken = haToken;
+    this.ha = ha;
     this.scopes = scopes;
+    this.haAddress = haAddress;
   }
 
   render(): void {
@@ -78,12 +84,13 @@ export class Mine {
           which follows your phone. Empty, such reminders go by the time alone.</p>
         <input type="text" class="m-presence" maxlength="60" placeholder="person.yourname" value="${esc(this.prefs.presence ?? "")}">
         <div class="rowbtns"><button class="m-psave">Save</button></div>
-        <h4>Your own Home Assistant user</h4>
-        <p class="note">Optional. With a token for your own Home Assistant user, the house answers you as yourself:
+        <h4 class="m-hauser">Your own Home Assistant user</h4>
+        <p class="note m-hauser">Optional. With a token for your own Home Assistant user, the house answers you as yourself:
           its logbook says it was you, and whatever Home Assistant allows your user is what you can do.
           Without one, the family's is used. <b class="m-haset"></b></p>
-        <input type="password" class="m-ha" autocomplete="off" placeholder="A long-lived access token from your Home Assistant profile">
-        <div class="rowbtns m-harow"><button class="m-hasave">Save</button></div>
+        <p class="note m-hauser m-haat"></p>
+        <input type="password" class="m-ha m-hauser" autocomplete="off" placeholder="A long-lived access token from your Home Assistant profile">
+        <div class="rowbtns m-harow m-hauser"><button class="m-hasave">Save</button></div>
       </section>
 
       <section class="svc" data-section="m-voice" data-title="Voice and language">
@@ -143,6 +150,8 @@ export class Mine {
       "m-alerts": may("alerts"),
     };
     for (const [id, ok] of Object.entries(shown)) if (!ok) this.box.querySelector(`[data-section="${id}"]`)?.remove();
+    // Their own Home Assistant user is for the house itself; getting home needs only chat.
+    if (!may("home")) this.box.querySelectorAll(".m-hauser").forEach((e) => e.remove());
     if (shown["m-cars"]) void this.cars();
     if (shown["m-accounts"]) void this.accounts();
     void this.usage();
@@ -168,10 +177,16 @@ export class Mine {
 
   private async setHa(token: string): Promise<void> {
     try {
-      const res = await fetch("/api/hub/me", { method: "PATCH", headers: authHeaders(this.key), body: JSON.stringify({ haToken: token }) });
-      const body = (await res.json()) as { error?: string };
+      const res = await fetch("/api/hub/me", { method: "PATCH", headers: authHeaders(this.key), body: JSON.stringify({ haToken: token, haBase: this.haAddress ?? "" }) });
+      const body = (await res.json()) as { error?: string; haAddress?: string | null };
+      // The address changed while this was open: the new one is shown, nothing was sent to it, and theirs is not for it.
+      if (res.status === 409) {
+        this.haAddress = body.haAddress ?? null;
+        if (this.ha) this.ha = "again";
+        this.showHa();
+      }
       if (!res.ok) throw new Error(body.error ?? `the server said ${res.status}`);
-      this.haToken = !!token;
+      this.ha = token ? "yours" : "";
       // In place: rendering the whole box again would close its section in Family's menu, and this message with it.
       this.box.querySelector<HTMLInputElement>(".m-ha")!.value = "";
       this.showHa();
@@ -181,12 +196,17 @@ export class Mine {
     }
   }
 
-  /** Whether your own Home Assistant token is set, and the button to remove it if so. */
+  /** Whether your own Home Assistant token is set (or to be entered again), where it goes, and the button to remove it if so. */
   private showHa(): void {
-    this.box.querySelector(".m-haset")!.textContent = this.haToken ? "Yours is set." : "";
+    const at = this.box.querySelector<HTMLElement>(".m-haat")!;
+    at.replaceChildren();
+    if (this.haAddress) at.append("Yours is checked with, and sent only to, Home Assistant at ", el("code", "", this.haAddress), ".");
+    else at.textContent = "The family's Home Assistant address is not set up yet.";
+    this.box.querySelector(".m-haset")!.textContent =
+      this.ha === "yours" ? "Yours is set." : this.ha === "again" ? "Yours is not in use: it was not checked with the address below. Enter it again to be yourself." : "";
     const row = this.box.querySelector<HTMLElement>(".m-harow")!;
     row.querySelector(".m-haoff")?.remove();
-    if (!this.haToken) return;
+    if (!this.ha) return;
     const off = document.createElement("button");
     off.className = "m-haoff";
     off.textContent = "Remove mine";

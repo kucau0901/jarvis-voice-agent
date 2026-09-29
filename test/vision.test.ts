@@ -11,6 +11,9 @@ import {
 import { photosFrom, MAX_PHOTOS } from "../src/worker/lib/photos.ts";
 import { lookAtCamera, showCamera } from "../src/worker/tools/camera.ts";
 import { validateChanges } from "../src/worker/lib/settings.ts";
+import { handleSettings } from "../src/worker/routes/settings.ts";
+import { StateHost } from "../src/worker/lib/state-host.ts";
+import { _resetSettingsCache } from "../src/worker/lib/settings-store.ts";
 
 let pass = 0;
 let fail = 0;
@@ -34,7 +37,7 @@ globalThis.fetch = (async (input: string | URL, init: RequestInit = {}) => {
 
 const kv = () => {
   const m = new Map<string, string>();
-  return { get: async (k: string, t?: string) => (m.has(k) ? (t === "json" ? JSON.parse(m.get(k)!) : m.get(k)) : null), put: async (k: string, v: string) => void m.set(k, v), _m: m };
+  return { get: async (k: string, t?: string) => (m.has(k) ? (t === "json" ? JSON.parse(m.get(k)!) : m.get(k)) : null), put: async (k: string, v: string) => void m.set(k, v), delete: async (k: string) => void m.delete(k), _m: m };
 };
 const env = (e: Record<string, unknown> = {}) => ({ CONFIG: kv(), ...e }) as never;
 
@@ -88,6 +91,27 @@ console.log("\nevery camera, from both places");
         : new Response("x");
   const fb = await listCameras(env({ HA_BASE_URL: "https://ha.example.com", HA_TOKEN: "t" }));
   check("no template access: falls back to the full list", fb.map((c) => c.id).join() === "camera.gate", fb);
+}
+
+console.log("\na new house in Settings: its cameras, not the old one's");
+{
+  answer = (u) => new Response(u.startsWith("https://new-house.example/") ? "camera.gate|Gate\n" : "camera.porch|Porch\n");
+  const m = new Map<string, unknown>();
+  const storage = {
+    get: async (k: string) => structuredClone(m.get(k)),
+    put: async (k: string, v: unknown) => void m.set(k, structuredClone(v)),
+    delete: async (k: string) => m.delete(k),
+    list: async ({ prefix = "" }: { prefix?: string } = {}) => new Map([...m].filter(([k]) => k.startsWith(prefix))),
+  };
+  const e: Record<string, unknown> = { CONFIG: kv(), HA_BASE_URL: "https://old-house.example", HA_TOKEN: "old-house-token-0123456789" };
+  e.STATE = { idFromName: () => "jarvis", get: () => new StateHost(storage as never, e as never) };
+  check("the old house's cameras, cached", (await listCameras(e as never)).map((c) => c.id).join() === "camera.porch");
+  _resetSettingsCache();
+  const changes = { HA_BASE_URL: "https://new-house.example", HA_TOKEN: "new-house-token-0123456789" };
+  const put = await handleSettings(new Request("https://j.test/api/settings", { method: "PUT", body: JSON.stringify({ changes }) }), e as never);
+  _resetSettingsCache();
+  const now = await listCameras({ ...e, ...changes } as never);
+  check("saving the new house's address lists its cameras at once", put.status === 200 && now.map((c) => c.id).join() === "camera.gate", { status: put.status, now });
 }
 
 console.log("\none frame");

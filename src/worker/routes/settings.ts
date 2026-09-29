@@ -23,7 +23,7 @@ import { loadServers } from "../lib/config-store.ts";
 import { probe as mcpProbe } from "./mcp.ts";
 import { deliver, makeAlert, summarise } from "../lib/alerts.ts";
 import { recognitionHints, speechConfig, synthesize, transcribe } from "../lib/speech.ts";
-import { listCameras, snapshot } from "../lib/cameras.ts";
+import { forgetCameras, listCameras, snapshot } from "../lib/cameras.ts";
 import { haUrl } from "../lib/ha.ts";
 
 /**
@@ -109,7 +109,7 @@ async function view(env: Env, saved: SavedSettings, asker: (e: Env) => Env) {
  * A new OAuth client cannot use a refresh token issued to the old one, so the
  * link is dropped and the panel asks for it again rather than failing later
  * with invalid_grant. A new Home Assistant address or token makes the cached
- * tool list stale, so it is cleared.
+ * tool list and camera list stale, so they are cleared.
  */
 async function sideEffects(env: Env, before: Env, after: Env): Promise<void> {
   const changed = (k: keyof Env) => (before[k] ?? "") !== (after[k] ?? "");
@@ -123,6 +123,7 @@ async function sideEffects(env: Env, before: Env, after: Env): Promise<void> {
       jobs.push(env.CONFIG.delete(`mcp:catalog:${l}`).catch(() => {}));
     }
   }
+  if (changed("HA_BASE_URL") || changed("HA_TOKEN")) jobs.push(forgetCameras(env).catch(() => {}));
   await Promise.allSettled(jobs);
 }
 

@@ -255,7 +255,11 @@ is waited on any more.
 (adults, by default). Optionally, each person can give their own Home
 Assistant user's token (**Family → Home**): the house then
 answers them as themselves, so Home Assistant's logbook shows who did what,
-and whatever Home Assistant allows that user is what they can do.
+and whatever Home Assistant allows that user is what they can do. Their token
+is checked with, and sent only to, the Home Assistant address Family → Home
+shows them. If an admin changes the address (moving house, say), Jarvis stops
+using it, and Family → Home asks them to enter it again, showing the new
+address first. Only people with the house see its address or give a token.
 
 **Still the admin's**: Hermes, which can run commands on its machine. What
 Jarvis kept before there was a family (your memory, your Google, your

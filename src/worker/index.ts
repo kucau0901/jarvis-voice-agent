@@ -42,10 +42,10 @@ async function forPerson(env: Env, p: Principal): Promise<Env> {
   // Their cars (and, for the owner key and devices, who the first person is), kept a little while per isolate.
   const v = await personView(env, person).catch(() => null);
   if (p.kind === "member" && p.place) {
-    return withPerson(env, { person, name: p.name, space: p.place.space, prefs: p.place.prefs, cars: v?.space ? v.cars : undefined, haToken: v?.haToken, access: p.place.access });
+    return withPerson(env, { person, name: p.name, space: p.place.space, prefs: p.place.prefs, cars: v?.space ? v.cars : undefined, haToken: v?.haToken, haTokenFor: v?.haTokenFor, access: p.place.access });
   }
   // The owner key, and devices: the first person's, or for a member's own device, that member's.
-  return withPerson(env, { person, name: v?.name, space: v?.space, prefs: v?.prefs, cars: v?.space ? v.cars : undefined, haToken: v?.haToken, access: v?.access });
+  return withPerson(env, { person, name: v?.name, space: v?.space, prefs: v?.prefs, cars: v?.space ? v.cars : undefined, haToken: v?.haToken, haTokenFor: v?.haTokenFor, access: v?.access });
 }
 
 /** What someone outside their hours may still do (lib/access.ts). */

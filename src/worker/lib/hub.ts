@@ -100,6 +100,12 @@ interface StoredUser extends User {
    * it, and its own rules for that user apply. Never leaves the Worker.
    */
   haToken?: string;
+  /**
+   * The Home Assistant address (HA_BASE_URL) it was checked with. It is used
+   * there only (lib/context.ts): an admin can change the address, and must
+   * not be sent it. Absent for one saved before this was kept.
+   */
+  haTokenFor?: string;
 }
 
 /*
@@ -154,8 +160,9 @@ export interface PersonView {
   prefs: Prefs;
   /** The cars they may reach, with the keys, for the Worker only. */
   cars: Reach[];
-  /** Their own Home Assistant token, for the Worker only. */
+  /** Their own Home Assistant token, for the Worker only, and the address it was checked with. */
   haToken?: string;
+  haTokenFor?: string;
   /** What they may reach (their member's scopes); null if they are not in the family, or their access ended. */
   scopes?: Grant[] | null;
   /** Their limits (lib/access.ts). */
@@ -410,7 +417,7 @@ export class HubHost {
       name: u?.name ?? null,
       prefs: u?.prefs ?? {},
       cars: await this.carsFor(person),
-      ...(u?.haToken ? { haToken: u.haToken } : {}),
+      ...(u?.haToken ? { haToken: u.haToken, haTokenFor: u.haTokenFor } : {}),
       scopes: m ? scopesOf(m) : [WILDCARD],
       ...(m?.access ? { access: m.access } : {}),
     };
@@ -539,17 +546,19 @@ export class HubHost {
     return next;
   }
 
-  /** Their own Home Assistant token, already checked with the house; null removes it. */
-  async setHaToken(id: string, token: string | null): Promise<true | Fail> {
+  /** Their own Home Assistant token, already checked with the house at `base`; null removes it. */
+  async setHaToken(id: string, own: { token: string; base: string } | null): Promise<true | Fail> {
     const u = await this.storedUser(id);
     if (!u) return fail("no such person");
-    const { haToken: _, ...rest } = u;
-    await this.storage.put(K.user(id), token ? { ...rest, haToken: token } : rest);
+    const { haToken: _, haTokenFor: __, ...rest } = u;
+    await this.storage.put(K.user(id), own ? { ...rest, haToken: own.token, haTokenFor: own.base } : rest);
     return true;
   }
 
-  async hasHaToken(id: string): Promise<boolean> {
-    return !!(await this.storedUser(id))?.haToken;
+  /** The address their own Home Assistant token was checked with ("" if not kept), or null if they gave none. */
+  async haTokenFor(id: string): Promise<string | null> {
+    const u = await this.storedUser(id);
+    return u?.haToken ? (u.haTokenFor ?? "") : null;
   }
 
   /**
@@ -1185,7 +1194,7 @@ export const HUB_METHODS = [
   "setPrefs",
   "familyPeople",
   "setHaToken",
-  "hasHaToken",
+  "haTokenFor",
   "carsFor",
   "carsView",
   "addCar",

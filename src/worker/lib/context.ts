@@ -78,9 +78,18 @@ function carKeys(env: Env, reach: readonly Reach[]): CarKey[] {
   return out.sort((a, b) => rank(a) - rank(b));
 }
 
+/**
+ * Whether someone's own Home Assistant token may be used: only at the address
+ * it was checked with. An admin can change the address (moving house, or to a
+ * server of their own) and must not be sent it; until they enter it again,
+ * the family's is used. One saved before the address was kept has none.
+ */
+export const haTokenFits = (haTokenFor: string | null | undefined, env: Pick<Env, "HA_BASE_URL">): boolean =>
+  !!haTokenFor && haTokenFor === env.HA_BASE_URL;
+
 export function withPerson(
   env: Env,
-  o: { person: string; name?: string | null; space?: Space | null; prefs?: Prefs; cars?: readonly Reach[]; haToken?: string; access?: Access },
+  o: { person: string; name?: string | null; space?: Space | null; prefs?: Prefs; cars?: readonly Reach[]; haToken?: string; haTokenFor?: string; access?: Access },
 ): Env {
   const out: Env = { ...env, JARVIS_PERSON: o.person };
   if (o.name) out.JARVIS_PERSON_NAME = o.name;
@@ -101,7 +110,7 @@ export function withPerson(
    * default is their own, else one shared with them; with none, no car.
    */
   // Their own Home Assistant user, if they gave one: the house answers them as themselves.
-  if (o.haToken) out.HA_TOKEN = o.haToken;
+  if (o.haToken && haTokenFits(o.haTokenFor, env)) out.HA_TOKEN = o.haToken;
   // A guest's pass: the things in the house they may work, and no others (tools/pass.ts).
   if (o.access?.allow?.length) out.JARVIS_PASS = JSON.stringify(o.access.allow);
   if (o.cars || o.person !== OWNER) {

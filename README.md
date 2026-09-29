@@ -223,7 +223,8 @@ real service — before you save, if you like.
 - **A stored token never follows a changed address.** If a service's URL is
   changed in the panel, its token is withheld until it is entered again — so
   someone holding the owner key cannot redirect your Home Assistant token, or
-  your OpenAI key, to a server of their own.
+  your OpenAI key, to a server of their own. A family member's own Home
+  Assistant token is likewise used only at the address it was checked with.
 - **Where you are** (time zone, country, language, units) drives times,
   directions, address lookups and distances.
 

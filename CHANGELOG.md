@@ -19,6 +19,13 @@ of every release, and in the [README](README.md#updating).
 
 ### Security
 
+- **Whoever could edit the MCP servers (a family admin) could have the
+  family's Home Assistant token sent to a server of their own.** It was put
+  into the headers of any MCP server on the same host as the Home Assistant
+  MCP URL, and a Nabu Casa webhook's host is shared by every Nabu Casa
+  customer. The token now goes only to servers on the Home Assistant Base
+  URL's host, and a new MCP URL no longer stops the token being used. An MCP
+  server that takes `${HA_TOKEN}` must be on the Base URL's host.
 - **A token pasted into an MCP server's header could be sent to another
   address.** Any family admin could keep the server's name, give it a new
   URL, and press **Test** or **Save**: the saved token went to the new
@@ -30,6 +37,20 @@ of every release, and in the [README](README.md#updating).
   or `/api/mcp/call`. Now only the owner (the owner key, or the person who
   set up the family) can send one to an address it is not already sent to;
   other admins can still rename, turn off or remove servers using one.
+- **A family admin could have another person's own Home Assistant token sent
+  to a server of their own** by changing the Home Assistant Base URL: a token
+  given in Family → Home went to whatever address the house had. Each
+  person's own token is now used only at the address it was checked with,
+  and Family → Home shows that address before a token is given: it is sent
+  only to the address shown. When the address changes (moving house, say),
+  theirs is no longer used, and Family → Home asks them to enter it again,
+  showing the new address. Only people who may use the house see the
+  address or give a token. Tokens given before this version are tied to no
+  address, so each person who gave one enters it once more.
+- **On a shared screen, a profile locked with a PIN could still have its own
+  choices changed** by whoever was at the screen: where its Telegram
+  messages go, its name, and its own Home Assistant token. A locked profile
+  now changes nothing until its PIN is given.
 
 ### Changed
 
@@ -42,6 +63,9 @@ of every release, and in the [README](README.md#updating).
 
 ### Fixed
 
+- **After a new Home Assistant address or token was saved, the cameras of the
+  old one were offered** for up to an hour. The new one's are now asked for
+  at once.
 - **Live could go on billing for a session it had let go of.** A connection
   given up on in a tunnel could come back once a new session had opened, and
   stay open beside it until the tab closed: billed, writing what was said on

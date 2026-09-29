@@ -35,7 +35,8 @@ const kv = new Map<string, string>();
 const forgotten: string[] = [];
 /** Sign-ins whose open screens the object was told to close (routes/hub.ts). */
 const closed: string[] = [];
-const people = new HubHost(fakeStorage());
+const peopleStorage = fakeStorage();
+const people = new HubHost(peopleStorage);
 const env = {
   JARVIS_SHARED_SECRET: "NOTAREALKEY12345",
   CONFIG: {
@@ -245,6 +246,11 @@ console.log("\na shared screen, with PINs");
   check("a locked session says so", (locked as { locked?: boolean }).locked === true);
   const me = await call("/api/hub/me", undefined, { principal: locked });
   check("and reaches nothing", me.body.locked === true && me.body.scopes.length === 0);
+  // Nor changes anything of hers from the shared screen: where her messages go, her name, her own Home Assistant token.
+  const nurId = (locked as { id: string }).id;
+  const changed = await call("/api/hub/me", { prefs: { telegram: "123456789" }, name: "Someone else", haToken: "" }, { method: "PATCH", principal: locked });
+  const kept = await people.personView(nurId);
+  check("nor changes her choices, her name or her token", changed.status === 423 && kept.prefs.telegram === undefined && kept.name === "Nur", { status: changed.status, kept });
   check("a wrong PIN is refused", (await withToken("/api/hub/unlock", { pin: "1357" })).status === 403);
   check("the right one unlocks her at once", (await withToken("/api/hub/unlock", { pin: "2468" })).status === 200 && !(await as() as { locked?: boolean }).locked);
   const clear = await call("/api/hub/members", { user: (await as() as { id: string }).id, clearPin: true }, { method: "PATCH", principal: admin });
@@ -274,6 +280,77 @@ console.log("\neach person's own choices");
   const badBoth = await call("/api/hub/me", { haToken: "", prefs: { voice: "robot" } }, { method: "PATCH", principal: admin });
   check("a bad choice refuses the lot, before anything is kept", badBoth.status === 400 && /voice must be one of/.test(badBoth.body.error));
   await call("/api/hub/me", { name: "Adam" }, { method: "PATCH", principal: admin });
+}
+
+console.log("\ntheir own Home Assistant token: kept for the address it was checked with");
+{
+  const TOKEN = "adam-ha-token-0123456789";
+  const asked: string[] = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async (u: string | URL | Request, init?: RequestInit) => {
+    asked.push(String(u));
+    return new Response("{}", { status: new Headers(init?.headers).get("authorization") === `Bearer ${TOKEN}` ? 200 : 401 });
+  }) as typeof fetch;
+  // The house as the settings have it at the time.
+  const at = async (base: string, body?: unknown, who: Principal = admin) => {
+    const req = new Request(SITE + "/api/hub/me", {
+      method: body === undefined ? "GET" : "PATCH",
+      headers: { origin: SITE, "content-type": "application/json" },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    const res = await handleHub(req, { ...env, HA_BASE_URL: base } as never, who);
+    return { status: res.status, body: (await res.json()) as Record<string, any> };
+  };
+  const id = admin.kind === "member" ? admin.id : "";
+
+  const saved = await at("https://home.example", { haToken: TOKEN, haBase: "https://home.example" });
+  check("checked with the house, then kept", saved.status === 200 && asked.at(-1) === "https://home.example/api/", saved.body);
+  check("for the address it was checked with", (await people.haTokenFor(id)) === "https://home.example");
+  const view = await people.personView("owner");
+  check("which a request is given with it", view.haToken === TOKEN && view.haTokenFor === "https://home.example");
+  const here = await at("https://home.example");
+  check("there, it is in use", here.body.haToken === true && here.body.haTokenStale === false, here.body);
+  check("and they are shown where it goes", here.body.haAddress === "https://home.example");
+
+  // An admin changes the address: moving house, or a server of their own.
+  const moved = await at("https://new-house.example");
+  check("the address changed: not in use, and they are asked for it again", moved.body.haToken === false && moved.body.haTokenStale === true, moved.body);
+  check("shown the new address before giving it", moved.body.haAddress === "https://new-house.example");
+  // Changed while their screen still showed the old one: nothing is sent to the new one unseen.
+  const sent = asked.length;
+  const unseen = await at("https://new-house.example", { haToken: TOKEN, haBase: "https://home.example" });
+  check("a token for the address they were shown, which is no longer it: refused, with the new one", unseen.status === 409 && unseen.body.haAddress === "https://new-house.example", unseen.body);
+  check("and sent nowhere", asked.length === sent && (await people.haTokenFor(id)) === "https://home.example");
+  // A look-alike name (a Cyrillic o) is shown as the name fetch would reach, and a token for the look-alike is refused.
+  const lookAlike = "https://h\u043eme.example";
+  check("a look-alike address is shown as the name it really is", (await at(lookAlike)).body.haAddress === "https://xn--hme-sed.example");
+  check("and a token given for how it looks is sent nowhere", (await at(lookAlike, { haToken: TOKEN, haBase: lookAlike })).status === 409 && asked.length === sent);
+  const blind = await at("https://new-house.example", { haToken: TOKEN });
+  check("an app that shows no address (an older one) is refused too", blind.status === 409 && asked.length === sent);
+  const refused = await at("https://new-house.example", { haToken: "not-their-token-0123456789", haBase: "https://new-house.example" });
+  check("a token the house refuses is not kept", refused.status === 400 && (await people.haTokenFor(id)) === "https://home.example");
+  await at("https://new-house.example", { haToken: TOKEN, haBase: "https://new-house.example" });
+  check("entered again, it is kept for the new address", (await people.haTokenFor(id)) === "https://new-house.example" && (await at("https://new-house.example")).body.haToken === true);
+
+  // One given before the address was kept: not in use, asked for again, and it can still be removed.
+  const record = (await peopleStorage.get<Record<string, unknown>>(`hub:user:${id}`))!;
+  const { haTokenFor: _, ...legacy } = record;
+  await peopleStorage.put(`hub:user:${id}`, legacy);
+  const old = await at("https://new-house.example");
+  check("one saved before the address was kept: asked for again", old.body.haToken === false && old.body.haTokenStale === true && (await people.haTokenFor(id)) === "", old.body);
+
+  await at("https://new-house.example", { haToken: "" });
+  const gone = await at("https://new-house.example");
+  check("removed: neither in use nor asked for", gone.body.haToken === false && gone.body.haTokenStale === false && (await people.haTokenFor(id)) === null);
+  check("and the address goes with it", !("haTokenFor" in (await people.personView("owner"))));
+
+  // Someone who may not use the house (getting home needs only chat) is not told where it is.
+  const noHouse = { ...admin, role: "adult", scopes: ["chat"] } as Principal;
+  check("a locked profile: not shown the address", (await at("https://new-house.example", undefined, { ...admin, locked: true } as Principal)).body.haAddress === null);
+  check("no house: not shown its address", (await at("https://new-house.example", undefined, noHouse)).body.haAddress === null);
+  const theirs = await at("https://new-house.example", { haToken: TOKEN, haBase: "https://new-house.example" }, noHouse);
+  check("nor given a token of their own for it", theirs.status === 403 && asked.length === sent + 2 && (await people.haTokenFor(id)) === null, theirs.body);
+  globalThis.fetch = realFetch;
 }
 
 console.log("\nscopes and devices");
