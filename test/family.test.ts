@@ -276,6 +276,50 @@ console.log("\neach person's own choices");
   await call("/api/hub/me", { name: "Adam" }, { method: "PATCH", principal: admin });
 }
 
+console.log("\ntheir own Home Assistant token: kept for the address it was checked with");
+{
+  const TOKEN = "adam-ha-token-0123456789";
+  const asked: string[] = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async (u: string | URL | Request, init?: RequestInit) => {
+    asked.push(String(u));
+    return new Response("{}", { status: new Headers(init?.headers).get("authorization") === `Bearer ${TOKEN}` ? 200 : 401 });
+  }) as typeof fetch;
+  // The house as the settings have it at the time.
+  const at = async (base: string, body?: unknown) => {
+    const req = new Request(SITE + "/api/hub/me", {
+      method: body === undefined ? "GET" : "PATCH",
+      headers: { origin: SITE, "content-type": "application/json" },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    const res = await handleHub(req, { ...env, HA_BASE_URL: base } as never, admin);
+    return { status: res.status, body: (await res.json()) as Record<string, any> };
+  };
+  const id = admin.kind === "member" ? admin.id : "";
+
+  const saved = await at("https://home.example", { haToken: TOKEN });
+  check("checked with the house, then kept", saved.status === 200 && asked.at(-1) === "https://home.example/api/", saved.body);
+  check("for the address it was checked with", (await people.haTokenFor(id)) === "https://home.example");
+  const view = await people.personView("owner");
+  check("which a request is given with it", view.haToken === TOKEN && view.haTokenFor === "https://home.example");
+  const here = await at("https://home.example");
+  check("there, it is in use", here.body.haToken === true && here.body.haTokenStale === false, here.body);
+
+  // An admin changes the address: moving house, or a server of their own.
+  const moved = await at("https://new-house.example");
+  check("the address changed: not in use, and they are asked for it again", moved.body.haToken === false && moved.body.haTokenStale === true, moved.body);
+  const refused = await at("https://new-house.example", { haToken: "not-their-token-0123456789" });
+  check("a token the house refuses is not kept", refused.status === 400 && (await people.haTokenFor(id)) === "https://home.example");
+  await at("https://new-house.example", { haToken: TOKEN });
+  check("entered again, it is kept for the new address", (await people.haTokenFor(id)) === "https://new-house.example" && (await at("https://new-house.example")).body.haToken === true);
+
+  await at("https://new-house.example", { haToken: "" });
+  const gone = await at("https://new-house.example");
+  check("removed: neither in use nor asked for", gone.body.haToken === false && gone.body.haTokenStale === false && (await people.haTokenFor(id)) === null);
+  check("and the address goes with it", !("haTokenFor" in (await people.personView("owner"))));
+  globalThis.fetch = realFetch;
+}
+
 console.log("\nscopes and devices");
 {
   check("the family routes are for people, never devices", requiredScope("/api/hub/members", "GET") === "person");

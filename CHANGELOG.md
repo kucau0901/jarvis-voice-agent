@@ -26,6 +26,14 @@ of every release, and in the [README](README.md#updating).
   customer. The token now goes only to servers on the Home Assistant Base
   URL's host, and a new MCP URL no longer stops the token being used. An MCP
   server that takes `${HA_TOKEN}` must be on the Base URL's host.
+- **A family admin could have another person's own Home Assistant token sent
+  to a server of their own** by changing the Home Assistant Base URL: a token
+  given in Family → Home went to whatever address the house had. Each
+  person's own token is now used only at the address it was checked with.
+  When the address changes (moving house, say), the family's token is used
+  for them, and Family → Home asks them to enter theirs again. Tokens given
+  before this version are tied to no address, so each person who gave one
+  enters it once more.
 
 ### Changed
 

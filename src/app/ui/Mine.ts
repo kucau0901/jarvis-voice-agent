@@ -33,6 +33,9 @@ interface CarView {
   shares?: Record<string, "see" | "drive">;
 }
 
+/** Your own Home Assistant token (GET /api/hub/me): in use, given for an address the house no longer has, or none. */
+type OwnHa = "yours" | "again" | "";
+
 /** What Jarvis will do with the car for them: nothing to do with who can drive it, which is the Tesla app's or key's. */
 const LEVEL_WORDS: Record<string, string> = { "": "not shared", see: "can check it", drive: "can control it" };
 
@@ -45,15 +48,15 @@ export class Mine {
   private key: string;
   private box: HTMLElement;
   private prefs: Prefs;
-  private haToken: boolean;
+  private ha: OwnHa;
   /** What this person may reach (GET /api/hub/me); absent, everything. */
   private scopes: string[] | undefined;
 
-  constructor(key: string, box: HTMLElement, prefs: Prefs, haToken = false, scopes?: string[]) {
+  constructor(key: string, box: HTMLElement, prefs: Prefs, ha: OwnHa = "", scopes?: string[]) {
     this.key = key;
     this.box = box;
     this.prefs = prefs;
-    this.haToken = haToken;
+    this.ha = ha;
     this.scopes = scopes;
   }
 
@@ -171,7 +174,7 @@ export class Mine {
       const res = await fetch("/api/hub/me", { method: "PATCH", headers: authHeaders(this.key), body: JSON.stringify({ haToken: token }) });
       const body = (await res.json()) as { error?: string };
       if (!res.ok) throw new Error(body.error ?? `the server said ${res.status}`);
-      this.haToken = !!token;
+      this.ha = token ? "yours" : "";
       // In place: rendering the whole box again would close its section in Family's menu, and this message with it.
       this.box.querySelector<HTMLInputElement>(".m-ha")!.value = "";
       this.showHa();
@@ -181,12 +184,13 @@ export class Mine {
     }
   }
 
-  /** Whether your own Home Assistant token is set, and the button to remove it if so. */
+  /** Whether your own Home Assistant token is set (or to be entered again), and the button to remove it if so. */
   private showHa(): void {
-    this.box.querySelector(".m-haset")!.textContent = this.haToken ? "Yours is set." : "";
+    this.box.querySelector(".m-haset")!.textContent =
+      this.ha === "yours" ? "Yours is set." : this.ha === "again" ? "Home Assistant's address has changed since you gave yours, so the family's is used: enter yours again to be yourself." : "";
     const row = this.box.querySelector<HTMLElement>(".m-harow")!;
     row.querySelector(".m-haoff")?.remove();
-    if (!this.haToken) return;
+    if (!this.ha) return;
     const off = document.createElement("button");
     off.className = "m-haoff";
     off.textContent = "Remove mine";

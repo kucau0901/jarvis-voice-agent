@@ -12,7 +12,7 @@ import { ROLES, ROLE_SCOPES, type HubApi, type Prefs } from "../lib/hub.ts";
 import { forgetPerson, forgetSessions, hubStub } from "../lib/hub-client.ts";
 import * as devices from "../lib/devices.ts";
 import { sha256Hex } from "../lib/devices.ts";
-import { deviceWho } from "../lib/context.ts";
+import { deviceWho, haTokenFits } from "../lib/context.ts";
 import { stateStub } from "../lib/state-client.ts";
 import {
   creationOptions,
@@ -251,16 +251,17 @@ export async function handleHub(req: Request, env: Env, principal: Principal): P
       const badPrefs = rawPrefs && prefsProblem(rawPrefs);
       if (badPrefs) return err(400, badPrefs);
       if (b.haToken !== undefined) {
-        // Their own Home Assistant user: checked with the house before it is kept.
+        // Their own Home Assistant user: checked with the house before it is kept, and kept for that address (lib/context.ts).
         const token = str(b.haToken).trim();
+        const base = env.HA_BASE_URL ?? "";
         if (token) {
-          if (!env.HA_BASE_URL) return err(400, "the family's Home Assistant address is not set up yet");
-          const ok = await fetch(haUrl(env.HA_BASE_URL, "/api/"), { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(10_000) })
+          if (!base) return err(400, "the family's Home Assistant address is not set up yet");
+          const ok = await fetch(haUrl(base, "/api/"), { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(10_000) })
             .then((r) => r.ok)
             .catch(() => false);
           if (!ok) return err(400, "Home Assistant did not accept that token");
         }
-        const r = await hub.setHaToken(me.id, token || null);
+        const r = await hub.setHaToken(me.id, token ? { token, base } : null);
         if (r !== true) return err(400, r.error);
         forgetPerson(personOf(principal));
         if (rawPrefs === undefined && b.name === undefined) return json({ ok: true, haToken: !!token });
@@ -278,6 +279,7 @@ export async function handleHub(req: Request, env: Env, principal: Principal): P
     }
     const status = await hub.status();
     const s = space ? await hub.space(space) : null;
+    const haFor = me ? await hub.haTokenFor(me.id) : null;
     return json({
       owner: principal.kind === "owner",
       claimed: status.claimed,
@@ -289,7 +291,9 @@ export async function handleHub(req: Request, env: Env, principal: Principal): P
       access: me?.place?.access
         ? { ...me.place.access, allow: me.place.access.allow?.map((a) => ({ ...a, actions: passActions(a.entity) })) }
         : null,
-      haToken: me ? await hub.hasHaToken(me.id) : false,
+      // Their own Home Assistant token: in use, or given for an address the house no longer has (enter it again).
+      haToken: haTokenFits(haFor, env),
+      haTokenStale: haFor !== null && !haTokenFits(haFor, env),
       // What this person may reach, so the app offers only that.
       scopes: me?.locked ? [] : grantsOf(principal),
       session: me ? me.session : null,

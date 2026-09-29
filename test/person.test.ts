@@ -7,6 +7,8 @@ import { handleMemory } from "../src/worker/routes/memory.ts";
 import { beginAuth, consumeState, isLinked, unlinkEveryone } from "../src/worker/lib/google.ts";
 import { unlinkEveryone as unlinkEveryoneSpotify } from "../src/worker/lib/spotify.ts";
 import { handleSettings } from "../src/worker/routes/settings.ts";
+import { effectiveEnv, type SavedSettings } from "../src/worker/lib/settings.ts";
+import { expandHeaderTemplates } from "../src/worker/lib/mcp-config.ts";
 import { StateHost } from "../src/worker/lib/state-host.ts";
 import { _resetSettingsCache } from "../src/worker/lib/settings-store.ts";
 import { deliver, makeAlert, type Alert, type AlertState } from "../src/worker/lib/alerts.ts";
@@ -81,6 +83,30 @@ console.log("\nthe environment, per person");
   check("their own, if they gave one", own.TELEGRAM_CHAT_ID === "12345");
   const owner = withPerson(base, { person: OWNER });
   check("the first person keeps the family's", owner.TELEGRAM_CHAT_ID === "999" && owner.VOICE_TTS_VOICE === "cedar");
+}
+
+console.log("\ntheir own Home Assistant token: only at the address it was checked with");
+{
+  // The house as deployed, the family's token, and Sara's own, checked with that house.
+  const deploy = fakeEnv({ HA_BASE_URL: "https://home.example", HA_TOKEN: "family-ha-token-0123456789" }) as never;
+  const SARA = "sara-ha-token-0123456789";
+  const sara = { person: "u_sara", haToken: SARA, haTokenFor: "https://home.example" };
+  const withSaved = (saved: SavedSettings) => withPerson(effectiveEnv(deploy, saved), sara);
+  check("at the house it was checked with, hers is used", withSaved({}).HA_TOKEN === SARA);
+
+  // An admin points the house at a server of their own: she must not be sent there.
+  const elsewhere = withSaved({ HA_BASE_URL: { v: "https://evil.example", at: 10 } });
+  check("the address changed: hers is not used", elsewhere.HA_TOKEN !== SARA, elsewhere.HA_TOKEN);
+  const header = expandHeaderTemplates({ Authorization: "Bearer ${HA_TOKEN}" }, elsewhere as never, "https://evil.example/api/mcp").Authorization;
+  check("nor put into an MCP server's headers there", !header!.includes(SARA), header);
+
+  // The family moves house: the new address and its token are entered together.
+  const moved = withSaved({ HA_BASE_URL: { v: "https://new-house.example", at: 10 }, HA_TOKEN: { v: "new-house-token-0123456789", at: 10 } });
+  check("moving house: the family's new token is used until she enters hers there", moved.HA_TOKEN === "new-house-token-0123456789");
+  check("a new MCP URL leaves hers in use: it is sent no token", withSaved({ HA_MCP_URL: { v: "https://hooks.example/api/webhook/new", at: 10 } }).HA_TOKEN === SARA);
+  check("one saved before the address was kept is not used", withPerson(deploy, { person: "u_sara", haToken: SARA }).HA_TOKEN === "family-ha-token-0123456789");
+  const first = withPerson(effectiveEnv(deploy, { HA_BASE_URL: { v: "https://evil.example", at: 10 } }), { person: OWNER, haToken: "adam-ha-token-0123456789", haTokenFor: "https://home.example" });
+  check("nor the first person's, which the owner key and devices use", first.HA_TOKEN !== "adam-ha-token-0123456789");
 }
 
 console.log("\ncars: only those shared, as far as they are shared");
