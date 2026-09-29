@@ -176,7 +176,7 @@ something. So:
 - **After each change**, typecheck, tests and build pass.
 - **Behavior check.** Before starting, record a baseline from `main`:
   `git worktree add --detach /tmp/jarvis-main main`, then
-  `node test/behavior/check.mjs record /tmp/jarvis-main .refactor-baseline`,
+  `node test/behavior/check.mjs record /tmp/jarvis-main .behavior-baseline`,
   then `git worktree remove --force /tmp/jarvis-main`. When done,
   `node test/behavior/check.mjs verify` lists what changed (the first 40
   differences). Each difference must be one the feature meant to make: say so
