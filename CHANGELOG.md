@@ -30,6 +30,11 @@ of every release, and in the [README](README.md#updating).
   or `/api/mcp/call`. Now only the owner (the owner key, or the person who
   set up the family) can send one to an address it is not already sent to;
   other admins can still rename, turn off or remove servers using one.
+- **A profile locked on a shared screen still told who it was.** Anyone who
+  copied a locked sign-in from the screen could read that person's Telegram
+  chat, their Home Assistant person, their voice and language, and a guest's
+  pass (its hours, end and what it opens). A locked sign-in now says only
+  who it is and whether it has a PIN, until the PIN is given.
 
 ### Changed
 

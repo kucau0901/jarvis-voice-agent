@@ -254,6 +254,30 @@ console.log("\na shared screen, with PINs");
   check("nobody else can", notAdmin.status === 403);
 }
 
+console.log("\na locked guest, to whoever copies her sign-in");
+{
+  const inv = await call("/api/hub/invites", { role: "guest", name: "Siti", access: { allow: [{ entity: "cover.main_gate", label: "Main gate" }] } }, { principal: admin });
+  const { done } = await join(inv.body.token, "Siti");
+  const token = done.body.token;
+  const as = async () => {
+    _clearSessionCache();
+    return (await who(token))!;
+  };
+  const withToken = async (path: string, body: unknown, method = "POST") => {
+    const req = new Request(SITE + path, { method, headers: { origin: SITE, "content-type": "application/json", authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
+    const res = await handleHub(req, env, await as());
+    return { status: res.status, body: (await res.json()) as Record<string, any> };
+  };
+  await withToken("/api/hub/me", { prefs: { telegram: "123456", presence: "person.siti" } }, "PATCH");
+  await withToken("/api/hub/pin", { pin: "1357" });
+  const open = await call("/api/hub/me", undefined, { principal: await as() });
+  check("unlocked, she sees her own choices and pass", open.body.prefs.telegram === "123456" && open.body.access?.allow?.[0]?.entity === "cover.main_gate", open.body);
+  await withToken("/api/hub/lock", {});
+  const locked = await call("/api/hub/me", undefined, { principal: await as() });
+  check("locked, the screen still knows who she is and that she has a PIN", locked.body.locked === true && locked.body.user?.name === "Siti" && locked.body.hasPin === true && locked.body.space?.agentName === "Friday", locked.body);
+  check("but not her choices, her pass or her reach", JSON.stringify(locked.body.prefs) === "{}" && locked.body.access === null && locked.body.haToken === false && locked.body.scopes.length === 0, locked.body);
+}
+
 console.log("\neach person's own choices");
 {
   const me = await call("/api/hub/me", { prefs: { voice: "robot" } }, { method: "PATCH", principal: admin });

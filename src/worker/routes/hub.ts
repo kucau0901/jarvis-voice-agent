@@ -278,23 +278,26 @@ export async function handleHub(req: Request, env: Env, principal: Principal): P
     }
     const status = await hub.status();
     const s = space ? await hub.space(space) : null;
+    // Locked on a shared screen: only what choosing who is using it and unlocking need
+    // (who this is, whether they have a PIN), nothing of their choices, pass or reach.
+    const locked = !!me?.locked;
     return json({
       owner: principal.kind === "owner",
       claimed: status.claimed,
       space: s ? { name: s.name, agentName: s.agentName } : null,
       user: me ? { id: me.id, name: me.name } : null,
       role: me ? me.role : "admin",
-      prefs: me?.place?.prefs ?? {},
+      prefs: locked ? {} : (me?.place?.prefs ?? {}),
       // A guest's limits: until when, which hours, and the pass's things with what each can do.
-      access: me?.place?.access
+      access: !locked && me?.place?.access
         ? { ...me.place.access, allow: me.place.access.allow?.map((a) => ({ ...a, actions: passActions(a.entity) })) }
         : null,
-      haToken: me ? await hub.hasHaToken(me.id) : false,
+      haToken: me && !locked ? await hub.hasHaToken(me.id) : false,
       // What this person may reach, so the app offers only that.
-      scopes: me?.locked ? [] : grantsOf(principal),
+      scopes: locked ? [] : grantsOf(principal),
       session: me ? me.session : null,
       hasPin: !!me?.hasPin,
-      locked: !!me?.locked,
+      locked,
     });
   }
 
