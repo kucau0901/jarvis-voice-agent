@@ -1,106 +1,208 @@
 # Working on this repository
 
+One Cloudflare Worker serves the app and `/api/*`; one Durable Object holds
+the state. Why it is built the way it is: `docs/DESIGN.md`. Before changing an
+area, read its section there: most of what looks odd is a decision, with the
+reason written down.
+
 ## Commands
 
 | What | Command | Notes |
 | --- | --- | --- |
-| Typecheck | `npm run typecheck` | `tsc --noEmit` twice: the app (`tsconfig.json`, DOM types) and the Worker (`tsconfig.worker.json`, the Workers runtime's types). A fresh clone first needs `cp wrangler.example.jsonc wrangler.jsonc` and `npx wrangler types`, which generates `worker-configuration.d.ts` (as CI does). |
-| Test | `npm test` | Plain Node, no runner: each `test/*.test.ts` is run with `node`. 32 files. |
-| Build | `npm run build` | `vite build` into `dist/`. The "chunks larger than 500 kB" warning is expected. |
-| Lint | none | There is no linter configured, and none is to be added. |
-| Behavior check | `node test/behavior/check.mjs verify` | About 1½ minutes. Builds this checkout, runs it locally and compares what it does with `.refactor-baseline/`. Exit 0 means the same behavior. See below. |
+| Typecheck | `npm run typecheck` | `tsc --noEmit` twice: the app (`tsconfig.json`, DOM types) and the Worker (`tsconfig.worker.json`, the Workers runtime's types). A fresh clone first needs `cp wrangler.example.jsonc wrangler.jsonc` and `npx wrangler types`. |
+| Test | `npm test` | Plain Node, no runner: each `test/*.test.ts` is run with `node`, one after another. **A new test file must be added to the `test` script in `package.json`**, or it never runs. |
+| Build | `npm run build` | `vite build` into `dist/`. Two warnings are expected: "chunks larger than 500 kB", and `INEFFECTIVE_DYNAMIC_IMPORT` for `@modelcontextprotocol/client`. |
+| Lint | none | None is configured, and none is to be added. |
+| Behavior check | `node test/behavior/check.mjs verify` | About 1½ minutes. See "Checking a feature". |
 
 Tests load source files straight into Node (type stripping), so:
 
-- imports between `src/worker/lib` files and anything a test loads use an
-  explicit `.ts` extension;
+- imports between Worker files, and in anything a test loads, use an explicit
+  `.ts` extension;
 - no TypeScript-only runtime syntax in those files (no parameter properties,
   enums or namespaces): Node's strip-only mode rejects them.
 
-## Rules for the refactor (branch `refactor-cleanup`)
+## Where things go
 
-- **Zero behavior change.** These stay exactly as they are:
-  - API routes, methods, request and response shapes (`src/worker/routes/`,
-    `docs/api.md`);
-  - the storage schema: Durable Object and KV keys and the shape of what is
-    stored under them (`hub:`, `relay:`, `chat:`, `mem:`, `google:`,
-    `spotify:` and the rest);
-  - environment variable and setting names (`src/worker/types.ts`,
-    `src/worker/lib/settings.ts`);
-  - Durable Object class names, bindings and migrations in
-    `wrangler.example.jsonc`.
-  The package is private (not published), so there are no public exports to
-  keep.
-- **No new dependencies.**
-- **Don't touch** `node_modules/`, build output (`dist/`), generated files
-  (`worker-configuration.d.ts`, `package-lock.json`) or migrations.
-- **After each step, typecheck, tests and build must pass.**
-- **Never silence errors:** no new `any`, `@ts-ignore`, `@ts-expect-error`,
-  `eslint-disable` or `as unknown as`. Don't loosen `tsconfig.json`.
-- **Don't change what a test checks to make it pass.** Fixing an import after
-  a move is fine. If a check fails, fix the change or revert it.
-- **Bugs noticed along the way** are noted in the refactor plan (kept out of
-  the repository) and fixed on `main`, not on this branch.
-- **One step at a time:** one commit per step, `refactor: <step>`, and tick the
-  step in the plan. Subagents only for read-only investigation.
+| Path | What it holds |
+| --- | --- |
+| `src/worker/index.ts` | The gate (credentials, locked profiles, hours, scopes, device limits), then `route()`. A new top-level route adds one line here, nothing else. |
+| `src/worker/routes/` | HTTP: read the request, check it, call `lib/`, shape the reply. One file per area. |
+| `src/worker/lib/` | The logic, as plain functions and classes Node can test. New logic goes here, not in a route. |
+| `src/worker/tools/` | What the router model can call: one file per service, listed in `ALL` in `tools/registry.ts`. |
+| `src/worker/state.ts` | The Durable Object: a thin class over `lib/` classes that do the work (`StateHost`, `HubHost`, `Scheduler`, `Jobs`, `Relays`, `Chat`). |
+| `src/app/main.ts` | The app's wiring: the voice session, unlocking, modes, the menu. Wiring only. |
+| `src/app/ui/` | One class per panel, built in code. |
+| `src/shared/` | Only what both halves need. |
+| `public/` | Copied as is, never compiled. `probe.html` has no dependencies on purpose. |
 
-### Behavior checks
+A few engines still live in `routes/`, used by `state.ts` and `lib/router.ts`:
+`jobEngine` (`routes/jobs.ts`), `askForRoutine` and `travelFor`
+(`routes/routines.ts`), `recordUsage` (`routes/usage.ts`). Leave them there
+and don't add more.
 
-`test/behavior/check.mjs` runs a build of the app locally and records what it
-does:
+## Adding a feature
 
-- It runs against stand-ins, never anything real: a fake OpenAI and a fake
-  Home Assistant (`fakes.mjs`), a fresh local store, and made-up keys.
-- **API** (`scenario.ts`): a family of five is made and uses the API, about
-  105 requests. That covers sign-in, invites, pairing, PINs, memory, cars,
-  passing things on, chat, a guest's pass, devices, routines, usage,
-  settings, hours and removal. It also records which tools each question was
-  offered and which house calls were made.
-- **Screens** (`ui.mjs`): headless Chrome opens the app as an admin, an adult
-  and a guest, and reads every panel, and every section of a panel with a
-  menu, as text.
+Most features are one or more of these. Copy the example named; don't invent a
+new shape.
 
-It runs without the rate-limit binding, so no answer depends on how fast
-requests came. Times, ids, tokens and relative times ("5m ago") are ignored when comparing,
-and so is the order of lists that come in random-id order. Screenshots are
-saved beside the text for a person to look at; they are not compared.
+**A tool** (something Jarvis does when asked). A file in `src/worker/tools/`
+shaped like `tools/notes.ts`: `name`, `description`, `parameters`, `scope`,
+`pace`, `available(env)` if it needs setting up, and `run()` returning text.
+Add it to `ALL` in `tools/registry.ts`.
 
-- **The baseline** is `.refactor-baseline/` (git-ignored). It was recorded from
-  `main` at `fc83556`, the code before this branch. To record it again:
+- The schema is strict: every property in `required` and
+  `additionalProperties: false`; an optional one is typed with `"null"`, as
+  `title` is in `notes.ts`.
+- `scope` (from `lib/scopes.ts`) decides who is even shown the tool; none means
+  anyone with `ask`. Ask before adding a scope: it changes what every role and
+  device can reach.
+- Text someone else wrote (mail, reviews, calendar invitations) goes back to
+  the model through `asQuotedData()` in `lib/quote.ts`.
+- Tools using a person's linked Google or Spotify account wrap their work in
+  `guardTool()` (`lib/google.ts`).
+- Background jobs are offered only the local tools named in `READ_TOOLS`
+  (`lib/jobs.ts`). Add a new tool there if it only reads and jobs should have
+  it; never one that sends, changes or unlocks anything.
+- `test/router-inputs.test.ts` pins each role's tool list and the hash of
+  `ROUTER_PROMPT`. A feature that adds a tool or changes the prompt updates
+  `EXPECTED` or `PROMPT_SHA256` in the same commit and says so in the message.
+  Anything else changing there is a regression.
+
+**An endpoint.** In its area's file in `src/worker/routes/`, plus:
+
+- a line in `route()` in `index.ts`, or under `/api/v1/` in `handleV1()`
+  (`routes/v1.ts`), where each area's handler returns `null` for paths that are
+  not its own, as `handleJobs()` does;
+- a line in `requiredScope()` in `lib/scopes.ts`, in the order `route()`
+  matches (prefixes first). A path no rule matches is owner-only. Everything
+  under `/api/hub/`, `/api/google`, `/api/spotify` and `/api/v1/devices` is
+  already open to every signed-in person, so an admin-only handler there
+  checks `isAdmin()` itself, as `routes/hub.ts` does. Open a path
+  deliberately, never by widening a prefix;
+- bodies read with `readObject()` or `readObjectOrEmpty()`, replies made with
+  `json()` and `err()` (`lib/http.ts`);
+- under `/api/v1/`, a line in `docs/api.md`. Adding a field is a minor change;
+  changing or removing one that devices read is a major release
+  (`docs/RELEASING.md`).
+
+**A setting.** An entry in `SETTINGS` in `lib/settings.ts` (group, kind,
+label, help, `validate`, `default`) and a field in `Env` in `types.ts`. The
+settings panel shows it with no UI work. A secret sent to an address that is
+itself a setting goes in that address's `bindsTo`. A rename keeps the old name
+working: an entry in `RENAMED` (for values saved in the panel), the old `Env`
+field kept and listed in `NOT_SETTINGS` (for deployments that set it), and
+reads as `env.NEW ?? env.OLD`, as `lib/assist.ts` does. `test/settings.test.ts`
+checks that every `Env` field is a setting or in `NOT_SETTINGS`. Only add a
+setting someone asked to change; a value with one sensible choice is a
+constant.
+
+**Stored data.** In the Durable Object, not KV: the free plan allows KV 1,000
+writes a day. Under a new key; never a new shape under an existing key, since
+running copies already have data there.
+
+- The logic goes in a class Node can test, given a `Storage`, like the ones
+  above. Then add a pass-through method in `state.ts`, and in
+  `lib/state-host.ts` the method's name in `StateApi` (for `StateHost`) or its
+  signature in `RoutineApi`, `JobApi` or `FamilyApi` (for the others).
+- **Nothing checks the pass-throughs.** `stateStub()` casts to `StateApi`, so
+  TypeScript catches neither a missing pass-through nor one that drops an
+  argument. Forward every argument.
+- People and sign-in go through `lib/hub.ts` instead: add the method to
+  `HubHost` and its name to `HUB_METHODS`. There is no pass-through to write.
+- Anything that wakes at a time runs from the object's one alarm: a
+  `nextWake()` and a `tick()`, called from `rearm()` and `alarm()` in
+  `state.ts`, as `Scheduler`, `Jobs` and `Relays` do. Every pass-through that
+  changes timed work ends with `await this.rearm()`, or nothing wakes. Add to
+  one of those classes before making another.
+
+**A panel.** A class in `src/app/ui/` built like `ui/Jobs.ts`: `el()`,
+`button()` and `richText()` from `ui/util.ts`, JSON requests through `api()`
+from `key.ts`, text through `textContent` rather than `innerHTML` templates.
+Wire it in `main.ts` as `openJobs` is, put its button in `#topbtns` in
+`index.html` with `data-need` set to the scope it needs, and add the button's
+id to `PANELS` in `test/behavior/ui.mjs` so the behavior check opens it. A
+section of Settings, Family or Memory is an element with `data-section` and
+`data-title` (`ui/sections.ts`). Styles go in the `<style>` block in
+`index.html`: reuse `.panel`, `.sheet`, `.rlist`, `.rform` and `.note` before
+adding rules.
+
+## Keeping it simple
+
+What made the refactor necessary was each feature bringing its own copy of
+something. So:
+
+- **The smallest change that does the job**, in the files that already own the
+  area. No unrelated edits, renames or reformatting in a feature commit.
+- **Search before writing a helper.** These exist; never write a second copy:
+  - Worker: `json`, `err`, `readObject`, `readObjectOrEmpty`, `redact`,
+    `escapeHtml`, `publicOrigin` (`lib/http.ts`); `asQuotedData`, `tidy`
+    (`lib/quote.ts`); `clampLimit` (`tools/args.ts`); `guardTool`,
+    `NeedsRelink` (`lib/google.ts`); `sha256Hex` (`lib/devices.ts`); `b64u`
+    (`lib/webauthn.ts`); `stateStub` (`lib/state-client.ts`); `allows`,
+    `narrow` (`lib/scopes.ts`); `localeOf` (`lib/locale.ts`); `OWNER`,
+    `personOfWho`, `isTheirs`, `bookOf` (`lib/context.ts`); `LOCAL`
+    (`lib/routines.ts`).
+  - App: `api`, `authHeaders` (`key.ts`); `el`, `button`, `esc`, `ago`,
+    `arm`, `richText` (`ui/util.ts`).
+  - Much of the older app code calls `fetch` with `authHeaders` itself. New
+    JSON requests use `api()`, even in those files; don't copy the old pattern.
+- **Don't grow the largest files**: `src/app/main.ts`, `lib/hub.ts`,
+  `lib/memory.ts`, `tools/gmail.ts`, `ui/Family.ts`, `ui/Settings.ts`. New code
+  goes in its own module and is called from there. If a feature needs more
+  than about 40 new lines in one of them, stop and propose where it should
+  live.
+- **No new layers without asking**: no base classes, managers, plugin systems,
+  event buses or generic frameworks. The extension points already exist:
+  `ALL`, `SETTINGS`, `SCOPES`, `HUB_METHODS`, and `route()` with
+  `requiredScope()`.
+- **No new dependencies** without asking.
+- **No speculative code**: no options, parameters or branches for cases nobody
+  asked for, and no fallbacks for things that cannot happen.
+- **Replace, don't keep both.** When a feature changes how something works, the
+  old way goes in the same change. The exceptions are what running copies
+  rely on: old setting names (`RENAMED`), stored keys and shapes, and
+  `/api/v1` fields.
+- **Never silence errors**: no new `any`, `@ts-ignore`, `@ts-expect-error` or
+  `as unknown as`. Don't loosen `tsconfig.json`.
+- **If a feature doesn't fit the structure above, stop** and set out two or
+  three ways it could go. Don't bend the structure to fit it.
+
+## Checking a feature
+
+- **Tests** go beside the area's existing ones, in the same `check()` style.
+  Don't change what an unrelated test checks to make it pass: if one fails,
+  the change is wrong.
+- **After each change**, typecheck, tests and build pass.
+- **Behavior check.** Before starting, record a baseline from `main`:
   `git worktree add --detach /tmp/jarvis-main main`, then
   `node test/behavior/check.mjs record /tmp/jarvis-main .refactor-baseline`,
-  then `git worktree remove --force /tmp/jarvis-main`.
-- **Checking a change:** `node test/behavior/check.mjs verify`. On a difference
-  it lists each request or screen that changed, and keeps that run for
-  inspection.
-- **What it needs:** the repository's `node_modules`, Google Chrome
-  (`CHROME=<path>` for another), and free ports 8791, 8792, 8798 and 9333.
-- **What it does not cover:**
-  - the live voice session (WebRTC), push-to-talk audio and spoken alerts;
-  - real Google, Spotify and Tessie;
-  - anything that waits on the clock: scheduled reminders, routines firing,
-    nudges;
-  - background jobs;
-  - how a screen looks, as opposed to what it says.
-
-  A step touching those needs tests of its own first.
-
-### [med] and [high] steps
-
-- **Before the step:** if the code it touches has no tests, write tests for
-  its current behavior, confirm they pass, and commit them on their own
-  (`refactor: test <what> before step <n>`).
-- **After the step:** typecheck, tests and build pass (there is no linter),
-  and `node test/behavior/check.mjs verify` reports the same behavior as the
-  baseline.
-- **If anything differs and cannot be fixed:** revert the step and mark it
-  blocked in the plan, with the reason. Never commit an unverified
-  step.
+  then `git worktree remove --force /tmp/jarvis-main`. When done,
+  `node test/behavior/check.mjs verify` lists what changed (the first 40
+  differences). Each difference must be one the feature meant to make: say so
+  in the commit message, or fix it.
+  - It runs against stand-ins only: a fake OpenAI and Home Assistant
+    (`fakes.mjs`), fresh storage, made-up keys. It makes about 105 API
+    requests as a family of five (`scenario.ts`), and opens the panels listed
+    in `PANELS` as an admin, an adult and a guest in headless Chrome
+    (`ui.mjs`), comparing their text and each element's classes and styles.
+    It needs `node_modules`, Google Chrome at its macOS path (`CHROME=<path>`
+    for another) and free ports 8791, 8792, 8798 and 9333.
+  - It does not cover the live voice session (WebRTC), push-to-talk audio,
+    spoken alerts, real Google, Spotify and Tessie, anything that waits on the
+    clock (reminders, routines firing), or background jobs: a feature there
+    needs tests of its own. Screenshots are saved for a person to look at, not
+    compared.
+- **Bugs noticed along the way** get their own commit, not the feature's.
 
 ## Always
 
 - This repository is public: invented names only in code, tests and docs
   (never the owner's family, address, domain, keys or accounts).
 - A change a self-hoster would notice gets a line under `## [Unreleased]` in
-  `CHANGELOG.md` (docs/RELEASING.md). A refactor with no behavior change needs
-  none.
+  `CHANGELOG.md` (`docs/RELEASING.md`). One they cannot notice needs none.
+- Don't loosen a security boundary to make a feature fit: routes are
+  owner-only unless opened, tools are filtered by scope rather than by
+  instruction, outside text is quoted as data, secrets never reach the
+  browser, and a secret whose address was changed stays withheld (`guarded()`
+  in `lib/settings.ts`). `docs/DESIGN.md` ("Security", "Mail") says why.
