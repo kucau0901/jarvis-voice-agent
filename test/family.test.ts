@@ -296,7 +296,7 @@ console.log("\na second admin, and the person who set up the family");
   const devices = async (principal: Principal, body?: unknown) => {
     const req = new Request(SITE + "/api/v1/devices", { method: body ? "POST" : "GET", headers: { "content-type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
     const res = await handleV1(req, env, { waitUntil() {} } as never, principal);
-    return { status: res.status, body: (await res.json()) as Record<string, any> };
+    return { status: res.status, body: (await res.json()) as { error: string; owner: string; people: { id: string }[] } };
   };
   const theirs = await devices(bea, { name: "ESP32", scopes: ["*"], owner: "owner" });
   check("another admin cannot make a device for the first person", theirs.status === 403 && /owner key/.test(theirs.body.error), theirs.body);
@@ -318,7 +318,7 @@ console.log("\na locked guest, to whoever copies her sign-in");
   const withToken = async (path: string, body: unknown, method = "POST") => {
     const req = new Request(SITE + path, { method, headers: { origin: SITE, "content-type": "application/json", authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
     const res = await handleHub(req, env, await as());
-    return { status: res.status, body: (await res.json()) as Record<string, any> };
+    return { status: res.status, body: (await res.json()) as Record<string, unknown> };
   };
   await withToken("/api/hub/me", { prefs: { telegram: "123456", presence: "person.siti" } }, "PATCH");
   await withToken("/api/hub/pin", { pin: "1357" });
@@ -386,11 +386,15 @@ console.log("\ntheir own Home Assistant token: kept for the address it was check
   const here = await at("https://home.example");
   check("there, it is in use", here.body.haToken === true && here.body.haTokenStale === false, here.body);
   check("and they are shown where it goes", here.body.haAddress === "https://home.example");
+  const lockedHere = (await at("https://home.example", undefined, { ...admin, locked: true } as Principal)).body;
+  check("a locked profile is not told of it", lockedHere.haToken === false && lockedHere.haTokenStale === false && lockedHere.haAddress === null, lockedHere);
 
   // An admin changes the address: moving house, or a server of their own.
   const moved = await at("https://new-house.example");
   check("the address changed: not in use, and they are asked for it again", moved.body.haToken === false && moved.body.haTokenStale === true, moved.body);
   check("shown the new address before giving it", moved.body.haAddress === "https://new-house.example");
+  const lockedMoved = (await at("https://new-house.example", undefined, { ...admin, locked: true } as Principal)).body;
+  check("nor that it must be entered again", lockedMoved.haToken === false && lockedMoved.haTokenStale === false, lockedMoved);
   // Changed while their screen still showed the old one: nothing is sent to the new one unseen.
   const sent = asked.length;
   const unseen = await at("https://new-house.example", { haToken: TOKEN, haBase: "https://home.example" });

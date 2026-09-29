@@ -22,9 +22,10 @@ const asServer = (label: unknown, url: string, headers: unknown): McpServerConfi
 
 /**
  * GET/PUT the MCP server list, and a connectivity test for the settings UI.
- * `owner`: the caller holds the owner key. Not the person who set up the
- * family signed in as themselves: any admin can pair a screen or make a
- * passkey link for them, so their session proves nothing here.
+ * `owner`: the caller holds the owner key, the one credential no admin can
+ * make. Not the person who set up the family signed in as themselves: a
+ * screen or passkey for them may have been made by another admin before
+ * ownerKeyOnly() in routes/hub.ts stopped that.
  */
 export async function handleMcp(req: Request, env: Env, owner: boolean): Promise<Response> {
   const url = new URL(req.url);

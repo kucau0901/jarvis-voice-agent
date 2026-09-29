@@ -690,19 +690,23 @@ Signed in (a member or the owner key; never a device):
 | `GET /api/hub/members` | anyone | names and roles; for admins also reach and pending invites |
 | `PATCH /api/hub/members` | admin | `{user, role?, scopes?}`; `scopes: null` resets to the role's |
 | `DELETE /api/hub/members` | admin | `{user}` |
-| `POST /api/hub/invites` | admin | `{role, name}`, or `{user}` for a new passkey for them (the first person's: the owner key only) → `{token, url}` |
+| `POST /api/hub/invites` | admin | `{role, name}`, or `{user}` for a new passkey for them (the first person's: only the owner key or they) → `{token, url}` |
 | `DELETE /api/hub/invites` | admin | `{id}` |
 | `PATCH /api/hub/space` | admin | `{name?, agentName?}` |
-| `POST /api/hub/pair` | anyone | `{code, user?}`: approve a screen; `user` only for admins, and the first person only by the owner key |
+| `POST /api/hub/pair` | anyone | `{code, user?}`: approve a screen; `user` only for admins, and the first person only by the owner key or they |
 | `GET/DELETE /api/hub/passkeys`, `POST /api/hub/passkeys/options`, `POST /api/hub/passkeys/verify` | a member | their own passkeys |
 | `GET/DELETE /api/hub/sessions` | a member | their own sessions |
 | `POST /api/hub/pin` | a member | `{pin}` (4 to 8 digits) sets theirs; `{pin: null}` removes it |
 | `POST /api/hub/lock` | a member | put this session aside: with a PIN, it is locked → `{locked}` |
 | `POST /api/hub/unlock` | a member | `{pin}`: take a locked session back up |
-| `PATCH /api/hub/members` | admin | `{user, clearPin: true}`: clear a forgotten PIN (the first person's: the owner key only) |
+| `PATCH /api/hub/members` | admin | `{user, clearPin: true}`: clear a forgotten PIN (the first person's: only the owner key or they) |
 
 A locked session is answered `423` with `{locked: true}` everywhere except
-`GET /api/hub/me`, `/api/hub/unlock` and `/api/hub/signout`. Five wrong PINs in a
+`GET /api/hub/me`, `/api/hub/unlock` and `/api/hub/signout`. Its `GET /api/hub/me`
+says only who it is and whether it has a PIN (`user`, `role`, `space`,
+`session`, `hasPin`, `locked`): `prefs` is `{}`, `access` null, `haToken` and
+`haTokenStale` false, `haAddress` null and `scopes` `[]` until the PIN is
+given. Five wrong PINs in a
 row wait fifteen minutes. This is how a screen several people share (the
 family car) keeps each person's profile theirs.
 

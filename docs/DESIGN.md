@@ -508,7 +508,9 @@ cannot aim one at a server of their own. A secret meant for an MCP server gets a
 and only the owner key can send one to a URL the list does not already send
 it to: any admin can edit the list, and such a secret has no address of its
 own to keep to. (Not the person who set up the family, signed in as
-themselves: any admin can pair a screen or make a passkey link for them.) A
+themselves: the owner key is the one credential no admin can make, and a
+sign-in for them may predate the rule that only the owner key, or they, can
+make one.) A
 token typed into a header as-is stays with the URL it was typed for: a server
 given a new URL needs it typed again. The URL as written, in both cases: not
 only its host, which can be shared, as Nabu Casa's webhook host is, and not
