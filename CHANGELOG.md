@@ -17,6 +17,8 @@ of every release, and in the [README](README.md#updating).
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-09-29
+
 ### Security
 
 - **Whoever could edit the MCP servers (a family admin) could have the
@@ -607,7 +609,8 @@ updating to this one needs nothing doing.
 - A camera picture in Type mode was drawn under the chat; the chat now keeps
   its newest message in view above the phone's keyboard.
 
-[Unreleased]: https://github.com/kucau0901/jarvis-voice-agent/compare/v2.2.0...HEAD
+[Unreleased]: https://github.com/kucau0901/jarvis-voice-agent/compare/v2.3.0...HEAD
+[2.3.0]: https://github.com/kucau0901/jarvis-voice-agent/compare/v2.2.0...v2.3.0
 [2.2.0]: https://github.com/kucau0901/jarvis-voice-agent/compare/v2.1.0...v2.2.0
 [2.1.0]: https://github.com/kucau0901/jarvis-voice-agent/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/kucau0901/jarvis-voice-agent/compare/v1.1.0...v2.0.0
