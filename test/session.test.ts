@@ -72,10 +72,17 @@ Object.assign(globalThis, { RTCPeerConnection: Peer });
 let getMic: () => Promise<Mic> = async () => new Mic();
 Object.assign(navigator, { mediaDevices: { getUserMedia: () => getMic() } });
 
-/** Each /api/session post made. */
-const posts: string[] = [];
+/** Each /api/session post made, and whether it was taken back. */
+const posts: { url: string; signal?: AbortSignal | null }[] = [];
 let reply: () => Promise<Response> = async () => Response.json({ sdp: "v=0 answer", sessionId: "s_test" });
-globalThis.fetch = (async (url: string) => { posts.push(String(url)); return reply(); }) as typeof fetch;
+globalThis.fetch = ((url: string, init?: RequestInit) => {
+  posts.push({ url: String(url), signal: init?.signal });
+  // As fetch does: taken back, it fails, whatever the answer.
+  return new Promise<Response>((resolve, reject) => {
+    init?.signal?.addEventListener("abort", () => reject(new DOMException("This operation was aborted", "AbortError")));
+    reply().then(resolve, reject);
+  });
+}) as typeof fetch;
 
 /** A session, and what it told main.ts. */
 function session() {
@@ -171,6 +178,7 @@ console.log("\nended while the offer is posted");
   check("it is waiting on the post", posts.length === posted + 1, posts.length - posted);
   const pc = peers.at(-1)!;
   s.stop("ended by user");
+  check("the post is taken back", posts.at(-1)?.signal?.aborted === true);
   answer.resolve(Response.json({ sdp: "v=0 answer", sessionId: "s_test" }));
   await started;
   check("the answer is not applied", !pc.answered);

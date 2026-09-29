@@ -62,6 +62,8 @@ export class JarvisSession {
   private stopReason = "";
   private dropTimer = 0;
   private dropped = false;
+  /** Takes back the /api/session post once the session has ended (release()). */
+  private posting = new AbortController();
   private key: string;
   private h: SessionHandlers;
 
@@ -150,8 +152,9 @@ export class JarvisSession {
       };
 
       // A stop or a drop from here on has let go of the peer connection and
-      // the mic already (release()). What is left is not to carry on: not to
-      // ask OpenAI for a session, and not to report an error for the end.
+      // the mic already, and takes back the post below (release()). What is
+      // left is not to carry on: not to ask OpenAI for a session, and not to
+      // report an error for the end.
       const offer = await pc.createOffer();
       if (this.over) return;
       await pc.setLocalDescription(offer);
@@ -169,8 +172,8 @@ export class JarvisSession {
           // spending — a driver's or a reader's.
           client: currentClient(),
         }),
+        signal: this.posting.signal,
       });
-      if (this.over) return;
       if (!res.ok) {
         const body = (await res.json().catch(() => ({}))) as {
           error?: string; detail?: string;
@@ -182,10 +185,9 @@ export class JarvisSession {
         );
       }
       const { sdp } = (await res.json()) as { sdp: string; sessionId: string };
-      if (this.over) return;
       await pc.setRemoteDescription({ type: "answer", sdp });
     } catch (e) {
-      // Ended meanwhile: what threw was the closed peer connection.
+      // Ended meanwhile: what threw was the closed peer connection, or the post taken back.
       if (this.over) return;
       const msg = e instanceof Error ? e.message : String(e);
       this.stop(`start failed: ${msg}`);
@@ -328,5 +330,9 @@ export class JarvisSession {
     // session keeps billing at $0.05/min.
     this.local?.getTracks().forEach((t) => t.stop());
     this.dc = null; this.pc = null; this.local = null;
+    // A session asked for and not yet answered is not waited for. On
+    // Cloudflare, the Worker's call to OpenAI may be cancelled with it (not
+    // under wrangler dev); one OpenAI opened anyway is never connected to.
+    this.posting.abort();
   }
 }
