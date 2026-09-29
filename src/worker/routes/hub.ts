@@ -246,6 +246,8 @@ export async function handleHub(req: Request, env: Env, principal: Principal): P
   if (p === "/api/hub/me") {
     if (m === "PATCH") {
       if (!me) return err(400, "the owner key is not a person; sign in with a passkey to have a name");
+      // The gate lets a locked session reach this path, to read who it is; changing anything waits for the PIN.
+      if (me.locked) return err(423, "locked: enter this person's PIN", { locked: true });
       // Everything sent is kept, not only the first thing: so choices are checked before anything is.
       const rawPrefs = b.prefs === undefined ? undefined : ((b.prefs && typeof b.prefs === "object" ? b.prefs : {}) as Record<string, unknown>);
       const badPrefs = rawPrefs && prefsProblem(rawPrefs);

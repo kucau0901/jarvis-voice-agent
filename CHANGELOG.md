@@ -35,6 +35,9 @@ of every release, and in the [README](README.md#updating).
   chat, their Home Assistant person, their voice and language, and a guest's
   pass (its hours, end and what it opens). A locked sign-in now says only
   who it is and whether it has a PIN, until the PIN is given.
+- The same copied sign-in could also change that person's name and choices,
+  such as sending their Telegram alerts to another chat. Now it is refused
+  until the PIN is given.
 
 ### Changed
 

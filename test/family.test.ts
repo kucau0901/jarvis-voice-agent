@@ -276,6 +276,11 @@ console.log("\na locked guest, to whoever copies her sign-in");
   const locked = await call("/api/hub/me", undefined, { principal: await as() });
   check("locked, the screen still knows who she is and that she has a PIN", locked.body.locked === true && locked.body.user?.name === "Siti" && locked.body.hasPin === true && locked.body.space?.agentName === "Friday", locked.body);
   check("but not her choices, her pass or her reach", JSON.stringify(locked.body.prefs) === "{}" && locked.body.access === null && locked.body.haToken === false && locked.body.scopes.length === 0, locked.body);
+  const changed = await withToken("/api/hub/me", { name: "Not Siti", prefs: { telegram: "999999" } }, "PATCH");
+  check("nor can it change her name or choices", changed.status === 423, changed.body);
+  await withToken("/api/hub/unlock", { pin: "1357" });
+  const after = await call("/api/hub/me", undefined, { principal: await as() });
+  check("which are as she left them", after.body.user?.name === "Siti" && after.body.prefs.telegram === "123456", after.body);
 }
 
 console.log("\neach person's own choices");
