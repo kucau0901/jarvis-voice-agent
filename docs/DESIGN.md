@@ -504,7 +504,13 @@ into the server list or the repo. Jarvis's own keys are the exception: the
 OpenAI key, the owner key and the rest are filled in only for a server at an
 address that key is already sent to (the Home Assistant token for a server on
 the Home Assistant address), so whoever edits the list cannot aim one at a
-server of their own. A secret meant for an MCP server gets a name of its own.
+server of their own. A secret meant for an MCP server gets a name of its own,
+and only the owner (the owner key, or the person who set up the family) can
+send one to an address the list does not already send it to: any admin can
+edit the list, and such a secret has no address of its own to keep to. A
+token typed into a header as-is stays with the address it was typed for: a
+server given a new address needs it typed again. The whole address, not only
+its host, in both cases: a host can be shared, as Nabu Casa's webhook host is.
 
 MCP tools are registered **non-strict**. Strict mode demands
 `additionalProperties: false` and a full `required` list on every nested object,

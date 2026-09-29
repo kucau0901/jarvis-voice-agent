@@ -1,14 +1,28 @@
 import type { Env } from "../types.ts";
 import { json, err, redact } from "../lib/http.ts";
-import { readServersForUi, writeServers, expand, expandUrl, headersForTest } from "../lib/config-store.ts";
-import { MASK, unexpand } from "../lib/mcp-config.ts";
+import { readServersForUi, writeServers, expand, expandUrl, headersForTest, aimingAnew } from "../lib/config-store.ts";
+import { MASK, sane, unexpand, type McpServerConfig } from "../lib/mcp-config.ts";
 import { mcpTools } from "../tools/mcp.ts";
 
-/** Why a moved server's Test is not run: its saved token stays with its old host. */
+/** Why a moved server's Test is not run: its saved token stays at its old address. */
 const RETYPE = "a saved token is only sent to the address it was saved for: type it again to use it at this one";
 
-/** GET/PUT the MCP server list, and a connectivity test for the settings UI. */
-export async function handleMcp(req: Request, env: Env): Promise<Response> {
+/** Why an admin's change is refused: it sends a Worker secret somewhere new (lib/mcp-config.ts aimedAnew()). */
+const OWNER_ONLY = "only the person who set up the family can send a Worker secret to a new address";
+
+/** A server as the panel's Test or /call sends it, for aimingAnew(). */
+const asServer = (label: unknown, url: string, headers: unknown): McpServerConfig => ({
+  label: typeof label === "string" ? label : "",
+  url,
+  headers: (headers && typeof headers === "object" ? headers : {}) as Record<string, string>,
+});
+
+/**
+ * GET/PUT the MCP server list, and a connectivity test for the settings UI.
+ * `owner`: the owner key or the person who set up the family, rather than
+ * another admin.
+ */
+export async function handleMcp(req: Request, env: Env, owner: boolean): Promise<Response> {
   const url = new URL(req.url);
 
   if (url.pathname === "/api/mcp/test") {
@@ -29,6 +43,9 @@ export async function handleMcp(req: Request, env: Env): Promise<Response> {
     const target = expandUrl(body.url, env);
     if (!/^https:\/\//i.test(target)) {
       return err(400, /\$\{/.test(body.url) ? "the Worker secret that URL names is not set" : "url must be https");
+    }
+    if (!owner && (await aimingAnew(env, [asServer(body.label, body.url, body.headers)])).length) {
+      return json({ ok: false, error: OWNER_ONLY });
     }
     // A masked token is filled from the stored server first. The panel used to
     // leave it out and trust this route to "use the stored one", which it never
@@ -65,6 +82,9 @@ export async function handleMcp(req: Request, env: Env): Promise<Response> {
       return err(400, "url must be https");
     }
     if (typeof body.tool !== "string") return err(400, "tool is required");
+    if (!owner && (await aimingAnew(env, [asServer("", body.url, body.headers)])).length) {
+      return json({ ok: false, error: OWNER_ONLY });
+    }
 
     const { Client, StreamableHTTPClientTransport, SSEClientTransport } = await import(
       "@modelcontextprotocol/client"
@@ -118,6 +138,8 @@ export async function handleMcp(req: Request, env: Env): Promise<Response> {
     }
     // null is JSON too, and the rest reads fields off it.
     if (body === null || typeof body !== "object") return err(400, "body must be a JSON object");
+    const aimed = owner ? [] : await aimingAnew(env, sane(body.servers));
+    if (aimed.length) return err(403, `${OWNER_ONLY}: ${aimed.join(", ")}`);
     const { saved, retype } = await writeServers(env, body.servers);
     // Stale catalogs would mask a server that just changed.
     await Promise.all(

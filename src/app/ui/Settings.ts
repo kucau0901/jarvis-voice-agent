@@ -645,10 +645,10 @@ export class Settings {
         headers: authHeaders(this.key),
         body: JSON.stringify({ servers: payload }),
       });
-      if (!res.ok) throw new Error(`server said ${res.status}`);
-      const { retype } = (await res.json()) as { retype?: string[] };
+      const { error, retype } = (await res.json().catch(() => ({}))) as { error?: string; retype?: string[] };
+      if (!res.ok) throw new Error(error ?? `server said ${res.status}`);
       await this.loadMcp();
-      // A token stays with the host it was saved for (lib/mcp-config.ts).
+      // A token stays at the address it was saved for (lib/mcp-config.ts).
       if (retype?.length) {
         this.msg(`Saved, but not the token for ${retype.join(", ")}: a saved token is only sent to the address it was saved for, so type it again for the new one.`, true);
       }

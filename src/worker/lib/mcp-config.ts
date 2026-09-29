@@ -213,23 +213,22 @@ export function maskForUi(list: McpServerConfig[]): McpServerConfig[] {
  * Matched by label, then by URL, so renaming a server keeps its token. But a
  * token is put back only for the address it was saved for: every family admin
  * can edit this list, and a server kept under its label with a new URL must
- * not carry the owner's token to that URL's host — the rule settings.ts
- * guarded() keeps for Jarvis's own keys. So the URLs, filled by `expandUrl` as
- * a call would fill them, must share an origin: a server moved within its host
- * keeps its token, one moved to another host needs it typed again (the panel
- * is told which, by `leftBehind`). Where nothing matches, the mask is dropped
- * rather than stored as a literal "***".
+ * not carry the owner's token there — the rule settings.ts guarded() keeps for
+ * Jarvis's own keys. The whole address, filled by `expandUrl` as a call would
+ * fill it, not only its host: a host can be shared, as Nabu Casa's webhook
+ * host is by all its customers. So a server moved anywhere needs its token
+ * typed again (the panel is told which, by `leftBehind`). Where nothing
+ * matches, the mask is dropped rather than stored as a literal "***".
  */
 export function restoreMasked(
   incoming: McpServerConfig[],
   current: McpServerConfig[],
   expandUrl: (url: string) => string,
 ): McpServerConfig[] {
-  const at = (url: string) => originOf(expandUrl(url));
   return incoming.map((s) => {
     const match = current.find((c) => c.label === s.label) ?? current.find((c) => c.url === s.url);
-    const here = at(s.url);
-    const was = match && (match.url === s.url || (here !== null && at(match.url) === here)) ? match : undefined;
+    const here = sentTo(s.url, expandUrl);
+    const was = match && (match.url === s.url || (here !== null && sentTo(match.url, expandUrl) === here)) ? match : undefined;
     const headers: Record<string, string> = {};
     for (const [k, v] of Object.entries(s.headers ?? {})) {
       if (v !== MASK) {
@@ -241,6 +240,51 @@ export function restoreMasked(
     }
     return { ...s, headers };
   });
+}
+
+/** Where a call to `url` goes: the address with its placeholders filled, or null if that is not an https one. */
+function sentTo(url: string, expandUrl: (url: string) => string): string | null {
+  const u = expandUrl(url);
+  return /^https:\/\//i.test(u) ? u : null;
+}
+
+/* ---------- Worker secrets set for MCP servers ---------------------------- */
+
+/**
+ * Where a server sends each `${NAME}` that is a Worker secret set for MCP
+ * servers rather than a setting (settings keep to their own addresses, by
+ * `fillable`): "NAME address", for each one in its headers or inside its URL.
+ * A URL that is one placeholder and nothing else is sent only to the address
+ * it holds, so it is not counted.
+ */
+function aimed(s: McpServerConfig, expandUrl: (url: string) => string): string[] {
+  const where = sentTo(s.url, expandUrl) ?? s.url;
+  const whole = /^\$\{[A-Z0-9_]+\}$/.test(s.url.trim());
+  const text = [...Object.values(s.headers ?? {}), whole ? "" : s.url].join(" ");
+  return [...text.matchAll(PLACEHOLDER)]
+    .map((m) => m[1]!)
+    .filter((name) => !(name in NOT_SETTINGS) && !settingDef(name))
+    .map((name) => `${name} ${where}`);
+}
+
+/**
+ * The labels of servers in `incoming` that would send a Worker secret to an
+ * address the list in force does not already send it to.
+ *
+ * Such a secret was set with `wrangler secret put` by whoever deploys Jarvis,
+ * and has no address of its own to keep to, while every family admin can edit
+ * this list. So only the owner may aim one somewhere new (routes/mcp.ts),
+ * anywhere else on the same host included (a host can be shared); any admin
+ * may keep, rename, turn off or remove a server already using one. Removing
+ * it first does not help: then nothing uses it.
+ */
+export function aimedAnew(
+  incoming: McpServerConfig[],
+  current: McpServerConfig[],
+  expandUrl: (url: string) => string,
+): string[] {
+  const known = new Set(current.flatMap((c) => aimed(c, expandUrl)));
+  return incoming.filter((s) => aimed(s, expandUrl).some((a) => !known.has(a))).map((s) => s.label);
 }
 
 /** The labels of servers sent with a mask that `restoreMasked` did not fill. */

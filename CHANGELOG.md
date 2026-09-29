@@ -23,9 +23,13 @@ of every release, and in the [README](README.md#updating).
   address.** Any family admin could keep the server's name, give it a new
   URL, and press **Test** or **Save**: the saved token went to the new
   address. A saved token is now only sent to the address it was saved for:
-  a server moved to another host needs its token typed again, and Settings
-  says so. Moving it to another path on the same host keeps the token.
-  A header written as `${NAME}` works as before.
+  a server given a new address needs its token typed again, and Settings
+  says so.
+- Any family admin could also send a Worker secret set for an MCP server
+  (written as `${NAME}`) to a server of their own, with **Test**, **Save**
+  or `/api/mcp/call`. Now only the owner (the owner key, or the person who
+  set up the family) can send one to an address it is not already sent to;
+  other admins can still rename, turn off or remove servers using one.
 
 ### Changed
 

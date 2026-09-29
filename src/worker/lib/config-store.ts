@@ -1,6 +1,7 @@
 import type { Env } from "../types.ts";
 import seed from "../../../config/mcp-servers.json" with { type: "json" };
 import {
+  aimedAnew,
   expandHeaderTemplates,
   expandUrlTemplate,
   leftBehind,
@@ -72,7 +73,7 @@ async function readConfigured(env: Env): Promise<McpServerConfig[]> {
 /**
  * Header values for a Test from the panel, with any masked one filled from
  * the stored server — the panel cannot send a secret it was never given.
- * `null` when one cannot be: the server has moved to another host, and its
+ * `null` when one cannot be: the server has a new address, and its
  * token is not sent there until it is typed again (mcp-config.ts restoreMasked()).
  */
 export async function headersForTest(
@@ -89,6 +90,11 @@ export async function headersForTest(
   return leftBehind(incoming, restored).length ? null : restored[0]!.headers ?? {};
 }
 
+/** Which of these servers would send a Worker secret somewhere new (mcp-config.ts aimedAnew()). */
+export async function aimingAnew(env: Env, servers: McpServerConfig[]): Promise<string[]> {
+  return aimedAnew(servers, await readConfigured(env), (u) => expandUrl(u, env));
+}
+
 /**
  * What the settings panel reads: the list the router is actually using, and
  * where it came from. Never returns a resolved header value.
@@ -100,7 +106,7 @@ export async function readServersForUi(
   return { servers: maskForUi(servers), source };
 }
 
-/** Saves the list; `retype` names the servers whose token stayed at their old host. */
+/** Saves the list; `retype` names the servers whose token stayed at their old address. */
 export async function writeServers(env: Env, raw: unknown): Promise<{ saved: McpServerConfig[]; retype: string[] }> {
   // Against what is in force, not merely what is saved: when the panel is
   // showing the repo defaults, those are what its masks stand for.
