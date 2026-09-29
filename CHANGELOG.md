@@ -26,6 +26,16 @@ of every release, and in the [README](README.md#updating).
   minutes after you last spoke, as before, and an answer that comes later is
   kept for your next tap.
 
+### Fixed
+
+- **Live could go on billing for a session it had let go of.** A connection
+  given up on in a tunnel could come back once a new session had opened, and
+  stay open beside it until the tab closed: billed, writing what was said on
+  screen twice, and cutting short the new session's requests. And a session
+  ended while still connecting (a second tap on the orb, or the screen
+  hidden) could connect anyway, with nothing left to end it, or show a
+  browser error in red. Such sessions now close for good.
+
 ## [2.2.0] - 2026-09-29
 
 ### Security

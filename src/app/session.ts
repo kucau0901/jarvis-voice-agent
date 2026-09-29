@@ -1,4 +1,4 @@
-import { authHeaders } from "./key";
+import { authHeaders } from "./key.ts";
 import { currentClient } from "./client.ts";
 import type { Turn } from "./history";
 
@@ -62,19 +62,32 @@ export class JarvisSession {
   private stopReason = "";
   private dropTimer = 0;
   private dropped = false;
+  private key: string;
+  private h: SessionHandlers;
 
-  constructor(private key: string, private h: SessionHandlers) {}
+  constructor(key: string, h: SessionHandlers) {
+    this.key = key;
+    this.h = h;
+  }
 
   get live(): boolean {
     return this.dc?.readyState === "open";
+  }
+
+  /** Stopped, or dropped: nothing start() is still waiting for is wanted. */
+  private get over(): boolean {
+    return this.stopping || this.dropped;
   }
 
   async start(opts: { history?: Turn[] } = {}): Promise<void> {
     try {
       this.h.onState("requesting-mic");
       // Must be called from the user gesture that started this.
-      this.local = await openMic();
-      this.h.onLocalStream(this.local);
+      const local = await openMic();
+      // Ended while the browser asked: stop() had no mic to let go of yet.
+      if (this.over) { local.getTracks().forEach((t) => t.stop()); return; }
+      this.local = local;
+      this.h.onLocalStream(local);
 
       this.h.onState("connecting");
       const pc = new RTCPeerConnection();
@@ -136,9 +149,15 @@ export class JarvisSession {
         }
       };
 
+      // A stop or a drop from here on has let go of the peer connection and
+      // the mic already (release()). What is left is not to carry on: not to
+      // ask OpenAI for a session, and not to report an error for the end.
       const offer = await pc.createOffer();
+      if (this.over) return;
       await pc.setLocalDescription(offer);
+      if (this.over) return;
       await this.waitForIce(pc);
+      if (this.over) return;
 
       const res = await fetch("/api/session", {
         method: "POST",
@@ -151,6 +170,7 @@ export class JarvisSession {
           client: currentClient(),
         }),
       });
+      if (this.over) return;
       if (!res.ok) {
         const body = (await res.json().catch(() => ({}))) as {
           error?: string; detail?: string;
@@ -162,8 +182,11 @@ export class JarvisSession {
         );
       }
       const { sdp } = (await res.json()) as { sdp: string; sessionId: string };
+      if (this.over) return;
       await pc.setRemoteDescription({ type: "answer", sdp });
     } catch (e) {
+      // Ended meanwhile: what threw was the closed peer connection.
+      if (this.over) return;
       const msg = e instanceof Error ? e.message : String(e);
       this.stop(`start failed: ${msg}`);
       this.h.onState("error", msg);
@@ -264,15 +287,23 @@ export class JarvisSession {
    */
   simulateDrop(): void {
     this.h.onDiagnostic("simulated.drop", { hadPc: !!this.pc, live: this.live });
-    try { this.pc?.close(); } catch { /* already gone */ }
     this.drop("simulated drop");
   }
 
-  /** Report a transport failure exactly once per session. */
+  /**
+   * Report a transport failure exactly once per session, and let the transport
+   * and the mic go for good, with not a word more from them, "closed" included.
+   * A connection left open once given up on can heal: it bills on, its events
+   * reach main.ts beside the new session's, and nothing there can close it.
+   */
   private drop(reason: string): void {
     if (this.dropped || this.stopping) return;
     this.dropped = true;
     clearTimeout(this.dropTimer);
+    const { pc, dc } = this;
+    if (dc) dc.onopen = dc.onclose = dc.onerror = dc.onmessage = null;
+    if (pc) pc.ontrack = pc.onconnectionstatechange = pc.oniceconnectionstatechange = null;
+    this.release();
     this.h.onDropped(reason);
   }
 
@@ -286,12 +317,16 @@ export class JarvisSession {
       by: new Error().stack?.split("\n").slice(2, 4).join(" <- ").slice(0, 200),
     });
     try { this.send({ type: "session.close" }); } catch { /* channel may be gone */ }
+    this.release();
+    this.h.onState("closed", reason);
+  }
+
+  private release(): void {
     try { this.dc?.close(); } catch { /* already closed */ }
     try { this.pc?.close(); } catch { /* already closed */ }
     // Release the mic, or the car keeps showing a recording indicator and the
     // session keeps billing at $0.05/min.
     this.local?.getTracks().forEach((t) => t.stop());
     this.dc = null; this.pc = null; this.local = null;
-    this.h.onState("closed", reason);
   }
 }
