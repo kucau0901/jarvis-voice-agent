@@ -89,8 +89,9 @@ How it works, and why it is built this way: [docs/DESIGN.md](docs/DESIGN.md).
 ## What you need
 
 - An **OpenAI** API key with access to GPT‑Live. This is the only required
-  service. Voice is billed per minute of open session, so Jarvis closes an idle
-  session after two minutes.
+  service. Voice is billed per minute of open session, so Jarvis closes a
+  session after 30 seconds in which nobody spoke; while it works on a request,
+  it waits up to two minutes after you last spoke.
 - Optional, each switching on its own tools: a [Tessie](https://tessie.com)
   account for the car, Home Assistant for the house, a Google Cloud OAuth
   client for mail and calendar, a Spotify app, Google Maps keys, a Hermes agent.

@@ -17,6 +17,15 @@ of every release, and in the [README](README.md#updating).
 
 ## [Unreleased]
 
+### Changed
+
+- **Live now closes after 30 seconds of quiet,** instead of two minutes after
+  you last spoke, since an open session is billed even when nobody talks. Quiet
+  means neither you nor Jarvis is speaking, so Jarvis is not cut off while
+  answering. While Jarvis works on a request, it stays open for up to two
+  minutes after you last spoke, as before, and an answer that comes later is
+  kept for your next tap.
+
 ## [2.2.0] - 2026-09-29
 
 ### Security

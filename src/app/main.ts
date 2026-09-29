@@ -9,6 +9,7 @@ import { Jobs } from "./ui/Jobs";
 import { Stage, type DisplayPayload } from "./ui/Stage";
 import { Orb } from "./orb/Orb";
 import { VoiceLevels } from "./audio";
+import { closeIn, QUIET_MS, WORKING_MS } from "./quiet";
 import { runDelegation } from "./delegate";
 import { LiveLink, releasePush, speakAlert, speakHere, speakText, syncPush, type Alert } from "./alerts";
 import { askTyped } from "./chat";
@@ -156,6 +157,8 @@ try {
 addEventListener("resize", () => orb?.resize());
 
 let thinking = false;
+/** When the Live session was last spoken in, for armIdle below (performance.now(): a clock change must not move it). */
+const quiet = { spokeAt: 0, saidAt: 0, heardAt: 0, doneAt: 0 };
 let errorFlash = 0;
 let orbOverride: { user?: number; agent?: number; think?: number; error?: number } | null = null;
 
@@ -165,11 +168,15 @@ function setOrb(...states: string[]) {
 }
 
 function tick() {
+  const on = session?.live || ptt?.active;
+  // Read even without the orb: while Jarvis is heard, a Live session is not quiet.
+  const agent = on ? levels.read("agent") : 0;
+  if (session?.live && agent > 0.05) quiet.heardAt = performance.now();
   if (orb) {
     orb.set(
       orbOverride ?? {
-        user: session?.live || ptt?.active ? levels.read("user") : 0,
-        agent: session?.live || ptt?.active ? levels.read("agent") : 0,
+        user: on ? levels.read("user") : 0,
+        agent,
         think: thinking ? 1 : 0,
         error: errorFlash,
       },
@@ -227,13 +234,15 @@ function onEvent(ev: ServerEvent) {
       append("you", String(ev.delta ?? ""));
       history.add("user", String(ev.delta ?? ""));
       touch("you");
-      noteDriverSpoke();
+      quiet.spokeAt = performance.now();
+      armIdle();
       break;
 
     case "session.output_transcript.delta":
       append("jarvis", String(ev.delta ?? ""));
       history.add("assistant", String(ev.delta ?? ""));
       touch("jarvis");
+      quiet.saidAt = performance.now();
       break;
 
     case "session.delegation.created": {
@@ -245,14 +254,22 @@ function onEvent(ev: ServerEvent) {
       // One delegation at a time: a second request would otherwise race the
       // first and both would speak over each other.
       delegateAbort?.abort();
-      delegateAbort = new AbortController();
+      const mine = (delegateAbort = new AbortController());
+      // Answered, or given up on: Jarvis is not working any more. The one this
+      // replaced reports done too, while this one still works.
+      const finish = () => {
+        if (delegateAbort !== mine) return;
+        thinking = false;
+        quiet.saidAt = quiet.doneAt = performance.now();
+        armIdle();
+      };
 
       void runDelegation(
         key,
         d.id,
         history.snapshot(),
         {
-          say: sayOrHold,
+          say: (t, id) => { finish(); sayOrHold(t, id); },
           think: (t, id) => session?.thinking(t, id),
           log: (type, data) => logEvent({ type, ...data }),
           display: (payload) => {
@@ -261,9 +278,9 @@ function onEvent(ev: ServerEvent) {
             void stage.show(payload as unknown as DisplayPayload);
           },
           slow: (name) => dropSessionKeepWaiting(`${name} takes minutes; not paying to listen`),
-          done: () => { thinking = false; },
+          done: finish,
         },
-        delegateAbort.signal,
+        mine.signal,
       );
       break;
     }
@@ -321,7 +338,8 @@ function onState(s: SessionState, detail?: string) {
       // Start the meter now, not on first speech: a session opened and never
       // spoken to is exactly the one worth closing, and it would otherwise
       // bill until the tab did.
-      noteDriverSpoke();
+      quiet.spokeAt = performance.now();
+      armIdle();
       // Anything that arrived while the session was down gets said first. This
       // has to be here rather than at the tap: `session` is non-null well
       // before its data channel opens, and a commentary sent into a channel
@@ -559,6 +577,7 @@ function onAlert(a: Alert) {
   history.add("assistant", a.title !== "Jarvis" ? `${a.title}: ${a.text}` : a.text);
   if (session?.live) {
     session.commentary(a.title !== "Jarvis" ? `${a.title}: ${a.text}` : a.text);
+    quiet.saidAt = performance.now(); // not closed before Jarvis gets to say it
     return;
   }
   if (!a.speak || !speakHere()) return;
@@ -1356,25 +1375,34 @@ let hiddenTimer = 0;
  *
  * A Live session bills $0.05 a minute from the moment it opens, and nothing
  * else in this app is close — the router that does the actual work rounds to
- * zero. So a session left open in a parked car is the whole bill, spending
- * money on an empty room.
- *
- * Keyed on the DRIVER speaking, deliberately. Resetting it when Jarvis talks
- * would mean a long wait full of "still working on it" kept the meter running
- * forever, which is the exact case this is meant to catch. Work already
- * survives the session ending — the answer is parked and spoken on reconnect —
- * so closing here loses nothing but the charge.
+ * zero. So a quiet session is let go; quiet.ts says when.
  */
-const IDLE_MS = 120_000;
 let idleTimer = 0;
+/** The quiet spell a driver just starting to speak was given a few seconds in. */
+let graceFor = -1;
+const quietLeft = () => closeIn(performance.now(), { ...quiet, working: thinking });
 
-function noteDriverSpoke() {
+function armIdle(wait = quietLeft()) {
   clearTimeout(idleTimer);
+  const s = session;
+  if (!s) return;
   idleTimer = setTimeout(() => {
+    // Dropped, replaced or still connecting: the next one arms itself on "live".
+    if (session !== s || !s.live) return;
+    // Jarvis's voice cannot be measured while the page is hidden; the hidden timer decides.
+    if (document.hidden) quiet.heardAt = performance.now();
+    // Someone spoke since, or work started: wait out what is left.
+    const left = quietLeft();
+    if (left > 0) return armIdle(left);
+    // Words take a moment to be transcribed: a driver just starting to talk gets a few seconds, once.
+    if (graceFor !== quiet.spokeAt && levels.read("user") > 0.08) {
+      graceFor = quiet.spokeAt;
+      return armIdle(4000);
+    }
     userWantsSession = false;
-    session?.stop(`idle for ${IDLE_MS / 1000}s`);
+    s.stop(thinking ? `still working after ${WORKING_MS / 60_000} min` : `quiet for ${QUIET_MS / 1000}s`);
     status("tap to start");
-  }, IDLE_MS);
+  }, wait);
 }
 
 addEventListener("pagehide", () => { userWantsSession = false; session?.stop("page unloaded"); });
