@@ -108,8 +108,11 @@ async function view(env: Env, saved: SavedSettings, asker: (e: Env) => Env) {
  *
  * A new OAuth client cannot use a refresh token issued to the old one, so the
  * link is dropped and the panel asks for it again rather than failing later
- * with invalid_grant. A new Home Assistant address or token makes the cached
- * tool list and camera list stale, so they are cleared.
+ * with invalid_grant. A new Home Assistant token may be for another house at
+ * the same address, or be allowed other tools, so the cached tool lists and
+ * camera list are cleared. A new address needs nothing: each cached
+ * list says where it was made, and one made elsewhere is not used
+ * (lib/cameras.ts, tools/mcp.ts).
  */
 async function sideEffects(env: Env, before: Env, after: Env): Promise<void> {
   const changed = (k: keyof Env) => (before[k] ?? "") !== (after[k] ?? "");
@@ -117,13 +120,13 @@ async function sideEffects(env: Env, before: Env, after: Env): Promise<void> {
   // Everyone's links, not only the first person's: the old client's tokens are no use to the new one.
   if (changed("GOOGLE_CLIENT_ID") || changed("GOOGLE_CLIENT_SECRET")) jobs.push(google.unlinkEveryone(env));
   if (changed("SPOTIFY_CLIENT_ID") || changed("SPOTIFY_CLIENT_SECRET")) jobs.push(spotify.unlinkEveryone(env));
-  if (changed("HA_MCP_URL") || changed("HA_TOKEN")) {
+  if (changed("HA_TOKEN")) {
     const labels = (await loadServers(before).catch(() => [])).map((s) => s.label);
     for (const l of new Set([...labels, "home-assistant"])) {
       jobs.push(env.CONFIG.delete(`mcp:catalog:${l}`).catch(() => {}));
     }
+    jobs.push(forgetCameras(env).catch(() => {}));
   }
-  if (changed("HA_BASE_URL") || changed("HA_TOKEN")) jobs.push(forgetCameras(env).catch(() => {}));
   await Promise.allSettled(jobs);
 }
 

@@ -36,10 +36,30 @@ globalThis.fetch = (async (input: string | URL, init: RequestInit = {}) => {
 }) as typeof fetch;
 
 const kv = () => {
-  const m = new Map<string, string>();
-  return { get: async (k: string, t?: string) => (m.has(k) ? (t === "json" ? JSON.parse(m.get(k)!) : m.get(k)) : null), put: async (k: string, v: string) => void m.set(k, v), delete: async (k: string) => void m.delete(k), _m: m };
+  const m = new Map<string, { v: string; md: unknown }>();
+  const get = async (k: string, t?: string) => (m.has(k) ? (t === "json" ? JSON.parse(m.get(k)!.v) : m.get(k)!.v) : null);
+  return {
+    get,
+    getWithMetadata: async (k: string, t?: string) => ({ value: await get(k, t), metadata: m.get(k)?.md ?? null }),
+    put: async (k: string, v: string, o?: { metadata?: unknown }) => void m.set(k, { v, md: o?.metadata ?? null }),
+    delete: async (k: string) => void m.delete(k),
+    _m: m,
+  };
 };
 const env = (e: Record<string, unknown> = {}) => ({ CONFIG: kv(), ...e }) as never;
+
+/** The Durable Object's storage, in memory, so the Settings route can save and read settings. */
+function withState(e: Record<string, unknown>): Record<string, unknown> {
+  const m = new Map<string, unknown>();
+  const storage = {
+    get: async (k: string) => structuredClone(m.get(k)),
+    put: async (k: string, v: unknown) => void m.set(k, structuredClone(v)),
+    delete: async (k: string) => m.delete(k),
+    list: async ({ prefix = "" }: { prefix?: string } = {}) => new Map([...m].filter(([k]) => k.startsWith(prefix))),
+  };
+  e.STATE = { idFromName: () => "jarvis", get: () => new StateHost(storage as never, e as never) };
+  return e;
+}
 
 console.log("the camera list setting");
 {
@@ -96,15 +116,7 @@ console.log("\nevery camera, from both places");
 console.log("\na new house in Settings: its cameras, not the old one's");
 {
   answer = (u) => new Response(u.startsWith("https://new-house.example/") ? "camera.gate|Gate\n" : "camera.porch|Porch\n");
-  const m = new Map<string, unknown>();
-  const storage = {
-    get: async (k: string) => structuredClone(m.get(k)),
-    put: async (k: string, v: unknown) => void m.set(k, structuredClone(v)),
-    delete: async (k: string) => m.delete(k),
-    list: async ({ prefix = "" }: { prefix?: string } = {}) => new Map([...m].filter(([k]) => k.startsWith(prefix))),
-  };
-  const e: Record<string, unknown> = { CONFIG: kv(), HA_BASE_URL: "https://old-house.example", HA_TOKEN: "old-house-token-0123456789" };
-  e.STATE = { idFromName: () => "jarvis", get: () => new StateHost(storage as never, e as never) };
+  const e = withState({ CONFIG: kv(), HA_BASE_URL: "https://old-house.example", HA_TOKEN: "old-house-token-0123456789" });
   check("the old house's cameras, cached", (await listCameras(e as never)).map((c) => c.id).join() === "camera.porch");
   _resetSettingsCache();
   const changes = { HA_BASE_URL: "https://new-house.example", HA_TOKEN: "new-house-token-0123456789" };
@@ -112,6 +124,61 @@ console.log("\na new house in Settings: its cameras, not the old one's");
   _resetSettingsCache();
   const now = await listCameras({ ...e, ...changes } as never);
   check("saving the new house's address lists its cameras at once", put.status === 200 && now.map((c) => c.id).join() === "camera.gate", { status: put.status, now });
+}
+
+console.log("\na new token at the same address: perhaps another house behind it");
+{
+  answer = () => new Response("camera.porch|Porch\n");
+  const CONFIG = kv();
+  const e = withState({ CONFIG, HA_BASE_URL: "https://house.example", HA_TOKEN: "old-house-token-0123456789" });
+  await listCameras(e as never);
+  const cached = CONFIG._m.has("cams:v2");
+  _resetSettingsCache();
+  const body = JSON.stringify({ changes: { HA_TOKEN: "new-house-token-0123456789" } });
+  const put = await handleSettings(new Request("https://j.test/api/settings", { method: "PUT", body }), e as never);
+  _resetSettingsCache();
+  check("the cached list is cleared", cached && put.status === 200 && !CONFIG._m.has("cams:v2"), { cached, status: put.status });
+}
+
+console.log("\njust after a new house is saved, a Worker still on the old settings");
+{
+  answer = (u) => new Response(u.startsWith("https://new-house.example/") ? "camera.gate|Gate\n" : "camera.porch|Porch\n");
+  const CONFIG = kv();
+  // The same token typed again with the new address: nothing is cleared on saving.
+  const oldHouse = { CONFIG, HA_BASE_URL: "https://old-house.example", HA_TOKEN: "t" } as never;
+  const newHouse = { CONFIG, HA_BASE_URL: "https://new-house.example", HA_TOKEN: "t" } as never;
+  check("lists the old house, and writes it back", (await listCameras(oldHouse)).map((c) => c.id).join() === "camera.porch");
+  calls = [];
+  const now = await listCameras(newHouse);
+  check("the new house is not offered it: its own are asked for", now.map((c) => c.id).join() === "camera.gate" && calls.length === 1, now);
+  await listCameras(newHouse);
+  check("…and then kept", calls.length === 1, calls.length);
+  CONFIG._m.set("cams:v2", { v: JSON.stringify([{ entity: "camera.porch", name: "Porch" }]), md: null });
+  const upgraded = await listCameras(newHouse);
+  check("a list cached before it said where it was made is asked for again", upgraded.map((c) => c.id).join() === "camera.gate", upgraded);
+}
+
+console.log("\nthe Settings Test, on an address not yet saved");
+{
+  answer = (u) =>
+    u.includes("/api/camera_proxy/")
+      ? new Response(new Uint8Array([0xff, 0xd8, 0xff]), { headers: { "content-type": "image/jpeg" } })
+      : new Response(u.startsWith("https://new-house.example/") ? "camera.gate|Gate\n" : "camera.porch|Porch\n");
+  const e = withState({ CONFIG: kv(), HA_BASE_URL: "https://old-house.example", HA_TOKEN: "old-house-token-0123456789" });
+  const values = { HA_BASE_URL: "https://new-house.example", HA_TOKEN: "new-house-token-0123456789" };
+  const test = async () => {
+    const body = JSON.stringify({ group: "cameras", values });
+    const res = await handleSettings(new Request("https://j.test/api/settings/test", { method: "POST", body }), e as never);
+    return (await res.json()) as { ok: boolean; detail: string };
+  };
+  check("tries the cameras at the address typed", /Gate/.test((await test()).detail));
+  const inUse = await listCameras(e as never);
+  check("…and leaves the house in use its own", inUse.map((c) => c.id).join() === "camera.porch", inUse);
+  e.CONFIG = kv();
+  await listCameras(e as never);
+  const cached = await test();
+  check("with the house in use's cameras cached, a Test is not shown them", cached.ok && /Gate/.test(cached.detail) && !/Porch/.test(cached.detail), cached);
+  _forgetFrames();
 }
 
 console.log("\none frame");

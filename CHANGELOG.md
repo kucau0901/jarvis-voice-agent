@@ -72,8 +72,14 @@ of every release, and in the [README](README.md#updating).
 ### Fixed
 
 - **After a new Home Assistant address or token was saved, the cameras of the
-  old one were offered** for up to an hour. The new one's are now asked for
-  at once.
+  old one were offered** for up to an hour, and a new MCP address could be
+  offered the old one's tools for up to a day. Clearing them on saving was
+  not enough: a request answered in the seconds before the new settings
+  reached it could list the old house and store it again. Each stored list
+  now says which address it came from, and one from another address is not
+  used. This also fixes the camera Test in Settings, on an address not yet
+  saved: it tried the saved house's cameras, or left its own list to be
+  offered to the house in use.
 - **Live could go on billing for a session it had let go of.** A connection
   given up on in a tunnel could come back once a new session had opened, and
   stay open beside it until the tab closed: billed, writing what was said on
