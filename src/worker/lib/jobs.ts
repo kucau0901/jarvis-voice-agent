@@ -207,7 +207,9 @@ export function limitsOf(engine: JobEngine): { maxMs: number; maxSteps: number }
 /**
  * A report with its sources listed at the end, from the web search's own
  * citations rather than the model's memory of them: each URL once, at most
- * fifteen, in the order first cited.
+ * fifteen, in the order first cited. Within MAX_RESULT, which finish() keeps:
+ * a long report is shortened to make room for the list, rather than the list
+ * being what is cut.
  */
 export function withSources(text: string, cited: readonly { url: string; title?: string }[]): string {
   const seen = new Set<string>();
@@ -228,7 +230,10 @@ export function withSources(text: string, cited: readonly { url: string; title?:
     lines.push(`- ${c.title?.trim() ? `${c.title.trim()}: ` : ""}${url}`);
     if (lines.length === 15) break;
   }
-  return lines.length ? `${text.trimEnd()}\n\nSources:\n${lines.join("\n")}` : text;
+  if (!lines.length) return text;
+  const list = `\n\nSources:\n${lines.join("\n")}`;
+  const body = text.trimEnd();
+  return body.length + list.length <= MAX_RESULT ? body + list : `${body.slice(0, MAX_RESULT - list.length - 1).trimEnd()}…${list}`;
 }
 
 export function splitResult(text: string): { summary: string; result: string; whole: string } {

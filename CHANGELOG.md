@@ -26,6 +26,12 @@ of every release, and in the [README](README.md#updating).
   else is still one picture, as quick as before. Watching takes a few seconds
   longer.
 
+### Fixed
+
+- **A long research report keeps its Sources list.** Jobs keeps the first
+  20,000 characters of a report, and the list came last, so a long report lost
+  it. The report is now shortened to make room, and the list is kept whole.
+
 ## [2.3.0] - 2026-09-29
 
 ### Security

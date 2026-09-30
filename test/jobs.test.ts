@@ -281,6 +281,22 @@ console.log("\nsources, from the searches' own citations");
   check("only web pages", !out.includes("javascript:") && !out.includes("not a url"));
   check("fifteen at most", list.length === 15, list.length);
   check("no citations: the report as it was", withSources("Just text.", []) === "Just text.");
+
+  // A report near the limit: the Jobs panel keeps 20,000 characters, and the list came last, so it was what got cut.
+  const long = withSources(`SUMMARY: chargers\n\n${"Findings. ".repeat(2_500)}`, cited.slice(0, 3));
+  check("a long report is shortened to fit, its sources kept whole", long.length <= 20_000 && long.endsWith("- A review: https://news.example/review?page=2") && long.includes("…\n\nSources:\n"), { length: long.length, end: long.slice(-80) });
+}
+
+console.log("\na long research report, through to the Jobs panel");
+{
+  const cited = [{ url: "https://maker.example/pulsar", title: "Pulsar Plus" }, { url: "https://owners.example/forum", title: "Owners" }, { url: "https://test.example/review" }];
+  const report = withSources(`SUMMARY: The Pulsar Plus suits most homes.\n\n${"A finding with its figures. ".repeat(1_000)}`, cited);
+  const h = harness([{ kind: "done", text: report }]);
+  const j = (await h.jobs.create({ task: "home chargers", engine: "research" }, BY, T0)) as Job;
+  await h.jobs.tick(T0);
+  await h.jobs.tick((await h.jobs.get(j.id))!.nextAt!);
+  const kept = (await h.jobs.get(j.id))!.result ?? "";
+  check("its Sources list is all there in Jobs", kept.endsWith("- https://test.example/review") && kept.includes("Sources:\n- Pulsar Plus: https://maker.example/pulsar\n- Owners: https://owners.example/forum\n"), kept.slice(-160));
 }
 
 console.log("\ncancelled while OpenAI was being asked");
