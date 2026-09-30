@@ -524,7 +524,7 @@ interface RoutineApi {
 interface JobApi {
   listJobs(): Promise<Job[]>;
   getJob(id: string): Promise<Job | undefined>;
-  createJob(input: { title?: unknown; task?: unknown; engine?: unknown }, by: { who: string; grants: readonly Grant[] }): Promise<Job | string>;
+  createJob(input: { title?: unknown; task?: unknown; engine?: unknown; team?: unknown }, by: { who: string; grants: readonly Grant[] }): Promise<Job | string>;
   cancelJob(id: string): Promise<Job | string>;
   removeJob(id: string): Promise<boolean>;
 }

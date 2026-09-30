@@ -707,6 +707,32 @@ answers with notes rather than the report, the report goes out as it was
 written. It makes a report cost more, by how much is to be measured: the Jobs
 panel shows each one's real cost.
 
+**Research as a team, in one job.** Asked for in so many words, three teams
+research the brief at once, each a chain of background responses of its own on
+the one job record (`team`, beside `engine: "research"`). One record means a
+team run is one of the three running jobs, one alarm steps it (its `nextAt` is
+the earliest any team needs), one cancel stops every chain, and Settings →
+Usage counts it once. First one call with no tools plans three angles for this
+question (a purchase wants makers, owners and the case against; a trip,
+getting there, staying and doing); if it cannot start, fails or answers with
+anything but three good angles, fixed ones are used, so planning never costs
+the run. The angles come from the user's own brief, so each reaches its team
+as a user message after one fixed developer message, and the three teams share
+one cached prefix. Web search runs inside a single response, so a team comes
+back to the object only when it calls a function: `share_findings`, offered to
+the teams alone, is that moment. What a team posts goes on the job's board, at
+most four each, and the answer carries what the others posted since it last
+asked, never its own. That answer is a tool output wrapped by `asQuotedData`,
+never a developer message, because it was read on strangers' pages. When no
+team is working, or after 35 minutes, one call with no tools merges the
+reports, the board and the pages they cited, all quoted, and the result is
+checked like any research report. Work is never thrown away: a team that
+fails, throws three times running or passes its 12 steps is stopped and named
+to the merge while the others go on; a failed merge sends each team's report as
+written; a failed check sends the merged report. The owner chose to count a
+team run as one of the month's research jobs although it costs about three
+times as much (roughly $4–7), and to allow one at a time.
+
 Measured on production in September 2026: a three-dashcam comparison with web
 search, 57 seconds and about $0.004; a question to Hermes, 12 seconds; "look
 into EV-charging cashback and let me know", said aloud, became a job the router

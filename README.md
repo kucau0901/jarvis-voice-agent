@@ -57,7 +57,9 @@ enough) or run it yourself with **Docker**.
   Jobs read (web, mail, calendar, memory, car, cameras) but never act. Ask for
   research in depth and it runs on a stronger model, searches widely and comes
   back as a report, checked against its sources, for roughly $1–2 (the Jobs panel shows
-  what each one cost). A question for Hermes runs the same way, so its answer
+  what each one cost), or as a team: three teams take different angles and
+  share what they find, and one checked report comes back for roughly $4–7.
+  A question for Hermes runs the same way, so its answer
   is never lost.
 - **Routines** — "remind me at five to call Mum", "every weekday at 7:30 tell
   me my first meeting and the traffic", "tell me when to leave for my

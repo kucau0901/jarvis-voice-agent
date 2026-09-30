@@ -236,13 +236,13 @@ export const SETTINGS: readonly SettingDef[] = [
   {
     name: "RESEARCH_MODEL", group: "openai", kind: "text", default: "gpt-6-sol",
     label: "Research model",
-    help: "What a research job runs on (\"research … in depth and let me know\"): stronger than the router, as it is asked for depth and nobody is waiting. Roughly $1–2 a report on GPT-6 Sol, depending on how far it searches; the Jobs panel shows what each one cost.",
+    help: "What a research job runs on (\"research … in depth and let me know\"): stronger than the router, as it is asked for depth and nobody is waiting. Roughly $1–2 a report on GPT-6 Sol, or $4–7 for research as a team, depending on how far it searches; the Jobs panel shows what each one cost.",
     validate: (v: string) => (/^[a-z0-9][a-z0-9._:-]{1,79}$/i.test(v.trim()) ? null : "is not a model id like gpt-6-sol"),
   },
   {
     name: "RESEARCH_MONTHLY_LIMIT", group: "openai", kind: "number", default: "10",
     label: "Research jobs a month",
-    help: "A ceiling on what research can spend. 0 switches research jobs off.",
+    help: "Research jobs a month; research as a team counts as one but costs about three times as much. 0 switches research jobs off.",
     validate: intIn(0, 200),
   },
   {

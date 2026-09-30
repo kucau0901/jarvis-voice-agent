@@ -25,6 +25,13 @@ of every release, and in the [README](README.md#updating).
   Only when the question is about movement, or you ask it to watch: anything
   else is still one picture, as quick as before. Watching takes a few seconds
   longer.
+- **Research as a team.** Ask Jarvis to research something "as a team", or
+  tick *As a team* in Jobs. Three teams look into it at once, each from an
+  angle chosen for the question. They pass each other what they find as they
+  go, and their reports become one, checked against the pages they found. It
+  takes 20–55 minutes, costs roughly $4–7, counts as one of the month's
+  research jobs, and one runs at a time. If the reports can't be merged, you
+  get each team's report as written.
 
 ### Changed
 

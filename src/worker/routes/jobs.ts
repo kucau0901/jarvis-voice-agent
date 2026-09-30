@@ -10,8 +10,9 @@ import { allows, withoutScreen, type Grant } from "../lib/scopes.ts";
 import { builtinTools, explicitCache, researchModel } from "../lib/router-model.ts";
 import { toToolSchema } from "../tools/registry.ts";
 import * as hermes from "../tools/hermes.ts";
-import { RESEARCH_MONTHLY_DEFAULT, jobTool, usageEntry, type Cited, type Job, type JobDeps, type Step } from "../lib/jobs.ts";
-import { RESEARCH_CHECK } from "../lib/router-prompt.ts";
+import { RESEARCH_MONTHLY_DEFAULT, jobTool, sharesLeft, usageEntry, type Cited, type Job, type JobDeps, type Step } from "../lib/jobs.ts";
+import { MERGE_INSTRUCTIONS, PLAN_INSTRUCTIONS, RESEARCH_CHECK, TEAM_INSTRUCTIONS } from "../lib/router-prompt.ts";
+import { SHARE, angleMessage, mergeMaterial, shareReply, shareTool, teamView } from "../lib/research-team.ts";
 import { prepareRouter, runCalls } from "../lib/router.ts";
 import { recordUsage } from "./usage.ts";
 import { costOf } from "../lib/usage.ts";
@@ -22,7 +23,7 @@ import { costOf } from "../lib/usage.ts";
  *
  *   GET    /api/v1/jobs           the jobs (a device sees its own)
  *   GET    /api/v1/jobs?id=       one, with its whole result
- *   POST   /api/v1/jobs           {task, title?, engine?: "jarvis" | "hermes" | "research"}
+ *   POST   /api/v1/jobs           {task, title?, engine?: "jarvis" | "hermes" | "research", team?: true}
  *   POST   /api/v1/jobs/cancel    {id}
  *   DELETE /api/v1/jobs?id=
  */
@@ -74,7 +75,8 @@ export function jobEngine(env: Env, deliver: JobDeps["deliver"], envFor: (job: J
   const client = () => new OpenAI({ apiKey: env.OPENAI_API_KEY, baseURL: openaiBase(env) });
   const signal = () => AbortSignal.timeout(60_000);
 
-  async function request(job: Job, turns: { role: "user"; text: string }[]) {
+  /** `team`: for a research team's chain, which is offered share_findings besides. */
+  async function request(job: Job, turns: { role: "user"; text: string }[], team = false) {
     const research = job.engine === "research";
     // As whoever started it (lib/context.ts): their memory, their mail.
     const env = await envFor(job);
@@ -88,7 +90,7 @@ export function jobEngine(env: Env, deliver: JobDeps["deliver"], envFor: (job: J
         model,
         ...(research ? { reasoning: { effort: "high" as const } } : {}),
         instructions: p.instructions,
-        tools: [...p.tools.map(toToolSchema), ...builtinTools(env)],
+        tools: [...p.tools.map(toToolSchema), ...(team ? [toToolSchema(shareTool("", [], 0))] : []), ...builtinTools(env)],
         tool_choice: "auto" as const,
         // Background mode: the step runs at OpenAI, and nobody has to stay connected for it.
         background: true,
@@ -105,14 +107,52 @@ export function jobEngine(env: Env, deliver: JobDeps["deliver"], envFor: (job: J
     researchBlocked: builtinTools(env).length ? null : "research needs web search, which is withheld in Settings → Advanced",
     record: (e) => recordUsage(env, e),
 
-    async start(job) {
+    async start(job, t) {
       if (!env.OPENAI_API_KEY) return { error: "no OpenAI key is set" };
       try {
-        const { p, base } = await request(job, [{ role: "user", text: job.task }]);
-        const res = await p.client.responses.create({ ...base, input: p.input }, { signal: signal() });
+        const { p, base } = await request(job, [{ role: "user", text: job.task }], t !== undefined);
+        // A research team's: the same for every team, then its own angle, planned from the user's brief.
+        const input: OpenAI.Responses.ResponseInput =
+          t === undefined
+            ? p.input
+            : [...p.input, { role: "developer", content: TEAM_INSTRUCTIONS }, { role: "user", content: angleMessage(job.team!.angles![t]!) }];
+        const res = await p.client.responses.create({ ...base, input }, { signal: signal() });
         return { responseId: res.id };
       } catch (e) {
         return { error: `it could not start: ${e instanceof Error ? e.message : String(e)}`.slice(0, 300) };
+      }
+    },
+
+    async plan(job) {
+      if (!env.OPENAI_API_KEY) return { error: "no OpenAI key is set" };
+      try {
+        // One answer, no searching: the angles, as JSON (lib/jobs.ts parseAngles).
+        const { p, base } = await request(job, [{ role: "user", text: job.task }]);
+        const res = await p.client.responses.create(
+          { ...base, tool_choice: "none", input: [...p.input, { role: "developer", content: PLAN_INSTRUCTIONS }] },
+          { signal: signal() },
+        );
+        return { responseId: res.id };
+      } catch (e) {
+        return { error: `the teams could not be planned: ${e instanceof Error ? e.message : String(e)}`.slice(0, 300) };
+      }
+    },
+
+    async merge(job) {
+      try {
+        // One answer, no searching: what the teams found is all it has, quoted (lib/research-team.ts).
+        const { p, base } = await request(job, [{ role: "user", text: job.task }]);
+        const res = await p.client.responses.create(
+          {
+            ...base,
+            tool_choice: "none",
+            input: [...p.input, { role: "developer", content: MERGE_INSTRUCTIONS }, { role: "user", content: mergeMaterial(job) }],
+          },
+          { signal: signal() },
+        );
+        return { responseId: res.id };
+      } catch (e) {
+        return { error: `the teams' reports could not be merged: ${e instanceof Error ? e.message : String(e)}`.slice(0, 300) };
       }
     },
 
@@ -130,8 +170,8 @@ export function jobEngine(env: Env, deliver: JobDeps["deliver"], envFor: (job: J
       }
     },
 
-    async poll(job): Promise<Step> {
-      const r = await client().responses.retrieve(job.responseId!, {}, { signal: signal() });
+    async poll(job, t): Promise<Step> {
+      const r = await client().responses.retrieve(t === undefined ? job.responseId! : job.team!.chains[t]!.responseId!, {}, { signal: signal() });
       if (r.status === "queued" || r.status === "in_progress") return { kind: "wait" };
       const usage = usageOf(r);
       if (r.status !== "completed") {
@@ -146,11 +186,14 @@ export function jobEngine(env: Env, deliver: JobDeps["deliver"], envFor: (job: J
         return { kind: "done", text, cited: citationsOf(r), usage };
       }
       // The tools it asked for run here, between steps; then the next step starts.
-      const { p, env: theirs, base } = await request(job, []);
-      const outputs = await runCalls(calls, p.byName, { env: theirs, signal: signal(), memory: p.memory, grants: jobGrants(job.grants) }, quiet);
+      const { p, env: theirs, base } = await request(job, [], t !== undefined);
+      // A team's share_findings: posted by lib/jobs.ts teamStep, answered with what the others shared.
+      const shared: string[] = [];
+      const byName = t === undefined ? p.byName : new Map(p.byName).set(SHARE.name, shareTool(shareReply(job, t), shared, sharesLeft(job, t)));
+      const outputs = await runCalls(calls, byName, { env: theirs, signal: signal(), memory: p.memory, grants: jobGrants(job.grants) }, quiet);
       await p.memory.save().catch(() => {});
       const next = await p.client.responses.create({ ...base, previous_response_id: r.id, input: outputs }, { signal: signal() });
-      return { kind: "continued", responseId: next.id, usage };
+      return { kind: "continued", responseId: next.id, usage, ...(calls.some((c) => c.name === SHARE.name) ? { shared } : {}) };
     },
 
     async cancel(job) {
@@ -176,15 +219,16 @@ export function jobEngine(env: Env, deliver: JobDeps["deliver"], envFor: (job: J
 const MAX_BODY = 16 * 1024;
 
 
-/** The panel's view: everything but the grants and the internals. */
+/** The panel's view: everything but the grants and the internals; of a research team, its progress. */
 function jobView(j: Job, whole = false) {
-  const { grants: _g, responseId: _r, draft: _d, ...rest } = j;
+  const { grants: _g, responseId: _r, draft: _d, team: _t, ...rest } = j;
   void _g;
   void _r;
   void _d;
+  void _t;
   // What it cost so far, at OpenAI's prices (lib/usage.ts); null for a model with no price.
   const cost = j.usage ? costOf(usageEntry(j, true, j.updatedAt)) : null;
-  const view = { ...rest, cost };
+  const view = { ...rest, ...(j.team ? { team: teamView(j) } : {}), cost };
   return whole ? view : { ...view, result: undefined, hasResult: !!j.result };
 }
 

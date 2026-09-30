@@ -27,7 +27,16 @@ interface JobView {
   deliveredBy?: string | null;
   /** Dollars so far, at OpenAI's prices; null when the model has no listed price. */
   cost?: number | null;
+  /** Research as a team: how many teams reported and, while it runs, which part it is in. */
+  team?: { of: number; reported: number; phase?: "planning" | "teams" | "merging" | "checking" };
 }
+
+/** What a running research team is doing, after "min so far". */
+const PHASE: Record<"planning" | "merging" | "checking", string> = {
+  planning: "planning the teams",
+  merging: "merging the teams' reports",
+  checking: "checking the report",
+};
 
 const STATUS: Record<JobView["status"], string> = {
   running: "working",
@@ -74,12 +83,29 @@ export class Jobs {
     deep.appendChild(deepBox);
     deep.appendChild(document.createTextNode(" Research in depth: a stronger model and sources, 10–40 minutes, roughly $1–2 (shown below once done)"));
     form.appendChild(deep);
+    // Research as a team: research too, so each box keeps the other right.
+    const asTeam = el("label", "on");
+    const teamBox = document.createElement("input");
+    teamBox.type = "checkbox";
+    asTeam.appendChild(teamBox);
+    asTeam.appendChild(document.createTextNode(" As a team: three teams, each from an angle chosen for the question, sharing what they find; 20–55 minutes, roughly $4–7, one at a time"));
+    form.appendChild(asTeam);
+    teamBox.addEventListener("change", () => {
+      if (teamBox.checked) deepBox.checked = true;
+    });
+    deepBox.addEventListener("change", () => {
+      if (!deepBox.checked) teamBox.checked = false;
+    });
     form.appendChild(
       button("Start", () =>
         void this.act(async () => {
-          await api(this.key, "POST", "/api/v1/jobs", { task: task.value, ...(deepBox.checked ? { engine: "research" } : {}) });
+          await api(this.key, "POST", "/api/v1/jobs", {
+            task: task.value,
+            ...(deepBox.checked ? { engine: "research" } : {}),
+            ...(teamBox.checked ? { team: true } : {}),
+          });
           task.value = "";
-          deepBox.checked = false;
+          deepBox.checked = teamBox.checked = false;
         }, "Started — it arrives as an alert when done."), "primary"),
     );
     sheet.appendChild(form);
@@ -145,8 +171,10 @@ export class Jobs {
     top.appendChild(el("span", `chip ${j.status === "done" ? "on" : "off"}`, STATUS[j.status]));
     row.appendChild(top);
 
-    const facts: string[] = [j.engine === "hermes" ? "Hermes" : j.engine === "research" ? "Research" : "Jarvis", `started ${when(j.createdAt)}`];
+    const facts: string[] = [j.team ? "Research team" : j.engine === "hermes" ? "Hermes" : j.engine === "research" ? "Research" : "Jarvis", `started ${when(j.createdAt)}`];
     if (j.status === "running") facts.push(`${Math.max(1, Math.round((Date.now() - j.createdAt) / 60_000))} min so far${j.engine === "jarvis" ? `, step ${j.steps}` : ""}`);
+    if (j.team?.phase) facts.push(j.team.phase === "teams" ? `${j.team.reported} of ${j.team.of} teams done` : PHASE[j.team.phase]);
+    else if (j.team && j.status !== "running" && j.team.reported < j.team.of) facts.push(`${j.team.reported} of ${j.team.of} teams reported`);
     if (j.finishedAt) facts.push(`took ${Math.max(1, Math.round((j.finishedAt - j.createdAt) / 60_000))} min`);
     if (j.status !== "running" && j.deliveredBy !== undefined) facts.push(j.deliveredBy ? `sent by ${j.deliveredBy}` : "not delivered");
     if (typeof j.cost === "number" && j.cost > 0) facts.push(`about ${j.cost < 0.01 ? "under 1¢" : `$${j.cost.toFixed(2)}`}`);

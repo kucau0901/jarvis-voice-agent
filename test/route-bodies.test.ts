@@ -6,6 +6,7 @@ import { handleAlertApi } from "../src/worker/routes/alerts.ts";
 import { handleRoutines } from "../src/worker/routes/routines.ts";
 import { handleJobs } from "../src/worker/routes/jobs.ts";
 import { handleFamily } from "../src/worker/routes/family.ts";
+import { jobTools } from "../src/worker/tools/jobs.ts";
 
 let pass = 0;
 let fail = 0;
@@ -87,6 +88,62 @@ console.log("\njobs: a small JSON object (16 KB), or 400");
   check("9 KB is within a job's limit, unlike the others'", nine.status === 400 && nine.body.error === "a job needs a task: what to find out or work through" && calls.some((c) => c.method === "createJob"), nine);
   const cancel = await post("/api/v1/jobs/cancel", "{");
   check("cancelling with a body that is not JSON: no such job", cancel.status === 404 && cancel.body.error === "no such job", cancel);
+}
+
+console.log("\njobs: a research team's view shows its progress, not its workings");
+{
+  // Invented throughout: made-up angles, figures and sites.
+  const teamJob = {
+    id: "jteam", title: "Home chargers", task: "Research home EV chargers.", engine: "research", status: "running", createdBy: "owner",
+    grants: ["*"], createdAt: 1, updatedAt: 2, nextAt: 3, steps: 1, attempts: 0,
+    team: {
+      angles: [
+        { name: "makers and prices", brief: "What the makers list." },
+        { name: "owners' experience", brief: "What owners report." },
+        { name: "the case against", brief: "Cheaper alternatives." },
+      ],
+      chains: [
+        { state: "reported", updatedAt: 2, steps: 3, fails: 0, seen: 1, report: "SUMMARY: The maker lists RM2,999.", cited: [{ url: "https://maker.example/" }] },
+        { state: "working", responseId: "resp_t1", updatedAt: 2, nextAt: 3, steps: 2, fails: 0, seen: 0 },
+        { state: "working", responseId: "resp_t2", updatedAt: 2, nextAt: 3, steps: 2, fails: 1, seen: 0 },
+      ],
+      board: [{ team: 0, text: "The maker lists RM2,999 installed." }],
+    },
+  };
+  const { env } = fakeState({ listJobs: [teamJob], getJob: teamJob });
+  for (const path of ["/api/v1/jobs", "/api/v1/jobs?id=jteam"]) {
+    const r = await handleJobs(new Request(`https://j.test${path}`), env, new URL(`https://j.test${path}`), OWNER);
+    const text = (await r?.text()) ?? "";
+    const body = JSON.parse(text || "{}") as { jobs?: { team?: unknown }[]; job?: { team?: unknown } };
+    const view = body.jobs?.[0] ?? body.job;
+    check(`${path}: how many teams reported, and which part it is in`, r?.status === 200 && JSON.stringify(view?.team) === JSON.stringify({ of: 3, reported: 1, phase: "teams" }), view);
+    check(`${path}: none of the teams' workings`, ["resp_", "board", "chains", "draft", '"report"', "angles", "RM2,999", "maker.example"].every((s) => !text.includes(s)), text.slice(0, 300));
+  }
+  const { env: env2, calls } = fakeState({ createJob: teamJob });
+  const r = await answer(await handleJobs(req("POST", "/api/v1/jobs", JSON.stringify({ task: "Research home EV chargers.", engine: "research", team: true })), env2, new URL("https://j.test/api/v1/jobs"), OWNER));
+  const made = calls.find((c) => c.method === "createJob")?.args[0] as { engine?: string; team?: unknown } | undefined;
+  check("asked for with team: true beside engine research", r.status === 201 && made?.engine === "research" && made.team === true, { r, made });
+}
+
+console.log("\nstart_job: research as a team, by voice");
+{
+  const created = { id: "j2", title: "Home chargers", task: "Research home EV chargers.", engine: "research", status: "running" };
+  const start = async (research: string, grants: string[]) => {
+    const { env, calls } = fakeState({ createJob: created });
+    const said = String(await jobTools[0]!.run({ title: "Home chargers", task: "Research home EV chargers.", research }, { env, grants } as never));
+    return { said, made: calls.find((c) => c.method === "createJob")?.args[0] as { engine?: string; team?: unknown } | undefined };
+  };
+  const team = await start("team", ["*"]);
+  check("'team': research, as a team, and the reply says three teams", team.made?.engine === "research" && team.made.team === true && /three teams/.test(team.said), team);
+  const guest = await start("team", ["ask"]);
+  check("…not for someone who may not start research", guest.said.startsWith("Not started") && !guest.made, guest);
+  const yes = await start("yes", ["*"]);
+  check("'yes': research on its own", yes.made?.engine === "research" && !("team" in yes.made) && !/three teams/.test(yes.said), yes);
+  const no = await start("no", ["*"]);
+  check("'no': an ordinary job", no.made?.engine === "jarvis" && !("team" in no.made), no);
+  const schema = jobTools[0]!.parameters as { properties: { research: { type: string; enum: string[] } }; required: string[]; additionalProperties: boolean };
+  check("the schema stays strict: research is one of three words, and required",
+    schema.properties.research.type === "string" && JSON.stringify(schema.properties.research.enum) === JSON.stringify(["no", "yes", "team"]) && schema.required.includes("research") && schema.additionalProperties === false, schema.properties.research);
 }
 
 console.log("\nfamily: anything that is not an object is taken as {}");

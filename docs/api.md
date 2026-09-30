@@ -472,7 +472,17 @@ removes what they do not support (a report whose check cannot finish is sent
 as written). It may take 40 steps and 45 minutes, and up to ten more minutes to
 check the report, costs roughly $1–2 depending on how far it searches,
 and is capped at `RESEARCH_MONTHLY_LIMIT` a month (default 10; 0 switches it
-off). Each job's `cost` so far, at OpenAI's prices, comes with it. `task` must
+off). With `"team": true` beside `"engine": "research"`, it is research as a
+team: one call plans three angles suited to the question (fixed ones if that
+fails), three teams research them at once, sharing findings as they go, and one
+call merges their reports into the one that is checked and sent (unmerged,
+each team's report is sent as written). It counts as one running job, one of
+the day's and one of `RESEARCH_MONTHLY_LIMIT`, though it costs about three
+times as much (roughly $4–7); one runs at a time; the teams have 35 minutes,
+and the whole run takes 20–55 minutes. Its view carries
+`team: {of, reported, phase}`, where `phase` is `planning`, `teams`, `merging`
+or `checking` while it runs. Without `engine: "research"`, `team` is ignored.
+Each job's `cost` so far, at OpenAI's prices, comes with it. `task` must
 be complete on its own: a job never sees a conversation. `GET /api/v1/jobs`
 lists them (a device sees its own); `GET ?id=` returns one with its whole
 result; `POST /api/v1/jobs/cancel {id}` stops one; `DELETE ?id=` removes it.
