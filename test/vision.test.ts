@@ -2,6 +2,7 @@ import {
   _forgetFrames,
   basicCredentials,
   dataUrl,
+  laterFrames,
   listCameras,
   parseCameraList,
   pickCamera,
@@ -29,7 +30,7 @@ function check(name: string, cond: boolean, got?: unknown) {
 
 type Call = { url: string; headers: Record<string, string> };
 let calls: Call[] = [];
-let answer: (url: string) => Response = () => new Response(new Uint8Array([0xff, 0xd8, 0xff]), { headers: { "content-type": "image/jpeg" } });
+let answer: (url: string) => Response | Promise<Response> = () => new Response(new Uint8Array([0xff, 0xd8, 0xff]), { headers: { "content-type": "image/jpeg" } });
 globalThis.fetch = (async (input: string | URL, init: RequestInit = {}) => {
   calls.push({ url: String(input), headers: (init.headers ?? {}) as Record<string, string> });
   return answer(String(input));
@@ -252,6 +253,64 @@ console.log("\na slow camera is asked once, not queued behind itself");
   _forgetFrames();
 }
 
+console.log("\nwatching: a few frames, a few seconds apart");
+{
+  const e = env({ HA_BASE_URL: "https://ha.example.com", HA_TOKEN: "t" });
+  // A made-up clock, moved on by the waits and by how long the camera takes for each frame.
+  let t = 0;
+  let takes: number[] = [];
+  let frame = 0;
+  let failAt = 0;
+  let still = false;
+  const waits: number[] = [];
+  const clock = () => t;
+  const wait = async (ms: number) => { waits.push(ms); t += ms; };
+  answer = () => {
+    frame++;
+    t += takes[frame - 1] ?? takes.at(-1)!;
+    return frame === failAt ? new Response("down", { status: 503 }) : new Response(new Uint8Array([0xff, 0xd8, still ? 1 : frame]), { headers: { "content-type": "image/jpeg" } });
+  };
+  const watch = async (setup: { takes: number | number[]; failAt?: number; screenAt?: number; still?: boolean; signal?: AbortSignal }) => {
+    _forgetFrames();
+    calls = [];
+    waits.length = 0;
+    t = 1_000_000;
+    takes = [setup.takes].flat();
+    frame = 0;
+    failAt = setup.failAt ?? 0;
+    still = setup.still ?? false;
+    const first = t;
+    const one = await snapshot(e, "camera.porch", 540, first);
+    if (!one.ok) throw new Error("the first frame must come");
+    if (setup.screenAt !== undefined) await snapshot(e, "camera.porch", 540, first + setup.screenAt);
+    const later = await laterFrames(e, "camera.porch", 540, { bytes: one.bytes, at: first }, setup.signal, wait, clock);
+    const pictures = [one, ...later].map((f) => new Uint8Array(f.bytes)[2]);
+    return { later, pictures, asked: later.map((f) => f.at - first) };
+  };
+
+  const quick = await watch({ takes: 0 });
+  check("a quick camera: two more frames, each a new picture, never the first again", quick.later.length === 2 && calls.length === 3 && new Set(quick.pictures).size === 3, quick.pictures);
+  check("asked for two and a half seconds apart", quick.asked.join() === "2500,5000", quick.asked);
+  const slowish = await watch({ takes: 3_000 });
+  check("a camera slower than that: asked again as soon as each arrives, no waiting", slowish.later.length === 2 && waits.every((w) => w === 0), waits);
+  const crawling = await watch({ takes: 6_000 });
+  check("one so slow the third would be past eight seconds: two frames, not three", crawling.later.length === 1 && calls.length === 2, { asked: crawling.asked, calls: calls.length });
+  const failing = await watch({ takes: 0, failAt: 2 });
+  check("the second frame fails: stops there, and asks for no third", failing.later.length === 0 && calls.length === 2, calls.length);
+  const shared = await watch({ takes: 0, screenAt: 2_100 });
+  check("the screen asked a moment before: frame two is its picture, no request of its own", shared.later.length === 2 && calls.length === 3 && shared.pictures[1] === 2, { pictures: shared.pictures, calls: calls.length });
+  // Timed from the ask before, not from the first: a fixed schedule would ask frame three too soon after frame two, and get it back.
+  const uneven = await watch({ takes: [3_400, 200] });
+  check("frame one slow, frame two quick: frame three waits 2.5 s from frame two's ask, and is new", uneven.asked.join() === "3400,5900" && calls.length === 3 && new Set(uneven.pictures).size === 3, { asked: uneven.asked, pictures: uneven.pictures });
+  const stored = await watch({ takes: 0, still: true });
+  check("a camera serving a stored still: the same picture again stops it, not called watching", stored.later.length === 0 && calls.length === 2, { later: stored.later.length, calls: calls.length });
+  const gone = new AbortController();
+  gone.abort();
+  const dropped = await watch({ takes: 0, signal: gone.signal });
+  check("no longer wanted: no more frames asked for", dropped.later.length === 0 && calls.length === 1, calls.length);
+  _forgetFrames();
+}
+
 console.log("\nthe tools");
 {
   _forgetFrames();
@@ -268,8 +327,12 @@ console.log("\nthe tools");
     display: (p: Record<string, unknown>) => shown.push(p),
     progress: (t: string) => progress.push(t),
   } as never;
-  const out = await lookAtCamera.run({ camera: "the porch", question: "Is anyone there?" }, ctx);
+  const movement = (lookAtCamera.parameters.properties as Record<string, { type: unknown }>).movement;
+  check("its schema is strict: every property required, movement true or null", JSON.stringify(lookAtCamera.parameters.required) === JSON.stringify(Object.keys(lookAtCamera.parameters.properties)) && lookAtCamera.parameters.additionalProperties === false && JSON.stringify(movement?.type) === JSON.stringify(["boolean", "null"]), lookAtCamera.parameters);
+  calls = [];
+  const out = await lookAtCamera.run({ camera: "the porch", question: "Is anyone there?", movement: null }, ctx);
   check("returns the picture, for the router to look at", typeof out !== "string" && out.images.length === 1 && out.images[0]!.url.startsWith("data:image/jpeg;base64,"), out);
+  check("one picture, one request: a normal look is not a watch", calls.filter((c) => c.url.includes("/api/camera_proxy/")).length === 1, calls.length);
   check("with the question and a warning not to guess", typeof out !== "string" && /Is anyone there\?/.test(out.text) && /too dark, blurred or blocked/.test(out.text));
   check("and shows it on screen as the evidence", shown[0]?.kind === "camera" && shown[0]?.entity === "camera.porch");
   check("and says it is looking", progress[0] === "looking at the Porch");
@@ -278,6 +341,37 @@ console.log("\nthe tools");
   const list = await showCamera.run({ camera: "" }, ctx);
   check("show_camera with no name lists them", list === "Cameras available: Porch.");
   check("available with only a listed camera, no Home Assistant", lookAtCamera.available!(env({ CAMERAS: "Gate = https://a/g.jpg" })) && !lookAtCamera.available!(env()));
+
+  // Asked about movement: a few frames. On the real clock, so this takes about five seconds.
+  _forgetFrames();
+  let pic = 0;
+  answer = (u) => {
+    if (u.endsWith("/api/template")) return new Response("camera.porch|Porch\n");
+    return new Response(new Uint8Array([0xff, 0xd8, ++pic]), { headers: { "content-type": "image/jpeg" } });
+  };
+  calls = [];
+  shown.length = 0;
+  progress.length = 0;
+  const watched = await lookAtCamera.run({ camera: "porch", question: "Is that car pulling in or leaving?", movement: true }, ctx);
+  const urls = typeof watched === "string" ? [] : watched.images.map((i) => i.url);
+  check("asked about movement: three pictures, each a new one", urls.length === 3 && new Set(urls).size === 3 && calls.filter((c) => c.url.includes("/api/camera_proxy/")).length === 3, urls.length);
+  check("told they are in order, and to answer from what changed", typeof watched !== "string" && /3 pictures/.test(watched.text) && /oldest first/.test(watched.text) && /pulling in or leaving/.test(watched.text) && /too dark, blurred or blocked/.test(watched.text), watched);
+  check("says it is watching, and shows the camera once", progress[0] === "watching the Porch for a few seconds" && shown.length === 1, { progress, shown: shown.length });
+
+  // The first ask fails slowly, then the retry answers: frame two is timed from the retry, or it
+  // would come inside the retry's two seconds and be the same picture. Real clock again: about seven seconds.
+  _forgetFrames();
+  let tries = 0;
+  answer = async (u) => {
+    if (u.endsWith("/api/template")) return new Response("camera.porch|Porch\n");
+    if (++tries === 1) {
+      await new Promise((r) => setTimeout(r, 1_500));
+      return new Response("busy", { status: 500 });
+    }
+    return new Response(new Uint8Array([0xff, 0xd8, tries]), { headers: { "content-type": "image/jpeg" } });
+  };
+  const afterRetry = await lookAtCamera.run({ camera: "porch", question: "Is someone coming or going?", movement: true }, ctx);
+  check("a watch whose first ask was retried still gets three different pictures", typeof afterRetry !== "string" && new Set(afterRetry.images.map((i) => i.url)).size === 3, typeof afterRetry === "string" ? afterRetry : afterRetry.images.length);
 
   // A quick failure, then an answer: looked at, not reported down.
   _forgetFrames();

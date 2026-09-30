@@ -578,7 +578,7 @@ the calendar or the car — build on the same `deliver()`.
 
 ## Seeing
 
-`look_at_camera` fetches one frame and returns it inside the tool's result:
+`look_at_camera` fetches one frame (a few, to judge movement) and returns it inside the tool's result:
 the Responses API takes pictures in a function call's output, so the router
 model itself looks and answers in the same loop — no second model, no extra
 call — and can go on to use other tools on what it saw. The frame is also put
@@ -586,6 +586,20 @@ on screen, as the evidence. Cameras are Home Assistant's, or plain snapshot
 addresses in the CAMERAS setting (`lib/cameras.ts`), so it works without
 Home Assistant; a password in the address is sent as Basic authentication,
 because a fetch refuses one inside a URL.
+
+One frame cannot tell arriving from leaving. When the question turns on
+movement ("is that car pulling in or out?", "watch the porch for a moment"),
+the router sets `movement` and three frames are taken instead, one after
+another and never together, at least 2.5 s apart from ask to ask: past the
+2 s in which a camera's frame is shared, so each is a new picture. It stops at
+the first failure, at a frame that repeats the one before (a camera serving a
+stored still, where watching shows nothing), or when the request is given up,
+and asks for none later than 8 s after the first, which keeps a slow camera to
+two frames and the whole look well inside a device's 60 s wait. The screen
+opens only once the frames are in, so its refresh does not compete with them
+over the slow link. It is a parameter rather than a second tool: the tool list
+stays as it was, and a request that offers the tool carries one short
+parameter more.
 
 A device can also send a photo with its question (docs/api.md, Photos): the
 router sees it beside the conversation. The app had a camera button for this

@@ -17,6 +17,15 @@ of every release, and in the [README](README.md#updating).
 
 ## [Unreleased]
 
+### Added
+
+- **Watching a camera for a few seconds.** Ask "is that car pulling in or
+  out?" or "is someone coming to the door or leaving?", and Jarvis takes three
+  pictures a few seconds apart and answers from what changed between them.
+  Only when the question is about movement, or you ask it to watch: anything
+  else is still one picture, as quick as before. Watching takes a few seconds
+  longer.
+
 ## [2.3.0] - 2026-09-29
 
 ### Security

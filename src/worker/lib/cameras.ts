@@ -219,6 +219,61 @@ export function _forgetFrames(): void {
   recent.clear();
 }
 
+/*
+ * Watching rather than looking: whether someone is arriving or leaving, a car
+ * pulling in or out. One frame after another, never together (cameras slow
+ * down when asked in parallel, above), each asked for at least WATCH_GAP_MS
+ * after the one before was: past FRESH_MS, so never the previous frame handed
+ * back, and about what a 540p frame takes over the link anyway. It stops at
+ * the first failure (what came is still worth looking at), and asks for no
+ * more once WATCH_SPAN_MS has passed since the first: frames further apart no
+ * longer show one movement, and a camera that slow would only add another
+ * twenty-second wait. Three frames give two steps, so a direction is seen
+ * twice rather than guessed from one pair.
+ */
+const WATCH_FRAMES = 3;
+const WATCH_GAP_MS = 2_500;
+const WATCH_SPAN_MS = 8_000;
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+/** The same bytes again: two captures seconds apart never are, sensor noise alone differs. */
+function samePicture(a: ArrayBuffer, b: ArrayBuffer): boolean {
+  if (a.byteLength !== b.byteLength) return false;
+  const x = new Uint8Array(a);
+  const y = new Uint8Array(b);
+  for (let i = 0; i < x.length; i++) if (x[i] !== y[i]) return false;
+  return true;
+}
+
+/** The frames after the first, oldest first, each with when it was asked for. */
+export async function laterFrames(
+  env: Env,
+  id: string,
+  height: number,
+  first: { bytes: ArrayBuffer; at: number },
+  signal?: AbortSignal,
+  wait = sleep,
+  clock = Date.now,
+): Promise<{ bytes: ArrayBuffer; mime: string; at: number }[]> {
+  const out: { bytes: ArrayBuffer; mime: string; at: number }[] = [];
+  let last = first.at;
+  let prev = first.bytes;
+  while (out.length < WATCH_FRAMES - 1) {
+    await wait(Math.max(0, last + WATCH_GAP_MS - clock()));
+    last = clock();
+    // No longer wanted (a newer question, the asker gone): the link is better left to what comes next.
+    if (signal?.aborted || last - first.at > WATCH_SPAN_MS) break;
+    const s = await snapshot(env, id, height, last);
+    // The same picture again is a camera serving a stored still (Blink's cache,
+    // Ring's last event): watching it longer shows nothing, and calling it
+    // several pictures would have Jarvis say that nothing moved.
+    if (!s.ok || samePicture(s.bytes, prev)) break;
+    prev = s.bytes;
+    out.push({ bytes: s.bytes, mime: s.mime, at: last });
+  }
+  return out;
+}
+
 /**
  * user:password for Basic auth, from a URL's (percent-encoded) parts. A stray
  * "%" is taken as written, and the pair goes as UTF-8, so a password with
