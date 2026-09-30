@@ -20,7 +20,9 @@ import type { UsageEntry } from "./usage.ts";
  *   jarvis  the router, run in OpenAI's background mode: each step runs on
  *           OpenAI's side, and between steps the object runs whatever tools
  *           it asked for. Many steps, many minutes, no screen needed.
- *   hermes  one question to the user's Hermes agent, however long it takes.
+ *   hermes  one question to the user's Hermes agent, however long it takes;
+ *           with it, when they ask, one of their finished research reports
+ *           (`from`), quoted as reference (routes/jobs.ts). Never on its own.
  *
  * A job READS but does not ACT (routes/jobs.ts picks its tools): nobody is
  * watching it, and it reads things written by others — web pages, mail — so
@@ -84,6 +86,8 @@ export interface Job {
   draft?: { text: string; cited: Cited[]; responseId: string };
   /** research as a team: its teams, their angles and what they shared. Absent on every other job. */
   team?: TeamRun;
+  /** hermes: the creator's own finished research job it hands over, read when Hermes is asked. */
+  from?: string;
 }
 
 /** A page the web search cited: what a report's Sources list is made of. */
@@ -190,8 +194,8 @@ export interface JobDeps {
   poll(job: Job, team?: number): Promise<Step>;
   /** Stop a running step at OpenAI. Best effort. */
   cancel(job: Job): Promise<void>;
-  /** Ask Hermes, waiting as long as it takes. */
-  hermes(job: Job): Promise<{ ok: boolean; text: string }>;
+  /** Ask Hermes, waiting as long as it takes; `reference`, a research report handed over with the question. */
+  hermes(job: Job, reference?: string): Promise<{ ok: boolean; text: string }>;
   deliver(alert: Alert): Promise<Delivery>;
   /** Research jobs allowed a month (RESEARCH_MONTHLY_LIMIT); 0 turns them off. */
   researchLimit?: number;
@@ -329,6 +333,38 @@ export function withSources(text: string, cited: readonly Cited[]): string {
 export function nextLook(updatedAt: number, now: number): number {
   const waited = Math.round((now - updatedAt) / 1000);
   return (BACKOFF_S.find((s) => s > waited) ?? BACKOFF_S[BACKOFF_S.length - 1]!) * 1000;
+}
+
+/* ---------- research handed to Hermes -------------------------------------------- */
+
+/** Whether `j` is finished research of `who`'s person (their devices count as them): all that may be handed to Hermes. */
+export const ownResearch = (j: Job, who: string): boolean =>
+  j.engine === "research" && j.status === "done" && personOfWho(j.createdBy) === personOfWho(who);
+
+const wordsOf = (s: string): string[] => s.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
+
+/**
+ * The finished research of `who`'s that `asked` names: the most recently
+ * finished for "latest", else the most recently finished whose title has every
+ * word asked for (each the start of one of its words). By when it finished,
+ * not started: research runs for up to an hour, several at once, so "that
+ * research" is the one just heard about. Not found: what to say, naming what
+ * there is.
+ */
+export function researchFor(jobs: readonly Job[], who: string, asked: string): Job | string {
+  const mine = jobs.filter((j) => ownResearch(j, who)).sort((a, b) => (b.finishedAt ?? 0) - (a.finishedAt ?? 0));
+  const want = wordsOf(asked);
+  const hit =
+    asked.trim().toLowerCase() === "latest"
+      ? mine[0]
+      : want.length
+        ? mine.find((j) => {
+            const has = wordsOf(j.title);
+            return want.every((w) => has.some((h) => h.startsWith(w)));
+          })
+        : undefined;
+  if (hit) return hit;
+  return `No finished research matches '${asked}'. ${mine.length ? `There is: ${mine.map((j) => `"${j.title}"`).join(", ")}.` : "There is none."}`;
 }
 
 /* ---------- research as a team ------------------------------------------------ */
@@ -493,13 +529,22 @@ export class Jobs {
   }
 
   async create(
-    input: { title?: unknown; task?: unknown; engine?: unknown; team?: unknown },
+    input: { title?: unknown; task?: unknown; engine?: unknown; team?: unknown; from?: unknown },
     by: { who: string; grants: readonly Grant[] },
     now = Date.now(),
   ): Promise<Job | string> {
     const task = clean(input.task, MAX_TASK);
     if (!task) return "a job needs a task: what to find out or work through";
     const engine: JobEngine = input.engine === "hermes" ? "hermes" : input.engine === "research" ? "research" : "jarvis";
+    // First: what `from` names must not be pruned by this very create, after it was accepted.
+    await this.prune();
+    // Research handed to Hermes: only the caller's own, and finished. Other engines ignore it.
+    let from: string | undefined;
+    if (engine === "hermes" && input.from !== undefined && input.from !== null) {
+      const src = typeof input.from === "string" && input.from ? await this.get(input.from) : undefined;
+      if (!src || !ownResearch(src, by.who)) return "there is no finished research of yours with that id";
+      from = src.id;
+    }
     // Research as a team: a way of doing research, and one at a time. It takes one of the month's research jobs, the owner's choice.
     const team = engine === "research" && input.team === true;
     const all = await this.list();
@@ -538,9 +583,9 @@ export class Jobs {
       steps: 0,
       attempts: 0,
       ...(team ? { team: newTeam(now) } : {}),
+      ...(from ? { from } : {}),
     };
     await this.save(job);
-    await this.prune();
     return job;
   }
 
@@ -773,11 +818,14 @@ export class Jobs {
   private async advanceHermes(j: Job, deps: JobDeps, now: number): Promise<void> {
     // An alarm cut short mid-question (a deploy) is retried once, not forever.
     if (j.attempts >= 2) return this.finish(j, deps, now, { error: "Hermes was interrupted twice" });
+    // Research handed over is read now: it may have been pruned or removed since the job was made.
+    const reference = j.from ? (await this.get(j.from))?.result : undefined;
+    if (j.from && !reference) return this.finish(j, deps, now, { error: "the research to hand over is no longer kept" });
     j.attempts += 1;
     j.nextAt = now + 10 * 60_000; // recorded first: while asking, nothing else should pick it up
     j.updatedAt = now;
     await this.save(j);
-    const r = await deps.hermes(j);
+    const r = await deps.hermes(j, reference);
     return this.finish(j, deps, Date.now(), r.ok ? { text: r.text } : { error: r.text });
   }
 

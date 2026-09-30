@@ -15,6 +15,7 @@ import { sha256Hex } from "../lib/devices.ts";
 import { deviceWho, haTokenFits } from "../lib/context.ts";
 import { originOf } from "../lib/mcp-config.ts";
 import { stateStub } from "../lib/state-client.ts";
+import { hermesConfig } from "../tools/hermes.ts";
 import {
   creationOptions,
   fromB64u,
@@ -306,6 +307,8 @@ export async function handleHub(req: Request, env: Env, principal: Principal): P
       // Where their own token is checked and sent, to see before giving it: for those who may use the house.
       // Its origin, as fetch reaches it, so a look-alike name shows as the xn-- one it is.
       haAddress: me && !locked && allows(grantsOf(principal), "home") ? originOf(env.HA_BASE_URL) : null,
+      // Whether a finished report may be offered to Hermes (Jobs): set up here, and theirs to ask.
+      hermes: !locked && !!hermesConfig(env) && allows(grantsOf(principal), "hermes"),
       // What this person may reach, so the app offers only that.
       scopes: locked ? [] : grantsOf(principal),
       session: me ? me.session : null,

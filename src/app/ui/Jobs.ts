@@ -38,6 +38,9 @@ const PHASE: Record<"planning" | "merging" | "checking", string> = {
   checking: "checking the report",
 };
 
+/** What Hermes is asked to do with a finished research report, until the person says otherwise. */
+const HAND_OVER = "Build this with Claude Code in a new project folder, and tell me when it is done";
+
 const STATUS: Record<JobView["status"], string> = {
   running: "working",
   done: "done",
@@ -51,6 +54,10 @@ export class Jobs {
   private key: string;
   private open = new Set<string>();
   private timer = 0;
+  /** Whether this person may ask Hermes: only then is a finished report offered to it. */
+  private hermes = false;
+  /** Research being handed to Hermes: the job, and the instruction as typed so far. */
+  private handing = new Map<string, string>();
 
   constructor(key: string) {
     this.key = key;
@@ -119,6 +126,8 @@ export class Jobs {
 
   async show(): Promise<void> {
     this.el.classList.add("open");
+    // Offered only where Hermes is set up and theirs to ask (routes/hub.ts). A device is not a person: no button.
+    this.hermes = await api(this.key, "GET", "/api/hub/me").then((me) => (me as { hermes?: boolean }).hermes === true, () => false);
     await this.load();
   }
 
@@ -152,13 +161,17 @@ export class Jobs {
       this.list.replaceChildren(el("p", "warn", `Could not load jobs: ${e instanceof Error ? e.message : String(e)}`));
       return;
     }
+    // A report no longer here (removed, pruned) is no longer being handed over.
+    for (const id of this.handing.keys()) {
+      if (!jobs.some((j) => j.id === id && j.engine === "research" && j.status === "done")) this.handing.delete(id);
+    }
     if (!jobs.length) {
       this.list.replaceChildren(el("p", "note", "None yet."));
     } else {
       this.list.replaceChildren(...jobs.map((j) => this.row(j)));
     }
-    // Keep up with running jobs while the panel is open.
-    if (this.el.classList.contains("open") && jobs.some((j) => j.status === "running")) {
+    // Keep up with running jobs while the panel is open, but not while an instruction to Hermes is being written.
+    if (this.el.classList.contains("open") && !this.handing.size && jobs.some((j) => j.status === "running")) {
       this.timer = setTimeout(() => void this.load(), 5000);
     }
   }
@@ -198,10 +211,38 @@ export class Jobs {
         }),
       );
     }
+    if (j.engine === "research" && j.status === "done" && this.hermes) {
+      btns.appendChild(
+        button(this.handing.has(j.id) ? "Don't send" : "Send to Hermes", () => {
+          if (this.handing.has(j.id)) this.handing.delete(j.id);
+          else this.handing.set(j.id, HAND_OVER);
+          void this.load();
+        }),
+      );
+    }
     if (j.status === "running") btns.appendChild(button("Cancel", () => void this.act(() => api(this.key, "POST", "/api/v1/jobs/cancel", { id: j.id }))));
     else btns.appendChild(button("Remove", () => void this.act(() => api(this.key, "DELETE", `/api/v1/jobs?id=${encodeURIComponent(j.id)}`))));
     row.appendChild(btns);
+    if (this.handing.has(j.id)) row.appendChild(this.handOver(j));
     return row;
+  }
+
+  /** What Hermes should do with a finished report: sent with the whole report, which it gets as reference, not instructions. */
+  private handOver(j: JobView): HTMLElement {
+    const form = el("div", "rform");
+    const instruction = document.createElement("textarea");
+    instruction.rows = 2;
+    instruction.value = this.handing.get(j.id) ?? "";
+    instruction.addEventListener("input", () => this.handing.set(j.id, instruction.value));
+    form.appendChild(instruction);
+    form.appendChild(
+      button("Send", () =>
+        void this.act(async () => {
+          await api(this.key, "POST", "/api/v1/jobs", { engine: "hermes", title: `Hermes: ${j.title}`, task: instruction.value, from: j.id });
+          this.handing.delete(j.id);
+        }, "Sent to Hermes with the whole report — its answer arrives as an alert."), "primary"),
+    );
+    return form;
   }
 
   private async fill(id: string, box: HTMLElement): Promise<void> {

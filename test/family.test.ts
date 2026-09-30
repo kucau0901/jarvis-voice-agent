@@ -432,6 +432,24 @@ console.log("\ntheir own Home Assistant token: kept for the address it was check
   globalThis.fetch = realFetch;
 }
 
+console.log("\nwhether a finished report may be offered to Hermes (Jobs)");
+{
+  // With only an OpenAI key, Hermes is not there to offer anything to, whatever the scopes (invented address and key).
+  const HERMES = { HERMES_BASE_URL: "https://hermes.example", HERMES_API_KEY: "test-hermes-key" };
+  const offered = async (who: Principal, set: boolean) => {
+    const res = await handleHub(new Request(SITE + "/api/hub/me", { headers: { origin: SITE } }), (set ? { ...env, ...HERMES } : env) as never, who);
+    return ((await res.json()) as { hermes?: unknown }).hermes;
+  };
+  const holder = { ...admin, role: "adult", scopes: ["ask", "hermes"] } as Principal;
+  check("an admin, Hermes not set up: not offered", (await offered(admin, false)) === false);
+  check("the owner key, Hermes not set up: not offered", (await offered(OWNER, false)) === false);
+  check("someone with hermes, Hermes not set up: not offered", (await offered(holder, false)) === false);
+  check("someone with hermes, once it is set up: offered", (await offered(holder, true)) === true);
+  check("an admin, once it is set up: offered", (await offered(admin, true)) === true);
+  check("someone without hermes: not offered", (await offered({ ...admin, role: "adult", scopes: ["ask", "home"] } as Principal, true)) === false);
+  check("a locked profile: not offered", (await offered({ ...holder, locked: true } as Principal, true)) === false);
+}
+
 console.log("\nscopes and devices");
 {
   check("the family routes are for people, never devices", requiredScope("/api/hub/members", "GET") === "person");

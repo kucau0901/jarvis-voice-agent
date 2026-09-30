@@ -437,7 +437,7 @@ export class JarvisState extends DurableObject<Env> {
     return this.jobs.get(id);
   }
 
-  async createJob(input: { title?: unknown; task?: unknown; engine?: unknown; team?: unknown }, by: { who: string; grants: readonly Grant[] }) {
+  async createJob(input: { title?: unknown; task?: unknown; engine?: unknown; team?: unknown; from?: unknown }, by: { who: string; grants: readonly Grant[] }) {
     const j = await this.jobs.create(input, by);
     await this.rearm();
     return j;

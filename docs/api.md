@@ -395,6 +395,35 @@ POST /api/v1/notify
 Assistant, Node-RED or IFTTT can raise alerts this way with a device token
 holding only `alerts`.
 
+### A home agent reporting back
+
+An agent at home that carries on after it has answered (Hermes building
+something in the background, say) says when it is done the same way. Mint it a
+device token holding only `alerts` ([Managing devices](#managing-devices)),
+keep it on that machine, and when the work ends:
+
+```bash
+curl -X POST https://jarvis.example.com/api/v1/notify \
+     -H "Authorization: Bearer $JARVIS_ALERTS_TOKEN" \
+     -H "Content-Type: application/json" \
+     -d '{"title": "Build done", "text": "The home-chargers site is in ~/projects/home-chargers-site. Open index.html to see it."}'
+```
+
+An alert goes to the person the token belongs to, and a token made with the
+owner key belongs to the first person. If someone else in the family uses
+Hermes, they make a token of their own in Devices (or an admin does, with
+`"owner": "<their id>"` in the same `POST`), and Hermes sends the alert with
+the token of whoever asked. Its session key says who: `X-Hermes-Session-Key`
+is `jarvis:tesla` for the first person and `jarvis:tesla:<their id>` for
+anyone else.
+
+`alerts` works both ways ([Scopes](#scopes)): besides raising alerts, the
+token can receive every alert meant for the person it belongs to (the socket
+below, notifications, `GET /api/v1/alerts`). It cannot ask Jarvis anything or
+reach the house. Keep it with Hermes, where its reporting step reads it, not
+in the environment Claude Code builds in (don't export it to the build), and
+revoke it in Devices if that machine is ever in doubt.
+
 ### Receiving them on a socket
 
 `GET /api/v1/events` is a WebSocket. A client that can send a header connects
@@ -493,6 +522,43 @@ cameras, and the reading tools of MCP servers (judged by name: `get`, `list`,
 send, book, delete, unlock or switch anything; when the work leads to an
 action, it says what it would do. At most 3 run at once and 30 are started a
 day; one is stopped after 25 steps or 20 minutes.
+
+### Handing research to Hermes
+
+```
+POST /api/v1/jobs
+{"engine": "hermes", "task": "Build a first version of this site with Claude Code in a new project folder, and tell me when it is done.", "from": "j4k…"}
+```
+
+`from`, beside `"engine": "hermes"`, is the id of one of your own finished
+research jobs (a person's devices count as them). Hermes is sent `task`, then
+the whole report, quoted as reference material and not instructions, because
+it was written from strangers' pages. Anyone else's job, one that has not
+finished, or one that is not research is refused with `400`; for other engines
+`from` is ignored. If the report is no longer kept by the time Hermes is asked
+(only the newest 30 finished jobs are), the job fails and says so. The job's
+view carries `from`. Saying "send the research on home chargers to Hermes and
+have it build a first version", or pressing **Send to Hermes** on a finished
+research job in Jobs, does the same; the button is there only when
+`GET /api/hub/me` says `"hermes": true` (Hermes is set up, the person may ask
+it, and the profile is not locked). A report is never handed over on its own.
+
+Hermes gets six minutes to answer, and a build takes longer, so it should
+start the build, answer at once, and report back when it is done. One way to
+set that up on Hermes's side, in its own instructions: when a message carries
+a quoted research report and asks for a build,
+
+- make a new folder under a projects directory (`~/projects/home-chargers-site`),
+  save the report there, and start Claude Code in it in the background:
+  `claude -p "<the instruction>"`. Keep Claude Code's normal permissions (in
+  `-p` mode, anything that would ask is refused), or give it an allow-list of
+  what a build needs (`--allowedTools`). Never run it unrestricted
+  (`--dangerously-skip-permissions`): the report came from the web, and the
+  folder is on a machine that can reach your house;
+- answer at once that the build has started, and in which folder;
+- when it finishes or fails, raise an alert, with the token of the person who
+  asked, with what happened
+  ([A home agent reporting back](#a-home-agent-reporting-back)).
 
 ## Routines
 

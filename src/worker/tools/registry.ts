@@ -18,6 +18,7 @@ import { familyTools } from "./family.ts";
 import { passTool } from "./pass.ts";
 import { stateStub } from "../lib/state-client.ts";
 import { voiceWho } from "../lib/context.ts";
+import { researchFor, type Job } from "../lib/jobs.ts";
 
 /**
  * The tools the delegation router may call.
@@ -113,32 +114,52 @@ const askHermes: Tool = {
         type: "string",
         description:
           "A single self-contained question. Hermes does not see the car " +
-          "conversation, so resolve pronouns and include any needed context.",
+          "conversation, so resolve pronouns and include any needed context. When " +
+          "handing over research, say exactly what Hermes should do with it, e.g. " +
+          "'build a first version of the site with Claude Code in a new project " +
+          "folder, and tell me when it is done', and nothing more: never the " +
+          "report, its summary or its findings, since the whole report goes with " +
+          "it, quoted.",
+      },
+      research: {
+        type: ["string", "null"],
+        description:
+          "Only when the user asks to pass research on to Hermes: words from the " +
+          "finished research job's title, or 'latest'. Null otherwise.",
       },
     },
-    required: ["question"],
+    required: ["question", "research"],
     additionalProperties: false,
   },
   async run(args, ctx) {
     const question = str(args.question);
     if (!question) return "No question was supplied.";
+    const state = stateStub(ctx.env);
+    // Research handed over, only when asked for: the caller's own finished research, whole and quoted (lib/jobs.ts).
+    let from: Job | undefined;
+    const research = str(args.research);
+    if (research) {
+      const found = researchFor(state ? await state.listJobs() : [], voiceWho(ctx.env), research);
+      if (typeof found === "string") return `${found} Nothing was sent to Hermes.`;
+      from = found;
+    }
     /*
      * A job, not a wait: Hermes takes minutes, and waiting meant the car's tab
      * had to stay open for the answer — close it and the answer was gone. As a
      * job it runs from the Durable Object and arrives as an alert: spoken on
      * the screen if one is open, a notification if not.
      */
-    const state = stateStub(ctx.env);
     if (!state) {
       ctx.progress("asking home");
       return hermes.ask(ctx.env, question, { signal: ctx.signal });
     }
     const j = await state.createJob(
-      { title: `Hermes: ${question.slice(0, 60)}`, task: question, engine: "hermes" },
+      { title: `Hermes: ${question.slice(0, 60)}`, task: question, engine: "hermes", ...(from ? { from: from.id } : {}) },
       { who: voiceWho(ctx.env), grants: ctx.grants },
     );
     if (typeof j === "string") return `Hermes was not asked: ${j}.`;
-    return "Asked Hermes. It usually takes one to four minutes; the answer will reach the user as a message when it is ready. Tell them so, briefly.";
+    const what = from ? `Asked Hermes, with the whole report "${from.title}".` : "Asked Hermes.";
+    return `${what} It usually takes one to four minutes; the answer will reach the user as a message when it is ready. Tell them so, briefly.`;
   },
 };
 

@@ -7,6 +7,7 @@ import { handleRoutines } from "../src/worker/routes/routines.ts";
 import { handleJobs } from "../src/worker/routes/jobs.ts";
 import { handleFamily } from "../src/worker/routes/family.ts";
 import { jobTools } from "../src/worker/tools/jobs.ts";
+import { Jobs, type Job } from "../src/worker/lib/jobs.ts";
 
 let pass = 0;
 let fail = 0;
@@ -123,6 +124,40 @@ console.log("\njobs: a research team's view shows its progress, not its workings
   const r = await answer(await handleJobs(req("POST", "/api/v1/jobs", JSON.stringify({ task: "Research home EV chargers.", engine: "research", team: true })), env2, new URL("https://j.test/api/v1/jobs"), OWNER));
   const made = calls.find((c) => c.method === "createJob")?.args[0] as { engine?: string; team?: unknown } | undefined;
   check("asked for with team: true beside engine research", r.status === 201 && made?.engine === "research" && made.team === true, { r, made });
+}
+
+console.log("\njobs: research handed to Hermes");
+{
+  // Invented people and research. Real jobs behind the object, so what is refused is what Jobs refuses.
+  const m = new Map<string, unknown>();
+  const storage = {
+    get: async <T,>(k: string) => m.get(k) as T | undefined,
+    put: async (k: string, v: unknown) => void m.set(k, structuredClone(v)),
+    delete: async (k: string) => m.delete(k),
+    list: async <T,>({ prefix }: { prefix: string }) => new Map([...m].filter(([k]) => k.startsWith(prefix))) as Map<string, T>,
+  };
+  const jobs = new Jobs(storage, async () => {
+    throw new Error("a Hermes job needs nothing from the engine to be made");
+  });
+  const done = (id: string, createdBy: string): Job => ({
+    id, title: "Home EV chargers", task: "Research home EV chargers.", engine: "research", status: "done", createdBy, grants: ["*"],
+    createdAt: 1, updatedAt: 2, finishedAt: 2, steps: 4, attempts: 0, result: "The Pulsar is the best value.",
+  });
+  await storage.put("job:jowner", done("jowner", "voice"));
+  await storage.put("job:jsara", done("jsara", "u_sara"));
+  const made: unknown[] = [];
+  const stub = { createJob: async (input: Record<string, unknown>, by: { who: string; grants: string[] }) => (made.push(input), jobs.create(input, by as never)) };
+  const env = { STATE: { idFromName: () => "jarvis", get: () => stub } } as never;
+  const sara = (scopes: string[]) => ({ kind: "member", id: "u_sara", name: "Sara", role: "adult", scopes, space: "s_test", session: "x" }) as never;
+  const post = async (who: never, body: Record<string, unknown>) =>
+    answer(await handleJobs(req("POST", "/api/v1/jobs", JSON.stringify(body)), env, new URL("https://j.test/api/v1/jobs"), who));
+  const body = (from: string) => ({ engine: "hermes", task: "Build a first version of the site with Claude Code in a new project folder.", from });
+  const without = await post(sara(["ask", "routines"]), body("jsara"));
+  check("without hermes: 403, and nothing is asked of the object", without.status === 403 && made.length === 0, without);
+  const theirs = await post(sara(["ask", "hermes"]), body("jowner"));
+  check("with hermes, someone else's research: 400, nothing made", theirs.status === 400 && theirs.body.error === "there is no finished research of yours with that id" && !(await jobs.list()).some((j) => j.engine === "hermes"), theirs);
+  const own = (await post(sara(["ask", "hermes"]), body("jsara"))) as { status?: number; body: { job?: { from?: string; engine?: string } } };
+  check("with hermes, her own: 201, the job carries from", own.status === 201 && own.body.job?.engine === "hermes" && own.body.job.from === "jsara", own);
 }
 
 console.log("\nstart_job: research as a team, by voice");

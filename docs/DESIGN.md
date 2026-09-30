@@ -690,7 +690,12 @@ unlocking, because it has nothing that could. It says what it would do instead.
 used to hold the car's tab open for the answer; closed, the answer was lost.
 `ask_hermes` now starts a Hermes job and returns at once; the answer arrives as
 an alert, and alerts join the conversation, so "yes, do that" after Hermes asks
-something still has the question to refer to.
+something still has the question to refer to. A finished research report can
+go with the question (`from`), and it goes quoted as reference, never as
+instructions: it was written from strangers' pages, and Hermes can run
+commands at home. It is handed over only when the person asks, never
+automatically when research finishes, so what reaches a machine that can run
+commands is always something they chose to send.
 
 **Research is checked before it is sent.** Research is the same loop on a
 stronger model (`RESEARCH_MODEL`) thinking hard, told to search widely and

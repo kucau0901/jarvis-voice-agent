@@ -32,6 +32,13 @@ of every release, and in the [README](README.md#updating).
   takes 20–55 minutes, costs roughly $4–7, counts as one of the month's
   research jobs, and one runs at a time. If the reports can't be merged, you
   get each team's report as written.
+- **Hand research to Hermes.** Say "send the research on home chargers to
+  Hermes and have it build a first version", or press **Send to Hermes** on a
+  finished research job in Jobs, and Hermes gets the whole report as
+  reference, with your instruction. Only your own finished research, and only
+  when you ask. It needs Hermes and the `hermes` permission. With the setup in
+  [docs/api.md](docs/api.md#handing-research-to-hermes), Hermes can build with
+  Claude Code and tell you when it is done.
 
 ### Changed
 
