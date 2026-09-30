@@ -10,7 +10,8 @@ import { allows, withoutScreen, type Grant } from "../lib/scopes.ts";
 import { builtinTools, explicitCache, researchModel } from "../lib/router-model.ts";
 import { toToolSchema } from "../tools/registry.ts";
 import * as hermes from "../tools/hermes.ts";
-import { RESEARCH_MONTHLY_DEFAULT, jobTool, usageEntry, withSources, type Job, type JobDeps, type Step } from "../lib/jobs.ts";
+import { RESEARCH_MONTHLY_DEFAULT, jobTool, usageEntry, type Cited, type Job, type JobDeps, type Step } from "../lib/jobs.ts";
+import { RESEARCH_CHECK } from "../lib/router-prompt.ts";
 import { prepareRouter, runCalls } from "../lib/router.ts";
 import { recordUsage } from "./usage.ts";
 import { costOf } from "../lib/usage.ts";
@@ -48,8 +49,8 @@ function usageOf(r: OpenAI.Responses.Response): Usage {
 }
 
 /** The pages a response cited, from its web search's url_citation annotations. */
-function citationsOf(r: OpenAI.Responses.Response): { url: string; title?: string }[] {
-  const out: { url: string; title?: string }[] = [];
+function citationsOf(r: OpenAI.Responses.Response): Cited[] {
+  const out: Cited[] = [];
   for (const item of r.output) {
     if (item.type !== "message") continue;
     for (const part of item.content) {
@@ -115,6 +116,20 @@ export function jobEngine(env: Env, deliver: JobDeps["deliver"], envFor: (job: J
       }
     },
 
+    async check(job, after) {
+      try {
+        // The next turn of the chain that wrote the report, with web search still on.
+        const { p, base } = await request(job, []);
+        const res = await p.client.responses.create(
+          { ...base, previous_response_id: after, input: [{ role: "developer", content: RESEARCH_CHECK }] },
+          { signal: signal() },
+        );
+        return { responseId: res.id };
+      } catch (e) {
+        return { error: `the check could not start: ${e instanceof Error ? e.message : String(e)}`.slice(0, 300) };
+      }
+    },
+
     async poll(job): Promise<Step> {
       const r = await client().responses.retrieve(job.responseId!, {}, { signal: signal() });
       if (r.status === "queued" || r.status === "in_progress") return { kind: "wait" };
@@ -127,7 +142,8 @@ export function jobEngine(env: Env, deliver: JobDeps["deliver"], envFor: (job: J
       if (!calls.length) {
         const text = r.output_text?.trim() ?? "";
         if (!text) return { kind: "failed", error: "it finished without an answer" };
-        return { kind: "done", text: job.engine === "research" ? withSources(text, citationsOf(r)) : text, usage };
+        // Research lists them (lib/jobs.ts withSources), after its check.
+        return { kind: "done", text, cited: citationsOf(r), usage };
       }
       // The tools it asked for run here, between steps; then the next step starts.
       const { p, env: theirs, base } = await request(job, []);
@@ -162,9 +178,10 @@ const MAX_BODY = 16 * 1024;
 
 /** The panel's view: everything but the grants and the internals. */
 function jobView(j: Job, whole = false) {
-  const { grants: _g, responseId: _r, ...rest } = j;
+  const { grants: _g, responseId: _r, draft: _d, ...rest } = j;
   void _g;
   void _r;
+  void _d;
   // What it cost so far, at OpenAI's prices (lib/usage.ts); null for a model with no price.
   const cost = j.usage ? costOf(usageEntry(j, true, j.updatedAt)) : null;
   const view = { ...rest, cost };

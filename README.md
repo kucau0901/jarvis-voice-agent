@@ -56,7 +56,7 @@ enough) or run it yourself with **Docker**.
   closed, and the result arrives as an alert and waits in the **jobs** panel.
   Jobs read (web, mail, calendar, memory, car, cameras) but never act. Ask for
   research in depth and it runs on a stronger model, searches widely and comes
-  back as a report with its sources, for roughly $1–2 (the Jobs panel shows
+  back as a report, checked against its sources, for roughly $1–2 (the Jobs panel shows
   what each one cost). A question for Hermes runs the same way, so its answer
   is never lost.
 - **Routines** — "remind me at five to call Mum", "every weekday at 7:30 tell

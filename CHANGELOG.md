@@ -26,6 +26,16 @@ of every release, and in the [README](README.md#updating).
   else is still one picture, as quick as before. Watching takes a few seconds
   longer.
 
+### Changed
+
+- **Research reports are checked before they reach you.** When a research job
+  has written its report, it takes one more turn to check it against the pages
+  it found, searching again where it needs to, and corrects or removes what
+  they do not support, ending with a line saying what it changed. If the check
+  cannot finish, the report arrives as it was written. A report costs somewhat
+  more and can take a few minutes longer; the Jobs panel shows what each one
+  cost.
+
 ### Fixed
 
 - **A long research report keeps its Sources list.** Jobs keeps the first

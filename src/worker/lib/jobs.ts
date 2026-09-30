@@ -34,8 +34,10 @@ import type { UsageEntry } from "./usage.ts";
  * models were shut down on 23 July 2026, so it is Jarvis's own job loop with a
  * stronger model (RESEARCH_MODEL, GPT-6 Sol by default) thinking hard, more
  * steps and more time, told to write a report; its sources come from the web
- * search's own citations (withSources). Capped per month: each costs about a
- * dollar.
+ * search's own citations (withSources). Before anyone is told, the report is
+ * checked against those sources in one more turn (RESEARCH_CHECK), and if the
+ * check does not finish, the report goes out as written. Capped per month:
+ * each costs one to two dollars.
  */
 export type JobEngine = "jarvis" | "hermes" | "research";
 type JobStatus = "running" | "done" | "failed" | "cancelled";
@@ -68,7 +70,16 @@ export interface Job {
   deliveredBy?: string | null;
   /** Tokens over every step, and the model that spent them, for Settings → Usage. */
   usage?: JobUsage;
+  /**
+   * research: the report as written, the pages it cited, and the response that
+   * wrote it, kept while it is checked (RESEARCH_CHECK): delivered if the check
+   * does not finish. Gone once the job is.
+   */
+  draft?: { text: string; cited: Cited[]; responseId: string };
 }
+
+/** A page the web search cited: what a report's Sources list is made of. */
+export type Cited = { url: string; title?: string };
 
 export interface JobUsage {
   input: number;
@@ -117,12 +128,14 @@ export function usageEntry(j: Job, ok: boolean, now: number): UsageEntry {
 export type Step =
   | { kind: "wait"; usage?: Job["usage"] }
   | { kind: "continued"; responseId: string; usage?: Job["usage"] }
-  | { kind: "done"; text: string; usage?: Job["usage"] }
+  | { kind: "done"; text: string; cited?: Cited[]; usage?: Job["usage"] }
   | { kind: "failed"; error: string };
 
 export interface JobDeps {
   /** Start a jarvis job's first step; its response id, or why it could not start. */
   start(job: Job): Promise<{ responseId: string } | { error: string }>;
+  /** research: start the check of a written report, continuing from `after`; its response id, or why not. */
+  check(job: Job, after: string): Promise<{ responseId: string } | { error: string }>;
   /** Look at the running step; run any tools it asked for and start the next. */
   poll(job: Job): Promise<Step>;
   /** Stop a running step at OpenAI. Best effort. */
@@ -148,6 +161,8 @@ export const KEEP_JOBS = 30;
 export const MAX_STEPS = 25;
 export const RESEARCH_MAX_STEPS = 40;
 export const RESEARCH_MAX_MS = 45 * 60_000;
+/** The check of a research report gets this long more, however late the report was written. */
+export const RESEARCH_CHECK_MS = 10 * 60_000;
 export const RESEARCH_MONTHLY_DEFAULT = 10;
 const RESEARCH_MONTH = "jobs:research:month";
 /** And this long, whatever it is doing. */
@@ -211,7 +226,7 @@ export function limitsOf(engine: JobEngine): { maxMs: number; maxSteps: number }
  * a long report is shortened to make room for the list, rather than the list
  * being what is cut.
  */
-export function withSources(text: string, cited: readonly { url: string; title?: string }[]): string {
+export function withSources(text: string, cited: readonly Cited[]): string {
   const seen = new Set<string>();
   const lines: string[] = [];
   for (const c of cited) {
@@ -382,7 +397,8 @@ export class Jobs {
   }
 
   private async advanceJarvis(j: Job, deps: JobDeps, now: number): Promise<void> {
-    const { maxMs, maxSteps } = limitsOf(j.engine);
+    const { maxSteps } = limitsOf(j.engine);
+    const maxMs = limitsOf(j.engine).maxMs + (j.draft ? RESEARCH_CHECK_MS : 0);
     if (now - j.createdAt > maxMs) {
       await deps.cancel(j).catch(() => {});
       return this.finish(j, deps, now, { error: `it ran for over ${maxMs / 60_000} minutes and was stopped` });
@@ -395,9 +411,10 @@ export class Jobs {
      * job went on stepping, and spending.
      */
     if (!j.responseId) {
-      const s = await deps.start(j);
+      // A written report's check starts the way a job does, so it is cancelled the same way.
+      const s = await (j.draft ? deps.check(j, j.draft.responseId) : deps.start(j));
       if ("error" in s) {
-        if (j.engine === "research") await this.refundResearch(j.createdAt);
+        if (j.engine === "research" && !j.draft) await this.refundResearch(j.createdAt);
         return this.finish(j, deps, now, { error: s.error });
       }
       const cur = await this.stillRunning(j.id);
@@ -405,8 +422,9 @@ export class Jobs {
         await deps.cancel({ ...j, responseId: s.responseId }).catch(() => {});
         return;
       }
-      return this.save({ ...cur, responseId: s.responseId, steps: 1, nextAt: now + BACKOFF_S[0]! * 1000, updatedAt: now });
+      return this.save({ ...cur, responseId: s.responseId, steps: cur.steps + 1, nextAt: now + BACKOFF_S[0]! * 1000, updatedAt: now });
     }
+    const polled = j.responseId;
     const step = await deps.poll(j);
     const usage = step.kind !== "failed" && step.usage ? addUsage(j.usage, step.usage) : j.usage;
     const cur = await this.stillRunning(j.id);
@@ -436,7 +454,20 @@ export class Jobs {
       j.nextAt = now + BACKOFF_S[0]! * 1000;
       return this.save(j);
     }
-    if (step.kind === "done") return this.finish(j, deps, now, { text: step.text });
+    if (step.kind === "done") {
+      if (j.engine !== "research") return this.finish(j, deps, now, { text: step.text });
+      if (!j.draft) {
+        // Written: checked against its sources before anyone is told. The next tick starts the check.
+        j.draft = { text: step.text, cited: step.cited ?? [], responseId: polled };
+        delete j.responseId;
+        j.updatedAt = j.nextAt = now;
+        return this.save(j);
+      }
+      // A check that answered with notes rather than the report would lose the report.
+      if (step.text.length < j.draft.text.length / 2) return this.finish(j, deps, now, { error: "the check did not give the report back" });
+      // The check's own pages first: withSources keeps fifteen, and they back what is sent.
+      return this.finish(j, deps, now, { text: withSources(step.text, [...(step.cited ?? []), ...j.draft.cited]) });
+    }
     return this.finish(j, deps, now, { error: step.error });
   }
 
@@ -456,6 +487,9 @@ export class Jobs {
     if (!cur || cur.status !== "running") return; // cancelled or removed while it ran
     const done = { ...cur, ...j, finishedAt: now, updatedAt: now };
     delete done.nextAt;
+    // The check never costs the report: if it did not finish, the report goes out as written.
+    if ("error" in out && done.draft) out = { text: withSources(done.draft.text, done.draft.cited) };
+    delete done.draft;
     let alert: Alert;
     if ("text" in out && out.text.trim()) {
       const { summary, result, whole } = splitResult(out.text);

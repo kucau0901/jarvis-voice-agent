@@ -370,3 +370,22 @@ export const RESEARCH_INSTRUCTIONS =
   "Write a report to be read on a phone: the SUMMARY line, then the findings under short " +
   "headings, then what you would recommend and why. Do not list your sources: the pages you " +
   "searched are added at the end automatically.";
+
+/**
+ * The check a research report gets before it is sent (lib/jobs.ts "research"):
+ * the next turn of the same chain, with web search still on. What it answers replaces the report, so it must be the
+ * whole report; if it cannot finish, the report goes out as written.
+ */
+export const RESEARCH_CHECK =
+  "CHECK THE REPORT BEFORE IT IS SENT\n" +
+  "Nobody has read the report yet. Check it against the sources first: every figure, price, " +
+  "date, name, specification and claim about what is available where, and anything said to " +
+  "come from a particular source. Where you are not sure a page says what the report says, " +
+  "open it again or search again. Correct what the sources contradict, remove what no source " +
+  "supports, and say plainly where they only partly support it. Add no new findings, and change " +
+  "the recommendation only if a correction changes it.\n" +
+  "Then write the whole report again, corrected, in the same form: the SUMMARY line first, then " +
+  "the rest. It replaces the first version, so give all of it, not a list of changes. If you " +
+  "corrected or removed anything, end with one short line starting \"Checked:\" that says what; " +
+  "if nothing needed changing, say nothing about the check. Do not list your sources: they are " +
+  "added at the end automatically.";

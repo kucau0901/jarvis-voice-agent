@@ -6,6 +6,7 @@ import {
   MAX_JOB_MS,
   MAX_RUNNING,
   MAX_STEPS,
+  RESEARCH_CHECK_MS,
   RESEARCH_MAX_MS,
   RESEARCH_MAX_STEPS,
   RESEARCH_MONTHLY_DEFAULT,
@@ -18,6 +19,8 @@ import {
   type Step,
 } from "../src/worker/lib/jobs.ts";
 import type { Alert, Delivery } from "../src/worker/lib/alerts.ts";
+import { jobEngine } from "../src/worker/routes/jobs.ts";
+import { RESEARCH_CHECK } from "../src/worker/lib/router-prompt.ts";
 import { allows, requiredScope, withoutScreen } from "../src/worker/lib/scopes.ts";
 
 let pass = 0;
@@ -74,7 +77,7 @@ function fakeStorage() {
   };
 }
 
-function harness(steps: Step[] = [], opts: { start?: { responseId: string } | { error: string }; hermes?: { ok: boolean; text: string }; researchLimit?: number } = {}) {
+function harness(steps: (Step | Error)[] = [], opts: { start?: { responseId: string } | { error: string }; check?: { responseId: string } | { error: string }; hermes?: { ok: boolean; text: string }; researchLimit?: number } = {}) {
   const sent: Alert[] = [];
   const log: string[] = [];
   const queue = [...steps];
@@ -83,9 +86,15 @@ function harness(steps: Step[] = [], opts: { start?: { responseId: string } | { 
       log.push(`start ${j.id}`);
       return opts.start ?? { responseId: "resp_1" };
     },
+    async check(j, after) {
+      log.push(`check ${after}`);
+      return opts.check ?? { responseId: "resp_check" };
+    },
     async poll(j) {
       log.push(`poll ${j.responseId}`);
-      return queue.shift() ?? { kind: "wait" };
+      const next = queue.shift() ?? { kind: "wait" };
+      if (next instanceof Error) throw next;
+      return next;
     },
     async cancel(j) {
       log.push(`cancel ${j.responseId}`);
@@ -101,7 +110,19 @@ function harness(steps: Step[] = [], opts: { start?: { responseId: string } | { 
     ...(opts.researchLimit !== undefined ? { researchLimit: opts.researchLimit } : {}),
   };
   const storage = fakeStorage();
-  return { jobs: new Jobs(storage, async () => deps), sent, log, storage };
+  return { jobs: new Jobs(storage, async () => deps), sent, log, storage, deps };
+}
+
+/** Tick a job along, each time when it asks to be looked at, until it is no longer running. */
+async function drive(h: ReturnType<typeof harness>, id: string, from = T0): Promise<Job> {
+  let t = from;
+  for (let i = 0; i < 60; i++) {
+    const cur = (await h.jobs.get(id))!;
+    if (cur.status !== "running") return cur;
+    await h.jobs.tick(t);
+    t = Math.max(t + 1, (await h.jobs.get(id))?.nextAt ?? t + 1);
+  }
+  return (await h.jobs.get(id))!;
 }
 
 const BY = { who: "voice", grants: ["*"] as const };
@@ -235,12 +256,14 @@ console.log("\nwho may");
 
 console.log("\nresearch in depth");
 {
-  const h = harness([{ kind: "done", text: "SUMMARY: The Wallbox Pulsar is the best value.\n\nFindings…", usage: { input: 900, cached: 500, output: 3000, model: "gpt-6-sol" } }]);
+  // Written, then checked (the check pass below): two answers now, where there was one.
+  const h = harness([
+    { kind: "done", text: "SUMMARY: The Wallbox Pulsar is the best value.\n\nFindings…", usage: { input: 900, cached: 500, output: 3000, model: "gpt-6-sol" } },
+    { kind: "done", text: "SUMMARY: The Wallbox Pulsar is the best value.\n\nFindings, checked…", usage: { input: 400, cached: 300, output: 900, model: "gpt-6-sol" } },
+  ]);
   const j = (await h.jobs.create({ title: "Home chargers", task: "Research home EV chargers.", engine: "research" }, BY, T0)) as Job;
   check("a research job", j.engine === "research");
-  await h.jobs.tick(T0);
-  await h.jobs.tick(T0 + 10_000);
-  const done = (await h.jobs.get(j.id))!;
+  const done = await drive(h, j.id);
   check("finishes like any job, with its model's usage", done.status === "done" && done.usage?.model === "gpt-6-sol", done);
   check("announced as research", h.sent[0]?.title === "Research done: Home chargers", h.sent[0]?.title);
   check("more time and more steps than a job", limitsOf("research").maxMs === RESEARCH_MAX_MS && limitsOf("research").maxSteps === RESEARCH_MAX_STEPS &&
@@ -290,13 +313,136 @@ console.log("\nsources, from the searches' own citations");
 console.log("\na long research report, through to the Jobs panel");
 {
   const cited = [{ url: "https://maker.example/pulsar", title: "Pulsar Plus" }, { url: "https://owners.example/forum", title: "Owners" }, { url: "https://test.example/review" }];
-  const report = withSources(`SUMMARY: The Pulsar Plus suits most homes.\n\n${"A finding with its figures. ".repeat(1_000)}`, cited);
-  const h = harness([{ kind: "done", text: report }]);
+  const report = `SUMMARY: The Pulsar Plus suits most homes.\n\n${"A finding with its figures. ".repeat(1_000)}`;
+  const h = harness([{ kind: "done", text: report, cited }, { kind: "done", text: report }]);
   const j = (await h.jobs.create({ task: "home chargers", engine: "research" }, BY, T0)) as Job;
-  await h.jobs.tick(T0);
-  await h.jobs.tick((await h.jobs.get(j.id))!.nextAt!);
-  const kept = (await h.jobs.get(j.id))!.result ?? "";
+  const kept = (await drive(h, j.id)).result ?? "";
   check("its Sources list is all there in Jobs", kept.endsWith("- https://test.example/review") && kept.includes("Sources:\n- Pulsar Plus: https://maker.example/pulsar\n- Owners: https://owners.example/forum\n"), kept.slice(-160));
+}
+
+console.log("\na research report is checked before anyone is told");
+{
+  const draftText = `SUMMARY: The Pulsar Plus suits most homes.\n\n${"It costs RM2,999 installed. ".repeat(40)}`;
+  const checked = `SUMMARY: The Pulsar Plus suits most homes.\n\n${"It costs RM3,199 installed. ".repeat(40)}\nChecked: the installed price was corrected.`;
+  const wrote = { kind: "done" as const, text: draftText, cited: [{ url: "https://maker.example/pulsar", title: "Maker" }], usage: { input: 1000, cached: 0, output: 500, model: "gpt-6-sol" } };
+  const research = (h: ReturnType<typeof harness>) => h.jobs.create({ title: "Home chargers", task: "Research home EV chargers.", engine: "research" }, BY, T0) as Promise<Job>;
+  const resultOf = (j: Job) => j.result ?? "";
+
+  // A: written, checked, then sent.
+  const h = harness([wrote, { kind: "done", text: checked, cited: [{ url: "https://dealer.example/price", title: "Dealer" }], usage: { input: 600, cached: 400, output: 700, model: "gpt-6-sol" } }]);
+  const j = await research(h);
+  await h.jobs.tick(T0);
+  await h.jobs.tick(T0 + 10_000);
+  const drafted = (await h.jobs.get(j.id))!;
+  check("the report is kept as a draft, and nobody is told yet", drafted.status === "running" && drafted.draft?.responseId === "resp_1" && !drafted.responseId && h.sent.length === 0, drafted);
+  const a = await drive(h, j.id, T0 + 10_000);
+  check("the check continues the chain that wrote it, once", h.log.filter((l) => l.startsWith("check")).join() === "check resp_1", h.log);
+  check("what is sent is the checked report", a.status === "done" && resultOf(a).includes("RM3,199") && !resultOf(a).includes("RM2,999") && /Checked: the installed price/.test(resultOf(a)), resultOf(a).slice(0, 200));
+  check("its Sources: the check's pages first, then the report's", /Sources:\n- Dealer: https:\/\/dealer\.example\/price\n- Maker: https:\/\/maker\.example\/pulsar$/.test(resultOf(a)), resultOf(a).slice(-120));
+  check("one alert, and what both cost", h.sent.length === 1 && h.sent[0]!.title === "Research done: Home chargers" && a.usage?.input === 1600 && a.usage?.output === 1200, a.usage);
+  check("the draft is not kept once it is sent", !("draft" in a), Object.keys(a));
+
+  // B: the check cannot start: the report as written, and the month's slot stays spent.
+  const b = harness([wrote], { check: { error: "the check could not start: 503" }, researchLimit: 1 });
+  const bj = await drive(b, (await research(b)).id);
+  check("a check that cannot start: the report goes out as written, with its sources", bj.status === "done" && resultOf(bj).includes("RM2,999") && resultOf(bj).endsWith("- Maker: https://maker.example/pulsar") && b.sent[0]?.title === "Research done: Home chargers", resultOf(bj).slice(-100));
+  check("…and the research was done, so its slot is not given back", typeof (await research(b)) === "string");
+
+  // C: the check fails at OpenAI, or looking at it throws.
+  for (const [name, second] of [["fails at OpenAI", { kind: "failed", error: "OpenAI stopped it (server_error)" }], ["cannot be looked at", new Error("fetch failed")]] as const) {
+    const c = harness([wrote, second]);
+    const cj = await drive(c, (await research(c)).id);
+    check(`a check that ${name}: the report as written, not "Could not finish"`, cj.status === "done" && resultOf(cj).includes("RM2,999") && c.sent.length === 1 && !/Could not finish/.test(c.sent[0]!.title), { status: cj.status, sent: c.sent.map((x) => x.title) });
+  }
+
+  // D: once the report is written the job gets ten minutes more, however late it was written.
+  const d = harness([wrote]);
+  const dj = await research(d);
+  await d.jobs.tick(T0);
+  await d.jobs.tick(T0 + 10_000);
+  await d.jobs.tick(T0 + 10_000);
+  await d.jobs.tick(T0 + RESEARCH_MAX_MS + 1);
+  check("past the research's own 45 minutes, the check still runs", (await d.jobs.get(dj.id))!.status === "running");
+  await d.jobs.tick(T0 + RESEARCH_MAX_MS + RESEARCH_CHECK_MS + 1);
+  const dDone = (await d.jobs.get(dj.id))!;
+  check("past the 55 minutes, it is stopped and the report goes out as written", dDone.status === "done" && resultOf(dDone).includes("RM2,999") && d.log.includes("cancel resp_check"), { status: dDone.status, log: d.log.slice(-3) });
+  // …and only a written report earns them: research still being written stops at its 45 minutes.
+  const w = harness();
+  const wj = await research(w);
+  await w.jobs.tick(T0);
+  await w.jobs.tick(T0 + RESEARCH_MAX_MS + 1);
+  check("research not yet written gets no extra ten minutes", (await w.jobs.get(wj.id))!.status === "failed" && w.log.includes("cancel resp_1"), w.log);
+
+  // E: the report came on the last step: the check is let go when it asks for more.
+  const e = harness([wrote, { kind: "continued", responseId: "resp_42" }]);
+  const ej = await research(e);
+  await e.storage.put(`job:${ej.id}`, { ...ej, steps: RESEARCH_MAX_STEPS, responseId: "resp_40", nextAt: T0 });
+  const eDone = await drive(e, ej.id);
+  check("a check past the step limit: stopped, and the report goes out as written", eDone.status === "done" && resultOf(eDone).includes("RM2,999") && e.log.includes("cancel resp_42"), { status: eDone.status, log: e.log });
+
+  // F: a check that answers with notes rather than the report.
+  const f = harness([wrote, { kind: "done", text: "SUMMARY: All correct." }]);
+  const fDone = await drive(f, (await research(f)).id);
+  check("a check that gives notes, not the report: the report is sent", fDone.status === "done" && resultOf(fDone).includes("RM2,999"), resultOf(fDone).slice(0, 80));
+  // …but a check that removes what no source supports gives back a shorter report, and that is what is sent.
+  const trimmed = `SUMMARY: The Pulsar Plus suits most homes.\n\n${"It costs RM3,199 installed. ".repeat(28)}\nChecked: a claim no source supported was removed.`;
+  const f2 = harness([wrote, { kind: "done", text: trimmed }]);
+  const f2Done = await drive(f2, (await research(f2)).id);
+  check("a check that shortens the report: the shorter, checked report is sent", trimmed.length < draftText.length && f2Done.status === "done" && resultOf(f2Done).includes("RM3,199") && !resultOf(f2Done).includes("RM2,999"), { lengths: [trimmed.length, draftText.length], result: resultOf(f2Done).slice(0, 80) });
+
+  // G: cancelled while the check was being started.
+  const g = harness([wrote]);
+  const gj = await research(g);
+  g.deps.check = async (job, after) => {
+    g.log.push(`check ${after}`);
+    await g.jobs.cancel(job.id, T0 + 10_000);
+    return { responseId: "resp_check" };
+  };
+  const gDone = await drive(g, gj.id);
+  check("cancelled while its check started: stays cancelled, the check is stopped, nobody is told", gDone.status === "cancelled" && g.log.includes("cancel resp_check") && g.sent.length === 0, { status: gDone.status, log: g.log, sent: g.sent.length });
+
+  // H: an ordinary job is not checked, and gets no Sources list.
+  const o = harness([{ kind: "done", text: "SUMMARY: The NAS has room.\n\nDetails.", cited: [{ url: "https://nas.example/" }] }]);
+  const oDone = await drive(o, ((await o.jobs.create({ task: "How full is the NAS?" }, BY, T0)) as Job).id);
+  check("an ordinary job: sent at once, not checked, no Sources", oDone.status === "done" && !o.log.some((l) => l.startsWith("check")) && !resultOf(oDone).includes("Sources:"), { log: o.log, result: resultOf(oDone) });
+}
+
+console.log("\nthe engine: what a report's check is sent");
+{
+  const kv = new Map<string, string>();
+  const CONFIG = { get: async (k: string) => kv.get(k) ?? null, put: async (k: string, v: string) => void kv.set(k, v), delete: async () => {}, list: async () => ({ keys: [] }) };
+  const stub = new Proxy({}, { get: (_t, m) => (m === "then" ? undefined : async () => undefined) });
+  const env = { CONFIG, OPENAI_API_KEY: "sk-test", OPENAI_BASE_URL: "https://openai.test/v1", TIMEZONE: "Asia/Kuala_Lumpur", STATE: { idFromName: () => "j", get: () => stub } } as never;
+  const posted: Record<string, unknown>[] = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input instanceof Request ? input.url : input);
+    const body = input instanceof Request ? await input.text() : String(init?.body ?? "");
+    if (url.endsWith("/responses") && body) {
+      posted.push(JSON.parse(body));
+      return Response.json({ id: "resp_check", object: "response", status: "queued", output: [] });
+    }
+    if (url.includes("/responses/resp_report")) {
+      return Response.json({
+        id: "resp_report", object: "response", status: "completed", model: "gpt-6-sol", usage: { input_tokens: 10, output_tokens: 5 },
+        output: [{ type: "message", id: "m1", role: "assistant", status: "completed", content: [{ type: "output_text", text: "SUMMARY: ok.\n\nBody.", annotations: [{ type: "url_citation", url: "https://maker.example/pulsar", title: "Maker", start_index: 0, end_index: 3 }] }] }],
+      });
+    }
+    throw new Error(`nothing else is reached here: ${url}`);
+  }) as typeof fetch;
+  try {
+    const engine = jobEngine(env, async (a) => ({ alert: a, attempts: [], deliveredBy: null }) as never, async () => env);
+    const job = { id: "j1", title: "Home chargers", task: "Research home EV chargers.", engine: "research", status: "running", createdBy: "owner", grants: ["*"], createdAt: T0, updatedAt: T0, steps: 3, attempts: 0, responseId: "resp_report" } as Job;
+    const step = await engine.poll(job);
+    check("a report comes back as written, its pages beside it", step.kind === "done" && step.text === "SUMMARY: ok.\n\nBody." && step.cited?.[0]?.url === "https://maker.example/pulsar", step);
+    const started = await engine.check(job, "resp_report");
+    const sent = posted.at(-1) ?? {};
+    check("the check continues the chain that wrote the report", "responseId" in started && started.responseId === "resp_check" && sent.previous_response_id === "resp_report", sent);
+    check("with one fixed instruction, and nothing from the web in it", JSON.stringify(sent.input) === JSON.stringify([{ role: "developer", content: RESEARCH_CHECK }]), sent.input);
+    check("in the background, with web search, on the research model", sent.background === true && sent.model === "gpt-6-sol" && ((sent.tools ?? []) as { type: string }[]).some((t) => t.type === "web_search"), { model: sent.model, background: sent.background });
+  } finally {
+    globalThis.fetch = realFetch;
+  }
 }
 
 console.log("\ncancelled while OpenAI was being asked");

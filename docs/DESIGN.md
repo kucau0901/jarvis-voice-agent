@@ -692,6 +692,21 @@ used to hold the car's tab open for the answer; closed, the answer was lost.
 an alert, and alerts join the conversation, so "yes, do that" after Hermes asks
 something still has the question to refer to.
 
+**Research is checked before it is sent.** Research is the same loop on a
+stronger model (`RESEARCH_MODEL`) thinking hard, told to search widely and
+write a report, with a Sources list made from the web search's own citations.
+A report written from many searches can carry a figure no page gave, and
+whoever reads it later has nobody to ask. So when the report is written it is
+kept on the job as a draft, and one more turn of the same chain, with web
+search still on, checks it against its sources and gives the whole report
+back, corrected, ending with a "Checked:" line when something changed; the
+check's own pages are listed first. Once the report is written the job gets
+ten minutes more, however late it was written. The check never costs the
+report: if it cannot start, fails, runs past the job's time or step limit, or
+answers with notes rather than the report, the report goes out as it was
+written. It makes a report cost more, by how much is to be measured: the Jobs
+panel shows each one's real cost.
+
 Measured on production in September 2026: a three-dashcam comparison with web
 search, 57 seconds and about $0.004; a question to Hermes, 12 seconds; "look
 into EV-charging cashback and let me know", said aloud, became a job the router
