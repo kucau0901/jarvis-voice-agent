@@ -544,7 +544,13 @@ research job in Jobs, does the same; the button is there only when
 it, and the profile is not locked). A report is never handed over on its own.
 
 Hermes gets six minutes to answer, and a build takes longer, so it should
-start the build, answer at once, and report back when it is done. One way to
+start the build, answer at once, and report back when it is done. Every
+question Jarvis sends Hermes ends with a short note saying so: that it waits
+at most six minutes, and that longer work is answered at once and reported
+with a Jarvis alert when it is finished, with the address of anything
+deployed. If Hermes still takes longer, the job ends as **Still working**
+rather than as a failure: Hermes carries on, with nobody waiting for its
+answer. One way to
 set that up on Hermes's side, in its own instructions: when a message carries
 a quoted research report and asks for a build,
 

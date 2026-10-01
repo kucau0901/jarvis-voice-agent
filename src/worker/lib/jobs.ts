@@ -195,7 +195,7 @@ export interface JobDeps {
   /** Stop a running step at OpenAI. Best effort. */
   cancel(job: Job): Promise<void>;
   /** Ask Hermes, waiting as long as it takes; `reference`, a research report handed over with the question. */
-  hermes(job: Job, reference?: string): Promise<{ ok: boolean; text: string }>;
+  hermes(job: Job, reference?: string): Promise<{ ok: boolean; text: string; late?: boolean }>;
   deliver(alert: Alert): Promise<Delivery>;
   /** Research jobs allowed a month (RESEARCH_MONTHLY_LIMIT); 0 turns them off. */
   researchLimit?: number;
@@ -826,10 +826,10 @@ export class Jobs {
     j.updatedAt = now;
     await this.save(j);
     const r = await deps.hermes(j, reference);
-    return this.finish(j, deps, Date.now(), r.ok ? { text: r.text } : { error: r.text });
+    return this.finish(j, deps, Date.now(), r.ok ? { text: r.text } : { error: r.text, ...(r.late ? { late: true } : {}) });
   }
 
-  private async finish(j: Job, deps: JobDeps, now: number, out: { text: string } | { error: string }): Promise<void> {
+  private async finish(j: Job, deps: JobDeps, now: number, out: { text: string } | { error: string; late?: boolean }): Promise<void> {
     const cur = await this.get(j.id);
     if (!cur || cur.status !== "running") return; // cancelled or removed while it ran
     const done = { ...cur, ...j, finishedAt: now, updatedAt: now };
@@ -861,7 +861,9 @@ export class Jobs {
     } else {
       done.status = "failed";
       done.error = "error" in out ? out.error.slice(0, 500) : "it finished without an answer";
-      alert = makeAlert({ title: `Could not finish: ${j.title}`, text: done.error, speak: false }, "job", now, personOfWho(j.createdBy))!;
+      // Hermes past the wait has not failed: it is still working, and says so itself when it is done.
+      const title = "late" in out && out.late ? `Still working: ${j.title}` : `Could not finish: ${j.title}`;
+      alert = makeAlert({ title, text: done.error, speak: false }, "job", now, personOfWho(j.createdBy))!;
     }
     await this.save(done); // before delivering: a retried alarm must not tell the user twice
     const d = await deps.deliver(alert).catch(() => null);

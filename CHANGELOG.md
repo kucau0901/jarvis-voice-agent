@@ -49,8 +49,17 @@ of every release, and in the [README](README.md#updating).
   cannot finish, the report arrives as it was written. A report costs somewhat
   more and can take a few minutes longer; the Jobs panel shows what each one
   cost.
+- **A question for Hermes says how long Jarvis waits.** Each one ends with a
+  short note: Jarvis waits at most six minutes, so longer work (a build, a
+  deploy) should be answered at once and reported with a Jarvis alert when it
+  is done, with the address of anything deployed.
 
 ### Fixed
+
+- **Hermes taking longer than six minutes no longer reads as a failure.** The
+  alert said "Could not finish … The operation was aborted due to timeout"
+  while Hermes was still working. It now says "Still working", and that its
+  answer will not come back to Jarvis.
 
 - **A long research report keeps its Sources list.** Jobs keeps the first
   20,000 characters of a report, and the list came last, so a long report lost
