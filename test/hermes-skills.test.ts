@@ -51,30 +51,51 @@ const start = join(skill, "start-build.sh");
 const deploy = join(skill, "deploy-site.sh");
 const report = join(skill, "report-back.sh");
 
-// Claude Code, played by a script. Asked to run sandbox-check.sh's probe, it
-// writes what the probe would find, as probe-mode says (a sandbox that holds,
-// one that leaks, or no run at all). Asked to build, it says how it was
-// started, outside the project, and builds a page; a FAIL file makes it fail.
+// Claude Code, played by a script. However it is started, it notes the
+// environment it was given. Asked to run sandbox-check.sh's probe, it writes
+// what the probe would find, as probe-mode says (a sandbox that holds, one
+// that leaks, or no run at all). Asked to build, it says how it was started,
+// outside the project, and builds a page, or, asked for slides, a deck; a FAIL
+// file makes it fail, NODECK makes no deck, and LINKDECK leaves a link instead.
 const bin = join(S, "bin");
 mkdirSync(bin);
 writeFileSync(join(bin, "claude"), `#!/usr/bin/env bash
+env > "${S}/claude-env.txt"
 if [ -f probe.sh ]; then
+  cp probe.sh gog-dirs "${S}/"
+  # The sandbox's own proxy login is in a real build's environment too.
   case "$(cat "${S}/probe-mode")" in
-    holds) printf 'token-read=no\\nhome-write=no\\nnpm-registry=200\\nother-site=403\\nnpm=yes\\ndone=yes\\n' > probe.out ;;
-    leaks) printf 'token-read=yes\\nhome-write=yes\\nnpm-registry=200\\nother-site=200\\nnpm=yes\\ndone=yes\\n' > probe.out ;;
+    holds) printf 'token-read=no\\nhome-write=no\\nnpm-registry=200\\nother-site=403\\nnpm=yes\\ngog-read=no\\nenv= HOME PATH CLOUDSDK_PROXY_PASSWORD \\ndone=yes\\n' > probe.out ;;
+    leaks) printf 'token-read=yes\\nhome-write=yes\\nnpm-registry=200\\nother-site=200\\nnpm=yes\\ngog-read=yes\\nenv= HOME PATH GOG_KEYRING_PASSWORD \\ndone=yes\\n' > probe.out ;;
     *) echo "Failed to start the sandbox." ; exit 1 ;;
   esac
   exit 0
 fi
 printf '%s\\n' "$@" > "${S}/claude-args.txt"
-env | grep -c JARVIS_ALERTS_TOKEN > "${S}/claude-token-seen.txt"
 pwd > "${S}/claude-cwd.txt"
 cp .claude/settings.json "${S}/claude-settings.json" 2>/dev/null || rm -f "${S}/claude-settings.json"
 printf '%s' "$npm_config_cache" > "${S}/claude-npm-cache.txt"
 echo '<h1>EV cost</h1>' > index.html; echo 'body{}' > style.css; echo '# notes' > README.md; mkdir -p .claude; echo x > .claude/state
+deck="$(basename "$PWD").pptx"
+case "$2" in *pptxgenjs*)
+  if [ -f LINKDECK ]; then ln -s "${S}/secret.txt" "$deck"; elif [ ! -f NODECK ]; then echo deck > "$deck"; fi ;;
+esac
 [ -f FAIL ] && { echo "something broke"; exit 3; }
 echo "Built a one-page EV charging cost calculator. Open index.html."
 `);
+// gog, played by a script: it notes how it was called and whether it had its
+// keyring password, then answers as gog drive upload does (or fails, given gog-fail).
+const gogBin = join(S, "gog-bin");
+mkdirSync(gogBin);
+writeFileSync(join(gogBin, "gog"), `#!/usr/bin/env bash
+printf '%s\\n' "$@" > "${S}/gog-args.txt"
+printf '%s' "\${GOG_KEYRING_PASSWORD:-}" > "${S}/gog-password.txt"
+if [ -f "${S}/gog-fail" ]; then echo "missing --account (or set GOG_ACCOUNT)" >&2; exit 2; fi
+f="\${@: -1}"
+cp "$f" "${S}/gog-uploaded.txt"
+echo '{"file":{"id":"f1","name":"'"\${f##*/}"'","mimeType":"application/vnd.openxmlformats-officedocument.presentationml.presentation","size":"5","webViewLink":"https://drive.google.com/file/d/f1/view"}}'
+`);
+chmodSync(join(gogBin, "gog"), 0o755);
 // What *.example.com answers: a published site 200 (or site-code), "home" is
 // something else already living there, and any other name the web server's 404.
 writeFileSync(join(bin, "curl"), `#!/usr/bin/env bash
@@ -89,7 +110,10 @@ exec /usr/bin/curl "$@"
 chmodSync(join(bin, "claude"), 0o755);
 chmodSync(join(bin, "curl"), 0o755);
 // No JARVIS_ALERTS_TOKEN: the token comes from the file the guide says to make.
-const ENV = { ...process.env, HOME: home, PATH: `${bin}:${process.env.PATH}`, JARVIS_ALERTS_TOKEN: undefined };
+// gog's keyring password is there, as it is in Hermes's own environment.
+const ENV = { ...process.env, HOME: home, PATH: `${bin}:${gogBin}:${process.env.PATH}`, JARVIS_ALERTS_TOKEN: undefined, XDG_CONFIG_HOME: undefined, GOG_KEYRING_PASSWORD: "gog-pass" };
+const gogDir = join(home, "Library/Application Support/gogcli");
+mkdirSync(gogDir, { recursive: true });
 
 const run = (cmd: string, args: string[], e: NodeJS.ProcessEnv = ENV) =>
   new Promise<{ code: number; out: string; err: string }>((resolve) => {
@@ -111,7 +135,7 @@ function project(name: string, o: { fail?: boolean } = {}) {
 
 try {
   console.log("the skills as published");
-  for (const f of ["start-build.sh", "deploy-site.sh", "report-back.sh"]) {
+  for (const f of ["start-build.sh", "run-claude.sh", "sandbox-settings.sh", "sandbox-check.sh", "deploy-site.sh", "report-back.sh"]) {
     const text = readFileSync(join(SKILLS, "build-from-research", f), "utf8");
     // A pasted copy once came back with non-breaking spaces, which bash does not take as spaces.
     check(`${f}: plain ASCII, so nothing pasted into it can hide`, !/[^\x20-\x7e\n]/.test(text));
@@ -148,7 +172,7 @@ try {
   const d = project("calc");
   const t0 = Date.now();
   // The token in the environment this once, to see that the build is not given it.
-  r = await run(start, ["calc"], { ...ENV, JARVIS_ALERTS_TOKEN: "jdv1_TESTTOKEN" });
+  r = await run(start, ["calc"], { ...ENV, JARVIS_ALERTS_TOKEN: "jdv1_TESTTOKEN", HERMES_API_KEY: "hk" });
   check("returns at once: the build goes on in the background", r.code === 0 && Date.now() - t0 < 5000 && /calc/.test(r.out), r);
   const built = await nextAlert(n);
   check("then: Build done, with what Claude Code said", built?.body.title === "Build done: calc" && /Open index.html/.test(built.body.text), built?.body);
@@ -161,13 +185,16 @@ try {
   const sb = existsSync(join(S, "claude-settings.json")) ? JSON.parse(readFileSync(join(S, "claude-settings.json"), "utf8")) : null;
   check("…inside its sandbox: commands run without asking, never outside it, and it won't start without one",
     sb?.sandbox?.enabled === true && sb.sandbox.autoAllowBashIfSandboxed === true && sb.sandbox.allowUnsandboxedCommands === false && sb.sandbox.failIfUnavailable === true, sb);
-  check("…where the alerts token, Hermes, ssh, aws and the sites share can't be read, by commands or by its own tools",
-    [".config/jarvis", ".hermes", ".ssh", ".aws"].every((p) => sb?.sandbox?.filesystem?.denyRead?.includes(join(home, p)) && sb.permissions.deny.includes(`Read(/${join(home, p)}/**)`)) &&
+  check("…where the alerts token, Hermes, ssh, aws, gog's keys and the sites share can't be read, by commands or by its own tools",
+    [".config/jarvis", ".hermes", ".ssh", ".aws", "Library/Application Support/gogcli", ".config/gogcli"].every((p) => sb?.sandbox?.filesystem?.denyRead?.includes(join(home, p)) && sb.permissions.deny.includes(`Read(/${join(home, p)}/**)`)) &&
       sb?.sandbox?.filesystem?.denyRead?.includes(sites) && sb.permissions.deny.includes(`Read(/${sites}/**)`), sb);
   check("…reaching npm's registry and nothing else, with its own web tools off",
     JSON.stringify(sb?.sandbox?.network?.allowedDomains) === JSON.stringify(["registry.npmjs.org"]) && sb.sandbox.network.allowLocalBinding === false && ["WebFetch", "WebSearch"].every((t) => sb.permissions.deny.includes(t)), sb?.sandbox?.network);
   check("…with npm's cache in the project, the one place it may write", readFileSync(join(S, "claude-npm-cache.txt"), "utf8") === join(home, "projects/calc/.npm-cache"));
-  check("…without the alerts token in its environment", readFileSync(join(S, "claude-token-seen.txt"), "utf8").trim() === "0");
+  // Hermes's environment can hold secrets (gog's keyring password, its own keys): none goes in.
+  const seen = readFileSync(join(S, "claude-env.txt"), "utf8");
+  check("…with a clean environment: HOME and PATH, but not the alerts token, gog's password or Hermes's keys",
+    seen.includes(`HOME=${home}\n`) && /^PATH=/m.test(seen) && !/JARVIS_ALERTS_TOKEN|GOG_KEYRING_PASSWORD|HERMES_API_KEY/.test(seen), seen);
   check("…and not told it will be published", !/static website/.test(args[1] ?? ""));
   check("nothing is published without --deploy", !existsSync(join(sites, "calc")) && existsSync(join(d, "build.log")));
   r = await run(start, ["calc"]);
@@ -180,7 +207,7 @@ try {
   r = await run(start, ["empty"]);
   check("the instruction and report not written first: refused", r.code === 2 && /INSTRUCTION.md/.test(r.err), r.err);
   r = await run(start, ["x", "--publish"]);
-  check("an unknown option is refused", r.code === 2 && /--deploy/.test(r.err), r.err);
+  check("an unknown option is refused", r.code === 2 && /--deploy and --slides/.test(r.err), r.err);
   project("noclaude");
   r = await run(start, ["noclaude"], { ...ENV, PATH: "/usr/bin:/bin" });
   check("no Claude Code: refused plainly", r.code === 2 && /not installed/.test(r.err), r.err);
@@ -218,6 +245,47 @@ try {
   r = await run(start, ["noconfig", "--deploy"]);
   check("--deploy without SITES_DIR and SITE_DOMAIN: refused before anything is built", r.code === 2 && /SITES_DIR/.test(r.err) && !existsSync(join(home, "projects/noconfig/build.log")), r.err);
   env();
+
+  console.log("\nstart-build.sh --slides");
+  n = alerts.length;
+  const deckDir = project("solar-talk");
+  r = await run(start, ["solar-talk", "--slides"]);
+  check("says the slides go to Google Drive", r.code === 0 && /Google Drive/.test(r.out), r);
+  const onDrive = await nextAlert(n);
+  check("then: On Drive, with the deck's link", onDrive?.body.title === "On Drive: solar-talk" && onDrive.body.text.startsWith("https://drive.google.com/file/d/f1/view "), onDrive?.body);
+  const slidePrompt = readFileSync(join(S, "claude-args.txt"), "utf8");
+  check("Claude Code told: one deck, solar-talk.pptx, made with pptxgenjs, no pictures from the web",
+    /solar-talk\.pptx/.test(slidePrompt) && /pptxgenjs/.test(slidePrompt) && /never from a web address/.test(slidePrompt) && !/static website/.test(slidePrompt), slidePrompt);
+  const gogArgs = readFileSync(join(S, "gog-args.txt"), "utf8").split("\n");
+  const staged = join(cfg, "uploads/solar-talk.pptx");
+  check("the deck goes up with gog drive upload, as JSON, never stopping to ask",
+    gogArgs.includes("--json") && gogArgs.includes("--no-input") && gogArgs.join(" ").includes(`drive upload ${staged}`), gogArgs);
+  // A copy where the build can neither read nor write, so nothing can be swapped in once it is checked.
+  check("…as a copy of the deck, made where the build can't reach, and removed after",
+    readFileSync(join(S, "gog-uploaded.txt"), "utf8") === "deck\n" && !existsSync(staged) && existsSync(join(deckDir, "solar-talk.pptx")));
+  check("…after the build, outside it: gog has its keyring password, which the build never had",
+    readFileSync(join(S, "gog-password.txt"), "utf8") === "gog-pass" && !/GOG_KEYRING_PASSWORD/.test(readFileSync(join(S, "claude-env.txt"), "utf8")));
+  check("…and nothing is published", !existsSync(join(sites, "solar-talk")));
+  // What a link would make it upload: a file the build could never read itself.
+  writeFileSync(join(S, "secret.txt"), "refresh_token=1//secret");
+  for (const [nm, marker, why] of [["no-deck", "NODECK", "no deck made"], ["link-deck", "LINKDECK", "a link to another file left in its place"]] as const) {
+    rmSync(join(S, "gog-args.txt"), { force: true });
+    n = alerts.length;
+    writeFileSync(join(project(nm), marker), "");
+    await run(start, [nm, "--slides"]);
+    const none = await nextAlert(n);
+    check(`${why}: Built, no deck, and nothing is uploaded`, none?.body.title === `Built, no deck: ${nm}` && !existsSync(join(S, "gog-args.txt")), none?.body);
+  }
+  writeFileSync(join(S, "gog-fail"), "");
+  n = alerts.length;
+  project("no-upload");
+  await run(start, ["no-upload", "--slides"]);
+  const noUp = await nextAlert(n);
+  check("the upload failing: built, not uploaded, with gog's reason", noUp?.body.title === "Built, not uploaded: no-upload" && /missing --account/.test(noUp.body.text), noUp?.body);
+  rmSync(join(S, "gog-fail"));
+  project("no-gog");
+  r = await run(start, ["no-gog", "--slides"], { ...ENV, PATH: `${bin}:/usr/bin:/bin` });
+  check("no gog here: refused before anything is built", r.code === 2 && /gog/.test(r.err) && !existsSync(join(home, "projects/no-gog/build.log")), r.err);
 
   console.log("\ndeploy-site.sh");
   writeFileSync(join(sites, "ev-cost", "stale.html"), "old");
@@ -260,10 +328,37 @@ try {
   const sbcheck = join(skill, "sandbox-check.sh");
   writeFileSync(join(S, "probe-mode"), "holds");
   r = await run(sbcheck, []);
-  check("a sandbox that holds: every line ok, and it says so", r.code === 0 && (r.out.match(/^ok {4}/gm) ?? []).length === 5 && !/FAIL/.test(r.out), r.out);
+  check("a sandbox that holds: every line ok, and it says so, the sandbox's own proxy login being no secret of ours",
+    r.code === 0 && (r.out.match(/^ok {4}/gm) ?? []).length === 7 && !/FAIL/.test(r.out), r.out);
+  check("…started as a build is: clean environment, the same settings", !/GOG_KEYRING_PASSWORD/.test(readFileSync(join(S, "claude-env.txt"), "utf8")) && existsSync(join(S, "claude-settings.json")));
   writeFileSync(join(S, "probe-mode"), "leaks");
   r = await run(sbcheck, []);
-  check("one that leaks: each leak named, and it fails", r.code === 1 && /FAIL {2}the alerts token can be read/.test(r.out) && /FAIL {2}files can be written outside/.test(r.out) && /FAIL {2}other websites are reachable/.test(r.out), r.out);
+  check("one that leaks: each leak named, and it fails", r.code === 1 && /FAIL {2}the alerts token can be read/.test(r.out) && /FAIL {2}files can be written outside/.test(r.out) && /FAIL {2}other websites are reachable/.test(r.out) &&
+    /FAIL {2}gog's Google keys can be read/.test(r.out) && /FAIL {2}secrets in the build's environment: GOG_KEYRING_PASSWORD/.test(r.out), r.out);
+  // The probe itself, run here: what it finds in a folder it can list, and in
+  // one that shows up empty, as a hidden folder does in Linux's sandbox.
+  const probeDir = join(S, "probe-run");
+  mkdirSync(probeDir);
+  cpSync(join(S, "probe.sh"), join(probeDir, "probe.sh"));
+  const emptyGog = join(S, "gog-empty");
+  mkdirSync(emptyGog);
+  for (const [dirs, want] of [[[emptyGog], "no"], [[emptyGog, gogDir], "yes"]] as const) {
+    writeFileSync(join(gogDir, "config.json"), "{}");
+    writeFileSync(join(probeDir, "gog-dirs"), dirs.join("\n") + "\n");
+    await run("bash", ["-c", `cd '${probeDir}' && bash probe.sh`], { ...ENV, PATH: "/usr/bin:/bin" });
+    const found = readFileSync(join(probeDir, "probe.out"), "utf8");
+    check(`the probe: gog's folder ${want === "no" ? "showing up empty is not read" : "listed is read"}`, found.includes(`gog-read=${want}\n`) && /^env= .*\bHOME\b/m.test(found), found);
+  }
+  rmSync(gogDir, { recursive: true });
+  writeFileSync(join(S, "probe-mode"), "holds");
+  r = await run(sbcheck, []);
+  check("no gog here: that line skipped, the rest ok", r.code === 0 && /^skip {2}gog's Google keys/m.test(r.out) && (r.out.match(/^ok {4}/gm) ?? []).length === 6, r.out);
+  const xdg = join(home, "xdg");
+  mkdirSync(join(xdg, "gogcli"), { recursive: true });
+  r = await run(sbcheck, [], { ...ENV, XDG_CONFIG_HOME: xdg });
+  check("gog's folder where XDG_CONFIG_HOME puts it: checked, and the probe told where",
+    r.code === 0 && /^ok {4}gog's Google keys can't be read/m.test(r.out) && readFileSync(join(S, "gog-dirs"), "utf8").includes(join(xdg, "gogcli")), r.out);
+  writeFileSync(join(S, "probe-mode"), "leaks");
   writeFileSync(join(S, "probe-mode"), "none");
   const scratch = join(S, "tmp");
   mkdirSync(scratch);

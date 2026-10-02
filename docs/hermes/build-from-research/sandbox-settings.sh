@@ -8,7 +8,8 @@
 # only inside Claude Code's sandbox, never outside it:
 #   - writing: the project folder (and the temporary folder) only;
 #   - reading: not ~/.config/jarvis (the alerts token), ~/.hermes, ~/.ssh,
-#     ~/.aws, or the sites share;
+#     ~/.aws, gog's folder (its Google keys, on a Mac or elsewhere) or the
+#     sites share;
 #   - network: npm's registry only, so npm install works and nothing else does.
 # The same paths are closed to Claude Code's own Read and Edit tools, and its
 # web tools are off: the build has the research it needs in RESEARCH.md.
@@ -20,10 +21,11 @@ dir="${1:?usage: sandbox-settings.sh <project-folder>}"
 [ -d "$dir" ] || { echo "$dir is not a folder." >&2; exit 2; }
 
 mkdir -p "$dir/.claude"
-python3 - "$dir/.claude/settings.json" "$HOME" "${SITES_DIR:-}" <<'PY'
+python3 - "$dir/.claude/settings.json" "$HOME" "${SITES_DIR:-}" "${XDG_CONFIG_HOME:-$HOME/.config}" <<'PY'
 import json, sys
-path, home, sites = sys.argv[1], sys.argv[2], sys.argv[3]
-closed = [f"{home}/.config/jarvis", f"{home}/.hermes", f"{home}/.ssh", f"{home}/.aws"]
+path, home, sites, config = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+closed = [f"{home}/.config/jarvis", f"{home}/.hermes", f"{home}/.ssh", f"{home}/.aws",
+          f"{home}/Library/Application Support/gogcli", f"{config}/gogcli"]
 if sites:
     closed.append(sites)
 settings = {

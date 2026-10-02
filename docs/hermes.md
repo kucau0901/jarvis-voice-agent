@@ -104,7 +104,7 @@ scripts.
 V=main   # or a release tag, such as v2.4.0
 base="https://raw.githubusercontent.com/kucau0901/jarvis-voice-agent/$V/docs/hermes"
 mkdir -p ~/.hermes/skills/build-from-research ~/.hermes/skills/jarvis-report-back
-for f in SKILL.md start-build.sh deploy-site.sh report-back.sh sandbox-settings.sh sandbox-check.sh; do
+for f in SKILL.md start-build.sh run-claude.sh deploy-site.sh report-back.sh sandbox-settings.sh sandbox-check.sh; do
   curl -fsSL "$base/build-from-research/$f" -o ~/.hermes/skills/build-from-research/$f
 done
 curl -fsSL "$base/jarvis-report-back/SKILL.md" -o ~/.hermes/skills/jarvis-report-back/SKILL.md
@@ -146,15 +146,18 @@ with the reason. The build's log is `~/projects/<name>/build.log`.
 
 Nobody is asked anything: Claude Code edits files in the project folder, and
 runs the commands a build needs (`npm install`, `npm run build`) by itself,
-**inside Claude Code's sandbox**. `start-build.sh` writes the project's
+**inside Claude Code's sandbox**. `run-claude.sh` writes the project's
 `.claude/settings.json` first (`sandbox-settings.sh`), and Claude Code loads
 only that, none of the user's own settings, hooks or MCP servers
 (`--setting-sources project --strict-mcp-config`), so an "always allow" given
-elsewhere doesn't carry over. Inside the sandbox, commands:
+elsewhere doesn't carry over. It starts Claude Code with a clean environment
+(`HOME`, `PATH` and the like), so no secret Hermes keeps in its environment
+reaches the build. Inside the sandbox, commands:
 
 - write only in the project folder (npm keeps its cache there too);
 - can't read `~/.config/jarvis` (the alerts token), `~/.hermes`, `~/.ssh`,
-  `~/.aws` or the sites share, and nor can Claude Code's own file tools;
+  `~/.aws`, gog's folder (its Google keys) or the sites share, and nor can
+  Claude Code's own file tools;
 - reach npm's registry and nothing else on the network; Claude Code's own web
   tools are off, since the research is already in `RESEARCH.md`;
 - never run outside the sandbox: if it can't start, Claude Code refuses to
@@ -168,8 +171,26 @@ run, and every line should say **ok**:
 ~/.hermes/skills/build-from-research/sandbox-check.sh
 ```
 
-Sign-in carries over; an API key set in your own Claude Code settings does
-not, so sign in instead.
+Sign-in carries over; an API key set in your own Claude Code settings or in
+the environment does not, so sign in instead.
+
+## …or making slides for Google Drive
+
+A build can instead be a PowerPoint deck that lands in your Google Drive. Say
+"… make slides from it as solar-talk", and when it is done you get **On Drive:
+solar-talk** with the deck's link. Claude Code makes `solar-talk.pptx` with
+the `pptxgenjs` package from npm, inside the same sandbox; once it has
+finished, `start-build.sh` uploads the file, outside the sandbox, with
+[gog](https://github.com/openclaw/gogcli). It goes to the top of your My Drive
+as a `.pptx`: open it in Google Slides (File, Save as Google Slides, makes a
+copy in Slides' own format) or download it for PowerPoint. Only you can see it
+until you share it.
+
+Hermes's machine needs gog installed and signed in to the Google account, with
+Drive (`gog auth add you@example.com --services drive`). If it has more than
+one account, make one the default (`gog auth manage`). The build itself never
+gets near gog: its folder is closed to it, and gog's keyring password isn't in
+its environment.
 
 ## …and deploying it
 
@@ -245,9 +266,10 @@ without it before you deploy it.
 - Claude Code runs every command inside its sandbox (the project folder,
   npm's registry, none of your keys) and leaves your own Claude Code settings
   behind; `sandbox-check.sh` proves it on your machine. Deploying is a file
-  copy by an account that can reach one folder.
-- The alerts token stays on Hermes's machine and is taken out of Claude Code's
-  environment.
+  copy by an account that can reach one folder; slides go up after the build,
+  and only a file the build made, never a link it left.
+- The alerts token, gog's keys and anything else in Hermes's environment stay
+  on Hermes's side: Claude Code starts with a clean environment.
 
 ## When something goes wrong
 
@@ -258,6 +280,8 @@ without it before you deploy it.
 | `report-back.sh`: *No alerts token* / *set JARVIS_URL* | `~/.config/jarvis/` isn't set up on Hermes's machine (above). |
 | `start-build.sh` refuses | Claude Code isn't installed, or isn't on Hermes's PATH; the folder name isn't lowercase letters, digits and dashes; that folder was built in already; `INSTRUCTION.md` and `RESEARCH.md` weren't written first; or deploy was asked for without `SITES_DIR` and `SITE_DOMAIN`. |
 | **Build failed: …** | Claude Code started and stopped with an error: often it isn't signed in as Hermes's user (run `claude` once as that user), or the sandbox couldn't start (run `sandbox-check.sh`; on Linux, install `bubblewrap` and `socat`). The alert ends with the last of `build.log`. |
+| **Built, no deck: …** | Claude Code finished without making `<name>.pptx`. Its answer is in the alert; ask again more plainly, e.g. "make a 10-slide PowerPoint". |
+| **Built, not uploaded: …** | The deck is on Hermes's machine; gog couldn't upload it, and the alert ends with gog's reason. Check `gog auth list` there: signed in, with Drive, and a default account. |
 | `sandbox-check.sh` says **FAIL** | Don't build until it says ok: update Claude Code, and on Linux install `bubblewrap` and `socat`. |
 | `deploy-site.sh`: *already in use* | Something else answers at that address: choose another name. |
 | **Built, not published** | The `sites` share isn't mounted on Hermes's machine. |

@@ -34,15 +34,19 @@ When you get such a request:
    ```
    ~/.hermes/skills/build-from-research/start-build.sh <name>
    ~/.hermes/skills/build-from-research/start-build.sh <name> --deploy
+   ~/.hermes/skills/build-from-research/start-build.sh <name> --slides
    ```
 
    Use `--deploy` when the owner asked for it to be deployed, published, put
    online or put on the Synology ("deploy", "letak online", "terbitkan").
+   Use `--slides` when the owner asked for slides, a presentation or a
+   PowerPoint ("buat slide", "pembentangan"): it makes `<name>.pptx` and puts
+   it in the owner's Google Drive. Never both.
    It returns at once. The build carries on in the background, and Jarvis is
-   told when it is done, or live at its address.
+   told when it is done, live at its address, or in Drive with its link.
 4. **Answer straight away**, in one or two sentences: the build has started,
-   its folder (and, when deploying, its address), and Jarvis will say when it
-   is ready. Do not wait for the build, and do not check on it unless asked.
+   its folder (and, when deploying, its address; for slides, that they go to
+   Google Drive), and Jarvis will say when it is ready. Do not wait for the build, and do not check on it unless asked.
 
 To deploy something already built ("deploy ev-cost"), run
 `~/.hermes/skills/build-from-research/deploy-site.sh <name>` and tell the owner

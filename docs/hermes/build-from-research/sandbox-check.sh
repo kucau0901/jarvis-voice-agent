@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Check, on this machine, that a build's sandbox holds: start Claude Code the
-# way start-build.sh does, in a scratch project with the same settings, have it
-# run one probe script, and judge what the probe managed to do.
+# way start-build.sh does (run-claude.sh), in a scratch project, have it run one
+# probe script, and judge what the probe managed to do.
 #
 #   sandbox-check.sh
 #
@@ -19,7 +19,10 @@ work="$(mktemp -d "${TMPDIR:-/tmp}/sandbox-check.XXXXXX")"
 trap 'rm -rf "$work"' EXIT
 project="$work/project"
 mkdir -p "$project"
-"$here/sandbox-settings.sh" "$project"
+# Where gog keeps its Google keys, as sandbox-settings.sh closes them: the probe
+# reads this list, since the build's environment has no XDG_CONFIG_HOME.
+gog_dirs=("$HOME/Library/Application Support/gogcli" "${XDG_CONFIG_HOME:-$HOME/.config}/gogcli")
+printf '%s\n' "${gog_dirs[@]}" >"$project/gog-dirs"
 cat >"$project/probe.sh" <<'PROBE'
 out=probe.out
 : >"$out"
@@ -30,15 +33,19 @@ if (: >"$f") 2>/dev/null; then say home-write yes; rm -f "$f"; else say home-wri
 say npm-registry "$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 https://registry.npmjs.org/left-pad || true)"
 say other-site "$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 https://example.com || true)"
 if npm --version >/dev/null 2>&1; then say npm yes; else say npm no; fi
+gog=no
+# Anything listed counts as read: on Linux a hidden folder shows up empty.
+while IFS= read -r d; do
+  if [ -n "$(ls -A "$d" 2>/dev/null)" ]; then gog=yes; fi
+done <gog-dirs
+say gog-read "$gog"
+say env " $(env | cut -d= -f1 | tr '\n' ' ')"
 say done yes
 PROBE
 
-(
-  cd "$project"
-  env -u JARVIS_ALERTS_TOKEN npm_config_cache="$project/.npm-cache" claude -p \
-    "Run this one command with the Bash tool, exactly as written, and nothing else: bash probe.sh" \
-    --permission-mode acceptEdits --setting-sources project --strict-mcp-config >"$work/claude.log" 2>&1
-) || true
+"$here/run-claude.sh" "$project" \
+  "Run this one command with the Bash tool, exactly as written, and nothing else: bash probe.sh" \
+  >"$work/claude.log" 2>&1 || true
 
 if ! grep -q '^done=yes$' "$project/probe.out" 2>/dev/null; then
   echo "FAIL  Claude Code did not run the probe, so builds can't run commands either. It said: $(tail -c 400 "$work/claude.log" | tr '\n' ' ')"
@@ -58,4 +65,16 @@ fi
 [ "$(got npm-registry)" = 200 ] && ok "npm's registry is reachable" || no "npm's registry is not reachable (it answered $(got npm-registry)): npm install would fail"
 [ "$(got other-site)" != 200 ] && ok "other websites are not reachable" || no "other websites are reachable"
 [ "$(got npm)" = yes ] && ok "npm runs" || echo "note  npm isn't installed: builds can't use npm, plain HTML still works"
+if [ -d "${gog_dirs[0]}" ] || [ -d "${gog_dirs[1]}" ]; then
+  [ "$(got gog-read)" = no ] && ok "gog's Google keys can't be read" || no "gog's Google keys can be read"
+else
+  echo "skip  gog's Google keys: gog isn't set up here"
+fi
+# The secrets in this environment (Hermes's) must not be in the build's. The
+# sandbox adds its own proxy login, which is no secret of ours.
+leaked=""
+for v in $(env | cut -d= -f1 | grep -E 'TOKEN|SECRET|PASSWORD|_KEY' || true); do
+  case "$(got env) " in *" $v "*) leaked="$leaked $v" ;; esac
+done
+[ -z "$leaked" ] && ok "none of this machine's secrets in the build's environment" || no "secrets in the build's environment:$leaked"
 exit "$bad"
