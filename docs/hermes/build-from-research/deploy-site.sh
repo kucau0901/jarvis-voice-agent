@@ -7,9 +7,10 @@
 # Needs, in ~/.config/jarvis/env:
 #   SITES_DIR=/Volumes/sites     the Synology's "sites" share, mounted on this Mac
 #   SITE_DOMAIN=example.com      *.example.com reaches the Caddy container (Cloudflare Tunnel)
-# Copies the folder without its Markdown files (the instruction, the report, any
-# README or notes), build.log and dot-files. A name some other service already
-# answers to is refused. Prints the site's address.
+# Copies the finished site: the folder's dist/ when a build step made one (with
+# its index.html), else the folder itself. Never Markdown files (the instruction,
+# the report, any README or notes), build.log, node_modules or dot-files. A name
+# some other service already answers to is refused. Prints the site's address.
 set -euo pipefail
 
 [ -r "$HOME/.config/jarvis/env" ] && . "$HOME/.config/jarvis/env"
@@ -33,8 +34,9 @@ case "$sites" in
     exit 2 ;;
 esac
 src="$root/$name"
+[ -f "$src/dist/index.html" ] && src="$src/dist"
 if [ ! -f "$src/index.html" ]; then
-  echo "$src has no index.html: there is nothing to publish." >&2
+  echo "$root/$name has no index.html (nor dist/index.html): there is nothing to publish." >&2
   exit 2
 fi
 if [ ! -d "$sites" ] || [ ! -w "$sites" ]; then
@@ -54,5 +56,5 @@ if [ ! -d "$sites/$name" ]; then
 fi
 
 mkdir -p "$sites/$name"
-rsync -a --delete --exclude '*.md' --exclude build.log --exclude '.*' "$src/" "$sites/$name/"
+rsync -a --delete --exclude '*.md' --exclude build.log --exclude node_modules --exclude '.*' "$src/" "$sites/$name/"
 echo "$url"

@@ -31,7 +31,10 @@ of every release, and in the [README](README.md#updating).
   to Hermes's machine: one that reports long work back to you, and one that
   builds what research found with Claude Code and, if asked, deploys it as a
   static site on your own server (a Synology, for example) at its own
-  subdomain.
+  subdomain. A build asks nobody anything: its commands (npm install, npm run
+  build) run by themselves inside Claude Code's sandbox, which can write only
+  in the project, can't read the alerts token or Hermes's keys, and reaches
+  npm's registry only; `sandbox-check.sh` proves it on Hermes's machine.
 - **Research as a team.** Ask Jarvis to research something "as a team", or
   tick *As a team* in Jobs. Three teams look into it at once, each from an
   angle chosen for the question. They pass each other what they find as they

@@ -104,7 +104,7 @@ scripts.
 V=main   # or a release tag, such as v2.4.0
 base="https://raw.githubusercontent.com/kucau0901/jarvis-voice-agent/$V/docs/hermes"
 mkdir -p ~/.hermes/skills/build-from-research ~/.hermes/skills/jarvis-report-back
-for f in SKILL.md start-build.sh deploy-site.sh report-back.sh; do
+for f in SKILL.md start-build.sh deploy-site.sh report-back.sh sandbox-settings.sh sandbox-check.sh; do
   curl -fsSL "$base/build-from-research/$f" -o ~/.hermes/skills/build-from-research/$f
 done
 curl -fsSL "$base/jarvis-report-back/SKILL.md" -o ~/.hermes/skills/jarvis-report-back/SKILL.md
@@ -144,21 +144,32 @@ With `build-from-research` it:
 When Claude Code finishes you get **Build done: <name>**, or **Build failed**
 with the reason. The build's log is `~/projects/<name>/build.log`.
 
-Claude Code runs with `--permission-mode acceptEdits`: it may read and edit
-files in its folder, and anything else it would need permission for is
-refused, since nothing is asked in `-p` mode. It never runs with
-`--dangerously-skip-permissions`, and it loads none of that user's own Claude
-Code settings, hooks or MCP servers (`--setting-sources project
---strict-mcp-config`), so an "always allow" given elsewhere doesn't carry
-over. Sign-in still works; an API key set in your Claude Code settings does
-not, so sign in instead.
+Nobody is asked anything: Claude Code edits files in the project folder, and
+runs the commands a build needs (`npm install`, `npm run build`) by itself,
+**inside Claude Code's sandbox**. `start-build.sh` writes the project's
+`.claude/settings.json` first (`sandbox-settings.sh`), and Claude Code loads
+only that, none of the user's own settings, hooks or MCP servers
+(`--setting-sources project --strict-mcp-config`), so an "always allow" given
+elsewhere doesn't carry over. Inside the sandbox, commands:
 
-So builds are plain HTML, CSS and JavaScript. `start-build.sh` can allow more
-(`ALLOWED_TOOLS` in `~/.config/jarvis/env`), but leave it unset: any command
-that runs the project's own code (`npm install`, `npm run`, `node`, `python`,
-`make`) runs what the build wrote, perhaps steered by the research, as that
-user, able to read the alerts token and Hermes's keys, write to the sites share
-and reach your network.
+- write only in the project folder (npm keeps its cache there too);
+- can't read `~/.config/jarvis` (the alerts token), `~/.hermes`, `~/.ssh`,
+  `~/.aws` or the sites share, and nor can Claude Code's own file tools;
+- reach npm's registry and nothing else on the network; Claude Code's own web
+  tools are off, since the research is already in `RESEARCH.md`;
+- never run outside the sandbox: if it can't start, Claude Code refuses to
+  run at all. It never runs with `--dangerously-skip-permissions`.
+
+On a Mac the sandbox needs nothing installed; on Linux it needs `bubblewrap`
+and `socat`. Check it once on Hermes's machine. It costs one short Claude Code
+run, and every line should say **ok**:
+
+```bash
+~/.hermes/skills/build-from-research/sandbox-check.sh
+```
+
+Sign-in carries over; an API key set in your own Claude Code settings does
+not, so sign in instead.
 
 ## …and deploying it
 
@@ -217,11 +228,12 @@ mkdir -p ~/projects/hello && printf '<h1>Hello</h1>\n' > ~/projects/hello/index.
 ~/.hermes/skills/build-from-research/deploy-site.sh hello
 ```
 
-Everything in the project folder is published except Markdown files (the
-instruction, the report, any README or notes), `build.log` and dot-files. A
-deployed site is public: a build started with deploy is told to use only HTML,
-CSS and JavaScript and to put nothing secret in it, but look over a folder
-built without it before you deploy it.
+What is published is the build's `dist/` folder when it has one (a build
+step's finished site), otherwise the project folder, never Markdown files (the
+instruction, the report, any README or notes), `build.log`, `node_modules` or
+dot-files. A deployed site is public: a build started with deploy is told to
+make a static site with nothing secret in it, but look over a folder built
+without it before you deploy it.
 
 ## Safety, in short
 
@@ -230,9 +242,10 @@ built without it before you deploy it.
   it, and it reaches Claude Code only as a file in the project folder.
 - Nothing is handed to Hermes, built or deployed unless you ask. A finished
   research job never goes to Hermes by itself.
-- Claude Code keeps its permission checks and leaves your own Claude Code
-  settings behind; leave `ALLOWED_TOOLS` unset. Deploying is a file copy by an
-  account that can reach one folder.
+- Claude Code runs every command inside its sandbox (the project folder,
+  npm's registry, none of your keys) and leaves your own Claude Code settings
+  behind; `sandbox-check.sh` proves it on your machine. Deploying is a file
+  copy by an account that can reach one folder.
 - The alerts token stays on Hermes's machine and is taken out of Claude Code's
   environment.
 
@@ -244,7 +257,8 @@ built without it before you deploy it.
 | **Could not finish: … Hermes did not answer** | Jarvis couldn't reach Hermes, or Hermes refused. Open **Settings → Hermes** and press **Test**. |
 | `report-back.sh`: *No alerts token* / *set JARVIS_URL* | `~/.config/jarvis/` isn't set up on Hermes's machine (above). |
 | `start-build.sh` refuses | Claude Code isn't installed, or isn't on Hermes's PATH; the folder name isn't lowercase letters, digits and dashes; that folder was built in already; `INSTRUCTION.md` and `RESEARCH.md` weren't written first; or deploy was asked for without `SITES_DIR` and `SITE_DOMAIN`. |
-| **Build failed: …** | Claude Code started and stopped with an error: often it isn't signed in as Hermes's user (run `claude` once as that user). The alert ends with the last of `build.log`. |
+| **Build failed: …** | Claude Code started and stopped with an error: often it isn't signed in as Hermes's user (run `claude` once as that user), or the sandbox couldn't start (run `sandbox-check.sh`; on Linux, install `bubblewrap` and `socat`). The alert ends with the last of `build.log`. |
+| `sandbox-check.sh` says **FAIL** | Don't build until it says ok: update Claude Code, and on Linux install `bubblewrap` and `socat`. |
 | `deploy-site.sh`: *already in use* | Something else answers at that address: choose another name. |
 | **Built, not published** | The `sites` share isn't mounted on Hermes's machine. |
 | **Published, not answering** | The files are there, but the Caddy container or the Cloudflare Tunnel didn't answer. |

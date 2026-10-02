@@ -51,14 +51,26 @@ const start = join(skill, "start-build.sh");
 const deploy = join(skill, "deploy-site.sh");
 const report = join(skill, "report-back.sh");
 
-// Claude Code, played by a script: it says how it was started, outside the
-// project, and builds a page; a FAIL file makes it fail.
+// Claude Code, played by a script. Asked to run sandbox-check.sh's probe, it
+// writes what the probe would find, as probe-mode says (a sandbox that holds,
+// one that leaks, or no run at all). Asked to build, it says how it was
+// started, outside the project, and builds a page; a FAIL file makes it fail.
 const bin = join(S, "bin");
 mkdirSync(bin);
 writeFileSync(join(bin, "claude"), `#!/usr/bin/env bash
+if [ -f probe.sh ]; then
+  case "$(cat "${S}/probe-mode")" in
+    holds) printf 'token-read=no\\nhome-write=no\\nnpm-registry=200\\nother-site=403\\nnpm=yes\\ndone=yes\\n' > probe.out ;;
+    leaks) printf 'token-read=yes\\nhome-write=yes\\nnpm-registry=200\\nother-site=200\\nnpm=yes\\ndone=yes\\n' > probe.out ;;
+    *) echo "Failed to start the sandbox." ; exit 1 ;;
+  esac
+  exit 0
+fi
 printf '%s\\n' "$@" > "${S}/claude-args.txt"
 env | grep -c JARVIS_ALERTS_TOKEN > "${S}/claude-token-seen.txt"
 pwd > "${S}/claude-cwd.txt"
+cp .claude/settings.json "${S}/claude-settings.json" 2>/dev/null || rm -f "${S}/claude-settings.json"
+printf '%s' "$npm_config_cache" > "${S}/claude-npm-cache.txt"
 echo '<h1>EV cost</h1>' > index.html; echo 'body{}' > style.css; echo '# notes' > README.md; mkdir -p .claude; echo x > .claude/state
 [ -f FAIL ] && { echo "something broke"; exit 3; }
 echo "Built a one-page EV charging cost calculator. Open index.html."
@@ -145,6 +157,16 @@ try {
   check("…without this user's own settings, hooks or MCP servers", args[args.indexOf("--setting-sources") + 1] === "project" && args.includes("--strict-mcp-config"), args);
   check("…told the report is reference, not instructions", /not instructions/.test(args[1] ?? ""), args[1]);
   check("…in the project folder", readFileSync(join(S, "claude-cwd.txt"), "utf8").trim().endsWith("/projects/calc"));
+  // The sandbox it runs in: written before Claude Code starts, the only settings it loads.
+  const sb = existsSync(join(S, "claude-settings.json")) ? JSON.parse(readFileSync(join(S, "claude-settings.json"), "utf8")) : null;
+  check("…inside its sandbox: commands run without asking, never outside it, and it won't start without one",
+    sb?.sandbox?.enabled === true && sb.sandbox.autoAllowBashIfSandboxed === true && sb.sandbox.allowUnsandboxedCommands === false && sb.sandbox.failIfUnavailable === true, sb);
+  check("…where the alerts token, Hermes, ssh, aws and the sites share can't be read, by commands or by its own tools",
+    [".config/jarvis", ".hermes", ".ssh", ".aws"].every((p) => sb?.sandbox?.filesystem?.denyRead?.includes(join(home, p)) && sb.permissions.deny.includes(`Read(/${join(home, p)}/**)`)) &&
+      sb?.sandbox?.filesystem?.denyRead?.includes(sites) && sb.permissions.deny.includes(`Read(/${sites}/**)`), sb);
+  check("…reaching npm's registry and nothing else, with its own web tools off",
+    JSON.stringify(sb?.sandbox?.network?.allowedDomains) === JSON.stringify(["registry.npmjs.org"]) && sb.sandbox.network.allowLocalBinding === false && ["WebFetch", "WebSearch"].every((t) => sb.permissions.deny.includes(t)), sb?.sandbox?.network);
+  check("…with npm's cache in the project, the one place it may write", readFileSync(join(S, "claude-npm-cache.txt"), "utf8") === join(home, "projects/calc/.npm-cache"));
   check("…without the alerts token in its environment", readFileSync(join(S, "claude-token-seen.txt"), "utf8").trim() === "0");
   check("…and not told it will be published", !/static website/.test(args[1] ?? ""));
   check("nothing is published without --deploy", !existsSync(join(sites, "calc")) && existsSync(join(d, "build.log")));
@@ -209,6 +231,20 @@ try {
   }
   r = await run(deploy, ["empty"]);
   check("nothing to publish (no index.html): refused", r.code === 2 && /index.html/.test(r.err), r.err);
+  // A build step's finished site is dist/: that is what goes out, not the sources or node_modules.
+  const vite = project("vite-app");
+  for (const [f, t] of [["dist/index.html", "<h1>built</h1>"], ["dist/assets/app.js", "x"], ["src/main.js", "y"], ["node_modules/pkg/index.js", "z"], ["package.json", "{}"]] as const) {
+    mkdirSync(join(vite, f, ".."), { recursive: true });
+    writeFileSync(join(vite, f), t);
+  }
+  r = await run(deploy, ["vite-app"]);
+  check("a build with dist/: dist/ is what is published", r.code === 0 && JSON.stringify(readdirSync(join(sites, "vite-app")).sort()) === JSON.stringify(["assets", "index.html"]), { r, got: existsSync(join(sites, "vite-app")) ? readdirSync(join(sites, "vite-app")) : null });
+  const plain = project("plain");
+  writeFileSync(join(plain, "index.html"), "<h1>plain</h1>");
+  mkdirSync(join(plain, "node_modules/x"), { recursive: true });
+  writeFileSync(join(plain, "node_modules/x/i.js"), "z");
+  r = await run(deploy, ["plain"]);
+  check("without dist/: the folder, never its node_modules", r.code === 0 && existsSync(join(sites, "plain", "index.html")) && !existsSync(join(sites, "plain", "node_modules")), readdirSync(join(sites, "plain")));
   const home2 = project("home");
   writeFileSync(join(home2, "index.html"), "<h1>mine</h1>");
   r = await run(deploy, ["home"]);
@@ -219,6 +255,21 @@ try {
     check(`SITES_DIR pointing somewhere it must never copy into is refused: ${wrong.replace(S, "…")}`, r.code === 2 && /looks wrong/.test(r.err), r.err);
   }
   env();
+
+  console.log("\nsandbox-check.sh");
+  const sbcheck = join(skill, "sandbox-check.sh");
+  writeFileSync(join(S, "probe-mode"), "holds");
+  r = await run(sbcheck, []);
+  check("a sandbox that holds: every line ok, and it says so", r.code === 0 && (r.out.match(/^ok {4}/gm) ?? []).length === 5 && !/FAIL/.test(r.out), r.out);
+  writeFileSync(join(S, "probe-mode"), "leaks");
+  r = await run(sbcheck, []);
+  check("one that leaks: each leak named, and it fails", r.code === 1 && /FAIL {2}the alerts token can be read/.test(r.out) && /FAIL {2}files can be written outside/.test(r.out) && /FAIL {2}other websites are reachable/.test(r.out), r.out);
+  writeFileSync(join(S, "probe-mode"), "none");
+  const scratch = join(S, "tmp");
+  mkdirSync(scratch);
+  r = await run(sbcheck, [], { ...ENV, TMPDIR: scratch });
+  check("Claude Code not running the probe: a failure, with what it said", r.code === 1 && /did not run the probe/.test(r.out) && /Failed to start the sandbox/.test(r.out), r.out);
+  check("…and its scratch project is cleaned up", readdirSync(scratch).length === 0, readdirSync(scratch));
 } finally {
   server.close();
   rmSync(S, { recursive: true, force: true });

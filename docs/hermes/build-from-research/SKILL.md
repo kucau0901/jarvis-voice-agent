@@ -56,4 +56,7 @@ a script refuses (Claude Code missing, a bad name, a folder already built, the
 files missing, the Synology share not mounted), say so plainly and stop.
 
 If the owner asks how a build went, read `~/projects/<name>/build.log` and say
-what it shows.
+what it shows. If they ask whether builds are safe, or a build failed because
+it couldn't run a command, run
+`~/.hermes/skills/build-from-research/sandbox-check.sh` and tell them every
+line it prints.
