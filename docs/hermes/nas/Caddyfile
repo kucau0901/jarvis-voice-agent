@@ -1,0 +1,23 @@
+# One web server for every site Hermes deploys: the folder /srv/<name> is the
+# site <name>.<your domain>. Cloudflare's tunnel sends *.<your domain> here as
+# plain HTTP, and does the HTTPS itself.
+{
+	auto_https off
+	admin off
+}
+
+:80 {
+	# The first label of the address is the folder, whatever the domain:
+	# ev-cost.example.com and ev-cost.example.com.my are both /srv/ev-cost.
+	# A name with no dot gets "-", a folder that cannot exist: the share's own
+	# top level is never shown.
+	map {host} {site} {
+		~^([a-z0-9-]+)\. "${1}"
+		default "-"
+	}
+	root * /srv/{site}
+	file_server {
+		hide .*
+	}
+	header -Server
+}

@@ -5,8 +5,9 @@ most of the state (memory, the family, messages, routines, jobs, settings); KV
 holds device tokens, linked-account tokens, the MCP server list and the router
 model. Why it is built the way it is: `docs/DESIGN.md`, and for the family
 `docs/family.md`, for alerts `docs/notifications.md`, for the device API
-`docs/api.md`. Before changing an area, read its section: most of what looks
-odd is a decision, with the reason written down.
+`docs/api.md`, for Hermes `docs/hermes.md` (its skills are in `docs/hermes/`).
+Before changing an area, read its section: most of what looks odd is a
+decision, with the reason written down.
 
 ## Project rules
 

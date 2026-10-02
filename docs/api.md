@@ -410,12 +410,13 @@ curl -X POST https://jarvis.example.com/api/v1/notify \
 ```
 
 An alert goes to the person the token belongs to, and a token made with the
-owner key belongs to the first person. If someone else in the family uses
-Hermes, they make a token of their own in Devices (or an admin does, with
-`"owner": "<their id>"` in the same `POST`), and Hermes sends the alert with
-the token of whoever asked. Its session key says who: `X-Hermes-Session-Key`
-is `jarvis:tesla` for the first person and `jarvis:tesla:<their id>` for
-anyone else.
+owner key belongs to the first person. The ready-made Hermes skills
+([hermes.md](hermes.md)) keep one token, so their reports all go to its
+person. A Hermes that chose the token of whoever asked would need one per
+person, each made in Devices (or by an admin, with `"owner": "<their id>"` in
+the same `POST`), and could tell them apart by the session key:
+`X-Hermes-Session-Key` is `jarvis:tesla` for the first person and
+`jarvis:tesla:<their id>` for anyone else.
 
 `alerts` works both ways ([Scopes](#scopes)): besides raising alerts, the
 token can receive every alert meant for the person it belongs to (the socket
@@ -548,23 +549,11 @@ start the build, answer at once, and report back when it is done. Every
 question Jarvis sends Hermes ends with a short note saying so: that it waits
 at most six minutes, and that longer work is answered at once and reported
 with a Jarvis alert when it is finished, with the address of anything
-deployed. If Hermes still takes longer, the job ends as **Still working**
-rather than as a failure: Hermes carries on, with nobody waiting for its
-answer. One way to
-set that up on Hermes's side, in its own instructions: when a message carries
-a quoted research report and asks for a build,
-
-- make a new folder under a projects directory (`~/projects/home-chargers-site`),
-  save the report there, and start Claude Code in it in the background:
-  `claude -p "<the instruction>"`. Keep Claude Code's normal permissions (in
-  `-p` mode, anything that would ask is refused), or give it an allow-list of
-  what a build needs (`--allowedTools`). Never run it unrestricted
-  (`--dangerously-skip-permissions`): the report came from the web, and the
-  folder is on a machine that can reach your house;
-- answer at once that the build has started, and in which folder;
-- when it finishes or fails, raise an alert, with the token of the person who
-  asked, with what happened
-  ([A home agent reporting back](#a-home-agent-reporting-back)).
+deployed. If Hermes still takes longer, the alert says **Still working**
+rather than *Could not finish*: Hermes carries on, with nobody waiting for its
+answer. The job itself is `failed`, with an error saying Hermes did not answer
+within six minutes and may still be working. Setting up Hermes's side, with ready-made skills that build with
+Claude Code, deploy the result and report back: [hermes.md](hermes.md).
 
 ## Routines
 

@@ -25,6 +25,13 @@ of every release, and in the [README](README.md#updating).
   Only when the question is about movement, or you ask it to watch: anything
   else is still one picture, as quick as before. Watching takes a few seconds
   longer.
+- **A guide to Hermes** ([docs/hermes.md](docs/hermes.md)): connecting it, who
+  may use it, the six-minute wait, an alerts-only token so Hermes can report
+  back, and two ready-made Hermes skills in `docs/hermes/`, downloaded straight
+  to Hermes's machine: one that reports long work back to you, and one that
+  builds what research found with Claude Code and, if asked, deploys it as a
+  static site on your own server (a Synology, for example) at its own
+  subdomain.
 - **Research as a team.** Ask Jarvis to research something "as a team", or
   tick *As a team* in Jobs. Three teams look into it at once, each from an
   angle chosen for the question. They pass each other what they find as they
@@ -37,7 +44,7 @@ of every release, and in the [README](README.md#updating).
   finished research job in Jobs, and Hermes gets the whole report as
   reference, with your instruction. Only your own finished research, and only
   when you ask. It needs Hermes and the `hermes` permission. With the setup in
-  [docs/api.md](docs/api.md#handing-research-to-hermes), Hermes can build with
+  [docs/hermes.md](docs/hermes.md#building-from-research), Hermes can build with
   Claude Code and tell you when it is done.
 
 ### Changed

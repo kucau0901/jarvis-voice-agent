@@ -70,7 +70,9 @@ enough) or run it yourself with **Docker**.
   AI cost. Said aloud or set up in the **routines** panel; run by the server,
   so no screen has to be open.
 - **Your own agents** — any MCP server, and optionally a
-  [Hermes](https://github.com/NousResearch/hermes-agent) agent at home.
+  [Hermes](https://github.com/NousResearch/hermes-agent) agent at home, which
+  can also build what research found and deploy it.
+  [Hermes guide](docs/hermes.md).
 - **Smart glasses** — on Even Realities G2, say *"Hi Even"* and ask: Jarvis
   takes the place of the glasses' built-in assistant, so there is no app to
   open, hands-free. Unlike an agent such as OpenClaw or Hermes connected
