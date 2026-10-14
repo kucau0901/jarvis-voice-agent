@@ -40,9 +40,10 @@ enough) or run it yourself with **Docker**.
 - **Three ways to talk** — *Live* is GPT‑Live, a real conversation at $0.05 a
   minute while it is open. *Push‑to‑talk* is one question at a time:
   transcribed, answered by the same router with the same tools, and spoken
-  back, for a fraction of a cent a question. *Type* is a chat, for noisy or
+  back, for a fraction of a cent a question. The *Chat* tab is for noisy or
   quiet places: answers are written to be read, with exact figures and links,
-  and cost the least of all. Chosen per screen under the orb, one conversation
+  and cost the least of all. Live or push-to-talk is chosen per screen under
+  the orb, in the *Jarvis* tab; one conversation
   across all three — and across your devices: ask in the car, and "what was
   that address again?" works on the phone or the glasses for half an hour.
   Hearing and speaking can use OpenAI, Cloudflare Workers AI, or the device

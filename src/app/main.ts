@@ -1015,6 +1015,15 @@ let mode: Mode = (() => {
     return "live";
   }
 })();
+/** How the Jarvis tab talks, kept apart from the tab: back from Chat, push-to-talk never turns into Live, which bills. */
+const VOICE_KEY = "jarvis.voiceMode";
+let voice: Mode = mode !== "type" ? mode : (() => {
+  try {
+    return localStorage.getItem(VOICE_KEY) === "ptt" ? "ptt" : "live";
+  } catch {
+    return "live";
+  }
+})();
 let ptt: PushToTalk | null = null;
 
 function pushToTalk(): PushToTalk {
@@ -1042,8 +1051,10 @@ function pushToTalk(): PushToTalk {
 
 function setMode(m: Mode) {
   mode = m;
+  if (m !== "type") voice = m;
   try {
     localStorage.setItem(MODE_KEY, m);
+    localStorage.setItem(VOICE_KEY, voice);
   } catch {
     // private mode: this screen forgets, which is harmless
   }
@@ -1051,13 +1062,15 @@ function setMode(m: Mode) {
     b.classList.toggle("on", b.dataset.mode === m);
     b.setAttribute("aria-pressed", String(b.dataset.mode === m));
   }
+  for (const b of document.querySelectorAll<HTMLButtonElement>("#tabs button")) {
+    b.setAttribute("aria-pressed", String((b.dataset.tab === "chat") === (m === "type")));
+  }
   document.body.classList.toggle("typing", m === "type");
   // Switching away from a live session ends it: it is the thing that bills.
   if (m !== "live" && (session || userWantsSession)) void toggle();
   if (m === "type") {
     ptt?.stop();
-    status(key ? "type a message" : "");
-    els.hint.textContent = "or tap the orb to ask aloud";
+    status("");
     // A keyboard only where one is not a screen-full of glass.
     if (!matchMedia("(pointer: coarse)").matches) typed.focus();
   } else if (m === "ptt") {
@@ -1072,6 +1085,13 @@ function setMode(m: Mode) {
 
 for (const b of document.querySelectorAll<HTMLButtonElement>("#modes button")) {
   b.addEventListener("click", () => setMode(asMode(b.dataset.mode)));
+}
+// Jarvis talks, in the way last chosen on this screen; Chat types.
+for (const b of document.querySelectorAll<HTMLButtonElement>("#tabs button")) {
+  b.addEventListener("click", () => {
+    const chat = b.dataset.tab === "chat";
+    if (chat !== (mode === "type")) setMode(chat ? "type" : voice);
+  });
 }
 
 els.orb.addEventListener("click", () => {
@@ -1160,7 +1180,7 @@ async function sendTyped() {
   typedAbort = null;
   sendBtn.disabled = false;
   thinking = false;
-  if (mode === "type") status("type a message");
+  if (mode === "type") status("");
 }
 
 /** The box grows with what is typed, up to a limit. */

@@ -658,15 +658,17 @@ Deepgram Aura 2 at $0.03 per 1,000 characters, about $0.025 a minute against
 OpenAI's $0.015 (27 Sep 2026), once the small free allowance is used. Nothing automatic ever opens a GPT-Live session; the
 choice is made per screen, and switching to push-to-talk ends a live session.
 
-**Type** is the third way: a chat, for a noisy room or a quiet one. The
-conversation goes to the router as text and the answer comes back as text
+**Chat**, the tab beside the orb's, is the third way: for a noisy room or a
+quiet one. The conversation goes to the router as text and the answer comes back as text
 (`src/app/chat.ts`), so there is no speech either way and it is the cheapest of
 the three — about $0.0005 a question on Luna. The router is told the answer is
 read, not heard (`CHAT_INSTRUCTIONS`), so it can carry what a voice cannot:
 exact figures, a number to copy, a link, a short list, in light markdown that
 the app renders as text and elements, never HTML. All three modes share one
-history, so a typed question can be followed by a spoken one; in Type mode the
-orb still takes a single spoken question.
+history, so a typed question can be followed by a spoken one; in Chat the
+orb, small in the corner, still takes a single spoken question. Coming back to
+the Jarvis tab returns to the way it last talked on that screen, so a
+push-to-talk screen never comes back as Live.
 
 **The router has to be Jarvis.** With GPT-Live, the live voice re-says what
 the router found in its own words and manner. Push-to-talk has nothing in

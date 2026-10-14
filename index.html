@@ -34,6 +34,13 @@
     --seg-on: #393c41;
     --danger: #ed4e3b; --ok: #12bb00; --warn: #fbb01b;
     --bubble: rgba(34,34,34,.85); --bubble-you: rgba(255,255,255,.12);
+    /* Glass, as Hark has it: a translucent surface over a blurred page. The
+       backdrop is two soft gradients, so the blur has something to show. */
+    --glass: rgba(34,34,34,.62); --glass-hi: rgba(34,34,34,.72); --blur: blur(40px) saturate(1.4);
+    --solid: #eeeeee; --on-solid: #171a20;
+    --backdrop: radial-gradient(120% 90% at 12% -20%, rgba(62,106,225,.22), transparent 55%),
+      radial-gradient(100% 80% at 105% 110%, rgba(57,60,65,.55), transparent 60%), #000000;
+    --barTop: calc(12px + env(safe-area-inset-top));
   }
   :root[data-theme="light"] {
     color-scheme: light;
@@ -46,6 +53,10 @@
     --seg-on: #ffffff;
     --danger: #b74134; --ok: #02b028; --warn: #fbb01b;
     --bubble: rgba(255,255,255,.98); --bubble-you: rgba(23,26,32,.07);
+    --glass: rgba(255,255,255,.55); --glass-hi: rgba(255,255,255,.668);
+    --solid: #171a20; --on-solid: #ffffff;
+    --backdrop: radial-gradient(120% 90% at 12% -20%, rgba(62,106,225,.14), transparent 55%),
+      radial-gradient(100% 80% at 105% 110%, rgba(208,209,210,.9), transparent 60%), #f4f4f4;
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--fg);
@@ -54,10 +65,26 @@
   /* dvh, because a phone's toolbar collapses and 100% then crops the orb.
      Harmless in the car, which has no such toolbar. */
   body { height: 100dvh; display: flex; flex-direction: column; align-items: center;
-    justify-content: center; gap: 22px; padding: 20px; }
+    justify-content: center; gap: 22px; padding: calc(var(--barTop) + 56px) 20px 20px;
+    background: var(--backdrop); }
 
-  h1 { position: fixed; top: 18px; left: 22px; margin: 0; font-size: 15px;
-    font-weight: 400; letter-spacing: 6px; color: var(--dim); }
+  h1 { position: fixed; top: calc(var(--barTop) + 14px); left: 22px; margin: 0; font-size: 15px;
+    font-weight: 400; letter-spacing: 6px; color: var(--dim);
+    max-width: calc(50vw - 140px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* Jarvis | Chat, Hark's pill switcher: the sliding pill marks the one in use.
+     Under the sign-in screen (50), over the page; hidden while a picture is up. */
+  #tabs { position: fixed; z-index: 49; top: calc(var(--barTop) + 2px); left: 50%; transform: translateX(-50%);
+    display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; padding: 2px; border-radius: 999px;
+    background: var(--glass); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); }
+  #tabs .pill { position: absolute; top: 2px; bottom: 2px; left: 2px; width: calc((100% - 4px) / 2);
+    border-radius: 999px; background: var(--solid); transition: transform .25s cubic-bezier(.22,.9,.28,1); }
+  body.typing #tabs .pill { transform: translateX(100%); }
+  #tabs button { position: relative; min-height: 44px; padding: 0 22px; border: 0; background: none;
+    font: inherit; font-size: 15px; font-weight: 500; color: var(--fg); opacity: .5; cursor: pointer;
+    transition: color .15s, opacity .15s; }
+  #tabs button[aria-pressed="true"] { color: var(--on-solid); opacity: 1; }
+  body.staged:not(.typing) #tabs { display: none; }
 
   /* The orb is the only control, and it is used while driving: the hit area is
      sized generously and explicitly, because this browser now reports
@@ -174,9 +201,10 @@
 
   /* Focus: while talking to Jarvis, everything but the orb, the status and the
      words fades away. A tap on empty space brings it back for a few seconds. */
-  h1, #menuBtn, #talkrow { transition: opacity .35s ease; }
+  h1, #menuBtn, #talkrow, #tabs { transition: opacity .35s ease; }
   body.focus:not(.peek) h1,
   body.focus:not(.peek) #menuBtn,
+  body.focus:not(.peek) #tabs,
   body.focus:not(.peek) #talkrow { opacity: 0; pointer-events: none; }
 
   #orbCanvas { position: absolute; inset: -22%; width: 144%; height: 144%;
@@ -438,10 +466,10 @@
      wide — so this keys on orientation as well as width, and both of the car's
      layouts are left exactly as they were. */
   @media (max-width: 620px) and (orientation: portrait) {
-    h1 { top: calc(12px + env(safe-area-inset-top));
-         left: calc(16px + env(safe-area-inset-left));
-         font-size: 13px; letter-spacing: 4px; }
-    /* Room for the menu button above and the home indicator below. */
+    /* No room for the name beside the tabs, and a phone is one person's anyway:
+       switching who is using a shared screen is for the car or a tablet. */
+    h1 { display: none; }
+    /* Room for the tabs above and the home indicator below. */
     body { gap: 16px;
            padding: 74px 16px calc(20px + env(safe-area-inset-bottom)); }
     #orbWrap { --w: min(60vw, 40vh); width: var(--w);
@@ -462,31 +490,31 @@
     #status { font-size: 19px; }
   }
 
-  /* Live or push-to-talk, per screen. Out of the way while a picture is up. */
-  #modes { position: relative; z-index: 2; display: flex; gap: 0; border: 1px solid var(--hair);
-    border-radius: 999px; overflow: hidden; }
-  #modes button { background: transparent; color: var(--dim); border: 0; padding: 10px 16px;
+  /* Live or push-to-talk, per screen, under the orb: Tesla's segmented control,
+     a raised pill on a sunken track. Out of the way while a picture is up. */
+  #modes { position: relative; z-index: 2; display: flex; gap: 0; padding: 2px; border-radius: 999px;
+    background: var(--wash); }
+  #modes button { background: transparent; color: var(--dim); border: 0; border-radius: 999px; padding: 10px 18px;
     min-height: 40px; font: inherit; font-size: 13px; cursor: pointer; }
-  #modes button.on { background: var(--seg-on); color: var(--fg); }
+  #modes button.on { background: var(--seg-on); color: var(--fg); box-shadow: 0 1px 3px rgba(0,0,0,.12); }
   body.staged #talkrow { display: none; }
   #talkrow { position: relative; z-index: 2; display: flex; gap: 10px; align-items: center; }
 
-  /* Type: a chat. The orb steps into the corner, the conversation fills the
-     screen, and a message box sits at the bottom. */
+  /* The Chat tab: the orb steps into the corner, still alive and still the
+     way to ask aloud; the conversation fills the screen, a message box sits at
+     the bottom, and what Jarvis is doing is a caption just above it. */
   #typebar { display: none; }
   /* --kb is the height the on-screen keyboard takes where the browser does not
      shrink the page for it (Safari); 0 elsewhere. See keyboardSpace() in main.ts. */
-  body.typing { justify-content: flex-start; gap: 12px; --orb: clamp(48px, 9vmin, 72px);
+  body.typing { justify-content: flex-start; gap: 12px; --orb: 40px;
     height: calc(100dvh - var(--kb, 0px));
-    padding: calc(var(--orb) + 26px) 16px calc(88px + env(safe-area-inset-bottom)); }
-  body.typing h1 { display: none; }
-  body.typing #orbWrap { position: fixed; top: 10px; left: 12px; z-index: 3; width: var(--orb); margin: 0; }
-  body.typing #status, body.typing #hint { position: fixed; z-index: 3; text-align: left;
-    left: calc(var(--orb) * 1.44 + 18px); max-width: calc(100vw - var(--orb) * 1.44 - 100px);
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  body.typing #status { top: calc(10px + var(--orb) / 2 - 12px); font-size: 15px; }
-  body.typing #hint { top: calc(10px + var(--orb) / 2 + 10px); font-size: 11px; }
-  body.typing #transcript { flex: 1; min-height: 0; max-height: none; width: min(820px, 100%);
+    padding: calc(var(--barTop) + 64px) 16px calc(112px + env(safe-area-inset-bottom)); }
+  body.typing h1, body.typing #hint, body.typing #talkrow { display: none; }
+  body.typing #orbWrap { position: fixed; top: calc(var(--barTop) + 6px); left: 18px; z-index: 3; width: var(--orb); margin: 0; }
+  body.typing #status { position: fixed; z-index: 20; left: 16px; right: 16px;
+    bottom: calc(var(--kb, 0px) + 80px + env(safe-area-inset-bottom)); min-height: 0;
+    font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  body.typing #transcript { flex: 1; min-height: 0; max-height: none; width: min(720px, 100%);
     padding-bottom: 8px; }
   body.typing #transcript .row { font-size: 16px; }
   body.typing #transcript .row .txt { white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -642,6 +670,12 @@
     <button id="toggleLog" type="button" role="menuitem">Events</button>
   </div>
 
+  <div id="tabs" role="group" aria-label="View">
+    <span class="pill" aria-hidden="true"></span>
+    <button type="button" data-tab="jarvis" aria-pressed="true">Jarvis</button>
+    <button type="button" data-tab="chat" aria-pressed="false">Chat</button>
+  </div>
+
   <div id="orbWrap">
     <canvas id="orbCanvas" aria-hidden="true"></canvas>
     <button id="orb" class="orb" aria-label="Start or stop Jarvis"></button>
@@ -652,7 +686,6 @@
     <div id="modes" role="group" aria-label="How to talk">
       <button type="button" data-mode="live">Live</button>
       <button type="button" data-mode="ptt">Push-to-talk</button>
-      <button type="button" data-mode="type">Type</button>
     </div>
   </div>
   <div id="transcript"></div>
