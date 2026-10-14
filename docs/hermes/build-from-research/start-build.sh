@@ -102,14 +102,16 @@ if not stat.S_ISREG(os.fstat(fd).st_mode):
     sys.exit("not a plain file")
 with os.fdopen(fd, "rb") as src, open(sys.argv[2], "wb") as dst:
     shutil.copyfileobj(src, dst)' "$deck" "$copy" 2>>build.log; then
-      "$here/report-back.sh" "Built, no deck: $name" "Claude Code finished, but there is no $name.pptx in $dir to put in Drive. It said: $said"
+      title="Built, no deck: $name" text="Claude Code finished, but there is no $name.pptx in $dir to put in Drive. It said: $said"
     elif out="$(gog --json --no-input drive upload "$copy" 2>>build.log)" &&
         link="$(printf '%s' "$out" | python3 -c 'import json, sys; print(json.load(sys.stdin)["file"]["webViewLink"])' 2>>build.log)"; then
-      "$here/report-back.sh" "On Drive: $name" "$link Claude Code said: $said"
+      title="On Drive: $name" text="$link Claude Code said: $said"
     else
-      "$here/report-back.sh" "Built, not uploaded: $name" "The deck is $deck, but putting it in Google Drive failed: $(tail -n 1 build.log)"
+      title="Built, not uploaded: $name" text="The deck is $deck, but putting it in Google Drive failed: $(tail -n 1 build.log)"
     fi
+    # Gone before the report: once it is sent, nothing of the upload is left behind.
     rm -f "$copy"
+    "$here/report-back.sh" "$title" "$text"
   elif [ -z "$deploy" ]; then
     "$here/report-back.sh" "Build done: $name" "It is in $dir. Claude Code said: $said"
   elif url="$("$here/deploy-site.sh" "$name" 2>>build.log)"; then
