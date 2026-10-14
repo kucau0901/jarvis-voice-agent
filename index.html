@@ -14,10 +14,15 @@
 <meta name="apple-mobile-web-app-title" content="Jarvis">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="mobile-web-app-capable" content="yes">
+<!-- Paints the theme last shown before the first frame, so a daytime reload does not flash
+     black. It holds no rule of its own: src/app/theme.ts decides, and corrects it at once. -->
+<script>try{if(localStorage.getItem("jarvis.themeShown")==="light")document.documentElement.dataset.theme="light"}catch(e){}</script>
 <style>
-  /* Force dark: Chromium 148 in the car can report prefers-color-scheme: light,
-     and this is a screen used at night. Tesla's own colours (its design
-     system's greys and blue), so the app looks at home on the car's screen. */
+  /* Tesla's own colours (its design system's greys and blue), so the app looks
+     at home on the car's screen. Dark here, light below, chosen per screen by
+     src/app/theme.ts: Auto by the clock is the default rather than the system
+     setting, because Chromium 148 in the car can report prefers-color-scheme:
+     light at night. Dark is also what shows before any script has run. */
   :root {
     color-scheme: dark;
     --bg: #000000; --surface: #222222; --surface-2: #393c41;
@@ -29,6 +34,18 @@
     --seg-on: #393c41;
     --danger: #ed4e3b; --ok: #12bb00; --warn: #fbb01b;
     --bubble: rgba(34,34,34,.85); --bubble-you: rgba(255,255,255,.12);
+  }
+  :root[data-theme="light"] {
+    color-scheme: light;
+    --bg: #f4f4f4; --surface: #ffffff; --surface-2: #eeeeee;
+    --field: rgba(23,26,32,.05); --wash: rgba(23,26,32,.05); --tile: rgba(255,255,255,.6);
+    --fg: #171a20; --dim: #5c5e62; --faint: #8e8e8e;
+    --line: #d0d1d2; --hair: rgba(23,26,32,.10);
+    --scrim: rgba(244,244,244,.6); --shadow: 0 12px 40px rgba(23,26,32,.12);
+    --accent: #3e6ae1; --accent-ink: #3e6ae1; --on-accent: #ffffff;
+    --seg-on: #ffffff;
+    --danger: #b74134; --ok: #02b028; --warn: #fbb01b;
+    --bubble: rgba(255,255,255,.98); --bubble-you: rgba(23,26,32,.07);
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--fg);
@@ -597,6 +614,16 @@
   .panel .hookhelp summary { cursor: pointer; }
   .panel .hookhelp pre { background: var(--field); border: 1px solid var(--line); border-radius: 8px; padding: 10px;
     font: 12px/1.5 ui-monospace, Menlo, monospace; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--fg); }
+
+  /* Theme (src/app/ui/ThemePanel.ts): one choice of four, a ring marking it. */
+  .panel .navcard { display: grid; gap: 6px; margin-top: 12px; }
+  .panel .navcard [role=radio] { display: grid; grid-template-columns: minmax(0, 1fr) 22px; align-items: center;
+    column-gap: 12px; row-gap: 2px; text-align: left; padding: 12px 16px; min-height: 56px; font-size: 16px; }
+  .panel .navcard [role=radio] > * { grid-column: 1; }
+  .panel .navcard [role=radio] small { color: var(--dim); font-size: 13px; }
+  .panel .navcard [role=radio]::after { content: ""; grid-column: 2; grid-row: 1 / span 2; width: 22px; height: 22px;
+    border-radius: 50%; border: 2px solid var(--faint); }
+  .panel .navcard [role=radio][aria-checked="true"]::after { border: 7px solid var(--accent); }
 </style>
 </head>
 <body>
@@ -611,6 +638,7 @@
     <button id="openFamily" type="button" role="menuitem">Family</button>
     <button id="openDevices" type="button" role="menuitem" data-need="ask">Devices</button>
     <button id="openSettings" type="button" role="menuitem" data-need="admin">Settings</button>
+    <button id="openTheme" type="button" role="menuitem">Theme</button>
     <button id="toggleLog" type="button" role="menuitem">Events</button>
   </div>
 

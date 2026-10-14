@@ -99,7 +99,7 @@ void main() {
 export const CORE_FRAG = /* glsl */ `
 precision highp float;
 ${SIMPLEX}
-uniform float uTime, uUser, uAgent, uThink, uError, uVeinQuality;
+uniform float uTime, uUser, uAgent, uThink, uError, uVeinQuality, uFloor, uTone;
 uniform vec3 uIdle, uSpeak, uListen;
 varying vec3 vNormal, vView, vPos;
 varying float vRidge, vDisp;
@@ -147,7 +147,8 @@ void main() {
 
   // Enough diffuse to keep the terminator and the sense of volume, but well
   // short of matte: this is a light source, not a painted ball.
-  vec3 lit   = base * (0.04 + wrap * 0.20 + diff * 0.14);
+  // uFloor lifts the shadow side on a light page, where near-black reads as a hole.
+  vec3 lit   = base * (uFloor + wrap * 0.20 + diff * 0.14);
   vec3 hi    = mix(vec3(1.0), base + 0.5, 0.3) * spec * (1.0 + act * 0.8);
 
   // The emissive half. A hot limb plus a deep inner glow is what reads as
@@ -178,7 +179,8 @@ void main() {
   vec3 vein = mix(base, vec3(1.0), 0.4) * veins * (0.4 + travel * 0.5) * (0.5 + act * 1.5);
 
   vec3 col = lit + rim + bloom + hi + vein + inner;
-  col = col / (col + vec3(0.7));
+  // uTone: how hard bright light is compressed. Softer on a light page, so the orb reads lit rather than murky.
+  col = col / (col + vec3(uTone));
   gl_FragColor = vec4(col, 1.0);
 }`;
 

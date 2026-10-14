@@ -11,10 +11,16 @@ interface OrbInputs {
 /** Depth of the halo quad, behind the orb. */
 const HALO_Z = -0.9;
 
-const PALETTE = {
-  idle: new THREE.Color("#3eade1"),
-  listen: new THREE.Color("#3368ff"),
-  speak: new THREE.Color("#fbb01b"),
+/**
+ * Tesla's teal at rest, its bright blue while you talk, amber while Jarvis
+ * speaks. On a light page additive light composites to white and vanishes, so
+ * the glow is blended normally there, the core's shadow side is lifted (floor)
+ * and its light compressed less (tone) so it reads lit rather than murky, and
+ * amber gives way to Tesla's orange.
+ */
+const LOOKS = {
+  dark: { idle: "#3eade1", listen: "#3368ff", speak: "#fbb01b", floor: 0.04, tone: 0.7, blend: THREE.AdditiveBlending },
+  light: { idle: "#3eade1", listen: "#3368ff", speak: "#f29137", floor: 0.5, tone: 0.3, blend: THREE.NormalBlending },
 };
 
 /**
@@ -44,6 +50,7 @@ export class Orb {
   private running = false;
   private observer: ResizeObserver | null = null;
   private resizePending = 0;
+  private blend: THREE.Blending = LOOKS.dark.blend;
 
   /** 0 = lowest, 2 = highest. Starts in the middle and settles by measurement. */
   tier = 1;
@@ -69,9 +76,11 @@ export class Orb {
       uAgent: { value: 0 },
       uThink: { value: 0 },
       uError: { value: 0 },
-      uIdle: { value: PALETTE.idle },
-      uListen: { value: PALETTE.listen },
-      uSpeak: { value: PALETTE.speak },
+      uIdle: { value: new THREE.Color(LOOKS.dark.idle) },
+      uListen: { value: new THREE.Color(LOOKS.dark.listen) },
+      uSpeak: { value: new THREE.Color(LOOKS.dark.speak) },
+      uFloor: { value: LOOKS.dark.floor },
+      uTone: { value: LOOKS.dark.tone },
       uSize: { value: 1.5 },
       uVeinQuality: { value: 1 },
       uAspect: { value: 1 },
@@ -115,7 +124,7 @@ export class Orb {
         vertexShader: HALO_VERT,
         fragmentShader: HALO_FRAG,
         transparent: true,
-        blending: THREE.AdditiveBlending,
+        blending: this.blend,
         depthWrite: false,
         depthTest: false,
       }),
@@ -155,7 +164,7 @@ export class Orb {
         vertexShader: SHELL_VERT,
         fragmentShader: SHELL_FRAG,
         transparent: true,
-        blending: THREE.AdditiveBlending,
+        blending: this.blend,
         depthWrite: false,
       }),
     );
@@ -185,6 +194,19 @@ export class Orb {
     const height = 2 * dist * Math.tan((this.camera.fov * Math.PI) / 360);
     this.halo?.scale.set(height * aspect, height, 1);
     this.uniforms.uAspect!.value = aspect;
+  }
+
+  /** The page went light or dark. The shell is rebuilt by the quality tuner, so it reads `blend` too. */
+  setTheme(light: boolean) {
+    const look = light ? LOOKS.light : LOOKS.dark;
+    (this.uniforms.uIdle!.value as THREE.Color).set(look.idle);
+    (this.uniforms.uListen!.value as THREE.Color).set(look.listen);
+    (this.uniforms.uSpeak!.value as THREE.Color).set(look.speak);
+    this.uniforms.uFloor!.value = look.floor;
+    this.uniforms.uTone!.value = look.tone;
+    this.blend = look.blend;
+    (this.halo.material as THREE.ShaderMaterial).blending = look.blend;
+    (this.shell.material as THREE.ShaderMaterial).blending = look.blend;
   }
 
   private inputs: OrbInputs = { user: 0, agent: 0, think: 0, error: 0 };

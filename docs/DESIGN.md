@@ -257,6 +257,30 @@ driving visualisation when moving. The layout scales rather than switching at a
 breakpoint — the orb, the type and the panel all derive from `vmin` — so it also
 survives Tesla changing that split.
 
+### The look
+
+The colours are Tesla's own, from its design system's greys and blue, so the
+app looks at home on the car's screen. They are custom properties in
+`index.html`: dark in `:root`, light under `[data-theme="light"]`. Nothing else
+in the style block names a colour, apart from the white behind a QR code and
+the caption over a photo.
+
+Light or dark is chosen per screen (menu → **Theme**, `src/app/theme.ts`), so
+the car and a phone in the same family can differ. **Auto**, the default, is
+light from 07:00 to 19:00 by the screen's own clock. It is not the system
+setting, because Chromium 148 in the car can report
+`prefers-color-scheme: light` at night, and a white screen after dark is the
+last thing a driver wants. System is offered for a phone or a laptop that
+reports it properly.
+
+A module script runs after the first paint, so one line in `<head>` paints the
+theme the screen last showed, and `theme.ts` corrects it at once. That line
+holds no rule of its own; without it every daytime reload flashed black.
+
+On a light page the orb's additive glow composites to white and vanishes, so
+in light it blends normally, its shadow side is lifted and its light is
+compressed less: it reads as a lit glass ball rather than a dark hole.
+
 ## Getting somewhere
 
 `directions` answers "how long to get home" using the Routes API — chosen over the

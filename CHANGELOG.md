@@ -19,6 +19,10 @@ of every release, and in the [README](README.md#updating).
 
 ### Added
 
+- **Light and dark, per screen.** Menu → **Theme**: Auto, the default, is
+  light by day and dark at night (07:00–19:00, by the screen's clock), because
+  the car's browser can report the wrong system setting. Or System, Dark or
+  Light. Each screen keeps its own, so the car and a phone can differ.
 - **Watching a camera for a few seconds.** Ask "is that car pulling in or
   out?" or "is someone coming to the door or leaving?", and Jarvis takes three
   pictures a few seconds apart and answers from what changed between them.

@@ -6,10 +6,12 @@ import { Devices } from "./ui/Devices";
 import { Memory } from "./ui/Memory";
 import { Routines } from "./ui/Routines";
 import { Jobs } from "./ui/Jobs";
+import { ThemePanel } from "./ui/ThemePanel";
 import { Stage, type DisplayPayload } from "./ui/Stage";
 import { Orb } from "./orb/Orb";
 import { VoiceLevels } from "./audio";
 import { closeIn, QUIET_MS, WORKING_MS } from "./quiet";
+import { watchTheme } from "./theme";
 import { runDelegation } from "./delegate";
 import { LiveLink, releasePush, speakAlert, speakHere, speakText, syncPush, type Alert } from "./alerts";
 import { askTyped } from "./chat";
@@ -155,6 +157,7 @@ try {
   console.warn("orb unavailable:", e);
 }
 addEventListener("resize", () => orb?.resize());
+watchTheme((t) => orb?.setTheme(t === "light"));
 
 let thinking = false;
 /** When the Live session was last spoken in, for armIdle below (performance.now(): a clock change must not move it). */
@@ -990,6 +993,10 @@ $("openDevices").addEventListener("click", () => {
   devices ??= new Devices(key);
   void devices.show();
 });
+
+// Needs no key: it changes nothing but this screen.
+let theme: ThemePanel | null = null;
+$("openTheme").addEventListener("click", () => (theme ??= new ThemePanel()).show());
 
 /* ---------- two ways to talk ----------------------------------------------- */
 /*

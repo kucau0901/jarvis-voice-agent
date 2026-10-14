@@ -23,7 +23,7 @@ import { join } from "node:path";
 const [BASE, TOKENS, OUT] = process.argv.slice(2);
 const CHROME = process.env.CHROME ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const PORT = Number(process.env.CHROME_PORT ?? 9333);
-const PANELS = ["openFamily", "openMemory", "openRoutines", "openJobs", "openChat", "openDevices", "openSettings"];
+const PANELS = ["openFamily", "openMemory", "openRoutines", "openJobs", "openChat", "openDevices", "openSettings", "openTheme"];
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const profile = mkdtempSync(join(tmpdir(), "jarvis-chrome-"));
@@ -126,7 +126,7 @@ const seen = {};
 for (const [person, token] of Object.entries(tokens)) {
   await send("Page.navigate", { url: BASE });
   await sleep(1500);
-  await js(`localStorage.clear(); sessionStorage.clear(); localStorage.setItem("jarvis.key", ${JSON.stringify(token)}); true`);
+  await js(`localStorage.clear(); sessionStorage.clear(); localStorage.setItem("jarvis.key", ${JSON.stringify(token)}); localStorage.setItem("jarvis.theme", "dark"); true`);
   await send("Page.navigate", { url: BASE });
   await sleep(3500);
   const out = {};
