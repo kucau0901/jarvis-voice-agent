@@ -132,6 +132,7 @@
     --i-gauge: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 17a8 8 0 1 1 16 0M12 17l4-5'/%3E%3C/svg%3E");
     --i-cloud: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M7 19h10a4 4 0 0 0 .4-8 5.5 5.5 0 0 0-10.7 1.4A3.3 3.3 0 0 0 7 19z'/%3E%3C/svg%3E");
     --i-more: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12h.01M12 12h.01M19 12h.01' stroke-width='3'/%3E%3C/svg%3E");
+    --i-shield: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3 5 6v5c0 4.5 3 8.3 7 10 4-1.7 7-5.5 7-10V6z'/%3E%3C/svg%3E");
     --i-refresh: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 12a8 8 0 1 1-2.3-5.7M20 4v4h-4'/%3E%3C/svg%3E");
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -861,21 +862,26 @@
   #home .hmenu .hremove { --icon: var(--i-trash); color: var(--danger); }
   #home .hmenu .hremove.armed { background: var(--danger); color: var(--on-accent); }
   #home .hgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(152px, 1fr)); grid-auto-flow: row dense; gap: 10px; }
-  #home .htile { --tint: var(--warn); display: flex; flex-direction: column; min-width: 0; padding: 12px;
+  #home .htile { --tint: var(--warn); --on-tint: var(--fg); display: flex; flex-direction: column; min-width: 0; padding: 12px;
     border-radius: 18px; background: var(--tile); transition: background .25s; }
   @media (min-width: 360px) { #home .htile.wide { grid-column: span 2; } }
   /* The usage is a strip of its own, its figures side by side, so the tiles beside it keep their height. */
   #home .htile.usage { grid-column: 1 / -1; }
   #home .htile.active { background: color-mix(in srgb, var(--tint) 10%, var(--tile)); }
   #home .htile:is([data-icon=gate], [data-icon=garage], [data-icon=door], [data-icon=window], [data-icon=blind],
-    [data-icon=unlock], [data-icon=climate], [data-icon=motion], [data-icon=music]) { --tint: var(--accent-ink); }
-  #home .htile:is([data-icon=car], [data-icon=bolt]) { --tint: var(--ok); }
+    [data-icon=unlock], [data-icon=climate], [data-icon=motion], [data-icon=music]) { --tint: var(--accent-ink); --on-tint: var(--on-accent); }
+  #home .htile:is([data-icon=car], [data-icon=bolt], [data-icon=alarm]) { --tint: var(--ok); --on-tint: var(--on-accent); }
+  #home .htile[data-icon=alert] { --tint: var(--danger); --on-tint: var(--on-accent); }
   #home .htop { display: flex; align-items: center; gap: 10px; }
   #home .htext { flex: 1; min-width: 0; display: grid; gap: 1px; }
   #home .hic { flex: none; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%;
     background: var(--wash); color: var(--dim); transition: background .25s, color .25s; }
   #home .hic::before { width: 22px; height: 22px; }
   #home .htile.active .hic { background: color-mix(in srgb, var(--tint) 22%, transparent); color: var(--tint); }
+  /* On a light page a pale tint washes out (amber on white most of all): the disc is filled with the
+     colour, its icon dark on amber and white on the rest, and the tile is tinted over white, not grey. */
+  :root[data-theme="light"] #home .htile.active { background: color-mix(in srgb, var(--tint) 12%, var(--surface)); }
+  :root[data-theme="light"] #home .htile.active .hic { background: var(--tint); color: var(--on-tint); }
   #home .hhead .hic { width: 32px; height: 32px; background: var(--accent); color: var(--on-accent); }
   #home .hhead .hic::before { width: 18px; height: 18px; }
   #home .hbadge { flex: none; align-self: flex-start; color: var(--dim); font-size: 15px; font-weight: 500; font-variant-numeric: tabular-nums; }
@@ -907,6 +913,7 @@
   #home [data-icon=sensor] { --icon: var(--i-gauge); } #home [data-icon=weather] { --icon: var(--i-cloud); }
   #home [data-icon=music] { --icon: var(--i-music); } #home [data-icon=car] { --icon: var(--i-car); }
   #home [data-icon=usage] { --icon: var(--i-bars); } #home [data-icon=note] { --icon: var(--i-note); }
+  #home [data-icon=alarm] { --icon: var(--i-shield); } #home [data-icon=alert] { --icon: var(--i-bell); }
   #home .hclock { display: grid; margin-top: 6vh; font-size: clamp(40px, 8vmin, 64px); line-height: 1.08; }
   #home .hnote { margin: 4px 0 12px; color: var(--dim); font-size: 15px; line-height: 1.45; max-width: 460px; }
 

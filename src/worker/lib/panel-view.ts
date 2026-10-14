@@ -135,6 +135,8 @@ export function houseIcon(entity: string, state: string, a: Record<string, unkno
       return "music";
     case "weather":
       return "weather";
+    case "alarm_control_panel":
+      return state === "triggered" ? "alert" : "alarm";
     case "binary_sensor":
       return dc === "garage_door" ? "garage" : dc === "door" || dc === "opening" ? "door" : dc === "window" ? "window"
         : dc === "motion" || dc === "occupancy" || dc === "presence" ? "motion" : dc === "moisture" ? "drop" : "sensor";
@@ -148,7 +150,7 @@ export function houseIcon(entity: string, state: string, a: Record<string, unkno
   }
 }
 
-/** Whether it is doing its thing now — lit, open, unlocked, running — for its tile to be drawn in colour. */
+/** Whether it is doing its thing now — lit, open, unlocked, running, armed — for its tile to be drawn in colour. */
 export function houseActive(entity: string, state: string): boolean {
   switch (entity.split(".")[0]) {
     case "cover":
@@ -159,6 +161,8 @@ export function houseActive(entity: string, state: string): boolean {
       return state !== "off" && state !== "unavailable" && state !== "unknown";
     case "media_player":
       return state === "playing";
+    case "alarm_control_panel":
+      return state.startsWith("armed") || state === "arming" || state === "pending" || state === "triggered";
     default:
       return state === "on";
   }

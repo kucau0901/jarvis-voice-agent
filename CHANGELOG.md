@@ -28,7 +28,7 @@ of every release, and in the [README](README.md#updating).
   and are checked again before anything is sent. A room's lights can be one
   row with All on and All off; a panel holds up to 20 things. Guests have no
   Home tab. Each thing is a tile with an icon, lit in colour while it is on,
-  open, unlocked or charging; a car shows its battery and range, then its
+  open, unlocked, charging or armed; a car shows its battery and range, then its
   locks, climate and charging, each with its own button. Big panels run
   across the page and smaller ones sit side by side in columns. A panel folds
   to its title, and its … menu reloads or removes it.

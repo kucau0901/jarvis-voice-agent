@@ -337,14 +337,16 @@ Home Controls", "a to-do panel with renew the road tax" (`panel_set`,
   chat; Jarvis's Home tab has the whole screen, so a panel is a card of
   tiles, each thing with an icon (from Home Assistant's device class, else its
   name, since a gate is often a cover or a button with none), its state, and
-  its buttons, drawn in colour while it is lit, open, unlocked or charging. A
+  its buttons, drawn in colour while it is lit, open, unlocked, charging or
+  armed (an alarm that has gone off in red). A
   car is a tile with its battery and range, then one for each of its locks,
   climate and charging, as Hark shows one. The cards keep the order they were
   made in: a big one (five tiles or more) across the page, the others in
   columns under one another — three on a wide screen, two in the car, one on
   a phone — so a new panel, or a folded one, leaves no hole. Each folds to its
   title, remembered on that screen, and its … menu reloads it or removes it
-  (two taps), as `panel_remove` does when asked.
+  (two taps), as `panel_remove` does when asked. On a light page a pale tint
+  washes out, so there the icon's disc is filled with the colour instead.
 
 ## Getting somewhere
 

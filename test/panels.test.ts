@@ -101,6 +101,12 @@ check("a switch named for a light is a light, a socket a plug, any other a power
 check("a sensor by what it senses",
   houseIcon("sensor.outside", "31", { device_class: "temperature" }) === "temp" && houseIcon("sensor.bath", "60", { device_class: "humidity" }) === "drop" &&
   houseIcon("binary_sensor.hall", "on", { device_class: "motion" }) === "motion" && houseIcon("sensor.odd", "3", {}) === "sensor");
+check("an alarm is a shield, and a bell once it has gone off",
+  houseIcon("alarm_control_panel.house", "armed_night", {}) === "alarm" && houseIcon("alarm_control_panel.house", "disarmed", {}) === "alarm" &&
+  houseIcon("alarm_control_panel.house", "triggered", {}) === "alert");
+check("…drawn in colour while armed, arming or going off, not disarmed",
+  houseActive("alarm_control_panel.house", "armed_night") && houseActive("alarm_control_panel.house", "arming") &&
+  houseActive("alarm_control_panel.house", "triggered") && !houseActive("alarm_control_panel.house", "disarmed"));
 check("lit, open, moving, unlocked or cooling is drawn in colour",
   houseActive("light.porch", "on") && houseActive("cover.main_gate", "opening") && houseActive("lock.front_door", "unlocked") && houseActive("climate.bedroom", "cool"));
 check("…and off, closed, locked or a reading is not",

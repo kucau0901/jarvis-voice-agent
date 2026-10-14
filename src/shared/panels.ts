@@ -9,7 +9,7 @@
 export type PanelIcon =
   | "gate" | "garage" | "door" | "window" | "blind" | "lock" | "unlock"
   | "light" | "power" | "plug" | "fan" | "climate" | "scene" | "play" | "press"
-  | "temp" | "drop" | "bolt" | "motion" | "sensor" | "weather" | "music"
+  | "temp" | "drop" | "bolt" | "motion" | "sensor" | "weather" | "music" | "alarm" | "alert"
   | "car" | "usage" | "note" | "dot";
 
 export interface PanelRow {
