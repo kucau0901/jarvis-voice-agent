@@ -104,7 +104,7 @@ function sources(over: Partial<PanelSources> = {}) {
     house: { base: "https://ha.example", token: "h" },
     read: async (_c, id) => (asked.reads++, house[id] ?? null),
     call: async (_c, d, s, id) => void asked.calls.push(`${d}.${s} ${id}`),
-    car: (id) => (id === "c_1" ? { cfg, car: { id: "c_1", name: "Unicorn", level: "own", mine: true, vin: "VIN1", token: "t" } } : id === "c_see" ? { cfg, car: { id: "c_see", name: "Mum's", level: "see", mine: false, vin: "VIN1", token: "t" } } : null),
+    car: (id) => (id === "c_1" ? { cfg, car: { id: "c_1", name: "Comet", level: "own", mine: true, vin: "VIN1", token: "t" } } : id === "c_see" ? { cfg, car: { id: "c_see", name: "Mum's", level: "see", mine: false, vin: "VIN1", token: "t" } } : null),
     snapshot: async () => (asked.snapshots++, { battery: 69, rangeMiles: 176, charging: "Disconnected", locked: true, climateOn: false, insideTemp: 31.4 }),
     wake: async () => void asked.woke++,
     command: async (_c, name) => (asked.commands.push(name), true),
@@ -121,7 +121,7 @@ const panel: Panel = {
   items: [
     { kind: "home", ref: "cover.main_gate", label: "Main gate" },
     { kind: "home", ref: "light.porch", label: "Porch light" },
-    { kind: "car", ref: "c_1", label: "Unicorn" },
+    { kind: "car", ref: "c_1", label: "Comet" },
     { kind: "usage", ref: "usage", label: "What you have used" },
     { kind: "note", ref: "", label: "Renew the road tax" },
   ],
@@ -225,7 +225,7 @@ console.log("the tool");
     const run = (args: Record<string, unknown>, c: never) => panelSet.run(args as never, c) as Promise<string>;
     const items = [
       { kind: "home", ref: "cover.main_gate", label: null },
-      { kind: "car", ref: null, label: "Unicorn" },
+      { kind: "car", ref: null, label: "Comet" },
       { kind: "usage", ref: null, label: null },
       { kind: "note", ref: null, label: "Renew the road tax" },
     ];
@@ -233,7 +233,7 @@ console.log("the tool");
     check("the house's own name, the car, the usage and a note go on the asker's panel",
       said.startsWith("Done") && kept[0]?.person === "u_sara" && JSON.stringify(kept[0]?.items) === JSON.stringify([
         { kind: "home", ref: "cover.main_gate", label: "Main gate" },
-        { kind: "car", ref: "family", label: "Unicorn" },
+        { kind: "car", ref: "family", label: "Comet" },
         { kind: "usage", ref: "usage", label: "What you have used" },
         { kind: "note", ref: "", label: "Renew the road tax" },
       ]), { said, kept });
