@@ -59,6 +59,15 @@ function decide(text, tools) {
   if ((m = /^every day at (\d\d:\d\d) remind (\w+) and (\w+) in turn to (.+?), (\d+) points$/i.exec(t)))
     return call("routine_add", { name: null, when: "daily", local_time: null, in_minutes: null, time: m[1], days: null, event: null, buffer_min: null, condition: null, for_minutes: null, say: m[4], ask: null, pass_to: [m[2], m[3]], pass_kind: "remind", points: +m[5], escalate: null, answer_within_minutes: null });
   if (/points/i.test(t)) return call("chore_points", {});
+  if ((m = /^put (.+) on a panel called (.+)$/i.exec(t))) {
+    // Each thing: an entity id from the house, "my car", "my usage", or else a note.
+    const items = m[1].split(/,\s*|\s+and\s+/).filter(Boolean).map((s) =>
+      /^[a-z_]+\.[a-z0-9_]+$/.test(s) ? { kind: "home", ref: s, label: null }
+        : /^my car$/i.test(s) ? { kind: "car", ref: null, label: null }
+          : /^my usage$/i.test(s) ? { kind: "usage", ref: null, label: null }
+            : { kind: "note", ref: null, label: s });
+    return call("panel_set", { title: m[2], mode: "add", items });
+  }
   if ((m = /^(?:is|where is) (.+?)(?: charged| now)?\??$/i.exec(t)) && /car/i.test(t)) return call("car_state", { what: "battery", car: /mum|sara/i.test(t) ? "Sara's car" : null });
   if (/^unlock (.+)$/i.test(t)) return call("car_command", { command: "unlock", value: null, temperature: null, percent: null, car: t.replace(/^unlock /i, "") });
   return { say: `Fake answer to: ${t}` };
@@ -154,6 +163,11 @@ const ha = http.createServer(async (req, res) => {
   if (url === "/api/states") {
     const people = Object.entries(presence).map(([entity_id, home]) => ({ entity_id, state: home ? "home" : "not_home", attributes: { friendly_name: entity_id } }));
     return send(200, [...states, ...people]);
+  }
+  const one = /^\/api\/states\/([a-z_]+\.[a-z0-9_]+)$/.exec(url);
+  if (one) {
+    const s = states.find((x) => x.entity_id === one[1]);
+    return s ? send(200, s) : send(404, { message: "Entity not found." });
   }
   const svc = /^\/api\/services\/([a-z_]+)\/([a-z_]+)$/.exec(url);
   if (svc) {

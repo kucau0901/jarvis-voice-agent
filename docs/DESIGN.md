@@ -283,7 +283,7 @@ On a light page the orb's additive glow composites to white and vanishes, so
 in light it blends normally, its shadow side is lifted and its light is
 compressed less: it reads as a lit glass ball rather than a dark hole.
 
-The layout follows Hark's: a pill switcher for the Jarvis and Chat tabs, the
+The layout follows Hark's: a pill switcher for the Jarvis, Chat and Home tabs, the
 menu as a page behind your initial, panels as full-screen pages with round
 back and close buttons, sections as rows in cards, and frosted glass over a
 blurred page — in the car too, where the orb already draws smoothly. A glass
@@ -292,6 +292,37 @@ contents), the `-webkit-` prefix is kept for iOS before 18, and every control
 a driver uses is sized explicitly, at 44px or more, because the car's browser
 reports `pointer: fine`. Icons are line drawings held as CSS masks, painted in the
 text colour: not elements, so code that rewrites a button's text keeps them.
+
+## Panels
+
+Hark keeps a column of cards beside its chat — the gate, the lights, the car,
+what has been spent — and you make them by asking. Jarvis does the same on the
+**Home** tab: "put the gate and the porch light on a panel", "add my car to
+Home Controls", "a to-do panel with renew the road tax" (`panel_set`,
+`panel_remove`, tools/panels.ts).
+
+- **Each person's own.** Panels are kept per person (lib/panels.ts, one key
+  each); the owner key and the first person are the same person, as
+  everywhere. They need `screen`, which a guest does not have, so a guest has
+  no Home tab. Glasses, which have no screen, never make one; another device
+  only with `screen`, for its owner's Home tab.
+- **What a panel can hold is what Jarvis reaches for that person.** A thing in
+  the house needs Home Assistant's address and token (Settings → Home, read
+  over its REST API, as the guest pass is) and `home`; a car needs Tessie and
+  `car.read`; their usage and plain notes need nothing more. With only an
+  OpenAI key, Home still works, with usage and notes.
+- **Live, never stored.** Only what a panel holds is kept. Each thing is read
+  when the tab is open (every 20 s, and after a press): Home Assistant as the
+  person (their own token when they gave one), the car from Tessie's last
+  state, which never wakes it. No model call either way.
+- **Buttons follow the state.** A closed gate offers Open, an open one Close; a
+  lit lamp offers Turn off; a locked car Unlock. A press is checked against the
+  state again before anything is sent, so a button left on screen after the
+  gate moved does nothing it no longer means. The house is worked through the
+  guest pass's fixed table of services (lib/access.ts `passService`), on
+  things the person put on their own panel, and only with `home`: what the
+  house then does is Home Assistant's to decide, as for every other route. A
+  car shared to `see` shows its state with no buttons.
 
 ## Getting somewhere
 

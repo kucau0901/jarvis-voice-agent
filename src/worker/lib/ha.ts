@@ -47,8 +47,30 @@ export async function renderTemplate(
 }
 
 /**
- * Work one thing in the house (a guest's pass, lib/access.ts): a service on
- * one entity, nothing else. Throws with Home Assistant's answer if refused.
+ * One thing in the house as Home Assistant has it now (a panel, lib/panel-view.ts):
+ * its state and attributes, or null when there is no such thing. Throws if
+ * the house cannot be asked.
+ */
+export async function entityState(
+  cfg: HaConfig,
+  entity: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<{ state: string; attributes: Record<string, unknown> } | null> {
+  const res = await fetchImpl(`${cfg.base}/api/states/${encodeURIComponent(entity)}`, {
+    headers: { Authorization: `Bearer ${cfg.token}` },
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`Home Assistant said ${res.status}`);
+  const s = (await res.json()) as { state?: unknown; attributes?: unknown };
+  const attributes = s.attributes && typeof s.attributes === "object" ? (s.attributes as Record<string, unknown>) : {};
+  return { state: typeof s.state === "string" ? s.state : "unknown", attributes };
+}
+
+/**
+ * Work one thing in the house (a guest's pass, lib/access.ts; a panel's
+ * button): a service on one entity, nothing else. Throws with Home
+ * Assistant's answer if refused.
  */
 export async function callService(
   cfg: HaConfig,

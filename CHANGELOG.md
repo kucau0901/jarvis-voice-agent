@@ -19,6 +19,13 @@ of every release, and in the [README](README.md#updating).
 
 ### Added
 
+- **Panels on a Home tab, made by asking.** "Put the gate and the porch light
+  on a panel", "add my car to Home Controls", "a to-do panel with renew the
+  road tax": each person's panels are their own, and show what Jarvis can
+  reach for them — things in Home Assistant, their car through Tessie, what
+  they have used, notes. Everything is read live when the tab is open, and the
+  buttons follow the state (a closed gate offers Open; a locked car, Unlock)
+  and are checked again before anything is sent. Guests have no Home tab.
 - **Light and dark, per screen.** Menu → **Theme**: Auto, the default, is
   light by day and dark at night (07:00–19:00, by the screen's clock), because
   the car's browser can report the wrong system setting. Or System, Dark or
@@ -63,11 +70,11 @@ of every release, and in the [README](README.md#updating).
   frosted glass over a softly blurred page. The orb is blue when idle and
   while you talk, and amber while Jarvis speaks. Alerts, pictures and the
   sign-in screen follow suit.
-- **Jarvis and Chat, as tabs at the top.** Chat is what *Type* was, now with
-  replies in bubbles and one message box holding a microphone (ask aloud),
-  read-aloud and send; Live and Push-to-talk stay under the orb in the Jarvis
-  tab, and coming back from Chat returns to whichever of them that screen last
-  used.
+- **Jarvis, Chat and Home, as tabs at the top.** Home holds your panels (see
+  Added). Chat is what *Type* was, now with replies in bubbles and one message
+  box holding a microphone (ask aloud), read-aloud and send; Live and
+  Push-to-talk stay under the orb in the Jarvis tab, and coming back from Chat
+  returns to whichever of them that screen last used.
 - **The menu is a page behind your initial**, top right, as Hark's settings
   are: its items in cards, each with an icon. The family's chat in it is now
   called **Messages**, so it is not confused with the Chat tab.

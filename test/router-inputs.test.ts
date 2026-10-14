@@ -34,12 +34,15 @@ function check(name: string, cond: boolean, got?: unknown) {
 }
 
 const PROMPT_SHA256 = "e9b65b246d51cdbc73d3df3f721c9c7a72724ac5aa4bda78399f3135a243818e";
+// panel_set and panel_remove (tools/panels.ts, scope screen): everyone but the guest (14 Oct 2026).
 const EXPECTED: Record<string, { model: string; tools: string[]; input: string }> = {
  "owner key, nothing set up": {
   "model": "gpt-6-luna",
   "tools": [
    "forget",
    "hide_display",
+   "panel_remove",
+   "panel_set",
    "recall",
    "remember",
    "routine_add",
@@ -74,6 +77,8 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
    "music_control",
    "music_play",
    "music_state",
+   "panel_remove",
+   "panel_set",
    "pass_on",
    "place_info",
    "recall",
@@ -110,6 +115,8 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
    "music_control",
    "music_play",
    "music_state",
+   "panel_remove",
+   "panel_set",
    "pass_on",
    "place_info",
    "recall",
@@ -137,6 +144,8 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
    "family_messages",
    "forget",
    "hide_display",
+   "panel_remove",
+   "panel_set",
    "pass_on",
    "place_info",
    "recall",

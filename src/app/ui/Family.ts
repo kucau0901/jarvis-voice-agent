@@ -87,7 +87,7 @@ const SCOPE_WORDS: Record<string, string> = {
   media: "Spotify",
   mail: "mail",
   calendar: "calendar",
-  screen: "maps on screen",
+  screen: "maps and Home panels on screen",
   voice: "live voice",
   alerts: "alerts",
   routines: "routines",

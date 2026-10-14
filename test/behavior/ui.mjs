@@ -135,6 +135,15 @@ for (const [person, token] of Object.entries(tokens)) {
     return JSON.stringify({ title: document.getElementById("title")?.textContent ?? "", status: document.getElementById("status")?.textContent ?? "", menu });
   })()`);
   out.homeLooks = await js(looks("document.body", true));
+  // The Home tab (ui/Home.ts), where it is offered: the person's panels, read live. Not its clock, which moves.
+  if (await js(`(() => { const b = document.querySelector('#tabs [data-tab="home"]'); if (!b || b.hidden) return false; b.click(); return true; })()`)) {
+    for (let t = 0; t < 8000 && !(await js(`document.getElementById("home").children.length`)); t += 300) await sleep(300);
+    out.homeTab = await settled(`[...document.querySelectorAll("#home > :not(.hclock)")].map((e) => e.innerText).join("\\n")`);
+    await shot(`${person}-hometab`);
+    await js(`document.querySelector('#tabs [data-tab="jarvis"]').click(); true`);
+  } else {
+    out.homeTab = "(not offered)";
+  }
   await shot(`${person}-home`);
   for (const id of PANELS) {
     const offered = await js(`(() => { const b = document.getElementById(${JSON.stringify(id)}); return !!b && !b.hidden; })()`);

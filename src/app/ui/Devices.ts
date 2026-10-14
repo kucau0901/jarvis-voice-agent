@@ -38,7 +38,7 @@ const MEANING: Record<string, string> = {
   home: "the house and cameras",
   hermes: "Hermes, your own agent: it can run commands on its machine",
   media: "Spotify",
-  screen: "maps on the screen",
+  screen: "maps on the screen, and its owner's Home panels",
   voice: "live voice sessions",
   alerts: "receive alerts and notifications; send notes",
   routines: "make and change routines; send the events that set them off",

@@ -48,6 +48,10 @@ enough) or run it yourself with **Docker**.
   that address again?" works on the phone or the glasses for half an hour.
   Hearing and speaking can use OpenAI, Cloudflare Workers AI, or the device
   itself.
+- **Panels, made by asking** — "put the gate and the porch light on a panel":
+  the Home tab shows each person's own cards, live, with buttons that follow
+  the state (a closed gate offers Open). They hold what Jarvis reaches for that
+  person: Home Assistant, their car, what they have used, notes.
 - **It can see** — "is there a car in the driveway?", "did the parcel arrive?":
   Jarvis looks at a camera (Home Assistant's, or any camera with a snapshot
   address) and answers from what it sees, showing you the frame. Routines can

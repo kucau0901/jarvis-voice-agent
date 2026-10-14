@@ -7,6 +7,7 @@ import { Memory } from "./ui/Memory";
 import { Routines } from "./ui/Routines";
 import { Jobs } from "./ui/Jobs";
 import { ThemePanel } from "./ui/ThemePanel";
+import { Home } from "./ui/Home";
 import { Stage, type DisplayPayload } from "./ui/Stage";
 import { Orb } from "./orb/Orb";
 import { VoiceLevels } from "./audio";
@@ -750,6 +751,10 @@ async function putAside(): Promise<void> {
   live.stop();
   clearKey();
   key = "";
+  home?.forget();
+  home = null;
+  document.body.classList.remove("home");
+  markTabs();
   $("menuBtn").textContent = $("hubAvatar").textContent = $("hubName").textContent = "";
 }
 
@@ -1063,10 +1068,8 @@ function setMode(m: Mode) {
     b.classList.toggle("on", b.dataset.mode === m);
     b.setAttribute("aria-pressed", String(b.dataset.mode === m));
   }
-  for (const b of document.querySelectorAll<HTMLButtonElement>("#tabs button")) {
-    b.setAttribute("aria-pressed", String((b.dataset.tab === "chat") === (m === "type")));
-  }
   document.body.classList.toggle("typing", m === "type");
+  markTabs();
   // Switching away from a live session ends it: it is the thing that bills.
   if (m !== "live" && (session || userWantsSession)) void toggle();
   if (m === "type") {
@@ -1087,11 +1090,21 @@ function setMode(m: Mode) {
 for (const b of document.querySelectorAll<HTMLButtonElement>("#modes button")) {
   b.addEventListener("click", () => setMode(asMode(b.dataset.mode)));
 }
-// Jarvis talks, in the way last chosen on this screen; Chat types.
+/** The tab in use: Home over the mode, else Chat while typing, else Jarvis. */
+function markTabs() {
+  const on = document.body.classList.contains("home") ? "home" : mode === "type" ? "chat" : "jarvis";
+  for (const b of document.querySelectorAll<HTMLButtonElement>("#tabs button")) b.setAttribute("aria-pressed", String(b.dataset.tab === on));
+}
+// Jarvis talks, in the way last chosen on this screen; Chat types; Home is this person's panels (ui/Home.ts).
+let home: Home | null = null;
 for (const b of document.querySelectorAll<HTMLButtonElement>("#tabs button")) {
   b.addEventListener("click", () => {
-    const chat = b.dataset.tab === "chat";
-    if (chat !== (mode === "type")) setMode(chat ? "type" : voice);
+    const tab = b.dataset.tab;
+    document.body.classList.toggle("home", tab === "home");
+    if (tab === "home") (home ??= new Home(key)).show();
+    else home?.hide();
+    if ((tab === "chat") !== (mode === "type")) setMode(tab === "chat" ? "type" : voice);
+    else markTabs();
   });
 }
 
@@ -1276,7 +1289,7 @@ async function whoAmI() {
     $("menuBtn").textContent = $("hubAvatar").textContent = ([...first][0] ?? "").toUpperCase();
     $("hubName").textContent = me.user?.name ?? me.space?.agentName ?? "Jarvis";
     const may = (need: string) => me.role === "admin" || me.scopes.includes("*") || (need !== "admin" && me.scopes.includes(need));
-    for (const b of document.querySelectorAll<HTMLElement>("#topbtns [data-need]")) b.hidden = !may(b.dataset.need!);
+    for (const b of document.querySelectorAll<HTMLElement>("#topbtns [data-need], #tabs [data-need]")) b.hidden = !may(b.dataset.need!);
     // The family's chat is for people in a family.
     $("openChat").hidden = !me.space || !isSession(key) || !may("chat");
     void unreadChat();

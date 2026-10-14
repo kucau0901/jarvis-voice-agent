@@ -16,6 +16,7 @@ import { routineTools } from "./routines.ts";
 import { jobTools } from "./jobs.ts";
 import { familyTools } from "./family.ts";
 import { passTool } from "./pass.ts";
+import { panelTools } from "./panels.ts";
 import { stateStub } from "../lib/state-client.ts";
 import { voiceWho } from "../lib/context.ts";
 import { researchFor, type Job } from "../lib/jobs.ts";
@@ -217,6 +218,7 @@ const ALL: Tool[] = [
   ...jobTools,
   ...familyTools,
   passTool,
+  ...panelTools,
   askHermes,
   controlHome,
 ];

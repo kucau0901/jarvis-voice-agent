@@ -156,7 +156,7 @@ existence, or argued around.
 | `media` | Spotify. |
 | `mail` | Gmail: `mail_check`, `mail_search`, `mail_send`, `mail_manage`, `contacts_lookup`. Reads, sends, replies, drafts, trashes and archives — there is no read-only half. Also reads Google Contacts to turn a name into an address. |
 | `calendar` | Google Calendar: `calendar_check`, `calendar_add`. Reads the diary **and creates events**. |
-| `screen` | `show_place`, `hide_display`, `/api/map`. |
+| `screen` | `show_place`, `hide_display`, `/api/map`, and a person's panels (`panel_set`, `panel_remove`, `/api/hub/panels`). |
 | `voice` | `/api/session`, `/api/tts`, `/api/voices`, and push-to-talk `/api/v1/voice` (which also needs `ask`). |
 | `ask` (jobs) | `/api/v1/jobs`, `/api/v1/jobs/cancel`, `start_job`. A job for Hermes also needs `hermes`. Each job runs with its creator's grants, and only their reading tools. |
 | `routines` | `/api/v1/routines`, `/api/v1/routines/run`, `/api/v1/trigger`; `routine_add`, `routine_list`, `routine_remove`. A routine's question runs with **its creator's** grants, never more. |
@@ -832,6 +832,17 @@ one; a car shared to `see` is never operated.
 
 An alert for something passed on carries `relay: {id, kind}`; one for a chat
 message, `convo`.
+
+**Panels** on a person's Home tab, made by asking (`panel_set`, `panel_remove`;
+needs `screen`, which a guest does not have). Each is the person's own; a
+device granted `screen` (or `*`) can make and remove its owner's through
+`/api/v1/stream`, but the routes below are never a device's. Every thing on a
+panel is read when they are fetched, and its buttons follow its state then:
+
+| Route | |
+|---|---|
+| `GET /api/hub/panels` | `{panels: [{id, title, rows: [{key, kind, label, value, tiles, actions: [{action, label}], note?}]}], can: {home, car}}`. `kind` is `home` (a Home Assistant entity, read as the person, with `home`), `car` (from Tessie's last state, never woken, with `car.read`), `usage` or `note` |
+| `POST /api/hub/panels/act` | `{panel, key, action}`: one of a row's `actions`. Refused (`409`) unless the thing's state offers it now; the house needs `home`, a car `car.control` and not shared to `see` |
 
 **Limits** (guests, helpers, children): `PATCH /api/hub/members {user,
 access}` and `POST /api/hub/invites {…, access}` take `{until?, hours?: {from,

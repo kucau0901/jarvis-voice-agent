@@ -160,6 +160,27 @@ await call("Sara", sara.token, "GET", "/api/usage");
 await call("owner key", OWNER_KEY, "GET", "/api/alerts");
 await call("owner key", OWNER_KEY, "GET", "/api/settings");
 
+/* ---------- panels on the Home tab: asked for in Chat, read live, worked by their buttons ---------- */
+/** A question typed in the app's Chat tab (/api/delegate, which has a screen): the tools it ran and what it said. */
+async function typed(as: string, token: string, text: string): Promise<void> {
+  const sent = { delegationId: "typed", transcript: [{ role: "user", text }], surface: "chat" };
+  const r = await fetch(BASE + "/api/delegate", { method: "POST", headers: { origin: BASE, "content-type": "application/json", authorization: `Bearer ${token}` }, body: JSON.stringify(sent) });
+  const events = (await r.text()).split("\n").filter((l) => l.startsWith("data: ")).map((l) => JSON.parse(l.slice(6)) as J);
+  const end = events.find((e) => e.type === "result" || e.type === "error");
+  records.push({ as, method: "POST", path: "/api/delegate", sent, status: r.status, body: { tools: events.filter((e) => e.type === "tool" && e.phase === "start").map((e) => e.name), said: end?.text ?? end?.message ?? null } });
+}
+await typed("Sara", sara.token, "put cover.main_gate, light.porch, my usage and renew the road tax on a panel called Home Controls");
+const saraPanels = await call("Sara", sara.token, "GET", "/api/hub/panels");
+const homeControls = str(((saraPanels.body.panels as J[] | undefined)?.[0] ?? {}).id);
+await call("Sara", sara.token, "POST", "/api/hub/panels/act", { panel: homeControls, key: "cover.main_gate", action: "open" });
+// The gate in the stand-in stays closed, so Close is not what its state offers: nothing is sent.
+await call("Sara", sara.token, "POST", "/api/hub/panels/act", { panel: homeControls, key: "cover.main_gate", action: "close" });
+await call("Sara", sara.token, "POST", "/api/hub/panels/act", { panel: homeControls, key: "lock.front_door", action: "unlock" });
+await typed("Aisyah", aisyah.token, "put cover.main_gate on a panel called Gate");
+await call("Aisyah", aisyah.token, "GET", "/api/hub/panels");
+await call("Siti", siti.token, "GET", "/api/hub/panels");
+await call("Sara's G2", str(g2.body.token), "GET", "/api/hub/panels");
+
 /* ---------- hours: a new sign-in is not cached, so the change is felt at once ---------- */
 const hhmm = (t: number) => new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Kuala_Lumpur", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(t));
 await call("Adam", adam.token, "PATCH", "/api/hub/members", { user: idOf("Siti").user, access: { hours: { from: hhmm(Date.now() + 3 * 3600_000), to: hhmm(Date.now() + 4 * 3600_000) } } });

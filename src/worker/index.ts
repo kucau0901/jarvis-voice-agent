@@ -28,6 +28,7 @@ import { handleUsage } from "./routes/usage.ts";
 import { handleAlertsAdmin, isTicketedSocket, openTicketedSocket } from "./routes/alerts.ts";
 import { handleAuth, handleHub } from "./routes/hub.ts";
 import { handleFamily } from "./routes/family.ts";
+import { handlePanels } from "./routes/panels.ts";
 
 // The Durable Object class must be exported from the entry for the runtime to find it.
 export { JarvisState } from "./state.ts";
@@ -205,6 +206,7 @@ async function route(
   if (url.pathname.startsWith("/api/hub/chat") || url.pathname.startsWith("/api/hub/relays") || url.pathname === "/api/hub/points") {
     return (await handleFamily(req, env, ctx, principal))!;
   }
+  if (url.pathname.startsWith("/api/hub/panels")) return (await handlePanels(req, env, principal)) ?? (await handleHub(req, env, principal));
   if (url.pathname.startsWith("/api/hub/")) return await handleHub(req, env, principal);
   if (url.pathname.startsWith("/api/mcp")) return await handleMcp(req, env, principal.kind === "owner");
   if (url.pathname.startsWith("/api/memory")) return await handleMemory(req, env, grantsOf(principal), principal.kind === "device");

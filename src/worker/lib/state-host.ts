@@ -28,6 +28,7 @@ import type { Routine, RoutineInput } from "./routines.ts";
 import type { Job } from "./jobs.ts";
 import type { Relay, RelayKind } from "./relays.ts";
 import type { ChatMessage } from "./chat.ts";
+import type { Panel, PanelItem } from "./panels.ts";
 import type { Grant } from "./scopes.ts";
 
 /**
@@ -554,6 +555,13 @@ interface FamilyApi {
   resetPoints(): Promise<void>;
 }
 
+/** What each person put on their Home tab (lib/panels.ts; state.ts). */
+interface PanelApi {
+  panelsOf(person: string): Promise<Panel[]>;
+  panelSet(person: string, title: string, items: PanelItem[], mode: "add" | "replace"): Promise<Panel | string>;
+  panelRemove(person: string, title: string, item: string | null): Promise<Panel[] | string>;
+}
+
 /** What the object adds itself, because it holds the sockets (state.ts). */
 interface LiveApi {
   broadcast(alert: Alert, waitMs: number): Promise<LiveResult>;
@@ -597,4 +605,5 @@ export type StateApi = Pick<
   LiveApi &
   RoutineApi &
   JobApi &
-  FamilyApi;
+  FamilyApi &
+  PanelApi;

@@ -23,6 +23,7 @@ import { haConfig, renderTemplate, truthy } from "./lib/ha.ts";
 import { HUB_METHODS, HubHost, liveSessionIds } from "./lib/hub.ts";
 import { Relays, type Relay, type RelayDeps, type RelayKind } from "./lib/relays.ts";
 import { Chat, dmId, type ChatMessage } from "./lib/chat.ts";
+import { Panels, type PanelItem } from "./lib/panels.ts";
 import { personOfWho, withPerson } from "./lib/context.ts";
 import { nextAllowed } from "./lib/access.ts";
 
@@ -50,6 +51,8 @@ export class JarvisState extends DurableObject<Env> {
   /** Messages passed on between the family (lib/relays.ts), and their conversations (lib/chat.ts). */
   private relays: Relays;
   private chat: Chat;
+  /** What each person put on their Home tab (lib/panels.ts). */
+  private panels: Panels;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -57,6 +60,7 @@ export class JarvisState extends DurableObject<Env> {
     this.people = new HubHost(ctx.storage);
     this.scheduler = new Scheduler(ctx.storage, () => this.schedulerDeps());
     this.chat = new Chat(ctx.storage);
+    this.panels = new Panels(ctx.storage);
     this.relays = new Relays(ctx.storage, () => this.relayDeps());
     this.jobs = new Jobs(ctx.storage, async () => {
       const env = await this.localEnv();
@@ -226,6 +230,7 @@ export class JarvisState extends DurableObject<Env> {
   async forgetMember(person: string): Promise<void> {
     await this.scheduler.forget(person);
     await this.relays.forget(person);
+    await this.panels.forget(person);
     await this.rearm();
   }
 
@@ -425,6 +430,20 @@ export class JarvisState extends DurableObject<Env> {
 
   familyPeople() {
     return this.people.familyPeople();
+  }
+
+  /* ---------- panels on a person's Home tab (lib/panels.ts) ---------------------- */
+
+  panelsOf(person: string) {
+    return this.panels.list(person);
+  }
+
+  panelSet(person: string, title: string, items: PanelItem[], mode: "add" | "replace") {
+    return this.panels.set(person, title, items, mode);
+  }
+
+  panelRemove(person: string, title: string, item: string | null) {
+    return this.panels.remove(person, title, item);
   }
 
   /* ---------- background jobs (lib/jobs.ts) ------------------------------------- */

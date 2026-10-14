@@ -1,6 +1,6 @@
 import type { Env } from "../types.ts";
 import { localeOf } from "../lib/locale.ts";
-import type { Tool, ToolContext } from "./registry.ts";
+import type { Tool } from "./registry.ts";
 import { carsOf, type CarKey } from "../lib/context.ts";
 
 /**
@@ -99,18 +99,59 @@ async function call(
  * needed. That also gives the driver "waking your car" instead of 90 seconds of
  * apparently nothing.
  */
-async function ensureAwake(cfg: TessieConfig, ctx: ToolContext): Promise<void> {
-  const status = (await call(cfg, `/${cfg.vin}/status`, { signal: ctx.signal })) as {
+export async function ensureAwake(cfg: TessieConfig, signal: AbortSignal, progress: (text: string) => void): Promise<void> {
+  const status = (await call(cfg, `/${cfg.vin}/status`, { signal })) as {
     status?: string;
   };
   if (status.status === "awake") return;
-  ctx.progress("waking the car");
+  progress("waking the car");
   const woke = (await call(cfg, `/${cfg.vin}/wake`, {
     method: "POST",
     // Tessie returns false after its own 90s timeout, so allow for that; and stop when the question does.
-    signal: AbortSignal.any([ctx.signal, AbortSignal.timeout(100_000)]),
+    signal: AbortSignal.any([signal, AbortSignal.timeout(100_000)]),
   })) as { result?: boolean };
   if (woke.result === false) throw new Error("the car did not wake within 90 seconds");
+}
+
+/** A car by its id among those this person may reach (a panel keeps the id, lib/panel-view.ts), or null. */
+export function carById(env: Env, id: string): { cfg: TessieConfig; car: CarKey | null } | null {
+  const cars = carsOf(env);
+  if (!cars.length) {
+    // No family: the car in the settings, which a family calls "family".
+    const cfg = tessieConfig(env);
+    return cfg && id === "family" ? { cfg, car: null } : null;
+  }
+  const car = cars.find((c) => c.id === id);
+  return car ? { cfg: { token: car.token, vin: car.vin }, car } : null;
+}
+
+/** What a panel shows of a car (lib/panel-view.ts), from Tessie's last state: never wakes it. */
+export interface CarSnapshot {
+  battery?: number;
+  /** Miles, as Tesla reports them (distanceIn). */
+  rangeMiles?: number;
+  /** Tesla's charging_state: "Charging", "Complete", "Stopped", "Disconnected"…; null when not reported. */
+  charging: string | null;
+  locked: boolean | null;
+  climateOn: boolean | null;
+  insideTemp?: number;
+}
+
+export async function carSnapshot(cfg: TessieConfig, signal?: AbortSignal): Promise<CarSnapshot> {
+  const s = (await call(cfg, `/${cfg.vin}/state?use_cache=true`, { signal })) as {
+    charge_state?: Record<string, unknown>;
+    climate_state?: Record<string, unknown>;
+    vehicle_state?: Record<string, unknown>;
+  };
+  const bool = (v: unknown) => (typeof v === "boolean" ? v : null);
+  return {
+    battery: num(s.charge_state?.battery_level),
+    rangeMiles: num(s.charge_state?.battery_range),
+    charging: typeof s.charge_state?.charging_state === "string" ? s.charge_state.charging_state : null,
+    locked: bool(s.vehicle_state?.locked),
+    climateOn: bool(s.climate_state?.is_climate_on),
+    insideTemp: num(s.climate_state?.inside_temp),
+  };
 }
 
 const num = (v: unknown): number | undefined => (typeof v === "number" ? v : undefined);
@@ -375,6 +416,23 @@ function looksLikeDestination(v: string): boolean {
   return v.length >= 4 && v.length <= 200 && (words >= 2 || /\d/.test(v));
 }
 
+/**
+ * Send a command to a car already woken (ensureAwake): true when the car
+ * accepted it. Shared by car_command and a panel's buttons (lib/panel-view.ts).
+ */
+export async function sendCarCommand(
+  cfg: TessieConfig,
+  name: string,
+  extra: Record<string, string>,
+  signal: AbortSignal,
+): Promise<boolean> {
+  const spec = COMMANDS[name];
+  if (!spec) return false;
+  const params = new URLSearchParams({ wait_for_completion: "true", max_attempts: "3", ...extra });
+  const out = (await call(cfg, `/${cfg.vin}/command/${spec.slug}?${params}`, { method: "POST", signal })) as { result?: boolean };
+  return out.result === true;
+}
+
 export const carCommand: Tool = {
   name: "car_command",
   scope: "car.control",
@@ -422,7 +480,7 @@ export const carCommand: Tool = {
     const spec = COMMANDS[name];
     if (!spec) return `I do not have a "${name}" command for the car.`;
 
-    const params = new URLSearchParams({ wait_for_completion: "true", max_attempts: "3" });
+    const extra: Record<string, string> = {};
 
     if (spec.param === "value") {
       const value = String(args.value ?? "").trim();
@@ -433,34 +491,29 @@ export const carCommand: Tool = {
           "Ask the user for a street address."
         );
       }
-      params.set("value", value);
+      extra.value = value;
       // Tessie wants language AND country ("en-MY"); with no country set in
       // the panel it is left out and Tessie falls back to its default, en-US.
       const tag = localeOf(ctx.env).tag;
-      if (tag.includes("-")) params.set("locale", tag);
+      if (tag.includes("-")) extra.locale = tag;
     } else if (spec.param === "temperature") {
       const t = Number(args.temperature);
       if (!Number.isFinite(t) || t < 15 || t > 28) return "Temperature must be between 15 and 28.";
-      params.set("temperature", String(t));
+      extra.temperature = String(t);
     } else if (spec.param === "percent") {
       const p = Math.round(Number(args.percent));
       if (!Number.isFinite(p) || p < 50 || p > 100) return "Charge limit must be between 50 and 100.";
-      params.set("percent", String(p));
+      extra.percent = String(p);
     }
 
     try {
-      await ensureAwake(cfg, ctx);
+      await ensureAwake(cfg, ctx.signal, ctx.progress);
     } catch (e) {
       return `Could not wake the car: ${e instanceof Error ? e.message : String(e)}`;
     }
 
     ctx.progress(name === "navigate_to" ? "sending it to the car" : "sending that to the car");
-    const out = (await call(cfg, `/${cfg.vin}/command/${spec.slug}?${params}`, {
-      method: "POST",
-      signal: ctx.signal,
-    })) as { result?: boolean };
-
-    if (out.result !== true) return `The car did not accept ${name}.`;
+    if (!(await sendCarCommand(cfg, name, extra, ctx.signal))) return `The car did not accept ${name}.`;
 
     /*
      * Do NOT read the route back to confirm.
@@ -477,7 +530,7 @@ export const carCommand: Tool = {
      * forbids everywhere else. So say what is true: it was sent and accepted.
      */
     if (name === "navigate_to") {
-      const sent = params.get("value");
+      const sent = extra.value;
       return `Sent ${sent} to the car. It takes a few seconds to appear on the screen.`;
     }
 

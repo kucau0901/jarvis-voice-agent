@@ -127,16 +127,19 @@
 
   h1 { position: fixed; top: calc(var(--barTop) + 14px); left: 22px; margin: 0; font-size: 15px;
     font-weight: 400; letter-spacing: 6px; color: var(--dim);
-    max-width: calc(50vw - 140px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    max-width: calc(50vw - 160px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   /* Jarvis | Chat, Hark's pill switcher: the sliding pill marks the one in use.
      Under the sign-in screen (50), over the page; hidden while a picture is up. */
   #tabs { position: fixed; z-index: 49; top: calc(var(--barTop) + 2px); left: 50%; transform: translateX(-50%);
     display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; padding: 2px; border-radius: 999px;
     background: var(--glass); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); }
-  #tabs .pill { position: absolute; top: 2px; bottom: 2px; left: 2px; width: calc((100% - 4px) / 2);
+  #tabs .pill { position: absolute; top: 2px; bottom: 2px; left: 2px; width: calc((100% - 4px) / 3);
     border-radius: 999px; background: var(--solid); transition: transform .25s cubic-bezier(.22,.9,.28,1); }
   body.typing #tabs .pill { transform: translateX(100%); }
+  body.home #tabs .pill { transform: translateX(200%); }
+  /* Two tabs where Home is not offered (a guest). */
+  #tabs:has(> [data-tab="home"][hidden]) .pill { width: calc((100% - 4px) / 2); }
   #tabs button { position: relative; min-height: 44px; padding: 0 22px; border: 0; background: none;
     font: inherit; font-size: 15px; font-weight: 500; color: var(--fg); opacity: .5; cursor: pointer;
     transition: color .15s, opacity .15s; }
@@ -566,6 +569,8 @@
      wide — so this keys on orientation as well as width, and both of the car's
      layouts are left exactly as they were. */
   @media (max-width: 620px) and (orientation: portrait) {
+    /* Three tabs between the corner orb and the menu, on a 360px phone too. */
+    #tabs button { padding: 0 14px; }
     /* No room for the name beside the tabs, and a phone is one person's anyway:
        switching who is using a shared screen is for the car or a tablet. */
     h1 { display: none; }
@@ -784,6 +789,41 @@
   .panel .hookhelp pre { background: var(--field); border: 1px solid var(--line); border-radius: 8px; padding: 10px;
     font: 12px/1.5 ui-monospace, Menlo, monospace; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--fg); }
 
+  /* Home: this person's panels (src/app/ui/Home.ts), Hark's cards. The orb
+     steps into the corner, as in Chat; each thing is a row with what it is
+     doing and the buttons that follow from it, and a car's or the usage's
+     figures sit in tiles. With none yet, Hark's clock. */
+  #home { display: none; }
+  body.home { justify-content: flex-start; --orb: 40px;
+    padding: calc(var(--barTop) + 64px) 16px calc(16px + env(safe-area-inset-bottom)); }
+  body.home #orbWrap { position: fixed; top: calc(var(--barTop) + 6px); left: 18px; z-index: 3; width: var(--orb); margin: 0; }
+  body.home h1, body.home #hint, body.home #talkrow, body.home #transcript { display: none; }
+  /* A session started here (the orb in the corner) says how it is going, as in Chat. */
+  body.home #status { position: fixed; z-index: 20; left: 16px; right: 16px; top: auto; max-width: none; min-height: 0;
+    bottom: calc(12px + env(safe-area-inset-bottom)); text-align: center; font-size: 13px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; pointer-events: none; }
+  body.home #home { display: grid; align-content: start; gap: 14px; width: min(560px, 100%); flex: 1; min-height: 0;
+    overflow-y: auto; overscroll-behavior: contain; padding-bottom: 8px; }
+  #home .hcard { display: grid; gap: 8px; padding: 16px; border-radius: 24px; background: var(--glass-hi);
+    -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); }
+  #home .hcard h3 { margin: 2px 4px 4px; font-size: 15px; font-weight: 500; }
+  #home .hrow { display: grid; gap: 10px; padding: 12px 12px 12px 14px; border-radius: 16px; background: var(--tile); }
+  #home .hrow.note { background: transparent; padding: 4px 14px; }
+  #home .htop { display: flex; align-items: center; gap: 8px; }
+  #home .htext { flex: 1; min-width: 0; display: grid; gap: 2px; }
+  #home .htext b { font-size: 15px; font-weight: 500; overflow-wrap: anywhere; }
+  #home .htext small { color: var(--dim); font-size: 13px; overflow-wrap: anywhere; }
+  #home .htext small.hwhy { color: var(--faint); }
+  #home .htop button { flex: none; min-height: 44px; padding: 0 18px; border: 0; border-radius: 999px;
+    background: var(--seg-on); color: var(--fg); font: inherit; font-size: 14px; font-weight: 500; cursor: pointer; }
+  #home .htop button:disabled { opacity: .5; cursor: default; }
+  #home .htiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(104px, 1fr)); gap: 8px; }
+  #home .htile { display: grid; gap: 2px; padding: 10px 12px; border-radius: 12px; background: var(--wash); }
+  #home .htile small { color: var(--dim); font-size: 13px; }
+  #home .htile b { font-size: 22px; font-weight: 500; font-variant-numeric: tabular-nums; }
+  #home .hclock { display: grid; margin-top: 6vh; font-size: clamp(40px, 8vmin, 64px); line-height: 1.08; }
+  #home .hnote { margin: 4px 0 0; color: var(--dim); font-size: 15px; line-height: 1.45; max-width: 460px; }
+
   /* Theme (src/app/ui/ThemePanel.ts): one choice of four, a ring marking it. */
   .panel .navcard > button[role=radio] { grid-template-columns: minmax(0, 1fr) 22px; row-gap: 2px; padding: 10px 20px; }
   .panel .navcard > button[role=radio] > * { grid-column: 1; }
@@ -829,6 +869,8 @@
     <span class="pill" aria-hidden="true"></span>
     <button type="button" data-tab="jarvis" aria-pressed="true">Jarvis</button>
     <button type="button" data-tab="chat" aria-pressed="false">Chat</button>
+    <!-- data-need: a guest has no screen, so no Home tab (main.ts whoAmI). -->
+    <button type="button" data-tab="home" data-need="screen" aria-pressed="false">Home</button>
   </div>
 
   <div id="orbWrap">
@@ -844,6 +886,7 @@
     </div>
   </div>
   <div id="transcript"></div>
+  <section id="home" aria-label="Your panels"></section>
   <form id="typebar" autocomplete="off">
     <textarea id="typed" rows="1" placeholder="Message Jarvis…" aria-label="Message Jarvis" enterkeyhint="send"></textarea>
     <button id="askAloud" type="button" title="Ask aloud" aria-label="Ask aloud"></button>
