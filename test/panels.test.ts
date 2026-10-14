@@ -96,7 +96,7 @@ check("a gate is a gate by its class, or by its name when it has none",
 check("a cover with no class or telling name is a blind", houseIcon("cover.study", "open", {}) === "blind");
 check("a lock is drawn locked or open, as it is", houseIcon("lock.front_door", "locked", {}) === "lock" && houseIcon("lock.front_door", "unlocked", {}) === "unlock");
 check("a switch named for a light is a light, a socket a plug, any other a power switch",
-  houseIcon("switch.master_toilet", "off", { friendly_name: "Master toilet light" }) === "light" &&
+  houseIcon("switch.master_bath", "off", { friendly_name: "Master bathroom light" }) === "light" &&
   houseIcon("switch.kettle", "off", { device_class: "outlet" }) === "plug" && houseIcon("switch.pump", "off", {}) === "power");
 check("a sensor by what it senses",
   houseIcon("sensor.outside", "31", { device_class: "temperature" }) === "temp" && houseIcon("sensor.bath", "60", { device_class: "humidity" }) === "drop" &&
