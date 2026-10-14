@@ -114,7 +114,9 @@ export class Orb {
   }
 
   private build() {
-    // Halo first so it renders behind everything else.
+    // Transparent, so three.js draws it after the opaque core whatever the
+    // order here. Additive (dark) it may lie over the core; blended normally
+    // (light) it would hide it, so there the depth test keeps it behind.
     // A unit quad, scaled in resize() to exactly cover the frustum at its depth.
     const haloGeo = new THREE.PlaneGeometry(1, 1);
     this.halo = new THREE.Mesh(
@@ -205,7 +207,9 @@ export class Orb {
     this.uniforms.uFloor!.value = look.floor;
     this.uniforms.uTone!.value = look.tone;
     this.blend = look.blend;
-    (this.halo.material as THREE.ShaderMaterial).blending = look.blend;
+    const halo = this.halo.material as THREE.ShaderMaterial;
+    halo.blending = look.blend;
+    halo.depthTest = light;
     (this.shell.material as THREE.ShaderMaterial).blending = look.blend;
   }
 

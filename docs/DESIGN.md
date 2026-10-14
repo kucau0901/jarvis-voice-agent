@@ -273,9 +273,11 @@ setting, because Chromium 148 in the car can report
 last thing a driver wants. System is offered for a phone or a laptop that
 reports it properly.
 
-A module script runs after the first paint, so one line in `<head>` paints the
-theme the screen last showed, and `theme.ts` corrects it at once. That line
-holds no rule of its own; without it every daytime reload flashed black.
+A module script runs after the first paint, so one line in `<head>` paints
+light while the light the screen last showed still holds (until 19:00 under
+Auto), and `theme.ts` corrects it at once. That line holds no rule of its own;
+without it every daytime reload flashed black, and with a bare "last shown"
+one a reload after dark would have flashed white.
 
 On a light page the orb's additive glow composites to white and vanishes, so
 in light it blends normally, its shadow side is lifted and its light is
@@ -287,8 +289,8 @@ back and close buttons, sections as rows in cards, and frosted glass over a
 blurred page — in the car too, where the orb already draws smoothly. A glass
 layer never sits inside another (a backdrop filter only sees its parent's
 contents), the `-webkit-` prefix is kept for iOS before 18, and every control
-is sized explicitly, at 44px or more, because the car's browser reports
-`pointer: fine`. Icons are line drawings held as CSS masks, painted in the
+a driver uses is sized explicitly, at 44px or more, because the car's browser
+reports `pointer: fine`. Icons are line drawings held as CSS masks, painted in the
 text colour: not elements, so code that rewrites a button's text keeps them.
 
 ## Getting somewhere

@@ -14,9 +14,10 @@
 <meta name="apple-mobile-web-app-title" content="Jarvis">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="mobile-web-app-capable" content="yes">
-<!-- Paints the theme last shown before the first frame, so a daytime reload does not flash
-     black. It holds no rule of its own: src/app/theme.ts decides, and corrects it at once. -->
-<script>try{if(localStorage.getItem("jarvis.themeShown")==="light")document.documentElement.dataset.theme="light"}catch(e){}</script>
+<!-- Paints light before the first frame while the light last shown still holds, so a daytime
+     reload does not flash black and a night one does not flash white. It holds no rule of its
+     own: src/app/theme.ts works out until when (lightUntil) and corrects it at once. -->
+<script>try{if(Date.now()<+(localStorage.getItem("jarvis.lightUntil")||0))document.documentElement.dataset.theme="light"}catch(e){}</script>
 <style>
   /* Tesla's own colours (its design system's greys and blue), so the app looks
      at home on the car's screen. Dark here, light below, chosen per screen by
@@ -30,7 +31,7 @@
     --fg: #eeeeee; --dim: #a2a3a5; --faint: #8e8e8e;
     --line: #444444; --hair: rgba(255,255,255,.08);
     --scrim: rgba(0,0,0,.6); --shadow: 0 12px 40px rgba(0,0,0,.5);
-    --accent: #3e6ae1; --accent-ink: #3368ff; --on-accent: #ffffff;
+    --accent: #3e6ae1; --accent-ink: #5b84ff; --on-accent: #ffffff;
     --seg-on: #393c41;
     --danger: #ed4e3b; --ok: #12bb00; --warn: #fbb01b;
     --bubble: rgba(34,34,34,.85); --bubble-you: rgba(255,255,255,.12);
@@ -42,6 +43,10 @@
       radial-gradient(100% 80% at 105% 110%, rgba(57,60,65,.55), transparent 60%), #000000;
     --barTop: calc(12px + env(safe-area-inset-top));
   }
+  /* On an iPhone's home screen the status bar draws white over the page
+     (black-translucent, read once at launch): in light, a dark band under it. */
+  :root[data-theme="light"] body::after { content: ""; position: fixed; z-index: 100; top: 0; left: 0; right: 0;
+    height: env(safe-area-inset-top); background: var(--fg); pointer-events: none; }
   :root[data-theme="light"] {
     color-scheme: light;
     --bg: #f4f4f4; --surface: #ffffff; --surface-2: #eeeeee;
@@ -51,7 +56,7 @@
     --scrim: rgba(244,244,244,.6); --shadow: 0 12px 40px rgba(23,26,32,.12);
     --accent: #3e6ae1; --accent-ink: #3e6ae1; --on-accent: #ffffff;
     --seg-on: #ffffff;
-    --danger: #b74134; --ok: #02b028; --warn: #fbb01b;
+    --danger: #b74134; --ok: #0b7d26; --warn: #fbb01b;
     --bubble: rgba(255,255,255,.98); --bubble-you: rgba(23,26,32,.07);
     --glass: rgba(255,255,255,.55); --glass-hi: rgba(255,255,255,.668);
     --solid: #171a20; --on-solid: #ffffff;
@@ -160,14 +165,14 @@
      that split. --orb is the one number the rest follows. */
   body.staged { justify-content: flex-start; padding-top: 8px;
     --orb: clamp(56px, 11vmin, 96px); }
-  body.staged #orbWrap { position: fixed; top: 10px; left: 12px; z-index: 61;
+  body.staged #orbWrap { position: fixed; top: 10px; left: 12px; z-index: 57;
     width: var(--orb); margin: 0; }
   /* The canvas is inset -22%, so the orb DRAWS 1.44x its layout box and its glow
      reaches further still. Offsetting by --orb alone put the text inside that
      halo. Everything to the right of the orb is positioned from --orbSpan. */
   body.staged { --orbSpan: calc(var(--orb) * 1.44); }
   body.staged #status, body.staged #hint { position: fixed;
-    left: calc(var(--orbSpan) + 18px); z-index: 61; text-align: left;
+    left: calc(var(--orbSpan) + 18px); z-index: 57; text-align: left;
     font-size: clamp(12px, 1.6vmin, 15px);
     max-width: calc(100vw - var(--orbSpan) - 230px);
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -175,7 +180,7 @@
   body.staged #hint { top: calc(10px + var(--orb) / 2 + 8px); font-size: 11px; }
   /* Centred under the picture on a wide screen, rather than pinned left. */
   body.staged #transcript { position: fixed; left: 0; right: 0; margin-inline: auto; bottom: 6px;
-    max-height: 16vh; z-index: 61; padding: 0 14px; }
+    max-height: 16vh; z-index: 57; padding: 0 14px; }
   body.staged #transcript .row { font-size: clamp(12px, 1.7vmin, 15px); }
 
   /* A narrow viewport is the driving split. Give the picture the room. */
@@ -185,7 +190,8 @@
   /* The menu, as Hark's settings page: your initial, top right, opens it full
      screen over the blurred app, its items in cards of rows. One button in the
      corner, not a row of six: a row wrapped over the orb in the car's narrow
-     driving layout. Over the picture on the stage (55), under a panel (60). */
+     driving layout. Over the picture on the stage (55) and the orb, status and
+     words beside it (57), under a panel (60). */
   #menuBtn { position: fixed; z-index: 58; top: var(--barTop); right: calc(14px + env(safe-area-inset-right));
     width: 48px; height: 48px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 50%;
     background: var(--glass); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur);
@@ -202,8 +208,9 @@
   #hub .avatar { flex: none; width: 56px; height: 56px; border-radius: 50%; display: grid; place-items: center;
     background: var(--accent); color: var(--on-accent); font-size: 24px; font-weight: 600; }
   #hub #hubName { font-size: 28px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  #hubClose { position: fixed; top: var(--barTop); right: calc(14px + env(safe-area-inset-right)); width: 48px; height: 48px;
-    border: 0; border-radius: 50%; background: var(--glass-hi); color: var(--fg); cursor: pointer; display: grid; place-items: center; }
+  #hubClose { position: fixed; z-index: 59; top: var(--barTop); right: calc(14px + env(safe-area-inset-right)); width: 48px; height: 48px;
+    border: 0; border-radius: 50%; background: var(--glass-hi); color: var(--fg); cursor: pointer; display: none; place-items: center; }
+  #hub.open + #hubClose { display: grid; }
   #hubClose::before { content: ""; width: 20px; height: 20px; background: currentColor;
     -webkit-mask: var(--i-close) center / contain no-repeat; mask: var(--i-close) center / contain no-repeat; }
   #topbtns { width: min(560px, 100%); margin: 0 auto; display: grid; gap: 14px; }
@@ -238,9 +245,9 @@
   #chat .back { display: none; }
   .relayacts { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; align-items: center; }
   .relayacts input { flex: 1 1 160px; background: var(--field); color: var(--fg); border: 1px solid var(--line);
-    border-radius: 8px; padding: 9px 10px; font: 15px inherit; min-height: 40px; }
+    border-radius: 8px; padding: 9px 10px; font: 15px inherit; min-height: 44px; }
   .relayacts button { background: var(--surface-2); color: var(--fg); border: 1px solid var(--line); border-radius: 8px;
-    padding: 8px 14px; min-height: 40px; font: 14px inherit; cursor: pointer; }
+    padding: 8px 14px; min-height: 44px; font: 14px inherit; cursor: pointer; }
   .relayacts button.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); font-weight: 600; }
   .relayerr { color: var(--danger); font-size: 12px; }
   #family .sheet > .msg { margin: 8px 0 0; }
@@ -265,8 +272,8 @@
   #topbtns button { display: grid; grid-template-columns: 22px minmax(0, 1fr) 14px; align-items: center; gap: 14px;
     min-height: 60px; padding: 0 20px; border: 0; background: transparent; color: var(--fg);
     font: inherit; font-size: 16px; text-align: left; cursor: pointer; white-space: nowrap; }
-  #topbtns button:not([hidden]) ~ button:not([hidden]) {
-    background: linear-gradient(var(--hair), var(--hair)) 56px 0 / calc(100% - 76px) 1px no-repeat; }
+  #topbtns button:not([hidden]) ~ button:not([hidden]) { background-image: linear-gradient(var(--hair), var(--hair));
+    background-position: 56px 0; background-size: calc(100% - 76px) 1px; background-repeat: no-repeat; }
   #topbtns button:hover { background-color: var(--wash); }
   #topbtns button::before, #topbtns button::after { content: ""; height: 22px; background: currentColor;
     -webkit-mask: var(--icon, var(--i-dot)) center / contain no-repeat; mask: var(--icon, var(--i-dot)) center / contain no-repeat; }
@@ -312,7 +319,7 @@
     background: var(--bubble); color: var(--fg); overflow-wrap: anywhere; }
   .row.you .txt { background: var(--bubble-you); }
 
-  #logWrap { position: fixed; inset: auto 0 0 0; height: 0; overflow: hidden; z-index: 21;
+  #logWrap { position: fixed; inset: auto 0 0 0; height: 0; overflow: hidden; z-index: 10;
     background: var(--glass-hi); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur);
     border-top: 1px solid var(--hair); transition: height .2s ease; }
   #logWrap.open { height: 42vh; }
@@ -340,7 +347,7 @@
   .panel h2 { margin: 0; font-size: 30px; font-weight: 400; line-height: 1.2; }
   .panel header .close, .panel header .back { flex: none; display: grid; place-items: center; width: 48px; height: 48px;
     min-height: 0; padding: 0; border: 0; border-radius: 50%; font-size: 0; background: var(--glass-hi); color: var(--fg);
-    -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); --icon: var(--i-back); }
+    --icon: var(--i-back); }
   /* Back only from a section's page (below, and Messages' conversation on a phone). */
   .panel header .back { display: none; }
   .panel header .close { position: fixed; z-index: 2; top: var(--barTop); right: calc(14px + env(safe-area-inset-right));
@@ -354,7 +361,7 @@
   .panel input[type=text], .panel .srv input:not([type=checkbox]), .panel .svc input:not([type=checkbox]) {
     background: var(--field); color: var(--fg); border: 1px solid transparent;
     border-radius: 14px; padding: 11px 14px; font-size: 16px; font-family: inherit; min-height: 46px; width: 100%; }
-  .panel input:focus, .panel select:focus, .panel textarea:focus { outline: none; border-color: var(--accent); }
+  .panel input:focus-visible, .panel select:focus-visible, .panel textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   .panel .on { color: var(--dim); font-size: 13px; display: flex; align-items: center; gap: 8px; }
   .panel .rowbtns { display: flex; gap: 8px; flex-wrap: wrap; }
   .panel button { background: var(--surface-2); color: var(--fg); border: 1px solid transparent;
@@ -584,7 +591,7 @@
   #modes { position: relative; z-index: 2; display: flex; gap: 0; padding: 2px; border-radius: 999px;
     background: var(--wash); }
   #modes button { background: transparent; color: var(--dim); border: 0; border-radius: 999px; padding: 10px 18px;
-    min-height: 40px; font: inherit; font-size: 13px; cursor: pointer; }
+    min-height: 44px; font: inherit; font-size: 13px; cursor: pointer; }
   #modes button.on { background: var(--seg-on); color: var(--fg); }
   body.staged #talkrow { display: none; }
   #talkrow { position: relative; z-index: 2; display: flex; gap: 10px; align-items: center; }
@@ -600,9 +607,9 @@
     padding: calc(var(--barTop) + 64px) 16px calc(112px + env(safe-area-inset-bottom)); }
   body.typing h1, body.typing #hint, body.typing #talkrow { display: none; }
   body.typing #orbWrap { position: fixed; top: calc(var(--barTop) + 6px); left: 18px; z-index: 3; width: var(--orb); margin: 0; }
-  body.typing #status { position: fixed; z-index: 20; left: 16px; right: 16px;
-    bottom: calc(var(--kb, 0px) + 80px + env(safe-area-inset-bottom)); min-height: 0;
-    font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  body.typing #status { position: fixed; z-index: 20; left: 16px; right: 16px; top: auto; max-width: none;
+    bottom: calc(var(--kb, 0px) + 80px + env(safe-area-inset-bottom)); min-height: 0; text-align: center;
+    font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; pointer-events: none; }
   body.typing #transcript { flex: 1; min-height: 0; max-height: none; width: min(720px, 100%);
     padding-bottom: 8px; }
   body.typing #transcript .row { font-size: 16px; }
@@ -693,7 +700,7 @@
   .panel .navcard > button:hover { background-color: var(--wash); }
   .panel .navcard > button::before, .panel .navcard > button::after { content: ""; height: 22px; background: currentColor;
     -webkit-mask: var(--icon, var(--i-dot)) center / contain no-repeat; mask: var(--icon, var(--i-dot)) center / contain no-repeat; }
-  .panel .navcard > button::after { --icon: var(--i-chevron); height: 14px; background: var(--faint); }
+  .panel .navcard > button::after { --icon: var(--i-chevron); height: 14px; background: var(--faint); grid-column: 4; }
   .panel .setnav .st { font-size: 14px; font-weight: 700; }
   .panel .setnav .st.on { color: var(--ok); }
   .panel .setnav .st.need { color: var(--danger); }
@@ -745,8 +752,9 @@
   .panel .setbody [data-section]:not(.active) { display: none; }
   .panel .setbody .svc h4 { margin: 6px 0 0; font-size: 13px; font-weight: 500; color: var(--dim); }
   .panel .setbody .svc.active { margin-top: 0; }
-  /* The list, then one section in its place. On a section's page its own heading is the title. */
-  .panel .setsheet:not(.detail) .setbody, .panel .setsheet.detail .setnav,
+  /* The list, then one section in its place. On a section's page its own heading is the title.
+     Only the sections hide under the list: a load error or a warning beside them still shows. */
+  .panel .setsheet:not(.detail) .setbody [data-section], .panel .setsheet.detail .setnav,
   .panel .setsheet.detail h2 { display: none; }
   .panel .setsheet.detail .back { display: grid; }
   .panel .setsheet.detail .setbody .active .svchead h3,
@@ -782,7 +790,7 @@
   .panel .navcard > button[role=radio] small { color: var(--dim); font-size: 13px; }
   .panel .navcard > button[role=radio]::before { content: none; }
   .panel .navcard > button[role=radio]::after { grid-column: 2; grid-row: 1 / span 2; width: 22px; height: 22px;
-    border-radius: 50%; border: 2px solid var(--faint); background: none; -webkit-mask: none; mask: none; }
+    box-sizing: border-box; border-radius: 50%; border: 2px solid var(--faint); background: none; -webkit-mask: none; mask: none; }
   .panel .navcard > button[role=radio][aria-checked="true"]::after { border: 7px solid var(--accent); }
 </style>
 </head>
@@ -792,7 +800,6 @@
   <div id="hub" role="dialog" aria-modal="true" aria-label="Menu">
     <header class="hubhead">
       <span id="hubAvatar" class="avatar" aria-hidden="true"></span><b id="hubName">Jarvis</b>
-      <button id="hubClose" type="button" aria-label="Close"></button>
     </header>
     <div id="topbtns" role="menu" aria-label="Menu">
       <!-- data-need: what a family member must be allowed for the item to be offered (main.ts). -->
@@ -815,6 +822,8 @@
       </div>
     </div>
   </div>
+  <!-- Outside the page it closes, which scrolls: a fixed child of it would scroll away. -->
+  <button id="hubClose" type="button" aria-label="Close"></button>
 
   <div id="tabs" role="group" aria-label="View">
     <span class="pill" aria-hidden="true"></span>

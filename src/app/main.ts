@@ -1273,7 +1273,7 @@ async function whoAmI() {
     title.textContent = ((me.space?.agentName ?? "Jarvis") + (shared && first ? ` · ${first}` : "")).toUpperCase();
     title.classList.toggle("switchable", isSession(key));
     // The menu is behind your initial, as Hark's is behind your picture; a person outline without one.
-    $("menuBtn").textContent = $("hubAvatar").textContent = first.slice(0, 1).toUpperCase();
+    $("menuBtn").textContent = $("hubAvatar").textContent = ([...first][0] ?? "").toUpperCase();
     $("hubName").textContent = me.user?.name ?? me.space?.agentName ?? "Jarvis";
     const may = (need: string) => me.role === "admin" || me.scopes.includes("*") || (need !== "admin" && me.scopes.includes(need));
     for (const b of document.querySelectorAll<HTMLElement>("#topbtns [data-need]")) b.hidden = !may(b.dataset.need!);

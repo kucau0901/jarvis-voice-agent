@@ -1,7 +1,7 @@
 // Light or dark on a screen (src/app/theme.ts): Auto, the default, follows the
 // screen's clock rather than the system, because the car's browser can report a
 // light system theme at night.
-import { asThemeChoice, DAY_STARTS, NIGHT_STARTS, resolveTheme, THEMES } from "../src/app/theme.ts";
+import { asThemeChoice, DAY_STARTS, lightUntil, NIGHT_STARTS, resolveTheme, THEMES } from "../src/app/theme.ts";
 
 let pass = 0, fail = 0;
 function check(name: string, cond: boolean, got?: unknown) {
@@ -27,6 +27,16 @@ console.log("asThemeChoice");
 check("anything not a choice is Auto", [null, undefined, "", "blue", "Dark"].every((v) => asThemeChoice(v) === "auto"));
 check("each choice survives a round trip", THEMES.every((c) => asThemeChoice(c) === c));
 check("offered in the picker's order", THEMES.join() === "auto,system,dark,light", THEMES);
+
+console.log("lightUntil (what index.html paints before the app loads)");
+
+const afternoon = new Date(2026, 9, 14, 18, 30);
+check("dark: never paint light", lightUntil("auto", "dark", afternoon) === 0 && lightUntil("dark", "dark", afternoon) === 0);
+check("Auto's light holds until 19:00 that day, so a reload after dark paints dark",
+  lightUntil("auto", "light", afternoon) === new Date(2026, 9, 14, 19, 0).getTime() &&
+  new Date(2026, 9, 14, 20, 0).getTime() >= lightUntil("auto", "light", afternoon));
+check("a chosen or the system's light holds whatever the hour",
+  lightUntil("light", "light", afternoon) > new Date(2100, 0, 1).getTime() && lightUntil("system", "light", afternoon) > new Date(2100, 0, 1).getTime());
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

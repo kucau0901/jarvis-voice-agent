@@ -22,8 +22,8 @@ export const DAY_STARTS = 7;
 export const NIGHT_STARTS = 19;
 
 const KEY = "jarvis.theme";
-/** What was last shown, for the one line in index.html that paints it before anything loads. */
-const SHOWN = "jarvis.themeShown";
+/** Until when light stays right, for the one line in index.html that paints it before anything loads. */
+const LIGHT_UNTIL = "jarvis.lightUntil";
 
 export function asThemeChoice(v: string | null | undefined): ThemeChoice {
   return v === "system" || v === "dark" || v === "light" ? v : "auto";
@@ -33,6 +33,16 @@ export function resolveTheme(choice: ThemeChoice, hour: number, systemDark: bool
   if (choice === "dark" || choice === "light") return choice;
   if (choice === "system") return systemDark ? "dark" : "light";
   return hour >= DAY_STARTS && hour < NIGHT_STARTS ? "light" : "dark";
+}
+
+/**
+ * Until when the theme just shown stays right, as a time: never for dark,
+ * 19:00 today for Auto's light, for good for a chosen or the system's light.
+ */
+export function lightUntil(choice: ThemeChoice, shown: Theme, now: Date): number {
+  if (shown === "dark") return 0;
+  if (choice !== "auto") return 8.64e15;
+  return new Date(now).setHours(NIGHT_STARTS, 0, 0, 0);
 }
 
 /** Without storage (private mode) a choice lasts until the page closes. */
@@ -50,18 +60,21 @@ const listeners = new Set<(t: Theme) => void>();
 let shown: Theme | null = null;
 
 function apply(): void {
-  const t = resolveTheme(themeChoice(), new Date().getHours(), matchMedia("(prefers-color-scheme: dark)").matches);
+  const choice = themeChoice();
+  const now = new Date();
+  const t = resolveTheme(choice, now.getHours(), matchMedia("(prefers-color-scheme: dark)").matches);
+  // Every time, not only on a change: a new choice can keep the theme and still end it at another hour.
+  try {
+    localStorage.setItem(LIGHT_UNTIL, String(lightUntil(choice, t, now)));
+  } catch {
+    // the next load paints dark first, then this
+  }
   if (t === shown) return;
   shown = t;
   const root = document.documentElement;
   root.dataset.theme = t;
   // The browser's own bar takes the page's colour: read it from the CSS, which stays the one source.
   document.querySelector('meta[name="theme-color"]')?.setAttribute("content", getComputedStyle(root).getPropertyValue("--bg").trim());
-  try {
-    localStorage.setItem(SHOWN, t);
-  } catch {
-    // the next load paints dark first, then this
-  }
   for (const f of listeners) f(t);
 }
 
