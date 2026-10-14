@@ -58,6 +58,16 @@
     --backdrop: radial-gradient(120% 90% at 12% -20%, rgba(62,106,225,.14), transparent 55%),
       radial-gradient(100% 80% at 105% 110%, rgba(208,209,210,.9), transparent 60%), #f4f4f4;
   }
+  /* Icons: 24px line drawings as masks, painted in the text colour by an
+     element's ::before (--icon names one). Not child elements, so code that
+     rewrites a button's text (unread counts, two-tap confirms) keeps them,
+     and they add nothing to the text a screen reader or the behavior check reads. */
+  :root {
+    --i-mic: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='9' y='3' width='6' height='11' rx='3'/%3E%3Cpath d='M5 11a7 7 0 0 0 14 0M12 18v3'/%3E%3C/svg%3E");
+    --i-speaker: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M11 5 6 9H3v6h3l5 4z'/%3E%3Cpath d='m16 9 5 6m0-6-5 6'/%3E%3C/svg%3E");
+    --i-speaking: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M11 5 6 9H3v6h3l5 4z'/%3E%3Cpath d='M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13'/%3E%3C/svg%3E");
+    --i-send: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 19V5M5 12l7-7 7 7'/%3E%3C/svg%3E");
+  }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--fg);
     overscroll-behavior: none;
@@ -129,7 +139,6 @@
   /* A narrow viewport is the driving split. Give the picture the room. */
   @media (max-width: 900px) {
     body.staged #transcript { max-height: 13vh; }
-    body.staged .row .who { width: 40px; font-size: 10px; }
   }
   /* One row that lays itself out, rather than three fixed offsets that collide
      the moment the viewport is a phone rather than a dashboard. */
@@ -226,11 +235,15 @@
 
   #transcript { width: min(760px, 100%); max-height: 26vh; overflow-y: auto;
     display: flex; flex-direction: column; gap: 8px; padding: 0 4px; }
-  .row { display: flex; gap: 10px; font-size: 15px; line-height: 1.45; }
-  .row .who { flex: none; width: 52px; font-size: 11px; letter-spacing: .5px;
-    text-transform: uppercase; padding-top: 3px; }
-  .row.you .who { color: var(--accent-ink); } .row.jarvis .who { color: var(--warn); }
-  .row .txt { color: var(--fg); }
+  /* Bubbles, as Hark's chat has them: Jarvis on the left, you on the right.
+     Who said it is plain from the side, so the name is there for screen
+     readers only. */
+  .row { display: flex; flex-direction: column; align-items: flex-start; font-size: 15px; line-height: 1.4; }
+  .row.you { align-items: flex-end; }
+  .row .who { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .row .txt { max-width: min(480px, 88%); padding: 12px 16px; border-radius: 22px;
+    background: var(--bubble); color: var(--fg); overflow-wrap: anywhere; }
+  .row.you .txt { background: var(--bubble-you); }
 
   #logWrap { position: fixed; inset: auto 0 0 0; height: 0; overflow: hidden;
     background: var(--surface); border-top: 1px solid var(--hair); transition: height .2s ease; }
@@ -520,19 +533,28 @@
   body.typing #transcript .row .txt { white-space: pre-wrap; overflow-wrap: anywhere; }
   body.typing #transcript .row .txt a { color: var(--accent-ink); }
   #transcript .row.bad .txt { color: var(--danger); }
-  body.typing #typebar { display: flex; position: fixed; left: 0; right: 0; bottom: var(--kb, 0px); z-index: 20;
-    justify-content: center; gap: 8px; align-items: flex-end;
-    padding: 10px max(14px, calc((100vw - 820px) / 2)) calc(12px + env(safe-area-inset-bottom));
-    background: linear-gradient(transparent, var(--bg) 22%); }
-  #typebar textarea { flex: 1; resize: none; min-height: 50px; max-height: 30vh; border-radius: 14px;
-    padding: 13px 14px; background: var(--field); color: var(--fg); border: 1px solid var(--line);
-    font: inherit; font-size: 16px; line-height: 1.4; }
-  #typebar textarea:focus { outline: none; border-color: var(--accent); }
-  #typebar button { min-width: 50px; min-height: 50px; border-radius: 14px; border: 1px solid var(--hair);
-    background: var(--surface); color: var(--fg); font-size: 18px; cursor: pointer; }
-  #typebar #send { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+  /* The message box, Hark's: one glass pill holding the text and its buttons —
+     ask aloud (what the orb does in Chat), read replies aloud, and send. */
+  body.typing #typebar { display: flex; position: fixed; left: 50%; transform: translateX(-50%); z-index: 20;
+    bottom: calc(var(--kb, 0px) + 12px + env(safe-area-inset-bottom)); width: min(720px, calc(100vw - 28px));
+    align-items: flex-end; gap: 2px; padding: 4px; border-radius: 26px; border: 1px solid var(--hair);
+    background: var(--glass); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur);
+    box-shadow: var(--shadow); }
+  body.typing #typebar:focus-within { border-color: color-mix(in srgb, var(--accent) 55%, transparent); }
+  /* 16px so iOS does not zoom the page when it takes focus. */
+  #typebar textarea { flex: 1; resize: none; min-height: 44px; max-height: 30vh; border: 0; background: transparent;
+    padding: 11px 8px 11px 14px; color: var(--fg); font: inherit; font-size: 16px; line-height: 1.4; }
+  #typebar textarea:focus { outline: none; }
+  #typebar textarea::placeholder { color: var(--faint); }
+  #typebar button { flex: none; display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%;
+    border: 0; background: transparent; color: var(--dim); cursor: pointer; }
+  #typebar button::before { content: ""; width: 22px; height: 22px; background: currentColor;
+    -webkit-mask: var(--icon) center / contain no-repeat; mask: var(--icon) center / contain no-repeat; }
+  #typebar #askAloud { --icon: var(--i-mic); }
+  #typebar #readAloud { --icon: var(--i-speaker); }
+  #typebar #readAloud[aria-pressed="true"] { --icon: var(--i-speaking); color: var(--accent-ink); }
+  #typebar #send { --icon: var(--i-send); background: var(--solid); color: var(--on-solid); }
   #typebar #send:disabled { opacity: .45; cursor: default; }
-  #typebar #readAloud[aria-pressed="true"] { border-color: var(--accent); }
   /* A picture while typing sits at the top of the chat, not over it. The
      staged rules above float the conversation over a dashboard; with typing's
      unlimited height that layer covered the picture, the orb and the menu.
@@ -543,7 +565,6 @@
   body.typing #stage iframe { width: var(--stageW); height: var(--stageH); }
   body.typing.staged #transcript { position: relative; inset: auto; margin-inline: 0;
     max-height: none; padding: 0 4px 8px; z-index: 2; }
-  body.typing.staged .row .who { width: 52px; font-size: 11px; }
 
   /* Alerts: Jarvis speaking first. Above everything, including an open panel,
      because the settings panel's Test is one of the ways they arrive. */
@@ -691,8 +712,9 @@
   <div id="transcript"></div>
   <form id="typebar" autocomplete="off">
     <textarea id="typed" rows="1" placeholder="Message Jarvis…" aria-label="Message Jarvis" enterkeyhint="send"></textarea>
-    <button id="readAloud" type="button" aria-pressed="false" title="Read replies aloud" aria-label="Read replies aloud">🔈</button>
-    <button id="send" type="submit" aria-label="Send">➤</button>
+    <button id="askAloud" type="button" title="Ask aloud" aria-label="Ask aloud"></button>
+    <button id="readAloud" type="button" aria-pressed="false" title="Read replies aloud" aria-label="Read replies aloud"></button>
+    <button id="send" type="submit" aria-label="Send"></button>
   </form>
 
   <div id="unlock">

@@ -1122,10 +1122,11 @@ let readAloud = (() => {
 })();
 function showReadAloud() {
   readAloudBtn.setAttribute("aria-pressed", String(readAloud));
-  readAloudBtn.textContent = readAloud ? "🔊" : "🔈";
   readAloudBtn.title = readAloud ? "Replies are read aloud" : "Read replies aloud";
 }
 showReadAloud();
+// The orb's spoken question, from the message box: the orb is small here.
+$("askAloud").addEventListener("click", () => els.orb.click());
 readAloudBtn.addEventListener("click", () => {
   readAloud = !readAloud;
   try {
