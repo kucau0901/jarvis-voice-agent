@@ -119,6 +119,7 @@ console.log("\nwhat a pass may do");
   check("a gate opens and closes", JSON.stringify(passService("cover.main_gate", "open")) === '{"domain":"cover","service":"open_cover"}' && passActions("cover.main_gate").join() === "open,close");
   check("a lock unlocks", (passService("lock.front_door", "unlock") as { service: string }).service === "unlock");
   check("a light cannot be told to open", typeof passService("light.porch", "open") === "string");
+  check("a group is switched with Home Assistant's own service", JSON.stringify(passService("group.master_bedroom_light", "off")) === '{"domain":"homeassistant","service":"turn_off"}');
   const env = withPerson({} as never, { person: "u_helper", access: { allow: [{ entity: "cover.main_gate", label: "Main gate" }] } });
   check("a guest's requests carry their pass", passOf(env).length === 1);
   check("nothing else in the house is on it", (await usePass(env, "garage door", "open")).startsWith("That is not on this pass"));

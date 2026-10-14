@@ -78,6 +78,7 @@ export function houseActions(entity: string, state: string): string[] {
     case "switch":
     case "fan":
     case "input_boolean":
+    case "group":
       return state === "on" ? ["off"] : state === "off" ? ["on"] : [];
     case "script":
       return state === "off" ? ["run"] : [];
@@ -85,6 +86,10 @@ export function houseActions(entity: string, state: string): string[] {
       return [];
   }
 }
+
+/** A button's words: a group (a room's lights) is switched all at once. */
+const actionLabel = (entity: string, action: string): string =>
+  entity.startsWith("group.") && (action === "on" || action === "off") ? (action === "on" ? "All on" : "All off") : HOUSE_LABEL[action]!;
 
 /** A binary sensor's on and off, by what it senses. */
 const SENSED: Record<string, [on: string, off: string]> = {
@@ -103,6 +108,11 @@ export function houseValue(entity: string, state: string, a: Record<string, unkn
   if (domain === "binary_sensor") {
     const said = SENSED[String(a.device_class ?? "")];
     return state === "on" ? (said?.[0] ?? "On") : state === "off" ? (said?.[1] ?? "Off") : cap(state);
+  }
+  if (domain === "group" && Array.isArray(a.entity_id)) {
+    const members = a.entity_id.filter((m): m is string => typeof m === "string");
+    const lights = members.every((m) => m.startsWith("light.") || m.startsWith("switch."));
+    return `${cap(state)}, ${members.length} ${lights ? "lights" : "things"}`;
   }
   const t = num(domain === "weather" ? a.temperature : domain === "climate" ? a.current_temperature : undefined);
   const tUnit = typeof a.temperature_unit === "string" ? ` ${a.temperature_unit}` : "°";
@@ -186,7 +196,7 @@ export async function viewPanels(panels: Panel[], src: PanelSources): Promise<Pa
       try {
         const now = await read;
         if (!now) return empty(item, "It is no longer in the house.");
-        const actions = houseActions(item.ref, now.state).map((action) => ({ action, label: HOUSE_LABEL[action]! }));
+        const actions = houseActions(item.ref, now.state).map((action) => ({ action, label: actionLabel(item.ref, action) }));
         return { key: item.ref, kind: "home", label: item.label, value: houseValue(item.ref, now.state, now.attributes), tiles: [], actions };
       } catch {
         return empty(item, "Could not reach the house just now.");
@@ -245,7 +255,7 @@ export async function actOn(
     } catch (e) {
       return { status: 502, text: `The house did not do it: ${e instanceof Error ? e.message : String(e)}` };
     }
-    return { status: 200, text: `${item.label}: ${HOUSE_LABEL[action]}.` };
+    return { status: 200, text: `${item.label}: ${actionLabel(item.ref, action)}.` };
   }
 
   if (!allows(src.grants, "car.control")) return { status: 403, text: 'Working the car needs "car.control".' };

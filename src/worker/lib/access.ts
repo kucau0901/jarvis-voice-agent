@@ -133,10 +133,12 @@ export function passService(entity: string, action: string): { domain: string; s
     input_button: { press: "press", open: "press", on: "press" },
     script: { run: "turn_on", press: "turn_on", open: "turn_on", on: "turn_on" },
     scene: { run: "turn_on", on: "turn_on" },
+    group: { on: "turn_on", off: "turn_off" },
   };
   const service = map[domain]?.[action];
   if (!service) return `a ${domain} cannot be told to ${action}`;
-  return { domain, service };
+  // A group (a room's lights, on a panel) has no services of its own: Home Assistant's switch it as a whole.
+  return { domain: domain === "group" ? "homeassistant" : domain, service };
 }
 
 /** The actions a thing offers, for its buttons. */

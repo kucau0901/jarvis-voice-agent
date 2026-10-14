@@ -25,7 +25,9 @@ of every release, and in the [README](README.md#updating).
   reach for them — things in Home Assistant, their car through Tessie, what
   they have used, notes. Everything is read live when the tab is open, and the
   buttons follow the state (a closed gate offers Open; a locked car, Unlock)
-  and are checked again before anything is sent. Guests have no Home tab.
+  and are checked again before anything is sent. A room's lights can be one
+  row with All on and All off; a panel holds up to 20 things. Guests have no
+  Home tab.
 - **Light and dark, per screen.** Menu → **Theme**: Auto, the default, is
   light by day and dark at night (07:00–19:00, by the screen's clock), because
   the car's browser can report the wrong system setting. Or System, Dark or

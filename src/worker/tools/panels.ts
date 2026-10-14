@@ -60,7 +60,9 @@ export const panelSet: Tool = {
     "Make or change a panel on the user's Home tab in this app, when they ask to put something on a " +
     "panel, add to one or make one. A panel shows each thing live, with buttons that follow its state " +
     "(a closed gate shows Open). It can hold: home — something in Home Assistant, by its entity id " +
-    "(find it with the house tools first; never guess one); car — one of their cars, by name, or null " +
+    "(find them with the house tools first, all in one go; never guess one). For all the lights in a " +
+    "room, use the room's group (group.… or a light group) when the house has one: one row, all on or " +
+    "off at once. Up to 20 things a panel; for more, make a second panel. car — one of their cars, by name, or null " +
     "for their usual one; usage — what they have used and spent; note — a line of text such as a " +
     "to-do, the text itself in label. Panels are the asker's own: nobody else sees them.",
   parameters: {

@@ -30,7 +30,7 @@ export interface Panel {
 }
 
 export const MAX_PANELS = 8;
-export const MAX_ITEMS = 12;
+export const MAX_ITEMS = 20;
 /**
  * Things in the house across all of one person's panels. Each is read with a
  * request of its own when the panels are shown, and a Worker on the free plan
@@ -74,7 +74,9 @@ export class Panels {
     if (!old && all.length >= MAX_PANELS) return `There are already ${MAX_PANELS} panels; remove one first.`;
     const kept = mode === "add" && old ? [...old.items] : [];
     for (const i of given) if (!kept.some((k) => sameItem(k, i))) kept.push(i);
-    if (kept.length > MAX_ITEMS) return `A panel holds at most ${MAX_ITEMS} things; this would have ${kept.length}.`;
+    if (kept.length > MAX_ITEMS) {
+      return `A panel holds at most ${MAX_ITEMS} things; this would have ${kept.length}. Put the rest on a second panel, with a title of its own, or a room's lights as its light group.`;
+    }
     const house = new Set([...all.filter((p) => p !== old).flatMap((p) => p.items), ...kept].filter((i) => i.kind === "home").map((i) => i.ref));
     if (house.size > MAX_HOUSE) return `Panels can show at most ${MAX_HOUSE} things in the house altogether; remove some first.`;
     const panel: Panel = { id: old?.id ?? newId(), title: old && mode === "add" ? old.title : name, items: kept, at: now };

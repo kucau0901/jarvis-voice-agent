@@ -323,6 +323,16 @@ Home Controls", "a to-do panel with renew the road tax" (`panel_set`,
   things the person put on their own panel, and only with `home`: what the
   house then does is Home Assistant's to decide, as for every other route. A
   car shared to `see` shows its state with no buttons.
+- **Room-sized.** Up to 20 things a panel, 8 panels, and 30 things in the
+  house across them, since each is one request when the panel is shown and
+  the free plan allows 50. A room's lights can be its group: one row, "On, 8
+  lights", with All on or All off (Home Assistant's own
+  `homeassistant.turn_on`/`turn_off`, the one service a group answers to).
+  The first real panel asked for (14 Oct 2026) was fifteen things, the
+  master bedroom's lights among them: against a limit of 12, the router spent
+  its six rounds searching again instead of splitting, and gave up. The
+  refusal now says how to fit (a second panel, or the room's group), and the
+  tool asks for every lookup in one round.
 
 ## Getting somewhere
 

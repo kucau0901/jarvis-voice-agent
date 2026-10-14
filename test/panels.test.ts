@@ -36,7 +36,9 @@ console.log("what is kept");
   check("replace makes these all it holds", (await panels.list("u_sara"))[0]!.items.map((i) => i.ref).join() === "light.porch");
   check("each person's are their own", (await panels.list("owner")).length === 0);
   const many = Array.from({ length: MAX_ITEMS + 1 }, (_, i) => ({ kind: "note" as const, ref: "", label: `note ${i}` }));
-  check("a panel holds at most MAX_ITEMS", typeof (await panels.set("u_sara", "Too many", many, "add")) === "string");
+  const tooMany = await panels.set("u_sara", "Too many", many, "add");
+  check("a panel holds at most MAX_ITEMS (20), and says to put the rest on a second panel",
+    MAX_ITEMS === 20 && typeof tooMany === "string" && tooMany.includes("second panel"), tooMany);
   for (let i = 1; i < MAX_PANELS; i++) await panels.set("u_sara", `P${i}`, [], "add");
   check("a person has at most MAX_PANELS", typeof (await panels.set("u_sara", "One more", [], "add")) === "string" && (await panels.list("u_sara")).length === MAX_PANELS);
   const notes = await panels.set("owner", "To do", [{ kind: "note", ref: "", label: "Renew the <b>road tax</b>\n" }], "add");
@@ -53,11 +55,12 @@ console.log("what is kept");
   check("not there: says what the panel does hold", String(await panels.remove("owner", "To do", "nothing like it")).includes("It holds:"));
   const lots = new Panels(fakeStorage());
   const things = (from: number, n: number) => Array.from({ length: n }, (_, i) => ({ kind: "home" as const, ref: `light.l${from + i}`, label: `L${from + i}` }));
-  for (let i = 0; i < 2; i++) await lots.set("owner", `House ${i}`, things(i * MAX_ITEMS, MAX_ITEMS), "add");
-  const over = await lots.set("owner", "House 2", things(2 * MAX_ITEMS, MAX_ITEMS), "add");
+  const first = await lots.set("owner", "House A", things(0, MAX_ITEMS), "add");
+  const second = await lots.set("owner", "House B", things(MAX_ITEMS, MAX_HOUSE - MAX_ITEMS), "add");
+  const over = await lots.set("owner", "House C", things(MAX_HOUSE, 1), "add");
   check("at most MAX_HOUSE things in the house across a person's panels (each is a request when shown)",
-    MAX_HOUSE === 30 && typeof over === "string" && typeof (await lots.set("owner", "House 2", things(2 * MAX_ITEMS, MAX_HOUSE - 2 * MAX_ITEMS), "add")) !== "string");
-  check("…counting a thing on two panels once", typeof (await lots.set("owner", "House 3", things(0, 6), "add")) !== "string");
+    MAX_HOUSE === 30 && typeof first !== "string" && typeof second !== "string" && typeof over === "string" && over.includes(String(MAX_HOUSE)), { first, second, over });
+  check("…counting a thing on two panels once", typeof (await lots.set("owner", "House C", things(0, 6), "add")) !== "string");
   await panels.forget("u_sara");
   check("someone who leaves takes their panels with them", (await panels.list("u_sara")).length === 0 && (await panels.list("owner")).length === 1);
 }
@@ -74,6 +77,10 @@ check("a button or scene never yet used (state unknown) still offers Press or Ru
 check("…but not when it is unavailable", houseActions("button.gate_open", "unavailable").length === 0 && houseValue("button.gate_open", "unavailable", {}) === "Unavailable");
 check("a sensor or the weather is read, never worked", houseActions("sensor.outside", "31").length === 0 && houseActions("weather.home", "sunny").length === 0);
 check("a sensor reads with its unit", houseValue("sensor.outside", "31", { unit_of_measurement: "°C" }) === "31 °C");
+check("a room's light group is one row: on offers All off, off All on",
+  houseActions("group.master_bedroom_light", "on").join() === "off" && houseActions("group.master_bedroom_light", "off").join() === "on");
+check("…and says how many lights are in it",
+  houseValue("group.master_bedroom_light", "on", { entity_id: ["light.a", "light.b", "switch.c"] }) === "On, 3 lights");
 check("the weather reads with its temperature", houseValue("weather.home", "partlycloudy", { temperature: 31, temperature_unit: "°C" }) === "Partlycloudy, 31 °C", houseValue("weather.home", "partlycloudy", { temperature: 31, temperature_unit: "°C" }));
 check("a door sensor says Open or Closed", houseValue("binary_sensor.back_door", "on", { device_class: "door" }) === "Open" && houseValue("binary_sensor.back_door", "off", { device_class: "door" }) === "Closed");
 check("a cover says what it is doing", houseValue("cover.main_gate", "closed", {}) === "Closed");
@@ -157,12 +164,25 @@ console.log("reading a panel");
   check("the house not answering: said, with no buttons", down!.rows[0]!.note?.includes("Could not reach") === true && down!.rows[0]!.actions.length === 0);
 }
 
+{
+  const { src } = sources({ read: async () => ({ state: "on", attributes: { entity_id: ["light.a", "light.b"] } }) });
+  const [view] = await viewPanels([{ ...panel, items: [{ kind: "home", ref: "group.master_bedroom_light", label: "Master bedroom lights" }] }], src);
+  check("a group's button reads All off", view!.rows[0]!.actions.map((a) => a.label).join() === "All off" && view!.rows[0]!.value === "On, 2 lights", view!.rows[0]);
+}
+
 console.log("pressing a button");
 const signal = new AbortController().signal;
+{
+  const { src, asked } = sources({ read: async () => ({ state: "on", attributes: {} }) });
+  const group = await actOn({ ...panel, items: [{ kind: "home", ref: "group.master_bedroom_light", label: "Master bedroom lights" }] }, "group.master_bedroom_light", "off", src, signal);
+  check("All off on a group switches it off as a whole, with Home Assistant's own service",
+    group.status === 200 && group.text === "Master bedroom lights: All off." && asked.calls.join() === "homeassistant.turn_off group.master_bedroom_light", { group, calls: asked.calls });
+}
 {
   const { src, asked } = sources();
   const r = await actOn(panel, "cover.main_gate", "open", src, signal);
   check("Open on a closed gate opens it, through the pass's fixed service", r.status === 200 && asked.calls.join() === "cover.open_cover cover.main_gate", { r, asked });
+
   const stale = await actOn(panel, "cover.main_gate", "close", src, signal);
   check("a button its state no longer offers sends nothing", stale.status === 409 && asked.calls.length === 1, stale);
   check("a thing not on the panel is refused", (await actOn(panel, "lock.front_door", "unlock", src, signal)).status === 404 && asked.calls.length === 1);
