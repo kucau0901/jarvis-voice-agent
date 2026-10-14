@@ -125,7 +125,7 @@ void main() {
   vec3 base = uIdle;
   base = mix(base, uListen, clamp(uUser * 1.7, 0.0, 1.0));
   base = mix(base, uSpeak, clamp(uAgent * 1.7, 0.0, 1.0));
-  base = mix(base, vec3(1.0, 0.32, 0.36), uError);
+  base = mix(base, vec3(0.92, 0.26, 0.18), uError);
   float act = clamp(uUser + uAgent, 0.0, 1.0);
 
   // A key light from the upper left. This is what makes it read as a sphere

@@ -12,9 +12,9 @@ interface OrbInputs {
 const HALO_Z = -0.9;
 
 const PALETTE = {
-  idle: new THREE.Color("#3fb8d4"),
-  listen: new THREE.Color("#5fe3f0"),
-  speak: new THREE.Color("#ffc46b"),
+  idle: new THREE.Color("#3eade1"),
+  listen: new THREE.Color("#3368ff"),
+  speak: new THREE.Color("#fbb01b"),
 };
 
 /**

@@ -54,6 +54,9 @@ of every release, and in the [README](README.md#updating).
 
 ### Changed
 
+- **A new look, in Tesla's colours.** The app uses the greys and blue of
+  Tesla's own screens, so it looks at home in the car. The orb is blue when
+  idle and while you talk, and amber while Jarvis speaks.
 - **Research reports are checked before they reach you.** When a research job
   has written its report, it takes one more turn to check it against the pages
   it found, searching again where it needs to, and corrects or removes what

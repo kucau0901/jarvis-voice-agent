@@ -132,7 +132,7 @@ GPU cannot spare.
 
 It is driven by two continuous levels rather than a state enum. GPT-Live is full
 duplex, so the driver and Jarvis genuinely overlap, and the orb blends between
-cyan and gold rather than switching. A delegation in flight adds a slow inward
+blue and amber rather than switching. A delegation in flight adds a slow inward
 churn.
 
 **Quality adapts at runtime instead of being guessed from the user agent.** The
