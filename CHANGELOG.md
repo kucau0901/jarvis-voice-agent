@@ -58,9 +58,11 @@ of every release, and in the [README](README.md#updating).
 
 ### Changed
 
-- **A new look, in Tesla's colours.** The app uses the greys and blue of
-  Tesla's own screens, so it looks at home in the car. The orb is blue when
-  idle and while you talk, and amber while Jarvis speaks.
+- **A new look, in Tesla's colours, laid out like Hark.** The app uses the
+  greys and blue of Tesla's own screens, so it looks at home in the car, on
+  frosted glass over a softly blurred page. The orb is blue when idle and
+  while you talk, and amber while Jarvis speaks. Alerts, pictures and the
+  sign-in screen follow suit.
 - **Jarvis and Chat, as tabs at the top.** Chat is what *Type* was, now with
   replies in bubbles and one message box holding a microphone (ask aloud),
   read-aloud and send; Live and Push-to-talk stay under the orb in the Jarvis

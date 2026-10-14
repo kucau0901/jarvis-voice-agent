@@ -281,6 +281,16 @@ On a light page the orb's additive glow composites to white and vanishes, so
 in light it blends normally, its shadow side is lifted and its light is
 compressed less: it reads as a lit glass ball rather than a dark hole.
 
+The layout follows Hark's: a pill switcher for the Jarvis and Chat tabs, the
+menu as a page behind your initial, panels as full-screen pages with round
+back and close buttons, sections as rows in cards, and frosted glass over a
+blurred page — in the car too, where the orb already draws smoothly. A glass
+layer never sits inside another (a backdrop filter only sees its parent's
+contents), the `-webkit-` prefix is kept for iOS before 18, and every control
+is sized explicitly, at 44px or more, because the car's browser reports
+`pointer: fine`. Icons are line drawings held as CSS masks, painted in the
+text colour: not elements, so code that rewrites a button's text keeps them.
+
 ## Getting somewhere
 
 `directions` answers "how long to get home" using the Routes API — chosen over the
