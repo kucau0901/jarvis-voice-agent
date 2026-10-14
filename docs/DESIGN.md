@@ -343,10 +343,27 @@ Home Controls", "a to-do panel with renew the road tax" (`panel_set`,
   climate and charging, as Hark shows one. The cards keep the order they were
   made in: a big one (five tiles or more) across the page, the others in
   columns under one another — three on a wide screen, two in the car, one on
-  a phone — so a new panel, or a folded one, leaves no hole. Each folds to its
-  title, remembered on that screen, and its … menu reloads it or removes it
-  (two taps), as `panel_remove` does when asked. On a light page a pale tint
+  a phone — so a new panel, or a folded one, leaves no hole. A tall one folds
+  as Hark's do, to its first row with the next fading out under it,
+  remembered on that screen, and its … menu reloads it or removes it (two
+  taps), as `panel_remove` does when asked. On a light page a pale tint
   washes out, so there the icon's disc is filled with the colour instead.
+- **A room's lights as one row**, as Hark showed "Master bedroom lights · 1 of
+  8 on · reading lamp unavailable" for a house with no group for them: their
+  ids kept together in one item, read one by one (each still counts towards
+  the 30), and switched by All off or All on in one call to Home Assistant's
+  own `homeassistant.turn_off`/`turn_on`, sending only those not already so.
+  Only lights and switches may share a row; a gate or a lock is always its
+  own, with its own button.
+- **Jarvis lays it out, not the wording.** Asked to make or change a panel,
+  the tool arranges the whole of it (lib/panel-arrange.ts), as Hark does
+  without being told: three or more lights of one room become that room's
+  row, and the way in comes first (gates, doors, locks, the alarm), then
+  lights and switches, the climate, readings, the car, usage and notes. The
+  room is the light's area in Home Assistant, read with one template; where
+  the house will not say, lights whose names start alike ("Master …") are one
+  room. Rules rather than a second model call, since model calls cost the
+  owner money, and so the same request always gives the same panel.
 
 ## Getting somewhere
 

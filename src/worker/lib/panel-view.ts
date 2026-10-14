@@ -4,7 +4,7 @@ import { callService, entityState, type HaConfig } from "./ha.ts";
 import { passService } from "./access.ts";
 import { carSnapshot, distanceIn, ensureAwake, sendCarCommand, type CarSnapshot, type TessieConfig } from "../tools/tessie.ts";
 import type { CarKey } from "./context.ts";
-import type { Panel, PanelItem } from "./panels.ts";
+import { idsOf, type Panel, type PanelItem } from "./panels.ts";
 import type { UsageReport } from "./usage.ts";
 import type { PanelIcon, PanelRow, PanelView } from "../../shared/panels.ts";
 
@@ -87,9 +87,38 @@ export function houseActions(entity: string, state: string): string[] {
   }
 }
 
-/** A button's words: a group (a room's lights) is switched all at once. */
+/** A button's words: a group, or a room's lights together, is switched all at once. */
 const actionLabel = (entity: string, action: string): string =>
-  entity.startsWith("group.") && (action === "on" || action === "off") ? (action === "on" ? "All on" : "All off") : HOUSE_LABEL[action]!;
+  (entity.startsWith("group.") || entity.includes(",")) && (action === "on" || action === "off") ? (action === "on" ? "All on" : "All off") : HOUSE_LABEL[action]!;
+
+/* ---------- a room's lights together ------------------------------------------- */
+
+/** What may share a row: things that are only on or off. */
+export const TOGETHER = new Set(["light", "switch", "fan", "input_boolean"]);
+
+/**
+ * A room's lights as one row when the house has no group for them, as Hark
+ * shows "Master bedroom lights · 1 of 8 on": which are on, which off, and
+ * which cannot be reached now (unavailable, or gone from the house).
+ */
+export function together(ids: string[], now: (HouseState | null)[]): { on: string[]; off: string[]; out: string[] } {
+  const t = { on: [] as string[], off: [] as string[], out: [] as string[] };
+  ids.forEach((id, i) => (now[i]?.state === "on" ? t.on : now[i]?.state === "off" ? t.off : t.out).push(id));
+  return t;
+}
+
+/** All off while any is on, else All on while any can be; one button, as for a group. */
+const togetherActions = (t: { on: string[]; off: string[] }): string[] => (t.on.length ? ["off"] : t.off.length ? ["on"] : []);
+
+/** "1 of 8 on · Reading lamp unavailable". */
+function togetherValue(ids: string[], now: (HouseState | null)[], t: { on: string[]; out: string[] }): string {
+  const nameOf = (id: string) => {
+    const n = now[ids.indexOf(id)]?.attributes.friendly_name;
+    return typeof n === "string" ? n : id;
+  };
+  const out = t.out.length === 1 ? `${nameOf(t.out[0]!)} unavailable` : t.out.length ? `${t.out.length} unavailable` : null;
+  return [`${t.on.length} of ${ids.length} on`, out].filter(Boolean).join(" · ");
+}
 
 /** A binary sensor's on and off, by what it senses. */
 const SENSED: Record<string, [on: string, off: string]> = {
@@ -295,8 +324,33 @@ export async function viewPanels(panels: Panel[], src: PanelSources): Promise<Pa
       if (!allows(src.grants, "home")) return empty(item, "Not shown: the house is not yours to reach here.");
       const house = src.house;
       if (!house) return empty(item, "The house is not connected to Jarvis.");
-      let read = houseReads.get(item.ref);
-      if (!read) houseReads.set(item.ref, (read = src.read(house, item.ref)));
+      const readOf = (id: string) => {
+        let r = houseReads.get(id);
+        if (!r) houseReads.set(id, (r = src.read(house, id)));
+        return r;
+      };
+      const ids = idsOf(item);
+      if (ids.length > 1) {
+        try {
+          const now = await Promise.all(ids.map(readOf));
+          const t = together(ids, now);
+          return [
+            {
+              key: item.ref,
+              kind: "home",
+              label: item.label,
+              value: togetherValue(ids, now, t),
+              icon: ids.every((id, i) => houseIcon(id, "", now[i]?.attributes ?? {}) === "light") ? "light" : "power",
+              active: t.on.length > 0,
+              tiles: [],
+              actions: togetherActions(t).map((action) => ({ action, label: actionLabel(item.ref, action) })),
+            },
+          ];
+        } catch {
+          return empty(item, "Could not reach the house just now.");
+        }
+      }
+      const read = readOf(item.ref);
       try {
         const now = await read;
         if (!now) return empty(item, "It is no longer in the house.");
@@ -336,6 +390,36 @@ export async function viewPanels(panels: Panel[], src: PanelSources): Promise<Pa
 /* ---------- working ------------------------------------------------------------------ */
 
 /**
+ * All off (or on) for a room's lights together: read now, and only those
+ * not already so are sent, in one call to Home Assistant's own
+ * homeassistant.turn_off (or _on), as a group is switched — each a light or
+ * a switch the pass's table may turn on and off.
+ */
+async function switchTogether(item: PanelItem, ids: string[], action: string, src: PanelSources, house: HaConfig): Promise<{ status: number; text: string }> {
+  let now: (HouseState | null)[];
+  try {
+    now = await Promise.all(ids.map((id) => src.read(house, id)));
+  } catch (e) {
+    return { status: 502, text: `Could not reach the house: ${e instanceof Error ? e.message : String(e)}` };
+  }
+  const t = together(ids, now);
+  if (!togetherActions(t).includes(action)) {
+    return { status: 409, text: `${item.label}: ${togetherValue(ids, now, t)} now, so that was not sent.` };
+  }
+  const which = action === "off" ? t.on : t.off;
+  for (const id of which) {
+    const svc = passService(id, action);
+    if (typeof svc === "string") return { status: 409, text: `Not done: ${svc}.` };
+  }
+  try {
+    await src.call(house, "homeassistant", action === "off" ? "turn_off" : "turn_on", which.join(","));
+  } catch (e) {
+    return { status: 502, text: `The house did not do it: ${e instanceof Error ? e.message : String(e)}` };
+  }
+  return { status: 200, text: `${item.label}: ${actionLabel(item.ref, action)}.` };
+}
+
+/**
  * A button on a panel: the thing must be on this person's panel, its action
  * must be one its state offers now, and the person must still be allowed it.
  * Then the guest pass's fixed service, or the car command. No model.
@@ -353,6 +437,8 @@ export async function actOn(
   if (item.kind === "home") {
     if (!allows(src.grants, "home")) return { status: 403, text: 'Working the house needs "home".' };
     if (!src.house) return { status: 409, text: "The house is not connected to Jarvis." };
+    const ids = idsOf(item);
+    if (ids.length > 1) return switchTogether(item, ids, action, src, src.house);
     let now: HouseState | null;
     try {
       now = await src.read(src.house, item.ref);

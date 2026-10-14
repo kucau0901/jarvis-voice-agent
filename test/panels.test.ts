@@ -4,6 +4,7 @@
 import { MAX_HOUSE, MAX_ITEMS, MAX_PANELS, Panels, type Panel } from "../src/worker/lib/panels.ts";
 import { actOn, carActions, houseActions, houseActive, houseIcon, houseValue, viewPanels, type PanelSources } from "../src/worker/lib/panel-view.ts";
 import { panelRemove, panelSet } from "../src/worker/tools/panels.ts";
+import { areasOf, arrange } from "../src/worker/lib/panel-arrange.ts";
 
 let pass = 0, fail = 0;
 function check(name: string, cond: boolean, got?: unknown) {
@@ -61,6 +62,11 @@ console.log("what is kept");
   check("at most MAX_HOUSE things in the house across a person's panels (each is a request when shown)",
     MAX_HOUSE === 30 && typeof first !== "string" && typeof second !== "string" && typeof over === "string" && over.includes(String(MAX_HOUSE)), { first, second, over });
   check("…counting a thing on two panels once", typeof (await lots.set("owner", "House C", things(0, 6), "add")) !== "string");
+  const room = Array.from({ length: 8 }, (_, i) => `light.master_bedroom_lamp_${i}`).join(",");
+  const together = await lots.set("u_room", "Home Controls", [{ kind: "home", ref: room, label: "Master bedroom lights" }], "add");
+  check("a room's lights together are kept whole, however long their ids", typeof together !== "string" && together.items[0]!.ref === room && room.length > 120, together);
+  const more = await lots.set("u_room", "More", [{ kind: "home", ref: things(0, MAX_HOUSE - 7).map((i) => i.ref).join(","), label: "Lots" }], "add");
+  check("…and each of them counts towards MAX_HOUSE", typeof more === "string" && more.includes(String(MAX_HOUSE)), more);
   await panels.forget("u_sara");
   check("someone who leaves takes their panels with them", (await panels.list("u_sara")).length === 0 && (await panels.list("owner")).length === 1);
 }
@@ -241,6 +247,77 @@ const signal = new AbortController().signal;
   check("without car.control, nor is any car", (await actOn(panel, "c_1", "unlock", noControl, signal)).status === 403);
 }
 
+console.log("a room's lights together");
+{
+  const room: Record<string, { state: string; attributes: Record<string, unknown> }> = {
+    "light.bed_a": { state: "on", attributes: {} },
+    "light.bed_b": { state: "off", attributes: {} },
+    "switch.bed_c": { state: "off", attributes: { friendly_name: "Bedside lamp" } },
+    "light.reading": { state: "unavailable", attributes: { friendly_name: "Reading lamp" } },
+  };
+  const ref = "light.bed_a,light.bed_b,switch.bed_c,light.reading";
+  const roomPanel: Panel = { ...panel, items: [{ kind: "home", ref, label: "Master bedroom lights" }] };
+  const calls: string[] = [];
+  const { src } = sources({ read: async (_c, id) => room[id] ?? null, call: async (_c, d, sv, id) => void calls.push(`${d}.${sv} ${id}`) });
+  const [view] = await viewPanels([roomPanel], src);
+  const row = view!.rows[0]!;
+  check("one row: how many are on, and the one that cannot be reached", view!.rows.length === 1 && row.value === "1 of 4 on · Reading lamp unavailable", row);
+  check("…All off while one is on, drawn lit, as a light", row.actions.map((a) => a.label).join() === "All off" && row.active && row.icon === "light", row);
+  const off = await actOn(roomPanel, ref, "off", src, signal);
+  check("All off is one call, Home Assistant's own turn_off, for the one that is on",
+    off.status === 200 && off.text === "Master bedroom lights: All off." && calls.join() === "homeassistant.turn_off light.bed_a", { off, calls });
+  check("All on while one is on is not what it offers: nothing is sent", (await actOn(roomPanel, ref, "on", src, signal)).status === 409 && calls.length === 1);
+  room["light.bed_a"]!.state = "off";
+  const [dark] = await viewPanels([roomPanel], src);
+  check("all off: All on, not lit", dark!.rows[0]!.actions.map((a) => a.label).join() === "All on" && !dark!.rows[0]!.active && dark!.rows[0]!.value === "0 of 4 on · Reading lamp unavailable", dark!.rows[0]);
+  const on = await actOn(roomPanel, ref, "on", src, signal);
+  check("All on turns on those that are off, not the one that cannot be reached", on.status === 200 && calls[1] === "homeassistant.turn_on light.bed_a,light.bed_b,switch.bed_c", calls);
+  const { src: noHome } = sources({ grants: ["screen"] });
+  check("without home, a room is neither read nor worked",
+    (await viewPanels([roomPanel], noHome))[0]!.rows[0]!.note?.includes("not yours") === true && (await actOn(roomPanel, ref, "off", noHome, signal)).status === 403);
+}
+
+console.log("Jarvis lays a panel out");
+{
+  const h = (ref: string, label: string) => ({ kind: "home" as const, ref, label });
+  const rooms = new Map([
+    ["light.led", "Master Bedroom"], ["light.spot", "Master Bedroom"], ["light.reading", "Master Bedroom"],
+    ["switch.bath_light", "Master Bedroom"], ["light.kitchen", "Kitchen"], ["light.study", "Study"],
+  ]);
+  const out = arrange([
+    { kind: "note", ref: "", label: "Renew the road tax" },
+    h("light.led", "Master ceiling light"), h("climate.master", "Master bedroom aircond"), h("light.kitchen", "Kitchen"),
+    h("cover.main_gate", "Main gate"), h("light.spot", "Master spot light"), h("sensor.outside", "Outside"),
+    h("light.reading", "Reading lamp"), h("switch.bath_light", "Master bathroom light"), h("lock.front_door", "Front door"),
+    { kind: "car", ref: "family", label: "Comet" }, h("light.study", "Study"),
+  ], rooms);
+  check("a room's lights (by its area in the house; a switch named for a light too) become one row, named for the room",
+    out.some((i) => i.ref === "light.led,light.spot,light.reading,switch.bath_light" && i.label === "Master Bedroom lights"), out);
+  check("the way in first, then lights, the climate, readings, the car and notes, each kind in the order given",
+    out.map((i) => i.label).join(" | ") === "Main gate | Front door | Master Bedroom lights | Kitchen | Study | Master bedroom aircond | Outside | Comet | Renew the road tax",
+    out.map((i) => i.label));
+  check("two lights of a room stay two tiles", arrange([h("light.a", "Hall lamp"), h("light.b", "Hall light")], new Map([["light.a", "Hall"], ["light.b", "Hall"]])).length === 2);
+  check("where the house names no rooms, lights named alike are one",
+    arrange([h("light.m1", "Master ceiling light"), h("light.m2", "Master spot light"), h("light.m3", "Master down light"), h("light.porch", "Porch light")], new Map())
+      .map((i) => i.label).join() === "Master lights,Porch light");
+  const later = arrange([h("light.led,light.spot,light.reading", "Master Bedroom lights"), h("light.down", "Master down light")],
+    new Map([["light.led", "Master Bedroom"], ["light.down", "Master Bedroom"]]));
+  check("a light added later joins its room's row, which keeps its name",
+    later.length === 1 && later[0]!.ref === "light.led,light.spot,light.reading,light.down" && later[0]!.label === "Master Bedroom lights", later);
+  const withSwitches = arrange([h("light.led", "Master ceiling light"), h("switch.bath", "Master bathroom switch"), h("switch.wardrobe", "Master wardrobe switch"), h("switch.kettle", "Master kettle")],
+    new Map([["light.led", "Master Bedroom"], ["switch.bath", "Master Bedroom"], ["switch.wardrobe", "Master Bedroom"], ["switch.kettle", "Master Bedroom"]]));
+  check("a room's plain switches join its lights' row, as Hark's eight were six lights and two switches",
+    withSwitches.length === 1 && withSwitches[0]!.ref === "light.led,switch.bath,switch.wardrobe,switch.kettle", withSwitches);
+  check("…but a room of switches with no light stays apart, and a plug or a fan never joins",
+    arrange([h("switch.pump", "Garden pump"), h("switch.fountain", "Garden fountain"), h("switch.sprinkler", "Garden sprinkler")], new Map()).length === 3 &&
+    arrange([h("light.a", "Den lamp"), h("light.b", "Den spot"), h("switch.p", "Den plug"), h("fan.c", "Den fan")], new Map()).length === 4);
+  check("a group from the house is left as it is", arrange([h("group.bedroom", "Bedroom lights"), h("light.x", "Bedroom lamp"), h("light.y", "Bedroom spot")], new Map()).length === 3);
+  const asked: string[] = [];
+  const got = await areasOf({ base: "https://ha.example", token: "h" }, ["light.led", "light.porch"], async (_c, t) => (asked.push(t), "light.led\tMaster Bedroom\nlight.porch\t\n"));
+  check("rooms come from one template: an area for each light that has one", got.get("light.led") === "Master Bedroom" && !got.has("light.porch") && asked.length === 1 && asked[0]!.includes('["light.led","light.porch"]'), [...got]);
+  check("…and none when the house will not render it", (await areasOf({ base: "https://ha.example", token: "h" }, ["light.led"], async () => { throw new Error("Home Assistant said 401"); })).size === 0);
+}
+
 console.log("the tool");
 {
   const kept: { person: string; title: string; items: unknown[]; mode: string }[] = [];
@@ -254,6 +331,8 @@ console.log("the tool");
   globalThis.fetch = (async (u: unknown) => {
     const url = String(u);
     if (url.endsWith("/api/states/cover.main_gate")) return new Response(JSON.stringify({ state: "closed", attributes: { friendly_name: "Main gate" } }));
+    if (/\/api\/states\/(light\.bed_[abc]|lock\.front_door)$/.test(url)) return new Response(JSON.stringify({ state: "on", attributes: {} }));
+    if (url.endsWith("/api/template")) return new Response("light.bed_a\tMaster Bedroom\nlight.bed_b\tMaster Bedroom\nlight.bed_c\tMaster Bedroom\n");
     return new Response("{}", { status: 404 });
   }) as typeof fetch;
   try {
@@ -282,6 +361,20 @@ console.log("the tool");
     check("with no house connected, it says so", (await run({ title: "X", mode: "add", items: [items[0]] }, ctx(["*"], { ...env, HA_BASE_URL: undefined }))).includes("not connected"));
     check("without car.read, no car", (await run({ title: "X", mode: "add", items: [items[1]] }, ctx(["screen"]))).includes("not this person's to check"));
     check("a note needs its text", (await run({ title: "X", mode: "add", items: [{ kind: "note", ref: null, label: "" }] }, ctx(["screen"]))).includes("needs its text"));
+    const roomSaid = await run({ title: "Home Controls", mode: "add", items: [{ kind: "home", ref: "light.bed_a, light.bed_b", label: "Master bedroom lights" }] }, ctx(["*"]));
+    check("a room's lights together: one item, their ids joined",
+      roomSaid.startsWith("Done") && JSON.stringify(kept.at(-1)?.items) === JSON.stringify([{ kind: "home", ref: "light.bed_a,light.bed_b", label: "Master bedroom lights" }]), { roomSaid, last: kept.at(-1) });
+    check("…which need the room's name", (await run({ title: "X", mode: "add", items: [{ kind: "home", ref: "light.bed_a,light.bed_b", label: null }] }, ctx(["*"]))).includes("need its name"));
+    check("…and are only lights and switches", (await run({ title: "X", mode: "add", items: [{ kind: "home", ref: "light.bed_a,lock.front_door", label: "Odd" }] }, ctx(["*"]))).includes("only lights and switches"));
+    const laid = await run({ title: "Bedroom", mode: "add", items: [
+      ...["light.bed_a", "light.bed_b", "light.bed_c"].map((ref) => ({ kind: "home", ref, label: null })),
+      { kind: "home", ref: "cover.main_gate", label: null },
+    ] }, ctx(["*"]));
+    check("asked for a room's three lights and the gate, Jarvis lays it out: the gate first, the room as one row",
+      JSON.stringify(kept.at(-1)?.items) === JSON.stringify([
+        { kind: "home", ref: "cover.main_gate", label: "Main gate" },
+        { kind: "home", ref: "light.bed_a,light.bed_b,light.bed_c", label: "Master Bedroom lights" },
+      ]) && laid.includes("Master Bedroom lights (3 lights in one row)"), { laid, last: kept.at(-1) });
     check("taking a panel away", String(await panelRemove.run({ title: "Home Controls", item: null } as never, ctx(["screen"]))).startsWith("Done"));
     check("…or saying there is none by that name", String(await panelRemove.run({ title: "Nope", item: null } as never, ctx(["screen"]))).includes("no panel called"));
     check("offered only to someone with screen, which a guest does not have", panelSet.scope === "screen" && panelRemove.scope === "screen");

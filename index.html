@@ -829,13 +829,12 @@
   body.home #status { position: fixed; z-index: 20; left: 16px; right: 16px; top: auto; max-width: none; min-height: 0;
     bottom: calc(12px + env(safe-area-inset-bottom)); text-align: center; font-size: 13px;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap; pointer-events: none; }
-  body.home #home { display: block; width: min(1240px, 100%); flex: 1; min-height: 0;
+  body.home #home { --fold: 190px; display: block; width: min(1240px, 100%); flex: 1; min-height: 0;
     overflow-y: auto; overscroll-behavior: contain; padding-bottom: 8px; }
   #home .hwall { columns: 3 360px; column-gap: 16px; }
   #home .hcard { position: relative; display: grid; gap: 12px; margin: 0 0 16px; padding: 10px 16px 16px; break-inside: avoid;
     border-radius: 24px; background: var(--glass-hi); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); }
   #home .hcard.big { column-span: all; }
-  #home .hcard.folded { padding-bottom: 10px; }
   #home .hcard:has(.hmenu:not([hidden])) { z-index: 6; }
   #home .hhead { position: relative; display: flex; align-items: center; gap: 8px; }
   #home .hfold { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 0;
@@ -846,8 +845,13 @@
     background: currentColor; -webkit-mask: var(--icon, var(--i-dot)) center / contain no-repeat; mask: var(--icon, var(--i-dot)) center / contain no-repeat; }
   #home .hfold::after { --icon: var(--i-chevron); flex: none; width: 18px; height: 18px; color: var(--dim);
     transform: rotate(-90deg); transition: transform .2s; }
-  #home .hcard.folded .hfold::after { transform: rotate(90deg); }
-  #home .hcard.folded .hgrid { display: none; }
+  #home .hfold:disabled { cursor: default; }
+  #home .hfold:disabled::after { display: none; }
+  /* Folded, as Hark folds a card: its first row stays, the next fading out under it. */
+  #home .hcard.tall.folded .hfold::after { transform: rotate(90deg); }
+  #home .hcard.tall.folded .hgrid { max-height: var(--fold); overflow: hidden;
+    -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 48px), transparent);
+    mask-image: linear-gradient(to bottom, #000 calc(100% - 48px), transparent); }
   #home .hmore { flex: none; display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 0;
     border-radius: 50%; background: var(--wash); color: var(--fg); font-size: 0; cursor: pointer; --icon: var(--i-more); }
   #home .hmore::before { width: 20px; height: 20px; }

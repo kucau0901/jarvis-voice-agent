@@ -4,7 +4,9 @@ import { stateStub } from "../lib/state-client.ts";
 import { allows } from "../lib/scopes.ts";
 import { entityState, haConfig } from "../lib/ha.ts";
 import { pickCar } from "./tessie.ts";
-import type { PanelItem } from "../lib/panels.ts";
+import { TOGETHER } from "../lib/panel-view.ts";
+import { areasOf, arrange, lightIds } from "../lib/panel-arrange.ts";
+import { idsOf, type PanelItem } from "../lib/panels.ts";
 
 /**
  * Panels on this person's Home tab (lib/panels.ts), made and changed by
@@ -15,6 +17,10 @@ import type { PanelItem } from "../lib/panels.ts";
  * house needs Home Assistant and `home`, a car Tessie and `car.read`; their
  * usage and notes need nothing more. Under `screen`, which a guest does not
  * have, so a guest is never offered them.
+ *
+ * Whatever the words, the panel is laid out as Hark lays one out — a room's
+ * lights as one row, the way in first — by lib/panel-arrange.ts, here, on
+ * every change: so the model names the things and Jarvis arranges them.
  */
 
 const person = (env: Env) => env.JARVIS_PERSON || "owner";
@@ -31,17 +37,26 @@ async function itemFor(raw: unknown, ctx: ToolContext): Promise<PanelItem | stri
     if (!allows(ctx.grants, "home")) return "the house is not this person's to reach.";
     const ha = haConfig(ctx.env);
     if (!ha) return "the house is not connected to Jarvis.";
-    const id = typeof ref === "string" ? ref.trim().toLowerCase() : "";
-    if (!ENTITY.test(id)) return `"${String(ref)}" is not an entity id: find it with the house tools first.`;
-    let now;
-    try {
-      now = await entityState(ha, id);
-    } catch (e) {
-      return `the house could not be asked (${why(e)}).`;
+    const ids = [...new Set((typeof ref === "string" ? ref : "").toLowerCase().split(",").map((s) => s.trim()).filter(Boolean))];
+    const bad = ids.length ? ids.find((id) => !ENTITY.test(id)) : String(ref);
+    if (bad !== undefined) return `"${bad}" is not an entity id: find it with the house tools first.`;
+    if (ids.length > 1) {
+      const odd = ids.find((id) => !TOGETHER.has(id.split(".")[0]!));
+      if (odd) return `${odd} cannot be switched with others: only lights and switches share a row.`;
+      if (!given) return "things sharing a row need its name, in label, e.g. 'Master bedroom lights'.";
     }
-    if (!now) return `there is no ${id} in the house.`;
-    const name = typeof now.attributes.friendly_name === "string" ? now.attributes.friendly_name : id;
-    return { kind, ref: id, label: given || name };
+    let name = "";
+    for (const id of ids) {
+      let now;
+      try {
+        now = await entityState(ha, id);
+      } catch (e) {
+        return `the house could not be asked (${why(e)}).`;
+      }
+      if (!now) return `there is no ${id} in the house.`;
+      name = typeof now.attributes.friendly_name === "string" ? now.attributes.friendly_name : id;
+    }
+    return { kind, ref: ids.join(","), label: given || name };
   }
   if (kind === "car") {
     if (!allows(ctx.grants, "car.read")) return "cars are not this person's to check.";
@@ -60,9 +75,11 @@ export const panelSet: Tool = {
     "Make or change a panel on the user's Home tab in this app, when they ask to put something on a " +
     "panel, add to one or make one. A panel shows each thing live, with buttons that follow its state " +
     "(a closed gate shows Open). It can hold: home — something in Home Assistant, by its entity id " +
-    "(find them with the house tools first, all in one go; never guess one). For all the lights in a " +
-    "room, use the room's group (group.… or a light group) when the house has one: one row, all on or " +
-    "off at once. Up to 20 things a panel; for more, make a second panel. car — one of their cars, by name, or null " +
+    "(find them with the house tools first, all in one go; never guess one). Jarvis lays the panel out " +
+    "itself, as the user would want: three or more lights of one room become one row (\"Master Bedroom " +
+    "lights · 1 of 8 on\", with All off), and the way in comes first, then lights, the climate, readings, " +
+    "the car, usage and notes. So list each thing; a room's group (group.… or a light group) is used as " +
+    "it is. Up to 20 rows a panel; for more, make a second panel. car — one of their cars, by name, or null " +
     "for their usual one; usage — what they have used and spent; note — a line of text such as a " +
     "to-do, the text itself in label. Panels are the asker's own: nobody else sees them.",
   parameters: {
@@ -85,11 +102,13 @@ export const panelSet: Tool = {
             kind: { type: "string", enum: ["home", "car", "usage", "note"] },
             ref: {
               type: ["string", "null"],
-              description: "home: the entity id, e.g. cover.main_gate. car: the car's name, or null for their usual car. usage and note: null.",
+              description:
+                "home: the entity id, e.g. cover.main_gate, or a room's lights and switches as one row: their ids separated by commas. " +
+                "car: the car's name, or null for their usual car. usage and note: null.",
             },
             label: {
               type: ["string", "null"],
-              description: "Its name on the panel, or null for the house's or the car's own name. For a note, the note itself.",
+              description: "Its name on the panel, or null for the house's or the car's own name. A room's lights together need one. For a note, the note itself.",
             },
           },
           required: ["kind", "ref", "label"],
@@ -110,13 +129,19 @@ export const panelSet: Tool = {
       items.push(it);
     }
     const me = person(ctx.env);
-    const out = await state.panelSet(me, String(args.title ?? ""), items, args.mode === "replace" ? "replace" : "add");
+    const title = String(args.title ?? "");
+    // Laid out as a whole, so what is added finds its room among what was there.
+    const old =
+      args.mode === "replace" ? undefined : (await state.panelsOf(me)).find((p) => p.title.trim().toLowerCase() === title.trim().toLowerCase());
+    const given = [...(old?.items ?? []), ...items];
+    const ha = haConfig(ctx.env);
+    const lights = lightIds(given);
+    const areas = ha && lights.length >= 2 ? await areasOf(ha, lights) : new Map<string, string>();
+    const out = await state.panelSet(me, old?.title ?? title, arrange(given, areas), "replace");
     if (typeof out === "string") return `Nothing was changed: ${out}`;
     const all = await state.panelsOf(me);
-    return (
-      `Done: "${out.title}" on their Home tab shows ${out.items.map((i) => i.label).join(", ") || "nothing yet"}. ` +
-      `Their panels: ${all.map((p) => p.title).join(", ")}.`
-    );
+    const shown = out.items.map((i) => (idsOf(i).length > 1 ? `${i.label} (${idsOf(i).length} lights in one row)` : i.label));
+    return `Done: "${out.title}" on their Home tab shows ${shown.join(", ") || "nothing yet"}. Their panels: ${all.map((p) => p.title).join(", ")}.`;
   },
 };
 

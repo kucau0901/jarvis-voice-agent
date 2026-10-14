@@ -16,7 +16,10 @@ export type ItemKind = "home" | "car" | "usage" | "note";
 
 export interface PanelItem {
   kind: ItemKind;
-  /** The entity id, the car's id ("family" or c_…), "usage", or "" for a note. */
+  /**
+   * The entity id — or a room's lights, several ids joined by commas, shown
+   * and switched as one — the car's id ("family" or c_…), "usage", or "" for a note.
+   */
   ref: string;
   /** Its name on the panel; for a note, the note itself. */
   label: string;
@@ -39,6 +42,11 @@ export const MAX_ITEMS = 20;
 export const MAX_HOUSE = 30;
 const MAX_TITLE = 40;
 const MAX_LABEL = 120;
+/** Room for a room's lights side by side (MAX_ITEMS of them). */
+const MAX_REF = 800;
+
+/** The things in the house an item is: one, or a room's lights together. */
+export const idsOf = (i: PanelItem): string[] => (i.kind === "home" ? i.ref.split(",") : []);
 
 const key = (person: string) => `panels:${person}`;
 const clean = (s: string, max: number): string =>
@@ -68,7 +76,7 @@ export class Panels {
   async set(person: string, title: string, items: PanelItem[], mode: "add" | "replace", now = Date.now()): Promise<Panel | string> {
     const name = clean(title, MAX_TITLE);
     if (!name) return "A panel needs a name.";
-    const given = items.map((i) => ({ kind: i.kind, ref: clean(i.ref, 120), label: clean(i.label, MAX_LABEL) })).filter((i) => i.label);
+    const given = items.map((i) => ({ kind: i.kind, ref: clean(i.ref, MAX_REF), label: clean(i.label, MAX_LABEL) })).filter((i) => i.label);
     const all = await this.list(person);
     const old = all.find((p) => same(p.title, name));
     if (!old && all.length >= MAX_PANELS) return `There are already ${MAX_PANELS} panels; remove one first.`;
@@ -77,7 +85,7 @@ export class Panels {
     if (kept.length > MAX_ITEMS) {
       return `A panel holds at most ${MAX_ITEMS} things; this would have ${kept.length}. Put the rest on a second panel, with a title of its own, or a room's lights as its light group.`;
     }
-    const house = new Set([...all.filter((p) => p !== old).flatMap((p) => p.items), ...kept].filter((i) => i.kind === "home").map((i) => i.ref));
+    const house = new Set([...all.filter((p) => p !== old).flatMap((p) => p.items), ...kept].flatMap(idsOf));
     if (house.size > MAX_HOUSE) return `Panels can show at most ${MAX_HOUSE} things in the house altogether; remove some first.`;
     const panel: Panel = { id: old?.id ?? newId(), title: old && mode === "add" ? old.title : name, items: kept, at: now };
     await this.storage.put(key(person), old ? all.map((p) => (p.id === old.id ? panel : p)) : [...all, panel]);

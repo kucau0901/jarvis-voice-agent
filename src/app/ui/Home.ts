@@ -8,8 +8,9 @@ import { arm, button, el } from "./util";
  * a tile for every thing with its icon, read just now, its buttons following
  * what it is doing. In the order they were made: a big panel across the page,
  * the others in columns under one another (index.html), so another panel
- * finds its place without a hole. A card folds to its title (remembered on
- * this screen) and its … menu reads it again or removes it. Panels are made by asking Jarvis
+ * finds its place without a hole. A tall card folds, as Hark's do, to its
+ * first row fading out (remembered on this screen), and its … menu reads it
+ * again or removes it. Panels are made by asking Jarvis
  * ("put the gate on a panel"), so with none yet the tab is a clock and a line
  * saying how. Read again every 20 seconds while it is in view (not while the
  * page is hidden), and soon after a press, since a gate takes a moment to say
@@ -29,8 +30,8 @@ const BIG = 5;
 const list = (xs: string[]) => (xs.length < 2 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`);
 const why = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
-/** A car, the usage, or a long note takes two tiles' room. */
-const wide = (r: PanelRow) => r.icon === "car" || r.kind === "usage" || (r.kind === "note" && r.label.length > 48);
+/** A car, the usage, a room's lights together ("1 of 8 on · …") or a long note takes two tiles' room. */
+const wide = (r: PanelRow) => r.icon === "car" || r.kind === "usage" || r.key.includes(",") || (r.kind === "note" && r.label.length > 48);
 
 /** The panels folded on this screen, by id: a convenience, so a private window just forgets them. */
 function folded(): Set<string> {
@@ -77,6 +78,8 @@ export class Home {
     document.addEventListener("click", (e) => {
       if (!(e.target instanceof Element && e.target.closest("#home .hmenu, #home .hmore"))) this.closeMenus();
     });
+    // The page's width decides how many tiles fit a row, so which cards are tall enough to fold.
+    new ResizeObserver(() => this.measure()).observe(this.root);
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape") this.closeMenus();
     });
@@ -126,6 +129,17 @@ export class Home {
     const wall = el("div", "hwall");
     wall.append(...r.panels.map((p) => this.card(p, shut.has(p.id))));
     this.root.replaceChildren(wall);
+    this.measure();
+  }
+
+  /** Only a card taller than a folded one (--fold, index.html) offers to fold. */
+  private measure(): void {
+    const fold = parseFloat(getComputedStyle(this.root).getPropertyValue("--fold"));
+    for (const card of this.root.querySelectorAll<HTMLElement>(".hcard")) {
+      const tall = card.querySelector(".hgrid")!.scrollHeight > fold + 12;
+      card.classList.toggle("tall", tall);
+      card.querySelector<HTMLButtonElement>(".hfold")!.disabled = !tall;
+    }
   }
 
   /** None yet: Hark's clock, and what Jarvis could put here for this person. */
