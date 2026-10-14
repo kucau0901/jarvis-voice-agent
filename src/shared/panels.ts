@@ -5,6 +5,13 @@
  * kept from before (src/worker/lib/panel-view.ts, src/app/ui/Home.ts).
  */
 
+/** What a thing is drawn with on its tile; index.html has a mask for each. */
+export type PanelIcon =
+  | "gate" | "garage" | "door" | "window" | "blind" | "lock" | "unlock"
+  | "light" | "power" | "plug" | "fan" | "climate" | "scene" | "play" | "press"
+  | "temp" | "drop" | "bolt" | "motion" | "sensor" | "weather" | "music"
+  | "car" | "usage" | "note" | "dot";
+
 export interface PanelRow {
   /** Which thing it is on its panel (its entity id, car id, "usage", or the note), for a button press. */
   key: string;
@@ -12,7 +19,12 @@ export interface PanelRow {
   label: string;
   /** What it is doing now, in words: "Closed", "On", "31 °C", "Locked". Empty for a note. */
   value: string;
-  /** Figures side by side: a car's battery and range, what was used this month. */
+  icon: PanelIcon;
+  /** Lit, open, unlocked, running, charging: drawn in colour. */
+  active: boolean;
+  /** A car's battery, 0–100, drawn as a bar. */
+  level?: number;
+  /** Figures side by side: what was used this month. */
   tiles: { label: string; value: string }[];
   /** What can be done to it now, from its state now. */
   actions: { action: string; label: string }[];

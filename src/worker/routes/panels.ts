@@ -17,10 +17,11 @@ import type { PanelsReply } from "../../shared/panels.ts";
  *
  *   GET  /api/hub/panels       your panels, each thing read now, with the buttons its state offers
  *   POST /api/hub/panels/act   {panel, key, action}: press one of them
+ *   POST /api/hub/panels/remove {panel}: take that panel off (its … menu)
  */
 export async function handlePanels(req: Request, env: Env, principal: Principal): Promise<Response | null> {
   const p = new URL(req.url).pathname;
-  if (p !== "/api/hub/panels" && p !== "/api/hub/panels/act") return null;
+  if (p !== "/api/hub/panels" && p !== "/api/hub/panels/act" && p !== "/api/hub/panels/remove") return null;
   if (principal.kind === "device") return err(403, "that is for a person, not a device");
   const grants = grantsOf(principal);
   if (!allows(grants, "screen")) return err(403, 'panels need "screen"', { need: "screen" });
@@ -51,5 +52,13 @@ export async function handlePanels(req: Request, env: Env, principal: Principal)
     const r = await actOn(panel, String(b.key ?? ""), String(b.action ?? ""), src, req.signal);
     return r.status === 200 ? json({ text: r.text }) : err(r.status, r.text);
   }
-  return err(405, "GET your panels, or POST to /api/hub/panels/act");
+  if (p === "/api/hub/panels/remove" && req.method === "POST") {
+    const b = await readObject(req, 2_000);
+    if (!b) return err(400, "send {panel}");
+    const panel = (await state.panelsOf(me)).find((x) => x.id === b.panel);
+    if (!panel) return err(404, "you have no such panel");
+    const left = await state.panelRemove(me, panel.title, null);
+    return typeof left === "string" ? err(409, left) : json({ removed: panel.title });
+  }
+  return err(405, "GET your panels, or POST to /api/hub/panels/act or /remove");
 }

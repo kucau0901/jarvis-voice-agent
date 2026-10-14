@@ -27,7 +27,11 @@ of every release, and in the [README](README.md#updating).
   buttons follow the state (a closed gate offers Open; a locked car, Unlock)
   and are checked again before anything is sent. A room's lights can be one
   row with All on and All off; a panel holds up to 20 things. Guests have no
-  Home tab.
+  Home tab. Each thing is a tile with an icon, lit in colour while it is on,
+  open, unlocked or charging; a car shows its battery and range, then its
+  locks, climate and charging, each with its own button. Big panels run
+  across the page and smaller ones sit side by side in columns. A panel folds
+  to its title, and its … menu reloads or removes it.
 - **Light and dark, per screen.** Menu → **Theme**: Auto, the default, is
   light by day and dark at night (07:00–19:00, by the screen's clock), because
   the car's browser can report the wrong system setting. Or System, Dark or

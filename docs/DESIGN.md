@@ -333,6 +333,18 @@ Home Controls", "a to-do panel with renew the road tax" (`panel_set`,
   its six rounds searching again instead of splitting, and gave up. The
   refusal now says how to fit (a second panel, or the room's group), and the
   tool asks for every lookup in one round.
+- **Laid across the page.** Hark's panels sit in a narrow column beside its
+  chat; Jarvis's Home tab has the whole screen, so a panel is a card of
+  tiles, each thing with an icon (from Home Assistant's device class, else its
+  name, since a gate is often a cover or a button with none), its state, and
+  its buttons, drawn in colour while it is lit, open, unlocked or charging. A
+  car is a tile with its battery and range, then one for each of its locks,
+  climate and charging, as Hark shows one. The cards keep the order they were
+  made in: a big one (five tiles or more) across the page, the others in
+  columns under one another — three on a wide screen, two in the car, one on
+  a phone — so a new panel, or a folded one, leaves no hole. Each folds to its
+  title, remembered on that screen, and its … menu reloads it or removes it
+  (two taps), as `panel_remove` does when asked.
 
 ## Getting somewhere
 

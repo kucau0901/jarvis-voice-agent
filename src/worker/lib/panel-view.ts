@@ -6,7 +6,7 @@ import { carSnapshot, distanceIn, ensureAwake, sendCarCommand, type CarSnapshot,
 import type { CarKey } from "./context.ts";
 import type { Panel, PanelItem } from "./panels.ts";
 import type { UsageReport } from "./usage.ts";
-import type { PanelRow, PanelView } from "../../shared/panels.ts";
+import type { PanelIcon, PanelRow, PanelView } from "../../shared/panels.ts";
 
 /**
  * A person's panels, read now (GET /api/hub/panels), and their buttons
@@ -97,6 +97,73 @@ const SENSED: Record<string, [on: string, off: string]> = {
   motion: ["Motion", "Clear"], occupancy: ["Occupied", "Clear"], presence: ["Home", "Away"], moisture: ["Wet", "Dry"],
 };
 
+/**
+ * What a thing in the house is drawn with: what Home Assistant says it is,
+ * else its name, since a gate is often a cover or a button with no class
+ * ("Main gate"), and a lamp a switch. Only the picture: what it offers is
+ * houseActions's, from its domain and state.
+ */
+export function houseIcon(entity: string, state: string, a: Record<string, unknown>): PanelIcon {
+  const dc = typeof a.device_class === "string" ? a.device_class : "";
+  const name = `${entity} ${typeof a.friendly_name === "string" ? a.friendly_name : ""}`.toLowerCase();
+  const named = (re: RegExp) => re.test(name);
+  switch (entity.split(".")[0]) {
+    case "cover":
+      if (dc === "gate" || dc === "garage" || dc === "door" || dc === "window") return dc;
+      return named(/gate/) ? "gate" : named(/garage/) ? "garage" : named(/door/) ? "door" : "blind";
+    case "lock":
+      return state === "unlocked" || state === "open" ? "unlock" : "lock";
+    case "light":
+      return "light";
+    case "switch":
+    case "input_boolean":
+      return named(/light|lamp/) ? "light" : named(/fan/) ? "fan" : dc === "outlet" || named(/plug|socket/) ? "plug" : "power";
+    case "group":
+      return named(/light|lamp/) || (Array.isArray(a.entity_id) && a.entity_id.every((m) => String(m).startsWith("light."))) ? "light" : "power";
+    case "fan":
+      return "fan";
+    case "climate":
+      return "climate";
+    case "scene":
+      return "scene";
+    case "script":
+      return "play";
+    case "button":
+    case "input_button":
+      return named(/gate/) ? "gate" : "press";
+    case "media_player":
+      return "music";
+    case "weather":
+      return "weather";
+    case "binary_sensor":
+      return dc === "garage_door" ? "garage" : dc === "door" || dc === "opening" ? "door" : dc === "window" ? "window"
+        : dc === "motion" || dc === "occupancy" || dc === "presence" ? "motion" : dc === "moisture" ? "drop" : "sensor";
+    case "sensor":
+    case "number":
+    case "input_number":
+      return dc === "temperature" ? "temp" : dc === "humidity" || dc === "moisture" ? "drop"
+        : dc === "power" || dc === "energy" || dc === "current" || dc === "voltage" || dc === "battery" ? "bolt" : "sensor";
+    default:
+      return "dot";
+  }
+}
+
+/** Whether it is doing its thing now — lit, open, unlocked, running — for its tile to be drawn in colour. */
+export function houseActive(entity: string, state: string): boolean {
+  switch (entity.split(".")[0]) {
+    case "cover":
+      return state === "open" || state === "opening" || state === "closing";
+    case "lock":
+      return state === "unlocked" || state === "unlocking" || state === "open" || state === "opening";
+    case "climate":
+      return state !== "off" && state !== "unavailable" && state !== "unknown";
+    case "media_player":
+      return state === "playing";
+    default:
+      return state === "on";
+  }
+}
+
 /** What a thing in the house is doing, in words: "Closed", "On", "31 °C", "Sunny, 31 °C". */
 export function houseValue(entity: string, state: string, a: Record<string, unknown>): string {
   const domain = entity.split(".")[0];
@@ -139,24 +206,50 @@ export function carActions(s: CarSnapshot): string[] {
   return out;
 }
 
-function carRow(item: PanelItem, s: CarSnapshot, mayWork: boolean, units: "metric" | "imperial"): PanelRow {
+/** Tesla's charging_state, as the car's tile says it. */
+const CHARGING: Record<string, string> = { Charging: "Charging", Complete: "Charged", Stopped: "Not charging", Disconnected: "Unplugged" };
+
+/**
+ * A car as Hark shows one: a tile with its battery, range and charging, then
+ * a tile for each thing it can be asked to do — its locks, its climate, and
+ * its charging while plugged in — each with its state and the button that
+ * state offers. Every one presses as the car (its key), so actOn checks them
+ * all the same way.
+ */
+function carRows(item: PanelItem, s: CarSnapshot, mayWork: boolean, units: "metric" | "imperial"): PanelRow[] {
   const range = distanceIn(s.rangeMiles, units);
-  const charging = s.charging === "Charging" ? "charging" : s.charging === "Complete" ? "charged" : null;
-  return {
+  const charging = s.charging === null ? null : (CHARGING[s.charging] ?? cap(s.charging.toLowerCase()));
+  // Tesla reports Celsius, whatever the car shows.
+  const inside = s.insideTemp === undefined ? null : units === "imperial" ? `${Math.round((s.insideTemp * 9) / 5 + 32)}°F` : `${Math.round(s.insideTemp)}°C`;
+  const offers = mayWork ? carActions(s) : [];
+  const control = (label: string, icon: PanelIcon, value: string, active: boolean, mine: string[]): PanelRow => ({
     key: item.ref,
     kind: "car",
-    label: item.label,
-    value: [s.locked === true ? "Locked" : s.locked === false ? "Unlocked" : null, s.climateOn ? "climate on" : null, charging]
-      .filter(Boolean)
-      .join(", "),
-    tiles: [
-      ...(s.battery === undefined ? [] : [{ label: "Battery", value: `${s.battery}%` }]),
-      ...(range ? [{ label: "Range", value: `${range.n} ${range.unit}` }] : []),
-      // Tesla reports Celsius, whatever the car shows.
-      ...(s.insideTemp === undefined ? [] : [{ label: "Inside", value: units === "imperial" ? `${Math.round((s.insideTemp * 9) / 5 + 32)}°F` : `${Math.round(s.insideTemp)}°C` }]),
-    ],
-    actions: mayWork ? carActions(s).map((action) => ({ action, label: CAR_LABEL[action]! })) : [],
-  };
+    label,
+    value,
+    icon,
+    active,
+    tiles: [],
+    actions: offers.filter((a) => mine.includes(a)).map((action) => ({ action, label: CAR_LABEL[action]! })),
+  });
+  return [
+    {
+      key: item.ref,
+      kind: "car",
+      label: item.label,
+      value: [range ? `${range.n} ${range.unit} range` : null, charging].filter(Boolean).join(" · "),
+      icon: "car",
+      active: s.charging === "Charging",
+      ...(s.battery === undefined ? {} : { level: s.battery }),
+      tiles: [],
+      actions: [],
+    },
+    ...(s.locked === null ? [] : [control("Locks", s.locked ? "lock" : "unlock", s.locked ? "Locked" : "Unlocked", !s.locked, ["lock", "unlock"])]),
+    ...(s.climateOn === null
+      ? []
+      : [control("Climate", "climate", [s.climateOn ? "On" : "Off", inside && `${inside} inside`].filter(Boolean).join(" · "), s.climateOn, ["start_climate", "stop_climate"])]),
+    ...(s.charging === "Charging" || s.charging === "Stopped" ? [control("Charging", "bolt", charging!, s.charging === "Charging", ["start_charging", "stop_charging"])] : []),
+  ];
 }
 
 /* ---------- reading ---------------------------------------------------------------- */
@@ -173,7 +266,11 @@ function usageTiles(r: UsageReport): { label: string; value: string }[] {
   ];
 }
 
-const empty = (item: PanelItem, note: string): PanelRow => ({ key: item.ref, kind: item.kind, label: item.label, value: "", tiles: [], actions: [], note });
+const ICON: Record<"car" | "usage" | "note", PanelIcon> = { car: "car", usage: "usage", note: "note" };
+const iconOf = (item: PanelItem): PanelIcon => (item.kind === "home" ? houseIcon(item.ref, "", { friendly_name: item.label }) : ICON[item.kind]);
+const empty = (item: PanelItem, note: string): PanelRow[] => [
+  { key: item.ref, kind: item.kind, label: item.label, value: "", icon: iconOf(item), active: false, tiles: [], actions: [], note },
+];
 
 /** Every panel with each thing read now. A thing on two panels is read once. */
 export async function viewPanels(panels: Panel[], src: PanelSources): Promise<PanelView[]> {
@@ -181,11 +278,14 @@ export async function viewPanels(panels: Panel[], src: PanelSources): Promise<Pa
   const carReads = new Map<string, Promise<CarSnapshot>>();
   let usage: Promise<UsageReport | null> | null = null;
 
-  const row = async (item: PanelItem): Promise<PanelRow> => {
-    if (item.kind === "note") return { key: item.ref, kind: "note", label: item.label, value: "", tiles: [], actions: [] };
+  // One row a thing, but a car is its tile and one for each of its controls.
+  const rows = async (item: PanelItem): Promise<PanelRow[]> => {
+    if (item.kind === "note") return [{ key: item.ref, kind: "note", label: item.label, value: "", icon: "note", active: false, tiles: [], actions: [] }];
     if (item.kind === "usage") {
       const r = await (usage ??= src.usage().catch(() => null));
-      return r ? { key: item.ref, kind: "usage", label: item.label, value: "", tiles: usageTiles(r), actions: [] } : empty(item, "Could not read the usage just now.");
+      return r
+        ? [{ key: item.ref, kind: "usage", label: item.label, value: "", icon: "usage", active: false, tiles: usageTiles(r), actions: [] }]
+        : empty(item, "Could not read the usage just now.");
     }
     if (item.kind === "home") {
       if (!allows(src.grants, "home")) return empty(item, "Not shown: the house is not yours to reach here.");
@@ -197,7 +297,18 @@ export async function viewPanels(panels: Panel[], src: PanelSources): Promise<Pa
         const now = await read;
         if (!now) return empty(item, "It is no longer in the house.");
         const actions = houseActions(item.ref, now.state).map((action) => ({ action, label: actionLabel(item.ref, action) }));
-        return { key: item.ref, kind: "home", label: item.label, value: houseValue(item.ref, now.state, now.attributes), tiles: [], actions };
+        return [
+          {
+            key: item.ref,
+            kind: "home",
+            label: item.label,
+            value: houseValue(item.ref, now.state, now.attributes),
+            icon: houseIcon(item.ref, now.state, now.attributes),
+            active: houseActive(item.ref, now.state),
+            tiles: [],
+            actions,
+          },
+        ];
       } catch {
         return empty(item, "Could not reach the house just now.");
       }
@@ -209,13 +320,13 @@ export async function viewPanels(panels: Panel[], src: PanelSources): Promise<Pa
     if (!read) carReads.set(picked.cfg.vin, (read = src.snapshot(picked.cfg)));
     try {
       const mayWork = allows(src.grants, "car.control") && picked.car?.level !== "see";
-      return carRow(item, await read, mayWork, src.units);
+      return carRows(item, await read, mayWork, src.units);
     } catch {
       return empty(item, "Could not reach the car's service just now.");
     }
   };
 
-  return Promise.all(panels.map(async (p) => ({ id: p.id, title: p.title, rows: await Promise.all(p.items.map(row)) })));
+  return Promise.all(panels.map(async (p) => ({ id: p.id, title: p.title, rows: (await Promise.all(p.items.map(rows))).flat() })));
 }
 
 /* ---------- working ------------------------------------------------------------------ */

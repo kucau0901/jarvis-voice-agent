@@ -178,6 +178,13 @@ await call("Sara", sara.token, "POST", "/api/hub/panels/act", { panel: homeContr
 await call("Sara", sara.token, "POST", "/api/hub/panels/act", { panel: homeControls, key: "lock.front_door", action: "unlock" });
 await typed("Aisyah", aisyah.token, "put cover.main_gate on a panel called Gate");
 await call("Aisyah", aisyah.token, "GET", "/api/hub/panels");
+// A to-do panel needs only a sign-in; removed from its … menu, by nobody but its own person.
+await typed("Aisyah", aisyah.token, "put pack the school bag on a panel called To do");
+const aisyahPanels = await call("Aisyah", aisyah.token, "GET", "/api/hub/panels");
+const todo = str(((aisyahPanels.body.panels as J[] | undefined)?.[0] ?? {}).id);
+await call("Sara", sara.token, "POST", "/api/hub/panels/remove", { panel: todo });
+await call("Aisyah", aisyah.token, "POST", "/api/hub/panels/remove", { panel: todo });
+await call("Aisyah", aisyah.token, "GET", "/api/hub/panels");
 await call("Siti", siti.token, "GET", "/api/hub/panels");
 await call("Sara's G2", str(g2.body.token), "GET", "/api/hub/panels");
 

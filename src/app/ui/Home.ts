@@ -1,12 +1,16 @@
 import { api } from "../key";
 import type { PanelRow, PanelView, PanelsReply } from "../../shared/panels";
-import { button, el } from "./util";
+import { arm, button, el } from "./util";
 
 /**
  * The Home tab: this person's panels (src/worker/lib/panel-view.ts), as
- * Hark's home column has them — a card each, every thing read just now, its
- * buttons following what it is doing. They are made by asking Jarvis ("put
- * the gate on a panel"), so with none yet the tab is a clock and a line
+ * Hark's home column has them but laid across the whole page — a card each,
+ * a tile for every thing with its icon, read just now, its buttons following
+ * what it is doing. In the order they were made: a big panel across the page,
+ * the others in columns under one another (index.html), so another panel
+ * finds its place without a hole. A card folds to its title (remembered on
+ * this screen) and its … menu reads it again or removes it. Panels are made by asking Jarvis
+ * ("put the gate on a panel"), so with none yet the tab is a clock and a line
  * saying how. Read again every 20 seconds while it is in view (not while the
  * page is hidden), and soon after a press, since a gate takes a moment to say
  * it is opening.
@@ -17,9 +21,43 @@ import { button, el } from "./util";
 
 const EVERY_MS = 20_000;
 const AFTER_PRESS_MS = 1_500;
+const FOLDED = "jarvis.homeFolded";
+/** Tiles' worth (a car or the usage counts two) from which a panel takes the page's width, not a column's. */
+const BIG = 5;
 
 /** "a, b and c". */
 const list = (xs: string[]) => (xs.length < 2 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`);
+const why = (e: unknown) => (e instanceof Error ? e.message : String(e));
+
+/** A car, the usage, or a long note takes two tiles' room. */
+const wide = (r: PanelRow) => r.icon === "car" || r.kind === "usage" || (r.kind === "note" && r.label.length > 48);
+
+/** The panels folded on this screen, by id: a convenience, so a private window just forgets them. */
+function folded(): Set<string> {
+  try {
+    const v: unknown = JSON.parse(localStorage.getItem(FOLDED) ?? "[]");
+    return new Set(Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function keepFolded(ids: Set<string>): void {
+  try {
+    localStorage.setItem(FOLDED, JSON.stringify([...ids]));
+  } catch {
+    // Storage refused (a private window): the fold holds until the next read.
+  }
+}
+
+/** "3 asked" as a large 3 and a small "asked", as Hark sets a figure. */
+function figure(value: string): HTMLElement {
+  const b = el("b");
+  const m = /^(\S+)\s+(.+)$/.exec(value);
+  if (m) b.append(m[1]!, " ", el("small", "", m[2]!));
+  else b.textContent = value;
+  return b;
+}
 
 export class Home {
   private root: HTMLElement;
@@ -35,6 +73,12 @@ export class Home {
     this.root = document.getElementById("home")!;
     document.addEventListener("visibilitychange", () => {
       if (!document.hidden && this.timer) void this.load();
+    });
+    document.addEventListener("click", (e) => {
+      if (!(e.target instanceof Element && e.target.closest("#home .hmenu, #home .hmore"))) this.closeMenus();
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") this.closeMenus();
     });
   }
 
@@ -62,17 +106,26 @@ export class Home {
     const n = ++this.seq;
     try {
       const r = (await api(this.key, "GET", "/api/hub/panels")) as PanelsReply;
-      if (n === this.seq && !this.pressing) this.render(r);
+      // Not while a menu is open: drawing again would take it, and a half-made Remove, away.
+      if (n === this.seq && !this.pressing && !this.root.querySelector(".hmenu:not([hidden])")) this.render(r);
     } catch (e) {
       if (n !== this.seq || this.pressing) return;
       // A dropped read (a tunnel, a moment offline) keeps what was on screen, under a note.
-      const note = el("p", "hnote", `Could not load your panels: ${e instanceof Error ? e.message : String(e)}`);
-      this.root.replaceChildren(note, ...this.root.querySelectorAll(":scope > .hcard"));
+      this.say(`Could not load your panels: ${why(e)}`);
     }
   }
 
+  /** A line above the cards, which stay as they were. */
+  private say(text: string): void {
+    this.root.replaceChildren(el("p", "hnote", text), ...this.root.querySelectorAll(":scope > .hwall"));
+  }
+
   private render(r: PanelsReply): void {
-    this.root.replaceChildren(...(r.panels.length ? r.panels.map((p) => this.card(p)) : this.empty(r)));
+    if (!r.panels.length) return this.root.replaceChildren(...this.empty(r));
+    const shut = folded();
+    const wall = el("div", "hwall");
+    wall.append(...r.panels.map((p) => this.card(p, shut.has(p.id))));
+    this.root.replaceChildren(wall);
   }
 
   /** None yet: Hark's clock, and what Jarvis could put here for this person. */
@@ -93,40 +146,112 @@ export class Home {
     return [clock, el("p", "hnote", `Ask Jarvis for a panel and it appears here: ${example}. A panel can show ${list(can)}.`)];
   }
 
-  private card(p: PanelView): HTMLElement {
-    const card = el("section", "hcard");
-    card.appendChild(el("h3", "", p.title));
-    for (const r of p.rows) card.appendChild(this.row(p.id, r));
+  private card(p: PanelView, shut: boolean): HTMLElement {
+    const size = p.rows.reduce((n, r) => n + (wide(r) ? 2 : 1), 0);
+    const card = el("section", `hcard${size >= BIG ? " big" : ""}${shut ? " folded" : ""}`);
+
+    const head = el("div", "hhead");
+    const icon = el("span", "hic");
+    icon.dataset.icon = p.rows.some((r) => r.kind === "home") ? "house" : (p.rows[0]?.icon ?? "house");
+    const fold = button("", () => {
+      const now = folded();
+      const shutNow = card.classList.toggle("folded");
+      if (shutNow) now.add(p.id);
+      else now.delete(p.id);
+      keepFolded(now);
+      fold.setAttribute("aria-expanded", String(!shutNow));
+    }, "hfold");
+    fold.append(icon, el("h3", "", p.title));
+    fold.setAttribute("aria-expanded", String(!shut));
+
+    const menu = el("div", "hmenu");
+    menu.hidden = true;
+    menu.setAttribute("role", "menu");
+    const more = button("", () => {
+      const open = menu.hidden;
+      this.closeMenus();
+      menu.hidden = !open;
+      more.setAttribute("aria-expanded", String(open));
+    }, "hmore");
+    more.setAttribute("aria-label", `${p.title}: more`);
+    more.setAttribute("aria-haspopup", "menu");
+    more.setAttribute("aria-expanded", "false");
+    const reload = button("Reload", () => {
+      this.closeMenus();
+      void this.load();
+    }, "hreload");
+    const remove = el("button", "hremove", "Remove panel");
+    remove.type = "button";
+    arm(remove, "Tap again to remove", () => this.remove(p));
+    for (const b of [reload, remove]) b.setAttribute("role", "menuitem");
+    menu.append(reload, remove);
+    head.append(fold, more, menu);
+
+    const grid = el("div", "hgrid");
+    for (const r of p.rows) grid.appendChild(this.tile(p.id, r));
+    card.append(head, grid);
     return card;
   }
 
-  private row(panel: string, r: PanelRow): HTMLElement {
-    const row = el("div", `hrow ${r.kind}`);
+  private closeMenus(): void {
+    for (const m of this.root.querySelectorAll<HTMLElement>(".hmenu")) m.hidden = true;
+    for (const b of this.root.querySelectorAll(".hmore")) b.setAttribute("aria-expanded", "false");
+  }
+
+  private async remove(p: PanelView): Promise<void> {
+    this.closeMenus();
+    try {
+      await api(this.key, "POST", "/api/hub/panels/remove", { panel: p.id });
+    } catch (e) {
+      this.say(`Could not remove ${p.title}: ${why(e)}`);
+      return;
+    }
+    const shut = folded();
+    if (shut.delete(p.id)) keepFolded(shut);
+    await this.load();
+  }
+
+  private tile(panel: string, r: PanelRow): HTMLElement {
+    const t = el("div", `htile ${r.kind}${r.active ? " active" : ""}${wide(r) ? " wide" : ""}`);
+    t.dataset.icon = r.icon;
     const top = el("div", "htop");
     const text = el("div", "htext");
-    text.appendChild(el("b", "", r.label));
-    const said = el("small", r.note ? "hwhy" : "", r.note ?? r.value);
+    const name = el("b", "hname", r.label);
+    const said = el("small", r.note ? "hstate hwhy" : "hstate", r.note ?? r.value);
+    text.appendChild(name);
     if (r.value || r.note) text.appendChild(said);
-    top.appendChild(text);
-    for (const a of r.actions) {
-      const b = button(a.label, () => void this.act(panel, r.key, a.action, b, text, said));
-      top.appendChild(b);
+    top.append(el("span", "hic"), text);
+    if (r.level !== undefined) top.appendChild(el("span", "hbadge", `${r.level}%`));
+    t.appendChild(top);
+    if (r.level !== undefined) {
+      const bar = el("div", r.level < 20 ? "hbar low" : "hbar");
+      const fill = el("i");
+      fill.style.width = `${Math.max(0, Math.min(100, r.level))}%`;
+      bar.appendChild(fill);
+      t.appendChild(bar);
     }
-    row.appendChild(top);
     if (r.tiles.length) {
-      const tiles = el("div", "htiles");
-      for (const t of r.tiles) {
-        const tile = el("div", "htile");
-        tile.append(el("small", "", t.label), el("b", "", t.value));
-        tiles.appendChild(tile);
+      const stats = el("div", "hstats");
+      for (const s of r.tiles) {
+        const stat = el("div", "hstat");
+        stat.append(el("small", "", s.label), figure(s.value));
+        stats.appendChild(stat);
       }
-      row.appendChild(tiles);
+      t.appendChild(stats);
     }
-    return row;
+    if (r.actions.length) {
+      const acts = el("div", "hacts");
+      for (const a of r.actions) {
+        const b = button(a.label, () => void this.act(panel, r.key, a.action, b, name, said));
+        acts.appendChild(b);
+      }
+      t.appendChild(acts);
+    }
+    return t;
   }
 
   /** A button pressed: the server checks the state again before it sends anything. */
-  private async act(panel: string, key: string, action: string, b: HTMLButtonElement, text: HTMLElement, said: HTMLElement): Promise<void> {
+  private async act(panel: string, key: string, action: string, b: HTMLButtonElement, name: HTMLElement, said: HTMLElement): Promise<void> {
     const label = b.textContent;
     b.disabled = true;
     b.textContent = "…";
@@ -134,14 +259,14 @@ export class Home {
     this.seq++;
     try {
       said.textContent = ((await api(this.key, "POST", "/api/hub/panels/act", { panel, key, action })) as { text: string }).text;
-      said.className = "";
+      said.className = "hstate";
     } catch (e) {
-      said.textContent = e instanceof Error ? e.message : String(e);
-      said.className = "hwhy";
+      said.textContent = why(e);
+      said.className = "hstate hwhy";
     } finally {
       this.pressing--;
     }
-    if (!said.isConnected) text.appendChild(said);
+    if (!said.isConnected) name.after(said);
     b.textContent = label;
     b.disabled = false;
     setTimeout(() => void this.load(), AFTER_PRESS_MS);

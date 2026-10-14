@@ -2,7 +2,7 @@
 // is read and which buttons its state offers (lib/panel-view.ts), what a press
 // is checked against, and what the tool will put on one (tools/panels.ts).
 import { MAX_HOUSE, MAX_ITEMS, MAX_PANELS, Panels, type Panel } from "../src/worker/lib/panels.ts";
-import { actOn, carActions, houseActions, houseValue, viewPanels, type PanelSources } from "../src/worker/lib/panel-view.ts";
+import { actOn, carActions, houseActions, houseActive, houseIcon, houseValue, viewPanels, type PanelSources } from "../src/worker/lib/panel-view.ts";
 import { panelRemove, panelSet } from "../src/worker/tools/panels.ts";
 
 let pass = 0, fail = 0;
@@ -90,6 +90,23 @@ check("an unlocked car with climate on, charging, offers Lock, climate off and S
   carActions({ locked: false, climateOn: true, charging: "Charging" }).join() === "lock,stop_climate,stop_charging");
 check("unplugged or full offers no charging button", carActions({ locked: null, climateOn: null, charging: "Disconnected" }).length === 0 && carActions({ locked: null, climateOn: null, charging: "Complete" }).length === 0);
 
+console.log("how each thing is drawn");
+check("a gate is a gate by its class, or by its name when it has none",
+  houseIcon("cover.side", "closed", { device_class: "gate" }) === "gate" && houseIcon("cover.main_gate", "closed", {}) === "gate" && houseIcon("button.x", "unknown", { friendly_name: "Open the gate" }) === "gate");
+check("a cover with no class or telling name is a blind", houseIcon("cover.study", "open", {}) === "blind");
+check("a lock is drawn locked or open, as it is", houseIcon("lock.front_door", "locked", {}) === "lock" && houseIcon("lock.front_door", "unlocked", {}) === "unlock");
+check("a switch named for a light is a light, a socket a plug, any other a power switch",
+  houseIcon("switch.master_toilet", "off", { friendly_name: "Master toilet light" }) === "light" &&
+  houseIcon("switch.kettle", "off", { device_class: "outlet" }) === "plug" && houseIcon("switch.pump", "off", {}) === "power");
+check("a sensor by what it senses",
+  houseIcon("sensor.outside", "31", { device_class: "temperature" }) === "temp" && houseIcon("sensor.bath", "60", { device_class: "humidity" }) === "drop" &&
+  houseIcon("binary_sensor.hall", "on", { device_class: "motion" }) === "motion" && houseIcon("sensor.odd", "3", {}) === "sensor");
+check("lit, open, moving, unlocked or cooling is drawn in colour",
+  houseActive("light.porch", "on") && houseActive("cover.main_gate", "opening") && houseActive("lock.front_door", "unlocked") && houseActive("climate.bedroom", "cool"));
+check("…and off, closed, locked or a reading is not",
+  !houseActive("light.porch", "off") && !houseActive("cover.main_gate", "closed") && !houseActive("lock.front_door", "locked") &&
+  !houseActive("climate.bedroom", "off") && !houseActive("sensor.outside", "31"));
+
 /* A house, a car and the usage, faked, counting what is asked of them. */
 function sources(over: Partial<PanelSources> = {}) {
   const house: Record<string, { state: string; attributes: Record<string, unknown> }> = {
@@ -134,10 +151,12 @@ console.log("reading a panel");
   const row = (k: string) => view!.rows.find((r) => r.key === k)!;
   check("the gate as it is now, with the button its state offers", row("cover.main_gate").value === "Closed" && row("cover.main_gate").actions.map((a) => a.label).join() === "Open", row("cover.main_gate"));
   check("the porch light, on, offers Turn off", row("light.porch").actions.map((a) => a.action).join() === "off");
-  const car = row("c_1");
-  check("the car: locked, its battery, its range in km, inside temperature",
-    car.value === "Locked" && car.tiles.map((t) => `${t.label} ${t.value}`).join("|") === "Battery 69%|Range 283 km|Inside 31°C", car);
-  check("…and Unlock and Climate on", car.actions.map((a) => a.label).join() === "Unlock,Climate on");
+  check("the gate drawn as a gate, closed; the porch light lit", row("cover.main_gate").icon === "gate" && !row("cover.main_gate").active && row("light.porch").icon === "light" && row("light.porch").active);
+  const car = view!.rows.filter((r) => r.key === "c_1");
+  check("the car is its tile (battery, range in km, unplugged), then its locks and its climate, each with its state",
+    car.map((r) => `${r.label}: ${r.value}`).join("|") === "Comet: 283 km range · Unplugged|Locks: Locked|Climate: Off · 31°C inside" && car[0]!.level === 69, car);
+  check("…each with the button its state offers, and none to charge while unplugged", car.map((r) => r.actions.map((a) => a.label).join("+")).join("|") === "|Unlock|Climate on", car);
+  check("…drawn as the car, a lock and the climate", car.map((r) => r.icon).join() === "car,lock,climate");
   check("the usage as tiles", row("usage").tiles.map((t) => t.value).join("|") === "3 asked|40 asked|$1.75|10 min", row("usage").tiles);
   check("a note as itself", view!.rows.some((r) => r.kind === "note" && r.label === "Renew the road tax"));
   check("a thing on two panels is read once", asked.reads === 2 && asked.snapshots === 1, asked);
@@ -146,20 +165,32 @@ console.log("reading a panel");
   const { src } = sources({ grants: ["screen", "car.read"] });
   const [view] = await viewPanels([panel], src);
   check("without home, the house is not read and says why", view!.rows[0]!.note?.includes("not yours") === true && view!.rows[0]!.actions.length === 0, view!.rows[0]);
-  check("without car.control, the car is shown but offers nothing", view!.rows[2]!.tiles.length === 3 && view!.rows[2]!.actions.length === 0);
+  const car = view!.rows.filter((r) => r.key === "c_1");
+  check("without car.control, the car is shown but offers nothing", car.length === 3 && car.every((r) => r.actions.length === 0), car);
 }
 {
   const [view] = await viewPanels([panel], sources({ units: "imperial" }).src);
-  check("under imperial: range in miles, inside in °F", view!.rows[2]!.tiles.map((t) => t.value).join("|") === "69%|176 miles|89°F", view!.rows[2]!.tiles);
+  const car = view!.rows.filter((r) => r.key === "c_1");
+  check("under imperial: range in miles, inside in °F", car[0]!.value === "176 miles range · Unplugged" && car[2]!.value === "Off · 89°F inside", car);
+}
+{
+  const plugged = sources({ snapshot: async () => ({ battery: 12, rangeMiles: 30, charging: "Stopped", locked: false, climateOn: true }) });
+  const [view] = await viewPanels([panel], plugged.src);
+  const car = view!.rows.filter((r) => r.key === "c_1");
+  check("plugged in and stopped: a charging tile offering Start charging",
+    car.map((r) => `${r.label}=${r.actions.map((a) => a.label).join("+")}`).join("|") === "Comet=|Locks=Lock|Climate=Climate off|Charging=Start charging", car);
+  check("…unlocked and the climate on drawn in colour, the lock open", car[1]!.icon === "unlock" && car[1]!.active && car[2]!.active && !car[3]!.active);
 }
 {
   const [view] = await viewPanels([{ ...panel, items: [{ kind: "car", ref: "c_see", label: "Mum's" }, { kind: "car", ref: "c_gone", label: "Old" }] }], sources().src);
-  check("a car shared to see shows no buttons", view!.rows[0]!.actions.length === 0 && view!.rows[0]!.tiles.length > 0);
-  check("a car no longer theirs says so", view!.rows[1]!.note?.includes("no longer") === true);
+  const seen = view!.rows.filter((r) => r.key === "c_see");
+  check("a car shared to see shows its state, with no buttons", seen.length === 3 && seen.every((r) => r.actions.length === 0), seen);
+  check("a car no longer theirs says so", view!.rows.find((r) => r.key === "c_gone")?.note?.includes("no longer") === true);
 }
 {
   const [view] = await viewPanels([panel], sources({ house: null }).src);
   check("no house connected: said, not guessed", view!.rows[0]!.note === "The house is not connected to Jarvis.");
+  check("…and still drawn by its name", view!.rows[0]!.icon === "gate");
   const [down] = await viewPanels([panel], sources({ read: async () => { throw new Error("timeout"); } }).src);
   check("the house not answering: said, with no buttons", down!.rows[0]!.note?.includes("Could not reach") === true && down!.rows[0]!.actions.length === 0);
 }

@@ -32,7 +32,7 @@
     --line: #444444; --hair: rgba(255,255,255,.08);
     --scrim: rgba(0,0,0,.6); --shadow: 0 12px 40px rgba(0,0,0,.5);
     --accent: #3e6ae1; --accent-ink: #5b84ff; --on-accent: #ffffff;
-    --seg-on: #393c41;
+    --seg-on: #393c41; --chip: rgba(245,245,247,.13);
     --danger: #ed4e3b; --ok: #12bb00; --warn: #fbb01b;
     --bubble: rgba(34,34,34,.85); --bubble-you: rgba(255,255,255,.12);
     /* Glass, as Hark has it: a translucent surface over a blurred page. The
@@ -55,7 +55,7 @@
     --line: #d0d1d2; --hair: rgba(23,26,32,.10);
     --scrim: rgba(244,244,244,.6); --shadow: 0 12px 40px rgba(23,26,32,.12);
     --accent: #3e6ae1; --accent-ink: #3e6ae1; --on-accent: #ffffff;
-    --seg-on: #ffffff;
+    --seg-on: #ffffff; --chip: #ffffff;
     --danger: #b74134; --ok: #0b7d26; --warn: #fbb01b;
     --bubble: rgba(255,255,255,.98); --bubble-you: rgba(23,26,32,.07);
     --glass: rgba(255,255,255,.55); --glass-hi: rgba(255,255,255,.668);
@@ -114,6 +114,25 @@
     --i-eye: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z'/%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3C/svg%3E");
     --i-trash: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3'/%3E%3C/svg%3E");
     --i-play: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M7 4.5v15l12-7.5z' fill='black'/%3E%3C/svg%3E");
+    --i-gate: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 5v16M21 5v16M3 8h18M3 18h18M7.5 8v10M12 8v10M16.5 8v10'/%3E%3C/svg%3E");
+    --i-garage: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 21V9l9-6 9 6v12'/%3E%3Cpath d='M7 21v-9h10v9M7 15h10M7 18h10'/%3E%3C/svg%3E");
+    --i-door: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 21V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v17M4 21h16M14.5 12h.01'/%3E%3C/svg%3E");
+    --i-window: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='4' y='3' width='16' height='18' rx='1.5'/%3E%3Cpath d='M12 3v18M4 12h16'/%3E%3C/svg%3E");
+    --i-blind: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 4h18M5 4v12h14V4M5 8h14M5 12h14M12 16v4'/%3E%3C/svg%3E");
+    --i-lock: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='5' y='11' width='14' height='10' rx='2'/%3E%3Cpath d='M8 11V7a4 4 0 0 1 8 0v4'/%3E%3C/svg%3E");
+    --i-unlock: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='5' y='11' width='14' height='10' rx='2'/%3E%3Cpath d='M8 11V7a4 4 0 0 1 7.7-1.5'/%3E%3C/svg%3E");
+    --i-bulb: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.7.5 1.1 1.2 1.2 2.1h4.6c.1-.9.5-1.6 1.2-2.1A6 6 0 0 0 12 3z'/%3E%3C/svg%3E");
+    --i-power: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3v8M7.5 6.5a7 7 0 1 0 9 0'/%3E%3C/svg%3E");
+    --i-fan: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 12V6.5M12 12l4.8 2.8M12 12l-4.8 2.8'/%3E%3C/svg%3E");
+    --i-snow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 2v20M3.3 7l17.4 10M3.3 17 20.7 7M9 4l3 2 3-2M9 20l3-2 3 2'/%3E%3C/svg%3E");
+    --i-sparkle: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m11 3 1.8 4.7 4.7 1.8-4.7 1.8L11 16l-1.8-4.7L4.5 9.5l4.7-1.8zM18.5 14.5l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z'/%3E%3C/svg%3E");
+    --i-press: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Ccircle cx='12' cy='12' r='4'/%3E%3C/svg%3E");
+    --i-temp: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M14 14.8V5a2 2 0 0 0-4 0v9.8a4 4 0 1 0 4 0zM12 11v6'/%3E%3C/svg%3E");
+    --i-drop: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z'/%3E%3C/svg%3E");
+    --i-gauge: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 17a8 8 0 1 1 16 0M12 17l4-5'/%3E%3C/svg%3E");
+    --i-cloud: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M7 19h10a4 4 0 0 0 .4-8 5.5 5.5 0 0 0-10.7 1.4A3.3 3.3 0 0 0 7 19z'/%3E%3C/svg%3E");
+    --i-more: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12h.01M12 12h.01M19 12h.01' stroke-width='3'/%3E%3C/svg%3E");
+    --i-refresh: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 12a8 8 0 1 1-2.3-5.7M20 4v4h-4'/%3E%3C/svg%3E");
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--fg);
@@ -789,10 +808,17 @@
   .panel .hookhelp pre { background: var(--field); border: 1px solid var(--line); border-radius: 8px; padding: 10px;
     font: 12px/1.5 ui-monospace, Menlo, monospace; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--fg); }
 
-  /* Home: this person's panels (src/app/ui/Home.ts), Hark's cards. The orb
-     steps into the corner, as in Chat; each thing is a row with what it is
-     doing and the buttons that follow from it, and a car's or the usage's
-     figures sit in tiles. With none yet, Hark's clock. */
+  /* Home: this person's panels (src/app/ui/Home.ts), as Hark draws its own
+     but across the whole page rather than in a column: a card a panel, a tile
+     a thing, with its icon, what it is doing and the buttons that follow from
+     it, drawn in colour while it is lit, open, unlocked or charging. The cards
+     are laid out in the order they were made: a big one (.big) across the
+     page, the others in columns — three on a wide screen, two in the car, one
+     on a phone — each under the last, so a new or folded panel leaves no hole.
+     The columns are an inner element, since a multi-column box of fixed height
+     would run on sideways rather than scroll. Each card folds to its title,
+     and its … menu reloads or removes it. The orb steps into the corner, as in
+     Chat. With no panels yet, Hark's clock. */
   #home { display: none; }
   body.home { justify-content: flex-start; --orb: 40px;
     padding: calc(var(--barTop) + 64px) 16px calc(16px + env(safe-area-inset-bottom)); }
@@ -802,27 +828,87 @@
   body.home #status { position: fixed; z-index: 20; left: 16px; right: 16px; top: auto; max-width: none; min-height: 0;
     bottom: calc(12px + env(safe-area-inset-bottom)); text-align: center; font-size: 13px;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap; pointer-events: none; }
-  body.home #home { display: grid; align-content: start; gap: 14px; width: min(560px, 100%); flex: 1; min-height: 0;
+  body.home #home { display: block; width: min(1240px, 100%); flex: 1; min-height: 0;
     overflow-y: auto; overscroll-behavior: contain; padding-bottom: 8px; }
-  #home .hcard { display: grid; gap: 8px; padding: 16px; border-radius: 24px; background: var(--glass-hi);
-    -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); }
-  #home .hcard h3 { margin: 2px 4px 4px; font-size: 15px; font-weight: 500; }
-  #home .hrow { display: grid; gap: 10px; padding: 12px 12px 12px 14px; border-radius: 16px; background: var(--tile); }
-  #home .hrow.note { background: transparent; padding: 4px 14px; }
-  #home .htop { display: flex; align-items: center; gap: 8px; }
-  #home .htext { flex: 1; min-width: 0; display: grid; gap: 2px; }
-  #home .htext b { font-size: 15px; font-weight: 500; overflow-wrap: anywhere; }
-  #home .htext small { color: var(--dim); font-size: 13px; overflow-wrap: anywhere; }
-  #home .htext small.hwhy { color: var(--faint); }
-  #home .htop button { flex: none; min-height: 44px; padding: 0 18px; border: 0; border-radius: 999px;
-    background: var(--seg-on); color: var(--fg); font: inherit; font-size: 14px; font-weight: 500; cursor: pointer; }
-  #home .htop button:disabled { opacity: .5; cursor: default; }
-  #home .htiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(104px, 1fr)); gap: 8px; }
-  #home .htile { display: grid; gap: 2px; padding: 10px 12px; border-radius: 12px; background: var(--wash); }
-  #home .htile small { color: var(--dim); font-size: 13px; }
-  #home .htile b { font-size: 22px; font-weight: 500; font-variant-numeric: tabular-nums; }
+  #home .hwall { columns: 3 360px; column-gap: 16px; }
+  #home .hcard { position: relative; display: grid; gap: 12px; margin: 0 0 16px; padding: 10px 16px 16px; break-inside: avoid;
+    border-radius: 24px; background: var(--glass-hi); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); }
+  #home .hcard.big { column-span: all; }
+  #home .hcard.folded { padding-bottom: 10px; }
+  #home .hcard:has(.hmenu:not([hidden])) { z-index: 6; }
+  #home .hhead { position: relative; display: flex; align-items: center; gap: 8px; }
+  #home .hfold { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 0;
+    border: 0; background: none; color: var(--fg); font: inherit; text-align: left; cursor: pointer; }
+  #home .hfold h3 { flex: 1; min-width: 0; margin: 0; font-size: 16px; font-weight: 500;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #home .hfold::after, #home .hmore::before, #home .hmenu button::before, #home .hic::before { content: "";
+    background: currentColor; -webkit-mask: var(--icon, var(--i-dot)) center / contain no-repeat; mask: var(--icon, var(--i-dot)) center / contain no-repeat; }
+  #home .hfold::after { --icon: var(--i-chevron); flex: none; width: 18px; height: 18px; color: var(--dim);
+    transform: rotate(-90deg); transition: transform .2s; }
+  #home .hcard.folded .hfold::after { transform: rotate(90deg); }
+  #home .hcard.folded .hgrid { display: none; }
+  #home .hmore { flex: none; display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 0;
+    border-radius: 50%; background: var(--wash); color: var(--fg); font-size: 0; cursor: pointer; --icon: var(--i-more); }
+  #home .hmore::before { width: 20px; height: 20px; }
+  #home .hmenu { position: absolute; z-index: 1; top: 52px; right: 0; display: grid; min-width: 220px; padding: 6px;
+    border: 1px solid var(--hair); border-radius: 18px; background: var(--surface); box-shadow: var(--shadow); }
+  #home .hmenu[hidden] { display: none; }
+  #home .hmenu button { display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 0 14px; border: 0;
+    border-radius: 12px; background: none; color: var(--fg); font: inherit; font-size: 15px; text-align: left; cursor: pointer; }
+  #home .hmenu button::before { flex: none; width: 18px; height: 18px; }
+  #home .hmenu button:hover { background: var(--wash); }
+  #home .hmenu .hreload { --icon: var(--i-refresh); }
+  #home .hmenu .hremove { --icon: var(--i-trash); color: var(--danger); }
+  #home .hmenu .hremove.armed { background: var(--danger); color: var(--on-accent); }
+  #home .hgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(152px, 1fr)); grid-auto-flow: row dense; gap: 10px; }
+  #home .htile { --tint: var(--warn); display: flex; flex-direction: column; min-width: 0; padding: 12px;
+    border-radius: 18px; background: var(--tile); transition: background .25s; }
+  @media (min-width: 360px) { #home .htile.wide { grid-column: span 2; } }
+  /* The usage is a strip of its own, its figures side by side, so the tiles beside it keep their height. */
+  #home .htile.usage { grid-column: 1 / -1; }
+  #home .htile.active { background: color-mix(in srgb, var(--tint) 10%, var(--tile)); }
+  #home .htile:is([data-icon=gate], [data-icon=garage], [data-icon=door], [data-icon=window], [data-icon=blind],
+    [data-icon=unlock], [data-icon=climate], [data-icon=motion], [data-icon=music]) { --tint: var(--accent-ink); }
+  #home .htile:is([data-icon=car], [data-icon=bolt]) { --tint: var(--ok); }
+  #home .htop { display: flex; align-items: center; gap: 10px; }
+  #home .htext { flex: 1; min-width: 0; display: grid; gap: 1px; }
+  #home .hic { flex: none; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%;
+    background: var(--wash); color: var(--dim); transition: background .25s, color .25s; }
+  #home .hic::before { width: 22px; height: 22px; }
+  #home .htile.active .hic { background: color-mix(in srgb, var(--tint) 22%, transparent); color: var(--tint); }
+  #home .hhead .hic { width: 32px; height: 32px; background: var(--accent); color: var(--on-accent); }
+  #home .hhead .hic::before { width: 18px; height: 18px; }
+  #home .hbadge { flex: none; align-self: flex-start; color: var(--dim); font-size: 15px; font-weight: 500; font-variant-numeric: tabular-nums; }
+  #home .hname { font-size: 14px; font-weight: 500; line-height: 1.3; overflow-wrap: anywhere; }
+  #home .hstate { color: var(--dim); font-size: 13px; line-height: 1.35; overflow-wrap: anywhere; }
+  #home .hstate.hwhy { color: var(--faint); }
+  #home .hbar { height: 6px; margin-top: 12px; border-radius: 3px; background: var(--wash); overflow: hidden; }
+  #home .hbar > i { display: block; height: 100%; border-radius: inherit; background: var(--ok); }
+  #home .hbar.low > i { background: var(--danger); }
+  #home .hstats { display: grid; grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); gap: 8px; margin-top: 10px; }
+  #home .hstat { display: grid; gap: 2px; padding: 10px 12px; border-radius: 12px; background: var(--wash); }
+  #home .hstat small { color: var(--dim); font-size: 12px; }
+  #home .hstat b { font-size: 24px; font-weight: 500; line-height: 1.2; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+  #home .hstat b small { color: var(--dim); font-size: 15px; font-weight: 400; }
+  #home .hacts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: auto; padding-top: 12px; }
+  #home .hacts button { flex: 1 1 auto; min-height: 44px; padding: 0 14px; border: 1px solid var(--hair); border-radius: 12px;
+    background: var(--chip); color: var(--fg); font: inherit; font-size: 14px; font-weight: 500; cursor: pointer; }
+  #home .hacts button:disabled { opacity: .5; cursor: default; }
+  #home [data-icon=house] { --icon: var(--i-house); } #home [data-icon=gate] { --icon: var(--i-gate); }
+  #home [data-icon=garage] { --icon: var(--i-garage); } #home [data-icon=door] { --icon: var(--i-door); }
+  #home [data-icon=window] { --icon: var(--i-window); } #home [data-icon=blind] { --icon: var(--i-blind); }
+  #home [data-icon=lock] { --icon: var(--i-lock); } #home [data-icon=unlock] { --icon: var(--i-unlock); }
+  #home [data-icon=light] { --icon: var(--i-bulb); } #home [data-icon=power] { --icon: var(--i-power); }
+  #home [data-icon=plug] { --icon: var(--i-plug); } #home [data-icon=fan] { --icon: var(--i-fan); }
+  #home [data-icon=climate] { --icon: var(--i-snow); } #home [data-icon=scene] { --icon: var(--i-sparkle); }
+  #home [data-icon=play] { --icon: var(--i-play); } #home [data-icon=press] { --icon: var(--i-press); }
+  #home [data-icon=temp] { --icon: var(--i-temp); } #home [data-icon=drop] { --icon: var(--i-drop); }
+  #home [data-icon=bolt] { --icon: var(--i-bolt); } #home [data-icon=motion] { --icon: var(--i-person); }
+  #home [data-icon=sensor] { --icon: var(--i-gauge); } #home [data-icon=weather] { --icon: var(--i-cloud); }
+  #home [data-icon=music] { --icon: var(--i-music); } #home [data-icon=car] { --icon: var(--i-car); }
+  #home [data-icon=usage] { --icon: var(--i-bars); } #home [data-icon=note] { --icon: var(--i-note); }
   #home .hclock { display: grid; margin-top: 6vh; font-size: clamp(40px, 8vmin, 64px); line-height: 1.08; }
-  #home .hnote { margin: 4px 0 0; color: var(--dim); font-size: 15px; line-height: 1.45; max-width: 460px; }
+  #home .hnote { margin: 4px 0 12px; color: var(--dim); font-size: 15px; line-height: 1.45; max-width: 460px; }
 
   /* Theme (src/app/ui/ThemePanel.ts): one choice of four, a ring marking it. */
   .panel .navcard > button[role=radio] { grid-template-columns: minmax(0, 1fr) 22px; row-gap: 2px; padding: 10px 20px; }

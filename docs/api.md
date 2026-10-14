@@ -841,8 +841,9 @@ panel is read when they are fetched, and its buttons follow its state then:
 
 | Route | |
 |---|---|
-| `GET /api/hub/panels` | `{panels: [{id, title, rows: [{key, kind, label, value, tiles, actions: [{action, label}], note?}]}], can: {home, car}}`. `kind` is `home` (a Home Assistant entity, read as the person, with `home`), `car` (from Tessie's last state, never woken, with `car.read`), `usage` or `note` |
+| `GET /api/hub/panels` | `{panels: [{id, title, rows: [{key, kind, label, value, icon, active, level?, tiles, actions: [{action, label}], note?}]}], can: {home, car}}`. `kind` is `home` (a Home Assistant entity, read as the person, with `home`), `car` (from Tessie's last state, never woken, with `car.read`: a row for the car, with its battery as `level`, then one each for its locks, climate and, while plugged in, charging, all with the car's `key`), `usage` or `note`. `icon` names what the tile is drawn with (`gate`, `lock`, `light`, `climate`…); `active` is lit, open, unlocked or charging |
 | `POST /api/hub/panels/act` | `{panel, key, action}`: one of a row's `actions`. Refused (`409`) unless the thing's state offers it now; the house needs `home`, a car `car.control` and not shared to `see` |
+| `POST /api/hub/panels/remove` | `{panel}`: takes one of your own panels off your Home tab (its … menu). `404` for a panel that is not yours |
 
 **Limits** (guests, helpers, children): `PATCH /api/hub/members {user,
 access}` and `POST /api/hub/invites {…, access}` take `{until?, hours?: {from,
