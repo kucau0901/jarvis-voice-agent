@@ -344,7 +344,7 @@ export class Settings {
 
   async show() {
     this.el.classList.add("open");
-    // A narrow screen starts on the list; a wide one shows the list and a section together.
+    // Every screen starts on the list, and a section opens in its place.
     this.menu.toList();
     this.msg("loading…");
     // Independent: a slow MCP server must not hold the other sections hostage.

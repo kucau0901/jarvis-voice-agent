@@ -69,6 +69,10 @@ of every release, and in the [README](README.md#updating).
 - **The menu is a page behind your initial**, top right, as Hark's settings
   are: its items in cards, each with an icon. The family's chat in it is now
   called **Messages**, so it is not confused with the Chat tab.
+- **Every panel is a page**, as Hark's settings are: full screen, a large
+  title, round buttons to go back and to close, and its content in cards.
+  Settings, Family and Memory open on their list on every screen, and a
+  section opens on a page of its own.
 - **Research reports are checked before they reach you.** When a research job
   has written its report, it takes one more turn to check it against the pages
   it found, searching again where it needs to, and corrects or removes what

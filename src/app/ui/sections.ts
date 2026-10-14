@@ -1,8 +1,7 @@
 /**
- * A sheet of sections with a menu: Settings, Family and Memory. The list is
- * on the left and one section is open beside it; on a narrow screen (a phone,
- * the car's driving layout) the list comes first, and choosing opens the
- * section in its place, with a back button.
+ * A sheet of sections with a menu: Settings, Family and Memory. As Hark's
+ * settings: the list comes first, each group's sections as rows in a card,
+ * and choosing one opens it in the list's place, with a back button.
  *
  * The sheet holds `.setwrap > .setnav + .setbody` and a `.back` button in its
  * header. Each section in `.setbody` is an element with `data-section` (its
@@ -54,6 +53,8 @@ export class SectionMenu {
       if (i === groups.length - 1) for (const id of byId.keys()) if (!groups.some(([, l]) => l.includes(id))) here.push(id);
       if (!here.length) return;
       if (heading) parts.push(node("h4", heading));
+      const card = node("div", "", "navcard");
+      parts.push(card);
       for (const id of here) {
         const s = byId.get(id)!;
         const b = node("button", "");
@@ -69,7 +70,7 @@ export class SectionMenu {
           b.appendChild(mark);
         }
         b.addEventListener("click", () => this.choose(id, true));
-        parts.push(b);
+        card.appendChild(b);
       }
     });
     parts.push(...foot);
@@ -78,7 +79,7 @@ export class SectionMenu {
     this.choose(this.current && byId.has(this.current) ? this.current : fallback, false);
   }
 
-  /** Open a section; `open` also shows it in place of the list on a narrow screen. */
+  /** Open a section; `open` also shows it in place of the list. */
   choose(id: string, open: boolean): void {
     const sections = this.sections();
     if (!sections.some((s) => s.dataset.section === id)) id = sections[0]?.dataset.section ?? id;
@@ -96,7 +97,7 @@ export class SectionMenu {
     }
   }
 
-  /** How the sheet opens: on a narrow screen, with the list. */
+  /** How the sheet opens: with the list. */
   toList(): void {
     this.sheet.classList.remove("detail");
   }
