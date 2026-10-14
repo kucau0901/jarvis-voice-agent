@@ -133,6 +133,7 @@
     --i-cloud: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M7 19h10a4 4 0 0 0 .4-8 5.5 5.5 0 0 0-10.7 1.4A3.3 3.3 0 0 0 7 19z'/%3E%3C/svg%3E");
     --i-more: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12h.01M12 12h.01M19 12h.01' stroke-width='3'/%3E%3C/svg%3E");
     --i-shield: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3 5 6v5c0 4.5 3 8.3 7 10 4-1.7 7-5.5 7-10V6z'/%3E%3C/svg%3E");
+    --i-calendar: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='5' width='18' height='16' rx='2'/%3E%3Cpath d='M3 10h18M8 3v4M16 3v4'/%3E%3C/svg%3E");
     --i-refresh: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 12a8 8 0 1 1-2.3-5.7M20 4v4h-4'/%3E%3C/svg%3E");
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -866,26 +867,28 @@
   #home .hmenu .hremove { --icon: var(--i-trash); color: var(--danger); }
   #home .hmenu .hremove.armed { background: var(--danger); color: var(--on-accent); }
   #home .hgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(152px, 1fr)); grid-auto-flow: row dense; gap: 10px; }
+  #home .hmember { --tint: var(--warn); --on-tint: var(--fg); }
   #home .htile { --tint: var(--warn); --on-tint: var(--fg); display: flex; flex-direction: column; min-width: 0; padding: 12px;
     border-radius: 18px; background: var(--tile); transition: background .25s; }
   @media (min-width: 360px) { #home .htile.wide { grid-column: span 2; } }
   /* The usage is a strip of its own, its figures side by side, so the tiles beside it keep their height. */
   #home .htile.usage { grid-column: 1 / -1; }
   #home .htile.active { background: color-mix(in srgb, var(--tint) 10%, var(--tile)); }
-  #home .htile:is([data-icon=gate], [data-icon=garage], [data-icon=door], [data-icon=window], [data-icon=blind],
+  #home :is(.htile, .hmember):is([data-icon=gate], [data-icon=garage], [data-icon=door], [data-icon=window], [data-icon=blind],
     [data-icon=unlock], [data-icon=climate], [data-icon=motion], [data-icon=music]) { --tint: var(--accent-ink); --on-tint: var(--on-accent); }
-  #home .htile:is([data-icon=car], [data-icon=bolt], [data-icon=alarm]) { --tint: var(--ok); --on-tint: var(--on-accent); }
-  #home .htile[data-icon=alert] { --tint: var(--danger); --on-tint: var(--on-accent); }
+  #home :is(.htile, .hmember):is([data-icon=car], [data-icon=bolt], [data-icon=alarm]) { --tint: var(--ok); --on-tint: var(--on-accent); }
+  #home :is(.htile, .hmember)[data-icon=alert] { --tint: var(--danger); --on-tint: var(--on-accent); }
   #home .htop { display: flex; align-items: center; gap: 10px; }
   #home .htext { flex: 1; min-width: 0; display: grid; gap: 1px; }
   #home .hic { flex: none; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%;
     background: var(--wash); color: var(--dim); transition: background .25s, color .25s; }
   #home .hic::before { width: 22px; height: 22px; }
-  #home .htile.active .hic { background: color-mix(in srgb, var(--tint) 22%, transparent); color: var(--tint); }
+  /* Its own disc only: a room's lights inside an open tile are lit or not each by themselves. */
+  #home :is(.htile.active > .htop, .hmember.active) > .hic { background: color-mix(in srgb, var(--tint) 22%, transparent); color: var(--tint); }
   /* On a light page a pale tint washes out (amber on white most of all): the disc is filled with the
      colour, its icon dark on amber and white on the rest, and the tile is tinted over white, not grey. */
   :root[data-theme="light"] #home .htile.active { background: color-mix(in srgb, var(--tint) 12%, var(--surface)); }
-  :root[data-theme="light"] #home .htile.active .hic { background: var(--tint); color: var(--on-tint); }
+  :root[data-theme="light"] #home :is(.htile.active > .htop, .hmember.active) > .hic { background: var(--tint); color: var(--on-tint); }
   #home .hhead .hic { width: 32px; height: 32px; background: var(--accent); color: var(--on-accent); }
   #home .hhead .hic::before { width: 18px; height: 18px; }
   #home .hbadge { flex: none; align-self: flex-start; color: var(--dim); font-size: 15px; font-weight: 500; font-variant-numeric: tabular-nums; }
@@ -918,6 +921,44 @@
   #home [data-icon=music] { --icon: var(--i-music); } #home [data-icon=car] { --icon: var(--i-car); }
   #home [data-icon=usage] { --icon: var(--i-bars); } #home [data-icon=note] { --icon: var(--i-note); }
   #home [data-icon=alarm] { --icon: var(--i-shield); } #home [data-icon=alert] { --icon: var(--i-bell); }
+  #home [data-icon=calendar] { --icon: var(--i-calendar); } #home [data-icon=mail] { --icon: var(--i-mail); }
+  #home [data-icon=camera] { --icon: var(--i-camera); } #home [data-icon=clock] { --icon: var(--i-clock); }
+  #home [data-icon=terminal] { --icon: var(--i-terminal); } #home [data-icon=route] { --icon: var(--i-route); }
+  #home [data-icon=chat] { --icon: var(--i-messages); }
+  /* A tile wired to a tool: its reading, a few lines of it, and a picture when the tool gives one (a camera). */
+  #home .htile.tile .hstate { display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+  #home .hshot { display: block; width: 100%; margin-top: 10px; border-radius: 12px; }
+  /* Opened (ui/HomeMore.ts): across its panel, as Hark opens a row. Its name and icon are what open it. */
+  #home .htile.can-open .htop { cursor: pointer; border-radius: 12px; }
+  #home .htile.can-open .htop::after { content: ""; flex: none; align-self: center; width: 16px; height: 16px; margin-left: auto;
+    background: var(--dim); -webkit-mask: var(--i-chevron) center / contain no-repeat; mask: var(--i-chevron) center / contain no-repeat;
+    transform: rotate(90deg); transition: transform .2s; }
+  #home .htile.open { grid-column: 1 / -1; }
+  #home .htile.open .htop::after { transform: rotate(-90deg); }
+  #home .hbody { display: none; }
+  #home .htile.open .hbody { display: grid; gap: 14px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--hair); }
+  #home .hmembers { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 8px; }
+  #home .hmember { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 6px 6px 6px 10px; border-radius: 14px; background: var(--wash); }
+  #home .hmember .hic { width: 32px; height: 32px; }
+  #home .hmember .hic::before { width: 18px; height: 18px; }
+  #home :is(.hmember, .hdial, .hchips, .halarm) button { flex: none; min-height: 44px; padding: 0 14px; border: 1px solid var(--hair); border-radius: 12px;
+    background: var(--chip); color: var(--fg); font: inherit; font-size: 14px; font-weight: 500; cursor: pointer; }
+  #home :is(.hmember, .hdial, .hchips, .halarm) button:disabled { opacity: .5; cursor: default; }
+  #home .hclimate { display: flex; flex-wrap: wrap; align-items: center; gap: 14px 24px; }
+  #home .hdial { display: flex; align-items: center; gap: 14px; }
+  #home .hdial button { width: 52px; height: 52px; padding: 0; border-radius: 50%; font-size: 24px; line-height: 1; }
+  #home .hdial div { display: grid; justify-items: center; min-width: 4.5ch; }
+  #home .hdial b { font-size: 34px; font-weight: 500; line-height: 1.1; font-variant-numeric: tabular-nums; }
+  #home .hdial small { color: var(--dim); font-size: 12px; }
+  #home .hchips { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  #home .hchips small { min-width: 3em; color: var(--dim); font-size: 12px; }
+  #home .hchips button { border-radius: 999px; }
+  #home .hchips button[aria-pressed="true"] { background: var(--solid); border-color: transparent; color: var(--on-solid); }
+  #home .halarm { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  #home .hcode { width: 9em; min-height: 44px; padding: 0 14px; border: 1px solid var(--hair); border-radius: 12px;
+    background: var(--field); color: var(--fg); font: inherit; font-size: 16px; }
+  #home .hcode:not(:placeholder-shown) { letter-spacing: .3em; }
+  #home .hcode:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
   #home .hclock { display: grid; margin-top: 6vh; font-size: clamp(40px, 8vmin, 64px); line-height: 1.08; }
   #home .hnote { margin: 4px 0 12px; color: var(--dim); font-size: 15px; line-height: 1.45; max-width: 460px; }
 

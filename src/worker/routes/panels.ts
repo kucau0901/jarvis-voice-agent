@@ -7,7 +7,12 @@ import { haConfig } from "../lib/ha.ts";
 import { localeOf } from "../lib/locale.ts";
 import { dayOf } from "../lib/usage.ts";
 import { carById, pickCar } from "../tools/tessie.ts";
-import { actOn, LIVE, viewPanels, type PanelSources } from "../lib/panel-view.ts";
+import { actOn, LIVE, readTileOf, viewPanels, type PanelSources } from "../lib/panel-view.ts";
+import { baseTools, outputText } from "../tools/registry.ts";
+import { mcpSessions, mcpTools } from "../tools/mcp.ts";
+import { memoryFor } from "../lib/memory.ts";
+import { Collector } from "../lib/collector.ts";
+import { run } from "../lib/router.ts";
 import type { PanelsReply } from "../../shared/panels.ts";
 
 /**
@@ -16,12 +21,16 @@ import type { PanelsReply } from "../../shared/panels.ts";
  * guest does not have; never a device.
  *
  *   GET  /api/hub/panels       your panels, each thing read now, with the buttons its state offers
- *   POST /api/hub/panels/act   {panel, key, action}: press one of them
+ *   GET  /api/hub/panels/read?panel=&key=   a tile's reading: one of your tools, run now
+ *   POST /api/hub/panels/act   {panel, key, action, member?, code?}: press one of them
  *   POST /api/hub/panels/remove {panel}: take that panel off (its … menu)
+ *
+ * A tile's tool runs as when you ask (lib/panel-tiles.ts): only from the
+ * tools your grants offer, MCP ones only with `home`.
  */
 export async function handlePanels(req: Request, env: Env, principal: Principal): Promise<Response | null> {
   const p = new URL(req.url).pathname;
-  if (p !== "/api/hub/panels" && p !== "/api/hub/panels/act" && p !== "/api/hub/panels/remove") return null;
+  if (!["/api/hub/panels", "/api/hub/panels/read", "/api/hub/panels/act", "/api/hub/panels/remove"].includes(p)) return null;
   if (principal.kind === "device") return err(403, "that is for a person, not a device");
   const grants = grantsOf(principal);
   if (!allows(grants, "screen")) return err(403, 'panels need "screen"', { need: "screen" });
@@ -36,6 +45,29 @@ export async function handlePanels(req: Request, env: Env, principal: Principal)
     house: haConfig(env),
     car: (id) => carById(env, id),
     usage: () => state.usageReport(dayOf(Date.now(), timeZone), me),
+    // One of this person's tools, as the router would offer it to them now.
+    async tool(name, args) {
+      let tool = baseTools(env, grants).find((t) => t.name === name);
+      const sessions = mcpSessions();
+      try {
+        if (!tool && name.includes("__") && allows(grants, "home")) tool = (await mcpTools(env, sessions)).find((t) => t.name === name);
+        if (!tool) return null;
+        // As the router does: a tool that needs no memory still runs when it cannot be loaded.
+        const memory = memoryFor(env, grants);
+        await memory.load().catch((e) => console.warn("panel tile: memory unavailable:", e instanceof Error ? e.message : String(e)));
+        const out = await tool.run(args, { env, signal: req.signal, progress: () => {}, display: () => {}, memory, grants });
+        await memory.save().catch((e) => console.warn("panel tile: memory not saved:", e instanceof Error ? e.message : String(e)));
+        return { text: outputText(out), ...(typeof out !== "string" && out.images[0] ? { image: out.images[0].url } : {}) };
+      } finally {
+        await sessions.close();
+      }
+    },
+    // A sentence asked of Jarvis, as if typed in Chat.
+    async ask(text) {
+      const sink = new Collector();
+      await run(env, [{ role: "user", text }], sink, AbortSignal.any([req.signal, AbortSignal.timeout(90_000)]), grants, { surface: "chat", assist: true });
+      return sink.finish().text;
+    },
   };
 
   if (p === "/api/hub/panels" && req.method === "GET") {
@@ -45,11 +77,22 @@ export async function handlePanels(req: Request, env: Env, principal: Principal)
     };
     return json(reply);
   }
+  if (p === "/api/hub/panels/read" && req.method === "GET") {
+    const q = new URL(req.url).searchParams;
+    const panel = (await state.panelsOf(me)).find((x) => x.id === q.get("panel"));
+    const r = await readTileOf(panel, q.get("key") ?? "", src);
+    return r.status === 200 ? json({ text: r.text, ...(r.image ? { image: r.image } : {}) }) : err(r.status, r.text);
+  }
   if (p === "/api/hub/panels/act" && req.method === "POST") {
     const b = await readObject(req, 2_000);
     if (!b) return err(400, "send {panel, key, action}");
     const panel = (await state.panelsOf(me)).find((x) => x.id === b.panel);
-    const r = await actOn(panel, String(b.key ?? ""), String(b.action ?? ""), src, req.signal);
+    // An alarm's code goes on to Home Assistant and is kept nowhere.
+    const extra = {
+      ...(typeof b.member === "string" ? { member: b.member } : {}),
+      ...(typeof b.code === "string" && b.code ? { code: b.code.slice(0, 32) } : {}),
+    };
+    const r = await actOn(panel, String(b.key ?? ""), String(b.action ?? ""), src, req.signal, extra);
     return r.status === 200 ? json({ text: r.text }) : err(r.status, r.text);
   }
   if (p === "/api/hub/panels/remove" && req.method === "POST") {

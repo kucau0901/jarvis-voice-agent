@@ -11,14 +11,15 @@ import type { Storage } from "./state-host.ts";
  * when the panel is shown (lib/panel-view.ts), so it is never a stale copy.
  */
 
-/** What a panel can hold: a thing in Home Assistant, a car, the person's usage, a note. */
-export type ItemKind = "home" | "car" | "usage" | "note";
+/** What a panel can hold: a thing in Home Assistant, a car, the person's usage, a note, or a tile wired to any of Jarvis's tools (lib/panel-tiles.ts). */
+export type ItemKind = "home" | "car" | "usage" | "note" | "tile";
 
 export interface PanelItem {
   kind: ItemKind;
   /**
    * The entity id — or a room's lights, several ids joined by commas, shown
-   * and switched as one — the car's id ("family" or c_…), "usage", or "" for a note.
+   * and switched as one — the car's id ("family" or c_…), "usage", "" for a
+   * note, or a tile's reading and buttons as JSON.
    */
   ref: string;
   /** Its name on the panel; for a note, the note itself. */
@@ -42,8 +43,8 @@ export const MAX_ITEMS = 20;
 export const MAX_HOUSE = 30;
 const MAX_TITLE = 40;
 const MAX_LABEL = 120;
-/** Room for a room's lights side by side (MAX_ITEMS of them). */
-const MAX_REF = 800;
+/** Room for a room's lights side by side, or a tile's tools and their arguments. */
+const MAX_REF = 2000;
 
 /** The things in the house an item is: one, or a room's lights together. */
 export const idsOf = (i: PanelItem): string[] => (i.kind === "home" ? i.ref.split(",") : []);

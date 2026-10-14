@@ -10,12 +10,12 @@ export type PanelIcon =
   | "gate" | "garage" | "door" | "window" | "blind" | "lock" | "unlock"
   | "light" | "power" | "plug" | "fan" | "climate" | "scene" | "play" | "press"
   | "temp" | "drop" | "bolt" | "motion" | "sensor" | "weather" | "music" | "alarm" | "alert"
-  | "car" | "usage" | "note" | "dot";
+  | "car" | "usage" | "note" | "calendar" | "mail" | "camera" | "clock" | "terminal" | "route" | "chat" | "dot";
 
 export interface PanelRow {
   /** Which thing it is on its panel (its entity id, car id, "usage", or the note), for a button press. */
   key: string;
-  kind: "home" | "car" | "usage" | "note";
+  kind: "home" | "car" | "usage" | "note" | "tile";
   label: string;
   /** What it is doing now, in words: "Closed", "On", "31 °C", "Locked". Empty for a note. */
   value: string;
@@ -30,6 +30,21 @@ export interface PanelRow {
   actions: { action: string; label: string }[];
   /** Why it cannot be read or worked just now. */
   note?: string;
+  /** What its tile shows when opened: a room's lights each, or an aircond's or an alarm's controls. */
+  more?: PanelMore;
+  /** A tile whose reading comes on its own (GET /api/hub/panels/read), since a tool can be slow. */
+  read?: boolean;
+}
+
+export interface PanelMore {
+  /** A room's lights and switches, each with its own buttons, pressed with its key as `member`. */
+  members?: PanelRow[];
+  /** An aircond's: the room's temperature, what it is set to, and what it may be set to. */
+  climate?: { now?: number; target?: number; min: number; max: number; step: number; modes: string[]; mode: string; fans: string[]; fan?: string };
+  /** Buttons shown only when it is opened: an alarm's arming and disarming. */
+  actions?: { action: string; label: string }[];
+  /** Which of those want the alarm's code, and whether it is digits. */
+  code?: { digits: boolean; for: string[] };
 }
 
 export interface PanelView {

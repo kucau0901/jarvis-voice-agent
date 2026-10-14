@@ -7,7 +7,7 @@ import { idsOf, type PanelItem } from "./panels.ts";
  * in: a room's lights become one row ("Master Bedroom lights · 1 of 8 on",
  * lib/panel-view.ts), and the things are put in order — the way in first
  * (gates, doors, locks, the alarm), then lights and switches, the climate,
- * readings, the car, the usage, notes. Done by the tool on every change
+ * readings, the car and other tiles, the usage, notes. Done by the tool on every change
  * (tools/panels.ts), with no model call.
  *
  * A room's row holds its lights and its plain switches, which in a house are
@@ -24,7 +24,7 @@ export const ROOM_ROW = 3;
 
 const WAY_IN = new Set(["gate", "garage", "door", "lock", "unlock", "alarm", "alert"]);
 const READING = new Set(["temp", "drop", "bolt", "motion", "sensor", "weather"]);
-const LAST: Record<"car" | "usage" | "note", number> = { car: 4, usage: 5, note: 6 };
+const LAST: Record<"car" | "usage" | "note" | "tile", number> = { car: 4, tile: 4, usage: 5, note: 6 };
 
 const iconOf = (i: PanelItem) => houseIcon(idsOf(i)[0]!, "", { friendly_name: i.label });
 

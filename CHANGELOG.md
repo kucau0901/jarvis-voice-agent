@@ -36,7 +36,14 @@ of every release, and in the [README](README.md#updating).
   battery and range, then its locks, climate and charging, each with its own
   button. Big panels run across the page and smaller ones sit side by side
   in columns. A tall panel folds to its first row, and its … menu reloads or
-  removes it.
+  removes it. A room's row opens to show each light with its own button; an
+  aircond opens to its temperature, modes and fan; an alarm to Disarm or the
+  ways to arm it, with its code when it wants one (never kept). And a panel
+  can hold anything else Jarvis can do, not only the house: "put Spotify on a
+  panel with pause and next", "a tile with today's calendar" — wired once to
+  Jarvis's own tools, so a press needs no model; where no tool can do it, a
+  button asks Jarvis a sentence instead. A tile does only what its person
+  could ask for.
 - **Light and dark, per screen.** Menu → **Theme**: Auto, the default, is
   light by day and dark at night (07:00–19:00, by the screen's clock), because
   the car's browser can report the wrong system setting. Or System, Dark or

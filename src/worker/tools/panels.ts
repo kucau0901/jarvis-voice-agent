@@ -6,6 +6,7 @@ import { entityState, haConfig } from "../lib/ha.ts";
 import { pickCar } from "./tessie.ts";
 import { TOGETHER } from "../lib/panel-view.ts";
 import { areasOf, arrange, lightIds } from "../lib/panel-arrange.ts";
+import { tileSpec } from "../lib/panel-tiles.ts";
 import { idsOf, type PanelItem } from "../lib/panels.ts";
 
 /**
@@ -27,10 +28,44 @@ const person = (env: Env) => env.JARVIS_PERSON || "owner";
 const ENTITY = /^[a-z_]+\.[a-z0-9_]+$/;
 const why = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
+/**
+ * A tile wired to the asker's own tools: the tools must be ones they were
+ * offered for this question (so ones they may use, MCP servers' included),
+ * never the panel tools themselves; arguments come as JSON text.
+ */
+function tileFor(label: string, read: unknown, buttons: unknown, ctx: ToolContext): PanelItem | string {
+  if (!label) return "a tile needs its name, in label.";
+  const offered = new Set((ctx.offered ?? []).filter((n) => !n.startsWith("panel_")));
+  const call = (tool: unknown, args: unknown): { tool: string; args: unknown } | string => {
+    if (typeof tool !== "string" || !offered.has(tool)) return `"${String(tool)}" is not one of the tools you can use.`;
+    if (typeof args !== "string" || !args.trim()) return { tool, args: {} };
+    try {
+      return { tool, args: JSON.parse(args) };
+    } catch {
+      return `the arguments for ${tool} are not JSON.`;
+    }
+  };
+  const r = (read ?? null) as { tool?: unknown; args?: unknown } | null;
+  const readCall = r ? call(r.tool, r.args) : undefined;
+  if (typeof readCall === "string") return readCall;
+  const wired = [];
+  for (const b of Array.isArray(buttons) ? buttons : []) {
+    const { label: words, tool, args, ask } = (b ?? {}) as { label?: unknown; tool?: unknown; args?: unknown; ask?: unknown };
+    const c = tool === null || tool === undefined ? undefined : call(tool, args);
+    if (typeof c === "string") return c;
+    wired.push({ label: words, ...(c ? { tool: c } : {}), ask });
+  }
+  const spec = tileSpec({ ...(readCall ? { read: readCall } : {}), buttons: wired });
+  if (typeof spec === "string") return spec;
+  const ref = JSON.stringify(spec);
+  return ref.length > 2000 ? "that tile is too big: fewer buttons, or shorter arguments." : { kind: "tile", ref, label };
+}
+
 /** One thing for a panel, checked against what this person reaches; a string says why not. */
 async function itemFor(raw: unknown, ctx: ToolContext): Promise<PanelItem | string> {
-  const { kind, ref, label } = (raw ?? {}) as { kind?: unknown; ref?: unknown; label?: unknown };
+  const { kind, ref, label, read, buttons } = (raw ?? {}) as { kind?: unknown; ref?: unknown; label?: unknown; read?: unknown; buttons?: unknown };
   const given = typeof label === "string" ? label.trim() : "";
+  if (kind === "tile") return tileFor(given, read, buttons, ctx);
   if (kind === "note") return given ? { kind, ref: "", label: given } : "a note needs its text, in label.";
   if (kind === "usage") return { kind, ref: "usage", label: given || "What you have used" };
   if (kind === "home") {
@@ -81,7 +116,13 @@ export const panelSet: Tool = {
     "the car, usage and notes. So list each thing; a room's group (group.… or a light group) is used as " +
     "it is. Up to 20 rows a panel; for more, make a second panel. car — one of their cars, by name, or null " +
     "for their usual one; usage — what they have used and spent; note — a line of text such as a " +
-    "to-do, the text itself in label. Panels are the asker's own: nobody else sees them.",
+    "to-do, the text itself in label; tile — anything else you can read or do with your other tools (music, " +
+    "the car's other controls, calendar, mail, cameras, routines, jobs, Hermes, connected services), named in " +
+    "label: read is one of your tools whose answer the tile shows, run each time the panel is shown (e.g. " +
+    "music_state with {}), or null; buttons, up to 6, each run one of your tools with fixed arguments (tool, " +
+    "and args as a JSON object, e.g. music_control with {\"action\":\"pause\"}) or, only when no tool call " +
+    "can do it, ask Jarvis a sentence (ask). Use a tile for whatever is not in Home Assistant. " +
+    "Panels are the asker's own: nobody else sees them.",
   parameters: {
     type: "object",
     properties: {
@@ -99,7 +140,7 @@ export const panelSet: Tool = {
         items: {
           type: "object",
           properties: {
-            kind: { type: "string", enum: ["home", "car", "usage", "note"] },
+            kind: { type: "string", enum: ["home", "car", "usage", "note", "tile"] },
             ref: {
               type: ["string", "null"],
               description:
@@ -110,8 +151,33 @@ export const panelSet: Tool = {
               type: ["string", "null"],
               description: "Its name on the panel, or null for the house's or the car's own name. A room's lights together need one. For a note, the note itself.",
             },
+            read: {
+              type: ["object", "null"],
+              description: "tile only: the tool whose answer is the tile's reading. Null otherwise.",
+              properties: {
+                tool: { type: "string", description: "One of your tools, by name." },
+                args: { type: "string", description: "Its arguments, a JSON object as text, e.g. {}." },
+              },
+              required: ["tool", "args"],
+              additionalProperties: false,
+            },
+            buttons: {
+              type: ["array", "null"],
+              description: "tile only: up to 6 buttons. Null otherwise.",
+              items: {
+                type: "object",
+                properties: {
+                  label: { type: "string", description: "The button's words, e.g. 'Pause'." },
+                  tool: { type: ["string", "null"], description: "One of your tools, by name; null when the button asks." },
+                  args: { type: ["string", "null"], description: "That tool's arguments, a JSON object as text; null when the button asks." },
+                  ask: { type: ["string", "null"], description: "A sentence to ask Jarvis, only when no tool call can do it; null otherwise." },
+                },
+                required: ["label", "tool", "args", "ask"],
+                additionalProperties: false,
+              },
+            },
           },
-          required: ["kind", "ref", "label"],
+          required: ["kind", "ref", "label", "read", "buttons"],
           additionalProperties: false,
         },
       },

@@ -42,6 +42,8 @@ export interface ToolContext {
    * never later do more than the person or device that asked for it.
    */
   grants: readonly Grant[];
+  /** The tools the router was offered for this question, by name: what a panel's tile may be wired to (tools/panels.ts). */
+  offered?: readonly string[];
 }
 
 /** A picture for the router to look at, as a data: URL. */

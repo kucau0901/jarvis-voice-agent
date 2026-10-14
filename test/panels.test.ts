@@ -5,6 +5,9 @@ import { MAX_HOUSE, MAX_ITEMS, MAX_PANELS, Panels, type Panel } from "../src/wor
 import { actOn, carActions, houseActions, houseActive, houseIcon, houseValue, viewPanels, type PanelSources } from "../src/worker/lib/panel-view.ts";
 import { panelRemove, panelSet } from "../src/worker/tools/panels.ts";
 import { areasOf, arrange } from "../src/worker/lib/panel-arrange.ts";
+import { controlCall, controlsOf } from "../src/worker/lib/panel-controls.ts";
+import { parseTile, pressTile, readTile, tileIcon, tileKey, tileSpec } from "../src/worker/lib/panel-tiles.ts";
+import { readTileOf } from "../src/worker/lib/panel-view.ts";
 
 let pass = 0, fail = 0;
 function check(name: string, cond: boolean, got?: unknown) {
@@ -137,6 +140,8 @@ function sources(over: Partial<PanelSources> = {}) {
     snapshot: async () => (asked.snapshots++, { battery: 69, rangeMiles: 176, charging: "Disconnected", locked: true, climateOn: false, insideTemp: 31.4 }),
     wake: async () => void asked.woke++,
     command: async (_c, name) => (asked.commands.push(name), true),
+    tool: async () => null,
+    ask: async () => "",
     usage: async () => ({ month: "2026-10", total: { day: "", questions: 40, byHouse: 0, cost: { router: 1, live: 0.5, jobs: 0.25 }, liveSeconds: 600, jobs: 1, unpriced: 0 }, today: { day: "", questions: 3, byHouse: 0, cost: { router: 0, live: 0, jobs: 0 }, liveSeconds: 0, jobs: 0, unpriced: 0 }, medianMs: null, slowest: [], recent: [] }),
     ...over,
   };
@@ -328,6 +333,115 @@ console.log("Jarvis lays a panel out");
   check("…and none when the house will not render it", (await areasOf({ base: "https://ha.example", token: "h" }, ["light.led"], async () => { throw new Error("Home Assistant said 401"); })).size === 0);
 }
 
+console.log("an aircond and an alarm, opened");
+{
+  const ac = { hvac_modes: ["off", "cool", "dry", "fan_only"], fan_modes: ["low", "high"], fan_mode: "low", temperature: 25, current_temperature: 27, min_temp: 16, max_temp: 30 };
+  const on = controlsOf("climate.bedroom", "cool", ac)!;
+  check("an aircond that is cooling offers Turn off, and opened, its temperature, modes and fan",
+    on.actions.map((a) => a.label).join() === "Turn off" && on.more?.climate?.target === 25 && on.more.climate.now === 27 &&
+    on.more.climate.modes.join() === "off,cool,dry,fan_only" && on.more.climate.fans.join() === "low,high" && on.more.climate.mode === "cool", on);
+  check("…one that is off offers Turn on", controlsOf("climate.bedroom", "off", ac)!.actions.map((a) => a.action).join() === "on");
+  const temp = controlCall("climate.bedroom", "cool", ac, "temp:23");
+  check("a temperature within its range is set with Home Assistant's set_temperature",
+    typeof temp === "object" && temp?.service === "set_temperature" && JSON.stringify(temp.data) === '{"temperature":23}', temp);
+  check("…one outside it is refused", typeof controlCall("climate.bedroom", "cool", ac, "temp:40") === "string");
+  check("a mode or a fan speed it has is set; one it has not is refused",
+    (controlCall("climate.bedroom", "cool", ac, "mode:dry") as { data: unknown }).data !== undefined &&
+    JSON.stringify((controlCall("climate.bedroom", "cool", ac, "fan:high") as { data: unknown }).data) === '{"fan_mode":"high"}' &&
+    typeof controlCall("climate.bedroom", "cool", ac, "mode:heat") === "string");
+  check("Turn on while it is cooling is not what it offers", typeof controlCall("climate.bedroom", "cool", ac, "on") === "string");
+
+  const alarm = { code_format: "number", code_arm_required: false, supported_features: 1 | 2 | 4 };
+  const armed = controlsOf("alarm_control_panel.house", "armed_night", alarm)!;
+  check("an armed alarm, opened, offers Disarm, which wants its code; folded it offers nothing",
+    armed.actions.length === 0 && armed.more?.actions?.map((a) => a.label).join() === "Disarm" && armed.more.code?.digits === true && armed.more.code.for.join() === "disarm", armed);
+  const off = controlsOf("alarm_control_panel.house", "disarmed", alarm)!;
+  check("disarmed, it offers each way it can be armed, with no code when arming needs none",
+    off.more?.actions?.map((a) => a.action).join() === "arm_away,arm_home,arm_night" && !off.more.code, off);
+  check("Disarm without the code is not sent", controlCall("alarm_control_panel.house", "armed_night", alarm, "disarm") === "it wants its code");
+  const dis = controlCall("alarm_control_panel.house", "armed_night", alarm, "disarm", "1234");
+  check("…with it, Home Assistant's alarm_disarm, the code passed on",
+    typeof dis === "object" && dis?.domain === "alarm_control_panel" && dis.service === "alarm_disarm" && JSON.stringify(dis.data) === '{"code":"1234"}', dis);
+  check("arming a way it does not support is refused", typeof controlCall("alarm_control_panel.house", "disarmed", { supported_features: 2 }, "arm_night") === "string");
+  check("anything else is not theirs", controlsOf("light.porch", "on", {}) === null && controlCall("light.porch", "on", {}, "off") === null);
+
+  const calls: { svc: string; data: unknown }[] = [];
+  const house: Record<string, { state: string; attributes: Record<string, unknown> }> = {
+    "climate.bedroom": { state: "cool", attributes: ac },
+    "alarm_control_panel.house": { state: "armed_night", attributes: alarm },
+  };
+  const { src } = sources({ read: async (_c, id) => house[id] ?? null, call: async (_c, d, sv, id, data) => void calls.push({ svc: `${d}.${sv} ${id}`, data }) });
+  const p: Panel = { ...panel, items: [{ kind: "home", ref: "climate.bedroom", label: "Bedroom aircond" }, { kind: "home", ref: "alarm_control_panel.house", label: "Alarm" }] };
+  const [view] = await viewPanels([p], src);
+  check("on a panel: the aircond with Turn off and its controls, the alarm with its own",
+    view!.rows[0]!.actions[0]?.label === "Turn off" && !!view!.rows[0]!.more?.climate && view!.rows[1]!.more?.actions?.[0]?.label === "Disarm", view!.rows);
+  const set = await actOn(p, "climate.bedroom", "temp:24", src, signal);
+  check("the temperature pressed on a panel reaches the house with its value",
+    set.status === 200 && calls[0]?.svc === "climate.set_temperature climate.bedroom" && JSON.stringify(calls[0]?.data) === '{"temperature":24}', { set, calls });
+  const noCode = await actOn(p, "alarm_control_panel.house", "disarm", src, signal);
+  const withCode = await actOn(p, "alarm_control_panel.house", "disarm", src, signal, { code: "1234" });
+  check("the alarm is not disarmed without its code, and is with it, the code going no further than the house",
+    noCode.status === 409 && withCode.status === 200 && !withCode.text.includes("1234") && JSON.stringify(calls[1]?.data) === '{"code":"1234"}', { noCode, withCode, calls });
+}
+{
+  const room: Record<string, { state: string; attributes: Record<string, unknown> }> = {
+    "light.bed_a": { state: "on", attributes: { friendly_name: "Ceiling" } },
+    "switch.bed_b": { state: "off", attributes: { friendly_name: "Bedside lamp" } },
+  };
+  const calls: string[] = [];
+  const { src } = sources({ read: async (_c, id) => room[id] ?? null, call: async (_c, d, sv, id) => void calls.push(`${d}.${sv} ${id}`) });
+  const ref = "light.bed_a,switch.bed_b,light.gone";
+  const p: Panel = { ...panel, items: [{ kind: "home", ref, label: "Bedroom lights" }] };
+  const [view] = await viewPanels([p], src);
+  const members = view!.rows[0]!.more?.members ?? [];
+  check("a room's row, opened, shows each of its lights with its own button, by the house's names",
+    members.map((m) => `${m.label}:${m.actions.map((a) => a.label).join()}`).join("|") === "Ceiling:Turn off|Bedside lamp:Turn on|light.gone:" && !!members[2]!.note, members);
+  const one = await actOn(p, ref, "on", src, signal, { member: "switch.bed_b" });
+  check("one of them pressed switches that one alone", one.status === 200 && calls.join() === "switch.turn_on switch.bed_b", { one, calls });
+  check("a light that is not in the room is refused", (await actOn(p, ref, "on", src, signal, { member: "light.porch" })).status === 404 && calls.length === 1);
+}
+
+console.log("a tile for anything else Jarvis can do");
+{
+  const spec = tileSpec({ read: { tool: "music_state", args: {} }, buttons: [{ label: "Pause", tool: { tool: "music_control", args: { action: "pause" } } }, { label: "Play something calm", ask: "play something calm" }] });
+  check("a tile: a reading from one tool, a button for another, and one that asks Jarvis",
+    typeof spec === "object" && spec.read?.tool === "music_state" && spec.buttons[1]!.ask === "play something calm", spec);
+  check("a button must do one thing: run a tool or ask, not both nor neither",
+    typeof tileSpec({ buttons: [{ label: "X" }] }) === "string" && typeof tileSpec({ buttons: [{ label: "X", ask: "a", tool: { tool: "t", args: {} } }] }) === "string");
+  check("…at most six of them, and a tile needs a reading or a button",
+    typeof tileSpec({ buttons: Array.from({ length: 7 }, () => ({ label: "x", ask: "y" })) }) === "string" && typeof tileSpec({ buttons: [] }) === "string");
+  const ref = JSON.stringify(spec);
+  check("kept as text and read back the same; its key short and the same each time",
+    JSON.stringify(parseTile(ref)) === ref && tileKey(ref) === tileKey(ref) && tileKey(ref).length < 12 && parseTile("{not json") === null);
+  check("drawn by what it uses", tileIcon(spec as never) === "music" && tileIcon({ buttons: [{ label: "x", ask: "y" }] }) === "chat");
+
+  const ran: string[] = [];
+  const asked: string[] = [];
+  const tools: Record<string, string> = { music_state: "Playing Blue in Green, by Miles Davis.", music_control: "Paused." };
+  const src = {
+    tool: async (name: string, args: Record<string, unknown>) => (ran.push(`${name} ${JSON.stringify(args)}`), name in tools ? { text: tools[name]! } : null),
+    ask: async (text: string) => (asked.push(text), "Playing some quiet piano."),
+  };
+  const s = spec as never;
+  check("its reading is its tool's answer", (await readTile(s, src)).text === "Playing Blue in Green, by Miles Davis.");
+  const paused = await pressTile("Music", s, "b0", src);
+  check("a button runs its tool with its arguments, no model", paused.status === 200 && paused.text === "Paused." && ran.at(-1) === 'music_control {"action":"pause"}', { paused, ran });
+  const calm = await pressTile("Music", s, "b1", src);
+  check("an asking button asks Jarvis its sentence", calm.text === "Playing some quiet piano." && asked.join() === "play something calm");
+  check("a button that is not there is refused", (await pressTile("Music", s, "b7", src)).status === 404);
+  const locked = { ...src, tool: async () => null };
+  check("a tool its person may not use here is not run", (await pressTile("Music", s, "b0", locked)).status === 403 && (await readTile(s, locked)).status === 403);
+
+  const p: Panel = { ...panel, items: [{ kind: "tile", ref, label: "Music" }] };
+  const { src: all } = sources({ tool: src.tool, ask: src.ask });
+  const [view] = await viewPanels([p], all);
+  const row = view!.rows[0]!;
+  check("on a panel: its buttons, and its reading fetched on its own",
+    row.kind === "tile" && row.key === tileKey(ref) && row.read === true && row.actions.map((a) => `${a.action}:${a.label}`).join() === "b0:Pause,b1:Play something calm", row);
+  check("pressed and read through the panel, by its key", (await actOn(p, tileKey(ref), "b0", all, signal)).text === "Paused." &&
+    (await readTileOf(p, tileKey(ref), all)).text.startsWith("Playing") && (await readTileOf(p, "t_other", all)).status === 404);
+}
+
 console.log("the tool");
 {
   const kept: { person: string; title: string; items: unknown[]; mode: string }[] = [];
@@ -347,7 +461,8 @@ console.log("the tool");
   }) as typeof fetch;
   try {
     const env = { STATE, JARVIS_PERSON: "u_sara", HA_BASE_URL: "https://ha.example", HA_TOKEN: "h", TESSIE_TOKEN: "t", TESSIE_VIN: "VIN1" };
-    const ctx = (grants: string[], e: Record<string, unknown> = env) => ({ env: e, grants, signal, progress: () => {}, memory: null, display: () => {} }) as never;
+    const offered = ["music_state", "music_control", "panel_set", "spotify__queue"];
+    const ctx = (grants: string[], e: Record<string, unknown> = env) => ({ env: e, grants, signal, progress: () => {}, memory: null, display: () => {}, offered }) as never;
     const run = (args: Record<string, unknown>, c: never) => panelSet.run(args as never, c) as Promise<string>;
     const items = [
       { kind: "home", ref: "cover.main_gate", label: null },
@@ -385,6 +500,18 @@ console.log("the tool");
         { kind: "home", ref: "cover.main_gate", label: "Main gate" },
         { kind: "home", ref: "light.bed_a,light.bed_b,light.bed_c", label: "Master Bedroom lights" },
       ]) && laid.includes("Master Bedroom lights (3 lights in one row)"), { laid, last: kept.at(-1) });
+    const tile = (read: unknown, buttons: unknown) => ({ kind: "tile", ref: null, label: "Music", read, buttons });
+    const wired = await run({ title: "Music", mode: "add", items: [tile({ tool: "music_state", args: "{}" }, [
+      { label: "Pause", tool: "music_control", args: '{"action":"pause"}', ask: null },
+      { label: "Queue jazz", tool: "spotify__queue", args: '{"q":"jazz"}', ask: null },
+      { label: "Something calm", tool: null, args: null, ask: "play something calm" },
+    ])] }, ctx(["*"]));
+    const made = kept.at(-1)?.items[0] as { kind: string; ref: string; label: string } | undefined;
+    check("a tile wired to the asker's own tools, an MCP server's among them, and a sentence to ask",
+      wired.startsWith("Done") && made?.kind === "tile" && parseTile(made.ref)?.buttons.map((b) => b.tool?.tool ?? `ask:${b.ask}`).join() === "music_control,spotify__queue,ask:play something calm", { wired, made });
+    check("a tool they were not offered is refused", (await run({ title: "X", mode: "add", items: [tile({ tool: "mail_send", args: "{}" }, null)] }, ctx(["*"]))).includes("not one of the tools"));
+    check("…and so are the panel tools themselves", (await run({ title: "X", mode: "add", items: [tile(null, [{ label: "Again", tool: "panel_set", args: "{}", ask: null }])] }, ctx(["*"]))).includes("not one of the tools"));
+    check("arguments that are not JSON are refused", (await run({ title: "X", mode: "add", items: [tile({ tool: "music_state", args: "{oops" }, null)] }, ctx(["*"]))).includes("not JSON"));
     check("taking a panel away", String(await panelRemove.run({ title: "Home Controls", item: null } as never, ctx(["screen"]))).startsWith("Done"));
     check("…or saying there is none by that name", String(await panelRemove.run({ title: "Nope", item: null } as never, ctx(["screen"]))).includes("no panel called"));
     check("offered only to someone with screen, which a guest does not have", panelSet.scope === "screen" && panelRemove.scope === "screen");

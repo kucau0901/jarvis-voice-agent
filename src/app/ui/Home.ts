@@ -1,6 +1,7 @@
 import { api } from "../key";
 import type { PanelRow, PanelView, PanelsReply } from "../../shared/panels";
 import { arm, button, el } from "./util";
+import { moreBody } from "./HomeMore";
 
 /**
  * The Home tab: this person's panels (src/worker/lib/panel-view.ts), as
@@ -10,7 +11,10 @@ import { arm, button, el } from "./util";
  * the others in columns under one another (index.html), so another panel
  * finds its place without a hole. A tall card folds, as Hark's do, to its
  * first row fading out (remembered on this screen), and its … menu reads it
- * again or removes it. Panels are made by asking Jarvis
+ * again or removes it. A tile with more to it — a room's lights, an
+ * aircond, an alarm — opens across its panel (ui/HomeMore.ts); a tile wired
+ * to one of Jarvis's tools reads it on its own, every minute, so a slow tool
+ * never holds up the house. Panels are made by asking Jarvis
  * ("put the gate on a panel"), so with none yet the tab is a clock and a line
  * saying how. Read again every 20 seconds while it is in view (not while the
  * page is hidden), and soon after a press, since a gate takes a moment to say
@@ -22,6 +26,8 @@ import { arm, button, el } from "./util";
 
 const EVERY_MS = 20_000;
 const AFTER_PRESS_MS = 1_500;
+/** How often a tile's tool is read again: a tool can be slow, or cost a request to someone else's service. */
+const READ_MS = 60_000;
 const FOLDED = "jarvis.homeFolded";
 /** Tiles' worth (a car or the usage counts two) from which a panel takes the page's width, not a column's. */
 const BIG = 5;
@@ -30,8 +36,9 @@ const BIG = 5;
 const list = (xs: string[]) => (xs.length < 2 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`);
 const why = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
-/** A car, the usage, a room's lights together ("1 of 8 on · …") or a long note takes two tiles' room. */
-const wide = (r: PanelRow) => r.icon === "car" || r.kind === "usage" || r.key.includes(",") || (r.kind === "note" && r.label.length > 48);
+/** A car, the usage, a room's lights together ("1 of 8 on · …"), a tile's reading or a long note takes two tiles' room. */
+const wide = (r: PanelRow) =>
+  r.icon === "car" || r.kind === "usage" || r.key.includes(",") || !!r.read || (r.kind === "note" && r.label.length > 48);
 
 /** The panels folded on this screen, by id: a convenience, so a private window just forgets them. */
 function folded(): Set<string> {
@@ -68,6 +75,10 @@ export class Home {
   private seq = 0;
   /** A press under way: nothing read before its answer is drawn over that answer. */
   private pressing = 0;
+  /** Tiles opened, by panel and key: they stay open when the panels are drawn again. */
+  private opened = new Set<string>();
+  /** Each tile's last reading, by panel and key, and when it was read. */
+  private readings = new Map<string, { text: string; image?: string; failed?: boolean; at: number }>();
 
   constructor(key: string) {
     this.key = key;
@@ -109,8 +120,9 @@ export class Home {
     const n = ++this.seq;
     try {
       const r = (await api(this.key, "GET", "/api/hub/panels")) as PanelsReply;
-      // Not while a menu is open: drawing again would take it, and a half-made Remove, away.
-      if (n === this.seq && !this.pressing && !this.root.querySelector(".hmenu:not([hidden])")) this.render(r);
+      // Not while a menu is open or a code is being typed: drawing again would take them away.
+      const busy = this.root.querySelector(".hmenu:not([hidden])") || [...this.root.querySelectorAll<HTMLInputElement>(".hcode")].some((c) => c.value || c === document.activeElement);
+      if (n === this.seq && !this.pressing && !busy) this.render(r);
     } catch (e) {
       if (n !== this.seq || this.pressing) return;
       // A dropped read (a tunnel, a moment offline) keeps what was on screen, under a note.
@@ -130,6 +142,38 @@ export class Home {
     wall.append(...r.panels.map((p) => this.card(p, shut.has(p.id))));
     this.root.replaceChildren(wall);
     this.measure();
+    for (const p of r.panels) for (const row of p.rows) if (row.read) void this.read(p.id, row.key);
+  }
+
+  /** A tile's reading, from its tool, unless it was read within the minute. */
+  private async read(panel: string, key: string): Promise<void> {
+    const at = `${panel}\n${key}`;
+    const had = this.readings.get(at);
+    if (had && Date.now() - had.at < READ_MS) return;
+    // Marked now, so the next drawing does not ask again while this is under way.
+    this.readings.set(at, { ...(had ?? { text: "" }), at: Date.now() });
+    let got: { text: string; image?: string; failed?: boolean };
+    try {
+      got = (await api(this.key, "GET", `/api/hub/panels/read?panel=${encodeURIComponent(panel)}&key=${encodeURIComponent(key)}`)) as { text: string; image?: string };
+    } catch (e) {
+      got = { text: why(e), failed: true };
+    }
+    this.readings.set(at, { ...got, at: Date.now() });
+    const t = [...this.root.querySelectorAll<HTMLElement>(".htile")].find((x) => x.dataset.at === at);
+    if (t) this.showReading(t, got);
+  }
+
+  private showReading(t: HTMLElement, got: { text: string; image?: string; failed?: boolean }): void {
+    const said = t.querySelector<HTMLElement>(".hstate")!;
+    said.textContent = got.text;
+    said.className = got.failed ? "hstate hwhy" : "hstate";
+    t.querySelector(".hshot")?.remove();
+    if (got.image) {
+      const img = el("img", "hshot");
+      img.src = got.image;
+      img.alt = "";
+      t.querySelector(".htop")!.after(img);
+    }
   }
 
   /** Only a card taller than a folded one (--fold, index.html) offers to fold. */
@@ -226,17 +270,44 @@ export class Home {
   }
 
   private tile(panel: string, r: PanelRow): HTMLElement {
+    const at = `${panel}\n${r.key}`;
     const t = el("div", `htile ${r.kind}${r.active ? " active" : ""}${wide(r) ? " wide" : ""}`);
     t.dataset.icon = r.icon;
+    t.dataset.at = at;
     const top = el("div", "htop");
     const text = el("div", "htext");
     const name = el("b", "hname", r.label);
-    const said = el("small", r.note ? "hstate hwhy" : "hstate", r.note ?? r.value);
+    const said = el("small", r.note ? "hstate hwhy" : "hstate", r.note ?? (r.read ? "…" : r.value));
     text.appendChild(name);
-    if (r.value || r.note) text.appendChild(said);
+    if (r.value || r.note || r.read) text.appendChild(said);
     top.append(el("span", "hic"), text);
     if (r.level !== undefined) top.appendChild(el("span", "hbadge", `${r.level}%`));
     t.appendChild(top);
+    const reading = this.readings.get(at);
+    if (r.read && reading?.text) this.showReading(t, reading);
+    if (r.more) {
+      // Opened across its panel, as Hark opens a row: its name is what is pressed.
+      const open = this.opened.has(at);
+      t.classList.add("can-open");
+      t.classList.toggle("open", open);
+      top.setAttribute("role", "button");
+      top.tabIndex = 0;
+      top.setAttribute("aria-expanded", String(open));
+      const flip = () => {
+        const now = !this.opened.has(at);
+        if (now) this.opened.add(at);
+        else this.opened.delete(at);
+        t.classList.toggle("open", now);
+        top.setAttribute("aria-expanded", String(now));
+      };
+      top.addEventListener("click", flip);
+      top.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          flip();
+        }
+      });
+    }
     if (r.level !== undefined) {
       const bar = el("div", r.level < 20 ? "hbar low" : "hbar");
       const fill = el("i");
@@ -256,23 +327,36 @@ export class Home {
     if (r.actions.length) {
       const acts = el("div", "hacts");
       for (const a of r.actions) {
-        const b = button(a.label, () => void this.act(panel, r.key, a.action, b, name, said));
+        const b = button(a.label, () => void this.act(panel, r.key, a.action, b, said, name));
         acts.appendChild(b);
       }
       t.appendChild(acts);
     }
+    if (r.more) t.appendChild(moreBody(r.more, said, (action, b, shown, extra) => this.act(panel, r.key, action, b, shown, name, extra)));
     return t;
   }
 
-  /** A button pressed: the server checks the state again before it sends anything. */
-  private async act(panel: string, key: string, action: string, b: HTMLButtonElement, name: HTMLElement, said: HTMLElement): Promise<void> {
+  /**
+   * A button pressed: the server checks the state again before it sends
+   * anything. A room's light is pressed as its `member`; an alarm's code goes
+   * with the press and is kept nowhere.
+   */
+  private async act(
+    panel: string,
+    key: string,
+    action: string,
+    b: HTMLButtonElement,
+    said: HTMLElement,
+    after: HTMLElement,
+    extra: { member?: string; code?: string } = {},
+  ): Promise<void> {
     const label = b.textContent;
     b.disabled = true;
     b.textContent = "…";
     this.pressing++;
     this.seq++;
     try {
-      said.textContent = ((await api(this.key, "POST", "/api/hub/panels/act", { panel, key, action })) as { text: string }).text;
+      said.textContent = ((await api(this.key, "POST", "/api/hub/panels/act", { panel, key, action, ...extra })) as { text: string }).text;
       said.className = "hstate";
     } catch (e) {
       said.textContent = why(e);
@@ -280,7 +364,7 @@ export class Home {
     } finally {
       this.pressing--;
     }
-    if (!said.isConnected) name.after(said);
+    if (!said.isConnected) after.after(said);
     b.textContent = label;
     b.disabled = false;
     setTimeout(() => void this.load(), AFTER_PRESS_MS);

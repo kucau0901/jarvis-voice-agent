@@ -69,7 +69,8 @@ export async function entityState(
 
 /**
  * Work one thing in the house (a guest's pass, lib/access.ts; a panel's
- * button): a service on one entity, nothing else. Throws with Home
+ * button): a service on one entity, with what it is set to if anything (an
+ * aircond's temperature, an alarm's code), nothing else. Throws with Home
  * Assistant's answer if refused.
  */
 export async function callService(
@@ -77,12 +78,13 @@ export async function callService(
   domain: string,
   service: string,
   entityId: string,
+  data: Record<string, unknown> = {},
   fetchImpl: typeof fetch = fetch,
 ): Promise<void> {
   const res = await fetchImpl(`${cfg.base}/api/services/${domain}/${service}`, {
     method: "POST",
     headers: { Authorization: `Bearer ${cfg.token}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ entity_id: entityId }),
+    body: JSON.stringify({ ...data, entity_id: entityId }),
     signal: AbortSignal.timeout(15_000),
   });
   if (!res.ok) throw new Error(`Home Assistant said ${res.status}: ${(await res.text()).slice(0, 160)}`);

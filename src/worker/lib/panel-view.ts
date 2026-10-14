@@ -5,6 +5,8 @@ import { passService } from "./access.ts";
 import { carSnapshot, distanceIn, ensureAwake, sendCarCommand, type CarSnapshot, type TessieConfig } from "../tools/tessie.ts";
 import type { CarKey } from "./context.ts";
 import { idsOf, type Panel, type PanelItem } from "./panels.ts";
+import { controlCall, controlsOf } from "./panel-controls.ts";
+import { parseTile, pressTile, readTile, tileIcon, tileKey, type TileSources } from "./panel-tiles.ts";
 import type { UsageReport } from "./usage.ts";
 import type { PanelIcon, PanelRow, PanelView } from "../../shared/panels.ts";
 
@@ -26,13 +28,13 @@ import type { PanelIcon, PanelRow, PanelView } from "../../shared/panels.ts";
 type HouseState = { state: string; attributes: Record<string, unknown> };
 
 /** Where a panel's things are read and worked; the route gives the real ones, the tests fakes. */
-export interface PanelSources {
+export interface PanelSources extends TileSources {
   grants: readonly Grant[];
   units: "metric" | "imperial";
   /** The house as this person reaches it; null when it is not connected. */
   house: HaConfig | null;
   read: (cfg: HaConfig, entity: string) => Promise<HouseState | null>;
-  call: (cfg: HaConfig, domain: string, service: string, entity: string) => Promise<void>;
+  call: (cfg: HaConfig, domain: string, service: string, entity: string, data?: Record<string, unknown>) => Promise<void>;
   /** A car by its id among this person's, or null when it is no longer one of them. */
   car: (id: string) => { cfg: TessieConfig; car: CarKey | null } | null;
   snapshot: (cfg: TessieConfig) => Promise<CarSnapshot>;
@@ -45,7 +47,7 @@ export interface PanelSources {
 /** The real sources, but for what only a request knows. */
 export const LIVE = {
   read: (cfg: HaConfig, entity: string) => entityState(cfg, entity),
-  call: (cfg: HaConfig, domain: string, service: string, entity: string) => callService(cfg, domain, service, entity),
+  call: (cfg: HaConfig, domain: string, service: string, entity: string, data?: Record<string, unknown>) => callService(cfg, domain, service, entity, data),
   snapshot: (cfg: TessieConfig) => carSnapshot(cfg),
   wake: ensureAwake,
   command: sendCarCommand,
@@ -219,6 +221,22 @@ export function houseValue(entity: string, state: string, a: Record<string, unkn
   return [cap(state.replace(/[_-]/g, " ")), t === undefined ? null : `${t}${tUnit}`].filter(Boolean).join(", ");
 }
 
+/** One thing in the house as its tile shows it, with the buttons and the opened controls its state offers. */
+function houseRow(key: string, label: string, entity: string, now: HouseState): PanelRow {
+  const ctl = controlsOf(entity, now.state, now.attributes);
+  return {
+    key,
+    kind: "home",
+    label,
+    value: houseValue(entity, now.state, now.attributes),
+    icon: houseIcon(entity, now.state, now.attributes),
+    active: houseActive(entity, now.state),
+    tiles: [],
+    actions: ctl?.actions ?? houseActions(entity, now.state).map((action) => ({ action, label: actionLabel(entity, action) })),
+    ...(ctl?.more ? { more: ctl.more } : {}),
+  };
+}
+
 /* ---------- the car -------------------------------------------------------------- */
 
 const CAR_LABEL: Record<string, string> = {
@@ -299,10 +317,13 @@ function usageTiles(r: UsageReport): { label: string; value: string }[] {
   ];
 }
 
-const ICON: Record<"car" | "usage" | "note", PanelIcon> = { car: "car", usage: "usage", note: "note" };
+const ICON: Record<"car" | "usage" | "note" | "tile", PanelIcon> = { car: "car", usage: "usage", note: "note", tile: "dot" };
+
+/** A thing's key on its panel, for a press: its ref, or a tile's short key. */
+export const keyOf = (i: PanelItem): string => (i.kind === "tile" ? tileKey(i.ref) : i.ref);
 const iconOf = (item: PanelItem): PanelIcon => (item.kind === "home" ? houseIcon(item.ref, "", { friendly_name: item.label }) : ICON[item.kind]);
 const empty = (item: PanelItem, note: string): PanelRow[] => [
-  { key: item.ref, kind: item.kind, label: item.label, value: "", icon: iconOf(item), active: false, tiles: [], actions: [], note },
+  { key: keyOf(item), kind: item.kind, label: item.label, value: "", icon: iconOf(item), active: false, tiles: [], actions: [], note },
 ];
 
 /** Every panel with each thing read now. A thing on two panels is read once. */
@@ -314,6 +335,16 @@ export async function viewPanels(panels: Panel[], src: PanelSources): Promise<Pa
   // One row a thing, but a car is its tile and one for each of its controls.
   const rows = async (item: PanelItem): Promise<PanelRow[]> => {
     if (item.kind === "note") return [{ key: item.ref, kind: "note", label: item.label, value: "", icon: "note", active: false, tiles: [], actions: [] }];
+    if (item.kind === "tile") {
+      // Its reading is fetched on its own (readTileOf), so a slow tool never holds up the house.
+      const spec = parseTile(item.ref);
+      if (!spec) return empty(item, "This tile no longer reads back: ask Jarvis to make it again.");
+      return [{
+        key: keyOf(item), kind: "tile", label: item.label, value: "", icon: tileIcon(spec), active: false, tiles: [],
+        actions: spec.buttons.map((b, i) => ({ action: `b${i}`, label: b.label })),
+        ...(spec.read ? { read: true } : {}),
+      }];
+    }
     if (item.kind === "usage") {
       const r = await (usage ??= src.usage().catch(() => null));
       return r
@@ -345,6 +376,14 @@ export async function viewPanels(panels: Panel[], src: PanelSources): Promise<Pa
               active: t.on.length > 0,
               tiles: [],
               actions: togetherActions(t).map((action) => ({ action, label: actionLabel(item.ref, action) })),
+              // Opened, each light of the room with its own button, as the house names it.
+              more: {
+                members: ids.map((id, i) => {
+                  const s = now[i];
+                  const name = typeof s?.attributes.friendly_name === "string" ? s.attributes.friendly_name : id;
+                  return s ? houseRow(id, name, id, s) : { key: id, kind: "home", label: id, value: "", icon: houseIcon(id, "", {}), active: false, tiles: [], actions: [], note: "It is no longer in the house." };
+                }),
+              },
             },
           ];
         } catch {
@@ -355,19 +394,7 @@ export async function viewPanels(panels: Panel[], src: PanelSources): Promise<Pa
       try {
         const now = await read;
         if (!now) return empty(item, "It is no longer in the house.");
-        const actions = houseActions(item.ref, now.state).map((action) => ({ action, label: actionLabel(item.ref, action) }));
-        return [
-          {
-            key: item.ref,
-            kind: "home",
-            label: item.label,
-            value: houseValue(item.ref, now.state, now.attributes),
-            icon: houseIcon(item.ref, now.state, now.attributes),
-            active: houseActive(item.ref, now.state),
-            tiles: [],
-            actions,
-          },
-        ];
+        return [houseRow(item.ref, item.label, item.ref, now)];
       } catch {
         return empty(item, "Could not reach the house just now.");
       }
@@ -421,9 +448,44 @@ async function switchTogether(item: PanelItem, ids: string[], action: string, sr
 }
 
 /**
- * A button on a panel: the thing must be on this person's panel, its action
- * must be one its state offers now, and the person must still be allowed it.
- * Then the guest pass's fixed service, or the car command. No model.
+ * One thing in the house pressed: read again, then an aircond's or an
+ * alarm's service (lib/panel-controls.ts) or the guest pass's fixed one, if
+ * its state offers that now.
+ */
+async function pressThing(label: string, entity: string, action: string, code: string | undefined, src: PanelSources, house: HaConfig): Promise<{ status: number; text: string }> {
+  let now: HouseState | null;
+  try {
+    now = await src.read(house, entity);
+  } catch (e) {
+    return { status: 502, text: `Could not reach the house: ${e instanceof Error ? e.message : String(e)}` };
+  }
+  if (!now) return { status: 404, text: `${label} is no longer in the house.` };
+  const ctl = controlCall(entity, now.state, now.attributes, action, code);
+  if (typeof ctl === "string") return { status: 409, text: `${label}: ${ctl}.` };
+  let call: { domain: string; service: string; data: Record<string, unknown>; said: string };
+  if (ctl) call = ctl;
+  else {
+    if (!houseActions(entity, now.state).includes(action)) {
+      return { status: 409, text: `${label} is ${houseValue(entity, now.state, now.attributes).toLowerCase() || now.state} now, so that was not sent.` };
+    }
+    const svc = passService(entity, action);
+    if (typeof svc === "string") return { status: 409, text: `Not done: ${svc}.` };
+    call = { ...svc, data: {}, said: actionLabel(entity, action) };
+  }
+  try {
+    await src.call(house, call.domain, call.service, entity, call.data);
+  } catch (e) {
+    return { status: 502, text: `The house did not do it: ${e instanceof Error ? e.message : String(e)}` };
+  }
+  return { status: 200, text: `${label}: ${call.said}.` };
+}
+
+/**
+ * A button on a panel: the thing must be on this person's panel (or, with
+ * `member`, in one of its rooms), its action must be one its state offers
+ * now, and the person must still be allowed it. Then the service, or the
+ * car command. No model. An alarm's code is passed to Home Assistant and
+ * kept nowhere.
  */
 export async function actOn(
   panel: Panel | undefined,
@@ -431,33 +493,26 @@ export async function actOn(
   action: string,
   src: PanelSources,
   signal: AbortSignal,
+  extra: { member?: string; code?: string } = {},
 ): Promise<{ status: number; text: string }> {
-  const item = panel?.items.find((i) => i.ref === key && (i.kind === "home" || i.kind === "car"));
+  const item = panel?.items.find((i) => keyOf(i) === key && (i.kind === "home" || i.kind === "car" || i.kind === "tile"));
   if (!item) return { status: 404, text: "That is not on this panel." };
+
+  if (item.kind === "tile") {
+    const spec = parseTile(item.ref);
+    return spec ? pressTile(item.label, spec, action, src) : { status: 409, text: "This tile no longer reads back: ask Jarvis to make it again." };
+  }
 
   if (item.kind === "home") {
     if (!allows(src.grants, "home")) return { status: 403, text: 'Working the house needs "home".' };
     if (!src.house) return { status: 409, text: "The house is not connected to Jarvis." };
     const ids = idsOf(item);
+    if (extra.member !== undefined) {
+      if (ids.length < 2 || !ids.includes(extra.member)) return { status: 404, text: `That is not in ${item.label}.` };
+      return pressThing(extra.member, extra.member, action, undefined, src, src.house).then((r) => ({ ...r, text: r.text.replace(extra.member!, "That") }));
+    }
     if (ids.length > 1) return switchTogether(item, ids, action, src, src.house);
-    let now: HouseState | null;
-    try {
-      now = await src.read(src.house, item.ref);
-    } catch (e) {
-      return { status: 502, text: `Could not reach the house: ${e instanceof Error ? e.message : String(e)}` };
-    }
-    if (!now) return { status: 404, text: `${item.label} is no longer in the house.` };
-    if (!houseActions(item.ref, now.state).includes(action)) {
-      return { status: 409, text: `${item.label} is ${houseValue(item.ref, now.state, now.attributes).toLowerCase() || now.state} now, so that was not sent.` };
-    }
-    const svc = passService(item.ref, action);
-    if (typeof svc === "string") return { status: 409, text: `Not done: ${svc}.` };
-    try {
-      await src.call(src.house, svc.domain, svc.service, item.ref);
-    } catch (e) {
-      return { status: 502, text: `The house did not do it: ${e instanceof Error ? e.message : String(e)}` };
-    }
-    return { status: 200, text: `${item.label}: ${actionLabel(item.ref, action)}.` };
+    return pressThing(item.label, item.ref, action, extra.code, src, src.house);
   }
 
   if (!allows(src.grants, "car.control")) return { status: 403, text: 'Working the car needs "car.control".' };
@@ -475,4 +530,12 @@ export async function actOn(
     return { status: 502, text: `Could not reach the car: ${e instanceof Error ? e.message : String(e)}` };
   }
   return { status: 200, text: `${item.label}: ${CAR_LABEL[action]}.` };
+}
+
+/** A tile's reading (GET /api/hub/panels/read): the thing must be a tile on this person's panel. */
+export async function readTileOf(panel: Panel | undefined, key: string, src: PanelSources): Promise<{ status: number; text: string; image?: string }> {
+  const item = panel?.items.find((i) => i.kind === "tile" && keyOf(i) === key);
+  const spec = item ? parseTile(item.ref) : null;
+  if (!spec) return { status: 404, text: "That is not a tile on this panel." };
+  return readTile(spec, src);
 }

@@ -317,7 +317,7 @@ export async function run(
       }
     },
     runCalls: (calls) =>
-      runCalls(calls as OpenAI.Responses.ResponseFunctionToolCall[], p!.byName, { env, signal, memory: p!.memory, grants }, sse),
+      runCalls(calls as OpenAI.Responses.ResponseFunctionToolCall[], p!.byName, { env, signal, memory: p!.memory, grants, offered: [...p!.byName.keys()] }, sse),
     close: () => sessions.close(),
     // Settings → Usage: after the answer, where the request allows, so the
     // glasses and push-to-talk do not wait on the write.
@@ -375,7 +375,7 @@ export async function run(
 export async function runCalls(
   calls: OpenAI.Responses.ResponseFunctionToolCall[],
   byName: Map<string, Tool>,
-  base: { env: Env; signal: AbortSignal; memory: MemoryStore; grants: readonly Grant[] },
+  base: { env: Env; signal: AbortSignal; memory: MemoryStore; grants: readonly Grant[]; offered?: readonly string[] },
   sse: EventSink,
 ): Promise<OpenAI.Responses.ResponseInput> {
   return Promise.all(

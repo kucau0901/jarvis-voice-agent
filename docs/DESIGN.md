@@ -364,6 +364,29 @@ Home Controls", "a to-do panel with renew the road tax" (`panel_set`,
   the house will not say, lights whose names start alike ("Master …") are one
   room. Rules rather than a second model call, since model calls cost the
   owner money, and so the same request always gives the same panel.
+- **Opened, as Hark opens a row.** A room's row, an aircond and an alarm open
+  across their panel (src/app/ui/HomeMore.ts): each of the room's lights with
+  its own button; the aircond's temperature up and down, its modes and its
+  fan, as Home Assistant says it supports them; the alarm's Disarm, or each
+  way it can be armed, with a box for its code when it wants one. The code
+  goes with that one press to Home Assistant and is kept nowhere. Each press
+  is checked against the state read again, as every press is
+  (lib/panel-controls.ts).
+- **Anything else Jarvis can do, as a tile.** The house is read directly
+  because it is the cheap path; everything else — the music, the car's other
+  controls, the calendar, mail, cameras, routines, Hermes, an MCP server's
+  tools — goes on a panel as a tile wired to the person's own tools
+  (lib/panel-tiles.ts). The model wires it once, when asked ("put Spotify on
+  a panel with pause and next"): a reading, one tool with fixed arguments,
+  and up to six buttons, each a tool with fixed arguments or, only where no
+  tool call can do it, a sentence asked of Jarvis as if typed in Chat. After
+  that a press runs the tool itself, with no model; an asking button costs
+  one model call a press, which the owner accepted. A tile's tool runs only
+  if the person pressing is offered it now — the same tools, filtered by the
+  same grants, as when they ask — so a tile can do nothing they could not ask
+  for, Hermes included. Its reading comes on its own (GET
+  /api/hub/panels/read), once a minute, so a slow tool or someone else's
+  service never holds up the house.
 
 ## Getting somewhere
 
