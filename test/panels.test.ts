@@ -277,6 +277,16 @@ console.log("a room's lights together");
     (await viewPanels([roomPanel], noHome))[0]!.rows[0]!.note?.includes("not yours") === true && (await actOn(roomPanel, ref, "off", noHome, signal)).status === 403);
 }
 
+{
+  const mixed: Record<string, { state: string; attributes: Record<string, unknown> }> = {
+    "light.x": { state: "off", attributes: {} },
+    "switch.y": { state: "off", attributes: { friendly_name: "Master bathroom switch" } },
+  };
+  const { src } = sources({ read: async (_c, id) => mixed[id] ?? null });
+  const [v] = await viewPanels([{ ...panel, items: [{ kind: "home", ref: "light.x,switch.y", label: "Master Bedroom lights" }] }], src);
+  check("a room's row with a plain switch in it is still drawn as a light", v!.rows[0]!.icon === "light", v!.rows[0]);
+}
+
 console.log("Jarvis lays a panel out");
 {
   const h = (ref: string, label: string) => ({ kind: "home" as const, ref, label });

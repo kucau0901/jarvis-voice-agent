@@ -340,7 +340,8 @@ export async function viewPanels(panels: Panel[], src: PanelSources): Promise<Pa
               kind: "home",
               label: item.label,
               value: togetherValue(ids, now, t),
-              icon: ids.every((id, i) => houseIcon(id, "", now[i]?.attributes ?? {}) === "light") ? "light" : "power",
+              // A room's row always has a light in it (lib/panel-arrange.ts); its switches are mostly lights too.
+              icon: ids.some((id, i) => houseIcon(id, "", now[i]?.attributes ?? {}) === "light") ? "light" : "power",
               active: t.on.length > 0,
               tiles: [],
               actions: togetherActions(t).map((action) => ({ action, label: actionLabel(item.ref, action) })),
