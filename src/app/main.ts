@@ -558,7 +558,7 @@ function showAlert(a: Alert): HTMLElement {
   if (a.convo || a.relay) {
     const open = document.createElement("button");
     open.className = "aopen";
-    open.textContent = "Open the chat";
+    open.textContent = "Open Messages";
     open.addEventListener("click", () => {
       card.remove();
       openChat(a.convo);
@@ -750,6 +750,7 @@ async function putAside(): Promise<void> {
   live.stop();
   clearKey();
   key = "";
+  $("menuBtn").textContent = $("hubAvatar").textContent = $("hubName").textContent = "";
 }
 
 let pinFor: Person | null = null;
@@ -939,7 +940,7 @@ async function unreadChat() {
     if (!r.ok) return;
     const { convos } = (await r.json()) as { convos: { unread: number }[] };
     const n = convos.reduce((t, c) => t + c.unread, 0);
-    item.textContent = n ? `Chat (${n})` : "Chat";
+    item.textContent = n ? `Messages (${n})` : "Messages";
     $("menuBtn").classList.toggle("dot", n > 0);
   } catch {
     // Next time.
@@ -1271,6 +1272,9 @@ async function whoAmI() {
     const title = $("title");
     title.textContent = ((me.space?.agentName ?? "Jarvis") + (shared && first ? ` · ${first}` : "")).toUpperCase();
     title.classList.toggle("switchable", isSession(key));
+    // The menu is behind your initial, as Hark's is behind your picture; a person outline without one.
+    $("menuBtn").textContent = $("hubAvatar").textContent = first.slice(0, 1).toUpperCase();
+    $("hubName").textContent = me.user?.name ?? me.space?.agentName ?? "Jarvis";
     const may = (need: string) => me.role === "admin" || me.scopes.includes("*") || (need !== "admin" && me.scopes.includes(need));
     for (const b of document.querySelectorAll<HTMLElement>("#topbtns [data-need]")) b.hidden = !may(b.dataset.need!);
     // The family's chat is for people in a family.
@@ -1300,6 +1304,7 @@ setInterval(async () => {
   if (session || userWantsSession || ptt?.busy || typedAbort) return;
   if (await lockPerson(key)) {
     await putAside();
+    setMenu(false);
     // Closed the way their own close buttons close them: Chat stops asking for messages as the one put aside.
     document.querySelectorAll<HTMLElement>(".panel.open").forEach((el) => {
       el.querySelector<HTMLElement>(".close")?.click();
@@ -1356,7 +1361,7 @@ setInterval(() => void freshen(), 30 * 60_000);
 
 /* ---------- the menu, and focus mode ------------------------------------ */
 const menuBtn = $<HTMLButtonElement>("menuBtn");
-const menu = $("topbtns");
+const menu = $("hub");
 function setMenu(open: boolean) {
   menu.classList.toggle("open", open);
   menuBtn.setAttribute("aria-expanded", String(open));
@@ -1365,9 +1370,9 @@ menuBtn.addEventListener("click", (e) => {
   e.stopPropagation();
   setMenu(!menu.classList.contains("open"));
 });
-// Choosing an item, or tapping anywhere else, closes it.
+// Choosing an item, its close button, or tapping anywhere else, closes it.
 menu.addEventListener("click", (e) => {
-  if ((e.target as HTMLElement).closest("button")) setMenu(false);
+  if (e.target === menu || (e.target as HTMLElement).closest("button")) setMenu(false);
 });
 let peekTimer = 0;
 document.addEventListener("click", (e) => {

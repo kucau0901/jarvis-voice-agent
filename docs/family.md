@@ -123,7 +123,7 @@ Assistant, which follows her phone (Family → **Home**, or an
 admin sets it on her page in Family, `person.aisyah`). Without it, it goes by the time
 alone, and Jarvis says so.
 
-**Chat** (in the menu) has the family room everyone shares, and a
+**Messages** (in the menu) has the family room everyone shares, and a
 conversation with each person. What Jarvis passed on between two people
 appears in theirs, with Done or a reply while it waits. In the family room,
 name the assistant, "**Jarvis**, add rice to the shopping list", and it

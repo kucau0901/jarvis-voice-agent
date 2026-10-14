@@ -83,7 +83,7 @@ the token has to be pasted into the Even app, and it is 37 characters long.
    **In a family, each person makes the token for their own glasses**: the
    glasses then act as them (their memory, their mail, their reminders) and
    never reach further than they may.
-2. Open the menu (**☰**) → **Devices**.
+2. Open the menu (your initial, top right) → **Devices**.
 3. Name it, e.g. `G2 glasses`.
 4. Tick what the glasses may do:
 
@@ -135,7 +135,7 @@ Say **"Hi Even"** to the glasses, then ask. Try:
 - "What's the weather tomorrow?"
 - "Remind me at five to call the office."
 
-Then look in Jarvis under **☰ → Devices**: your glasses should say *seen just
+Then look in Jarvis under **menu → Devices**: your glasses should say *seen just
 now*. If they do not, the question never reached Jarvis — see
 [When it doesn't work](#when-it-doesnt-work).
 
@@ -208,7 +208,7 @@ In Jarvis, **Settings → Devices**:
 ## Keeping it safe
 
 - The glasses' token reaches only what you ticked, and **Revoke** in
-  **☰ → Devices** shuts them out at once. Never put your owner key in the
+  **menu → Devices** shuts them out at once. Never put your owner key in the
   Even app.
 - What you ask goes from the Even app to your own Jarvis, then to Home
   Assistant or OpenAI to be answered. Jarvis keeps the last few exchanges per

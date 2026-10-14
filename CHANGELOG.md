@@ -66,6 +66,9 @@ of every release, and in the [README](README.md#updating).
   read-aloud and send; Live and Push-to-talk stay under the orb in the Jarvis
   tab, and coming back from Chat returns to whichever of them that screen last
   used.
+- **The menu is a page behind your initial**, top right, as Hark's settings
+  are: its items in cards, each with an icon. The family's chat in it is now
+  called **Messages**, so it is not confused with the Chat tab.
 - **Research reports are checked before they reach you.** When a research job
   has written its report, it takes one more turn to check it against the pages
   it found, searching again where it needs to, and corrects or removes what

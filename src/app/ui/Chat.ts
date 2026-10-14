@@ -55,8 +55,8 @@ export class Chat {
     this.el.innerHTML = `
       <div class="sheet chatsheet">
         <header>
-          <button class="back" type="button">‹ Chats</button>
-          <h2>Chat</h2>
+          <button class="back" type="button">‹ Messages</button>
+          <h2>Messages</h2>
           <button class="close" aria-label="Close">Done</button>
         </header>
         <div class="chatwrap">
