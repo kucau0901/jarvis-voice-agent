@@ -7,6 +7,8 @@ import { button, el } from "./util";
  * and fan, or an alarm's arming and disarming with its code. Every press goes
  * through `press`, which the server checks against the thing's state now
  * (src/worker/lib/panel-controls.ts), and whose answer shows in `said`.
+ * "Alert me" goes through `alert` instead: the server makes it a routine
+ * (src/worker/lib/panel-alerts.ts), and what it said is `told` under it.
  */
 
 export type Press = (
@@ -15,6 +17,8 @@ export type Press = (
   said: HTMLElement,
   extra?: { member?: string; code?: string; value?: string },
 ) => Promise<void>;
+
+export type SetAlert = (body: { when?: string; value?: number; condition?: string }, b: HTMLButtonElement, said: HTMLElement) => Promise<void>;
 
 type Level = NonNullable<PanelMore["level"]>;
 
@@ -57,13 +61,60 @@ export function typed(label: string, hint: string, send: (text: string, b: HTMLB
 /** "fan_only" as "Fan only". */
 const words = (s: string) => (s.charAt(0).toUpperCase() + s.slice(1)).replace(/_/g, " ");
 
-export function moreBody(more: PanelMore, said: HTMLElement, press: Press): HTMLElement {
+export function moreBody(more: PanelMore, said: HTMLElement, press: Press, alert: SetAlert, told = ""): HTMLElement {
   const body = el("div", "hbody");
   if (more.members) body.appendChild(members(more.members, press));
   if (more.level) body.appendChild(slider(more.level.name, more.level, (n, input) => void press(`level:${n}`, input, said)));
   if (more.climate) body.appendChild(climate(more.climate, said, press));
   if (more.actions?.length) body.appendChild(alarm(more, said, press));
+  if (more.alert) body.appendChild(alertMe(more.alert, alert, told));
   return body;
+}
+
+/**
+ * "Alert me": when a thing turns on or off, when a number goes above or
+ * below one typed, or, for a reading Jarvis looks up, when what is typed
+ * comes true.
+ */
+function alertMe(a: NonNullable<PanelMore["alert"]>, set: SetAlert, told: string): HTMLElement {
+  const box = el("div", "halert");
+  const said = el("small", "hwhen", told);
+  if (a.kind === "words") {
+    box.appendChild(typed("Alert me", "When? e.g. above 150", (condition, b) => void set({ condition }, b, said)));
+  } else if (a.kind === "state") {
+    const row = el("div", "hchips");
+    row.appendChild(el("small", "", "Alert me when it"));
+    for (const [when, it] of [["on", a.on], ["off", a.off]] as const) {
+      const b = button(words(it), () => void set({ when }, b, said));
+      row.appendChild(b);
+    }
+    box.appendChild(row);
+  } else {
+    const row = el("div", "hchips");
+    const n = el("input", "hnum");
+    n.type = "number";
+    n.step = "any";
+    n.inputMode = "decimal";
+    n.placeholder = String(a.value);
+    n.setAttribute("aria-label", a.unit ? `Alert at, in ${a.unit}` : "Alert at");
+    row.append(el("small", "", "Alert me at"), n);
+    if (a.unit) row.appendChild(el("small", "", a.unit));
+    for (const when of ["above", "below"] as const) {
+      const b = button(when === "above" ? "When above" : "When below", () => {
+        const value = Number(n.value);
+        if (!n.value.trim() || !Number.isFinite(value)) {
+          said.textContent = "Type the number first.";
+          return n.focus();
+        }
+        n.value = "";
+        void set({ when, value }, b, said);
+      });
+      row.appendChild(b);
+    }
+    box.appendChild(row);
+  }
+  box.appendChild(said);
+  return box;
 }
 
 /** A room's lights, each a small row with its own state and button. */

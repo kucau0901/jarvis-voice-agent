@@ -1,7 +1,7 @@
 import { api } from "../key";
 import type { PanelRow, PanelView, PanelsReply } from "../../shared/panels";
 import { arm, button, el } from "./util";
-import { moreBody, slider, typed } from "./HomeMore";
+import { moreBody, slider, typed, type SetAlert } from "./HomeMore";
 import { lineChart, mapImage } from "./HomeChart";
 
 /**
@@ -27,6 +27,8 @@ import { lineChart, mapImage } from "./HomeChart";
 
 const EVERY_MS = 20_000;
 const AFTER_PRESS_MS = 1_500;
+/** How long what "Alert me" answered stays under it, through the redraws every twenty seconds. */
+const TOLD_MS = 120_000;
 /** How often a tile's tool is read again: a tool can be slow, or cost a request to someone else's service. */
 const READ_MS = 60_000;
 /** How soon to look again when another screen is already looking a reading up. */
@@ -102,6 +104,8 @@ export class Home {
   private histories = new Map<string, { points: { t: number; v: number }[]; unit: string; fetched: number }>();
   /** Each tile's last reading, by panel and key, and when it was read. */
   private readings = new Map<string, { got: Shown; fetched: number }>();
+  /** What "Alert me" last answered, by tile, until when. */
+  private told = new Map<string, { text: string; until: number }>();
 
   constructor(key: string) {
     this.key = key;
@@ -146,7 +150,7 @@ export class Home {
       // Not while a menu is open or a code is being typed: drawing again would take them away.
       const busy =
         this.root.querySelector(".hmenu:not([hidden])") ||
-        [...this.root.querySelectorAll<HTMLInputElement>(".hcode, .hadd input, .htyped input, .hlevel input")].some(
+        [...this.root.querySelectorAll<HTMLInputElement>(".hcode, .hnum, .hadd input, .htyped input, .hlevel input")].some(
           (c) => c === document.activeElement || (c.type !== "range" && c.value),
         );
       if (n === this.seq && !this.pressing && !busy) this.render(r);
@@ -497,7 +501,14 @@ export class Home {
       t.appendChild(acts);
     }
     if (r.more) {
-      const body = moreBody(r.more, said, (action, b, shown, extra) => this.act(panel, r.key, action, b, shown, name, extra));
+      const told = this.told.get(at);
+      const body = moreBody(
+        r.more,
+        said,
+        (action, b, shown, extra) => this.act(panel, r.key, action, b, shown, name, extra),
+        (alert, b, shown) => this.alert(panel, r.key, at, alert, b, shown),
+        told && told.until > Date.now() ? told.text : "",
+      );
       // A chart or a map, drawn the first time the tile is open.
       if (r.more.history || r.more.map) body.prepend(el("div", "hextra"));
       t.appendChild(body);
@@ -520,24 +531,37 @@ export class Home {
     after: HTMLElement,
     extra: { member?: string; code?: string; value?: string } = {},
   ): Promise<void> {
+    const ok = await this.post("/api/hub/panels/act", { panel, key, action, ...extra }, b, said);
+    said.className = ok ? "hstate" : "hstate hwhy";
+    if (!said.isConnected) after.after(said);
+    setTimeout(() => void this.load(), AFTER_PRESS_MS);
+  }
+
+  /** "Alert me": made a routine of theirs by the server, whose answer stays under it a while. Nothing on the tile changes, so nothing is drawn again. */
+  private async alert(panel: string, key: string, at: string, body: Parameters<SetAlert>[0], b: HTMLButtonElement, said: HTMLElement): Promise<void> {
+    await this.post("/api/hub/panels/alert", { panel, key, ...body }, b, said);
+    this.told.set(at, { text: said.textContent ?? "", until: Date.now() + TOLD_MS });
+  }
+
+  /** A press sent, with the server's answer (or why not) put in `said`; whether it was done. */
+  private async post(path: string, body: Record<string, unknown>, b: HTMLButtonElement | HTMLInputElement, said: HTMLElement): Promise<boolean> {
     // A button says "…" while it waits; a slider is only held still.
     const label = b instanceof HTMLButtonElement ? b.textContent : null;
     b.disabled = true;
     if (label !== null) b.textContent = "…";
     this.pressing++;
     this.seq++;
+    let ok = true;
     try {
-      said.textContent = ((await api(this.key, "POST", "/api/hub/panels/act", { panel, key, action, ...extra })) as { text: string }).text;
-      said.className = "hstate";
+      said.textContent = ((await api(this.key, "POST", path, body)) as { text: string }).text;
     } catch (e) {
       said.textContent = why(e);
-      said.className = "hstate hwhy";
+      ok = false;
     } finally {
       this.pressing--;
     }
-    if (!said.isConnected) after.after(said);
     if (label !== null) b.textContent = label;
     b.disabled = false;
-    setTimeout(() => void this.load(), AFTER_PRESS_MS);
+    return ok;
   }
 }

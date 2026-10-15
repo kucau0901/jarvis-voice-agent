@@ -12,7 +12,7 @@ import { effectiveEnv } from "./lib/settings.ts";
 import { localeOf } from "./lib/locale.ts";
 import { upcomingEvents } from "./lib/leave.ts";
 import { Scheduler, type SchedulerDeps } from "./lib/scheduler.ts";
-import type { RoutineInput } from "./lib/routines.ts";
+import type { Routine, RoutineInput } from "./lib/routines.ts";
 import { narrow, type Grant } from "./lib/scopes.ts";
 import { askForRoutine, travelFor } from "./routes/routines.ts";
 import { Jobs } from "./lib/jobs.ts";
@@ -25,6 +25,8 @@ import { Relays, type Relay, type RelayDeps, type RelayKind } from "./lib/relays
 import { Chat, dmId, type ChatMessage } from "./lib/chat.ts";
 import { Panels, type PanelItem, type Reading } from "./lib/panels.ts";
 import { personOfWho, withPerson } from "./lib/context.ts";
+import { lookAtPage } from "./lib/page-look.ts";
+import { dayOf } from "./lib/usage.ts";
 import { nextAllowed } from "./lib/access.ts";
 
 /** Chore points, per person (lib/relays.ts award). */
@@ -287,6 +289,23 @@ export class JarvisState extends DurableObject<Env> {
       events: async (now, person) => upcomingEvents(await this.personEnv(env, person), now),
       travel: async (destination, person) => travelFor(await this.personEnv(env, person), destination),
       renderTemplate: ha ? (template) => renderTemplate(ha, template) : null,
+      // A page watch's look (lib/page-look.ts): counted in its maker's usage, as any model call is.
+      ...(env.OPENAI_API_KEY
+        ? {
+            readPage: async (r: Routine) => {
+              if (r.trigger.kind !== "page") return { state: null, text: "", error: "not a page watch" };
+              const look = await lookAtPage(env, r.trigger.url, r.trigger.question, r.trigger.condition);
+              if (look.usage) {
+                const at = Date.now();
+                await this.recordUsage(
+                  { at, surface: "routine", by: look.usage.model, ok: look.state !== null, ms: look.usage.ms, input: look.usage.input, cached: 0, written: 0, output: look.usage.output, searches: 0, tools: [], ask: `page check: ${r.name}`.slice(0, 80), who: personOfWho(r.createdBy) },
+                  dayOf(at, localeOf(env).timeZone),
+                ).catch((e) => console.warn("page check not counted:", e instanceof Error ? e.message : String(e)));
+              }
+              return look;
+            },
+          }
+        : {}),
       // A chore, a check-in or medicine: passed on to whoever's turn it is.
       relay: async (r, to) => {
         if (r.action.kind !== "relay") return "not a routine that passes things on";

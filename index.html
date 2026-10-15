@@ -977,7 +977,8 @@
   #home .hshot { display: block; width: 100%; margin-top: 10px; border-radius: 12px; }
   /* Opened (ui/HomeMore.ts): across its panel, as Hark opens a row. Its name and icon are what open it. */
   #home .htile.can-open .htop { cursor: pointer; border-radius: 12px; }
-  #home .htile.can-open .htop::after { content: ""; flex: none; align-self: center; width: 16px; height: 16px; margin-left: auto;
+  /* Small, and into the padding: every thing in the house opens now ("Alert me"), and a narrow tile's name needs the room. */
+  #home .htile.can-open .htop::after { content: ""; flex: none; align-self: center; width: 12px; height: 12px; margin: 0 -4px 0 auto;
     background: var(--dim); -webkit-mask: var(--i-chevron) center / contain no-repeat; mask: var(--i-chevron) center / contain no-repeat;
     transform: rotate(90deg); transition: transform .2s; }
   #home .htile.open { grid-column: 1 / -1; }
@@ -988,9 +989,9 @@
   #home .hmember { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 6px 6px 6px 10px; border-radius: 14px; background: var(--wash); }
   #home .hmember .hic { width: 32px; height: 32px; }
   #home .hmember .hic::before { width: 18px; height: 18px; }
-  #home :is(.hmember, .hdial, .hchips, .halarm) button { flex: none; min-height: 44px; padding: 0 14px; border: 1px solid var(--hair); border-radius: 12px;
+  #home :is(.hmember, .hdial, .hchips, .halarm, .halert) button { flex: none; min-height: 44px; padding: 0 14px; border: 1px solid var(--hair); border-radius: 12px;
     background: var(--chip); color: var(--fg); font: inherit; font-size: 14px; font-weight: 500; cursor: pointer; }
-  #home :is(.hmember, .hdial, .hchips, .halarm) button:disabled { opacity: .5; cursor: default; }
+  #home :is(.hmember, .hdial, .hchips, .halarm, .halert) button:disabled { opacity: .5; cursor: default; }
   #home .hclimate { display: flex; flex-wrap: wrap; align-items: center; gap: 14px 24px; }
   #home .hdial { display: flex; align-items: center; gap: 14px; }
   #home .hdial button { width: 52px; height: 52px; padding: 0; border-radius: 50%; font-size: 24px; line-height: 1; }
@@ -1002,10 +1003,16 @@
   #home .hchips button { border-radius: 999px; }
   #home .hchips button[aria-pressed="true"] { background: var(--solid); border-color: transparent; color: var(--on-solid); }
   #home .halarm { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-  #home .hcode { width: 9em; min-height: 44px; padding: 0 14px; border: 1px solid var(--hair); border-radius: 12px;
+  /* "Alert me" (ui/HomeMore.ts): its chips, a number or words, and what the server answered under them. */
+  #home .halert { display: grid; gap: 8px; }
+  #home .halert .hwhen { margin: 0; color: var(--dim); font-size: 13px; line-height: 1.4; }
+  #home .halert .hwhen:empty { display: none; }
+  #home .hnum { width: 6.5em; }
+  #home :is(.hcode, .hnum) { min-height: 44px; padding: 0 14px; border: 1px solid var(--hair); border-radius: 12px;
     background: var(--field); color: var(--fg); font: inherit; font-size: 16px; }
+  #home .hcode { width: 9em; }
   #home .hcode:not(:placeholder-shown) { letter-spacing: .3em; }
-  #home .hcode:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  #home :is(.hcode, .hnum):focus { outline: 2px solid var(--accent); outline-offset: 1px; }
   #home .hclock { display: grid; margin-top: 6vh; font-size: clamp(40px, 8vmin, 64px); line-height: 1.08; }
   #home .hnote { margin: 4px 0 12px; color: var(--dim); font-size: 15px; line-height: 1.45; max-width: 460px; }
 

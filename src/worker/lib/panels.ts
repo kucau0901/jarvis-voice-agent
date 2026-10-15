@@ -44,6 +44,8 @@ export interface Reading {
   chart?: { title: string; points: { x: string; y: number }[] };
   /** Where it is, drawn as a map when the deployment has a Maps key. */
   map?: { lat: number; lng: number };
+  /** The page it was read from, for an alert to watch without searching again. */
+  source?: string;
 }
 
 export const MAX_PANELS = 8;

@@ -1,4 +1,5 @@
 import { saneGrants, type Grant } from "./scopes.ts";
+import { pageUrl } from "./page-look.ts";
 
 /**
  * Routines: things Jarvis does without being asked.
@@ -37,7 +38,15 @@ export type Trigger =
    * fires once when it has been true for forMin minutes, and again only after
    * it has been false.
    */
-  | { kind: "watch"; template: string; forMin: number };
+  | { kind: "watch"; template: string; forMin: number }
+  /**
+   * A web page watched for an alert ("tell me when the air is unhealthy"),
+   * set from a panel's tile (routes/panels.ts): the page found once is
+   * fetched every `everyMin` minutes, never under an hour, and read by the
+   * cheapest model with no search (lib/page-look.ts). It fires as a watch
+   * does: once when `condition` turns true, again only after it was false.
+   */
+  | { kind: "page"; url: string; question: string; condition: string; everyMin: number };
 
 export type Action =
   | { kind: "say"; text: string }
@@ -104,6 +113,11 @@ export interface WatchState {
 }
 
 export const MAX_WATCHES = 10;
+/** Pages watched, at most: each look costs a little, unlike a watch's. */
+export const MAX_PAGES = 10;
+/** A page is looked at no more than hourly, and at least daily. */
+export const PAGE_EVERY_MIN = 60;
+const PAGE_EVERY_MAX = 24 * 60;
 const MAX_TEMPLATE = 500;
 
 export const MAX_ROUTINES = 50;
@@ -219,6 +233,10 @@ export function describeTrigger(t: Trigger, timeZone: string): string {
       return `when it is time to leave for a calendar event with a place (${t.bufferMin} min to spare)`;
     case "watch":
       return `when ${t.template} is true${t.forMin ? ` for ${t.forMin} minute${t.forMin === 1 ? "" : "s"}` : ""} (checked every minute)`;
+    case "page": {
+      const every = t.everyMin % 60 ? `${t.everyMin} minutes` : t.everyMin === 60 ? "hour" : `${t.everyMin / 60} hours`;
+      return `when ${new URL(t.url).hostname} says ${t.condition} (read every ${every}, about a tenth of a cent a look)`;
+    }
   }
 }
 
@@ -258,8 +276,14 @@ export interface RoutineInput {
   bufferMin?: unknown;
   /** watch: a Home Assistant template, true while the thing is happening. */
   condition?: unknown;
-  /** watch: how long it must stay true first; 0 for at once. */
+  /** watch: how long it must stay true first; 0 for at once. page: what must be true, in words. */
   forMinutes?: unknown;
+  /** page: the web page to read, found once, when the alert is set. */
+  url?: unknown;
+  /** page: what it is about ("the air quality in Springfield"). */
+  question?: unknown;
+  /** page: how often it is read, in minutes (at least 60). */
+  everyMinutes?: unknown;
   say?: unknown;
   ask?: unknown;
   /** Pass it on to these family members (already named as people: lib/relays.ts), in turn if several. */
@@ -329,6 +353,19 @@ export function buildRoutine(input: RoutineInput, timeZone: string, now: number)
     const f = input.forMinutes === undefined || input.forMinutes === null ? 0 : Number(input.forMinutes);
     if (!Number.isInteger(f) || f < 0 || f > 1440) return { ok: false, error: "for_minutes must be 0 to 1440" };
     trigger = { kind: "watch", template, forMin: f };
+  } else if (when === "page") {
+    const url = pageUrl(str(input.url));
+    if (!url) return { ok: false, error: "a page watch needs a public https page to read" };
+    const condition = str(input.condition).slice(0, 300);
+    if (condition.length < 3) return { ok: false, error: "say what must be true for the alert, in words" };
+    const every = input.everyMinutes === undefined || input.everyMinutes === null ? PAGE_EVERY_MIN : Math.round(Number(input.everyMinutes));
+    trigger = {
+      kind: "page",
+      url: url.toString(),
+      question: (str(input.question) || str(input.name)).slice(0, 300),
+      condition,
+      everyMin: Math.min(PAGE_EVERY_MAX, Math.max(PAGE_EVERY_MIN, Number.isFinite(every) ? every : PAGE_EVERY_MIN)),
+    };
   } else {
     return { ok: false, error: "when must be once, daily, event, leave or watch" };
   }

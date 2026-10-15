@@ -430,6 +430,21 @@ Home Controls", "a to-do panel with renew the road tax" (`panel_set`,
   the kept answer at once and asks for a new one only when it is stale; two
   screens open at once do not both pay for it, since the first claims it for
   two minutes.
+- **Alerts from a panel.** "Alert me", in an opened tile, makes a routine of
+  its person's (lib/panel-alerts.ts; POST /api/hub/panels/alert), so it
+  needs `routines` and is changed or removed in Routines. A thing in the
+  house becomes a watch with its condition written from what it is — when
+  the gate opens or closes, when a reading goes above or below a number
+  typed — so nobody writes a template, and it costs nothing. A reading
+  Jarvis looks up becomes a page watch on its source: the owner refused a
+  web search every hour as too dear, so the page is found once, when the
+  alert is set — the source the look-up gave ("Source: <url>", kept with
+  the reading), or else one search for a page that shows it plainly — and
+  each look after that is the page fetched, which is free, and read by the
+  cheapest model with no tools, about a tenth of a cent (lib/page-look.ts).
+  The page is someone else's words, so it reaches the model as quoted data.
+  A page that cannot be read without its scripts is refused when the alert
+  is set, since it would never say.
 
 ## Getting somewhere
 
@@ -952,6 +967,15 @@ request runs the ordinary router (`run()` in routes/delegate.ts) inside the
 object. Anything in there that reaches state through `stateStub(env)` — memory,
 alerts — is handed the object itself rather than a stub, so it is a plain
 method call, not a request from the object to itself.
+
+**Watches cost nothing; a page watch a little.** A watch is a Home Assistant
+template checked every minute, with no model. A page watch, set only from a
+panel's tile, reads a public https page at the tile's own pace, at most hourly:
+the page fetched, then the cheapest model with no tools asked YES, NO or
+UNKNOWN. Both say their message once each time their condition comes true, and
+a page's message carries the reading it rests on. Each is tried once before it
+is kept, and a page watch's try is its first look, so one already true is said
+at once. Ten of each at most.
 
 **"Leave now" uses what is there.** The car's position if Tessie is set up,
 else the saved home; live traffic if Google Maps is set up; otherwise a plain

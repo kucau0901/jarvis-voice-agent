@@ -9,6 +9,8 @@ import { controlCall, controlsOf } from "../src/worker/lib/panel-controls.ts";
 import { parseTile, pressTile, readingOf, readTile, tileIcon, tileKey, tileSpec } from "../src/worker/lib/panel-tiles.ts";
 import { historyOf, readTileOf } from "../src/worker/lib/panel-view.ts";
 import { entityHistory } from "../src/worker/lib/ha.ts";
+import { alertChoice, setAlert, watchFor, type AlertDeps } from "../src/worker/lib/panel-alerts.ts";
+import type { Routine, RoutineInput } from "../src/worker/lib/routines.ts";
 
 let pass = 0, fail = 0;
 function check(name: string, cond: boolean, got?: unknown) {
@@ -729,6 +731,110 @@ console.log("the tool");
   } finally {
     globalThis.fetch = realFetch;
   }
+}
+
+console.log("alerts from a panel: what a thing in the house offers");
+{
+  check("a reading: above or below a number, in its unit",
+    JSON.stringify(alertChoice("sensor.outside", "31.5", { unit_of_measurement: "°C" })) === '{"kind":"number","unit":"°C","value":31.5}');
+  check("a gate: when it opens or closes", JSON.stringify(alertChoice("cover.main_gate", "closed", {})) === '{"kind":"state","on":"opens","off":"closes"}');
+  const door = alertChoice("binary_sensor.back_door", "off", { device_class: "door" });
+  const motion = alertChoice("binary_sensor.hall", "off", { device_class: "motion" });
+  check("a sensor in its own words", door?.kind === "state" && door.on === "opens" && motion?.kind === "state" && motion.on === "sees motion", { door, motion });
+  check("nothing for what is out of reach, or has no two states",
+    alertChoice("cover.main_gate", "unavailable", {}) === null && alertChoice("sensor.weather", "sunny", {}) === null && alertChoice("button.restart", "2026-10-15", {}) === null);
+
+  const hot = watchFor("sensor.outside", "Outside", "31", { unit_of_measurement: "°C" }, "above", 35);
+  check("above a number: a watch that is false while the sensor gives none",
+    typeof hot === "object" && hot.condition === "{% set v = states('sensor.outside') | float(none) %}{{ v is not none and v > 35 }}" &&
+    hot.say === "Outside is above 35 °C." && hot.name === "Outside above 35 °C", hot);
+  const open = watchFor("cover.main_gate", "Main gate", "closed", {}, "on");
+  const shut = watchFor("cover.main_gate", "Main gate", "open", {}, "off");
+  check("when it opens, and when it closes (not when its sensor drops out)",
+    typeof open === "object" && open.condition === "{{ states('cover.main_gate') in ['open', 'opening'] }}" && open.say === "Main gate opens." &&
+    typeof shut === "object" && shut.condition === "{{ states('cover.main_gate') not in ['open', 'opening', 'unavailable', 'unknown'] }}" && shut.say === "Main gate closes.", { open, shut });
+  const odd = watchFor("light.a'}}{{x", "Lamp", "on", {}, "on");
+  check("a quote in an entity id cannot leave its template", typeof odd === "object" && odd.condition.startsWith("{{ states('light.ax') in"), odd);
+  check("what does not fit the thing is refused",
+    typeof watchFor("cover.main_gate", "Main gate", "closed", {}, "above", 5) === "string" &&
+    typeof watchFor("sensor.outside", "Outside", "31", {}, "on") === "string" &&
+    typeof watchFor("sensor.outside", "Outside", "31", {}, "above", Number.NaN) === "string");
+}
+
+console.log("alerts from a panel: made into a routine of theirs");
+{
+  const air = tileSpec({ read: { ask: "Latest air-quality reading (API) for Springfield", every: 60 }, buttons: [] });
+  const music = tileSpec({ read: { tool: "music_state", args: {} }, buttons: [] });
+  const p: Panel = {
+    id: "p_1",
+    title: "Home",
+    at: 0,
+    items: [
+      { kind: "home", ref: "cover.main_gate", label: "Main gate" },
+      { kind: "home", ref: "light.bed_a,light.bed_b", label: "Bedroom lights" },
+      { kind: "tile", ref: JSON.stringify(air), label: "Air quality" },
+      { kind: "tile", ref: JSON.stringify(music), label: "Music" },
+    ],
+  };
+  const airKey = tileKey(JSON.stringify(air));
+  const made: RoutineInput[] = [];
+  const asked: string[] = [];
+  const deps = (over: Partial<AlertDeps> = {}): AlertDeps => ({
+    home: true,
+    house: { base: "https://ha.example", token: "h" },
+    read: async (_c, id) => (id === "cover.main_gate" ? { state: "closed", attributes: {} } : null),
+    ask: async (q) => (asked.push(q), ""),
+    kept: async () => null,
+    addRoutine: async (input) => (made.push(input), { id: "r_1" } as Routine),
+    ...over,
+  });
+
+  const gate = await setAlert(p, "cover.main_gate", { when: "on" }, deps());
+  check("a gate: a watch, at once, saying what happened",
+    gate.status === 200 && made[0]?.when === "watch" && made[0].forMinutes === 0 && made[0].say === "Main gate opens." &&
+    made[0].condition === "{{ states('cover.main_gate') in ['open', 'opening'] }}" && gate.text.startsWith("You will be told when Main gate opens."), { gate, made });
+  check("not a room's lights together, nor what is not on the panel",
+    (await setAlert(p, "light.bed_a,light.bed_b", { when: "on" }, deps())).status === 404 && (await setAlert(p, "lock.front", { when: "on" }, deps())).status === 404 &&
+    (await setAlert(undefined, "cover.main_gate", { when: "on" }, deps())).status === 404);
+  check("not without the house, or someone allowed to reach it",
+    (await setAlert(p, "cover.main_gate", { when: "on" }, deps({ home: false }))).status === 403 &&
+    (await setAlert(p, "cover.main_gate", { when: "on" }, deps({ house: null }))).status === 409);
+  const full = await setAlert(p, "cover.main_gate", { when: "on" }, deps({ addRoutine: async () => "there are already 10 watches; remove one first" }));
+  check("the scheduler's no is passed on", full.status === 409 && full.text === "No alert: there are already 10 watches; remove one first.", full);
+
+  made.length = 0;
+  const known = await setAlert(p, airKey, { condition: "the API is above 150" }, deps({ kept: async () => ({ text: "Moderate", figures: [], at: 1, source: "https://air.example.gov/springfield" }) }));
+  check("a reading looked up: a page watch on the page it came from, with no search",
+    known.status === 200 && asked.length === 0 && made[0]?.when === "page" && made[0].url === "https://air.example.gov/springfield" &&
+    made[0].condition === "the API is above 150" && made[0].question === "Latest air-quality reading (API) for Springfield" && made[0].everyMinutes === 60 &&
+    made[0].say === "Air quality: the API is above 150." && known.text.includes("air.example.gov is read every hour"), { known, made });
+
+  made.length = 0;
+  const found = await setAlert(p, airKey, { condition: "the API is above 150" }, deps({
+    kept: async () => ({ text: "Moderate", figures: [], at: 1, source: "https://air.example.gov/map" }),
+    ask: async (q) => (asked.push(q), "Try https://data.example.org/api/springfield.json."),
+    addRoutine: async (input) => (made.push(input), input.url === "https://air.example.gov/map" ? "that page cannot be watched: the page had no words in it" : ({ id: "r_2" } as Routine)),
+  }));
+  check("a page drawn by scripts: one search for a page that says it plainly",
+    found.status === 200 && asked.length === 1 && asked[0]!.includes("Latest air-quality reading (API) for Springfield") &&
+    made.map((m) => m.url).join() === "https://air.example.gov/map,https://data.example.org/api/springfield.json", { found, made, asked });
+
+  const none = await setAlert(p, airKey, { condition: "the API is above 150" }, deps({ ask: async () => "I could not find one." }));
+  check("none found: said, and nothing made", none.status === 409 && none.text.startsWith("No page could be found"), none);
+  check("what to alert on must be said, and only a looked-up reading can",
+    (await setAlert(p, airKey, { condition: " " }, deps())).status === 400 &&
+    (await setAlert(p, tileKey(JSON.stringify(music)), { condition: "it is playing" }, deps())).status === 409);
+  check("a looked-up answer's source page is kept, not shown as a figure",
+    readingOf("Moderate\nAPI: 80\nSource: https://air.example.gov/springfield", 1).source === "https://air.example.gov/springfield" &&
+    readingOf("Moderate\nAPI: 80\nSource: https://air.example.gov/springfield.", 1).figures.length === 1 &&
+    readingOf("Moderate\nSource: https://air.example.gov/springfield.", 1).source === "https://air.example.gov/springfield");
+
+  const { src } = sources({ grants: ["screen", "home"] });
+  const [plain] = await viewPanels([p], src);
+  const [can] = await viewPanels([p], sources().src);
+  check("offered only to someone who may make routines",
+    !plain!.rows.some((r) => r.more?.alert) && can!.rows.find((r) => r.key === "cover.main_gate")?.more?.alert?.kind === "state" &&
+    can!.rows.find((r) => r.key === airKey)?.more?.alert?.kind === "words" && !can!.rows.find((r) => r.key === "light.bed_a,light.bed_b")?.more?.alert, can!.rows.map((r) => [r.key, r.more?.alert]));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

@@ -3,6 +3,7 @@ import type { Grant } from "./scopes.ts";
 import { makeAlert, summarise, type Alert, type Delivery } from "./alerts.ts";
 import { bookOf, personOfWho } from "./context.ts";
 import {
+  MAX_PAGES,
   MAX_ROUTINES,
   MAX_WATCHES,
   buildRoutine,
@@ -57,6 +58,8 @@ export interface SchedulerDeps {
   travel(destination: string, person: string): Promise<Travel | null>;
   /** Home Assistant renders a watch's condition; null when it is not set up. */
   renderTemplate: ((template: string) => Promise<string>) | null;
+  /** A page watch's look: the page fetched and read by the cheapest model (lib/page-look.ts); absent without an OpenAI key. */
+  readPage?(r: Routine): Promise<{ state: boolean | null; text: string; error?: string }>;
   /**
    * Pass a routine's words on to someone in the family (lib/relays.ts).
    * Null when it was; else why not.
@@ -135,6 +138,15 @@ export class Scheduler {
       }
       if (truthy(out) === null) return `the condition must come out True or False, and it gave "${out.slice(0, 80)}"`;
     }
+    // A page is read once before it is kept, as a watch is tried: one that does not say is no use.
+    // That read is its first look, so setting one up costs one look, and an alert already true is said now.
+    let first: { state: boolean | null; text: string; error?: string } | undefined;
+    if (built.trigger.kind === "page") {
+      if (!deps.readPage) return "page watches need an OpenAI key";
+      if (all.filter((r) => r.trigger.kind === "page").length >= MAX_PAGES) return `there are already ${MAX_PAGES} pages watched; remove one first`;
+      first = await deps.readPage(makeRoutine(built, by, timeZone, now));
+      if (first.state === null) return `that page cannot be watched: ${first.error ?? "it did not say"}`;
+    }
 
     // One leave routine each: a second would warn twice about every event.
     if (built.trigger.kind === "leave") {
@@ -150,6 +162,10 @@ export class Scheduler {
 
     const r = makeRoutine(built, by, timeZone, now);
     await this.save(r);
+    if (first && r.trigger.kind === "page") {
+      await this.applyWatch(r.id, { template: `${r.trigger.url}\n${r.trigger.condition}`, state: first.state, error: "", text: first.text }, deps, now);
+      return (await this.get(r.id)) ?? r;
+    }
     return r;
   }
 
@@ -166,7 +182,7 @@ export class Scheduler {
         r.enabled = true;
         if (next !== undefined) r.nextAt = next;
         // Switched back on, a watch starts afresh: what it saw before is old news.
-        if (r.trigger.kind === "watch") r.watch = { nextCheck: now };
+        if (r.trigger.kind === "watch" || r.trigger.kind === "page") r.watch = { nextCheck: now };
       } else {
         r.enabled = false;
         delete r.nextAt;
@@ -250,7 +266,7 @@ export class Scheduler {
     for (const r of await this.list()) {
       if (r.pending) consider(r.pending.at);
       if (r.enabled && r.nextAt !== undefined) consider(r.nextAt);
-      if (r.enabled && r.trigger.kind === "watch") consider(r.watch?.nextCheck ?? now);
+      if (r.enabled && (r.trigger.kind === "watch" || r.trigger.kind === "page")) consider(r.watch?.nextCheck ?? now);
       if (r.enabled && r.trigger.kind === "leave") {
         consider((await this.storage.get<number>(scanKey(r.createdBy))) ?? now);
         consider(nextLeaveWake((await this.storage.get<Stored>(plansKey(r.createdBy))) ?? {}));
@@ -267,7 +283,7 @@ export class Scheduler {
     const all = await this.list();
     // Every due watch asks Home Assistant at once: one slow answer (up to its
     // 15 s timeout) must not hold up the others, or a reminder due now.
-    const due = all.filter((r) => r.enabled && r.trigger.kind === "watch" && (r.watch?.nextCheck ?? 0) <= now + 1000);
+    const due = all.filter((r) => r.enabled && (r.trigger.kind === "watch" || r.trigger.kind === "page") && (r.watch?.nextCheck ?? 0) <= now + 1000);
     const looks = new Map(await Promise.all(due.map(async (r) => [r.id, await this.look(r, deps)] as const)));
     for (const r of all) {
       try {
@@ -321,8 +337,19 @@ export class Scheduler {
     await this.execute(r, deps, now, undefined, late > 5 * 60_000 ? dueAt : undefined);
   }
 
-  /** One look at a watch's condition: no model, one small request to Home Assistant. */
-  private async look(r: Routine, deps: SchedulerDeps): Promise<{ template: string; state: boolean | null; error: string }> {
+  /**
+   * One look at a watch's condition: no model, one small request to Home
+   * Assistant. A page watch's: the page read by the cheapest model, with the
+   * reading it rests on said with the alert. `template` names what was looked
+   * at, so a watch changed meanwhile is not judged by an old look.
+   */
+  private async look(r: Routine, deps: SchedulerDeps): Promise<{ template: string; state: boolean | null; error: string; text?: string }> {
+    if (r.trigger.kind === "page") {
+      const template = `${r.trigger.url}\n${r.trigger.condition}`;
+      if (!deps.readPage) return { template, state: null, error: "no OpenAI key is set" };
+      const got = await deps.readPage(r);
+      return { template, state: got.state, error: got.error ?? "", text: got.text };
+    }
     const template = r.trigger.kind === "watch" ? r.trigger.template : "";
     if (!deps.renderTemplate) return { template, state: null, error: "Home Assistant is not set up" };
     try {
@@ -346,20 +373,24 @@ export class Scheduler {
    */
   private async applyWatch(
     id: string,
-    look: { template: string; state: boolean | null; error: string },
+    look: { template: string; state: boolean | null; error: string; text?: string },
     deps: SchedulerDeps,
     now: number,
   ): Promise<void> {
     const r = await this.get(id);
-    if (!r || !r.enabled || r.trigger.kind !== "watch" || r.trigger.template !== look.template) return;
+    if (!r || !r.enabled) return;
     const t = r.trigger;
+    if (t.kind === "watch" ? t.template !== look.template : t.kind !== "page" || `${t.url}\n${t.condition}` !== look.template) return;
+    // A page is read at its own pace, never faster after a failure; a watch every minute.
+    const every = t.kind === "page" ? t.everyMin * 60_000 : WATCH_EVERY_MS;
+    const forMin = t.kind === "watch" ? t.forMin : 0;
     const w: WatchState = { ...(r.watch ?? {}) };
     const { state, error } = look;
     w.checkedAt = now;
 
     if (state === null) {
       w.errors = (w.errors ?? 0) + 1;
-      w.nextCheck = now + (w.errors >= WATCH_ERRORS_SLOW ? WATCH_SLOW_MS : WATCH_EVERY_MS);
+      w.nextCheck = now + Math.max(every, w.errors >= WATCH_ERRORS_SLOW ? WATCH_SLOW_MS : WATCH_EVERY_MS);
       r.watch = w;
       // Said once, when it has failed enough times to matter, not every minute.
       if (w.errors === WATCH_ERRORS_SLOW) r.lastRun = { at: now, ok: false, detail: `could not check: ${error}`.slice(0, 300) };
@@ -368,15 +399,16 @@ export class Scheduler {
     }
 
     w.errors = 0;
-    w.nextCheck = now + WATCH_EVERY_MS;
+    w.nextCheck = now + every;
     if (state) {
       w.trueSince ??= now;
-      const due = w.trueSince + t.forMin * 60_000;
+      const due = w.trueSince + forMin * 60_000;
       if (!w.fired && now >= due) {
         w.fired = true;
         r.watch = w;
         await this.save(r); // recorded before it is said: a retried alarm must not say it twice
-        await this.execute(r, deps, now);
+        // A page's alert says the reading it rests on ("API 175 at 3 PM").
+        await this.execute(r, deps, now, look.text || undefined);
         return;
       }
       // Look again when it would be due, if that is sooner than a minute.

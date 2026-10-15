@@ -54,7 +54,11 @@ of every release, and in the [README](README.md#updating).
   ones straight onto the panel. For what no tool can read ("a panel for the latest air
   quality in my town"), Jarvis looks it up with web search and shows a
   verdict and its figures, looked up again at most hourly and only while
-  Home is open.
+  Home is open. **Alert me**, in an opened tile, makes a routine: when the
+  gate opens, when a reading goes above a number, or, for a reading Jarvis
+  looks up, when what you type comes true ("the API is above 150"), read
+  from its source page at most hourly by the cheapest model, about a tenth
+  of a cent a look.
 - **Light and dark, per screen.** Menu → **Theme**: Auto, the default, is
   light by day and dark at night (07:00–19:00, by the screen's clock), because
   the car's browser can report the wrong system setting. Or System, Dark or

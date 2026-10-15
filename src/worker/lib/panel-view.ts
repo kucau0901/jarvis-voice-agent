@@ -6,7 +6,8 @@ import { carSnapshot, distanceIn, ensureAwake, sendCarCommand, type CarSnapshot,
 import type { CarKey } from "./context.ts";
 import { idsOf, noteKey, ticked, type Panel, type PanelItem } from "./panels.ts";
 import { controlCall, controlsOf } from "./panel-controls.ts";
-import { parseTile, pressTile, readTile, tileIcon, tileKey, type TileButton, type TileSources } from "./panel-tiles.ts";
+import { alertChoice } from "./panel-alerts.ts";
+import { isAsk, parseTile, pressTile, readTile, tileIcon, tileKey, type TileButton, type TileSources } from "./panel-tiles.ts";
 import type { UsageReport } from "./usage.ts";
 import type { PanelIcon, PanelRow, PanelView } from "../../shared/panels.ts";
 
@@ -232,10 +233,15 @@ export function houseValue(entity: string, state: string, a: Record<string, unkn
 const charted = (entity: string, state: string): boolean =>
   ["sensor", "number", "input_number"].includes(entity.split(".")[0]!) && state.trim() !== "" && Number.isFinite(Number(state));
 
-/** One thing in the house as its tile shows it, with the buttons and the opened controls its state offers. */
-function houseRow(key: string, label: string, entity: string, now: HouseState): PanelRow {
+/**
+ * One thing in the house as its tile shows it, with the buttons and the
+ * opened controls its state offers; with "Alert me" when `alerts` (the
+ * person may make routines).
+ */
+function houseRow(key: string, label: string, entity: string, now: HouseState, alerts = false): PanelRow {
   const ctl = controlsOf(entity, now.state, now.attributes);
-  const more = { ...ctl?.more, ...(charted(entity, now.state) ? { history: true } : {}) };
+  const alert = alerts ? alertChoice(entity, now.state, now.attributes) : null;
+  const more = { ...ctl?.more, ...(charted(entity, now.state) ? { history: true } : {}), ...(alert ? { alert } : {}) };
   return {
     key,
     kind: "home",
@@ -404,6 +410,8 @@ export async function viewPanels(panels: Panel[], src: PanelSources): Promise<Pa
           return [{ action: `b${i}`, label: b.label, ...(input ? { input } : {}) }];
         }),
         ...(spec.read ? { read: true } : {}),
+        // A reading Jarvis looks up can alert, by a page watch: what to alert on is typed.
+        ...(spec.read && isAsk(spec.read) && allows(src.grants, "routines") ? { more: { alert: { kind: "words" as const } } } : {}),
       }];
     }
     if (item.kind === "usage") {
@@ -455,7 +463,7 @@ export async function viewPanels(panels: Panel[], src: PanelSources): Promise<Pa
       try {
         const now = await read;
         if (!now) return empty(item, "It is no longer in the house.");
-        return [houseRow(item.ref, item.label, item.ref, now)];
+        return [houseRow(item.ref, item.label, item.ref, now, allows(src.grants, "routines"))];
       } catch {
         return empty(item, "Could not reach the house just now.");
       }

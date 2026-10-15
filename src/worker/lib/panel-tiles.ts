@@ -160,7 +160,8 @@ const FOR_A_TILE =
   'add: up to eight lines starting with "- " (a forecast\'s days, the headlines); one line ' +
   '"Chart: <title>: <x>=<number>; <x>=<number>; …" with up to 24 points (a trend, e.g. ' +
   '"Chart: API today: 08:00=120; 12:00=160; 15:00=175"); one line "Map: <latitude>, <longitude>" for a ' +
-  "place that matters. Nothing else, no markdown.";
+  "place that matters. Last, one line \"Source: <url>\" with the https address of the page the reading " +
+  "came from. Nothing else, no markdown.";
 
 /** "Chart: API today: 08:00=120; 12:00=160" as its title and points; null if it is not one. */
 function chartOf(line: string): Reading["chart"] | null {
@@ -198,6 +199,7 @@ export function readingOf(answer: string, at: number): Reading {
   const list: string[] = [];
   let chart: Reading["chart"] | null = null;
   let map: Reading["map"] | null = null;
+  let source: string | undefined;
   for (const [i, l] of lines.entries()) {
     if (i === 0 || !l) continue;
     if (bullet.has(i)) {
@@ -209,6 +211,11 @@ export function readingOf(answer: string, at: number): Reading {
       chart = c;
       continue;
     }
+    const from = /^source\s*:\s*(https:\/\/[^\s)>\]"']+)/i.exec(l);
+    if (from) {
+      source ??= from[1]!.replace(/[.,;:!?]+$/, "");
+      continue;
+    }
     const where: Reading["map"] | null = map ? null : mapOf(l);
     if (where) {
       map = where;
@@ -218,7 +225,10 @@ export function readingOf(answer: string, at: number): Reading {
     if (m && figures.length < 3) figures.push({ label: m[1]!.trim(), value: m[2]!.trim() });
     else if (list.length < 8) list.push(clip(l, 140));
   }
-  return { text: clip(lines[0] ?? "", 200), figures, at, ...(list.length ? { list } : {}), ...(chart ? { chart } : {}), ...(map ? { map } : {}) };
+  return {
+    text: clip(lines[0] ?? "", 200), figures, at,
+    ...(list.length ? { list } : {}), ...(chart ? { chart } : {}), ...(map ? { map } : {}), ...(source ? { source } : {}),
+  };
 }
 
 type Shown = Partial<Omit<Reading, "text">> & { status: number; text: string; image?: string; stale?: boolean; pending?: boolean };

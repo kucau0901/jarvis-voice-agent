@@ -1,6 +1,6 @@
 import type { Env } from "../types.ts";
 import { err, json, readObject } from "../lib/http.ts";
-import { grantsOf, personOf, type Principal } from "../lib/auth.ts";
+import { grantsOf, personOf, whoOf, type Principal } from "../lib/auth.ts";
 import { allows } from "../lib/scopes.ts";
 import { stateStub } from "../lib/state-client.ts";
 import { haConfig } from "../lib/ha.ts";
@@ -8,6 +8,7 @@ import { localeOf } from "../lib/locale.ts";
 import { dayOf } from "../lib/usage.ts";
 import { carById, pickCar } from "../tools/tessie.ts";
 import { actOn, historyOf, LIVE, readTileOf, viewPanels, type PanelSources } from "../lib/panel-view.ts";
+import { setAlert } from "../lib/panel-alerts.ts";
 import { baseTools, outputText } from "../tools/registry.ts";
 import { mcpSessions, mcpTools } from "../tools/mcp.ts";
 import { memoryFor } from "../lib/memory.ts";
@@ -25,6 +26,8 @@ import type { PanelsReply } from "../../shared/panels.ts";
  *        its question's kept answer, looked up again when stale (cached=1: what was kept, at once)
  *   GET  /api/hub/panels/history?panel=&key=   a number's last day from Home Assistant, for its chart
  *   POST /api/hub/panels/act   {panel, key, action, member?, code?, value?}: press one of them
+ *   POST /api/hub/panels/alert {panel, key, when?, value?, condition?}: "Alert me" on a tile, made a
+ *        routine of yours (a watch, or a page watch), so it needs `routines`
  *   POST /api/hub/panels/remove {panel}: take that panel off (its … menu)
  *   POST /api/hub/panels/note  {panel, add?, tick?, clear?}: a to-do typed onto it, one ticked
  *        off or back on (by its key), or the ticked ones cleared; no model
@@ -34,7 +37,7 @@ import type { PanelsReply } from "../../shared/panels.ts";
  */
 export async function handlePanels(req: Request, env: Env, principal: Principal): Promise<Response | null> {
   const p = new URL(req.url).pathname;
-  if (!["/api/hub/panels", "/api/hub/panels/read", "/api/hub/panels/history", "/api/hub/panels/act", "/api/hub/panels/remove", "/api/hub/panels/note"].includes(p)) return null;
+  if (!["/api/hub/panels", "/api/hub/panels/read", "/api/hub/panels/history", "/api/hub/panels/act", "/api/hub/panels/alert", "/api/hub/panels/remove", "/api/hub/panels/note"].includes(p)) return null;
   if (principal.kind === "device") return err(403, "that is for a person, not a device");
   const grants = grantsOf(principal);
   if (!allows(grants, "screen")) return err(403, 'panels need "screen"', { need: "screen" });
@@ -114,6 +117,21 @@ export async function handlePanels(req: Request, env: Env, principal: Principal)
       ...(typeof b.value === "string" || typeof b.value === "number" ? { value: String(b.value).slice(0, 500) } : {}),
     };
     const r = await actOn(panel, String(b.key ?? ""), String(b.action ?? ""), src, req.signal, extra);
+    return r.status === 200 ? json({ text: r.text }) : err(r.status, r.text);
+  }
+  if (p === "/api/hub/panels/alert" && req.method === "POST") {
+    if (!allows(grants, "routines")) return err(403, 'alerts are routines, which need "routines"', { need: "routines" });
+    const b = await readObject(req, 2_000);
+    if (!b || typeof b.panel !== "string" || typeof b.key !== "string") return err(400, "send {panel, key, when, value} or {panel, key, condition}");
+    const panel = (await state.panelsOf(me)).find((x) => x.id === b.panel);
+    const r = await setAlert(panel, b.key, b, {
+      home: allows(grants, "home"),
+      house: src.house,
+      read: src.read,
+      ask: src.ask,
+      kept: (tile) => state.panelReading(me, tile),
+      addRoutine: (input) => state.addRoutine(input, { who: whoOf(principal), grants }),
+    });
     return r.status === 200 ? json({ text: r.text }) : err(r.status, r.text);
   }
   if (p === "/api/hub/panels/note" && req.method === "POST") {

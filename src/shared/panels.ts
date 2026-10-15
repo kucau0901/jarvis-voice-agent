@@ -52,6 +52,12 @@ export interface PanelMore {
   code?: { digits: boolean; for: string[] };
   /** A number read over the last day: its chart is fetched when the tile opens (GET /api/hub/panels/history). */
   history?: boolean;
+  /**
+   * "Alert me": its two states in words ("opens" / "closes"), a number to go
+   * above or below, or — for a reading Jarvis looks up — words typed for it
+   * (POST /api/hub/panels/alert).
+   */
+  alert?: { kind: "state"; on: string; off: string } | { kind: "number"; unit: string; value: number } | { kind: "words" };
   /** Where it is (the car), drawn as a map when the tile opens. */
   map?: { lat: number; lng: number };
   /** A slider: a light's brightness, a fan's speed, a blind's position, a speaker's volume, a number. Pressed as `level:<n>`. */
