@@ -26,8 +26,8 @@ export interface PanelRow {
   level?: number;
   /** Figures side by side: what was used this month. */
   tiles: { label: string; value: string }[];
-  /** What can be done to it now, from its state now. */
-  actions: { action: string; label: string }[];
+  /** What can be done to it now, from its state now; a tile's may take a slider's value or typed words. */
+  actions: { action: string; label: string; input?: ButtonInput }[];
   /** Why it cannot be read or worked just now. */
   note?: string;
   /** What its tile shows when opened: a room's lights each, or an aircond's or an alarm's controls. */
@@ -38,6 +38,9 @@ export interface PanelRow {
   done?: boolean;
 }
 
+/** What a tile's button takes before it is pressed (lib/panel-tiles.ts): a number on a slider, or words. */
+export type ButtonInput = { kind: "slider"; min: number; max: number; step: number } | { kind: "text"; hint: string };
+
 export interface PanelMore {
   /** A room's lights and switches, each with its own buttons, pressed with its key as `member`. */
   members?: PanelRow[];
@@ -47,6 +50,8 @@ export interface PanelMore {
   actions?: { action: string; label: string }[];
   /** Which of those want the alarm's code, and whether it is digits. */
   code?: { digits: boolean; for: string[] };
+  /** A slider: a light's brightness, a fan's speed, a blind's position, a speaker's volume, a number. Pressed as `level:<n>`. */
+  level?: { name: string; value: number; min: number; max: number; step: number; unit: string };
 }
 
 export interface PanelView {

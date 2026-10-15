@@ -8,7 +8,10 @@ import type { PanelMore } from "../../shared/panels.ts";
  * the person must hold `home`, and what the house then does — a code it
  * wants, a mode it refuses — is Home Assistant's to decide.
  *
- * Actions carry their value: "mode:cool", "fan:high", "temp:24".
+ * Actions carry their value: "mode:cool", "fan:high", "temp:24", "level:60".
+ * A light's brightness, a fan's speed, a blind's position, a speaker's volume
+ * and a number in the house open to a slider, from the range Home Assistant
+ * gives each.
  */
 
 type Attrs = Record<string, unknown>;
@@ -98,18 +101,78 @@ function alarmCall(state: string, a: Attrs, action: string, code: string | undef
   return { domain: "alarm_control_panel", service: `alarm_${action}`, data: code ? { code } : {}, said: ALARM_LABEL[action]! };
 }
 
+/* ---------- a slider: brightness, speed, position, volume, a number ---------------- */
+
+type Level = NonNullable<PanelMore["level"]>;
+
+/** Where a thing that can be set to a level is now, and its range; null when it cannot be. */
+function levelOf(entity: string, state: string, a: Attrs): Level | null {
+  if (gone(state)) return null;
+  const pct = (name: string, value: number | undefined): Level => ({ name, value: Math.round(value ?? 0), min: 0, max: 100, step: 1, unit: "%" });
+  switch (entity.split(".")[0]) {
+    case "light": {
+      // A light that is only on or off has no brightness to set.
+      const modes = words(a.supported_color_modes);
+      if (modes.length ? modes.every((m) => m === "onoff") : num(a.brightness) === undefined) return null;
+      return pct("Brightness", state === "on" ? ((num(a.brightness) ?? 255) / 255) * 100 : 0);
+    }
+    case "fan":
+      return num(a.percentage) === undefined ? null : { ...pct("Speed", num(a.percentage)), step: num(a.percentage_step) ?? 1 };
+    case "cover":
+      return num(a.current_position) === undefined ? null : pct("Position", num(a.current_position));
+    case "media_player":
+      return num(a.volume_level) === undefined ? null : pct("Volume", (num(a.volume_level) ?? 0) * 100);
+    case "number":
+    case "input_number": {
+      const v = Number(state);
+      const min = num(a.min) ?? 0;
+      const max = num(a.max) ?? 100;
+      if (!Number.isFinite(v) || max <= min) return null;
+      return { name: "Value", value: v, min, max, step: num(a.step) ?? 1, unit: typeof a.unit_of_measurement === "string" ? a.unit_of_measurement : "" };
+    }
+    default:
+      return null;
+  }
+}
+
+/** A level pressed: within the thing's range, sent as the service its domain has for it. */
+function levelCall(entity: string, state: string, a: Attrs, value: string): Call | string {
+  const level = levelOf(entity, state, a);
+  if (!level) return `it cannot be set to a level now`;
+  const n = Number(value);
+  if (!value || !Number.isFinite(n) || n < level.min || n > level.max) return `${value} is outside ${level.min}–${level.max}`;
+  const said = `${level.name.toLowerCase()} ${n}${level.unit}`;
+  const domain = entity.split(".")[0]!;
+  switch (domain) {
+    case "light":
+      return n === 0 ? { domain, service: "turn_off", data: {}, said: "Turn off" } : { domain, service: "turn_on", data: { brightness_pct: n }, said };
+    case "fan":
+      return { domain, service: "set_percentage", data: { percentage: n }, said };
+    case "cover":
+      return { domain, service: "set_cover_position", data: { position: n }, said };
+    case "media_player":
+      return { domain, service: "volume_set", data: { volume_level: n / 100 }, said };
+    default:
+      return { domain, service: "set_value", data: { value: n }, said };
+  }
+}
+
 /* ---------- for lib/panel-view.ts ------------------------------------------------- */
 
 const LABEL: Record<string, string> = { on: "Turn on", off: "Turn off" };
 
-/** An aircond's or an alarm's buttons and opened controls; null for anything else. */
-export function controlsOf(entity: string, state: string, a: Attrs): { actions: { action: string; label: string }[]; more?: PanelMore } | null {
+/**
+ * An aircond's or an alarm's buttons and opened controls, or a slider for
+ * what has a level (its buttons left to houseActions); null for anything else.
+ */
+export function controlsOf(entity: string, state: string, a: Attrs): { actions?: { action: string; label: string }[]; more?: PanelMore } | null {
   const domain = entity.split(".")[0];
   if (domain === "climate") {
     return { actions: climateActions(state).map((action) => ({ action, label: LABEL[action]! })), ...(gone(state) ? {} : { more: { climate: climateMore(state, a) } }) };
   }
   if (domain === "alarm_control_panel") return { actions: [], ...(gone(state) ? {} : { more: alarmMore(state, a) }) };
-  return null;
+  const level = levelOf(entity, state, a);
+  return level ? { more: { level } } : null;
 }
 
 /** What a press on an aircond or an alarm sends, if its state offers it now (a string says why not); null for anything else. */
@@ -117,5 +180,6 @@ export function controlCall(entity: string, state: string, a: Attrs, action: str
   const domain = entity.split(".")[0];
   if (domain === "climate") return climateCall(state, a, action);
   if (domain === "alarm_control_panel") return alarmCall(state, a, action, code);
+  if (action.startsWith("level:")) return levelCall(entity, state, a, action.slice("level:".length));
   return null;
 }

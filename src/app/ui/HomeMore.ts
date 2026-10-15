@@ -9,7 +9,50 @@ import { button, el } from "./util";
  * (src/worker/lib/panel-controls.ts), and whose answer shows in `said`.
  */
 
-export type Press = (action: string, b: HTMLButtonElement, said: HTMLElement, extra?: { member?: string; code?: string }) => Promise<void>;
+export type Press = (
+  action: string,
+  b: HTMLButtonElement | HTMLInputElement,
+  said: HTMLElement,
+  extra?: { member?: string; code?: string; value?: string },
+) => Promise<void>;
+
+type Level = NonNullable<PanelMore["level"]>;
+
+/** A slider: its name, the value shown as it moves, and `send` once it is let go — not at every step of a drag. */
+export function slider(name: string, level: Omit<Level, "name">, send: (n: number, input: HTMLInputElement) => void): HTMLElement {
+  const row = el("label", "hlevel");
+  const input = el("input");
+  input.type = "range";
+  input.min = String(level.min);
+  input.max = String(level.max);
+  input.step = String(level.step);
+  input.value = String(level.value);
+  const shown = el("b", "", `${level.value}${level.unit}`);
+  input.addEventListener("input", () => (shown.textContent = `${input.value}${level.unit}`));
+  input.addEventListener("change", () => send(Number(input.value), input));
+  row.append(el("small", "", name), input, shown);
+  return row;
+}
+
+/** Words typed for a button that takes them, and the button that sends them. */
+export function typed(label: string, hint: string, send: (text: string, b: HTMLButtonElement) => void): HTMLElement {
+  const form = el("form", "htyped");
+  const input = el("input");
+  input.placeholder = hint || label;
+  input.maxLength = 500;
+  input.setAttribute("aria-label", label);
+  const go = el("button", "", label);
+  go.type = "submit";
+  form.append(input, go);
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const text = input.value.trim();
+    if (!text) return input.focus();
+    input.value = "";
+    send(text, go);
+  });
+  return form;
+}
 
 /** "fan_only" as "Fan only". */
 const words = (s: string) => (s.charAt(0).toUpperCase() + s.slice(1)).replace(/_/g, " ");
@@ -17,6 +60,7 @@ const words = (s: string) => (s.charAt(0).toUpperCase() + s.slice(1)).replace(/_
 export function moreBody(more: PanelMore, said: HTMLElement, press: Press): HTMLElement {
   const body = el("div", "hbody");
   if (more.members) body.appendChild(members(more.members, press));
+  if (more.level) body.appendChild(slider(more.level.name, more.level, (n, input) => void press(`level:${n}`, input, said)));
   if (more.climate) body.appendChild(climate(more.climate, said, press));
   if (more.actions?.length) body.appendChild(alarm(more, said, press));
   return body;
@@ -36,6 +80,9 @@ function members(rows: PanelRow[], press: Press): HTMLElement {
       const b = button(a.label, () => void press(a.action, b, said, { member: m.key }));
       row.appendChild(b);
     }
+    // A dimmable light in the room dims on its own, under its row.
+    const level = m.more?.level;
+    if (level) row.appendChild(slider(level.name, level, (n, input) => void press(`level:${n}`, input, said, { member: m.key })));
     list.appendChild(row);
   }
   return list;

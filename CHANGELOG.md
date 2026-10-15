@@ -44,7 +44,9 @@ of every release, and in the [README](README.md#updating).
   Jarvis's own tools, so a press needs no model; where no tool can do it, a
   button asks Jarvis a sentence instead. A tile does only what its person
   could ask for, and its car buttons follow the car as its own tiles do:
-  Unlock while it is locked, Lock while it is not. Notes are a checklist:
+  Unlock while it is locked, Lock while it is not. Lights dim, fans, blinds
+  and speakers set by a slider, and a tile's button can take a number or
+  typed words (the music's volume, a note to the family). Notes are a checklist:
   tick one off and it is struck through until "Clear ticked", and type new
   ones straight onto the panel. For what no tool can read ("a panel for the latest air
   quality in my town"), Jarvis looks it up with web search and shows a

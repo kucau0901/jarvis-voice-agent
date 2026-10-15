@@ -392,6 +392,15 @@ Home Controls", "a to-do panel with renew the road tax" (`panel_set`,
   reading comes on its own (GET
   /api/hub/panels/read), once a minute, so a slow tool or someone else's
   service never holds up the house.
+- **Sliders and typing.** What has a level opens to a slider: a light's
+  brightness (0 turns it off), a fan's speed, a blind's position, a
+  speaker's volume, a number helper's value, each in the range Home
+  Assistant gives it, checked again before it is sent (`level:<n>`); a
+  room's dimmable lights each have their own under their row. A tile's
+  button can take a slider's number or typed words first, which go into
+  one argument of its tool (music_control's volume, send_note's text) or
+  into its sentence where it says {}. A slider sends when it is let go, not
+  at every step of a drag.
 - **A checklist.** Notes are to-dos with a tick: ticked, one is struck
   through and moved to the bottom, kept until "Clear ticked" in the panel's …
   menu, so a mis-tap is undone by tapping again (the owner's choice). Any

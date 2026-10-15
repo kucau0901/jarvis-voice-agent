@@ -1,4 +1,4 @@
-import type { PanelIcon } from "../../shared/panels.ts";
+import type { ButtonInput, PanelIcon } from "../../shared/panels.ts";
 import { shortKey, type Reading } from "./panels.ts";
 
 /**
@@ -27,10 +27,18 @@ export interface TileCall {
   args: Record<string, unknown>;
 }
 
+/**
+ * A button that takes a value first: a slider's number or typed words, put
+ * into the tool's argument `arg` (the music's volume, a note's text) or, for
+ * a button that asks, into its sentence where it says {} (else after it).
+ */
+export type TileInput = ButtonInput & { arg: string };
+
 export interface TileButton {
   label: string;
   tool?: TileCall;
   ask?: string;
+  input?: TileInput;
 }
 
 /** A reading looked up by asking Jarvis, at most every `every` minutes. */
@@ -48,6 +56,9 @@ export const MAX_BUTTONS = 6;
 const TOOL_NAME = /^[A-Za-z0-9_-]{1,64}$/;
 const MAX_LABEL = 40;
 const MAX_ASK = 300;
+const ARG = /^[A-Za-z_][A-Za-z0-9_]{0,40}$/;
+/** Words typed into a tile, at most. */
+const MAX_TYPED = 500;
 /** An asked reading is looked up at most hourly, and at least daily when looked at. */
 const EVERY_MIN = 60;
 const EVERY_MAX = 24 * 60;
@@ -60,6 +71,18 @@ const askOf = (v: unknown): TileAsk | null =>
     ? { ask: v.ask.trim().slice(0, MAX_ASK), every: Math.min(EVERY_MAX, Math.max(EVERY_MIN, Math.round(Number(v.every) || EVERY_MIN))) }
     : null;
 export const isAsk = (r: TileCall | TileAsk): r is TileAsk => "ask" in r;
+
+/** A button's input, checked; null when it has none, a string when it is not one. */
+function inputOf(v: unknown): TileInput | null | string {
+  if (v === undefined || v === null) return null;
+  if (!isObject(v) || typeof v.arg !== "string" || !ARG.test(v.arg)) return "a button's input needs the argument it fills, in arg.";
+  if (v.kind === "text") return { kind: "text", arg: v.arg, hint: typeof v.hint === "string" ? v.hint.slice(0, 40) : "" };
+  const min = Number(v.min ?? 0);
+  const max = Number(v.max ?? 100);
+  const step = Number(v.step ?? 1);
+  if (v.kind !== "slider" || !Number.isFinite(min) || !Number.isFinite(max) || max <= min || !(step > 0)) return "a slider needs its range, min below max.";
+  return { kind: "slider", arg: v.arg, min, max, step };
+}
 
 /** A tile as stored (its item's ref), checked; null if it is not one, or a string saying what is wrong. */
 export function tileSpec(v: unknown): TileSpec | string {
@@ -75,7 +98,9 @@ export function tileSpec(v: unknown): TileSpec | string {
     const tool = b.tool === undefined || b.tool === null ? undefined : callOf(b.tool);
     const ask = typeof b.ask === "string" && b.ask.trim() ? b.ask.trim().slice(0, MAX_ASK) : undefined;
     if (tool === null || !!tool === !!ask) return `"${label}" must either run one of your tools or ask Jarvis a sentence.`;
-    buttons.push({ label, ...(tool ? { tool } : { ask }) });
+    const input = inputOf(b.input);
+    if (typeof input === "string") return input;
+    buttons.push({ label, ...(tool ? { tool } : { ask }), ...(input ? { input } : {}) });
   }
   if (!read && !buttons.length) return "a tile needs a reading or buttons.";
   return { ...(read ? { read } : {}), buttons };
@@ -199,14 +224,29 @@ export async function readTile(spec: TileSpec, src: TileSources, key: string, ca
   }
 }
 
-/** A tile's button pressed ("b0", "b1"…): its tool, or its sentence asked of Jarvis. */
-export async function pressTile(label: string, spec: TileSpec, action: string, src: TileSources): Promise<{ status: number; text: string }> {
+/** A slider's number or typed words, as the button takes them; a string says why not. */
+function valueFor(input: TileInput, value: string | undefined): number | string | { why: string } {
+  const v = (value ?? "").trim();
+  if (input.kind === "text") return v ? v.slice(0, MAX_TYPED) : { why: "Type something first." };
+  const n = Number(v);
+  if (!v || !Number.isFinite(n) || n < input.min || n > input.max) return { why: `Pick a number from ${input.min} to ${input.max}.` };
+  return Math.round(n / input.step) * input.step;
+}
+
+/** A tile's button pressed ("b0", "b1"…): its tool, or its sentence asked of Jarvis, with the value it takes. */
+export async function pressTile(label: string, spec: TileSpec, action: string, src: TileSources, value?: string): Promise<{ status: number; text: string }> {
   const n = /^b(\d)$/.exec(action);
   const b = n ? spec.buttons[Number(n[1])] : undefined;
   if (!b) return { status: 404, text: "That is not on this tile." };
+  const given = b.input ? valueFor(b.input, value) : undefined;
+  if (typeof given === "object") return { status: 400, text: given.why };
   try {
-    if (b.ask) return { status: 200, text: clip(await src.ask(b.ask), 600) };
-    const out = await src.tool(b.tool!.tool, b.tool!.args);
+    if (b.ask) {
+      const words = given === undefined ? b.ask : b.ask.includes("{}") ? b.ask.replace("{}", String(given)) : `${b.ask} ${given}`;
+      return { status: 200, text: clip(await src.ask(words), 600) };
+    }
+    const args = given === undefined ? b.tool!.args : { ...b.tool!.args, [b.input!.arg]: given };
+    const out = await src.tool(b.tool!.tool, args);
     if (!out) return { status: 403, text: `${b.tool!.tool} is not yours to use here.` };
     return { status: 200, text: clip(out.text, 600) || `${label}: ${b.label}.` };
   } catch (e) {

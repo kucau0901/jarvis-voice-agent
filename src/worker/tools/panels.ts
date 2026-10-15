@@ -51,10 +51,10 @@ function tileFor(label: string, read: unknown, buttons: unknown, ctx: ToolContex
   if (typeof readCall === "string") return readCall;
   const wired = [];
   for (const b of Array.isArray(buttons) ? buttons : []) {
-    const { label: words, tool, args, ask } = (b ?? {}) as { label?: unknown; tool?: unknown; args?: unknown; ask?: unknown };
+    const { label: words, tool, args, ask, input } = (b ?? {}) as { label?: unknown; tool?: unknown; args?: unknown; ask?: unknown; input?: unknown };
     const c = tool === null || tool === undefined ? undefined : call(tool, args);
     if (typeof c === "string") return c;
-    wired.push({ label: words, ...(c ? { tool: c } : {}), ask });
+    wired.push({ label: words, ...(c ? { tool: c } : {}), ask, input });
   }
   const spec = tileSpec({ ...(readCall ? { read: readCall } : {}), buttons: wired });
   if (typeof spec === "string") return spec;
@@ -126,7 +126,9 @@ export const panelSet: Tool = {
     "shown as a verdict and a few figures; or null. Never refuse a reading because no tool has it: ask. " +
     "buttons, up to 6, each run one of your tools with fixed arguments (tool, " +
     "and args as a JSON object, e.g. music_control with {\"action\":\"pause\"}) or, only when no tool call " +
-    "can do it, ask Jarvis a sentence (ask). Use a tile for whatever is not in Home Assistant. " +
+    "can do it, ask Jarvis a sentence (ask). A button can first take a slider's number or typed words " +
+    "(input), put into one argument of its tool (music_control's volume, send_note's text) or into its " +
+    "sentence where it says {}. Use a tile for whatever is not in Home Assistant. " +
     "Panels are the asker's own: nobody else sees them.",
   parameters: {
     type: "object",
@@ -178,8 +180,20 @@ export const panelSet: Tool = {
                   tool: { type: ["string", "null"], description: "One of your tools, by name; null when the button asks." },
                   args: { type: ["string", "null"], description: "That tool's arguments, a JSON object as text; null when the button asks." },
                   ask: { type: ["string", "null"], description: "A sentence to ask Jarvis, only when no tool call can do it; null otherwise." },
+                  input: {
+                    type: ["object", "null"],
+                    description: "What the button takes before it is pressed, or null: a slider (volume, a level) or typed words (a message).",
+                    properties: {
+                      kind: { type: "string", enum: ["slider", "text"] },
+                      arg: { type: "string", description: "The tool's argument it fills, e.g. volume or text (for an asking button: text)." },
+                      min: { type: ["number", "null"], description: "slider: lowest value, e.g. 0. Null for text." },
+                      max: { type: ["number", "null"], description: "slider: highest value, e.g. 100. Null for text." },
+                    },
+                    required: ["kind", "arg", "min", "max"],
+                    additionalProperties: false,
+                  },
                 },
-                required: ["label", "tool", "args", "ask"],
+                required: ["label", "tool", "args", "ask", "input"],
                 additionalProperties: false,
               },
             },

@@ -1,7 +1,7 @@
 import { api } from "../key";
 import type { PanelRow, PanelView, PanelsReply } from "../../shared/panels";
 import { arm, button, el } from "./util";
-import { moreBody } from "./HomeMore";
+import { moreBody, slider, typed } from "./HomeMore";
 
 /**
  * The Home tab: this person's panels (src/worker/lib/panel-view.ts), as
@@ -41,9 +41,10 @@ const BIG = 5;
 const list = (xs: string[]) => (xs.length < 2 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`);
 const why = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
-/** A car, the usage, a room's lights together ("1 of 8 on · …"), a tile's reading or a long note takes two tiles' room. */
+/** A car, the usage, a room's lights together ("1 of 8 on · …"), a tile's reading, one to type into, or a long note takes two tiles' room. */
 const wide = (r: PanelRow) =>
-  r.icon === "car" || r.kind === "usage" || r.key.includes(",") || !!r.read || (r.kind === "note" && r.label.length > 48);
+  r.icon === "car" || r.kind === "usage" || r.key.includes(",") || !!r.read || r.actions.some((a) => a.input?.kind === "text") ||
+  (r.kind === "note" && r.label.length > 48);
 
 /** The panels folded on this screen, by id: a convenience, so a private window just forgets them. */
 function folded(): Set<string> {
@@ -128,7 +129,9 @@ export class Home {
       // Not while a menu is open or a code is being typed: drawing again would take them away.
       const busy =
         this.root.querySelector(".hmenu:not([hidden])") ||
-        [...this.root.querySelectorAll<HTMLInputElement>(".hcode, .hadd input")].some((c) => c.value || c === document.activeElement);
+        [...this.root.querySelectorAll<HTMLInputElement>(".hcode, .hadd input, .htyped input, .hlevel input")].some(
+          (c) => c === document.activeElement || (c.type !== "range" && c.value),
+        );
       if (n === this.seq && !this.pressing && !busy) this.render(r);
     } catch (e) {
       if (n !== this.seq || this.pressing) return;
@@ -414,6 +417,17 @@ export class Home {
     if (r.actions.length) {
       const acts = el("div", "hacts");
       for (const a of r.actions) {
+        // A tile's button that takes a number or words first (the music's volume, a message).
+        if (a.input?.kind === "slider") {
+          const { min, max, step } = a.input;
+          const mid = Math.round((min + max) / 2 / step) * step;
+          acts.appendChild(slider(a.label, { value: mid, min, max, step, unit: "" }, (n, input) => void this.act(panel, r.key, a.action, input, said, name, { value: String(n) })));
+          continue;
+        }
+        if (a.input?.kind === "text") {
+          acts.appendChild(typed(a.label, a.input.hint, (text, b) => void this.act(panel, r.key, a.action, b, said, name, { value: text })));
+          continue;
+        }
         const b = button(a.label, () => void this.act(panel, r.key, a.action, b, said, name));
         acts.appendChild(b);
       }
@@ -432,14 +446,15 @@ export class Home {
     panel: string,
     key: string,
     action: string,
-    b: HTMLButtonElement,
+    b: HTMLButtonElement | HTMLInputElement,
     said: HTMLElement,
     after: HTMLElement,
-    extra: { member?: string; code?: string } = {},
+    extra: { member?: string; code?: string; value?: string } = {},
   ): Promise<void> {
-    const label = b.textContent;
+    // A button says "…" while it waits; a slider is only held still.
+    const label = b instanceof HTMLButtonElement ? b.textContent : null;
     b.disabled = true;
-    b.textContent = "…";
+    if (label !== null) b.textContent = "…";
     this.pressing++;
     this.seq++;
     try {
@@ -452,7 +467,7 @@ export class Home {
       this.pressing--;
     }
     if (!said.isConnected) after.after(said);
-    b.textContent = label;
+    if (label !== null) b.textContent = label;
     b.disabled = false;
     setTimeout(() => void this.load(), AFTER_PRESS_MS);
   }

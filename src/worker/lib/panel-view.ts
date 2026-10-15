@@ -386,7 +386,11 @@ export async function viewPanels(panels: Panel[], src: PanelSources): Promise<Pa
       const fits = await Promise.all(spec.buttons.map((b) => fitsTheCar(b, src, carReads)));
       return [{
         key: keyOf(item), kind: "tile", label: item.label, value: "", icon: tileIcon(spec), active: false, tiles: [],
-        actions: spec.buttons.flatMap((b, i) => (fits[i] ? [{ action: `b${i}`, label: b.label }] : [])),
+        actions: spec.buttons.flatMap((b, i) => {
+          if (!fits[i]) return [];
+          const input = b.input ? (({ arg: _, ...shown }) => shown)(b.input) : undefined;
+          return [{ action: `b${i}`, label: b.label, ...(input ? { input } : {}) }];
+        }),
         ...(spec.read ? { read: true } : {}),
       }];
     }
@@ -538,7 +542,7 @@ export async function actOn(
   action: string,
   src: PanelSources,
   signal: AbortSignal,
-  extra: { member?: string; code?: string } = {},
+  extra: { member?: string; code?: string; value?: string } = {},
 ): Promise<{ status: number; text: string }> {
   const item = panel?.items.find((i) => keyOf(i) === key && (i.kind === "home" || i.kind === "car" || i.kind === "tile"));
   if (!item) return { status: 404, text: "That is not on this panel." };
@@ -549,7 +553,7 @@ export async function actOn(
     // A car button pressed after the car changed (Lock, and it was locked meanwhile) sends nothing, as on the car's own tiles.
     const b = spec.buttons[Number(/^b(\d)$/.exec(action)?.[1] ?? -1)];
     if (b && !(await fitsTheCar(b, src, new Map()))) return { status: 409, text: `${item.label}: the car has changed since this was shown, so that was not sent.` };
-    return pressTile(item.label, spec, action, src);
+    return pressTile(item.label, spec, action, src, extra.value);
   }
 
   if (item.kind === "home") {

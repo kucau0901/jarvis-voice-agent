@@ -471,6 +471,60 @@ console.log("a tile for anything else Jarvis can do");
     (await readTileOf(p, tileKey(ref), all)).text.startsWith("Playing") && (await readTileOf(p, "t_other", all)).status === 404);
 }
 
+console.log("sliders: brightness, speed, position, volume, a number");
+{
+  const lvl = (entity: string, state: string, a: Record<string, unknown>) => controlsOf(entity, state, a)?.more?.level;
+  check("a dimmable light opens to its brightness, as a share of full; off is 0",
+    lvl("light.desk", "on", { brightness: 128, supported_color_modes: ["brightness"] })?.value === 50 && lvl("light.desk", "off", { supported_color_modes: ["color_temp"] })?.value === 0);
+  check("…a light that is only on or off has no slider", lvl("light.porch", "on", { supported_color_modes: ["onoff"] }) === undefined);
+  check("a fan's speed, a blind's position, a speaker's volume",
+    lvl("fan.bed", "on", { percentage: 33, percentage_step: 33 })?.step === 33 && lvl("cover.blind", "open", { current_position: 70 })?.value === 70 &&
+    lvl("media_player.kitchen", "playing", { volume_level: 0.4 })?.value === 40);
+  check("a number in the house, with its own range and unit",
+    JSON.stringify(lvl("input_number.target", "21.5", { min: 16, max: 30, step: 0.5, unit_of_measurement: "°C" })) === '{"name":"Value","value":21.5,"min":16,"max":30,"step":0.5,"unit":"°C"}');
+  const call = (entity: string, state: string, a: Record<string, unknown>, action: string) => controlCall(entity, state, a, action);
+  const dim = call("light.desk", "on", { brightness: 255, supported_color_modes: ["brightness"] }, "level:60") as { service: string; data: unknown };
+  check("set by its slider: a light's brightness_pct, and 0 turns it off",
+    dim.service === "turn_on" && JSON.stringify(dim.data) === '{"brightness_pct":60}' &&
+    (call("light.desk", "on", { supported_color_modes: ["brightness"] }, "level:0") as { service: string }).service === "turn_off");
+  check("a blind's position, a speaker's volume as a fraction, a number's value",
+    JSON.stringify((call("cover.blind", "open", { current_position: 10 }, "level:55") as { data: unknown }).data) === '{"position":55}' &&
+    JSON.stringify((call("media_player.k", "playing", { volume_level: 0.1 }, "level:40") as { data: unknown }).data) === '{"volume_level":0.4}' &&
+    (call("input_number.target", "20", { min: 16, max: 30 }, "level:22") as { domain: string; service: string }).service === "set_value");
+  check("out of its range, or with no slider, nothing is sent",
+    typeof call("light.desk", "on", { supported_color_modes: ["brightness"] }, "level:150") === "string" && typeof call("light.porch", "on", { supported_color_modes: ["onoff"] }, "level:50") === "string");
+  const calls: { svc: string; data: unknown }[] = [];
+  const { src } = sources({ read: async () => ({ state: "on", attributes: { brightness: 255, supported_color_modes: ["brightness"], friendly_name: "Desk" } }), call: async (_c, d, sv, id, data) => void calls.push({ svc: `${d}.${sv} ${id}`, data }) });
+  const p: Panel = { ...panel, items: [{ kind: "home", ref: "light.desk", label: "Desk lamp" }] };
+  const [view] = await viewPanels([p], src);
+  check("on a panel, a dimmable light keeps Turn off and opens to its slider", view!.rows[0]!.actions[0]?.label === "Turn off" && view!.rows[0]!.more?.level?.value === 100);
+  const pressed = await actOn(p, "light.desk", "level:30", src, signal);
+  check("…dimmed from the panel", pressed.status === 200 && calls[0]?.svc === "light.turn_on light.desk" && JSON.stringify(calls[0]?.data) === '{"brightness_pct":30}', { pressed, calls });
+}
+{
+  const spec = tileSpec({ read: null, buttons: [
+    { label: "Volume", tool: { tool: "music_control", args: { action: "volume" } }, input: { kind: "slider", arg: "volume", min: 0, max: 100 } },
+    { label: "Send", tool: { tool: "send_note", args: { to: "family" } }, input: { kind: "text", arg: "text" } },
+    { label: "Ask", ask: "Add {} to the shopping list", input: { kind: "text", arg: "text" } },
+  ] }) as never;
+  check("a button takes a slider or words, into one argument of its tool", typeof spec === "object");
+  check("…and a slider needs its range", typeof tileSpec({ buttons: [{ label: "V", tool: { tool: "t", args: {} }, input: { kind: "slider", arg: "volume", min: 5, max: 5 } }] }) === "string");
+  const ran: string[] = [];
+  const asked: string[] = [];
+  const src = { tool: async (n: string, a: Record<string, unknown>) => (ran.push(`${n} ${JSON.stringify(a)}`), { text: "Done." }), ask: async (t: string) => (asked.push(t), "Added."), kept: async () => null, claim: async () => ({ reading: null, go: false }), keep: async () => {} };
+  await pressTile("Music", spec, "b0", src, "60");
+  await pressTile("Note", spec, "b1", src, "  Home by 7  ");
+  await pressTile("Ask", spec, "b2", src, "eggs");
+  check("the number and the words go where the button says",
+    ran.join("|") === 'music_control {"action":"volume","volume":60}|send_note {"to":"family","text":"Home by 7"}' && asked.join() === "Add eggs to the shopping list", { ran, asked });
+  check("a number outside its range, or nothing typed, is not sent",
+    (await pressTile("Music", spec, "b0", src, "250")).status === 400 && (await pressTile("Note", spec, "b1", src, "   ")).status === 400 && ran.length === 2);
+  const p: Panel = { ...panel, items: [{ kind: "tile", ref: JSON.stringify(spec), label: "Music" }] };
+  const [view] = await viewPanels([p], sources().src);
+  check("the panel says what each button takes, but not which argument it fills",
+    JSON.stringify(view!.rows[0]!.actions.map((a) => a.input)) === '[{"kind":"slider","min":0,"max":100,"step":1},{"kind":"text","hint":""},{"kind":"text","hint":""}]', view!.rows[0]!.actions);
+}
+
 console.log("a tile's car buttons follow the car");
 {
   const cmd = (command: string) => ({ tool: "car_command", args: { command, value: null, temperature: null, percent: null, car: null } });

@@ -946,6 +946,19 @@
   #home .hadd button { flex: none; min-height: 44px; padding: 0 16px; border: 1px solid var(--hair); border-radius: 12px;
     background: var(--chip); color: var(--fg); font: inherit; font-size: 14px; font-weight: 500; cursor: pointer; }
   #home .hmenu .hclear { --icon: var(--i-checks); }
+  /* A slider (ui/HomeMore.ts): a light's brightness, a fan's speed, a volume; and words typed for a button. */
+  #home .hlevel { display: grid; grid-template-columns: auto minmax(0, 1fr) 4.5ch; align-items: center; gap: 12px; min-height: 44px; }
+  #home .hlevel small { color: var(--dim); font-size: 13px; }
+  #home .hlevel b { font-size: 14px; font-weight: 500; text-align: right; font-variant-numeric: tabular-nums; }
+  #home .hlevel input { width: 100%; height: 44px; margin: 0; accent-color: var(--accent); cursor: pointer; }
+  #home .hacts :is(.hlevel, .htyped), #home .hmember .hlevel { flex: 1 0 100%; }
+  #home .hmember { flex-wrap: wrap; }
+  #home .htyped { display: flex; gap: 8px; min-width: 0; }
+  /* width 0: an input's own width (about twenty characters) would otherwise hold the row wider than its tile. */
+  #home .htyped input { flex: 1; width: 0; min-width: 0; min-height: 44px; padding: 0 14px; border: 1px solid var(--hair); border-radius: 12px;
+    background: var(--field); color: var(--fg); font: inherit; font-size: 16px; }
+  #home .htyped input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  #home .htyped button { flex: none; }
   /* A tile wired to a tool: its reading, a few lines of it, and a picture when the tool gives one (a camera). */
   #home .htile.tile .hstate { display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
   #home .hshot { display: block; width: 100%; margin-top: 10px; border-radius: 12px; }

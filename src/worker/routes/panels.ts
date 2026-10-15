@@ -23,7 +23,7 @@ import type { PanelsReply } from "../../shared/panels.ts";
  *   GET  /api/hub/panels       your panels, each thing read now, with the buttons its state offers
  *   GET  /api/hub/panels/read?panel=&key=[&cached=1]   a tile's reading: one of your tools, run now, or
  *        its question's kept answer, looked up again when stale (cached=1: what was kept, at once)
- *   POST /api/hub/panels/act   {panel, key, action, member?, code?}: press one of them
+ *   POST /api/hub/panels/act   {panel, key, action, member?, code?, value?}: press one of them
  *   POST /api/hub/panels/remove {panel}: take that panel off (its … menu)
  *   POST /api/hub/panels/note  {panel, add?, tick?, clear?}: a to-do typed onto it, one ticked
  *        off or back on (by its key), or the ticked ones cleared; no model
@@ -101,6 +101,8 @@ export async function handlePanels(req: Request, env: Env, principal: Principal)
     const extra = {
       ...(typeof b.member === "string" ? { member: b.member } : {}),
       ...(typeof b.code === "string" && b.code ? { code: b.code.slice(0, 32) } : {}),
+      // A slider's number or words typed into a tile's button.
+      ...(typeof b.value === "string" || typeof b.value === "number" ? { value: String(b.value).slice(0, 500) } : {}),
     };
     const r = await actOn(panel, String(b.key ?? ""), String(b.action ?? ""), src, req.signal, extra);
     return r.status === 200 ? json({ text: r.text }) : err(r.status, r.text);
