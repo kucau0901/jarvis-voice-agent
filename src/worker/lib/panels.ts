@@ -19,7 +19,7 @@ export interface PanelItem {
   /**
    * The entity id — or a room's lights, several ids joined by commas, shown
    * and switched as one — the car's id ("family" or c_…), "usage", "" for a
-   * note, or a tile's reading and buttons as JSON.
+   * note ("done" once it is ticked off), or a tile's reading and buttons as JSON.
    */
   ref: string;
   /** Its name on the panel; for a note, the note itself. */
@@ -52,6 +52,19 @@ const MAX_TITLE = 40;
 const MAX_LABEL = 120;
 /** Room for a room's lights side by side, or a tile's tools and their arguments. */
 const MAX_REF = 2000;
+
+/** A short, stable key from a longer text: a tile's JSON, a note's words (FNV-1a). */
+export function shortKey(prefix: string, text: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 0x01000193);
+  return `${prefix}${(h >>> 0).toString(36)}`;
+}
+
+/** A note's key on its panel, by its words: a note has no id of its own. */
+export const noteKey = (label: string): string => shortKey("n_", label.trim().toLowerCase());
+
+/** Whether a note has been ticked off. */
+export const ticked = (i: PanelItem): boolean => i.kind === "note" && i.ref === "done";
 
 /** The things in the house an item is: one, or a room's lights together. */
 export const idsOf = (i: PanelItem): string[] => (i.kind === "home" ? i.ref.split(",") : []);
@@ -127,6 +140,54 @@ export class Panels {
     }
     await this.storage.put(key(person), left);
     return left;
+  }
+
+  /**
+   * A to-do typed straight onto a panel (no model): after the open ones,
+   * before those already ticked. A string says why not.
+   */
+  async addNote(person: string, panelId: string, text: string): Promise<Panel | string> {
+    const words = clean(text, MAX_LABEL);
+    if (!words) return "A to-do needs its words.";
+    return this.change(person, panelId, (items) => {
+      if (items.some((i) => i.kind === "note" && same(i.label, words))) return "That is on the list already.";
+      if (items.length >= MAX_ITEMS) return `A panel holds at most ${MAX_ITEMS} things.`;
+      const at = items.findIndex(ticked);
+      const note: PanelItem = { kind: "note", ref: "", label: words };
+      return at < 0 ? [...items, note] : [...items.slice(0, at), note, ...items.slice(at)];
+    });
+  }
+
+  /** A to-do ticked off, or back on: ticked ones go to the bottom, struck through, until cleared. */
+  async tick(person: string, panelId: string, key: string): Promise<Panel | string> {
+    return this.change(person, panelId, (items) => {
+      const note = items.find((i) => i.kind === "note" && noteKey(i.label) === key);
+      if (!note) return "That to-do is not on this panel.";
+      const rest = items.filter((i) => i !== note);
+      if (ticked(note)) {
+        const at = rest.findIndex(ticked);
+        const open = { ...note, ref: "" };
+        return at < 0 ? [...rest, open] : [...rest.slice(0, at), open, ...rest.slice(at)];
+      }
+      return [...rest, { ...note, ref: "done" }];
+    });
+  }
+
+  /** The ticked to-dos taken off a panel. */
+  async clearTicked(person: string, panelId: string): Promise<Panel | string> {
+    return this.change(person, panelId, (items) => items.filter((i) => !ticked(i)));
+  }
+
+  /** One panel's things changed in place; the change returns them, or why not. */
+  private async change(person: string, panelId: string, f: (items: PanelItem[]) => PanelItem[] | string): Promise<Panel | string> {
+    const all = await this.list(person);
+    const panel = all.find((p) => p.id === panelId);
+    if (!panel) return "There is no such panel.";
+    const items = f(panel.items);
+    if (typeof items === "string") return items;
+    const next = { ...panel, items };
+    await this.storage.put(key(person), all.map((p) => (p.id === panelId ? next : p)));
+    return next;
   }
 
   /** A tile's kept reading, as it is. */

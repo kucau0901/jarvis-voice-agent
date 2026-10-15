@@ -34,6 +34,8 @@ export interface PanelRow {
   more?: PanelMore;
   /** A tile whose reading comes on its own (GET /api/hub/panels/read), since a tool can be slow. */
   read?: boolean;
+  /** A to-do ticked off: struck through, at the bottom, until cleared. */
+  done?: boolean;
 }
 
 export interface PanelMore {

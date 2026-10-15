@@ -4,7 +4,7 @@ import { callService, entityState, type HaConfig } from "./ha.ts";
 import { passService } from "./access.ts";
 import { carSnapshot, distanceIn, ensureAwake, sendCarCommand, type CarSnapshot, type TessieConfig } from "../tools/tessie.ts";
 import type { CarKey } from "./context.ts";
-import { idsOf, type Panel, type PanelItem } from "./panels.ts";
+import { idsOf, noteKey, ticked, type Panel, type PanelItem } from "./panels.ts";
 import { controlCall, controlsOf } from "./panel-controls.ts";
 import { parseTile, pressTile, readTile, tileIcon, tileKey, type TileButton, type TileSources } from "./panel-tiles.ts";
 import type { UsageReport } from "./usage.ts";
@@ -360,8 +360,8 @@ function usageTiles(r: UsageReport): { label: string; value: string }[] {
 
 const ICON: Record<"car" | "usage" | "note" | "tile", PanelIcon> = { car: "car", usage: "usage", note: "note", tile: "dot" };
 
-/** A thing's key on its panel, for a press: its ref, or a tile's short key. */
-export const keyOf = (i: PanelItem): string => (i.kind === "tile" ? tileKey(i.ref) : i.ref);
+/** A thing's key on its panel, for a press: its ref, or a tile's or a note's short key. */
+export const keyOf = (i: PanelItem): string => (i.kind === "tile" ? tileKey(i.ref) : i.kind === "note" ? noteKey(i.label) : i.ref);
 const iconOf = (item: PanelItem): PanelIcon => (item.kind === "home" ? houseIcon(item.ref, "", { friendly_name: item.label }) : ICON[item.kind]);
 const empty = (item: PanelItem, note: string): PanelRow[] => [
   { key: keyOf(item), kind: item.kind, label: item.label, value: "", icon: iconOf(item), active: false, tiles: [], actions: [], note },
@@ -375,7 +375,9 @@ export async function viewPanels(panels: Panel[], src: PanelSources): Promise<Pa
 
   // One row a thing, but a car is its tile and one for each of its controls.
   const rows = async (item: PanelItem): Promise<PanelRow[]> => {
-    if (item.kind === "note") return [{ key: item.ref, kind: "note", label: item.label, value: "", icon: "note", active: false, tiles: [], actions: [] }];
+    if (item.kind === "note") {
+      return [{ key: keyOf(item), kind: "note", label: item.label, value: "", icon: "note", active: false, tiles: [], actions: [], ...(ticked(item) ? { done: true } : {}) }];
+    }
     if (item.kind === "tile") {
       // Its reading is fetched on its own (readTileOf), so a slow tool never holds up the house.
       const spec = parseTile(item.ref);

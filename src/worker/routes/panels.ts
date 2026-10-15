@@ -25,13 +25,15 @@ import type { PanelsReply } from "../../shared/panels.ts";
  *        its question's kept answer, looked up again when stale (cached=1: what was kept, at once)
  *   POST /api/hub/panels/act   {panel, key, action, member?, code?}: press one of them
  *   POST /api/hub/panels/remove {panel}: take that panel off (its … menu)
+ *   POST /api/hub/panels/note  {panel, add?, tick?, clear?}: a to-do typed onto it, one ticked
+ *        off or back on (by its key), or the ticked ones cleared; no model
  *
  * A tile's tool runs as when you ask (lib/panel-tiles.ts): only from the
  * tools your grants offer, MCP ones only with `home`.
  */
 export async function handlePanels(req: Request, env: Env, principal: Principal): Promise<Response | null> {
   const p = new URL(req.url).pathname;
-  if (!["/api/hub/panels", "/api/hub/panels/read", "/api/hub/panels/act", "/api/hub/panels/remove"].includes(p)) return null;
+  if (!["/api/hub/panels", "/api/hub/panels/read", "/api/hub/panels/act", "/api/hub/panels/remove", "/api/hub/panels/note"].includes(p)) return null;
   if (principal.kind === "device") return err(403, "that is for a person, not a device");
   const grants = grantsOf(principal);
   if (!allows(grants, "screen")) return err(403, 'panels need "screen"', { need: "screen" });
@@ -102,6 +104,16 @@ export async function handlePanels(req: Request, env: Env, principal: Principal)
     };
     const r = await actOn(panel, String(b.key ?? ""), String(b.action ?? ""), src, req.signal, extra);
     return r.status === 200 ? json({ text: r.text }) : err(r.status, r.text);
+  }
+  if (p === "/api/hub/panels/note" && req.method === "POST") {
+    const b = await readObject(req, 2_000);
+    if (!b || typeof b.panel !== "string") return err(400, "send {panel, add | tick | clear}");
+    const r =
+      typeof b.add === "string" ? await state.panelAddNote(me, b.panel, b.add)
+      : typeof b.tick === "string" ? await state.panelTick(me, b.panel, b.tick)
+      : b.clear === true ? await state.panelClearTicked(me, b.panel)
+      : "send add, tick or clear";
+    return typeof r === "string" ? err(409, r) : json({ ok: true });
   }
   if (p === "/api/hub/panels/remove" && req.method === "POST") {
     const b = await readObject(req, 2_000);

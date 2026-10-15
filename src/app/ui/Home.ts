@@ -126,7 +126,9 @@ export class Home {
     try {
       const r = (await api(this.key, "GET", "/api/hub/panels")) as PanelsReply;
       // Not while a menu is open or a code is being typed: drawing again would take them away.
-      const busy = this.root.querySelector(".hmenu:not([hidden])") || [...this.root.querySelectorAll<HTMLInputElement>(".hcode")].some((c) => c.value || c === document.activeElement);
+      const busy =
+        this.root.querySelector(".hmenu:not([hidden])") ||
+        [...this.root.querySelectorAll<HTMLInputElement>(".hcode, .hadd input")].some((c) => c.value || c === document.activeElement);
       if (n === this.seq && !this.pressing && !busy) this.render(r);
     } catch (e) {
       if (n !== this.seq || this.pressing) return;
@@ -274,14 +276,66 @@ export class Home {
     const remove = el("button", "hremove", "Remove panel");
     remove.type = "button";
     arm(remove, "Tap again to remove", () => this.remove(p));
-    for (const b of [reload, remove]) b.setAttribute("role", "menuitem");
-    menu.append(reload, remove);
+    // A checklist's ticked to-dos go only when asked to: a mis-tap is undone by tapping again.
+    const items = [reload, ...(p.rows.some((r) => r.done) ? [button("Clear ticked", () => void this.note(p.id, { clear: true }), "hclear")] : []), remove];
+    for (const b of items) b.setAttribute("role", "menuitem");
+    menu.append(...items);
     head.append(fold, more, menu);
 
     const grid = el("div", "hgrid");
-    for (const r of p.rows) grid.appendChild(this.tile(p.id, r));
+    for (const r of p.rows) grid.appendChild(r.kind === "note" ? this.todo(p.id, r) : this.tile(p.id, r));
     card.append(head, grid);
+    if (p.rows.some((r) => r.kind === "note")) card.appendChild(this.adder(p));
     return card;
+  }
+
+  /** A to-do: a tick, and its words, struck through once ticked. */
+  private todo(panel: string, r: PanelRow): HTMLElement {
+    const t = el("div", `htile note${r.done ? " done" : ""}`);
+    t.dataset.icon = "note";
+    const tick = button("", () => {
+      // At once on screen; the server then moves it, and the next drawing follows.
+      const now = t.classList.toggle("done");
+      tick.setAttribute("aria-checked", String(now));
+      void this.note(panel, { tick: r.key });
+    }, "htick");
+    tick.setAttribute("role", "checkbox");
+    tick.setAttribute("aria-checked", String(!!r.done));
+    tick.setAttribute("aria-label", r.label);
+    t.append(tick, el("b", "hname", r.label));
+    return t;
+  }
+
+  /** A to-do typed straight onto its panel, with no model. */
+  private adder(p: PanelView): HTMLElement {
+    const form = el("form", "hadd");
+    const input = el("input");
+    input.placeholder = "Add a to-do";
+    input.maxLength = 120;
+    input.setAttribute("aria-label", `Add a to-do to ${p.title}`);
+    const go = el("button", "", "Add");
+    go.type = "submit";
+    form.append(input, go);
+    form.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const text = input.value.trim();
+      if (!text) return;
+      input.value = "";
+      void this.note(p.id, { add: text });
+    });
+    return form;
+  }
+
+  /** A checklist changed: a to-do added, ticked or cleared (POST /api/hub/panels/note). */
+  private async note(panel: string, body: { add?: string; tick?: string; clear?: boolean }): Promise<void> {
+    this.closeMenus();
+    try {
+      await api(this.key, "POST", "/api/hub/panels/note", { panel, ...body });
+    } catch (e) {
+      this.say(`Could not change the list: ${why(e)}`);
+      return;
+    }
+    await this.load();
   }
 
   private closeMenus(): void {

@@ -392,6 +392,12 @@ Home Controls", "a to-do panel with renew the road tax" (`panel_set`,
   reading comes on its own (GET
   /api/hub/panels/read), once a minute, so a slow tool or someone else's
   service never holds up the house.
+- **A checklist.** Notes are to-dos with a tick: ticked, one is struck
+  through and moved to the bottom, kept until "Clear ticked" in the panel's …
+  menu, so a mis-tap is undone by tapping again (the owner's choice). Any
+  panel holding notes has a box to type the next one straight onto it, with
+  no model call (POST /api/hub/panels/note). A ticked note keeps the stored
+  shape: its `ref` is "done" instead of "".
 - **A reading no tool has is looked up**, as Hark built "the latest official air
   quality for Springfield" when Jarvis had refused: no tool of the person's
   could read it, and the model's own web search cannot be wired to a tile.

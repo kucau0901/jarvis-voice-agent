@@ -446,6 +446,18 @@ export class JarvisState extends DurableObject<Env> {
     return this.panels.remove(person, title, item);
   }
 
+  panelAddNote(person: string, panelId: string, text: string) {
+    return this.panels.addNote(person, panelId, text);
+  }
+
+  panelTick(person: string, panelId: string, key: string) {
+    return this.panels.tick(person, panelId, key);
+  }
+
+  panelClearTicked(person: string, panelId: string) {
+    return this.panels.clearTicked(person, panelId);
+  }
+
   panelReading(person: string, tile: string) {
     return this.panels.reading(person, tile);
   }

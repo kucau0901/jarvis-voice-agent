@@ -1,6 +1,6 @@
 import { renderTemplate, type HaConfig } from "./ha.ts";
 import { houseIcon } from "./panel-view.ts";
-import { idsOf, type PanelItem } from "./panels.ts";
+import { idsOf, ticked, type PanelItem } from "./panels.ts";
 
 /**
  * How Jarvis lays out a panel, as Hark does, whatever the words it was asked
@@ -36,7 +36,8 @@ const roomish = (i: PanelItem): boolean => lit(i) || (i.kind === "home" && i.ref
 
 /** Where a thing goes: the way in, lights and switches, the climate, readings, then the car, the usage and notes. */
 function rank(i: PanelItem): number {
-  if (i.kind !== "home") return LAST[i.kind];
+  // A to-do ticked off stays below the open ones until it is cleared.
+  if (i.kind !== "home") return ticked(i) ? LAST.note + 1 : LAST[i.kind];
   const icon = iconOf(i);
   return WAY_IN.has(icon) ? 0 : icon === "climate" ? 2 : READING.has(icon) ? 3 : 1;
 }

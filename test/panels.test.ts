@@ -1,7 +1,7 @@
 // Panels on a person's Home tab: what is kept (lib/panels.ts), how each thing
 // is read and which buttons its state offers (lib/panel-view.ts), what a press
 // is checked against, and what the tool will put on one (tools/panels.ts).
-import { MAX_HOUSE, MAX_ITEMS, MAX_PANELS, Panels, type Panel } from "../src/worker/lib/panels.ts";
+import { MAX_HOUSE, MAX_ITEMS, MAX_PANELS, noteKey, Panels, type Panel } from "../src/worker/lib/panels.ts";
 import { actOn, carActions, houseActions, houseActive, houseIcon, houseValue, viewPanels, type PanelSources } from "../src/worker/lib/panel-view.ts";
 import { panelRemove, panelSet } from "../src/worker/tools/panels.ts";
 import { areasOf, arrange } from "../src/worker/lib/panel-arrange.ts";
@@ -72,6 +72,34 @@ console.log("what is kept");
   check("…and each of them counts towards MAX_HOUSE", typeof more === "string" && more.includes(String(MAX_HOUSE)), more);
   await panels.forget("u_sara");
   check("someone who leaves takes their panels with them", (await panels.list("u_sara")).length === 0 && (await panels.list("owner")).length === 1);
+}
+
+console.log("a checklist: typed onto a panel, ticked off, cleared");
+{
+  const lists = new Panels(fakeStorage());
+  const made = await lists.set("u", "To do", [{ kind: "note", ref: "", label: "Renew the road tax" }, { kind: "note", ref: "", label: "Book the service" }], "add");
+  const id = (made as Panel).id;
+  const added = await lists.addNote("u", id, "  Buy milk ");
+  check("a to-do typed onto the panel goes after the others", typeof added !== "string" && added.items.map((i) => i.label).join() === "Renew the road tax,Book the service,Buy milk", added);
+  check("…not twice", typeof (await lists.addNote("u", id, "buy MILK")) === "string" && typeof (await lists.addNote("u", id, "   ")) === "string");
+  const one = await lists.tick("u", id, noteKey("Renew the road tax"));
+  check("ticked, it goes to the bottom, marked done",
+    typeof one !== "string" && one.items.map((i) => `${i.label}${i.ref === "done" ? "✓" : ""}`).join() === "Book the service,Buy milk,Renew the road tax✓", one);
+  const next = await lists.addNote("u", id, "Water the plants");
+  check("a new one goes above the ticked ones", typeof next !== "string" && next.items.map((i) => i.label).at(-1) === "Renew the road tax" && next.items[2]!.label === "Water the plants");
+  const back = await lists.tick("u", id, noteKey("renew the road tax"));
+  check("ticked again, it is open again, above any still ticked", typeof back !== "string" && back.items.every((i) => i.ref === "") && back.items.at(-1)!.label === "Renew the road tax");
+  await lists.tick("u", id, noteKey("Book the service"));
+  await lists.tick("u", id, noteKey("Buy milk"));
+  const cleared = await lists.clearTicked("u", id);
+  check("Clear ticked takes off only the ticked ones", typeof cleared !== "string" && cleared.items.map((i) => i.label).join() === "Water the plants,Renew the road tax", cleared);
+  check("a to-do or a panel that is not there is said so", typeof (await lists.tick("u", id, "n_nothing")) === "string" && typeof (await lists.addNote("u", "p_none", "x")) === "string");
+  await lists.tick("u", id, noteKey("Water the plants"));
+  const [view] = await viewPanels(await lists.list("u"), sources().src);
+  check("drawn with each its own key, the ticked one marked done",
+    view!.rows.map((r) => `${r.key === noteKey(r.label) ? "k" : "?"}:${r.label}${r.done ? "✓" : ""}`).join() === "k:Renew the road tax,k:Water the plants✓", view!.rows);
+  check("Jarvis's own layout keeps ticked ones below the open",
+    arrange([{ kind: "note", ref: "done", label: "a" }, { kind: "note", ref: "", label: "b" }], new Map()).map((i) => i.label).join() === "b,a");
 }
 
 console.log("buttons follow the state");
