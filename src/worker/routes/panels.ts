@@ -45,6 +45,7 @@ export async function handlePanels(req: Request, env: Env, principal: Principal)
     units,
     house: haConfig(env),
     car: (id) => carById(env, id),
+    pick: (named) => pickCar(env, named),
     usage: () => state.usageReport(dayOf(Date.now(), timeZone), me),
     // One of this person's tools, as the router would offer it to them now.
     async tool(name, args) {

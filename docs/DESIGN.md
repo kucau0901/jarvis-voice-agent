@@ -384,7 +384,12 @@ Home Controls", "a to-do panel with renew the road tax" (`panel_set`,
   one model call a press, which the owner accepted. A tile's tool runs only
   if the person pressing is offered it now — the same tools, filtered by the
   same grants, as when they ask — so a tile can do nothing they could not ask
-  for, Hermes included. Its reading comes on its own (GET
+  for, Hermes included. A tile's buttons are fixed when it is made, so
+  those that send one of the car's paired commands (lock or unlock, climate
+  or charging on or off) are shown only when the car's state offers them,
+  read as for the car's own tiles, and one pressed after the car changed
+  sends nothing; when the car's state cannot be read they all stay. Its
+  reading comes on its own (GET
   /api/hub/panels/read), once a minute, so a slow tool or someone else's
   service never holds up the house.
 - **A reading no tool has is looked up**, as Hark built "the latest official air

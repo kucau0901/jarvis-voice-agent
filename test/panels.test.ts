@@ -136,6 +136,7 @@ function sources(over: Partial<PanelSources> = {}) {
     house: { base: "https://ha.example", token: "h" },
     read: async (_c, id) => (asked.reads++, house[id] ?? null),
     call: async (_c, d, s, id) => void asked.calls.push(`${d}.${s} ${id}`),
+    pick: () => ({ cfg, car: { id: "c_1", name: "Comet", level: "own", mine: true, vin: "VIN1", token: "t" } }),
     car: (id) => (id === "c_1" ? { cfg, car: { id: "c_1", name: "Comet", level: "own", mine: true, vin: "VIN1", token: "t" } } : id === "c_see" ? { cfg, car: { id: "c_see", name: "Mum's", level: "see", mine: false, vin: "VIN1", token: "t" } } : null),
     snapshot: async () => (asked.snapshots++, { battery: 69, rangeMiles: 176, charging: "Disconnected", locked: true, climateOn: false, insideTemp: 31.4 }),
     wake: async () => void asked.woke++,
@@ -440,6 +441,32 @@ console.log("a tile for anything else Jarvis can do");
     row.kind === "tile" && row.key === tileKey(ref) && row.read === true && row.actions.map((a) => `${a.action}:${a.label}`).join() === "b0:Pause,b1:Play something calm", row);
   check("pressed and read through the panel, by its key", (await actOn(p, tileKey(ref), "b0", all, signal)).text === "Paused." &&
     (await readTileOf(p, tileKey(ref), all)).text.startsWith("Playing") && (await readTileOf(p, "t_other", all)).status === 404);
+}
+
+console.log("a tile's car buttons follow the car");
+{
+  const cmd = (command: string) => ({ tool: "car_command", args: { command, value: null, temperature: null, percent: null, car: null } });
+  const spec = tileSpec({ read: { tool: "car_state", args: {} }, buttons: [
+    { label: "Lock", tool: cmd("lock") }, { label: "Unlock", tool: cmd("unlock") },
+    { label: "Start climate", tool: cmd("start_climate") }, { label: "Stop climate", tool: cmd("stop_climate") },
+    { label: "Stop charging", tool: cmd("stop_charging") }, { label: "Open frunk", tool: cmd("open_frunk") },
+  ] });
+  const ref = JSON.stringify(spec);
+  const p: Panel = { ...panel, items: [{ kind: "tile", ref, label: "Tesla" }] };
+  const ran: string[] = [];
+  const tool = async (name: string, args: Record<string, unknown>) => (ran.push(`${name} ${String(args.command)}`), { text: "Done." });
+  const shown = async (over: Partial<PanelSources>) => (await viewPanels([p], sources({ tool, ...over }).src))[0]!.rows[0]!.actions.map((a) => `${a.action}:${a.label}`).join();
+  check("locked, climate off and unplugged: Unlock and Start climate, and Open frunk, which has no state to follow",
+    (await shown({})) === "b1:Unlock,b2:Start climate,b5:Open frunk", await shown({}));
+  check("unlocked, climate on and charging: Lock, Stop climate and Stop charging",
+    (await shown({ snapshot: async () => ({ locked: false, climateOn: true, charging: "Charging" }) })) === "b0:Lock,b3:Stop climate,b4:Stop charging,b5:Open frunk");
+  check("when the car cannot be read, or is not theirs to check, every button stays",
+    (await shown({ snapshot: async () => { throw new Error("Tessie down"); } })).split(",").length === 6 && (await shown({ grants: ["screen", "car.control"] })).split(",").length === 6);
+  const { src } = sources({ tool });
+  const stale = await actOn(p, tileKey(ref), "b0", src, signal);
+  const fine = await actOn(p, tileKey(ref), "b1", src, signal);
+  check("Lock pressed after the car was locked sends nothing; Unlock goes through",
+    stale.status === 409 && fine.status === 200 && ran.join() === "car_command unlock", { stale, fine, ran });
 }
 
 console.log("a reading Jarvis looks up, as Hark's air quality");

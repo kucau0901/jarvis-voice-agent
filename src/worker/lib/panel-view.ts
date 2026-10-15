@@ -6,7 +6,7 @@ import { carSnapshot, distanceIn, ensureAwake, sendCarCommand, type CarSnapshot,
 import type { CarKey } from "./context.ts";
 import { idsOf, type Panel, type PanelItem } from "./panels.ts";
 import { controlCall, controlsOf } from "./panel-controls.ts";
-import { parseTile, pressTile, readTile, tileIcon, tileKey, type TileSources } from "./panel-tiles.ts";
+import { parseTile, pressTile, readTile, tileIcon, tileKey, type TileButton, type TileSources } from "./panel-tiles.ts";
 import type { UsageReport } from "./usage.ts";
 import type { PanelIcon, PanelRow, PanelView } from "../../shared/panels.ts";
 
@@ -37,6 +37,8 @@ export interface PanelSources extends TileSources {
   call: (cfg: HaConfig, domain: string, service: string, entity: string, data?: Record<string, unknown>) => Promise<void>;
   /** A car by its id among this person's, or null when it is no longer one of them. */
   car: (id: string) => { cfg: TessieConfig; car: CarKey | null } | null;
+  /** A car by the name a tile's button gives it (null: their usual one), or why there is none (tools/tessie.ts pickCar). */
+  pick: (named: string | null) => { cfg: TessieConfig; car: CarKey | null } | string;
   snapshot: (cfg: TessieConfig) => Promise<CarSnapshot>;
   wake: (cfg: TessieConfig, signal: AbortSignal, progress: (text: string) => void) => Promise<void>;
   command: (cfg: TessieConfig, name: string, extra: Record<string, string>, signal: AbortSignal) => Promise<boolean>;
@@ -303,6 +305,45 @@ function carRows(item: PanelItem, s: CarSnapshot, mayWork: boolean, units: "metr
   ];
 }
 
+/**
+ * A tile's button that sends one of the car's paired commands — lock or
+ * unlock, climate on or off, charging on or off — and to which car (null:
+ * their usual one). Only these follow the car's state; open_frunk or honk
+ * always fit.
+ */
+function pairedCarCommand(b: TileButton): { command: string; car: string | null } | null {
+  const args = b.tool?.tool === "car_command" ? b.tool.args : null;
+  if (!args || typeof args.command !== "string" || !Object.hasOwn(CAR_LABEL, args.command)) return null;
+  return { command: args.command, car: typeof args.car === "string" && args.car.trim() ? args.car : null };
+}
+
+/**
+ * What a car's state offers now (carActions), from Tessie's last state as
+ * for its own tiles, which never wakes it; null when that cannot be known
+ * (not theirs to check, no such car, Tessie not answering), and the button
+ * is then left as it is.
+ */
+async function carOffers(named: string | null, src: PanelSources, reads: Map<string, Promise<CarSnapshot>>): Promise<string[] | null> {
+  if (!allows(src.grants, "car.read")) return null;
+  const picked = src.pick(named);
+  if (typeof picked === "string") return null;
+  let read = reads.get(picked.cfg.vin);
+  if (!read) reads.set(picked.cfg.vin, (read = src.snapshot(picked.cfg)));
+  try {
+    return carActions(await read);
+  } catch {
+    return null;
+  }
+}
+
+/** Whether a tile's button fits the car's state now: Lock only when it is unlocked, as the car's own tiles. */
+async function fitsTheCar(b: TileButton, src: PanelSources, reads: Map<string, Promise<CarSnapshot>>): Promise<boolean> {
+  const c = pairedCarCommand(b);
+  if (!c) return true;
+  const offers = await carOffers(c.car, src, reads);
+  return !offers || offers.includes(c.command);
+}
+
 /* ---------- reading ---------------------------------------------------------------- */
 
 const money = (n: number) => `$${n.toFixed(2)}`;
@@ -339,9 +380,11 @@ export async function viewPanels(panels: Panel[], src: PanelSources): Promise<Pa
       // Its reading is fetched on its own (readTileOf), so a slow tool never holds up the house.
       const spec = parseTile(item.ref);
       if (!spec) return empty(item, "This tile no longer reads back: ask Jarvis to make it again.");
+      // A car button shows only when the car's state offers it; each keeps its own number, for the press.
+      const fits = await Promise.all(spec.buttons.map((b) => fitsTheCar(b, src, carReads)));
       return [{
         key: keyOf(item), kind: "tile", label: item.label, value: "", icon: tileIcon(spec), active: false, tiles: [],
-        actions: spec.buttons.map((b, i) => ({ action: `b${i}`, label: b.label })),
+        actions: spec.buttons.flatMap((b, i) => (fits[i] ? [{ action: `b${i}`, label: b.label }] : [])),
         ...(spec.read ? { read: true } : {}),
       }];
     }
@@ -500,7 +543,11 @@ export async function actOn(
 
   if (item.kind === "tile") {
     const spec = parseTile(item.ref);
-    return spec ? pressTile(item.label, spec, action, src) : { status: 409, text: "This tile no longer reads back: ask Jarvis to make it again." };
+    if (!spec) return { status: 409, text: "This tile no longer reads back: ask Jarvis to make it again." };
+    // A car button pressed after the car changed (Lock, and it was locked meanwhile) sends nothing, as on the car's own tiles.
+    const b = spec.buttons[Number(/^b(\d)$/.exec(action)?.[1] ?? -1)];
+    if (b && !(await fitsTheCar(b, src, new Map()))) return { status: 409, text: `${item.label}: the car has changed since this was shown, so that was not sent.` };
+    return pressTile(item.label, spec, action, src);
   }
 
   if (item.kind === "home") {
