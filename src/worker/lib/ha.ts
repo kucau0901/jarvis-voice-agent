@@ -68,6 +68,35 @@ export async function entityState(
 }
 
 /**
+ * A thing's readings over the last hours, oldest first, for a panel's chart:
+ * the numeric states Home Assistant recorded (its history, one request).
+ * Throws if the house cannot be asked.
+ */
+export async function entityHistory(
+  cfg: HaConfig,
+  entity: string,
+  hours = 24,
+  now = Date.now(),
+  fetchImpl: typeof fetch = fetch,
+): Promise<{ t: number; v: number }[]> {
+  const start = new Date(now - hours * 3_600_000).toISOString();
+  const end = new Date(now).toISOString();
+  const res = await fetchImpl(
+    `${cfg.base}/api/history/period/${start}?filter_entity_id=${encodeURIComponent(entity)}&end_time=${encodeURIComponent(end)}&minimal_response&no_attributes`,
+    { headers: { Authorization: `Bearer ${cfg.token}` }, signal: AbortSignal.timeout(15_000) },
+  );
+  if (!res.ok) throw new Error(`Home Assistant said ${res.status}`);
+  const all = (await res.json()) as unknown;
+  const rows: unknown[] = Array.isArray(all) && Array.isArray(all[0]) ? all[0] : [];
+  return rows.flatMap((r) => {
+    const { state, last_changed } = (r ?? {}) as { state?: unknown; last_changed?: unknown };
+    const v = Number(state);
+    const t = Date.parse(String(last_changed ?? ""));
+    return state !== "" && Number.isFinite(v) && Number.isFinite(t) ? [{ t, v }] : [];
+  });
+}
+
+/**
  * Work one thing in the house (a guest's pass, lib/access.ts; a panel's
  * button): a service on one entity, with what it is set to if anything (an
  * aircond's temperature, an alarm's code), nothing else. Throws with Home

@@ -45,7 +45,10 @@ of every release, and in the [README](README.md#updating).
   button asks Jarvis a sentence instead. A tile does only what its person
   could ask for, and its car buttons follow the car as its own tiles do:
   Unlock while it is locked, Lock while it is not. Lights dim, fans, blinds
-  and speakers set by a slider, and a tile's button can take a number or
+  and speakers set by a slider; a temperature or any other number in the
+  house opens to its last day as a chart, the car to where it is on a map,
+  and a looked-up reading can show a list (a forecast), a trend and a map.
+  A tile's button can take a number or
   typed words (the music's volume, a note to the family). Notes are a checklist:
   tick one off and it is struck through until "Clear ticked", and type new
   ones straight onto the panel. For what no tool can read ("a panel for the latest air

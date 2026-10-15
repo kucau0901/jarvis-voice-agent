@@ -38,6 +38,12 @@ export interface Reading {
   text: string;
   figures: { label: string; value: string }[];
   at: number;
+  /** A few lines: a forecast's days, the headlines. */
+  list?: string[];
+  /** A trend, drawn as a line: the last day's readings, a week's prices. */
+  chart?: { title: string; points: { x: string; y: number }[] };
+  /** Where it is, drawn as a map when the deployment has a Maps key. */
+  map?: { lat: number; lng: number };
 }
 
 export const MAX_PANELS = 8;

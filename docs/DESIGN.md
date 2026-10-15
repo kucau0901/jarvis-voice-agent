@@ -392,6 +392,16 @@ Home Controls", "a to-do panel with renew the road tax" (`panel_set`,
   reading comes on its own (GET
   /api/hub/panels/read), once a minute, so a slow tool or someone else's
   service never holds up the house.
+- **Lists, charts and maps.** A looked-up reading can carry, beside its
+  figures, a short list (lines starting "- ": a forecast's days, the
+  headlines), a trend ("Chart: <title>: x=y; …", drawn as a line) and a
+  place ("Map: lat, lng"); a tool that answers in lines keeps them as a list.
+  A number in the house — a sensor, a number helper — opens to its last day
+  from Home Assistant's history (GET /api/hub/panels/history, one request,
+  thinned to 96 points by averaging, asked again only every five minutes
+  while open), and the car opens to where it is. Charts are drawn as SVG in
+  code, with no library; maps come through the Worker's map proxy as the
+  stage's do, so they need the Maps key and are left out without one.
 - **Sliders and typing.** What has a level opens to a slider: a light's
   brightness (0 turns it off), a fan's speed, a blind's position, a
   speaker's volume, a number helper's value, each in the range Home

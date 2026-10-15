@@ -7,7 +7,8 @@ import { panelRemove, panelSet } from "../src/worker/tools/panels.ts";
 import { areasOf, arrange } from "../src/worker/lib/panel-arrange.ts";
 import { controlCall, controlsOf } from "../src/worker/lib/panel-controls.ts";
 import { parseTile, pressTile, readingOf, readTile, tileIcon, tileKey, tileSpec } from "../src/worker/lib/panel-tiles.ts";
-import { readTileOf } from "../src/worker/lib/panel-view.ts";
+import { historyOf, readTileOf } from "../src/worker/lib/panel-view.ts";
+import { entityHistory } from "../src/worker/lib/ha.ts";
 
 let pass = 0, fail = 0;
 function check(name: string, cond: boolean, got?: unknown) {
@@ -171,6 +172,8 @@ function sources(over: Partial<PanelSources> = {}) {
     command: async (_c, name) => (asked.commands.push(name), true),
     tool: async () => null,
     ask: async () => "",
+    history: async () => [],
+    maps: false,
     usage: async () => ({ month: "2026-10", total: { day: "", questions: 40, byHouse: 0, cost: { router: 1, live: 0.5, jobs: 0.25 }, liveSeconds: 600, jobs: 1, unpriced: 0 }, today: { day: "", questions: 3, byHouse: 0, cost: { router: 0, live: 0, jobs: 0 }, liveSeconds: 0, jobs: 0, unpriced: 0 }, medianMs: null, slowest: [], recent: [] }),
     ...over,
   };
@@ -525,6 +528,50 @@ console.log("sliders: brightness, speed, position, volume, a number");
     JSON.stringify(view!.rows[0]!.actions.map((a) => a.input)) === '[{"kind":"slider","min":0,"max":100,"step":1},{"kind":"text","hint":""},{"kind":"text","hint":""}]', view!.rows[0]!.actions);
 }
 
+console.log("lists, charts and maps");
+{
+  const r = readingOf([
+    "Hazy, unhealthy for sensitive groups",
+    "API: 175",
+    "- Thu: 160, moderate",
+    "- Fri: 120",
+    "Chart: API today: 08:00=120; 12:00=160; 15:00=175",
+    "Map: 2.19, 102.25",
+  ].join("\n"), 9);
+  check("a looked-up answer keeps its list, its trend and its place",
+    r.figures.length === 1 && r.list?.join("|") === "Thu: 160, moderate|Fri: 120" && r.chart?.title === "API today" &&
+    r.chart.points.map((p) => `${p.x}=${p.y}`).join() === "08:00=120,12:00=160,15:00=175" && r.map?.lat === 2.19 && r.map.lng === 102.25, r);
+  check("a chart of one point, or a place off the globe, is not drawn",
+    !readingOf("x\nChart: t: a=1", 0).chart && !readingOf("x\nMap: 95, 10", 0).map);
+  const lines = await readTile(tileSpec({ read: { tool: "calendar_check", args: {} }, buttons: [] }) as never,
+    { tool: async () => ({ text: "Today, three things:\n- 10:00 Dentist\n- 13:00 Lunch with Sam\n- 18:30 School pickup" }), ask: async () => "", kept: async () => null, claim: async () => ({ reading: null, go: false }), keep: async () => {} }, "t_c");
+  check("a tool that answers in lines keeps them as a list", lines.text === "Today, three things:" && lines.list?.length === 3 && lines.list[0] === "10:00 Dentist", lines);
+
+  const asked: string[] = [];
+  const day = await entityHistory({ base: "https://ha.example", token: "h" }, "sensor.outside", 24, Date.parse("2026-10-15T12:00:00Z"),
+    (async (u: unknown) => (asked.push(String(u)), new Response(JSON.stringify([[
+      { state: "30.5", last_changed: "2026-10-14T13:00:00Z" }, { state: "unavailable", last_changed: "2026-10-14T14:00:00Z" }, { state: "31", last_changed: "2026-10-14T15:00:00Z" },
+    ]])))) as typeof fetch);
+  check("a sensor's last day from Home Assistant's history, its numbers only, in one request",
+    day.map((p) => p.v).join() === "30.5,31" && asked.length === 1 && asked[0]!.includes("/api/history/period/2026-10-14T12:00:00.000Z") && asked[0]!.includes("filter_entity_id=sensor.outside"), { day, asked });
+
+  const many = Array.from({ length: 300 }, (_, i) => ({ t: i * 60_000, v: i % 2 }));
+  const house: Record<string, { state: string; attributes: Record<string, unknown> }> = { "sensor.outside": { state: "31", attributes: { unit_of_measurement: "°C" } } };
+  const { src } = sources({ read: async (_c, id) => house[id] ?? null, history: async () => many });
+  const p: Panel = { ...panel, items: [{ kind: "home", ref: "sensor.outside", label: "Outside" }] };
+  const h = await historyOf(p, "sensor.outside", src);
+  check("thinned to at most 96 points by averaging, with its unit", h.status === 200 && h.points!.length <= 96 && h.points![0]!.v === 0.5 && h.unit === "°C", { n: h.points?.length, first: h.points?.[0], unit: h.unit });
+  check("…only for what is on the panel, and only with home",
+    (await historyOf(p, "sensor.other", src)).status === 404 && (await historyOf(p, "sensor.outside", sources({ grants: ["screen"] }).src)).status === 403);
+  const [view] = await viewPanels([{ ...p, items: [...p.items, { kind: "home", ref: "cover.main_gate", label: "Main gate" }] }], sources({ read: async (_c, id) => house[id] ?? { state: "closed", attributes: {} } }).src);
+  check("a number opens to its chart; a gate does not", view!.rows[0]!.more?.history === true && !view!.rows[1]!.more?.history);
+
+  const at = { battery: 70, rangeMiles: 200, charging: "Disconnected", locked: true, climateOn: false, lat: 3.1, lng: 101.6 };
+  const withMaps = (await viewPanels([{ ...panel, items: [{ kind: "car", ref: "c_1", label: "Comet" }] }], sources({ snapshot: async () => at, maps: true }).src))[0]!.rows[0]!;
+  const without = (await viewPanels([{ ...panel, items: [{ kind: "car", ref: "c_1", label: "Comet" }] }], sources({ snapshot: async () => at }).src))[0]!.rows[0]!;
+  check("the car opens to where it is, only where a map can be drawn", JSON.stringify(withMaps.more?.map) === '{"lat":3.1,"lng":101.6}' && !without.more, withMaps);
+}
+
 console.log("a tile's car buttons follow the car");
 {
   const cmd = (command: string) => ({ tool: "car_command", args: { command, value: null, temperature: null, percent: null, car: null } });
@@ -557,7 +604,8 @@ console.log("a reading Jarvis looks up, as Hark's air quality");
   check("a question as its reading, looked up at most hourly however often it was asked for",
     typeof aqi === "object" && "ask" in aqi.read! && aqi.read.every === 60 && (tileSpec({ read: { ask: "x", every: 99999 }, buttons: [] }) as { read: { every: number } }).read.every === 1440, aqi);
   check("drawn as the web", tileIcon(aqi as never) === "web");
-  const answer = "**Unhealthy**: sensitive groups should limit outdoor activity.\n- API: 175\n- As of: 3:00 PM\nSource: City monitor, Springfield station";
+  // Figures as the answer is asked to give them ("Label: value"), the verdict in bold as models are given to.
+  const answer = "**Unhealthy**: sensitive groups should limit outdoor activity.\nAPI: 175\nAs of: 3:00 PM\nSource: City monitor, Springfield station";
   const r = readingOf(answer, 5);
   check("an answer read back as its verdict and up to three figures",
     r.text === "Unhealthy: sensitive groups should limit outdoor activity." && r.figures.map((f) => `${f.label}=${f.value}`).join("|") === "API=175|As of=3:00 PM|Source=City monitor, Springfield station" && r.at === 5, r);

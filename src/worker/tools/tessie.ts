@@ -135,6 +135,9 @@ export interface CarSnapshot {
   locked: boolean | null;
   climateOn: boolean | null;
   insideTemp?: number;
+  /** Where it is, from its last state (a panel's map). */
+  lat?: number;
+  lng?: number;
 }
 
 export async function carSnapshot(cfg: TessieConfig, signal?: AbortSignal): Promise<CarSnapshot> {
@@ -142,6 +145,7 @@ export async function carSnapshot(cfg: TessieConfig, signal?: AbortSignal): Prom
     charge_state?: Record<string, unknown>;
     climate_state?: Record<string, unknown>;
     vehicle_state?: Record<string, unknown>;
+    drive_state?: Record<string, unknown>;
   };
   const bool = (v: unknown) => (typeof v === "boolean" ? v : null);
   return {
@@ -151,6 +155,8 @@ export async function carSnapshot(cfg: TessieConfig, signal?: AbortSignal): Prom
     locked: bool(s.vehicle_state?.locked),
     climateOn: bool(s.climate_state?.is_climate_on),
     insideTemp: num(s.climate_state?.inside_temp),
+    lat: num(s.drive_state?.latitude),
+    lng: num(s.drive_state?.longitude),
   };
 }
 

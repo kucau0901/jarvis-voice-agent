@@ -50,6 +50,10 @@ export interface PanelMore {
   actions?: { action: string; label: string }[];
   /** Which of those want the alarm's code, and whether it is digits. */
   code?: { digits: boolean; for: string[] };
+  /** A number read over the last day: its chart is fetched when the tile opens (GET /api/hub/panels/history). */
+  history?: boolean;
+  /** Where it is (the car), drawn as a map when the tile opens. */
+  map?: { lat: number; lng: number };
   /** A slider: a light's brightness, a fan's speed, a blind's position, a speaker's volume, a number. Pressed as `level:<n>`. */
   level?: { name: string; value: number; min: number; max: number; step: number; unit: string };
 }

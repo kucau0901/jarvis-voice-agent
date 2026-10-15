@@ -156,24 +156,73 @@ export interface TileSources {
 const FOR_A_TILE =
   "This is for a tile on the user's Home screen, refreshed now and then. Answer with one short line first " +
   '(the verdict, e.g. "Unhealthy: sensitive groups should limit outdoor activity"), then at most three ' +
-  'figures, each on its own line as "Label: value" (e.g. "API: 175", "As of: 3:00 PM"). Nothing else, no markdown.';
+  'figures, each on its own line as "Label: value" (e.g. "API: 175", "As of: 3:00 PM"). Where they help, ' +
+  'add: up to eight lines starting with "- " (a forecast\'s days, the headlines); one line ' +
+  '"Chart: <title>: <x>=<number>; <x>=<number>; …" with up to 24 points (a trend, e.g. ' +
+  '"Chart: API today: 08:00=120; 12:00=160; 15:00=175"); one line "Map: <latitude>, <longitude>" for a ' +
+  "place that matters. Nothing else, no markdown.";
 
-/** An answer as a tile shows it: its first line, and the "Label: value" lines after it. */
-export function readingOf(answer: string, at: number): Reading {
-  const lines = answer
-    .split("\n")
-    .map((l) => l.replace(/^[\s>*\-•]+/, "").replace(/\*\*/g, "").trim())
-    .filter(Boolean);
-  const figures: Reading["figures"] = [];
-  for (const l of lines.slice(1)) {
-    const m = /^([^:]{1,24}):\s*(.{1,40})$/.exec(l);
-    if (m && figures.length < 3) figures.push({ label: m[1]!.trim(), value: m[2]!.trim() });
-  }
-  return { text: clip(lines[0] ?? "", 200), figures, at };
+/** "Chart: API today: 08:00=120; 12:00=160" as its title and points; null if it is not one. */
+function chartOf(line: string): Reading["chart"] | null {
+  const m = /^chart\s*:\s*(.*?)\s*:\s*(.+)$/i.exec(line);
+  if (!m) return null;
+  const points = m[2]!
+    .split(/;|,(?=\s*[^=;]+=)/)
+    .map((p) => /^\s*(.{1,16}?)\s*=\s*(-?[\d.]+)/.exec(p))
+    .filter((p): p is RegExpExecArray => !!p)
+    .map((p) => ({ x: p[1]!, y: Number(p[2]) }))
+    .filter((p) => Number.isFinite(p.y))
+    .slice(0, 24);
+  return points.length >= 2 ? { title: clip(m[1]!, 40), points } : null;
 }
 
-type Shown = { status: number; text: string; image?: string; figures?: Reading["figures"]; at?: number; stale?: boolean; pending?: boolean };
-const shownOf = (r: Reading | null): Omit<Shown, "status"> => (r ? { text: r.text, figures: r.figures, at: r.at } : { text: "" });
+/** "Map: 2.19, 102.25" as a point on the map; null if it is not one. */
+function mapOf(line: string): Reading["map"] | null {
+  const m = /^map\s*:\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/i.exec(line);
+  const lat = Number(m?.[1]);
+  const lng = Number(m?.[2]);
+  return m && Math.abs(lat) <= 90 && Math.abs(lng) <= 180 ? { lat, lng } : null;
+}
+
+/**
+ * An answer as a tile shows it: its first line; then "Label: value" lines
+ * as figures (three at most), a "Chart:" line as a trend, a "Map:" line as
+ * a place, and the rest — lines that start "- ", as it is asked to give
+ * them — as a short list, even where one reads "Thu: 160".
+ */
+export function readingOf(answer: string, at: number): Reading {
+  const raw = answer.split("\n").map((l) => l.replace(/\*\*/g, "").trim()).filter(Boolean);
+  const bullet = new Set(raw.map((l, i) => (/^[-*•]\s/.test(l) ? i : -1)).filter((i) => i > 0));
+  const lines = raw.map((l) => l.replace(/^[\s>*\-•]+/, "").trim());
+  const figures: Reading["figures"] = [];
+  const list: string[] = [];
+  let chart: Reading["chart"] | null = null;
+  let map: Reading["map"] | null = null;
+  for (const [i, l] of lines.entries()) {
+    if (i === 0 || !l) continue;
+    if (bullet.has(i)) {
+      if (list.length < 8) list.push(clip(l, 140));
+      continue;
+    }
+    const c: Reading["chart"] | null = chart ? null : chartOf(l);
+    if (c) {
+      chart = c;
+      continue;
+    }
+    const where: Reading["map"] | null = map ? null : mapOf(l);
+    if (where) {
+      map = where;
+      continue;
+    }
+    const m = /^([^:]{1,24}):\s*(.{1,40})$/.exec(l);
+    if (m && figures.length < 3) figures.push({ label: m[1]!.trim(), value: m[2]!.trim() });
+    else if (list.length < 8) list.push(clip(l, 140));
+  }
+  return { text: clip(lines[0] ?? "", 200), figures, at, ...(list.length ? { list } : {}), ...(chart ? { chart } : {}), ...(map ? { map } : {}) };
+}
+
+type Shown = Partial<Omit<Reading, "text">> & { status: number; text: string; image?: string; stale?: boolean; pending?: boolean };
+const shownOf = (r: Reading | null): Omit<Shown, "status"> => r ?? { text: "" };
 
 /**
  * An asked reading: `cached` answers at once with what was kept, saying
@@ -218,7 +267,10 @@ export async function readTile(spec: TileSpec, src: TileSources, key: string, ca
   try {
     const out = await src.tool(spec.read.tool, spec.read.args);
     if (!out) return { status: 403, text: `${spec.read.tool} is not yours to use here.` };
-    return { status: 200, text: clip(out.text, 600), ...(out.image ? { image: out.image } : {}) };
+    // A tool that answers in lines (today's events) keeps them, as a list under its first.
+    const lines = out.text.split("\n").map((l) => l.replace(/^[\s>*\-•]+/, "").trim()).filter(Boolean);
+    const list = lines.slice(1, 9).map((l) => clip(l, 140));
+    return { status: 200, text: clip(lines[0] ?? "", 300), ...(list.length ? { list } : {}), ...(out.image ? { image: out.image } : {}) };
   } catch (e) {
     return { status: 502, text: `Could not read it just now: ${why(e)}` };
   }

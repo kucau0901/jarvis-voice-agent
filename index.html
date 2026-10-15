@@ -959,6 +959,19 @@
     background: var(--field); color: var(--fg); font: inherit; font-size: 16px; }
   #home .htyped input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
   #home .htyped button { flex: none; }
+  /* Beyond words (ui/HomeChart.ts): a short list, a trend as a line, a place as a map. */
+  #home .hlist { margin: 10px 0 0; padding: 0 0 0 18px; color: var(--fg); font-size: 13px; line-height: 1.5; }
+  #home .hlist li::marker { color: var(--faint); }
+  #home .hchart { display: grid; gap: 4px; margin: 10px 0 0; }
+  #home .hchart figcaption { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+  #home .hchart figcaption small { color: var(--dim); font-size: 12px; }
+  #home .hchart figcaption b { font-size: 20px; font-weight: 500; font-variant-numeric: tabular-nums; }
+  #home .hchart svg { display: block; width: 100%; height: 90px; overflow: visible; }
+  #home .hchart .hline { fill: none; stroke: var(--accent-ink); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+  #home .hchart .harea { fill: color-mix(in srgb, var(--accent-ink) 14%, transparent); stroke: none; }
+  #home .hends { display: flex; justify-content: space-between; color: var(--faint); font-size: 11px; }
+  #home .hmap { display: block; width: 100%; aspect-ratio: 640 / 300; margin-top: 10px; border-radius: 12px; object-fit: cover; background: var(--wash); }
+  #home .hextra:empty { display: none; }
   /* A tile wired to a tool: its reading, a few lines of it, and a picture when the tool gives one (a camera). */
   #home .htile.tile .hstate { display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
   #home .hshot { display: block; width: 100%; margin-top: 10px; border-radius: 12px; }

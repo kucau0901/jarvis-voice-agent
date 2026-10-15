@@ -1,6 +1,6 @@
 import type { Grant } from "./scopes.ts";
 import { allows } from "./scopes.ts";
-import { callService, entityState, type HaConfig } from "./ha.ts";
+import { callService, entityHistory, entityState, type HaConfig } from "./ha.ts";
 import { passService } from "./access.ts";
 import { carSnapshot, distanceIn, ensureAwake, sendCarCommand, type CarSnapshot, type TessieConfig } from "../tools/tessie.ts";
 import type { CarKey } from "./context.ts";
@@ -44,6 +44,10 @@ export interface PanelSources extends TileSources {
   command: (cfg: TessieConfig, name: string, extra: Record<string, string>, signal: AbortSignal) => Promise<boolean>;
   /** This person's usage this month and today. */
   usage: () => Promise<UsageReport | null>;
+  /** A thing's numeric readings over the last day, oldest first (a chart). */
+  history: (cfg: HaConfig, entity: string) => Promise<{ t: number; v: number }[]>;
+  /** Whether maps can be drawn here: the deployment has a Maps key (routes/map.ts). */
+  maps: boolean;
 }
 
 /** The real sources, but for what only a request knows. */
@@ -51,6 +55,7 @@ export const LIVE = {
   read: (cfg: HaConfig, entity: string) => entityState(cfg, entity),
   call: (cfg: HaConfig, domain: string, service: string, entity: string, data?: Record<string, unknown>) => callService(cfg, domain, service, entity, data),
   snapshot: (cfg: TessieConfig) => carSnapshot(cfg),
+  history: (cfg: HaConfig, entity: string) => entityHistory(cfg, entity),
   wake: ensureAwake,
   command: sendCarCommand,
 };
@@ -223,9 +228,14 @@ export function houseValue(entity: string, state: string, a: Record<string, unkn
   return [cap(state.replace(/[_-]/g, " ")), t === undefined ? null : `${t}${tUnit}`].filter(Boolean).join(", ");
 }
 
+/** A reading Home Assistant keeps history for: a number, from a sensor or a number helper. */
+const charted = (entity: string, state: string): boolean =>
+  ["sensor", "number", "input_number"].includes(entity.split(".")[0]!) && state.trim() !== "" && Number.isFinite(Number(state));
+
 /** One thing in the house as its tile shows it, with the buttons and the opened controls its state offers. */
 function houseRow(key: string, label: string, entity: string, now: HouseState): PanelRow {
   const ctl = controlsOf(entity, now.state, now.attributes);
+  const more = { ...ctl?.more, ...(charted(entity, now.state) ? { history: true } : {}) };
   return {
     key,
     kind: "home",
@@ -235,7 +245,7 @@ function houseRow(key: string, label: string, entity: string, now: HouseState): 
     active: houseActive(entity, now.state),
     tiles: [],
     actions: ctl?.actions ?? houseActions(entity, now.state).map((action) => ({ action, label: actionLabel(entity, action) })),
-    ...(ctl?.more ? { more: ctl.more } : {}),
+    ...(Object.keys(more).length ? { more } : {}),
   };
 }
 
@@ -269,7 +279,7 @@ const CHARGING: Record<string, string> = { Charging: "Charging", Complete: "Char
  * state offers. Every one presses as the car (its key), so actOn checks them
  * all the same way.
  */
-function carRows(item: PanelItem, s: CarSnapshot, mayWork: boolean, units: "metric" | "imperial"): PanelRow[] {
+function carRows(item: PanelItem, s: CarSnapshot, mayWork: boolean, units: "metric" | "imperial", maps: boolean): PanelRow[] {
   const range = distanceIn(s.rangeMiles, units);
   const charging = s.charging === null ? null : (CHARGING[s.charging] ?? cap(s.charging.toLowerCase()));
   // Tesla reports Celsius, whatever the car shows.
@@ -294,6 +304,8 @@ function carRows(item: PanelItem, s: CarSnapshot, mayWork: boolean, units: "metr
       icon: "car",
       active: s.charging === "Charging",
       ...(s.battery === undefined ? {} : { level: s.battery }),
+      // Opened, where it is, when this deployment can draw a map.
+      ...(maps && s.lat !== undefined && s.lng !== undefined ? { more: { map: { lat: s.lat, lng: s.lng } } } : {}),
       tiles: [],
       actions: [],
     },
@@ -455,7 +467,7 @@ export async function viewPanels(panels: Panel[], src: PanelSources): Promise<Pa
     if (!read) carReads.set(picked.cfg.vin, (read = src.snapshot(picked.cfg)));
     try {
       const mayWork = allows(src.grants, "car.control") && picked.car?.level !== "see";
-      return carRows(item, await read, mayWork, src.units);
+      return carRows(item, await read, mayWork, src.units, src.maps);
     } catch {
       return empty(item, "Could not reach the car's service just now.");
     }
@@ -591,4 +603,32 @@ export async function readTileOf(panel: Panel | undefined, key: string, src: Pan
   const spec = item ? parseTile(item.ref) : null;
   if (!spec) return { status: 404, text: "That is not a tile on this panel." };
   return readTile(spec, src, key, cached);
+}
+
+/** How many points a chart is drawn from, at most: a day's readings are thinned to this by averaging. */
+const CHART_POINTS = 96;
+
+/**
+ * A number's last day on a panel (GET /api/hub/panels/history): the thing
+ * must be on this person's panel and in the house they reach. Its readings
+ * are averaged into at most CHART_POINTS, with the unit to label them.
+ */
+export async function historyOf(panel: Panel | undefined, key: string, src: PanelSources): Promise<{ status: number; text?: string; points?: { t: number; v: number }[]; unit?: string }> {
+  const item = panel?.items.find((i) => i.kind === "home" && i.ref === key && idsOf(i).length === 1);
+  if (!item) return { status: 404, text: "That is not on this panel." };
+  if (!allows(src.grants, "home")) return { status: 403, text: 'The house needs "home".' };
+  if (!src.house) return { status: 409, text: "The house is not connected to Jarvis." };
+  try {
+    const [now, raw] = await Promise.all([src.read(src.house, item.ref), src.history(src.house, item.ref)]);
+    const unit = typeof now?.attributes.unit_of_measurement === "string" ? now.attributes.unit_of_measurement : "";
+    const per = Math.ceil(raw.length / CHART_POINTS) || 1;
+    const points: { t: number; v: number }[] = [];
+    for (let i = 0; i < raw.length; i += per) {
+      const run = raw.slice(i, i + per);
+      points.push({ t: run[0]!.t, v: Math.round((run.reduce((a, p) => a + p.v, 0) / run.length) * 100) / 100 });
+    }
+    return { status: 200, points, unit };
+  } catch (e) {
+    return { status: 502, text: `Could not reach the house: ${e instanceof Error ? e.message : String(e)}` };
+  }
 }

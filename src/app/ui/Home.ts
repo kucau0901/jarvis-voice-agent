@@ -2,6 +2,7 @@ import { api } from "../key";
 import type { PanelRow, PanelView, PanelsReply } from "../../shared/panels";
 import { arm, button, el } from "./util";
 import { moreBody, slider, typed } from "./HomeMore";
+import { lineChart, mapImage } from "./HomeChart";
 
 /**
  * The Home tab: this person's panels (src/worker/lib/panel-view.ts), as
@@ -32,7 +33,21 @@ const READ_MS = 60_000;
 const SOON_MS = 20_000;
 
 /** A tile's reading as the server sends it (GET /api/hub/panels/read). */
-type Shown = { text: string; image?: string; figures?: { label: string; value: string }[]; at?: number; stale?: boolean; pending?: boolean; failed?: boolean };
+type Shown = {
+  text: string;
+  image?: string;
+  figures?: { label: string; value: string }[];
+  list?: string[];
+  chart?: { title: string; points: { x: string; y: number }[] };
+  map?: { lat: number; lng: number };
+  at?: number;
+  stale?: boolean;
+  pending?: boolean;
+  failed?: boolean;
+};
+/** How long a sensor's last day, once fetched for its chart, is drawn again without asking the house. */
+const HISTORY_MS = 5 * 60_000;
+const clock = (t: number) => new Date(t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 const FOLDED = "jarvis.homeFolded";
 /** Tiles' worth (a car or the usage counts two) from which a panel takes the page's width, not a column's. */
 const BIG = 5;
@@ -83,6 +98,8 @@ export class Home {
   private pressing = 0;
   /** Tiles opened, by panel and key: they stay open when the panels are drawn again. */
   private opened = new Set<string>();
+  /** A sensor's last day, fetched when its tile opened, by panel and key. */
+  private histories = new Map<string, { points: { t: number; v: number }[]; unit: string; fetched: number }>();
   /** Each tile's last reading, by panel and key, and when it was read. */
   private readings = new Map<string, { got: Shown; fetched: number }>();
 
@@ -192,7 +209,7 @@ export class Home {
     const said = t.querySelector<HTMLElement>(".hstate")!;
     said.textContent = got.text;
     said.className = got.failed ? "hstate hwhy" : "hstate";
-    for (const old of t.querySelectorAll(".hshot, .hstats, .hwhen")) old.remove();
+    for (const old of t.querySelectorAll(".hshot, .hstats, .hwhen, .hlist, .hchart, .hmap")) old.remove();
     let after: Element = t.querySelector(".htop")!;
     if (got.image) {
       const img = el("img", "hshot");
@@ -211,7 +228,52 @@ export class Home {
       after.after(stats);
       after = stats;
     }
-    if (got.at) after.after(el("small", "hwhen", `Checked ${new Date(got.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`));
+    // Beyond its figures, what helps: a short list, a trend, a place.
+    const extras: HTMLElement[] = [];
+    if (got.list?.length) {
+      const list = el("ul", "hlist");
+      for (const line of got.list) list.appendChild(el("li", "", line));
+      extras.push(list);
+    }
+    if (got.chart) {
+      const p = got.chart.points;
+      extras.push(lineChart(p.map((q) => q.y), "", got.chart.title, p[0]!.x, p.at(-1)!.x));
+    }
+    if (got.map) extras.push(mapImage(this.key, got.map.lat, got.map.lng));
+    if (got.at) extras.push(el("small", "hwhen", `Checked ${clock(got.at)}`));
+    for (const e of extras) {
+      after.after(e);
+      after = e;
+    }
+  }
+
+  /**
+   * What an opened tile draws beyond its controls: a sensor's last day as a
+   * chart (asked of the house only every few minutes), the car's place on a map.
+   */
+  private async fill(t: HTMLElement, panel: string, r: PanelRow): Promise<void> {
+    const extra = t.querySelector<HTMLElement>(".hextra");
+    if (!extra || extra.dataset.done) return;
+    extra.dataset.done = "1";
+    if (r.more?.map) extra.appendChild(mapImage(this.key, r.more.map.lat, r.more.map.lng));
+    if (!r.more?.history) return;
+    const at = `${panel}\n${r.key}`;
+    let h = this.histories.get(at);
+    if (!h || Date.now() - h.fetched > HISTORY_MS) {
+      try {
+        const got = (await api(this.key, "GET", `/api/hub/panels/history?panel=${encodeURIComponent(panel)}&key=${encodeURIComponent(r.key)}`)) as { points: { t: number; v: number }[]; unit: string };
+        h = { ...got, fetched: Date.now() };
+        this.histories.set(at, h);
+      } catch (e) {
+        extra.appendChild(el("small", "hwhy", `No chart just now: ${why(e)}`));
+        return;
+      }
+    }
+    if (h.points.length < 2) {
+      extra.appendChild(el("small", "hwhen", "Not enough readings yet for a chart."));
+      return;
+    }
+    extra.appendChild(lineChart(h.points.map((p) => p.v), h.unit ? ` ${h.unit}` : "", "Last 24 hours", clock(h.points[0]!.t), "now"));
   }
 
   /** Only a card taller than a folded one (--fold, index.html) offers to fold. */
@@ -389,6 +451,7 @@ export class Home {
         else this.opened.delete(at);
         t.classList.toggle("open", now);
         top.setAttribute("aria-expanded", String(now));
+        if (now) void this.fill(t, panel, r);
       };
       top.addEventListener("click", flip);
       top.addEventListener("keydown", (e) => {
@@ -433,7 +496,13 @@ export class Home {
       }
       t.appendChild(acts);
     }
-    if (r.more) t.appendChild(moreBody(r.more, said, (action, b, shown, extra) => this.act(panel, r.key, action, b, shown, name, extra)));
+    if (r.more) {
+      const body = moreBody(r.more, said, (action, b, shown, extra) => this.act(panel, r.key, action, b, shown, name, extra));
+      // A chart or a map, drawn the first time the tile is open.
+      if (r.more.history || r.more.map) body.prepend(el("div", "hextra"));
+      t.appendChild(body);
+      if (this.opened.has(at)) void this.fill(t, panel, r);
+    }
     return t;
   }
 

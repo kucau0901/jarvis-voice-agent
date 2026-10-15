@@ -7,7 +7,7 @@ import { haConfig } from "../lib/ha.ts";
 import { localeOf } from "../lib/locale.ts";
 import { dayOf } from "../lib/usage.ts";
 import { carById, pickCar } from "../tools/tessie.ts";
-import { actOn, LIVE, readTileOf, viewPanels, type PanelSources } from "../lib/panel-view.ts";
+import { actOn, historyOf, LIVE, readTileOf, viewPanels, type PanelSources } from "../lib/panel-view.ts";
 import { baseTools, outputText } from "../tools/registry.ts";
 import { mcpSessions, mcpTools } from "../tools/mcp.ts";
 import { memoryFor } from "../lib/memory.ts";
@@ -23,6 +23,7 @@ import type { PanelsReply } from "../../shared/panels.ts";
  *   GET  /api/hub/panels       your panels, each thing read now, with the buttons its state offers
  *   GET  /api/hub/panels/read?panel=&key=[&cached=1]   a tile's reading: one of your tools, run now, or
  *        its question's kept answer, looked up again when stale (cached=1: what was kept, at once)
+ *   GET  /api/hub/panels/history?panel=&key=   a number's last day from Home Assistant, for its chart
  *   POST /api/hub/panels/act   {panel, key, action, member?, code?, value?}: press one of them
  *   POST /api/hub/panels/remove {panel}: take that panel off (its … menu)
  *   POST /api/hub/panels/note  {panel, add?, tick?, clear?}: a to-do typed onto it, one ticked
@@ -33,7 +34,7 @@ import type { PanelsReply } from "../../shared/panels.ts";
  */
 export async function handlePanels(req: Request, env: Env, principal: Principal): Promise<Response | null> {
   const p = new URL(req.url).pathname;
-  if (!["/api/hub/panels", "/api/hub/panels/read", "/api/hub/panels/act", "/api/hub/panels/remove", "/api/hub/panels/note"].includes(p)) return null;
+  if (!["/api/hub/panels", "/api/hub/panels/read", "/api/hub/panels/history", "/api/hub/panels/act", "/api/hub/panels/remove", "/api/hub/panels/note"].includes(p)) return null;
   if (principal.kind === "device") return err(403, "that is for a person, not a device");
   const grants = grantsOf(principal);
   if (!allows(grants, "screen")) return err(403, 'panels need "screen"', { need: "screen" });
@@ -48,6 +49,7 @@ export async function handlePanels(req: Request, env: Env, principal: Principal)
     house: haConfig(env),
     car: (id) => carById(env, id),
     pick: (named) => pickCar(env, named),
+    maps: !!env.GOOGLE_MAPS_API_KEY,
     usage: () => state.usageReport(dayOf(Date.now(), timeZone), me),
     // One of this person's tools, as the router would offer it to them now.
     async tool(name, args) {
@@ -90,8 +92,15 @@ export async function handlePanels(req: Request, env: Env, principal: Principal)
     const panel = (await state.panelsOf(me)).find((x) => x.id === q.get("panel"));
     const r = await readTileOf(panel, q.get("key") ?? "", src, q.get("cached") === "1");
     if (r.status !== 200) return err(r.status, r.text);
-    const { status: _, ...shown } = r;
-    return json(shown);
+    // A place is drawn only where a map can be (routes/map.ts needs the Maps key).
+    const { status: _, map, ...shown } = r as typeof r & { map?: unknown };
+    return json({ ...shown, ...(map && src.maps ? { map } : {}) });
+  }
+  if (p === "/api/hub/panels/history" && req.method === "GET") {
+    const q = new URL(req.url).searchParams;
+    const panel = (await state.panelsOf(me)).find((x) => x.id === q.get("panel"));
+    const r = await historyOf(panel, q.get("key") ?? "", src);
+    return r.status === 200 ? json({ points: r.points, unit: r.unit }) : err(r.status, r.text ?? "");
   }
   if (p === "/api/hub/panels/act" && req.method === "POST") {
     const b = await readObject(req, 2_000);
