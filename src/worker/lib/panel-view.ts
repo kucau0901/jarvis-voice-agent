@@ -532,10 +532,10 @@ export async function actOn(
   return { status: 200, text: `${item.label}: ${CAR_LABEL[action]}.` };
 }
 
-/** A tile's reading (GET /api/hub/panels/read): the thing must be a tile on this person's panel. */
-export async function readTileOf(panel: Panel | undefined, key: string, src: PanelSources): Promise<{ status: number; text: string; image?: string }> {
+/** A tile's reading (GET /api/hub/panels/read): the thing must be a tile on this person's panel. `cached` answers with what was kept. */
+export async function readTileOf(panel: Panel | undefined, key: string, src: PanelSources, cached = false) {
   const item = panel?.items.find((i) => i.kind === "tile" && keyOf(i) === key);
   const spec = item ? parseTile(item.ref) : null;
   if (!spec) return { status: 404, text: "That is not a tile on this panel." };
-  return readTile(spec, src);
+  return readTile(spec, src, key, cached);
 }

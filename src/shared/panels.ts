@@ -10,7 +10,7 @@ export type PanelIcon =
   | "gate" | "garage" | "door" | "window" | "blind" | "lock" | "unlock"
   | "light" | "power" | "plug" | "fan" | "climate" | "scene" | "play" | "press"
   | "temp" | "drop" | "bolt" | "motion" | "sensor" | "weather" | "music" | "alarm" | "alert"
-  | "car" | "usage" | "note" | "calendar" | "mail" | "camera" | "clock" | "terminal" | "route" | "chat" | "dot";
+  | "car" | "usage" | "note" | "calendar" | "mail" | "camera" | "clock" | "terminal" | "route" | "chat" | "web" | "dot";
 
 export interface PanelRow {
   /** Which thing it is on its panel (its entity id, car id, "usage", or the note), for a button press. */

@@ -28,6 +28,11 @@ const EVERY_MS = 20_000;
 const AFTER_PRESS_MS = 1_500;
 /** How often a tile's tool is read again: a tool can be slow, or cost a request to someone else's service. */
 const READ_MS = 60_000;
+/** How soon to look again when another screen is already looking a reading up. */
+const SOON_MS = 20_000;
+
+/** A tile's reading as the server sends it (GET /api/hub/panels/read). */
+type Shown = { text: string; image?: string; figures?: { label: string; value: string }[]; at?: number; stale?: boolean; pending?: boolean; failed?: boolean };
 const FOLDED = "jarvis.homeFolded";
 /** Tiles' worth (a car or the usage counts two) from which a panel takes the page's width, not a column's. */
 const BIG = 5;
@@ -78,7 +83,7 @@ export class Home {
   /** Tiles opened, by panel and key: they stay open when the panels are drawn again. */
   private opened = new Set<string>();
   /** Each tile's last reading, by panel and key, and when it was read. */
-  private readings = new Map<string, { text: string; image?: string; failed?: boolean; at: number }>();
+  private readings = new Map<string, { got: Shown; fetched: number }>();
 
   constructor(key: string) {
     this.key = key;
@@ -145,35 +150,63 @@ export class Home {
     for (const p of r.panels) for (const row of p.rows) if (row.read) void this.read(p.id, row.key);
   }
 
-  /** A tile's reading, from its tool, unless it was read within the minute. */
+  /**
+   * A tile's reading, unless it was read within the minute. One looked up by
+   * Jarvis comes in two steps: what was kept, at once, then — when that is
+   * stale — the answer looked up again, which takes a model call.
+   */
   private async read(panel: string, key: string): Promise<void> {
     const at = `${panel}\n${key}`;
     const had = this.readings.get(at);
-    if (had && Date.now() - had.at < READ_MS) return;
+    if (had && Date.now() - had.fetched < READ_MS) return;
     // Marked now, so the next drawing does not ask again while this is under way.
-    this.readings.set(at, { ...(had ?? { text: "" }), at: Date.now() });
-    let got: { text: string; image?: string; failed?: boolean };
-    try {
-      got = (await api(this.key, "GET", `/api/hub/panels/read?panel=${encodeURIComponent(panel)}&key=${encodeURIComponent(key)}`)) as { text: string; image?: string };
-    } catch (e) {
-      got = { text: why(e), failed: true };
-    }
-    this.readings.set(at, { ...got, at: Date.now() });
-    const t = [...this.root.querySelectorAll<HTMLElement>(".htile")].find((x) => x.dataset.at === at);
-    if (t) this.showReading(t, got);
+    this.readings.set(at, { got: had?.got ?? { text: "" }, fetched: Date.now() });
+    const url = `/api/hub/panels/read?panel=${encodeURIComponent(panel)}&key=${encodeURIComponent(key)}`;
+    const get = async (cached: boolean): Promise<Shown> => {
+      try {
+        return (await api(this.key, "GET", cached ? `${url}&cached=1` : url)) as Shown;
+      } catch (e) {
+        return { text: why(e), failed: true };
+      }
+    };
+    const show = (got: Shown) => {
+      this.readings.set(at, { got, fetched: Date.now() });
+      const t = [...this.root.querySelectorAll<HTMLElement>(".htile")].find((x) => x.dataset.at === at);
+      if (t) this.showReading(t, got);
+    };
+    let got = await get(true);
+    if (got.text || got.failed) show(got);
+    if (!got.stale) return;
+    got = await get(false);
+    // Another screen is looking it up: look again shortly, not in a minute.
+    show(got.pending && !got.text ? { ...got, text: "Looking it up…" } : got);
+    if (got.pending) this.readings.set(at, { got, fetched: Date.now() - READ_MS + SOON_MS });
   }
 
-  private showReading(t: HTMLElement, got: { text: string; image?: string; failed?: boolean }): void {
+  private showReading(t: HTMLElement, got: Shown): void {
     const said = t.querySelector<HTMLElement>(".hstate")!;
     said.textContent = got.text;
     said.className = got.failed ? "hstate hwhy" : "hstate";
-    t.querySelector(".hshot")?.remove();
+    for (const old of t.querySelectorAll(".hshot, .hstats, .hwhen")) old.remove();
+    let after: Element = t.querySelector(".htop")!;
     if (got.image) {
       const img = el("img", "hshot");
       img.src = got.image;
       img.alt = "";
-      t.querySelector(".htop")!.after(img);
+      after.after(img);
+      after = img;
     }
+    if (got.figures?.length) {
+      const stats = el("div", "hstats");
+      for (const f of got.figures) {
+        const stat = el("div", "hstat");
+        stat.append(el("small", "", f.label), figure(f.value));
+        stats.appendChild(stat);
+      }
+      after.after(stats);
+      after = stats;
+    }
+    if (got.at) after.after(el("small", "hwhen", `Checked ${new Date(got.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`));
   }
 
   /** Only a card taller than a folded one (--fold, index.html) offers to fold. */
@@ -283,7 +316,7 @@ export class Home {
     top.append(el("span", "hic"), text);
     if (r.level !== undefined) top.appendChild(el("span", "hbadge", `${r.level}%`));
     t.appendChild(top);
-    const reading = this.readings.get(at);
+    const reading = this.readings.get(at)?.got;
     if (r.read && reading?.text) this.showReading(t, reading);
     if (r.more) {
       // Opened across its panel, as Hark opens a row: its name is what is pressed.

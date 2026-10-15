@@ -387,6 +387,19 @@ Home Controls", "a to-do panel with renew the road tax" (`panel_set`,
   for, Hermes included. Its reading comes on its own (GET
   /api/hub/panels/read), once a minute, so a slow tool or someone else's
   service never holds up the house.
+- **A reading no tool has is looked up**, as Hark built "the latest official air
+  quality for Springfield" when Jarvis had refused: no tool of the person's
+  could read it, and the model's own web search cannot be wired to a tile.
+  So a tile's reading can be a question instead, which Jarvis answers with
+  the model and web search: a verdict and up to three figures ("API: 175",
+  "As of: 3:00 PM"), kept in the state object under a key of its own
+  (`panelreads:`). It is looked up again only while someone has Home open
+  and the answer is older than its interval, which the model sets and
+  which is never under an hour (the owner's choice: nothing is spent while
+  nobody looks, where Hark checks every hour regardless). A screen shows
+  the kept answer at once and asks for a new one only when it is stale; two
+  screens open at once do not both pay for it, since the first claims it for
+  two minutes.
 
 ## Getting somewhere
 

@@ -45,8 +45,9 @@ function tileFor(label: string, read: unknown, buttons: unknown, ctx: ToolContex
       return `the arguments for ${tool} are not JSON.`;
     }
   };
-  const r = (read ?? null) as { tool?: unknown; args?: unknown } | null;
-  const readCall = r ? call(r.tool, r.args) : undefined;
+  const r = (read ?? null) as { tool?: unknown; args?: unknown; ask?: unknown; every_minutes?: unknown } | null;
+  // A question for Jarvis when no tool of theirs can read it (the air quality in a town): asked again when stale.
+  const readCall = !r ? undefined : typeof r.ask === "string" && r.ask.trim() ? { ask: r.ask, every: r.every_minutes } : call(r.tool, r.args);
   if (typeof readCall === "string") return readCall;
   const wired = [];
   for (const b of Array.isArray(buttons) ? buttons : []) {
@@ -119,7 +120,11 @@ export const panelSet: Tool = {
     "to-do, the text itself in label; tile — anything else you can read or do with your other tools (music, " +
     "the car's other controls, calendar, mail, cameras, routines, jobs, Hermes, connected services), named in " +
     "label: read is one of your tools whose answer the tile shows, run each time the panel is shown (e.g. " +
-    "music_state with {}), or null; buttons, up to 6, each run one of your tools with fixed arguments (tool, " +
+    "music_state with {}); or, for what no tool of yours can read (the air quality or weather in a town, a " +
+    "price, the news), a question you will answer with web search (ask), looked up again when Home is open " +
+    "and the answer is older than every_minutes (at least 60; e.g. 60 for air quality, 180 for weather), " +
+    "shown as a verdict and a few figures; or null. Never refuse a reading because no tool has it: ask. " +
+    "buttons, up to 6, each run one of your tools with fixed arguments (tool, " +
     "and args as a JSON object, e.g. music_control with {\"action\":\"pause\"}) or, only when no tool call " +
     "can do it, ask Jarvis a sentence (ask). Use a tile for whatever is not in Home Assistant. " +
     "Panels are the asker's own: nobody else sees them.",
@@ -153,12 +158,14 @@ export const panelSet: Tool = {
             },
             read: {
               type: ["object", "null"],
-              description: "tile only: the tool whose answer is the tile's reading. Null otherwise.",
+              description: "tile only: the tool whose answer is the tile's reading, or a question to look up. Null otherwise.",
               properties: {
-                tool: { type: "string", description: "One of your tools, by name." },
-                args: { type: "string", description: "Its arguments, a JSON object as text, e.g. {}." },
+                tool: { type: ["string", "null"], description: "One of your tools, by name; null when the reading is asked." },
+                args: { type: ["string", "null"], description: "Its arguments, a JSON object as text, e.g. {}; null when asked." },
+                ask: { type: ["string", "null"], description: "The question to look up, e.g. 'Latest air-quality reading (AQI) for Springfield'; null for a tool." },
+                every_minutes: { type: ["integer", "null"], description: "How stale the answer may get before it is looked up again, at least 60; null for a tool." },
               },
-              required: ["tool", "args"],
+              required: ["tool", "args", "ask", "every_minutes"],
               additionalProperties: false,
             },
             buttons: {

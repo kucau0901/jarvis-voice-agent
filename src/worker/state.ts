@@ -23,7 +23,7 @@ import { haConfig, renderTemplate, truthy } from "./lib/ha.ts";
 import { HUB_METHODS, HubHost, liveSessionIds } from "./lib/hub.ts";
 import { Relays, type Relay, type RelayDeps, type RelayKind } from "./lib/relays.ts";
 import { Chat, dmId, type ChatMessage } from "./lib/chat.ts";
-import { Panels, type PanelItem } from "./lib/panels.ts";
+import { Panels, type PanelItem, type Reading } from "./lib/panels.ts";
 import { personOfWho, withPerson } from "./lib/context.ts";
 import { nextAllowed } from "./lib/access.ts";
 
@@ -444,6 +444,18 @@ export class JarvisState extends DurableObject<Env> {
 
   panelRemove(person: string, title: string, item: string | null) {
     return this.panels.remove(person, title, item);
+  }
+
+  panelReading(person: string, tile: string) {
+    return this.panels.reading(person, tile);
+  }
+
+  panelClaimReading(person: string, tile: string, every: number, now: number) {
+    return this.panels.claimReading(person, tile, every, now);
+  }
+
+  panelKeepReading(person: string, tile: string, reading: Reading | null) {
+    return this.panels.keepReading(person, tile, reading);
   }
 
   /* ---------- background jobs (lib/jobs.ts) ------------------------------------- */

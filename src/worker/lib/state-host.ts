@@ -28,7 +28,7 @@ import type { Routine, RoutineInput } from "./routines.ts";
 import type { Job } from "./jobs.ts";
 import type { Relay, RelayKind } from "./relays.ts";
 import type { ChatMessage } from "./chat.ts";
-import type { Panel, PanelItem } from "./panels.ts";
+import type { Panel, PanelItem, Reading } from "./panels.ts";
 import type { Grant } from "./scopes.ts";
 
 /**
@@ -560,6 +560,9 @@ interface PanelApi {
   panelsOf(person: string): Promise<Panel[]>;
   panelSet(person: string, title: string, items: PanelItem[], mode: "add" | "replace"): Promise<Panel | string>;
   panelRemove(person: string, title: string, item: string | null): Promise<Panel[] | string>;
+  panelReading(person: string, tile: string): Promise<Reading | null>;
+  panelClaimReading(person: string, tile: string, every: number, now: number): Promise<{ reading: Reading | null; go: boolean }>;
+  panelKeepReading(person: string, tile: string, reading: Reading | null): Promise<void>;
 }
 
 /** What the object adds itself, because it holds the sockets (state.ts). */

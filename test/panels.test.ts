@@ -6,7 +6,7 @@ import { actOn, carActions, houseActions, houseActive, houseIcon, houseValue, vi
 import { panelRemove, panelSet } from "../src/worker/tools/panels.ts";
 import { areasOf, arrange } from "../src/worker/lib/panel-arrange.ts";
 import { controlCall, controlsOf } from "../src/worker/lib/panel-controls.ts";
-import { parseTile, pressTile, readTile, tileIcon, tileKey, tileSpec } from "../src/worker/lib/panel-tiles.ts";
+import { parseTile, pressTile, readingOf, readTile, tileIcon, tileKey, tileSpec } from "../src/worker/lib/panel-tiles.ts";
 import { readTileOf } from "../src/worker/lib/panel-view.ts";
 
 let pass = 0, fail = 0;
@@ -423,14 +423,14 @@ console.log("a tile for anything else Jarvis can do");
     ask: async (text: string) => (asked.push(text), "Playing some quiet piano."),
   };
   const s = spec as never;
-  check("its reading is its tool's answer", (await readTile(s, src)).text === "Playing Blue in Green, by Miles Davis.");
+  check("its reading is its tool's answer", (await readTile(s, src, "t_x")).text === "Playing Blue in Green, by Miles Davis.");
   const paused = await pressTile("Music", s, "b0", src);
   check("a button runs its tool with its arguments, no model", paused.status === 200 && paused.text === "Paused." && ran.at(-1) === 'music_control {"action":"pause"}', { paused, ran });
   const calm = await pressTile("Music", s, "b1", src);
   check("an asking button asks Jarvis its sentence", calm.text === "Playing some quiet piano." && asked.join() === "play something calm");
   check("a button that is not there is refused", (await pressTile("Music", s, "b7", src)).status === 404);
   const locked = { ...src, tool: async () => null };
-  check("a tool its person may not use here is not run", (await pressTile("Music", s, "b0", locked)).status === 403 && (await readTile(s, locked)).status === 403);
+  check("a tool its person may not use here is not run", (await pressTile("Music", s, "b0", locked)).status === 403 && (await readTile(s, locked, "t_x")).status === 403);
 
   const p: Panel = { ...panel, items: [{ kind: "tile", ref, label: "Music" }] };
   const { src: all } = sources({ tool: src.tool, ask: src.ask });
@@ -440,6 +440,56 @@ console.log("a tile for anything else Jarvis can do");
     row.kind === "tile" && row.key === tileKey(ref) && row.read === true && row.actions.map((a) => `${a.action}:${a.label}`).join() === "b0:Pause,b1:Play something calm", row);
   check("pressed and read through the panel, by its key", (await actOn(p, tileKey(ref), "b0", all, signal)).text === "Paused." &&
     (await readTileOf(p, tileKey(ref), all)).text.startsWith("Playing") && (await readTileOf(p, "t_other", all)).status === 404);
+}
+
+console.log("a reading Jarvis looks up, as Hark's air quality");
+{
+  const aqi = tileSpec({ read: { ask: "Latest air-quality reading (AQI) for Springfield", every: 30 }, buttons: [] });
+  check("a question as its reading, looked up at most hourly however often it was asked for",
+    typeof aqi === "object" && "ask" in aqi.read! && aqi.read.every === 60 && (tileSpec({ read: { ask: "x", every: 99999 }, buttons: [] }) as { read: { every: number } }).read.every === 1440, aqi);
+  check("drawn as the web", tileIcon(aqi as never) === "web");
+  const answer = "**Unhealthy**: sensitive groups should limit outdoor activity.\n- API: 175\n- As of: 3:00 PM\nSource: City monitor, Springfield station";
+  const r = readingOf(answer, 5);
+  check("an answer read back as its verdict and up to three figures",
+    r.text === "Unhealthy: sensitive groups should limit outdoor activity." && r.figures.map((f) => `${f.label}=${f.value}`).join("|") === "API=175|As of=3:00 PM|Source=City monitor, Springfield station" && r.at === 5, r);
+
+  const kept = new Panels(fakeStorage());
+  check("a reading never looked up is asked for, and then held for its asker",
+    (await kept.claimReading("u", "t_a", 3_600_000, 1_000)).go && !(await kept.claimReading("u", "t_a", 3_600_000, 2_000)).go);
+  await kept.keepReading("u", "t_a", { text: "Moderate", figures: [], at: 10_000 });
+  check("kept, it is not asked for again until it is older than its interval",
+    !(await kept.claimReading("u", "t_a", 3_600_000, 10_000 + 3_599_000)).go && (await kept.claimReading("u", "t_a", 3_600_000, 10_000 + 3_600_000)).go);
+  await kept.keepReading("u", "t_a", null);
+  check("a failed look-up keeps the last answer and lets the next screen try",
+    (await kept.reading("u", "t_a"))?.text === "Moderate" && (await kept.claimReading("u", "t_a", 3_600_000, 10_000 + 3_700_000)).go);
+  await kept.forget("u");
+  check("someone who leaves takes their readings with them", (await kept.reading("u", "t_a")) === null);
+
+  const store = new Panels(fakeStorage());
+  const asked: string[] = [];
+  const src = {
+    tool: async () => null,
+    ask: async (q: string) => (asked.push(q), answer),
+    kept: (t: string) => store.reading("u", t),
+    claim: (t: string, every: number) => store.claimReading("u", t, every, Date.now()),
+    keep: (t: string, reading: Parameters<Panels["keepReading"]>[2]) => store.keepReading("u", t, reading),
+  };
+  const spec = aqi as never;
+  const first = await readTile(spec, src, "t_aqi", true);
+  check("opened for the first time: nothing kept yet, so it says it is stale, without asking", first.text === "" && first.stale === true && asked.length === 0, first);
+  const looked = await readTile(spec, src, "t_aqi");
+  check("then looked up once, with how to answer for a tile, and kept",
+    looked.text.startsWith("Unhealthy") && looked.figures?.length === 3 && asked.length === 1 && asked[0]!.startsWith("Latest air-quality reading") && asked[0]!.includes("Label: value"), looked);
+  const again = await readTile(spec, src, "t_aqi");
+  const quick = await readTile(spec, src, "t_aqi", true);
+  check("opened again within the hour: the kept answer, no new model call", again.text === looked.text && quick.stale === false && asked.length === 1);
+  await store.claimReading("u", "t_other", 3_600_000, Date.now());
+  const busy = await readTile(spec, src, "t_other");
+  check("while another screen is looking it up, this one waits for it rather than asking too", busy.pending === true && asked.length === 1, busy);
+  const failing = { ...src, ask: async () => { throw new Error("rate limited"); } };
+  const failed = await readTile(spec, failing, "t_new");
+  check("a look-up that fails with nothing kept says so, and lets the next try",
+    failed.status === 502 && failed.text.includes("rate limited") && (await store.claimReading("u", "t_new", 3_600_000, Date.now())).go, failed);
 }
 
 console.log("the tool");
@@ -509,6 +559,10 @@ console.log("the tool");
     const made = kept.at(-1)?.items[0] as { kind: string; ref: string; label: string } | undefined;
     check("a tile wired to the asker's own tools, an MCP server's among them, and a sentence to ask",
       wired.startsWith("Done") && made?.kind === "tile" && parseTile(made.ref)?.buttons.map((b) => b.tool?.tool ?? `ask:${b.ask}`).join() === "music_control,spotify__queue,ask:play something calm", { wired, made });
+    await run({ title: "Air", mode: "add", items: [tile({ tool: null, args: null, ask: "Latest air-quality reading for Springfield", every_minutes: 30 }, null)] }, ctx(["*"]));
+    const air = parseTile((kept.at(-1)?.items[0] as { ref: string }).ref);
+    check("a reading no tool has is asked for instead, looked up at most hourly",
+      !!air?.read && "ask" in air.read && air.read.ask.includes("Springfield") && air.read.every === 60, air);
     check("a tool they were not offered is refused", (await run({ title: "X", mode: "add", items: [tile({ tool: "mail_send", args: "{}" }, null)] }, ctx(["*"]))).includes("not one of the tools"));
     check("…and so are the panel tools themselves", (await run({ title: "X", mode: "add", items: [tile(null, [{ label: "Again", tool: "panel_set", args: "{}", ask: null }])] }, ctx(["*"]))).includes("not one of the tools"));
     check("arguments that are not JSON are refused", (await run({ title: "X", mode: "add", items: [tile({ tool: "music_state", args: "{oops" }, null)] }, ctx(["*"]))).includes("not JSON"));

@@ -33,6 +33,13 @@ export interface Panel {
   at: number;
 }
 
+/** A tile's reading looked up by the model (lib/panel-tiles.ts), kept so it is asked again only when stale. */
+export interface Reading {
+  text: string;
+  figures: { label: string; value: string }[];
+  at: number;
+}
+
 export const MAX_PANELS = 8;
 export const MAX_ITEMS = 20;
 /**
@@ -50,6 +57,13 @@ const MAX_REF = 2000;
 export const idsOf = (i: PanelItem): string[] => (i.kind === "home" ? i.ref.split(",") : []);
 
 const key = (person: string) => `panels:${person}`;
+/** The readings Jarvis looked up for a person's tiles, by tile key: a key of their own, as the free plan's KV is never used for this. */
+const readsKey = (person: string) => `panelreads:${person}`;
+/** Someone already asking for a reading holds it this long, so a second screen does not pay for the same answer. */
+const ASKING_MS = 120_000;
+/** Readings kept per person; the oldest go first, so a removed tile's is not kept for ever. */
+const MAX_READINGS = 40;
+type Reads = Record<string, { reading?: Reading; asking?: number }>;
 const clean = (s: string, max: number): string =>
   s.replace(/[\u0000-\u001f\u007f<>]/g, " ").replace(/\s+/g, " ").trim().slice(0, max);
 const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
@@ -115,8 +129,41 @@ export class Panels {
     return left;
   }
 
+  /** A tile's kept reading, as it is. */
+  async reading(person: string, tile: string): Promise<Reading | null> {
+    return (await this.storage.get<Reads>(readsKey(person)))?.[tile]?.reading ?? null;
+  }
+
+  /**
+   * A tile's kept reading, and whether this caller should ask for it again:
+   * when it is older than `every` and nobody else is asking now. Saying yes
+   * marks it as being asked, so only one screen pays for it.
+   */
+  async claimReading(person: string, tile: string, every: number, now = Date.now()): Promise<{ reading: Reading | null; go: boolean }> {
+    const all = (await this.storage.get<Reads>(readsKey(person))) ?? {};
+    const had = all[tile];
+    const reading = had?.reading ?? null;
+    if ((reading && now - reading.at < every) || (had?.asking && now - had.asking < ASKING_MS)) return { reading, go: false };
+    all[tile] = { ...had, asking: now };
+    await this.storage.put(readsKey(person), all);
+    return { reading, go: true };
+  }
+
+  /** A tile's reading as just looked up, or null when the asking failed: either way it is no longer being asked. */
+  async keepReading(person: string, tile: string, reading: Reading | null): Promise<void> {
+    const all = (await this.storage.get<Reads>(readsKey(person))) ?? {};
+    all[tile] = reading ? { reading } : { ...(all[tile]?.reading ? { reading: all[tile]!.reading } : {}) };
+    const keys = Object.keys(all);
+    if (keys.length > MAX_READINGS) {
+      keys.sort((a, b) => (all[a]?.reading?.at ?? 0) - (all[b]?.reading?.at ?? 0));
+      for (const k of keys.slice(0, keys.length - MAX_READINGS)) delete all[k];
+    }
+    await this.storage.put(readsKey(person), all);
+  }
+
   /** Someone left the family: their panels go with them. */
   async forget(person: string): Promise<void> {
     await this.storage.delete(key(person));
+    await this.storage.delete(readsKey(person));
   }
 }

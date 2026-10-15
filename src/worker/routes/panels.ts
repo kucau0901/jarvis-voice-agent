@@ -21,7 +21,8 @@ import type { PanelsReply } from "../../shared/panels.ts";
  * guest does not have; never a device.
  *
  *   GET  /api/hub/panels       your panels, each thing read now, with the buttons its state offers
- *   GET  /api/hub/panels/read?panel=&key=   a tile's reading: one of your tools, run now
+ *   GET  /api/hub/panels/read?panel=&key=[&cached=1]   a tile's reading: one of your tools, run now, or
+ *        its question's kept answer, looked up again when stale (cached=1: what was kept, at once)
  *   POST /api/hub/panels/act   {panel, key, action, member?, code?}: press one of them
  *   POST /api/hub/panels/remove {panel}: take that panel off (its … menu)
  *
@@ -62,6 +63,10 @@ export async function handlePanels(req: Request, env: Env, principal: Principal)
         await sessions.close();
       }
     },
+    // A tile's looked-up readings, kept in the state object (lib/panels.ts).
+    kept: (tile) => state.panelReading(me, tile),
+    claim: (tile, every) => state.panelClaimReading(me, tile, every, Date.now()),
+    keep: (tile, reading) => state.panelKeepReading(me, tile, reading),
     // A sentence asked of Jarvis, as if typed in Chat.
     async ask(text) {
       const sink = new Collector();
@@ -80,8 +85,10 @@ export async function handlePanels(req: Request, env: Env, principal: Principal)
   if (p === "/api/hub/panels/read" && req.method === "GET") {
     const q = new URL(req.url).searchParams;
     const panel = (await state.panelsOf(me)).find((x) => x.id === q.get("panel"));
-    const r = await readTileOf(panel, q.get("key") ?? "", src);
-    return r.status === 200 ? json({ text: r.text, ...(r.image ? { image: r.image } : {}) }) : err(r.status, r.text);
+    const r = await readTileOf(panel, q.get("key") ?? "", src, q.get("cached") === "1");
+    if (r.status !== 200) return err(r.status, r.text);
+    const { status: _, ...shown } = r;
+    return json(shown);
   }
   if (p === "/api/hub/panels/act" && req.method === "POST") {
     const b = await readObject(req, 2_000);

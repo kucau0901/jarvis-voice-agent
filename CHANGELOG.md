@@ -43,7 +43,10 @@ of every release, and in the [README](README.md#updating).
   panel with pause and next", "a tile with today's calendar" — wired once to
   Jarvis's own tools, so a press needs no model; where no tool can do it, a
   button asks Jarvis a sentence instead. A tile does only what its person
-  could ask for.
+  could ask for. For what no tool can read ("a panel for the latest air
+  quality in my town"), Jarvis looks it up with web search and shows a
+  verdict and its figures, looked up again at most hourly and only while
+  Home is open.
 - **Light and dark, per screen.** Menu → **Theme**: Auto, the default, is
   light by day and dark at night (07:00–19:00, by the screen's clock), because
   the car's browser can report the wrong system setting. Or System, Dark or
