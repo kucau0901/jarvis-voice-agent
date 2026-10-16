@@ -833,22 +833,24 @@
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap; pointer-events: none; }
   body.home #home { --fold: 190px; display: block; width: min(1240px, 100%); flex: 1; min-height: 0;
     overflow-y: auto; overscroll-behavior: contain; padding-bottom: 8px; }
-  #home .hwall { columns: 3 350px; column-gap: 16px; }
-  #home .hcard { position: relative; display: grid; gap: 12px; margin: 0 0 16px; padding: 10px 16px 16px; break-inside: avoid;
+  /* Laid out by ui/HomeWall.ts: columns filled across then down, so a panel dropped on another's place takes it; a big one across. */
+  #home .hwall, #home .hcol { display: grid; gap: 16px; align-content: start; min-width: 0; }
+  #home .hcols { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 16px; align-items: start; }
+  #home .hcard { position: relative; display: grid; gap: 12px; padding: 10px 16px 16px;
     border-radius: 24px; background: var(--glass-hi); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); }
-  #home .hcard.big { column-span: all; }
   #home .hcard:has(.hmenu:not([hidden])) { z-index: 6; }
   #home .hhead { position: relative; display: flex; align-items: center; gap: 8px; }
   #home .hfold { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 0;
-    border: 0; background: none; color: var(--fg); font: inherit; text-align: left; cursor: pointer; }
+    border: 0; background: none; color: var(--fg); font: inherit; text-align: left; cursor: pointer;
+    -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
   #home .hfold h3 { flex: 1; min-width: 0; margin: 0; font-size: 16px; font-weight: 500;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #home .hfold::after, #home .hmore::before, #home .hmenu button::before, #home .hic::before { content: "";
     background: currentColor; -webkit-mask: var(--icon, var(--i-dot)) center / contain no-repeat; mask: var(--icon, var(--i-dot)) center / contain no-repeat; }
   #home .hfold::after { --icon: var(--i-chevron); flex: none; width: 18px; height: 18px; color: var(--dim);
     transform: rotate(-90deg); transition: transform .2s; }
-  #home .hfold:disabled { cursor: default; }
-  #home .hfold:disabled::after { display: none; }
+  #home .hcard:not(.tall) .hfold { cursor: grab; }
+  #home .hcard:not(.tall) .hfold::after { display: none; }
   /* Folded, as Hark folds a card: its first row stays, the next fading out under it. */
   #home .hcard.tall.folded .hfold::after { transform: rotate(90deg); }
   #home .hcard.tall.folded .hgrid { max-height: var(--fold); overflow: hidden;
@@ -1013,6 +1015,17 @@
   #home .hcode { width: 9em; }
   #home .hcode:not(:placeholder-shown) { letter-spacing: .3em; }
   #home :is(.hcode, .hnum):focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  /* Moved by its name (ui/HomeWall.ts), a panel or a thing on one: it follows the pointer, its place held open under it. */
+  #home :is(.htile .htop, .htile.note .hname) { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  #home :is(.hcard, .htile).hgap { background: none; -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: none;
+    outline: 2px dashed var(--line); outline-offset: -2px; }
+  #home :is(.hcard, .htile).hgap > * { visibility: hidden; }
+  #home :is(.hcard, .htile).hlift { position: fixed; z-index: 20; margin: 0; pointer-events: none; transform: scale(1.02); box-shadow: var(--shadow); }
+  /* A tile's colour is a wash over its panel: lifted off it, it keeps the panel's glass under it. */
+  #home .htile.hlift { background-color: var(--glass-hi); background-image: linear-gradient(var(--tile), var(--tile));
+    -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); }
+  #home .htile.active.hlift { background-image: linear-gradient(color-mix(in srgb, var(--tint) 10%, var(--tile)), color-mix(in srgb, var(--tint) 10%, var(--tile))); }
+  body.hdragging { cursor: grabbing; -webkit-user-select: none; user-select: none; }
   #home .hclock { display: grid; margin-top: 6vh; font-size: clamp(40px, 8vmin, 64px); line-height: 1.08; }
   #home .hnote { margin: 4px 0 12px; color: var(--dim); font-size: 15px; line-height: 1.45; max-width: 460px; }
 

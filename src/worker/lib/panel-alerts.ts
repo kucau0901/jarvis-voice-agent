@@ -1,7 +1,7 @@
 import type { PanelMore } from "../../shared/panels.ts";
 import type { HaConfig } from "./ha.ts";
-import { idsOf, type Panel, type Reading } from "./panels.ts";
-import { isAsk, parseTile, tileKey } from "./panel-tiles.ts";
+import { idsOf, tileKey, type Panel, type Reading } from "./panels.ts";
+import { isAsk, parseTile } from "./panel-tiles.ts";
 import type { Routine, RoutineInput } from "./routines.ts";
 
 /**

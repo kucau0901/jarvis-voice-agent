@@ -22,6 +22,9 @@ import { idsOf, type PanelItem } from "../lib/panels.ts";
  * Whatever the words, the panel is laid out as Hark lays one out — a room's
  * lights as one row, the way in first — by lib/panel-arrange.ts, here, on
  * every change: so the model names the things and Jarvis arranges them.
+ * What a panel already has keeps its place when things are added, since its
+ * person may have dragged it there; asked to tidy a panel, the model sends
+ * `arrange`, and Jarvis lays it all out again.
  */
 
 const person = (env: Env) => env.JARVIS_PERSON || "owner";
@@ -139,8 +142,10 @@ export const panelSet: Tool = {
       },
       mode: {
         type: "string",
-        enum: ["add", "replace"],
-        description: "add: put these after what the panel has. replace: these become all it holds.",
+        enum: ["add", "replace", "arrange"],
+        description:
+          "add: put these on it; what it has keeps its place, as the user may have moved things by hand. replace: these become all " +
+          "it holds. arrange: lay what it has out again in Jarvis's order, when asked to tidy or rearrange it (items: []).",
       },
       items: {
         type: "array",
@@ -220,11 +225,14 @@ export const panelSet: Tool = {
     // Laid out as a whole, so what is added finds its room among what was there.
     const old =
       args.mode === "replace" ? undefined : (await state.panelsOf(me)).find((p) => p.title.trim().toLowerCase() === title.trim().toLowerCase());
+    if (args.mode === "arrange" && !old) return `Nothing was changed: there is no panel called "${title}".`;
     const given = [...(old?.items ?? []), ...items];
     const ha = haConfig(ctx.env);
     const lights = lightIds(given);
     const areas = ha && lights.length >= 2 ? await areasOf(ha, lights) : new Map<string, string>();
-    const out = await state.panelSet(me, old?.title ?? title, arrange(given, areas), "replace");
+    // Added to, what it had stays where it was; arranged, all of it is laid out afresh.
+    const kept = args.mode === "add" ? (old?.items.length ?? 0) : 0;
+    const out = await state.panelSet(me, old?.title ?? title, arrange(given, areas, kept), "replace");
     if (typeof out === "string") return `Nothing was changed: ${out}`;
     const all = await state.panelsOf(me);
     const shown = out.items.map((i) => (idsOf(i).length > 1 ? `${i.label} (${idsOf(i).length} lights in one row)` : i.label));

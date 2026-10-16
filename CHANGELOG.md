@@ -35,7 +35,11 @@ of every release, and in the [README](README.md#updating).
   colour while it is on, open, unlocked, charging or armed; a car shows its
   battery and range, then its locks, climate and charging, each with its own
   button. Big panels run across the page and smaller ones sit side by side
-  in columns. A tall panel folds to its first row, and its … menu reloads or
+  in columns. Drag a panel by its name to move it, or a thing on a panel by
+  its own name (on a touch screen, hold it a moment first); the order is
+  kept for you on every screen, and when you ask Jarvis to add to a panel
+  what you moved stays put, the new thing going beside its kind. "Tidy up
+  Home Controls" has Jarvis lay it out again. A tall panel folds to its first row, and its … menu reloads or
   removes it. A room's row opens to show each light with its own button; an
   aircond opens to its temperature, modes and fan; an alarm to Disarm or the
   ways to arm it, with its code when it wants one (never kept). And a panel

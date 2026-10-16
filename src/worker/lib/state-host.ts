@@ -560,6 +560,8 @@ interface PanelApi {
   panelsOf(person: string): Promise<Panel[]>;
   panelSet(person: string, title: string, items: PanelItem[], mode: "add" | "replace"): Promise<Panel | string>;
   panelRemove(person: string, title: string, item: string | null): Promise<Panel[] | string>;
+  panelOrder(person: string, ids: string[]): Promise<Panel[]>;
+  panelOrderThings(person: string, panelId: string, keys: string[]): Promise<Panel | string>;
   panelAddNote(person: string, panelId: string, text: string): Promise<Panel | string>;
   panelTick(person: string, panelId: string, key: string): Promise<Panel | string>;
   panelClearTicked(person: string, panelId: string): Promise<Panel | string>;

@@ -1,12 +1,12 @@
 // Panels on a person's Home tab: what is kept (lib/panels.ts), how each thing
 // is read and which buttons its state offers (lib/panel-view.ts), what a press
 // is checked against, and what the tool will put on one (tools/panels.ts).
-import { MAX_HOUSE, MAX_ITEMS, MAX_PANELS, noteKey, Panels, type Panel } from "../src/worker/lib/panels.ts";
+import { MAX_HOUSE, MAX_ITEMS, MAX_PANELS, noteKey, Panels, tileKey, type Panel } from "../src/worker/lib/panels.ts";
 import { actOn, carActions, houseActions, houseActive, houseIcon, houseValue, viewPanels, type PanelSources } from "../src/worker/lib/panel-view.ts";
 import { panelRemove, panelSet } from "../src/worker/tools/panels.ts";
 import { areasOf, arrange } from "../src/worker/lib/panel-arrange.ts";
 import { controlCall, controlsOf } from "../src/worker/lib/panel-controls.ts";
-import { parseTile, pressTile, readingOf, readTile, tileIcon, tileKey, tileSpec } from "../src/worker/lib/panel-tiles.ts";
+import { parseTile, pressTile, readingOf, readTile, tileIcon, tileSpec } from "../src/worker/lib/panel-tiles.ts";
 import { historyOf, readTileOf } from "../src/worker/lib/panel-view.ts";
 import { entityHistory } from "../src/worker/lib/ha.ts";
 import { alertChoice, setAlert, watchFor, type AlertDeps } from "../src/worker/lib/panel-alerts.ts";
@@ -75,6 +75,31 @@ console.log("what is kept");
   check("…and each of them counts towards MAX_HOUSE", typeof more === "string" && more.includes(String(MAX_HOUSE)), more);
   await panels.forget("u_sara");
   check("someone who leaves takes their panels with them", (await panels.list("u_sara")).length === 0 && (await panels.list("owner")).length === 1);
+}
+
+console.log("moved by dragging: the order is the person's");
+{
+  const store = new Panels(fakeStorage());
+  for (const t of ["Gate", "Car", "Music", "To do"]) await store.set("u", t, [], "add");
+  const ids = Object.fromEntries((await store.list("u")).map((p) => [p.title, p.id]));
+  const moved = await store.order("u", [ids.Music!, ids.Gate!, ids.Car!, ids["To do"]!]);
+  check("kept in the order given", moved.map((p) => p.title).join() === "Music,Gate,Car,To do" && (await store.list("u")).map((p) => p.title).join() === "Music,Gate,Car,To do");
+  await store.set("u", "Air", [], "add");
+  const stale = await store.order("u", [ids.Car!, ids.Music!, ids.Car!, "p_someone_elses"]);
+  check("one made meanwhile is not lost, an id twice or not theirs is passed over",
+    stale.map((p) => p.title).join() === "Car,Music,Gate,To do,Air", stale.map((p) => p.title));
+  check("each person's own", (await store.order("v", [ids.Car!])).length === 0 && (await store.list("u")).length === 5);
+  const made = await store.set("u", "Gate", [{ kind: "note", ref: "", label: "Oil the hinges" }], "add");
+  check("a panel changed keeps its place", typeof made !== "string" && (await store.list("u")).map((p) => p.title).join() === "Car,Music,Gate,To do,Air");
+  const things = await store.set("u", "Car", [
+    { kind: "home", ref: "cover.main_gate", label: "Main gate" }, { kind: "note", ref: "", label: "Wash it" }, { kind: "tile", ref: '{"read":null,"buttons":[]}', label: "Music" },
+  ], "add");
+  const id = (things as Panel).id;
+  const tile = tileKey('{"read":null,"buttons":[]}');
+  const sorted = await store.orderThings("u", id, [tile, noteKey("wash it"), "light.nowhere"]);
+  check("a panel's things in the order dragged, by their keys; one not named stays after them",
+    typeof sorted !== "string" && sorted.items.map((i) => i.label).join() === "Music,Wash it,Main gate", sorted);
+  check("…on a panel that is there", typeof (await store.orderThings("u", "p_none", [tile])) === "string");
 }
 
 console.log("a checklist: typed onto a panel, ticked off, cleared");
@@ -361,6 +386,17 @@ console.log("Jarvis lays a panel out");
     arrange([h("switch.pump", "Garden pump"), h("switch.fountain", "Garden fountain"), h("switch.sprinkler", "Garden sprinkler")], new Map()).length === 3 &&
     arrange([h("light.a", "Den lamp"), h("light.b", "Den spot"), h("switch.p", "Den plug"), h("fan.c", "Den fan")], new Map()).length === 4);
   check("a group from the house is left as it is", arrange([h("group.bedroom", "Bedroom lights"), h("light.x", "Bedroom lamp"), h("light.y", "Bedroom spot")], new Map()).length === 3);
+  // Moved by hand (the porch light first, the gate last), then added to by chat.
+  const moved = [h("light.porch", "Porch light"), { kind: "note" as const, ref: "", label: "Call the plumber" }, h("cover.main_gate", "Main gate")];
+  const added = arrange([...moved, h("lock.front_door", "Front door lock"), h("light.garden", "Garden light"), { kind: "car" as const, ref: "c_1", label: "Comet" }], new Map(), moved.length);
+  check("what a panel had keeps its order; each thing added goes after its kind, or else after what Jarvis puts before it",
+    added.map((i) => i.label).join() === "Porch light,Garden light,Call the plumber,Main gate,Front door lock,Comet", added.map((i) => i.label));
+  const joined = arrange([h("light.m1", "Master ceiling light"), { kind: "note" as const, ref: "", label: "x" }, h("light.m2", "Master spot light"), h("light.m3", "Master down light")], new Map(), 3);
+  check("…a room's row made with a light added stands where its first light was", joined.map((i) => i.label).join() === "Master lights,x", joined);
+  const before = arrange([h("lock.front_door", "Front door"), h("light.porch", "Porch light"), { kind: "usage" as const, ref: "usage", label: "Usage" }], new Map());
+  const more = [h("cover.main_gate", "Main gate"), h("climate.living", "Aircond"), { kind: "note" as const, ref: "", label: "Note" }];
+  check("…and a panel nobody moved comes out as if laid out afresh",
+    arrange([...before, ...more], new Map(), before.length).map((i) => i.label).join() === arrange([...before, ...more], new Map()).map((i) => i.label).join());
   const asked: string[] = [];
   const got = await areasOf({ base: "https://ha.example", token: "h" }, ["light.led", "light.porch"], async (_c, t) => (asked.push(t), "light.led\tMaster Bedroom\nlight.porch\t\n"));
   check("rooms come from one template: an area for each light that has one", got.get("light.led") === "Master Bedroom" && !got.has("light.porch") && asked.length === 1 && asked[0]!.includes('["light.led","light.porch"]'), [...got]);
@@ -728,6 +764,19 @@ console.log("the tool");
     check("taking a panel away", String(await panelRemove.run({ title: "Home Controls", item: null } as never, ctx(["screen"]))).startsWith("Done"));
     check("…or saying there is none by that name", String(await panelRemove.run({ title: "Nope", item: null } as never, ctx(["screen"]))).includes("no panel called"));
     check("offered only to someone with screen, which a guest does not have", panelSet.scope === "screen" && panelRemove.scope === "screen");
+    // Moved by hand: Jarvis keeps that order when it adds to the panel, and lays it out again only when asked to.
+    const byHand = [
+      { kind: "note", ref: "", label: "Call the plumber" },
+      { kind: "home", ref: "light.porch", label: "Porch light" },
+      { kind: "home", ref: "cover.main_gate", label: "Main gate" },
+    ];
+    stub.panelsOf = (async () => [{ id: "p_1", title: "Home Controls", items: byHand, at: 0 }]) as typeof stub.panelsOf;
+    const labels = () => (kept.at(-1)?.items as { label: string }[]).map((i) => i.label).join();
+    await run({ title: "Home Controls", mode: "add", items: [{ kind: "note", ref: null, label: "Pay the bill" }] }, ctx(["*"]));
+    check("added to by chat, what was moved by hand stays put, the new thing beside its kind", labels() === "Call the plumber,Pay the bill,Porch light,Main gate", labels());
+    await run({ title: "Home Controls", mode: "arrange", items: [] }, ctx(["*"]));
+    check("asked to tidy it, Jarvis lays it out again", labels() === "Main gate,Porch light,Call the plumber", labels());
+    check("…a panel that is not there is said so", (await run({ title: "Nope", mode: "arrange", items: [] }, ctx(["*"]))).includes("no panel called"));
   } finally {
     globalThis.fetch = realFetch;
   }

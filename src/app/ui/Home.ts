@@ -3,14 +3,15 @@ import type { PanelRow, PanelView, PanelsReply } from "../../shared/panels";
 import { arm, button, el } from "./util";
 import { moreBody, slider, typed, type SetAlert } from "./HomeMore";
 import { lineChart, mapImage } from "./HomeChart";
+import { columnsFor, draggable, layOut, type Moving } from "./HomeWall";
 
 /**
  * The Home tab: this person's panels (src/worker/lib/panel-view.ts), as
  * Hark's home column has them but laid across the whole page — a card each,
  * a tile for every thing with its icon, read just now, its buttons following
- * what it is doing. In the order they were made: a big panel across the page,
- * the others in columns under one another (index.html), so another panel
- * finds its place without a hole. A tall card folds, as Hark's do, to its
+ * what it is doing. In their person's order, made last at the end and moved
+ * by dragging a panel's name, or a thing's within its panel (ui/HomeWall.ts): a big panel across the page,
+ * the others in columns across then down. A tall card folds, as Hark's do, to its
  * first row fading out (remembered on this screen), and its … menu reads it
  * again or removes it. A tile with more to it — a room's lights, an
  * aircond, an alarm — opens across its panel (ui/HomeMore.ts); a tile wired
@@ -104,6 +105,8 @@ export class Home {
   private histories = new Map<string, { points: { t: number; v: number }[]; unit: string; fetched: number }>();
   /** Each tile's last reading, by panel and key, and when it was read. */
   private readings = new Map<string, { got: Shown; fetched: number }>();
+  /** The cards in their person's order, as the wall lays them out. */
+  private cards: HTMLElement[] = [];
   /** What "Alert me" last answered, by tile, until when. */
   private told = new Map<string, { text: string; until: number }>();
 
@@ -116,8 +119,12 @@ export class Home {
     document.addEventListener("click", (e) => {
       if (!(e.target instanceof Element && e.target.closest("#home .hmenu, #home .hmore"))) this.closeMenus();
     });
-    // The page's width decides how many tiles fit a row, so which cards are tall enough to fold.
-    new ResizeObserver(() => this.measure()).observe(this.root);
+    // The page's width decides how many columns there are, and how many tiles fit a row, so which cards are tall enough to fold.
+    new ResizeObserver(() => {
+      const wall = this.root.querySelector<HTMLElement>(":scope > .hwall");
+      if (wall && wall.dataset.cols !== String(columnsFor(wall.clientWidth))) layOut(wall, this.cards);
+      this.measure();
+    }).observe(this.root);
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape") this.closeMenus();
     });
@@ -147,9 +154,9 @@ export class Home {
     const n = ++this.seq;
     try {
       const r = (await api(this.key, "GET", "/api/hub/panels")) as PanelsReply;
-      // Not while a menu is open or a code is being typed: drawing again would take them away.
+      // Not while a menu is open, something is being moved or a code is being typed: drawing again would take them away.
       const busy =
-        this.root.querySelector(".hmenu:not([hidden])") ||
+        this.root.querySelector(".hmenu:not([hidden]), .hgap") ||
         [...this.root.querySelectorAll<HTMLInputElement>(".hcode, .hnum, .hadd input, .htyped input, .hlevel input")].some(
           (c) => c === document.activeElement || (c.type !== "range" && c.value),
         );
@@ -170,8 +177,16 @@ export class Home {
     if (!r.panels.length) return this.root.replaceChildren(...this.empty(r));
     const shut = folded();
     const wall = el("div", "hwall");
-    wall.append(...r.panels.map((p) => this.card(p, shut.has(p.id))));
     this.root.replaceChildren(wall);
+    this.cards = r.panels.map((p) => this.card(p, shut.has(p.id)));
+    const panels: Moving = {
+      items: this.cards,
+      lay: () => layOut(wall, this.cards),
+      page: this.root,
+      moved: () => void this.order({ order: this.cards.map((c) => c.dataset.panel!) }),
+    };
+    for (const card of this.cards) draggable(card, card.querySelector(".hfold")!, panels);
+    panels.lay();
     this.measure();
     for (const p of r.panels) for (const row of p.rows) if (row.read) void this.read(p.id, row.key);
   }
@@ -286,7 +301,8 @@ export class Home {
     for (const card of this.root.querySelectorAll<HTMLElement>(".hcard")) {
       const tall = card.querySelector(".hgrid")!.scrollHeight > fold + 12;
       card.classList.toggle("tall", tall);
-      card.querySelector<HTMLButtonElement>(".hfold")!.disabled = !tall;
+      // Not disabled: a disabled button gets no pointer, and its name is what a panel is moved by.
+      card.querySelector(".hfold")!.setAttribute("aria-disabled", String(!tall));
     }
   }
 
@@ -311,11 +327,13 @@ export class Home {
   private card(p: PanelView, shut: boolean): HTMLElement {
     const size = p.rows.reduce((n, r) => n + (wide(r) ? 2 : 1), 0);
     const card = el("section", `hcard${size >= BIG ? " big" : ""}${shut ? " folded" : ""}`);
+    card.dataset.panel = p.id;
 
     const head = el("div", "hhead");
     const icon = el("span", "hic");
     icon.dataset.icon = p.rows.some((r) => r.kind === "home") ? "house" : (p.rows[0]?.icon ?? "house");
     const fold = button("", () => {
+      if (!card.classList.contains("tall")) return;
       const now = folded();
       const shutNow = card.classList.toggle("folded");
       if (shutNow) now.add(p.id);
@@ -352,7 +370,22 @@ export class Home {
     head.append(fold, more, menu);
 
     const grid = el("div", "hgrid");
-    for (const r of p.rows) grid.appendChild(r.kind === "note" ? this.todo(p.id, r) : this.tile(p.id, r));
+    // A thing's tiles stay together (a car is several), moved as one by its first, by its name.
+    const units = new Map<string, HTMLElement[]>();
+    for (const r of p.rows) {
+      const t = r.kind === "note" ? this.todo(p.id, r) : this.tile(p.id, r);
+      t.dataset.key = r.key;
+      units.set(r.key, [...(units.get(r.key) ?? []), t]);
+    }
+    const firsts = [...units.values()].map((u) => u[0]!);
+    const things: Moving = {
+      items: firsts,
+      lay: () => grid.replaceChildren(...firsts.flatMap((f) => units.get(f.dataset.key!)!)),
+      page: this.root,
+      moved: () => void this.order({ panel: p.id, order: firsts.map((f) => f.dataset.key!) }),
+    };
+    for (const f of firsts) draggable(f, f.querySelector<HTMLElement>(".htop, .hname")!, things);
+    things.lay();
     card.append(head, grid);
     if (p.rows.some((r) => r.kind === "note")) card.appendChild(this.adder(p));
     return card;
@@ -393,6 +426,19 @@ export class Home {
       void this.note(p.id, { add: text });
     });
     return form;
+  }
+
+  /** Panels, or a panel's things, dragged to another place: kept so for their person, on every screen (POST /api/hub/panels/order). */
+  private async order(body: { order: string[]; panel?: string }): Promise<void> {
+    // A reading already on its way has the order from before.
+    this.seq++;
+    try {
+      await api(this.key, "POST", "/api/hub/panels/order", body);
+    } catch (e) {
+      this.say(`Could not move it: ${why(e)}`);
+      return;
+    }
+    await this.load();
   }
 
   /** A checklist changed: a to-do added, ticked or cleared (POST /api/hub/panels/note). */

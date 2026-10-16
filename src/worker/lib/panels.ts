@@ -70,6 +70,10 @@ export function shortKey(prefix: string, text: string): string {
 
 /** A note's key on its panel, by its words: a note has no id of its own. */
 export const noteKey = (label: string): string => shortKey("n_", label.trim().toLowerCase());
+/** A tile's key on its panel, short and stable: its ref is too long to send with every press. */
+export const tileKey = (ref: string): string => shortKey("t_", ref);
+/** A thing's key on its panel, as its row carries it (lib/panel-view.ts): a tile's and a note's as above, anything else its ref. */
+export const keyOf = (i: PanelItem): string => (i.kind === "tile" ? tileKey(i.ref) : i.kind === "note" ? noteKey(i.label) : i.ref);
 
 /** Whether a note has been ticked off. */
 export const ticked = (i: PanelItem): boolean => i.kind === "note" && i.ref === "done";
@@ -148,6 +152,28 @@ export class Panels {
     }
     await this.storage.put(key(person), left);
     return left;
+  }
+
+  /**
+   * The panels in the order their person dragged them to, by id. Any not
+   * named stay after them as they were (one made meanwhile is not lost),
+   * and an id that is not theirs is passed over. The new order.
+   */
+  async order(person: string, ids: string[]): Promise<Panel[]> {
+    const all = await this.list(person);
+    const named = ids.map((id) => all.find((p) => p.id === id)).filter((p): p is Panel => !!p);
+    const next = [...new Set([...named, ...all])];
+    await this.storage.put(key(person), next);
+    return next;
+  }
+
+  /**
+   * A panel's things in the order its person dragged them to, by key
+   * (keyOf). Any not named stay after them as they were. Jarvis then keeps
+   * that order when it adds to the panel (lib/panel-arrange.ts).
+   */
+  async orderThings(person: string, panelId: string, keys: string[]): Promise<Panel | string> {
+    return this.change(person, panelId, (items) => [...new Set([...keys.flatMap((k) => items.filter((i) => keyOf(i) === k)), ...items])]);
   }
 
   /**

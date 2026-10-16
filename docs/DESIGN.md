@@ -340,10 +340,20 @@ Home Controls", "a to-do panel with renew the road tax" (`panel_set`,
   its buttons, drawn in colour while it is lit, open, unlocked, charging or
   armed (an alarm that has gone off in red). A
   car is a tile with its battery and range, then one for each of its locks,
-  climate and charging, as Hark shows one. The cards keep the order they were
-  made in: a big one (five tiles or more) across the page, the others in
-  columns under one another — three on a wide screen, two in the car, one on
-  a phone — so a new panel, or a folded one, leaves no hole. A tall one folds
+  climate and charging, as Hark shows one. A big card (five tiles or more)
+  runs across the page, the others in columns — three on a wide screen, two
+  in the car, one on a phone — each column a stack, so a folded card leaves
+  no hole. The cards are in their person's order: made last at the end, and
+  moved by dragging a card's name, with a mouse at once and with a finger
+  held a moment first, so a swipe on it still scrolls (ui/HomeWall.ts). The
+  order is saved for the person (POST /api/hub/panels/order, the same list
+  in the same key), so each of their screens shows it. The columns are
+  filled across then down, first card in the first column, second in the
+  second, rather than balanced by the browser: balanced columns put a card
+  wherever the balance falls, so one dropped on another's place landed
+  somewhere else; here it takes that place, and the others make room as it
+  goes. Columns can end at different heights, which the person can even out
+  by moving one. A tall one folds
   as Hark's do, to its first row with the next fading out under it,
   remembered on that screen, and its … menu reloads it or removes it (two
   taps), as `panel_remove` does when asked. On a light page a pale tint
@@ -364,6 +374,17 @@ Home Controls", "a to-do panel with renew the road tax" (`panel_set`,
   the house will not say, lights whose names start alike ("Master …") are one
   room. Rules rather than a second model call, since model calls cost the
   owner money, and so the same request always gives the same panel.
+- **Moved by hand, kept by Jarvis.** A thing on a panel is dragged by its
+  name, within its panel, as a panel is (a car's tiles move together, by its
+  first). That order would be undone the next time Jarvis changed the panel
+  if the tool still sorted all of it, so it does not: what a panel has keeps
+  its order when things are added by chat, and each thing added goes after
+  the last of its kind, or else after the last of what Jarvis puts before it.
+  A panel nobody moved is already in Jarvis's order, so for it nothing
+  changed. A room's row still forms when a light joins, where its first light
+  was. Asked to tidy or rearrange a panel, the model sends `arrange` and the
+  whole of it is laid out again; `replace` lays out what it is given, as
+  before. Kept in the panel's own list of things, so no new key.
 - **Opened, as Hark opens a row.** A room's row, an aircond and an alarm open
   across their panel (src/app/ui/HomeMore.ts): each of the room's lights with
   its own button; the aircond's temperature up and down, its modes and its

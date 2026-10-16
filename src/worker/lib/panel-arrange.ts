@@ -8,7 +8,8 @@ import { idsOf, ticked, type PanelItem } from "./panels.ts";
  * lib/panel-view.ts), and the things are put in order — the way in first
  * (gates, doors, locks, the alarm), then lights and switches, the climate,
  * readings, the car and other tiles, the usage, notes. Done by the tool on every change
- * (tools/panels.ts), with no model call.
+ * (tools/panels.ts), with no model call, keeping the order of what a panel
+ * already has: its person may have moved things by hand.
  *
  * A room's row holds its lights and its plain switches, which in a house are
  * mostly lights too ("Master bathroom switch"): the row Hark made for a room
@@ -63,15 +64,26 @@ export async function areasOf(cfg: HaConfig, ids: string[], render: typeof rende
   return out;
 }
 
-/** The panel as Jarvis lays it out: a room's lights as one row, then everything in order. */
-export function arrange(items: PanelItem[], areas: Map<string, string>): PanelItem[] {
-  const rooms = new Map<string, { name: string; ids: string[]; label: string | null; lit: boolean; items: PanelItem[] }>();
+/**
+ * The panel as Jarvis lays it out: a room's lights as one row, then
+ * everything in order. The first `kept` things are what the panel had: they
+ * keep the order they are in, since its person may have dragged them there
+ * (src/app/ui/HomeWall.ts), and each thing added goes after the last of its
+ * kind (a light after the lights), or else after the last of what Jarvis
+ * puts before it. A panel nobody moved is in Jarvis's
+ * order already, so it comes out as a whole new layout would. A room's row
+ * stands where its first light was.
+ */
+export function arrange(items: PanelItem[], areas: Map<string, string>, kept = 0): PanelItem[] {
+  type Placed = { i: PanelItem; old: boolean };
+  const rooms = new Map<string, { name: string; ids: string[]; label: string | null; lit: boolean; old: boolean; items: Placed[] }>();
   // Each thing in the order given, a room standing where its first light was.
-  const placed: (PanelItem | string)[] = [];
-  for (const i of items) {
+  const placed: (Placed | string)[] = [];
+  items.forEach((i, n) => {
+    const old = n < kept;
     if (!roomish(i)) {
-      placed.push(i);
-      continue;
+      placed.push({ i, old });
+      return;
     }
     const ids = idsOf(i);
     const area = areas.get(ids[0]!);
@@ -79,22 +91,32 @@ export function arrange(items: PanelItem[], areas: Map<string, string>): PanelIt
     const key = area ? `area:${area.toLowerCase()}` : `word:${word.toLowerCase()}`;
     let room = rooms.get(key);
     if (!room) {
-      rooms.set(key, (room = { name: area ?? word, ids: [], label: null, lit: false, items: [] }));
+      rooms.set(key, (room = { name: area ?? word, ids: [], label: null, lit: false, old: false, items: [] }));
       placed.push(key);
     }
     room.ids.push(...ids);
-    room.items.push(i);
+    room.items.push({ i, old });
     room.lit ||= lit(i);
+    room.old ||= old;
     if (ids.length > 1) room.label ??= i.label;
-  }
-  const out = placed.flatMap((p): PanelItem[] => {
+  });
+  const out = placed.flatMap((p): Placed[] => {
     if (typeof p !== "string") return [p];
     const room = rooms.get(p)!;
     const ids = [...new Set(room.ids)];
-    return ids.length >= ROOM_ROW && room.lit ? [{ kind: "home", ref: ids.join(","), label: room.label ?? `${room.name} lights` }] : room.items;
+    if (ids.length < ROOM_ROW || !room.lit) return room.items;
+    return [{ i: { kind: "home", ref: ids.join(","), label: room.label ?? `${room.name} lights` }, old: room.old }];
   });
-  return out
-    .map((i, n) => ({ i, n, r: rank(i) }))
-    .sort((a, b) => a.r - b.r || a.n - b.n)
-    .map(({ i }) => i);
+  const laid = out.filter((p) => p.old).map((p) => p.i);
+  // Each thing added after the last of its kind, or else after the last that Jarvis puts before it.
+  const lastWhere = (f: (r: number) => boolean) => {
+    for (let n = laid.length - 1; n >= 0; n--) if (f(rank(laid[n]!))) return n;
+    return -1;
+  };
+  for (const { i } of out.filter((p) => !p.old)) {
+    const r = rank(i);
+    const mate = lastWhere((x) => x === r);
+    laid.splice((mate >= 0 ? mate : lastWhere((x) => x < r)) + 1, 0, i);
+  }
+  return laid;
 }

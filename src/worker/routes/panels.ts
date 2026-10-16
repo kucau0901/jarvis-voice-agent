@@ -9,6 +9,7 @@ import { dayOf } from "../lib/usage.ts";
 import { carById, pickCar } from "../tools/tessie.ts";
 import { actOn, historyOf, LIVE, readTileOf, viewPanels, type PanelSources } from "../lib/panel-view.ts";
 import { setAlert } from "../lib/panel-alerts.ts";
+import { keyOf } from "../lib/panels.ts";
 import { baseTools, outputText } from "../tools/registry.ts";
 import { mcpSessions, mcpTools } from "../tools/mcp.ts";
 import { memoryFor } from "../lib/memory.ts";
@@ -29,6 +30,8 @@ import type { PanelsReply } from "../../shared/panels.ts";
  *   POST /api/hub/panels/alert {panel, key, when?, value?, condition?}: "Alert me" on a tile, made a
  *        routine of yours (a watch, or a page watch), so it needs `routines`
  *   POST /api/hub/panels/remove {panel}: take that panel off (its … menu)
+ *   POST /api/hub/panels/order {order: [panel ids]}: your panels in the order you dragged them to;
+ *        with {panel}, that panel's things, by their keys
  *   POST /api/hub/panels/note  {panel, add?, tick?, clear?}: a to-do typed onto it, one ticked
  *        off or back on (by its key), or the ticked ones cleared; no model
  *
@@ -37,7 +40,7 @@ import type { PanelsReply } from "../../shared/panels.ts";
  */
 export async function handlePanels(req: Request, env: Env, principal: Principal): Promise<Response | null> {
   const p = new URL(req.url).pathname;
-  if (!["/api/hub/panels", "/api/hub/panels/read", "/api/hub/panels/history", "/api/hub/panels/act", "/api/hub/panels/alert", "/api/hub/panels/remove", "/api/hub/panels/note"].includes(p)) return null;
+  if (!["/api/hub/panels", "/api/hub/panels/read", "/api/hub/panels/history", "/api/hub/panels/act", "/api/hub/panels/alert", "/api/hub/panels/remove", "/api/hub/panels/order", "/api/hub/panels/note"].includes(p)) return null;
   if (principal.kind === "device") return err(403, "that is for a person, not a device");
   const grants = grantsOf(principal);
   if (!allows(grants, "screen")) return err(403, 'panels need "screen"', { need: "screen" });
@@ -151,6 +154,17 @@ export async function handlePanels(req: Request, env: Env, principal: Principal)
     if (!panel) return err(404, "you have no such panel");
     const left = await state.panelRemove(me, panel.title, null);
     return typeof left === "string" ? err(409, left) : json({ removed: panel.title });
+  }
+  if (p === "/api/hub/panels/order" && req.method === "POST") {
+    const b = await readObject(req, 2_000);
+    if (!b || !Array.isArray(b.order) || !b.order.every((id) => typeof id === "string")) return err(400, "send {order: [panel ids]} or {panel, order: [keys]}");
+    const order = b.order as string[];
+    if (typeof b.panel === "string") {
+      const panel = await state.panelOrderThings(me, b.panel, order);
+      return typeof panel === "string" ? err(404, panel) : json({ order: panel.items.map(keyOf) });
+    }
+    const next = await state.panelOrder(me, order);
+    return json({ order: next.map((x) => x.id) });
   }
   return err(405, "GET your panels, or POST to /api/hub/panels/act or /remove");
 }

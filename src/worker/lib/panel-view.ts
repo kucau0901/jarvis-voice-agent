@@ -4,10 +4,10 @@ import { callService, entityHistory, entityState, type HaConfig } from "./ha.ts"
 import { passService } from "./access.ts";
 import { carSnapshot, distanceIn, ensureAwake, sendCarCommand, type CarSnapshot, type TessieConfig } from "../tools/tessie.ts";
 import type { CarKey } from "./context.ts";
-import { idsOf, noteKey, ticked, type Panel, type PanelItem } from "./panels.ts";
+import { idsOf, keyOf, ticked, type Panel, type PanelItem } from "./panels.ts";
 import { controlCall, controlsOf } from "./panel-controls.ts";
 import { alertChoice } from "./panel-alerts.ts";
-import { isAsk, parseTile, pressTile, readTile, tileIcon, tileKey, type TileButton, type TileSources } from "./panel-tiles.ts";
+import { isAsk, parseTile, pressTile, readTile, tileIcon, type TileButton, type TileSources } from "./panel-tiles.ts";
 import type { UsageReport } from "./usage.ts";
 import type { PanelIcon, PanelRow, PanelView } from "../../shared/panels.ts";
 
@@ -379,7 +379,6 @@ function usageTiles(r: UsageReport): { label: string; value: string }[] {
 const ICON: Record<"car" | "usage" | "note" | "tile", PanelIcon> = { car: "car", usage: "usage", note: "note", tile: "dot" };
 
 /** A thing's key on its panel, for a press: its ref, or a tile's or a note's short key. */
-export const keyOf = (i: PanelItem): string => (i.kind === "tile" ? tileKey(i.ref) : i.kind === "note" ? noteKey(i.label) : i.ref);
 const iconOf = (item: PanelItem): PanelIcon => (item.kind === "home" ? houseIcon(item.ref, "", { friendly_name: item.label }) : ICON[item.kind]);
 const empty = (item: PanelItem, note: string): PanelRow[] => [
   { key: keyOf(item), kind: item.kind, label: item.label, value: "", icon: iconOf(item), active: false, tiles: [], actions: [], note },

@@ -1,5 +1,5 @@
 import type { ButtonInput, PanelIcon } from "../../shared/panels.ts";
-import { shortKey, type Reading } from "./panels.ts";
+import type { Reading } from "./panels.ts";
 
 /**
  * A tile for anything else Jarvis can read or do — the music, the car, the
@@ -116,8 +116,6 @@ export function parseTile(ref: string): TileSpec | null {
   }
 }
 
-/** A tile's key on its panel, short and stable: its ref is too long to send with every press. */
-export const tileKey = (ref: string): string => shortKey("t_", ref);
 
 /** What a tile is drawn with, by the tools it uses. */
 const BY_TOOL: [RegExp, PanelIcon][] = [
