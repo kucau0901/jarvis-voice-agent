@@ -200,13 +200,12 @@
      reaches further still. Offsetting by --orb alone put the text inside that
      halo. Everything to the right of the orb is positioned from --orbSpan. */
   body.staged { --orbSpan: calc(var(--orb) * 1.44); }
-  body.staged #status, body.staged #hint { position: fixed;
+  body.staged #status { position: fixed;
     left: calc(var(--orbSpan) + 18px); z-index: 57; text-align: left;
     font-size: clamp(12px, 1.6vmin, 15px);
     max-width: calc(100vw - var(--orbSpan) - 230px);
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   body.staged #status { top: calc(10px + var(--orb) / 2 - 12px); }
-  body.staged #hint { top: calc(10px + var(--orb) / 2 + 8px); font-size: 11px; }
   /* Centred under the picture on a wide screen, rather than pinned left. */
   body.staged #transcript { position: fixed; left: 0; right: 0; margin-inline: auto; bottom: 6px;
     max-height: 16vh; z-index: 57; padding: 0 14px; }
@@ -331,10 +330,9 @@
       color-mix(in srgb, var(--accent) 35%, var(--surface)) 0%, color-mix(in srgb, var(--accent) 12%, var(--bg)) 70%);
     box-shadow: 0 0 0 1px var(--hair) inset, 0 0 70px -14px var(--accent); }
 
-  #status, #hint, #transcript { position: relative; z-index: 2; }
+  #status, #transcript { position: relative; z-index: 2; }
   #status { font-size: 17px; color: var(--dim); text-align: center; min-height: 24px; }
   #status.bad { color: var(--danger); }
-  #hint { font-size: 12px; color: var(--faint); min-height: 16px; font-variant-numeric: tabular-nums; }
 
   #transcript { width: min(760px, 100%); max-height: 26vh; overflow-y: auto;
     display: flex; flex-direction: column; gap: 8px; padding: 0 4px; }
@@ -651,30 +649,28 @@
   #modes button.on { background: var(--seg-on); color: var(--fg); }
   body.staged #talkrow { display: none; }
   #talkrow { position: relative; z-index: 2; display: flex; gap: 10px; align-items: center; }
-  /* The orb, what it is doing and how to talk are one row where the screen is wide: the status on the
-     left, the orb centred between equal columns, Live over Push-to-talk on the right. The rows they took
-     under the orb were the conversation's room in the car, which now takes all the height left. Elsewhere
-     (a picture up, Chat, Home, a phone held upright) the row is not a box at all, and each part is placed
-     as before. */
+  /* The orb and how to talk are one row where the screen is wide: the orb centred between equal columns,
+     Live over Push-to-talk on the right, and what it is doing in a small card under the orb. The row the
+     switch took under the orb was the conversation's room in the car, which now takes all the height left.
+     Elsewhere (a picture up, Chat, Home, a phone held upright) the row is not a box at all, and each part
+     is placed as before. */
   #orbRow, #said { display: contents; }
   @media not all and (max-width: 620px) and (orientation: portrait) {
     /* The orb is drawn about a seventh wider than its box: the gap clears it, and so does the room above
        and below, or its top went under the tabs' glass and its foot under the status. */
     body:not(.staged):not(.typing):not(.home) #orbRow { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center;
-      column-gap: calc(var(--ow) * .15 + 16px); width: 100%; flex: none; }
+      column-gap: calc(var(--ow) * .15 + 16px); row-gap: 6px; width: 100%; flex: none; }
     #orbRow > #orbWrap { grid-column: 2; }
     body:not(.staged):not(.typing):not(.home) { gap: 12px; }
     body:not(.staged):not(.typing):not(.home) #orbWrap { margin: calc(var(--ow) * .16) 0 calc(var(--ow) * .13); }
-    /* What it is doing against the left edge, a small frosted card, as how to talk is against the right: the
-       conversation has the room they took under the orb. Not there at all while both are empty. */
-    body:not(.staged):not(.typing):not(.home) #said { display: grid; gap: 4px; grid-column: 1; grid-row: 1; justify-self: start;
-      max-width: 220px; padding: 12px 14px; border-radius: 18px; border: 1px solid var(--hair); background: var(--glass);
-      -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); }
-    body:not(.staged):not(.typing):not(.home) #said:has(> #status:empty):has(> #hint:empty) { visibility: hidden; }
-    body:not(.staged):not(.typing):not(.home) #status { min-height: 0; font-size: 14px; line-height: 1.35; text-align: left; color: var(--fg); }
+    /* What it is doing in a small frosted card under the orb, across the row so the orb's column keeps its
+       width. Not there at all while it says nothing. */
+    body:not(.staged):not(.typing):not(.home) #said { display: grid; gap: 2px; grid-column: 1 / -1; grid-row: 2; justify-self: center;
+      max-width: min(420px, 100%); padding: 8px 18px; border-radius: 16px; border: 1px solid var(--hair); background: var(--glass);
+      -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); text-align: center; }
+    body:not(.staged):not(.typing):not(.home) #said:has(> #status:empty) { visibility: hidden; }
+    body:not(.staged):not(.typing):not(.home) #status { min-height: 0; font-size: 14px; line-height: 1.35; text-align: center; color: var(--fg); }
     body:not(.staged):not(.typing):not(.home) #status.bad { color: var(--danger); }
-    body:not(.staged):not(.typing):not(.home) #hint { min-height: 0; font-size: 11px; line-height: 1.35; }
-    body:not(.staged):not(.typing):not(.home) #hint:empty { display: none; }
     /* How to talk against the right edge: a tall narrow pill about as tall as the orb, each half elongated, its words small. */
     #orbRow > #talkrow { grid-column: 3; justify-self: end; }
     #orbRow #modes { flex-direction: column; width: 58px; }
@@ -692,7 +688,7 @@
   body.typing { justify-content: flex-start; gap: 12px; --orb: 40px;
     height: calc(100dvh - var(--kb, 0px));
     padding: calc(var(--barTop) + 64px) 16px calc(112px + var(--tray, 0px) + env(safe-area-inset-bottom)); }
-  body.typing h1, body.typing #hint, body.typing #talkrow { display: none; }
+  body.typing h1, body.typing #talkrow { display: none; }
   body.typing #orbWrap { position: fixed; top: calc(var(--barTop) + 6px); left: 18px; z-index: 3; width: var(--orb); margin: 0; }
   body.typing #status { position: fixed; z-index: 20; left: 16px; right: 16px; top: auto; max-width: none;
     bottom: calc(var(--kb, 0px) + 80px + var(--tray, 0px) + env(safe-area-inset-bottom)); min-height: 0; text-align: center;
@@ -937,7 +933,7 @@
   body.home { justify-content: flex-start; --orb: 40px;
     padding: calc(var(--barTop) + 64px) 16px calc(16px + env(safe-area-inset-bottom)); }
   body.home #orbWrap { position: fixed; top: calc(var(--barTop) + 6px); left: 18px; z-index: 3; width: var(--orb); margin: 0; }
-  body.home h1, body.home #hint, body.home #talkrow, body.home #transcript { display: none; }
+  body.home h1, body.home #talkrow, body.home #transcript { display: none; }
   /* A session started here (the orb in the corner) says how it is going, as in Chat. */
   body.home #status { position: fixed; z-index: 20; left: 16px; right: 16px; top: auto; max-width: none; min-height: 0;
     bottom: calc(12px + env(safe-area-inset-bottom)); text-align: center; font-size: 13px;
@@ -1197,7 +1193,6 @@
     </div>
     <div id="said">
       <div id="status">loading…</div>
-      <div id="hint"></div>
     </div>
     <div id="talkrow">
       <div id="modes" role="group" aria-label="How to talk">

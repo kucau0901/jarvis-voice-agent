@@ -112,10 +112,12 @@ of every release, and in the [README](README.md#updating).
 ### Changed
 
 - **More room for the conversation on the Jarvis tab.** On a screen wider
-  than a phone held upright, the orb is a little smaller, what it is doing
-  sits in a small frosted card at the left edge, and Live and Push-to-talk are
-  a tall narrow switch at the right edge, instead of rows under the orb; the
-  conversation takes all the height left. In the car the orb's top no longer
+  than a phone held upright, the orb is a little smaller with what it is
+  doing in a small frosted card under it, and Live and Push-to-talk are a tall
+  narrow switch at the right edge instead of a row under the orb; the
+  conversation takes all the height left. The line of prices under the orb is
+  gone, the running cost of a live session with it (Settings → Usage keeps
+  what each one cost). In the car the orb's top no longer
   goes under the tabs, nor the conversation off the foot of the screen.
 
 - **A new look, in Tesla's colours, laid out like Hark.** The app uses the

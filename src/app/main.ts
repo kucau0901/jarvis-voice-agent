@@ -35,7 +35,6 @@ const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as 
 const els = {
   orb: $("orb"),
   status: $("status"),
-  hint: $("hint"),
   transcript: $("transcript"),
   log: $("log"),
   logWrap: $("logWrap"),
@@ -293,13 +292,6 @@ function onEvent(ev: ServerEvent) {
       break;
     }
 
-    case "session.usage.updated":
-      if (typeof ev.duration_seconds === "number") {
-        const mins = ev.duration_seconds / 60;
-        els.hint.textContent = `${mins.toFixed(1)} min · ~$${(mins * 0.05).toFixed(2)}`;
-      }
-      break;
-
     case "error":
       status(`error: ${JSON.stringify(ev.error ?? ev).slice(0, 160)}`, true);
       break;
@@ -342,7 +334,6 @@ function onState(s: SessionState, detail?: string) {
       attempt = 0; droppedAt = 0;
       if (!liveSince) liveSince = Date.now();
       status("listening — tap to end");
-      els.hint.textContent = "";
       // Start the meter now, not on first speech: a session opened and never
       // spoken to is exactly the one worth closing, and it would otherwise
       // bill until the tab did.
@@ -1086,11 +1077,9 @@ function setMode(m: Mode) {
     if (!matchMedia("(pointer: coarse)").matches && !inCar()) typed.focus();
   } else if (m === "ptt") {
     status(key ? "tap and ask" : "");
-    els.hint.textContent = "push-to-talk · a fraction of a cent a question";
   } else {
     ptt?.stop();
     status(key ? "tap to start" : "");
-    els.hint.textContent = "live conversation · $0.05 a minute while open";
   }
 }
 
