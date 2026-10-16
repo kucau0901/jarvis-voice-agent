@@ -133,6 +133,14 @@ of every release, and in the [README](README.md#updating).
 
 ### Fixed
 
+- **Typing in the car: the box stays in sight.** The car's on-screen keyboard
+  covers the page without the browser being told, so the message box stayed
+  under it and you could not see what you typed. In the car, the box you type
+  into now moves to the top of the screen while the keyboard is up, as the
+  car's own boxes are: in Chat the message box sits under the tabs with the
+  newest messages just below it, and a box on a panel or in Settings scrolls
+  up. Opening Chat in the car no longer brings the keyboard up by itself.
+
 - **Hermes taking longer than six minutes no longer reads as a failure.** The
   alert said "Could not finish … The operation was aborted due to timeout"
   while Hermes was still working. It now says "Still working", and that its

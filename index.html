@@ -665,6 +665,14 @@
   #typebar #readAloud[aria-pressed="true"] { --icon: var(--i-speaking); color: var(--accent-ink); }
   #typebar #send { --icon: var(--i-send); background: var(--solid); color: var(--on-solid); }
   #typebar #send:disabled { opacity: .45; cursor: default; }
+  /* The car's keyboard covers the page without saying how much (keyboard.ts): typing there, the box goes up
+     under the tabs, where the car puts its own, the newest messages in the band just under it. */
+  body.typing.kbover { padding-top: calc(var(--barTop) + 130px); }
+  body.typing.kbover #typebar { top: calc(var(--barTop) + 64px); bottom: auto; }
+  body.typing.kbover #transcript { flex: 0 1 auto; max-height: 34vh; }
+  body.typing.kbover #status { display: none; }
+  /* Any other box is scrolled to the top of what scrolls it: room under it to scroll that far. */
+  body.home.kbover #home, body.kbover .panel .sheet { padding-bottom: 60vh; }
   /* A picture while typing sits at the top of the chat, not over it. The
      staged rules above float the conversation over a dashboard; with typing's
      unlimited height that layer covered the picture, the orb and the menu.
