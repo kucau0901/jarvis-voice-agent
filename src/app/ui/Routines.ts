@@ -62,9 +62,14 @@ export class Routines {
     });
   }
 
-  async show(): Promise<void> {
+  /** Open; with `focus`, that routine brought into view and marked (a routine's pill in the conversation). */
+  async show(focus?: string): Promise<void> {
     this.el.classList.add("open");
     await this.load();
+    const row = focus ? [...this.list.querySelectorAll<HTMLElement>(".routine")].find((r) => r.dataset.id === focus) : undefined;
+    if (!row) return;
+    row.scrollIntoView({ block: "center" });
+    row.classList.add("flash");
   }
 
   hide(): void {
@@ -95,6 +100,7 @@ export class Routines {
     }
     const rows = all.map((r) => {
       const row = el("div", `routine${r.enabled ? "" : " off"}`);
+      row.dataset.id = r.id;
       const top = el("div", "rtop");
       top.appendChild(el("b", "", r.name));
       const toggle = el("label", "on");

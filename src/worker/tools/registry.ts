@@ -3,6 +3,7 @@ import type { MemoryStore } from "../lib/memory.ts";
 import { allows, type Grant, type Scope } from "../lib/scopes.ts";
 import * as hermes from "./hermes.ts";
 import { memoryTools } from "./memory.ts";
+import { lookBackTool } from "./conversation.ts";
 import { tessieTools } from "./tessie.ts";
 import { directionsTools } from "./directions.ts";
 import { placeTools } from "./place.ts";
@@ -207,6 +208,7 @@ const controlHome: Tool = {
 /** Every local tool. MCP tools are appended separately at request time. */
 const ALL: Tool[] = [
   ...memoryTools,
+  lookBackTool,
   ...tessieTools,
   ...directionsTools,
   ...placeTools,

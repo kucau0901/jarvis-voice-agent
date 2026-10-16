@@ -46,6 +46,8 @@ enough) or run it yourself with **Docker**.
   the orb, in the *Jarvis* tab; one conversation
   across all three — and across your devices: ask in the car, and "what was
   that address again?" works on the phone or the glasses for half an hour.
+  The chat itself is kept, a month of it on every screen of yours, until you
+  clear it.
   Hearing and speaking can use OpenAI, Cloudflare Workers AI, or the device
   itself.
 - **Panels, made by asking** — "put the gate and the porch light on a panel":

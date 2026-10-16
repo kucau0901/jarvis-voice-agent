@@ -109,7 +109,28 @@ of every release, and in the [README](README.md#updating).
   and Jarvis knows which one you mean. Answers now stand out from questions,
   solid against see-through, in dark as in light.
 
+- **What your routines say appears in the chat**, as Hark's checks do: under
+  a pill with the routine's name (for example "Work email check"), hooked to
+  the message, whichever tab is open. Messages that came while Jarvis was
+  closed are there when you open it. Press the pill to open that routine in
+  Routines; the message can be replied to like any answer.
+
+- **The chat is kept**, as Hark's is: what you typed or said aloud, Jarvis's
+  answers and what your routines said are there again when you open Jarvis,
+  on any screen of yours, for 30 days (the last 200 messages). **Clear chat**,
+  above the conversation in Chat, empties it with two taps, on every screen
+  of yours. Jarvis can also look back through it when you ask about
+  something said before, such as "what did you say last week about the
+  insurance?". This needs permission to read memory, so guests don't get it.
+
 ### Changed
+
+- **A question carries only the recent part of the conversation**: the last
+  20 turns of the past three hours, rather than up to the last hundred since
+  the page opened. A long chat costs no more to ask in than a short one. What
+  lasts is still in memory, and older chat is read back only when you ask
+  about it. Ending a live session no longer forgets the conversation: the
+  next one carries on from it.
 
 - **More room for the conversation on the Jarvis tab.** On a screen wider
   than a phone held upright, the orb is a little smaller with what it is

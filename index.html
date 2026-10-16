@@ -347,6 +347,18 @@
   /* An answer stands out and a question steps back, as Hark's do: the answer solid, the question see-through and quieter. */
   .row.you .txt { background: var(--bubble-you); color: var(--dim); }
   .row .txt:empty { display: none; }
+  /* What a routine said (fromRoutine.ts): its name in a pill on the asking side, hooked to its words below,
+     as Hark shows what its checks found. Pressed, the routine opens. */
+  .row.you.from { flex-direction: row; justify-content: flex-end; align-items: flex-end; column-gap: 2px; }
+  .row span.hook { cursor: default; }
+  .row .frompill { display: inline-flex; align-items: center; gap: 8px; min-width: 0; max-width: min(480px, 88%); min-height: 36px;
+    padding: 6px 14px 6px 12px; border: 0; border-radius: 999px; background: var(--solid); color: var(--on-solid);
+    font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; }
+  .row .frompill::before { content: ""; flex: none; width: 15px; height: 15px; background: currentColor;
+    -webkit-mask: var(--i-clock) center / contain no-repeat; mask: var(--i-clock) center / contain no-repeat; }
+  .row .frompill span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .row .frompill small { flex: none; font-size: 12px; opacity: .7; }
+  .routine.flash { animation: rflash 1.6s ease-out; }
   /* An answer's reply button, at its foot (reply.ts). */
   .row.jarvis { flex-direction: row; align-items: flex-end; gap: 2px; }
   .row .rpl { flex: none; display: grid; place-items: center; width: 36px; height: 36px; padding: 0; border: 0; border-radius: 50%;
@@ -699,6 +711,13 @@
   body.typing #transcript .row .txt { white-space: pre-wrap; overflow-wrap: anywhere; }
   body.typing #transcript .row .txt a { color: var(--accent-ink); }
   #transcript .row.bad .txt { color: var(--danger); }
+  /* Clear chat (conversation.ts): above the conversation, in Chat, once there is one; two taps. */
+  #chathead { display: none; }
+  body.typing:not(.kbover):has(#transcript > .row) #chathead { display: flex; flex: none; justify-content: flex-end; width: min(720px, 100%); margin-bottom: -6px; }
+  #clearChat { min-height: 40px; padding: 0 16px; border: 1px solid var(--hair); border-radius: 999px;
+    background: var(--glass); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur);
+    color: var(--dim); font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; }
+  #clearChat.armed { background: var(--danger); border-color: var(--danger); color: var(--on-accent); }
   /* The message box, Hark's: one glass pill holding the text and its buttons —
      ask aloud (what the orb does in Chat), read replies aloud, and send. */
   body.typing #typebar { display: flex; position: fixed; left: 50%; transform: translateX(-50%); z-index: 20;
@@ -1201,6 +1220,7 @@
       </div>
     </div>
   </div>
+  <div id="chathead"><button id="clearChat" type="button">Clear chat</button></div>
   <div id="transcript"></div>
   <section id="home" aria-label="Your panels"></section>
   <form id="typebar" autocomplete="off">

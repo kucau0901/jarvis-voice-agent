@@ -279,6 +279,17 @@ function sock(c: LiveClient | null, sink: string[] = []) {
 }
 const client = (label: string, visible: boolean): LiveClient => ({ who: "owner", label, visible, since: 1 });
 
+console.log("\none person's screens are told something");
+{
+  const hub = new LiveHub();
+  const mine = sock({ who: "u_sam", label: "phone", visible: true, since: 1 });
+  const myDevice = sock({ who: "u_sam~d_glasses", label: "glasses", visible: true, since: 1 });
+  const owners = sock(client("car", true));
+  hub.tell([mine, myDevice, owners], "u_sam", { type: "conversation.cleared" });
+  check("only that person's screens: not their devices, nobody else's",
+    mine.sent.length === 1 && JSON.parse(mine.sent[0]!).type === "conversation.cleared" && !myDevice.sent.length && !owners.sent.length);
+}
+
 console.log("\nopen screens");
 {
   const hub = new LiveHub();

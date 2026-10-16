@@ -48,6 +48,12 @@ export interface Alert {
   /** A chat message (lib/chat.ts): which conversation to open. */
   convo?: string;
   /**
+   * The routine that said it (lib/scheduler.ts): the app shows it in the
+   * conversation under the routine's name, which opens that routine
+   * (src/app/fromRoutine.ts).
+   */
+  routine?: string;
+  /**
    * Whose it is (lib/context.ts): a member's id, or none for the first
    * person's. A member's alert reaches only their screens, their phones and
    * their own Telegram chat; the household's channels (ntfy, the webhook,

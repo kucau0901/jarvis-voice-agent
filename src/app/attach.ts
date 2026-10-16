@@ -194,6 +194,13 @@ export class Attachments {
     return box;
   }
 
+  /** What a kept question carried, by name only: the files were never kept (conversation.ts). */
+  static named(names: string[]): HTMLElement {
+    const box = el("div", "att");
+    for (const name of names) box.appendChild(fileChip({ name, kind: /\.(jpe?g|png|gif|webp|heic)$/i.test(name) ? "image" : /\.pdf$/i.test(name) ? "pdf" : "text", data: "" }));
+    return box;
+  }
+
   private room(kind: Attached["kind"]): boolean {
     const photos = kind === "image";
     if (this.list.filter((a) => (a.kind === "image") === photos).length < (photos ? MAX_PHOTOS : MAX_FILES)) return true;

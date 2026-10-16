@@ -29,6 +29,7 @@ import type { Job } from "./jobs.ts";
 import type { Relay, RelayKind } from "./relays.ts";
 import type { ChatMessage } from "./chat.ts";
 import type { Panel, PanelItem, Reading } from "./panels.ts";
+import type { Said } from "./conversation.ts";
 import type { Grant } from "./scopes.ts";
 
 /**
@@ -570,6 +571,14 @@ interface PanelApi {
   panelKeepReading(person: string, tile: string, reading: Reading | null): Promise<void>;
 }
 
+/** Each person's conversation with Jarvis, kept (lib/conversation.ts; state.ts). */
+interface ConversationApi {
+  conversationOf(person: string, now: number): Promise<Said[]>;
+  conversationAdd(person: string, said: Said[], now: number): Promise<void>;
+  /** Emptied, and every open screen of theirs told. */
+  conversationClear(person: string): Promise<void>;
+}
+
 /** What the object adds itself, because it holds the sockets (state.ts). */
 interface LiveApi {
   broadcast(alert: Alert, waitMs: number): Promise<LiveResult>;
@@ -614,4 +623,5 @@ export type StateApi = Pick<
   RoutineApi &
   JobApi &
   FamilyApi &
-  PanelApi;
+  PanelApi &
+  ConversationApi;

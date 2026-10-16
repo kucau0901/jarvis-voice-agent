@@ -464,7 +464,7 @@ export class Scheduler {
         .format(new Date(lateFrom));
       text = `(This was due at ${hhmm}.) ${text}`;
     }
-    const alert = makeAlert({ title: r.name, text }, "routine", now, personOfWho(r.createdBy))!;
+    const alert = { ...makeAlert({ title: r.name, text }, "routine", now, personOfWho(r.createdBy))!, routine: r.id };
     const d = await deps.deliver(alert);
     await this.record(r.id, outcome(d, now));
   }
@@ -534,7 +534,7 @@ export class Scheduler {
       await this.storage.put(PLANS, plans); // before delivering, for the same reason as above
       const m = leaveMessage(p, deps.timeZone, now);
       // No use once the event has begun: a phone that was off all along is not told late.
-      const d = await deps.deliver(makeAlert({ title: m.title, text: m.text, expiresAt: p.start }, "routine", now, personOfWho(r.createdBy))!);
+      const d = await deps.deliver({ ...makeAlert({ title: m.title, text: m.text, expiresAt: p.start }, "routine", now, personOfWho(r.createdBy))!, routine: r.id });
       await this.record(r.id, { ...outcome(d, now), detail: `${p.summary}: ${outcome(d, now).detail}` });
     }
     await this.storage.put(PLANS, plans);

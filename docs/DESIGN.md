@@ -101,7 +101,8 @@ it is testing. It lives in `public/` and is copied verbatim, never compiled.
 ## How a request reaches your house
 
 `session.delegation.created` carries only an id and a timeline offset — **never
-the task text** — so the browser sends the whole transcript to `/api/delegate`
+the task text** — so the browser sends the conversation so far (its recent
+part: see "The conversation, kept") to `/api/delegate`
 and a router model (`gpt-6-luna` unless another is chosen in the settings
 panel) works out what was wanted and picks a tool.
 That router is also what makes third-party MCP servers usable at all.
@@ -875,6 +876,32 @@ and the router is given the answer's words with the question, so "close that
 one" means the thing quoted however far up it was. Answers are solid and
 questions see-through and quieter, so what Jarvis said stands out.
 
+**The conversation, kept**, as Hark's chat is: what you typed or said aloud
+(Live and push-to-talk), Jarvis's answers and what your routines said are
+there again when the app opens, on any screen of yours. Each message is sent
+to the object as it is finished (`src/app/conversation.ts`; a spoken row once
+it settles), and a routine's as it is delivered; one record per person
+(`lib/conversation.ts`), the last 200 messages of the past 30 days. Answers
+that went wrong are not kept. Clear chat, over the conversation in Chat, takes
+two taps and empties it on every open screen of yours; putting the person in
+use aside on a shared screen takes theirs off it. Ending a live session no
+longer forgets the conversation: the next one is seeded with it.
+
+Kept is not what the model reads. A question carries only the last twenty
+turns of the past three hours (`src/app/history.ts`); sending a month of chat
+with every question would make each one dearer as the chat grew, for nothing
+most questions need. So nothing is "forgotten" when the chat reaches 200:
+the model stopped reading those messages long before. Two things reach
+further back. What lasts is memory's: the router saves it with `remember`,
+and it goes with every question however old the chat is. And when someone
+refers to something older ("what did you say last week about the
+insurance?"), the router can read back into the kept month with `look_back`
+(`tools/conversation.ts`), which costs nothing until it is used. It needs
+`memory.read`, as the conversation shared between devices does: the chat
+says as much about a person as memory does. There is no summarising of old
+turns: that would be a model call every few exchanges, and a longer question
+every time, to keep what memory and look_back already reach.
+
 **The router has to be Jarvis.** With GPT-Live, the live voice re-says what
 the router found in its own words and manner. Push-to-talk has nothing in
 between: text-to-speech reads the router's reply word for word. So a
@@ -988,6 +1015,17 @@ the handler runs what is due and sets it again. Alarms survive restarts and
 redeploys, run on the free plan, and work the same in Docker's workerd. No cron
 is needed: the calendar is re-read every 15 minutes by the same alarm, only
 while a leave routine is on.
+
+**What a routine says is in the conversation too**, as Hark shows what its
+checks found: under a pill with the routine's name, on the asking side, hooked
+to its words, and pressed, the pill opens that routine in Routines
+(`src/app/fromRoutine.ts`). Its alert carries the routine's id. On a screen
+that is open it arrives with the alert, whichever tab is up, so "check my
+email every morning and tell me what matters" lands where the answer can be
+replied to. It is kept in its maker's conversation as it is delivered
+(state.ts, `lib/conversation.ts`), so a screen that was closed shows it when
+it opens. Each is shown once, and goes into the history, so "reply to that
+one" has it to go on.
 
 **Handled before it runs.** An alarm handler that throws is retried, so each
 routine's next time (or its "done") is written before its action runs. A retry

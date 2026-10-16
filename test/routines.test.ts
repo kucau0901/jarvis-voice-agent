@@ -493,6 +493,16 @@ console.log("\nwatches: the gate left open");
   check("recorded", w.lastRun?.ok === true && w.watch?.fired === true);
 }
 
+console.log("\nwhat a routine says names the routine, for the app's conversation");
+{
+  const h = harness();
+  const said = (await h.s.add({ when: "once", inMinutes: 5, say: "Call Mum" }, OWNER, T0)) as Routine;
+  const asked = (await h.s.add({ when: "once", inMinutes: 5, ask: "Anything new in my email?" }, OWNER, T0)) as Routine;
+  await h.s.tick(T0 + 6 * MIN);
+  const of = (text: string) => h.sent.find((a) => a.text.startsWith(text));
+  check("a message and an answer each carry their routine", of("Call Mum")?.routine === said.id && of("Your first meeting")?.routine === asked.id, h.sent);
+}
+
 console.log("\nwatches: when Home Assistant cannot be reached");
 {
   const h = harness();

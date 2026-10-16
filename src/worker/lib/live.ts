@@ -89,6 +89,20 @@ export class LiveHub {
     });
   }
 
+  /** Something every open screen of one person is told, that needs no answer: the app's, never a device's. */
+  tell(sockets: LiveSocket[], person: string, msg: object): void {
+    const data = JSON.stringify(msg);
+    for (const s of sockets) {
+      // A screen is its person's own `who`; a device's is its id.
+      if (s.client()?.who !== person) continue;
+      try {
+        s.send(data);
+      } catch {
+        // closing; the runtime will report it
+      }
+    }
+  }
+
   /** A message from a screen: its visibility changing, or a confirmation. */
   receive(sock: LiveSocket, raw: string | ArrayBuffer): void {
     if (typeof raw !== "string" || raw.length > 1000) return;

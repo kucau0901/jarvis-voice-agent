@@ -19,8 +19,10 @@ import { askTyped } from "./chat";
 import { keyboardSpace, watchKeyboard } from "./keyboard";
 import { Attachments, type Attached } from "./attach";
 import { Reply } from "./reply";
+import { fromRoutine, type RoutineSaid } from "./fromRoutine";
+import { asked, clearKept, keep, kept, restore, saidId } from "./conversation";
 import { inCar } from "./client";
-import { richText } from "./ui/util";
+import { arm, richText } from "./ui/util";
 import { PushToTalk } from "./ptt";
 import { LiveVoice, wakeVoice } from "./loud";
 import { Family } from "./ui/Family";
@@ -108,9 +110,17 @@ function append(who: "you" | "jarvis", delta: string) {
   els.transcript.scrollTop = els.transcript.scrollHeight;
 }
 
-/** A pause on one side ends that row, so the next utterance starts fresh. */
-const settle = (who: "you" | "jarvis") =>
-  setTimeout(() => { current[who] = undefined; }, 1500);
+/** A row ended: the next utterance starts a new one, and this one is kept (conversation.ts). */
+function endRow(who: "you" | "jarvis") {
+  const row = current[who];
+  current[who] = undefined;
+  if (!row?.text.trim()) return;
+  row.el.dataset.said = saidId();
+  keep(key, { id: row.el.dataset.said, role: who === "you" ? "user" : "assistant", text: row.text });
+}
+const endRows = () => { endRow("you"); endRow("jarvis"); };
+/** A pause on one side ends that row. */
+const settle = (who: "you" | "jarvis") => setTimeout(() => endRow(who), 1500);
 let settleTimers: Partial<Record<"you" | "jarvis", number>> = {};
 function touch(who: "you" | "jarvis") {
   clearTimeout(settleTimers[who]);
@@ -457,7 +467,6 @@ async function toggle() {
     if (onlineWait) removeEventListener("online", onlineWait);
     onlineWait = null;
     attempt = 0;
-    history.clear();          // an explicit end really does end the conversation
     delegateAbort?.abort();
     if (session) session.stop("ended by user");
     else { status("tap to start"); setOrb(); }
@@ -471,7 +480,8 @@ async function toggle() {
   await openSession(resume.length ? resume : undefined);
 }
 
-async function openSession(seed?: ReturnType<History["snapshot"]>, gapSec = 0) {
+/** `gapSec`: how long the connection was down, when this replaces a dropped session. */
+async function openSession(seed?: ReturnType<History["snapshot"]>, gapSec?: number) {
   session = new JarvisSession(key, {
     onDropped: (reason) => {
       delegateAbort?.abort();
@@ -494,7 +504,7 @@ async function openSession(seed?: ReturnType<History["snapshot"]>, gapSec = 0) {
   });
   await session.start({ history: seed });
 
-  if (seed?.length && session?.live) {
+  if (gapSec !== undefined && seed?.length && session?.live) {
     // Silent, not spoken: Jarvis should absorb that there was a gap and behave
     // sensibly if the user repeats themselves, without narrating every blip.
     session.thinking(
@@ -567,10 +577,20 @@ function showAlert(a: Alert): HTMLElement {
   return card;
 }
 
+/** What a routine said: its name, then its words, in the conversation whichever tab is up (fromRoutine.ts). */
+function routineSaid(a: RoutineSaid): boolean {
+  const label = fromRoutine(a, openRoutine);
+  if (!label) return false;
+  els.transcript.appendChild(label);
+  addRow("jarvis", a.text);
+  return true;
+}
+
 function onAlert(a: Alert) {
   const card = showAlert(a);
-  // While typing, it belongs in the chat as well as on the card.
-  if (mode === "type") addRow("jarvis", a.title !== "Jarvis" ? `${a.title}: ${a.text}` : a.text);
+  // A routine's words go into the conversation under its name; anything else while typing, as well as on the card.
+  if (a.routine) routineSaid({ ...a, routine: a.routine });
+  else if (mode === "type") addRow("jarvis", a.title !== "Jarvis" ? `${a.title}: ${a.text}` : a.text);
   // Into the conversation either way: "yes, do that" after Hermes asks a
   // question in an alert must have the question to refer to.
   history.add("assistant", a.title !== "Jarvis" ? `${a.title}: ${a.text}` : a.text);
@@ -584,7 +604,7 @@ function onAlert(a: Alert) {
   void speakAlert(key, a).then((played) => card.classList.toggle("unplayed", !played));
 }
 
-const live = new LiveLink(key, onAlert, signedOutElsewhere);
+const live = new LiveLink(key, onAlert, signedOutElsewhere, forgetChat);
 
 /**
  * This screen's sign-in was ended from another screen (a lost or lent one,
@@ -600,6 +620,8 @@ function signedOutElsewhere() {
 if (key) {
   live.start();
   void syncPush(key);
+  // The conversation kept from before, routines' words and all (conversation.ts).
+  void kept(key).then((all) => restore(all, { row: (who, text) => addRow(who, text), routine: routineSaid }, history)).catch(() => {});
 }
 
 /** A tapped notification: it carries only an id, so the text is fetched. */
@@ -748,9 +770,9 @@ async function putAside(): Promise<void> {
   key = "";
   home?.forget();
   home = null;
-  // Nothing of theirs waits in the message box for the next person.
+  // Nothing of theirs waits in the message box or the chat for the next person.
   attachments.clear();
-  reply.clear();
+  forgetChat();
   document.body.classList.remove("home");
   markTabs();
   $("menuBtn").textContent = $("hubAvatar").textContent = $("hubName").textContent = "";
@@ -986,11 +1008,13 @@ $("openJobs").addEventListener("click", () => {
 });
 
 let routines: Routines | null = null;
-$("openRoutines").addEventListener("click", () => {
+/** Routines, with one of them in view when a routine's pill in the conversation was pressed. */
+function openRoutine(id?: string) {
   if (!key) { requireKey(); return; }
   routines ??= new Routines(key);
-  void routines.show();
-});
+  void routines.show(id);
+}
+$("openRoutines").addEventListener("click", () => openRoutine());
 
 $("openDevices").addEventListener("click", () => {
   if (!key) { requireKey(); return; }
@@ -1034,12 +1058,14 @@ function pushToTalk(): PushToTalk {
   return (ptt ??= new PushToTalk(key, levels, {
     status,
     heard: (text) => {
-      current = {};
+      endRows();
       append("you", text);
       history.add("user", text);
     },
     answered: (text, ok) => {
       append("jarvis", text);
+      if (!ok) current.jarvis = undefined; // what went wrong is not kept
+      endRows();
       history.add("assistant", text);
       if (!ok) errorFlash = 1;
     },
@@ -1158,9 +1184,19 @@ readAloudBtn.addEventListener("click", () => {
   showReadAloud();
 });
 
+/** The chat emptied: cleared here or on another screen of yours (conversation.ts), or its person put aside. */
+function forgetChat() {
+  current = {};
+  els.transcript.replaceChildren();
+  history.clear();
+  reply.clear();
+}
+arm($<HTMLButtonElement>("clearChat"), "Clear all of it?", () =>
+  clearKept(key).then(forgetChat, (e) => status(`not cleared: ${e instanceof Error ? e.message : String(e)}`, true)));
+
 /** A finished row of its own, with links and bold made real. */
 function addRow(who: "you" | "jarvis", text: string, cls = "") {
-  current = {};
+  endRows();
   const el = document.createElement("div");
   el.className = `row ${who}${cls ? ` ${cls}` : ""}`;
   const w = document.createElement("span");
@@ -1186,7 +1222,10 @@ async function sendTyped() {
   const row = addRow("you", text);
   if (attached.length) row.insertBefore(Attachments.shown(attached), row.querySelector(".txt"));
   if (to) Reply.hook(row, to.row);
-  history.add("user", Reply.said(to, text) + (attached.length ? `\n(Attached: ${attached.map((a) => a.name).join(", ")})` : ""));
+  const files = attached.map((a) => a.name);
+  row.dataset.said = saidId();
+  keep(key, { id: row.dataset.said, role: "user", text, files, replyTo: to?.row.dataset.said });
+  history.add("user", asked(to, text, files));
   typedAbort = new AbortController();
   sendBtn.disabled = true;
   thinking = true;
@@ -1198,7 +1237,12 @@ async function sendTyped() {
       void stage.show(payload as unknown as DisplayPayload);
     },
     answer: (reply, ok) => {
-      addRow("jarvis", reply, ok ? "" : "bad");
+      const said = addRow("jarvis", reply, ok ? "" : "bad");
+      // What went wrong is not kept, nor told to the model again later.
+      if (ok) {
+        said.dataset.said = saidId();
+        keep(key, { id: said.dataset.said, role: "assistant", text: reply });
+      }
       history.add("assistant", reply);
       if (!ok) errorFlash = 1;
       if (ok && readAloud) void speakText(key, reply);
@@ -1448,7 +1492,7 @@ function armIdle(wait = quietLeft()) {
   }, wait);
 }
 
-addEventListener("pagehide", () => { userWantsSession = false; session?.stop("page unloaded"); });
+addEventListener("pagehide", () => { endRows(); userWantsSession = false; session?.stop("page unloaded"); });
 
 addEventListener("visibilitychange", () => {
   logEvent({ type: "[visibilitychange]", state: document.visibilityState });

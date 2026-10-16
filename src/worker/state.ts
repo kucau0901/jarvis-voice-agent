@@ -24,7 +24,8 @@ import { HUB_METHODS, HubHost, liveSessionIds } from "./lib/hub.ts";
 import { Relays, type Relay, type RelayDeps, type RelayKind } from "./lib/relays.ts";
 import { Chat, dmId, type ChatMessage } from "./lib/chat.ts";
 import { Panels, type PanelItem, type Reading } from "./lib/panels.ts";
-import { personOfWho, withPerson } from "./lib/context.ts";
+import { Conversation, routineSaid, type Said } from "./lib/conversation.ts";
+import { OWNER, personOfWho, withPerson } from "./lib/context.ts";
 import { lookAtPage } from "./lib/page-look.ts";
 import { dayOf } from "./lib/usage.ts";
 import { nextAllowed } from "./lib/access.ts";
@@ -55,6 +56,8 @@ export class JarvisState extends DurableObject<Env> {
   private chat: Chat;
   /** What each person put on their Home tab (lib/panels.ts). */
   private panels: Panels;
+  /** Each person's conversation with Jarvis, kept (lib/conversation.ts). */
+  private conversation: Conversation;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -63,6 +66,7 @@ export class JarvisState extends DurableObject<Env> {
     this.scheduler = new Scheduler(ctx.storage, () => this.schedulerDeps());
     this.chat = new Chat(ctx.storage);
     this.panels = new Panels(ctx.storage);
+    this.conversation = new Conversation(ctx.storage);
     this.relays = new Relays(ctx.storage, () => this.relayDeps());
     this.jobs = new Jobs(ctx.storage, async () => {
       const env = await this.localEnv();
@@ -233,6 +237,7 @@ export class JarvisState extends DurableObject<Env> {
     await this.scheduler.forget(person);
     await this.relays.forget(person);
     await this.panels.forget(person);
+    await this.conversation.clear(person);
     await this.rearm();
   }
 
@@ -277,7 +282,12 @@ export class JarvisState extends DurableObject<Env> {
     const ha = haConfig(env);
     return {
       timeZone: localeOf(env).timeZone,
-      deliver: (alert) => deliver(env, this, alert),
+      deliver: async (alert) => {
+        // What a routine says is in its maker's conversation too, there when the app next opens.
+        const said = routineSaid(alert);
+        if (said) await this.conversation.add(alert.for ?? OWNER, [said], Date.now());
+        return deliver(env, this, alert);
+      },
       // A routine runs as whoever made it: their memory, their calendar (lib/context.ts).
       ask: async (prompt, grants, routine) => {
         // No further than its maker may reach now: something an admin took from them is taken from their routines too.
@@ -495,6 +505,22 @@ export class JarvisState extends DurableObject<Env> {
 
   panelKeepReading(person: string, tile: string, reading: Reading | null) {
     return this.panels.keepReading(person, tile, reading);
+  }
+
+  /* ---------- each person's conversation with Jarvis (lib/conversation.ts) ------- */
+
+  conversationOf(person: string, now: number) {
+    return this.conversation.list(person, now);
+  }
+
+  conversationAdd(person: string, said: Said[], now: number) {
+    return this.conversation.add(person, said, now);
+  }
+
+  /** Cleared on every open screen of theirs too, not only the one it was cleared on. */
+  async conversationClear(person: string) {
+    await this.conversation.clear(person);
+    this.hub.tell(this.sockets(), person, { type: "conversation.cleared" });
   }
 
   /* ---------- background jobs (lib/jobs.ts) ------------------------------------- */

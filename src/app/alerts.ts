@@ -24,6 +24,8 @@ export interface Alert {
   relay?: { id: string; kind: string };
   /** A chat message: the conversation to open. */
   convo?: string;
+  /** The routine that said it: shown under its name in the conversation (fromRoutine.ts). */
+  routine?: string;
 }
 
 /** What this screen is called in "shown on …" and in the list of devices. */
@@ -79,11 +81,14 @@ export class LiveLink {
   private stopped = true;
   /** This screen's sign-in was ended from another screen (routes/hub.ts closeSession). */
   private onSignedOut: () => void;
+  /** The conversation was cleared on another screen of yours (conversation.ts). */
+  private onCleared: () => void;
 
-  constructor(key: string, onAlert: (a: Alert) => void, onSignedOut: () => void = () => {}) {
+  constructor(key: string, onAlert: (a: Alert) => void, onSignedOut: () => void, onCleared: () => void) {
     this.key = key;
     this.onAlert = onAlert;
     this.onSignedOut = onSignedOut;
+    this.onCleared = onCleared;
     addEventListener("visibilitychange", () => this.presence());
     addEventListener("online", () => {
       if (!this.stopped && !this.ws) {
@@ -152,6 +157,7 @@ export class LiveLink {
       } catch {
         return;
       }
+      if (msg.type === "conversation.cleared") return this.onCleared();
       if (msg.type !== "alert" || !msg.alert) return;
       // Confirm only if someone can see it: a hidden tab saying "got it" would
       // stop the alert reaching the phone in your pocket.

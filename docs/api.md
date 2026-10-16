@@ -436,7 +436,7 @@ and connects to `/api/v1/events?ticket=…`. A ticket works once.
 | Direction | Message |
 |---|---|
 | ← | `{"type":"hello","label":…}` on connecting |
-| ← | `{"type":"alert","alert":{id, at, title, text, speak, urgent, source, expiresAt?}}` |
+| ← | `{"type":"alert","alert":{id, at, title, text, speak, urgent, source, expiresAt?, routine?}}` |
 | → | `{"type":"presence","visible":true}` whenever the screen is shown or hidden |
 | → | `{"type":"ack","id":…,"visible":true}` on each alert, if someone can see it |
 | → / ← | `ping` / `pong`, every 25 seconds or so, to keep proxies from closing it |
@@ -457,7 +457,8 @@ registers the browser, `DELETE` with `{"endpoint"}` removes it. Only the push
 services browsers use (Google, Apple, Mozilla, Microsoft) are accepted as
 endpoints. A tapped notification carries only the alert's id; the text is
 `GET /api/v1/alerts?id=…` for about the last thirty alerts, each only to the
-person it was for (admins included). On iPhone and
+person it was for (admins included). An alert a routine raised carries
+`routine`, the routine's id, wherever it goes. On iPhone and
 iPad, notifications need the app added to the Home Screen first.
 
 Every push is sent with `Urgency: high`, so Android delivers it to an idle
@@ -470,7 +471,7 @@ using it: [notifications.md](notifications.md).
 ### The webhook
 
 Each alert is POSTed as JSON: `{"event":"alert", id, at, title, text, speak,
-urgent, source}`. With a signing secret set, `X-Jarvis-Signature` is
+urgent, source, routine?}`. With a signing secret set, `X-Jarvis-Signature` is
 `sha256=` and the hex HMAC-SHA256 of the raw body:
 
 ```js

@@ -35,12 +35,14 @@ function check(name: string, cond: boolean, got?: unknown) {
 
 const PROMPT_SHA256 = "e9b65b246d51cdbc73d3df3f721c9c7a72724ac5aa4bda78399f3135a243818e";
 // panel_set and panel_remove (tools/panels.ts, scope screen): everyone but the guest (14 Oct 2026).
+// look_back (tools/conversation.ts, scope memory.read): everyone but the guest (16 Oct 2026).
 const EXPECTED: Record<string, { model: string; tools: string[]; input: string }> = {
  "owner key, nothing set up": {
   "model": "gpt-6-luna",
   "tools": [
    "forget",
    "hide_display",
+   "look_back",
    "panel_remove",
    "panel_set",
    "recall",
@@ -70,6 +72,7 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
    "forget",
    "hide_display",
    "look_at_camera",
+   "look_back",
    "mail_check",
    "mail_manage",
    "mail_search",
@@ -108,6 +111,7 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
    "forget",
    "hide_display",
    "look_at_camera",
+   "look_back",
    "mail_check",
    "mail_manage",
    "mail_search",
@@ -144,6 +148,7 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
    "family_messages",
    "forget",
    "hide_display",
+   "look_back",
    "panel_remove",
    "panel_set",
    "pass_on",
