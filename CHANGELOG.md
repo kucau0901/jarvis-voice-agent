@@ -100,6 +100,15 @@ of every release, and in the [README](README.md#updating).
   [docs/hermes.md](docs/hermes.md#building-from-research), Hermes can build with
   Claude Code and tell you when it is done.
 
+- **Photos, files and replies in Chat**, as Hark's chat has them. "+" in the
+  message box offers Upload file and Take photo: up to two photos and two
+  files a question, a PDF or a text file, which Jarvis reads with the
+  question and keeps nowhere. Take photo opens the camera in the page, on a
+  computer, a phone or the car (in Park). Each answer has a reply button: your
+  question then carries a hook back to it, which brings that answer into view,
+  and Jarvis knows which one you mean. Answers now stand out from questions,
+  solid against see-through, in dark as in light.
+
 ### Changed
 
 - **A new look, in Tesla's colours, laid out like Hark.** The app uses the

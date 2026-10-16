@@ -8,6 +8,8 @@ import { openaiBase } from "./openai-base.ts";
 import OpenAI from "openai";
 import type { Env } from "../types.ts";
 import { redact } from "./http.ts";
+import { asQuotedData } from "./quote.ts";
+import type { AttachedFile } from "./photos.ts";
 import type { EventSink } from "./sse.ts";
 import type { Turn } from "./history.ts";
 import { baseTools, outputText, toToolSchema, type Tool, type ToolContext, type ToolOutput } from "../tools/registry.ts";
@@ -71,6 +73,8 @@ export interface RunOptions {
    * sees — "add this to my calendar" with a poster in the photo.
    */
   images?: string[];
+  /** Files the user attached in the app's chat (lib/photos.ts): a PDF to read, or a text file's words. */
+  files?: AttachedFile[];
   /** Only these tools are offered (background jobs: reading, not acting — routes/jobs.ts). */
   toolFilter?: (t: Tool) => boolean;
   /**
@@ -239,25 +243,36 @@ export async function prepareRouter(
     // What was said, like the profile: a user message, never an instruction.
     ...(elsewhere ? [{ role: "user" as const, content: elsewhere }] : []),
     { role: "user" as const, content: `Conversation so far:\n\n${conversation}` },
-    ...(opts.images?.length
+    ...(opts.images?.length || opts.files?.length
       ? [
           {
             role: "user" as const,
             content: [
-              {
-                type: "input_text" as const,
-                text:
-                  opts.images.length === 1
-                    ? "The user took this photo just now, with their phone, and their latest message is about it."
-                    : "The user took these photos just now, with their phone, and their latest message is about them.",
-              },
-              ...opts.images.map((url) => ({ type: "input_image" as const, image_url: url, detail: "auto" as const })),
+              { type: "input_text" as const, text: attachedSaid(opts) },
+              ...(opts.images ?? []).map((url) => ({ type: "input_image" as const, image_url: url, detail: "auto" as const })),
+              // A PDF the model reads itself; a text file's words are someone else's, so quoted as data.
+              ...(opts.files ?? []).map((f) =>
+                f.kind === "pdf"
+                  ? { type: "input_file" as const, filename: f.name, file_data: f.data }
+                  : { type: "input_text" as const, text: asQuotedData(`file ${f.name}`, f.data, "THE FILE'S AUTHOR") },
+              ),
             ],
           },
         ]
       : []),
   ];
   return { client, model, instructions, input, tools, byName, memory };
+}
+
+/** What the router is told of photos and files that came with the latest message. */
+function attachedSaid(opts: RunOptions): string {
+  const n = (opts.images?.length ?? 0) + (opts.files?.length ?? 0);
+  if (opts.surface !== "chat") {
+    return n === 1
+      ? "The user took this photo just now, with their phone, and their latest message is about it."
+      : "The user took these photos just now, with their phone, and their latest message is about them.";
+  }
+  return n === 1 ? "The user attached this to their latest message, which is about it." : "The user attached these to their latest message, which is about them.";
 }
 
 export async function run(
@@ -268,7 +283,7 @@ export async function run(
   grants: readonly Grant[],
   opts: RunOptions,
 ) {
-  const assist = opts.assist && !opts.images?.length ? assistConfig(env, grants) : null;
+  const assist = opts.assist && !opts.images?.length && !opts.files?.length ? assistConfig(env, grants) : null;
   const ask = assist ? (opts.assistAsk?.trim() || lastAsk(turns)) : null;
   const sessions = mcpSessions();
   let p: Prepared | null = null;

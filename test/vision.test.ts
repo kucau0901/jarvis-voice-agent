@@ -9,7 +9,7 @@ import {
   snapshot,
   type Camera,
 } from "../src/worker/lib/cameras.ts";
-import { photosFrom, MAX_PHOTOS } from "../src/worker/lib/photos.ts";
+import { filesFrom, photosFrom, MAX_FILES, MAX_PHOTOS } from "../src/worker/lib/photos.ts";
 import { lookAtCamera, showCamera } from "../src/worker/tools/camera.ts";
 import { validateChanges } from "../src/worker/lib/settings.ts";
 import { handleSettings } from "../src/worker/routes/settings.ts";
@@ -416,6 +416,19 @@ console.log("\nphotos from the phone");
   check("no SVG (it can carry script)", photosFrom(["data:image/svg+xml;base64,PHN2Zz4="]).length === 0);
   check(`at most ${MAX_PHOTOS}`, photosFrom([jpeg, jpeg, jpeg, jpeg]).length === MAX_PHOTOS);
   check("too big: dropped", photosFrom([`data:image/jpeg;base64,${"A".repeat(3_100_000)}`]).length === 0);
+}
+
+console.log("\nfiles attached in the chat");
+{
+  const pdf = { name: "menu.pdf", kind: "pdf", data: "data:application/pdf;base64,JVBERi0xLjQ=" };
+  const txt = { name: "notes.txt", kind: "text", data: "Buy milk." };
+  const got = filesFrom([pdf, txt]);
+  check("a PDF and a text file are taken, named", got.length === 2 && got[0]!.name === "menu.pdf" && got[0]!.kind === "pdf" && got[1]!.data === "Buy milk.", got);
+  check("a PDF that is not one, or another kind of file, is dropped",
+    filesFrom([{ ...pdf, data: "data:text/html;base64,PGh0bWw+" }, { name: "a.docx", kind: "docx", data: "x" }, "menu.pdf", null]).length === 0);
+  check("too big: dropped", filesFrom([{ ...pdf, data: `data:application/pdf;base64,${"A".repeat(14_000_001)}` }, { ...txt, data: "x".repeat(200_001) }]).length === 0);
+  check(`at most ${MAX_FILES}`, filesFrom([txt, txt, txt]).length === MAX_FILES);
+  check("a name cannot break out of where it is quoted", filesFrom([{ ...txt, name: 'a"\nb.txt' }])[0]!.name === "a  b.txt");
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

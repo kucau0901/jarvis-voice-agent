@@ -17,6 +17,8 @@ import { runDelegation } from "./delegate";
 import { LiveLink, releasePush, speakAlert, speakHere, speakText, syncPush, type Alert } from "./alerts";
 import { askTyped } from "./chat";
 import { keyboardSpace, watchKeyboard } from "./keyboard";
+import { Attachments, type Attached } from "./attach";
+import { Reply } from "./reply";
 import { inCar } from "./client";
 import { richText } from "./ui/util";
 import { PushToTalk } from "./ptt";
@@ -755,6 +757,9 @@ async function putAside(): Promise<void> {
   key = "";
   home?.forget();
   home = null;
+  // Nothing of theirs waits in the message box for the next person.
+  attachments.clear();
+  reply.clear();
   document.body.classList.remove("home");
   markTabs();
   $("menuBtn").textContent = $("hubAvatar").textContent = $("hubName").textContent = "";
@@ -1127,6 +1132,17 @@ els.orb.addEventListener("click", () => {
 const typebar = $<HTMLFormElement>("typebar");
 const typed = $<HTMLTextAreaElement>("typed");
 const sendBtn = $<HTMLButtonElement>("send");
+// Photos and files to ask about (attach.ts), and the answer a question replies to (reply.ts), shown above the box.
+const tray = $("tray");
+const attachments = new Attachments(tray, $<HTMLButtonElement>("attach"), $("attachMenu"), $<HTMLInputElement>("attachInput"), (t) => status(t, true));
+const reply = new Reply(tray, typed);
+// The chat makes room for the tray, however many rows it holds (--tray, index.html), the newest message kept in view.
+new ResizeObserver(() => {
+  const t = els.transcript;
+  const atEnd = t.scrollHeight - t.scrollTop - t.clientHeight < 40;
+  document.body.style.setProperty("--tray", tray.hidden ? "0px" : `${tray.offsetHeight + 8}px`);
+  if (atEnd) t.scrollTop = t.scrollHeight;
+}).observe(tray);
 const readAloudBtn = $<HTMLButtonElement>("readAloud");
 const READ_KEY = "jarvis.readReplies";
 let readAloud = (() => {
@@ -1163,6 +1179,7 @@ function addRow(who: "you" | "jarvis", text: string, cls = "") {
   w.textContent = who === "you" ? "You" : "Jarvis";
   el.appendChild(w);
   el.appendChild(who === "jarvis" ? richText(text) : Object.assign(document.createElement("span"), { className: "txt", textContent: text }));
+  if (who === "jarvis" && !cls) reply.offer(el, text);
   els.transcript.appendChild(el);
   els.transcript.scrollTop = els.transcript.scrollHeight;
   return el;
@@ -1171,12 +1188,16 @@ function addRow(who: "you" | "jarvis", text: string, cls = "") {
 let typedAbort: AbortController | null = null;
 async function sendTyped() {
   const text = typed.value.trim();
-  if (!text || typedAbort) return;
+  if ((!text && !attachments.list.length) || typedAbort) return;
   if (!key) return requireKey();
+  const to = reply.take();
+  const attached: Attached[] = attachments.take();
   typed.value = "";
   fitTyped();
-  addRow("you", text);
-  history.add("user", text);
+  const row = addRow("you", text);
+  if (attached.length) row.insertBefore(Attachments.shown(attached), row.querySelector(".txt"));
+  if (to) Reply.hook(row, to.row);
+  history.add("user", Reply.said(to, text) + (attached.length ? `\n(Attached: ${attached.map((a) => a.name).join(", ")})` : ""));
   typedAbort = new AbortController();
   sendBtn.disabled = true;
   thinking = true;
@@ -1193,7 +1214,7 @@ async function sendTyped() {
       if (!ok) errorFlash = 1;
       if (ok && readAloud) void speakText(key, reply);
     },
-  }, typedAbort.signal);
+  }, typedAbort.signal, attached);
   typedAbort = null;
   sendBtn.disabled = false;
   thinking = false;

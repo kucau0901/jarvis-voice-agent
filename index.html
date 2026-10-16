@@ -34,7 +34,7 @@
     --accent: #3e6ae1; --accent-ink: #5b84ff; --on-accent: #ffffff;
     --seg-on: #393c41; --chip: rgba(245,245,247,.13);
     --danger: #ed4e3b; --ok: #12bb00; --warn: #fbb01b;
-    --bubble: rgba(34,34,34,.85); --bubble-you: rgba(255,255,255,.12);
+    --bubble: rgba(57,60,65,.92); --bubble-you: rgba(255,255,255,.07);
     /* Glass, as Hark has it: a translucent surface over a blurred page. The
        backdrop is two soft gradients, so the blur has something to show. */
     --glass: rgba(34,34,34,.62); --glass-hi: rgba(34,34,34,.72); --blur: blur(40px) saturate(1.4);
@@ -109,6 +109,7 @@
     --i-link: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1'/%3E%3C/svg%3E");
     --i-star: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z'/%3E%3C/svg%3E");
     --i-note: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 3h10l4 4v14H5z'/%3E%3Cpath d='M14 3v5h5M8 13h8M8 17h5'/%3E%3C/svg%3E");
+    --i-reply: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 14 4 9l5-5'/%3E%3Cpath d='M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5V20'/%3E%3C/svg%3E");
     --i-plus: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 5v14M5 12h14'/%3E%3C/svg%3E");
     --i-search: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-4-4'/%3E%3C/svg%3E");
     --i-eye: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z'/%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3C/svg%3E");
@@ -342,7 +343,29 @@
   .row .who { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .row .txt { max-width: min(480px, 88%); padding: 12px 16px; border-radius: 22px;
     background: var(--bubble); color: var(--fg); overflow-wrap: anywhere; }
-  .row.you .txt { background: var(--bubble-you); }
+  /* An answer stands out and a question steps back, as Hark's do: the answer solid, the question see-through and quieter. */
+  .row.you .txt { background: var(--bubble-you); color: var(--dim); }
+  .row .txt:empty { display: none; }
+  /* An answer's reply button, at its foot (reply.ts). */
+  .row.jarvis { flex-direction: row; align-items: flex-end; gap: 2px; }
+  .row .rpl { flex: none; display: grid; place-items: center; width: 36px; height: 36px; padding: 0; border: 0; border-radius: 50%;
+    background: none; color: var(--faint); cursor: pointer; }
+  .row .rpl:hover, .row .rpl:focus-visible { color: var(--fg); background: var(--wash); }
+  .row .rpl::before { content: ""; width: 16px; height: 16px; background: currentColor;
+    -webkit-mask: var(--i-reply) center / contain no-repeat; mask: var(--i-reply) center / contain no-repeat; }
+  /* A question that replies to an answer: Hark's hook at its foot, which brings that answer back into view. */
+  .row.you.replies { flex-direction: row; flex-wrap: wrap; justify-content: flex-end; align-items: flex-end; column-gap: 2px; }
+  .row.you.replies .att { flex-basis: 100%; max-width: none; }
+  .row .hook { order: -1; position: relative; flex: none; width: 28px; height: 28px; margin-bottom: -10px; padding: 0; border: 0;
+    background: none; color: var(--dim); cursor: pointer; }
+  .row .hook::before { content: ""; position: absolute; left: 11px; top: 9px; width: 9px; height: 9px;
+    border: 2px solid currentColor; border-right: 0; border-bottom: 0; border-top-left-radius: 7px; }
+  .row.flash .txt { animation: rflash 1.6s ease-out; }
+  @keyframes rflash { from { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 75%, transparent); } to { box-shadow: 0 0 0 3px transparent; } }
+  /* What a question carried: its photos, and its files by name. */
+  .row .att { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: flex-end; gap: 6px; margin-bottom: 6px; max-width: min(480px, 88%); }
+  .row .attimg { max-width: 180px; max-height: 140px; border-radius: 16px; object-fit: cover; }
+  .row .att .tchip { padding-right: 14px; box-shadow: none; }
 
   #logWrap { position: fixed; inset: auto 0 0 0; height: 0; overflow: hidden; z-index: 10;
     background: var(--glass-hi); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur);
@@ -631,11 +654,11 @@
      shrink the page for it (Safari); 0 elsewhere. See keyboardSpace() in main.ts. */
   body.typing { justify-content: flex-start; gap: 12px; --orb: 40px;
     height: calc(100dvh - var(--kb, 0px));
-    padding: calc(var(--barTop) + 64px) 16px calc(112px + env(safe-area-inset-bottom)); }
+    padding: calc(var(--barTop) + 64px) 16px calc(112px + var(--tray, 0px) + env(safe-area-inset-bottom)); }
   body.typing h1, body.typing #hint, body.typing #talkrow { display: none; }
   body.typing #orbWrap { position: fixed; top: calc(var(--barTop) + 6px); left: 18px; z-index: 3; width: var(--orb); margin: 0; }
   body.typing #status { position: fixed; z-index: 20; left: 16px; right: 16px; top: auto; max-width: none;
-    bottom: calc(var(--kb, 0px) + 80px + env(safe-area-inset-bottom)); min-height: 0; text-align: center;
+    bottom: calc(var(--kb, 0px) + 80px + var(--tray, 0px) + env(safe-area-inset-bottom)); min-height: 0; text-align: center;
     font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; pointer-events: none; }
   body.typing #transcript { flex: 1; min-height: 0; max-height: none; width: min(720px, 100%);
     padding-bottom: 8px; }
@@ -656,21 +679,64 @@
     padding: 11px 8px 11px 14px; color: var(--fg); font: inherit; font-size: 16px; line-height: 1.4; }
   #typebar textarea:focus { outline: none; }
   #typebar textarea::placeholder { color: var(--faint); }
-  #typebar button { flex: none; display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%;
+  #typebar > button { flex: none; display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%;
     border: 0; background: transparent; color: var(--dim); cursor: pointer; }
-  #typebar button::before { content: ""; width: 22px; height: 22px; background: currentColor;
+  #typebar > button::before { content: ""; width: 22px; height: 22px; background: currentColor;
     -webkit-mask: var(--icon) center / contain no-repeat; mask: var(--icon) center / contain no-repeat; }
   #typebar #askAloud { --icon: var(--i-mic); }
   #typebar #readAloud { --icon: var(--i-speaker); }
   #typebar #readAloud[aria-pressed="true"] { --icon: var(--i-speaking); color: var(--accent-ink); }
   #typebar #send { --icon: var(--i-send); background: var(--solid); color: var(--on-solid); }
   #typebar #send:disabled { opacity: .45; cursor: default; }
+  #typebar #attach { --icon: var(--i-plus); }
+  /* "+": Upload file or Take photo, as Hark's (attach.ts). */
+  #attachMenu { position: absolute; z-index: 2; right: 96px; bottom: calc(100% + 8px); display: grid; min-width: 200px; padding: 6px;
+    border-radius: 20px; border: 1px solid var(--hair); background: var(--glass-hi); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur);
+    box-shadow: var(--shadow); }
+  #attachMenu[hidden] { display: none; }
+  #attachMenu button { display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 0 14px; border: 0; border-radius: 14px;
+    background: none; color: var(--fg); font: inherit; font-size: 15px; text-align: left; cursor: pointer; }
+  #attachMenu button:hover { background: var(--wash); }
+  #attachMenu button::before { content: ""; width: 18px; height: 18px; background: currentColor;
+    -webkit-mask: var(--icon) center / contain no-repeat; mask: var(--icon) center / contain no-repeat; }
+  #attachMenu [data-pick="file"] { --icon: var(--i-plus); }
+  #attachMenu [data-pick="photo"] { --icon: var(--i-camera); }
+  /* Above the box: the answer replied to, and the photos and files going with the question. */
+  #tray { position: absolute; left: 6px; right: 6px; bottom: calc(100% + 8px); display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; }
+  #tray[hidden] { display: none; }
+  .tchip { position: relative; display: inline-flex; align-items: center; gap: 8px; max-width: 100%; min-height: 44px; padding: 4px 4px 4px 12px;
+    border-radius: 16px; border: 1px solid var(--hair); background: var(--glass-hi); color: var(--fg);
+    -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); box-shadow: var(--shadow); font-size: 14px; }
+  .tchip.img { padding: 0; width: 64px; height: 64px; overflow: hidden; }
+  .tchip.img img { width: 100%; height: 100%; object-fit: cover; }
+  .tchip.img .tremove { position: absolute; top: 2px; right: 2px; background: var(--glass-hi); }
+  .tchip .ticon, .tchip.quote::before { flex: none; width: 18px; height: 18px; background: var(--dim); content: "";
+    -webkit-mask: var(--icon, var(--i-note)) center / contain no-repeat; mask: var(--icon, var(--i-note)) center / contain no-repeat; }
+  .tchip.quote { --icon: var(--i-reply); flex: 1 1 100%; }
+  .tchip .tname, .tchip .tq { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tchip .tq { flex: 1; color: var(--dim); }
+  .tremove { flex: none; display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 50%;
+    background: none; color: var(--dim); cursor: pointer; }
+  .tremove::before { content: ""; width: 14px; height: 14px; background: currentColor;
+    -webkit-mask: var(--i-close) center / contain no-repeat; mask: var(--i-close) center / contain no-repeat; }
+  /* Take photo (attach.ts): the camera over the page, and the button to take it. */
+  .camsheet { position: fixed; inset: 0; z-index: 70; display: grid; place-items: center; align-content: center; gap: 14px; padding: 24px;
+    background: var(--scrim); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); }
+  .camsheet video { width: min(720px, 100%); max-height: 62vh; border-radius: 22px; background: var(--surface); object-fit: cover; }
+  .camsaid { max-width: 520px; margin: 0; color: var(--dim); font-size: 15px; text-align: center; }
+  .camsaid:empty { display: none; }
+  .camrow { display: flex; gap: 12px; }
+  .camrow button { min-height: 48px; padding: 0 24px; border-radius: 999px; border: 1px solid var(--hair); background: var(--glass-hi);
+    color: var(--fg); font: inherit; font-size: 15px; font-weight: 500; cursor: pointer; }
+  .camrow .primary { border-color: transparent; background: var(--accent); color: var(--on-accent); }
+  .camrow button:disabled { opacity: .45; cursor: default; }
   /* The car's keyboard covers the page without saying how much (keyboard.ts): typing there, the box goes up
      under the tabs, where the car puts its own, the newest messages in the band just under it. */
-  body.typing.kbover { padding-top: calc(var(--barTop) + 130px); }
+  body.typing.kbover { padding-top: calc(var(--barTop) + 130px + var(--tray, 0px)); }
   body.typing.kbover #typebar { top: calc(var(--barTop) + 64px); bottom: auto; }
   body.typing.kbover #transcript { flex: 0 1 auto; max-height: 34vh; }
   body.typing.kbover #status { display: none; }
+  body.typing.kbover :is(#tray, #attachMenu) { top: calc(100% + 8px); bottom: auto; }
   /* Any other box is scrolled to the top of what scrolls it: room under it to scroll that far. */
   body.home.kbover #home, body.kbover .panel .sheet { padding-bottom: 60vh; }
   /* A picture while typing sits at the top of the chat, not over it. The
@@ -1101,7 +1167,15 @@
   <div id="transcript"></div>
   <section id="home" aria-label="Your panels"></section>
   <form id="typebar" autocomplete="off">
+    <!-- What goes with the question: the answer it replies to, its photos and files (reply.ts, attach.ts). -->
+    <div id="tray" hidden></div>
     <textarea id="typed" rows="1" placeholder="Message Jarvis…" aria-label="Message Jarvis" enterkeyhint="send"></textarea>
+    <button id="attach" type="button" title="Add a photo or file" aria-label="Add a photo or file" aria-haspopup="menu" aria-expanded="false"></button>
+    <div id="attachMenu" role="menu" hidden>
+      <button type="button" role="menuitem" data-pick="file">Upload file</button>
+      <button type="button" role="menuitem" data-pick="photo">Take photo</button>
+    </div>
+    <input id="attachInput" type="file" multiple hidden accept="image/*,application/pdf,text/*,.md,.csv,.tsv,.json,.log,.xml,.yaml,.yml">
     <button id="askAloud" type="button" title="Ask aloud" aria-label="Ask aloud"></button>
     <button id="readAloud" type="button" aria-pressed="false" title="Read replies aloud" aria-label="Read replies aloud"></button>
     <button id="send" type="submit" aria-label="Send"></button>

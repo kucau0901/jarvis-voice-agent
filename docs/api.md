@@ -311,7 +311,8 @@ as `image` files in the form, or as `images` (data: URLs) in JSON; on
 `/api/v1/stream` (and the app's `/api/delegate`), as `images`. JPEG, PNG or
 WebP, up to about 2 MB each — shrink them to about 1024 pixels first; the
 model sees no more in a larger one. They go to the router beside the
-question and are never stored.
+question and are never stored. The app's own chat may also send `files` to
+`/api/delegate` (a PDF or a text file, two at most), which is internal.
 
 ```
 POST /api/v1/voice

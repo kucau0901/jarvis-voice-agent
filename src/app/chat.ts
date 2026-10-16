@@ -1,6 +1,7 @@
 import { authHeaders } from "./key";
 import { originHere } from "./alerts";
 import type { Turn } from "./history";
+import type { Attached } from "./attach";
 
 /**
  * Typed chat: the conversation so far, sent to the same router a spoken
@@ -15,14 +16,17 @@ interface ChatHooks {
   answer(text: string, ok: boolean): void;
 }
 
-export async function askTyped(key: string, transcript: Turn[], hooks: ChatHooks, signal: AbortSignal): Promise<void> {
+export async function askTyped(key: string, transcript: Turn[], hooks: ChatHooks, signal: AbortSignal, attached: Attached[] = []): Promise<void> {
+  // Photos and files go with this question only (attach.ts); what stays in the transcript is their names.
+  const images = attached.filter((a) => a.kind === "image").map((a) => a.data);
+  const files = attached.filter((a) => a.kind !== "image").map(({ name, kind, data }) => ({ name, kind, data }));
   let answered = false;
   try {
     const res = await fetch("/api/delegate", {
       method: "POST",
       headers: authHeaders(key),
       // "chat": the router writes for reading — exact figures, links, short lists.
-      body: JSON.stringify({ delegationId: "typed", transcript, surface: "chat", origin: originHere() }),
+      body: JSON.stringify({ delegationId: "typed", transcript, surface: "chat", origin: originHere(), ...(images.length ? { images } : {}), ...(files.length ? { files } : {}) }),
       signal,
     });
     if (!res.ok || !res.body) {

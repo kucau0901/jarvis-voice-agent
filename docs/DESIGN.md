@@ -818,7 +818,10 @@ see, answered "I don't see anything" itself rather than handing the question
 on, even when told a photo was waiting; and a photo from the phone was not what
 Jarvis is for — its point is reaching the user's own systems, and "is the gate
 open?" already looks at the gate. The API stays for devices with cameras of
-their own, such as glasses.
+their own, such as glasses. Photos came back in Chat (below) when the owner
+asked for Hark's (16 Oct 2026): there a question goes to the router itself,
+which sees, so what went wrong in a live session cannot. Not in a live
+session.
 
 Measured in September 2026 on GPT-6 Luna with real home cameras: correct on
 whether someone was at the door, whether a parcel had arrived, the car and
@@ -855,6 +858,22 @@ history, so a typed question can be followed by a spoken one; in Chat the
 orb, small in the corner, still takes a single spoken question. Coming back to
 the Jarvis tab returns to the way it last talked on that screen, so a
 push-to-talk screen never comes back as Live.
+
+**Photos, files and replies in Chat**, as Hark's chat has them
+(`src/app/attach.ts`, `src/app/reply.ts`). "+" in the message box offers
+Upload file and Take photo: up to two photos, shrunk on the device to 1600
+pixels (enough to read a page in one), and two files, a PDF the model reads
+page by page or a text file that reaches it as quoted data, someone else's
+words (`lib/photos.ts`). Other kinds are refused with why. They go with that
+one question to the router and are kept nowhere; the conversation keeps
+their names, so a later question can say "that invoice". Take photo opens
+the camera in the page rather than the phone's camera app, so it is the same
+on a computer, a phone and the car, whose cabin camera the browser has in
+Park only. Each answer has a reply button: the question then carries a hook
+back to it, as Hark's do, which brings the answer into view when pressed,
+and the router is given the answer's words with the question, so "close that
+one" means the thing quoted however far up it was. Answers are solid and
+questions see-through and quieter, so what Jarvis said stands out.
 
 **The router has to be Jarvis.** With GPT-Live, the live voice re-says what
 the router found in its own words and manner. Push-to-talk has nothing in

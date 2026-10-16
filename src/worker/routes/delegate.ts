@@ -5,7 +5,7 @@ import { buildHistory, type Turn } from "../lib/history.ts";
 import { originOf } from "../lib/shared.ts";
 import type { Principal } from "../lib/auth.ts";
 import type { Grant } from "../lib/scopes.ts";
-import { photosFrom } from "../lib/photos.ts";
+import { filesFrom, photosFrom } from "../lib/photos.ts";
 import { run, type RunOptions } from "../lib/router.ts";
 
 export async function handleDelegate(
@@ -19,7 +19,7 @@ export async function handleDelegate(
   // No OpenAI key is not refused here: Home Assistant's Assist can still
   // answer a typed house request, and run() says plainly what cannot be.
 
-  let body: { transcript?: unknown; delegationId?: unknown; images?: unknown; surface?: unknown; origin?: unknown };
+  let body: { transcript?: unknown; delegationId?: unknown; images?: unknown; files?: unknown; surface?: unknown; origin?: unknown };
   try {
     body = await req.json();
   } catch {
@@ -52,11 +52,13 @@ export async function handleDelegate(
     ac.abort();
   });
 
-  // A photo the user took with the phone to ask about, in a live session.
+  // A photo the user took with the phone to ask about, in a live session; or photos and files attached in the chat.
   const images = photosFrom(body.images);
+  const files = body.surface === "chat" ? filesFrom(body.files) : [];
   const origin = originOf(principal, body.origin);
   const opts: RunOptions = {
     ...(images.length ? { images } : {}),
+    ...(files.length ? { files } : {}),
     // Typed chat (src/app/chat.ts): written for reading, not for GPT-Live to say.
     ...(body.surface === "chat" ? { surface: "chat" as const, assist: true } : {}),
     // One conversation across the user's devices (lib/shared.ts).
