@@ -175,8 +175,11 @@
   /* The orb is a WebGL canvas. The tap target is a separate, deliberately
      oversized element over it: this browser reports pointer:fine, so nothing
      gets touch-friendly sizing for free, and it is pressed while driving. */
-  #orbWrap { position: relative; width: min(38vh, 300px); aspect-ratio: 1;
-    flex: none; display: grid; place-items: center; margin: 2vh 0 3vh;
+  /* Smaller than it was: the dashboard is short, and the conversation needs the room. --ow is its size,
+     which the room around it follows (#orbRow). */
+  :root { --ow: min(27vh, 260px); }
+  #orbWrap { position: relative; width: var(--ow); aspect-ratio: 1;
+    flex: none; display: grid; place-items: center; margin: 1vh 0 2vh;
     transition: width .55s cubic-bezier(.22,.9,.28,1),
                 margin .55s cubic-bezier(.22,.9,.28,1),
                 transform .55s cubic-bezier(.22,.9,.28,1); }
@@ -626,13 +629,16 @@
       margin: 0 0 calc(var(--w) * 0.2); }
     #status { font-size: 16px; }
     #transcript { max-height: 22dvh; }
+    /* How to talk under the status, as before: a phone held upright is too narrow beside the orb. */
+    #talkrow { order: 1; }
+    #transcript { order: 2; }
     #devices .qr svg, #family .qr svg { width: 150px; height: 150px; }
     #devices .tok code, #family .tok code { flex: 1 1 100%; }
   }
 
   /* A desktop window has room the dashboard does not. */
   @media (min-width: 1100px) and (min-height: 760px) {
-    #orbWrap { width: min(46vh, 380px); }
+    :root { --ow: min(40vh, 340px); }
     #status { font-size: 19px; }
   }
 
@@ -645,6 +651,37 @@
   #modes button.on { background: var(--seg-on); color: var(--fg); }
   body.staged #talkrow { display: none; }
   #talkrow { position: relative; z-index: 2; display: flex; gap: 10px; align-items: center; }
+  /* The orb, what it is doing and how to talk are one row where the screen is wide: the status on the
+     left, the orb centred between equal columns, Live over Push-to-talk on the right. The rows they took
+     under the orb were the conversation's room in the car, which now takes all the height left. Elsewhere
+     (a picture up, Chat, Home, a phone held upright) the row is not a box at all, and each part is placed
+     as before. */
+  #orbRow, #said { display: contents; }
+  @media not all and (max-width: 620px) and (orientation: portrait) {
+    /* The orb is drawn about a seventh wider than its box: the gap clears it, and so does the room above
+       and below, or its top went under the tabs' glass and its foot under the status. */
+    body:not(.staged):not(.typing):not(.home) #orbRow { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center;
+      column-gap: calc(var(--ow) * .15 + 16px); width: 100%; flex: none; }
+    #orbRow > #orbWrap { grid-column: 2; }
+    body:not(.staged):not(.typing):not(.home) { gap: 12px; }
+    body:not(.staged):not(.typing):not(.home) #orbWrap { margin: calc(var(--ow) * .16) 0 calc(var(--ow) * .13); }
+    /* What it is doing against the left edge, a small frosted card, as how to talk is against the right: the
+       conversation has the room they took under the orb. Not there at all while both are empty. */
+    body:not(.staged):not(.typing):not(.home) #said { display: grid; gap: 4px; grid-column: 1; grid-row: 1; justify-self: start;
+      max-width: 220px; padding: 12px 14px; border-radius: 18px; border: 1px solid var(--hair); background: var(--glass);
+      -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); }
+    body:not(.staged):not(.typing):not(.home) #said:has(> #status:empty):has(> #hint:empty) { visibility: hidden; }
+    body:not(.staged):not(.typing):not(.home) #status { min-height: 0; font-size: 14px; line-height: 1.35; text-align: left; color: var(--fg); }
+    body:not(.staged):not(.typing):not(.home) #status.bad { color: var(--danger); }
+    body:not(.staged):not(.typing):not(.home) #hint { min-height: 0; font-size: 11px; line-height: 1.35; }
+    body:not(.staged):not(.typing):not(.home) #hint:empty { display: none; }
+    /* How to talk against the right edge: a tall narrow pill about as tall as the orb, each half elongated, its words small. */
+    #orbRow > #talkrow { grid-column: 3; justify-self: end; }
+    #orbRow #modes { flex-direction: column; width: 58px; }
+    #orbRow #modes button { display: grid; place-items: center; min-height: min(calc(var(--ow) * .56), 112px); padding: 6px 4px;
+      font-size: 11px; line-height: 1.25; text-align: center; }
+    #transcript { flex: 0 1 auto; min-height: 0; max-height: none; }
+  }
 
   /* The Chat tab: the orb steps into the corner, still alive and still the
      way to ask aloud; the conversation fills the screen, a message box sits at
@@ -1152,16 +1189,21 @@
     <button type="button" data-tab="home" data-need="screen" aria-pressed="false">Home</button>
   </div>
 
-  <div id="orbWrap">
-    <canvas id="orbCanvas" aria-hidden="true"></canvas>
-    <button id="orb" class="orb" aria-label="Start or stop Jarvis"></button>
-  </div>
-  <div id="status">loading…</div>
-  <div id="hint"></div>
-  <div id="talkrow">
-    <div id="modes" role="group" aria-label="How to talk">
-      <button type="button" data-mode="live">Live</button>
-      <button type="button" data-mode="ptt">Push-to-talk</button>
+  <!-- The orb, what it is doing on its left and how to talk on its right; under it on a phone held upright (#orbRow). -->
+  <div id="orbRow">
+    <div id="orbWrap">
+      <canvas id="orbCanvas" aria-hidden="true"></canvas>
+      <button id="orb" class="orb" aria-label="Start or stop Jarvis"></button>
+    </div>
+    <div id="said">
+      <div id="status">loading…</div>
+      <div id="hint"></div>
+    </div>
+    <div id="talkrow">
+      <div id="modes" role="group" aria-label="How to talk">
+        <button type="button" data-mode="live">Live</button>
+        <button type="button" data-mode="ptt">Push-to-talk</button>
+      </div>
     </div>
   </div>
   <div id="transcript"></div>

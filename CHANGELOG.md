@@ -111,6 +111,13 @@ of every release, and in the [README](README.md#updating).
 
 ### Changed
 
+- **More room for the conversation on the Jarvis tab.** On a screen wider
+  than a phone held upright, the orb is a little smaller, what it is doing
+  sits in a small frosted card at the left edge, and Live and Push-to-talk are
+  a tall narrow switch at the right edge, instead of rows under the orb; the
+  conversation takes all the height left. In the car the orb's top no longer
+  goes under the tabs, nor the conversation off the foot of the screen.
+
 - **A new look, in Tesla's colours, laid out like Hark.** The app uses the
   greys and blue of Tesla's own screens, so it looks at home in the car, on
   frosted glass over a softly blurred page. The orb is blue when idle and
