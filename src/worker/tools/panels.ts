@@ -6,8 +6,8 @@ import { entityState, haConfig } from "../lib/ha.ts";
 import { pickCar } from "./tessie.ts";
 import { TOGETHER } from "../lib/panel-view.ts";
 import { areasOf, arrange, lightIds } from "../lib/panel-arrange.ts";
-import { tileSpec } from "../lib/panel-tiles.ts";
-import { idsOf, type PanelItem } from "../lib/panels.ts";
+import { parseTile, tileSpec } from "../lib/panel-tiles.ts";
+import { idsOf, ticked, type Panel, type PanelItem } from "../lib/panels.ts";
 
 /**
  * Panels on this person's Home tab (lib/panels.ts), made and changed by
@@ -269,4 +269,43 @@ export const panelRemove: Tool = {
   },
 };
 
-export const panelTools: Tool[] = [panelSet, panelRemove];
+/** One thing on a panel, as the model is told it: its name, then what it is. */
+function described(i: PanelItem): string {
+  if (i.kind === "home") return `${i.label} (house: ${idsOf(i).join(", ")})`;
+  if (i.kind === "car") return `${i.label} (car)`;
+  if (i.kind === "usage") return `${i.label} (usage)`;
+  if (i.kind === "note") return `to-do "${i.label}"${ticked(i) ? " (ticked off)" : ""}`;
+  const t = parseTile(i.ref);
+  const read = !t?.read ? "" : "tool" in t.read ? `shows ${t.read.tool}` : `asks "${t.read.ask}"`;
+  const buttons = t?.buttons.length ? `buttons ${t.buttons.map((b) => b.label).join(", ")}` : "";
+  return `${i.label} (tile${read || buttons ? `: ${[read, buttons].filter(Boolean).join("; ")}` : ""})`;
+}
+
+/** A person's panels, in their order, as the model is told them. */
+export function panelsText(panels: Panel[]): string {
+  if (!panels.length) return "They have no panels yet.";
+  return `Their panels on the Home tab, in order:\n${panels.map((p) => `"${p.title}": ${p.items.map(described).join("; ") || "nothing yet"}.`).join("\n")}`;
+}
+
+/**
+ * What is on them now. The tools above change a panel by its name, and were
+ * all the model had: it changed panels it could not see, so it could not say
+ * what was on one, suggest what was missing, or know a panel's exact name.
+ */
+export const panelList: Tool = {
+  name: "panel_list",
+  scope: "screen",
+  pace: "fast",
+  description:
+    "What is on the user's panels on their Home tab now: each panel's name and the things on it, in " +
+    "order. Use it when they ask what their panels show or for ideas for another, and before changing a " +
+    "panel you have not just made, so you use its exact name and do not add what is there already.",
+  parameters: { type: "object", properties: {}, required: [], additionalProperties: false },
+  async run(_args, ctx) {
+    const state = stateStub(ctx.env);
+    if (!state) return "Panels need this deployment's state object.";
+    return panelsText(await state.panelsOf(person(ctx.env)));
+  },
+};
+
+export const panelTools: Tool[] = [panelList, panelSet, panelRemove];

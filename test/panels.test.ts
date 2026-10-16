@@ -3,7 +3,7 @@
 // is checked against, and what the tool will put on one (tools/panels.ts).
 import { MAX_HOUSE, MAX_ITEMS, MAX_PANELS, noteKey, Panels, tileKey, type Panel } from "../src/worker/lib/panels.ts";
 import { actOn, carActions, houseActions, houseActive, houseIcon, houseValue, viewPanels, type PanelSources } from "../src/worker/lib/panel-view.ts";
-import { panelRemove, panelSet } from "../src/worker/tools/panels.ts";
+import { panelList, panelRemove, panelSet, panelsText } from "../src/worker/tools/panels.ts";
 import { areasOf, arrange } from "../src/worker/lib/panel-arrange.ts";
 import { controlCall, controlsOf } from "../src/worker/lib/panel-controls.ts";
 import { parseTile, pressTile, readingOf, readTile, tileIcon, tileSpec } from "../src/worker/lib/panel-tiles.ts";
@@ -685,6 +685,38 @@ console.log("a reading Jarvis looks up, as Hark's air quality");
   const failed = await readTile(spec, failing, "t_new");
   check("a look-up that fails with nothing kept says so, and lets the next try",
     failed.status === 502 && failed.text.includes("rate limited") && (await store.claimReading("u", "t_new", 3_600_000, Date.now())).go, failed);
+}
+
+console.log("what the model is told is on them (panel_list)");
+{
+  const tile = (spec: unknown) => JSON.stringify(spec);
+  const panels: Panel[] = [
+    { id: "p_1", title: "Home & Car", at: 0, items: [
+      { kind: "home", ref: "cover.main_gate", label: "Main gate" },
+      { kind: "home", ref: "light.bed_a,light.bed_b,light.bed_c", label: "Master Bedroom lights" },
+      { kind: "car", ref: "c_1", label: "Comet" },
+    ] },
+    { id: "p_2", title: "Daily", at: 0, items: [
+      { kind: "note", ref: "", label: "Renew the road tax" },
+      { kind: "note", ref: "done", label: "Book the dentist" },
+      { kind: "usage", ref: "usage", label: "What you have used" },
+      { kind: "tile", ref: tile({ read: { tool: "music_state", args: {} }, buttons: [{ label: "Pause", tool: { tool: "music_control", args: { action: "pause" } } }] }), label: "Music" },
+      { kind: "tile", ref: tile({ read: { ask: "How is the air in Springfield?", every: 60 }, buttons: [] }), label: "Air" },
+    ] },
+    { id: "p_3", title: "Empty", at: 0, items: [] },
+  ];
+  const told = panelsText(panels);
+  check("each panel by its exact name, in order, with what is on it and what each thing is",
+    told.split("\n").length === 4 &&
+      told.includes('"Home & Car": Main gate (house: cover.main_gate); Master Bedroom lights (house: light.bed_a, light.bed_b, light.bed_c); Comet (car).') &&
+      told.includes('to-do "Renew the road tax"; to-do "Book the dentist" (ticked off); What you have used (usage); Music (tile: shows music_state; buttons Pause); Air (tile: asks "How is the air in Springfield?").') &&
+      told.includes('"Empty": nothing yet.'), told);
+  check("none at all says so", panelsText([]) === "They have no panels yet.");
+  const asked: string[] = [];
+  const STATE = { idFromName: () => "j", get: () => ({ panelsOf: async (p: string) => (asked.push(p), panels) }) };
+  const out = String(await panelList.run({}, { env: { STATE, JARVIS_PERSON: "u_sam" }, grants: ["*"], signal: new AbortController().signal, progress: () => {}, memory: null, display: () => {} } as never));
+  check("the tool reads the asker's own", asked[0] === "u_sam" && out === told);
+  check("for those with a Home tab, as the tools that change them", panelList.scope === "screen" && panelSet.scope === "screen");
 }
 
 console.log("the tool");

@@ -62,7 +62,8 @@ of every release, and in the [README](README.md#updating).
   gate opens, when a reading goes above a number, or, for a reading Jarvis
   looks up, when what you type comes true ("the API is above 150"), read
   from its source page at most hourly by the cheapest model, about a tenth
-  of a cent a look.
+  of a cent a look. Jarvis can see what is on your panels, so "what's on my
+  panels?", "suggest another panel" and changes to one go by what is there.
 - **Light and dark, per screen.** Menu → **Theme**: Auto, the default, is
   light by day and dark at night (07:00–19:00, by the screen's clock), because
   the car's browser can report the wrong system setting. Or System, Dark or

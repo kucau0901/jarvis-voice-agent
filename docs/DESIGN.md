@@ -300,7 +300,11 @@ Hark keeps a column of cards beside its chat — the gate, the lights, the car,
 what has been spent — and you make them by asking. Jarvis does the same on the
 **Home** tab: "put the gate and the porch light on a panel", "add my car to
 Home Controls", "a to-do panel with renew the road tax" (`panel_set`,
-`panel_remove`, tools/panels.ts).
+`panel_remove`, tools/panels.ts). `panel_list` tells the router what is on
+them, each thing by name and what it is, when it is asked about them or
+before it changes one; without it the router changed panels it could not
+see, by a name it had to guess. It is a tool, not part of every question,
+so a question that is not about panels costs no more.
 
 - **Each person's own.** Panels are kept per person (lib/panels.ts, one key
   each); the owner key and the first person are the same person, as
