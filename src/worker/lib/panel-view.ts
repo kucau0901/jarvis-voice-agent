@@ -6,9 +6,10 @@ import { carSnapshot, distanceIn, ensureAwake, sendCarCommand, type CarSnapshot,
 import type { CarKey } from "./context.ts";
 import { idsOf, keyOf, ticked, type Panel, type PanelItem } from "./panels.ts";
 import { controlCall, controlsOf } from "./panel-controls.ts";
-import { alertChoice } from "./panel-alerts.ts";
+import { alertChoice, alertsOn } from "./panel-alerts.ts";
 import { isAsk, parseTile, pressTile, readTile, tileIcon, type TileButton, type TileSources } from "./panel-tiles.ts";
 import type { UsageReport } from "./usage.ts";
+import type { Routine } from "./routines.ts";
 import type { PanelIcon, PanelRow, PanelView } from "../../shared/panels.ts";
 
 /**
@@ -45,6 +46,8 @@ export interface PanelSources extends TileSources {
   command: (cfg: TessieConfig, name: string, extra: Record<string, string>, signal: AbortSignal) => Promise<boolean>;
   /** This person's usage this month and today. */
   usage: () => Promise<UsageReport | null>;
+  /** This person's own routines: a row's alerts are among them (lib/panel-alerts.ts alertsOn). */
+  routines: () => Promise<Routine[]>;
   /** A thing's numeric readings over the last day, oldest first (a chart). */
   history: (cfg: HaConfig, entity: string) => Promise<{ t: number; v: number }[]>;
   /** Whether maps can be drawn here: the deployment has a Maps key (routes/map.ts). */
@@ -480,7 +483,14 @@ export async function viewPanels(panels: Panel[], src: PanelSources): Promise<Pa
     }
   };
 
-  return Promise.all(panels.map(async (p) => ({ id: p.id, title: p.title, rows: (await Promise.all(p.items.map(rows))).flat() })));
+  // Read alongside the house, for each row's alerts; none drawn when they cannot be read.
+  const mine = src.routines().catch(() => [] as Routine[]);
+  const withAlerts = async (item: PanelItem): Promise<PanelRow[]> => {
+    const [first, ...rest] = await rows(item);
+    const alerts = alertsOn(item, await mine);
+    return first ? [alerts.length ? { ...first, alerts } : first, ...rest] : [];
+  };
+  return Promise.all(panels.map(async (p) => ({ id: p.id, title: p.title, rows: (await Promise.all(p.items.map(withAlerts))).flat() })));
 }
 
 /* ---------- working ------------------------------------------------------------------ */

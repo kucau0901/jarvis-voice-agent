@@ -10,6 +10,7 @@ import { carById, pickCar } from "../tools/tessie.ts";
 import { actOn, historyOf, LIVE, readTileOf, viewPanels, type PanelSources } from "../lib/panel-view.ts";
 import { setAlert } from "../lib/panel-alerts.ts";
 import { keyOf } from "../lib/panels.ts";
+import { isTheirs } from "../lib/context.ts";
 import { baseTools, outputText } from "../tools/registry.ts";
 import { mcpSessions, mcpTools } from "../tools/mcp.ts";
 import { memoryFor } from "../lib/memory.ts";
@@ -57,6 +58,7 @@ export async function handlePanels(req: Request, env: Env, principal: Principal)
     pick: (named) => pickCar(env, named),
     maps: !!env.GOOGLE_MAPS_API_KEY,
     usage: () => state.usageReport(dayOf(Date.now(), timeZone), me),
+    routines: async () => (await state.listRoutines()).filter((r) => isTheirs(r.createdBy, me)),
     // One of this person's tools, as the router would offer it to them now.
     async tool(name, args) {
       let tool = baseTools(env, grants).find((t) => t.name === name);

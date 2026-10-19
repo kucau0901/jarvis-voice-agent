@@ -36,6 +36,8 @@ export interface PanelRow {
   read?: boolean;
   /** A to-do ticked off: struck through, at the bottom, until cleared. */
   done?: boolean;
+  /** The alerts set on it, a few words each ("above 200", "opens"): routines of theirs that watch it. */
+  alerts?: string[];
 }
 
 /** What a tile's button takes before it is pressed (lib/panel-tiles.ts): a number on a slider, or words. */

@@ -34,6 +34,10 @@ of every release, and in the [README](README.md#updating).
 - **Change what a device may do.** Each device in Devices has an Edit button
   that changes its scopes and keeps its token, so nothing has to be
   reflashed or reconnected. A change takes up to a minute to reach it.
+- **A panel shows its alerts.** A tile with an alert on it says so, e.g.
+  "Alert: above 200", whether the alert was set with Alert me or by asking
+  Jarvis to watch that thing. Off ones are not shown. In Alert me a number
+  alone, such as 200, now means above it.
 
 ### Fixed
 

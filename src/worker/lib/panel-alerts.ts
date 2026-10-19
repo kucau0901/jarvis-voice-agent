@@ -1,6 +1,6 @@
 import type { PanelMore } from "../../shared/panels.ts";
 import type { HaConfig } from "./ha.ts";
-import { idsOf, tileKey, type Panel, type Reading } from "./panels.ts";
+import { idsOf, tileKey, type Panel, type PanelItem, type Reading } from "./panels.ts";
 import { isAsk, parseTile } from "./panel-tiles.ts";
 import type { Routine, RoutineInput } from "./routines.ts";
 
@@ -139,7 +139,9 @@ export async function setAlert(
 
   const spec = parseTile(item.ref);
   if (!spec?.read || !isAsk(spec.read)) return { status: 409, text: "Only a reading Jarvis looks up can alert from here." };
-  const condition = typeof body.condition === "string" ? body.condition.trim().slice(0, 200) : "";
+  const typed = typeof body.condition === "string" ? body.condition.trim().slice(0, 200) : "";
+  // A number alone is a level to go above: "200" is "above 200".
+  const condition = /^\d+(\.\d+)?$/.test(typed) ? `above ${typed}` : typed;
   if (condition.length < 3) return { status: 400, text: "Say when to alert you, e.g. the API is above 150." };
   const read = spec.read;
   const known = (await d.kept(key).catch(() => null))?.source;
@@ -165,4 +167,29 @@ export async function setAlert(
     if (!made.startsWith("that page cannot be watched")) return { status: 409, text: `No alert: ${made}.` };
   }
   return { status: 409, text: "No page could be found that shows it plainly enough to watch cheaply; ask Jarvis in Chat instead." };
+}
+
+/**
+ * The alerts already set on a row, a few words each ("above 200", "opens"),
+ * drawn on its tile (lib/panel-view.ts): the person's routines that watch it,
+ * whether made here or by asking. A tile's page watch asks the tile's own
+ * question; a thing's watch names it in its template. Off ones are left out.
+ */
+export function alertsOn(item: PanelItem, routines: readonly Routine[]): string[] {
+  const out = new Set<string>();
+  if (item.kind === "tile") {
+    const read = parseTile(item.ref)?.read;
+    if (!read || !isAsk(read)) return [];
+    for (const r of routines) if (r.enabled && r.trigger.kind === "page" && r.trigger.question === read.ask) out.add(r.trigger.condition);
+  } else if (item.kind === "home" && idsOf(item).length === 1) {
+    const named = [`'${item.ref}'`, `"${item.ref}"`];
+    for (const r of routines) {
+      if (!r.enabled || r.trigger.kind !== "watch") continue;
+      const template = r.trigger.template;
+      if (!named.some((n) => template.includes(n))) continue;
+      // Its name less the thing's own: "Main gate opens" is "opens" on the gate's tile.
+      out.add((r.name.startsWith(item.label) ? r.name.slice(item.label.length).replace(/^[\s:]+/, "") : "") || r.name);
+    }
+  }
+  return [...out];
 }

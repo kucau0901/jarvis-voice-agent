@@ -489,6 +489,8 @@ export class Home {
     t.appendChild(top);
     const reading = this.readings.get(at)?.got;
     if (r.read && reading?.text) this.showReading(t, reading);
+    // Alerts set on it, here or by asking (lib/panel-alerts.ts alertsOn); a reading is drawn above them.
+    if (r.alerts?.length) t.appendChild(el("small", "halerts", `${r.alerts.length > 1 ? "Alerts" : "Alert"}: ${r.alerts.join(" · ")}`));
     if (r.more) {
       // Opened across its panel, as Hark opens a row: its name is what is pressed.
       const open = this.opened.has(at);
@@ -593,10 +595,12 @@ export class Home {
     setTimeout(() => void this.load(), AFTER_PRESS_MS);
   }
 
-  /** "Alert me": made a routine of theirs by the server, whose answer stays under it a while. Nothing on the tile changes, so nothing is drawn again. */
+  /** "Alert me": made a routine of theirs by the server, whose answer stays under it a while. */
   private async alert(panel: string, key: string, at: string, body: Parameters<SetAlert>[0], b: HTMLButtonElement, said: HTMLElement): Promise<void> {
-    await this.post("/api/hub/panels/alert", { panel, key, ...body }, b, said);
+    const ok = await this.post("/api/hub/panels/alert", { panel, key, ...body }, b, said);
     this.told.set(at, { text: said.textContent ?? "", until: Date.now() + TOLD_MS });
+    // Drawn again, so the new alert shows on the tile; what was told is kept through it.
+    if (ok) setTimeout(() => void this.load(), AFTER_PRESS_MS);
   }
 
   /** A press sent, with the server's answer (or why not) put in `said`; whether it was done. */

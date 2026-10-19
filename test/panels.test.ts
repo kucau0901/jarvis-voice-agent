@@ -9,7 +9,7 @@ import { controlCall, controlsOf } from "../src/worker/lib/panel-controls.ts";
 import { parseTile, pressTile, readingOf, readTile, tileIcon, tileSpec } from "../src/worker/lib/panel-tiles.ts";
 import { historyOf, readTileOf } from "../src/worker/lib/panel-view.ts";
 import { entityHistory } from "../src/worker/lib/ha.ts";
-import { alertChoice, setAlert, watchFor, type AlertDeps } from "../src/worker/lib/panel-alerts.ts";
+import { alertChoice, alertsOn, setAlert, watchFor, type AlertDeps } from "../src/worker/lib/panel-alerts.ts";
 import type { Routine, RoutineInput } from "../src/worker/lib/routines.ts";
 
 let pass = 0, fail = 0;
@@ -201,6 +201,7 @@ function sources(over: Partial<PanelSources> = {}) {
     ask: async () => "",
     history: async () => [],
     maps: false,
+    routines: async () => [],
     usage: async () => ({ month: "2026-10", total: { day: "", questions: 40, byHouse: 0, cost: { router: 1, live: 0.5, jobs: 0.25 }, liveSeconds: 600, jobs: 1, unpriced: 0 }, today: { day: "", questions: 3, byHouse: 0, cost: { router: 0, live: 0, jobs: 0 }, liveSeconds: 0, jobs: 0, unpriced: 0 }, medianMs: null, slowest: [], recent: [] }),
     ...over,
   };
@@ -916,6 +917,36 @@ console.log("alerts from a panel: made into a routine of theirs");
   check("offered only to someone who may make routines",
     !plain!.rows.some((r) => r.more?.alert) && can!.rows.find((r) => r.key === "cover.main_gate")?.more?.alert?.kind === "state" &&
     can!.rows.find((r) => r.key === airKey)?.more?.alert?.kind === "words" && !can!.rows.find((r) => r.key === "light.bed_a,light.bed_b")?.more?.alert, can!.rows.map((r) => [r.key, r.more?.alert]));
+
+  made.length = 0;
+  const bare = await setAlert(p, airKey, { condition: " 200 " }, deps({ kept: async () => ({ text: "Moderate", figures: [], at: 1, source: "https://air.example.gov/springfield" }) }));
+  check("a number alone is a level to go above", bare.status === 200 && made[0]?.condition === "above 200" && made[0].say === "Air quality: above 200." && bare.text.startsWith("You will be told when above 200"), { bare, made });
+  made.length = 0;
+  await setAlert(p, airKey, { condition: "below 50" }, deps({ kept: async () => ({ text: "Moderate", figures: [], at: 1, source: "https://air.example.gov/springfield" }) }));
+  check("…and words are kept as typed", made[0]?.condition === "below 50", made);
+
+  // The alerts already set on a row, drawn on its tile.
+  const routine = (name: string, trigger: Routine["trigger"], enabled = true) => ({ id: `r_${name}`, name, enabled, trigger, action: { kind: "say", text: "" }, grants: [], createdBy: "owner", createdAt: 0 }) as Routine;
+  const ask = "Latest air-quality reading (API) for Springfield";
+  const mine = [
+    routine("Air quality: above 200", { kind: "page", url: "https://air.example.gov/springfield", question: ask, condition: "above 200", everyMin: 60 }),
+    routine("Air quality: above 300", { kind: "page", url: "https://air.example.gov/springfield", question: ask, condition: "above 300", everyMin: 60 }, false),
+    routine("Elsewhere: above 100", { kind: "page", url: "https://air.example.gov/other", question: "Air quality in Shelbyville", condition: "above 100", everyMin: 60 }),
+    routine("Main gate opens", { kind: "watch", template: "{{ states('cover.main_gate') in ['open', 'opening'] }}", forMin: 0 }),
+    routine("Gate left open", { kind: "watch", template: '{{ is_state("cover.main_gate", "open") }}', forMin: 10 }),
+    routine("Garage opens", { kind: "watch", template: "{{ states('cover.main_gate_two') in ['open'] }}", forMin: 0 }),
+  ];
+  const [airItem, gateItem, roomItem, musicItem] = [p.items[2]!, p.items[0]!, p.items[1]!, p.items[3]!];
+  check("a tile: the page watches asking its own question, on only", alertsOn(airItem, mine).join() === "above 200", alertsOn(airItem, mine));
+  check("a thing: the watches naming it, less its own name", alertsOn(gateItem, mine).join("|") === "opens|Gate left open", alertsOn(gateItem, mine));
+  check("nothing for a room's lights together, a tool's tile or no routines",
+    !alertsOn(roomItem, mine).length && !alertsOn(musicItem, mine).length && !alertsOn(airItem, []).length);
+  const [drawn] = await viewPanels([p], sources({ routines: async () => mine }).src);
+  check("drawn on the row, and only where there are some",
+    drawn!.rows.find((r) => r.key === airKey)?.alerts?.join() === "above 200" && drawn!.rows.find((r) => r.key === "cover.main_gate")?.alerts?.length === 2 &&
+    !drawn!.rows.find((r) => r.key === tileKey(JSON.stringify(music)))?.alerts, drawn!.rows.map((r) => [r.key, r.alerts]));
+  const [unread] = await viewPanels([p], sources({ routines: async () => { throw new Error("state unavailable"); } }).src);
+  check("routines that cannot be read cost the panel nothing", unread!.rows.length === drawn!.rows.length && !unread!.rows.some((r) => r.alerts));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);
