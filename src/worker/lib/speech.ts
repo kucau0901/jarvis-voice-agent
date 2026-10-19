@@ -75,8 +75,9 @@ export function speechConfig(env: Env): SpeechConfig {
   const pick = <T extends string>(v: string | undefined, all: readonly T[], d: T): T =>
     all.includes(v?.trim().toLowerCase() as T) ? (v!.trim().toLowerCase() as T) : d;
   return {
-    stt: pick(env.VOICE_STT, STT_PROVIDERS, "openai"),
-    tts: pick(env.VOICE_TTS, TTS_PROVIDERS, "openai"),
+    // Without an OpenAI key (the ChatGPT plan has no speech), Workers AI unless another was chosen.
+    stt: pick(env.VOICE_STT, STT_PROVIDERS, env.OPENAI_API_KEY || !aiOf(env) ? "openai" : "workers-ai"),
+    tts: pick(env.VOICE_TTS, TTS_PROVIDERS, env.OPENAI_API_KEY || !aiOf(env) ? "openai" : "workers-ai"),
     voice: pick(env.VOICE_TTS_VOICE, TTS_VOICES, DEFAULT_VOICE),
     style: env.VOICE_STYLE?.trim() || DEFAULT_STYLE,
     workersAi: !!aiOf(env),

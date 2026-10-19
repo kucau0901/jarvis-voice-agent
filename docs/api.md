@@ -172,7 +172,7 @@ available — not an error. `tools` will be empty.
 > named scopes to anything you would not want to widen silently.
 
 Everything to do with administration — `/api/v1/devices`, `/api/alerts`, `/api/mcp/*`,
-`/api/spotify/*`, `/api/google/*`, `/api/diag`, `/api/probe`, and adding, editing
+`/api/spotify/*`, `/api/google/*`, `/api/chatgpt/*`, `/api/diag`, `/api/probe`, and adding, editing
 or forgetting through `/api/memory` (`POST`, `PUT`, `DELETE`) —
 is reachable **only with the owner's key**, whatever scopes a device holds. A
 device can never mint its own successor.
@@ -947,7 +947,8 @@ addresses were kept) and must be entered again.
 
 ## Not part of this contract
 
-`/api/probe`, `/api/diag`, `/api/mcp/*`, `/api/memory`, `/api/spotify/*` and
+`/api/probe`, `/api/diag`, `/api/mcp/*`, `/api/memory`, `/api/spotify/*`,
+`/api/chatgpt/*` (connecting the owner's ChatGPT plan, from Settings) and
 `/api/delegate` are internal and may change without notice. `/api/delegate` in
 particular is the browser's own route; use `/api/v1/stream`, which is the same
 thing under a name that will not move.

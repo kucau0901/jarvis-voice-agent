@@ -4,10 +4,11 @@ import { AlertsPanel } from "./AlertsPanel";
 import { LOUDNESS, loudness, setLoudness, type Loudness } from "../loud";
 import { speakText } from "../alerts";
 import { SectionMenu, type NavGroup } from "./sections";
+import { ChatGptPlan } from "./ChatGptPlan";
 
 /** The settings menu: groups, and the sections in each, by id. */
 const NAV: NavGroup[] = [
-  ["Connections", ["openai", "car", "home", "hermes", "google", "spotify", "maps", "cameras", "mcp"]],
+  ["Connections", ["chatgpt", "openai", "car", "home", "hermes", "google", "spotify", "maps", "cameras", "mcp"]],
   ["How Jarvis behaves", ["router", "voice", "screen", "alerts", "locale"]],
   ["Access and advanced", ["usage", "owner", "devices", "advanced"]],
 ];
@@ -82,6 +83,8 @@ export class Settings {
   private servers: ServerRow[] = [];
   private routerState: RouterState | null = null;
   private services: Services;
+  /** The owner's ChatGPT plan, first among the connections (ui/ChatGptPlan.ts). */
+  private plan: ChatGptPlan;
   /** The version line under the menu, filled by loadVersion(). */
   private versionLine = node("p", "");
   private menu: SectionMenu;
@@ -173,6 +176,8 @@ export class Settings {
       { alerts: () => alerts.render() },
       () => this.buildNav(),
     );
+    this.plan = new ChatGptPlan(key, () => this.buildNav());
+    this.el.querySelector(".setbody")!.prepend(this.plan.el);
     this.renderLoud();
     this.el.querySelector(".hear")!.addEventListener("click", () => void this.hearLoud());
     this.buildNav();
@@ -337,9 +342,9 @@ export class Settings {
    * Opens on something that needs setting up, else OpenAI.
    */
   private buildNav(): void {
-    const note = node("p", "Only OpenAI is required. Everything else is optional, and switches its tools on once set up.");
+    const note = node("p", "Your ChatGPT plan or an OpenAI key is all Jarvis needs. Everything else is optional, and switches its tools on once set up.");
     note.className = "navnote";
-    this.menu.build(NAV, (sections) => sections.find((s) => s.dataset.state === "need")?.dataset.section ?? "openai", [note, this.versionLine]);
+    this.menu.build(NAV, (sections) => sections.find((s) => s.dataset.state === "need")?.dataset.section ?? "chatgpt", [note, this.versionLine]);
   }
 
   async show() {
@@ -349,6 +354,7 @@ export class Settings {
     this.msg("loading…");
     // Independent: a slow MCP server must not hold the other sections hostage.
     void this.services.load();
+    void this.plan.load();
     void this.loadRouter();
     void this.loadVersion();
     void this.loadUsage();

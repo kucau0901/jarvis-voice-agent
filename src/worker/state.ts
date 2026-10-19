@@ -29,6 +29,7 @@ import { OWNER, personOfWho, withPerson } from "./lib/context.ts";
 import { lookAtPage } from "./lib/page-look.ts";
 import { dayOf } from "./lib/usage.ts";
 import { nextAllowed } from "./lib/access.ts";
+import { ChatGptPlan, type PlanFailure } from "./lib/chatgpt-plan.ts";
 
 /** Chore points, per person (lib/relays.ts award). */
 const POINTS = "chore:points";
@@ -58,6 +59,8 @@ export class JarvisState extends DurableObject<Env> {
   private panels: Panels;
   /** Each person's conversation with Jarvis, kept (lib/conversation.ts). */
   private conversation: Conversation;
+  /** The owner's ChatGPT plan, which model calls use first (lib/chatgpt-plan.ts). */
+  private plan: ChatGptPlan;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -67,11 +70,13 @@ export class JarvisState extends DurableObject<Env> {
     this.chat = new Chat(ctx.storage);
     this.panels = new Panels(ctx.storage);
     this.conversation = new Conversation(ctx.storage);
+    this.plan = new ChatGptPlan(ctx.storage, (input, init) => fetch(input, init));
     this.relays = new Relays(ctx.storage, () => this.relayDeps());
     this.jobs = new Jobs(ctx.storage, async () => {
       const env = await this.localEnv();
       // Each job runs as whoever started it: their memory, their mail (lib/context.ts).
-      return jobEngine(env, (alert) => deliver(env, this, alert), (job) => this.personEnv(env, job.createdBy));
+      // Its storage, for steps run on the owner's ChatGPT plan (routes/jobs.ts).
+      return jobEngine(env, (alert) => deliver(env, this, alert), (job) => this.personEnv(env, job.createdBy), ctx.storage);
     });
     // Screens ping to keep their socket open through proxies. The runtime
     // answers these itself, so a hibernating object is not woken to say pong.
@@ -280,6 +285,8 @@ export class JarvisState extends DurableObject<Env> {
   private async schedulerDeps(): Promise<SchedulerDeps> {
     const env = await this.localEnv();
     const ha = haConfig(env);
+    // A page is read by a model: the owner's ChatGPT plan or the key (lib/openai-auth.ts).
+    const reads = !!env.OPENAI_API_KEY || (await this.plan.status(Date.now())).connected;
     return {
       timeZone: localeOf(env).timeZone,
       deliver: async (alert) => {
@@ -300,7 +307,7 @@ export class JarvisState extends DurableObject<Env> {
       travel: async (destination, person) => travelFor(await this.personEnv(env, person), destination),
       renderTemplate: ha ? (template) => renderTemplate(ha, template) : null,
       // A page watch's look (lib/page-look.ts): counted in its maker's usage, as any model call is.
-      ...(env.OPENAI_API_KEY
+      ...(reads
         ? {
             readPage: async (r: Routine) => {
               if (r.trigger.kind !== "page") return { state: null, text: "", error: "not a page watch" };
@@ -511,6 +518,36 @@ export class JarvisState extends DurableObject<Env> {
 
   conversationOf(person: string, now: number) {
     return this.conversation.list(person, now);
+  }
+
+  /* ---------- the owner's ChatGPT plan (lib/chatgpt-plan.ts) ----------------------- */
+
+  chatgptStatus(now: number) {
+    return this.plan.status(now);
+  }
+
+  chatgptStart(now: number) {
+    return this.plan.start(now);
+  }
+
+  chatgptFinish(pasted: string, now: number) {
+    return this.plan.finish(pasted, now);
+  }
+
+  chatgptToken(now: number) {
+    return this.plan.accessToken(now);
+  }
+
+  chatgptFailed(why: PlanFailure, now: number) {
+    return this.plan.failed(why, now);
+  }
+
+  chatgptSetModel(model: string | null) {
+    return this.plan.setModel(model);
+  }
+
+  chatgptDisconnect() {
+    return this.plan.disconnect();
   }
 
   conversationAdd(person: string, said: Said[], now: number) {

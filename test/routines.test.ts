@@ -621,7 +621,7 @@ console.log("\npage watches: what one is");
 console.log("\npage watches: read at their own pace, said once each time it comes true");
 {
   const AIR = { when: "page" as const, url: "https://air.example.gov/springfield", question: "the air in Springfield", condition: "the API is above 150", say: "Air: the API is above 150." };
-  check("not without an OpenAI key", String(await harness().s.add(AIR, OWNER, T0)).includes("need an OpenAI key"));
+  check("not without a ChatGPT plan or an OpenAI key", String(await harness().s.add(AIR, OWNER, T0)).includes("need your ChatGPT plan connected, or an OpenAI key"));
   const silent = harness({ page: async () => ({ state: null, text: "", error: "the page had no words in it" }) });
   check("a page that does not say is not kept",
     String(await silent.s.add(AIR, OWNER, T0)) === "that page cannot be watched: the page had no words in it" && (await silent.s.list()).length === 0);

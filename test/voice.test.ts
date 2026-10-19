@@ -45,6 +45,10 @@ console.log("configuration");
   check("language from the settings", speechConfig(env({ LOCALE: "ms", COUNTRY: "MY" })).language === "ms-MY");
   check("unknown values fall back", speechConfig(env({ VOICE_STT: "carrier-pigeon", VOICE_TTS_VOICE: "hal9000" })).stt === "openai");
   check("Workers AI is reported only when bound", !c.workersAi && speechConfig(env({ AI: { run: async () => ({}) } })).workersAi);
+  const planOnly = speechConfig(env({ OPENAI_API_KEY: undefined, AI: { run: async () => ({}) } }));
+  check("with no key (the ChatGPT plan has no speech), Workers AI both ways", planOnly.stt === "workers-ai" && planOnly.tts === "workers-ai", planOnly);
+  check("…unless another was chosen", speechConfig(env({ OPENAI_API_KEY: undefined, AI: { run: async () => ({}) }, VOICE_STT: "browser" })).stt === "browser");
+  check("with no key and no Workers AI, still OpenAI, which says what is missing", speechConfig(env({ OPENAI_API_KEY: undefined })).stt === "openai");
   check("the panel refuses an unknown provider", !validateChanges({ VOICE_STT: "siri" }).ok);
   check("…and accepts a known one", validateChanges({ VOICE_TTS: "browser", VOICE_TTS_VOICE: "marin" }).ok);
 }

@@ -865,6 +865,11 @@
   .panel .setnav .navver.update { color: var(--fg); }
   .panel .setnav .navver a { color: var(--accent-ink); }
   /* Which icon a row has, by its section's id. */
+  .navcard [data-for="chatgpt"] { --icon: var(--i-messages); }
+  /* Settings → ChatGPT plan (ui/ChatGptPlan.ts): its steps, buttons and paste box spaced like a form. */
+  #settings .planbody { display: grid; gap: 12px; margin-top: 12px; }
+  #settings .planbody > * { margin: 0; }
+  #settings .planbody ol { padding-left: 20px; display: grid; gap: 4px; }
   .navcard [data-for="openai"] { --icon: var(--i-bolt); }
   .navcard :is([data-for="car"], [data-for="m-cars"], [data-for$=":vehicle"]) { --icon: var(--i-car); }
   .navcard :is([data-for="home"], [data-for="m-home"]) { --icon: var(--i-house); }

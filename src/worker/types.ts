@@ -37,8 +37,14 @@ export interface Env {
   /** An OpenAI-compatible gateway instead of OpenAI itself (lib/openai-base.ts). */
   OPENAI_BASE_URL?: string;
 
-  /** OpenAI key. Worker-only — it must never be sent to the browser. */
-  OPENAI_API_KEY: string;
+  /**
+   * OpenAI key. Worker-only — it must never be sent to the browser. Optional
+   * with the owner's ChatGPT plan connected (lib/chatgpt-plan.ts); live voice
+   * needs it.
+   */
+  OPENAI_API_KEY?: string;
+  /** "0": at the ChatGPT plan's limit, stop rather than use the key (lib/openai-auth.ts). */
+  CHATGPT_FALLBACK?: string;
   /** Shared secret gating every /api/* route. */
   JARVIS_SHARED_SECRET: string;
 

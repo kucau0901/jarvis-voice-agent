@@ -19,6 +19,15 @@ of every release, and in the [README](README.md#updating).
 
 ### Added
 
+- **Run Jarvis on your ChatGPT plan.** Connect your ChatGPT Plus or Pro in
+  Settings → ChatGPT plan, and every question, chat, job, research run and
+  routine comes out of the usage your plan already includes, at no cost in
+  Usage. A ChatGPT plan or an OpenAI API key is now enough on its own; with
+  both, the plan is used first, the key runs live voice (which the plan does
+  not cover) and, unless you switch it off, carries on when the plan's limit
+  is reached. Without a key the Live switch is hidden and push-to-talk uses
+  Workers AI. Setting it up: [README](README.md#use-your-chatgpt-plan).
+
 - **Jarvis reads its background jobs back.** Asked "has Hermes answered?" or
   "what did that research find?", Jarvis now answers from your finished job
   (or says it is still working) instead of asking Hermes again or starting a

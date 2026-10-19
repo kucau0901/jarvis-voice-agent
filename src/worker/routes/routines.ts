@@ -11,6 +11,7 @@ import { EVENT_NAME, describeAction, describeTrigger, type Routine } from "../li
 import type { Travel } from "../lib/scheduler.ts";
 import { SCOPES, WILDCARD, type Grant } from "../lib/scopes.ts";
 import { run } from "../lib/router.ts";
+import { canAsk } from "../lib/openai-auth.ts";
 
 /**
  * Routines over HTTP (lib/routines.ts). All need the `routines` scope.
@@ -112,7 +113,7 @@ export async function askForRoutine(
   grants: readonly Grant[],
   routine: Routine,
 ): Promise<{ ok: boolean; text: string }> {
-  if (!env.OPENAI_API_KEY) return { ok: false, text: "no OpenAI key is set" };
+  if (!(await canAsk(env))) return { ok: false, text: "no ChatGPT plan or OpenAI key is set" };
   const sink = new Collector();
   // Nothing to show a map on: screen tools are left out rather than offered and lost.
   const screenless = grants.includes(WILDCARD)

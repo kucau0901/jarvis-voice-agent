@@ -142,7 +142,7 @@ export class Scheduler {
     // That read is its first look, so setting one up costs one look, and an alert already true is said now.
     let first: { state: boolean | null; text: string; error?: string } | undefined;
     if (built.trigger.kind === "page") {
-      if (!deps.readPage) return "page watches need an OpenAI key";
+      if (!deps.readPage) return "page watches need your ChatGPT plan connected, or an OpenAI key";
       if (all.filter((r) => r.trigger.kind === "page").length >= MAX_PAGES) return `there are already ${MAX_PAGES} pages watched; remove one first`;
       first = await deps.readPage(makeRoutine(built, by, timeZone, now));
       if (first.state === null) return `that page cannot be watched: ${first.error ?? "it did not say"}`;
@@ -346,7 +346,7 @@ export class Scheduler {
   private async look(r: Routine, deps: SchedulerDeps): Promise<{ template: string; state: boolean | null; error: string; text?: string }> {
     if (r.trigger.kind === "page") {
       const template = `${r.trigger.url}\n${r.trigger.condition}`;
-      if (!deps.readPage) return { template, state: null, error: "no OpenAI key is set" };
+      if (!deps.readPage) return { template, state: null, error: "no ChatGPT plan or OpenAI key is set" };
       const got = await deps.readPage(r);
       return { template, state: got.state, error: got.error ?? "", text: got.text };
     }

@@ -4,6 +4,7 @@ import { json } from "../lib/http.ts";
 import { ping, hermesConfig, orderAccessPair } from "../tools/hermes.ts";
 import { toolAvailability } from "../tools/registry.ts";
 import { orderCandidates, readFallback, resolveRouterModel } from "../lib/router-model.ts";
+import { stateStub } from "../lib/state-client.ts";
 
 /**
  * Reachability check for both backends.
@@ -16,6 +17,9 @@ export async function handleDiag(env: Env): Promise<Response> {
   const out: Record<string, unknown> = { ts: new Date().toISOString() };
   out.localTools = toolAvailability(env);
   out.router = { ...(await resolveRouterModel(env)), fallback: await readFallback(env) };
+
+  // The owner's ChatGPT plan, which questions use first (lib/chatgpt-plan.ts): no token, only its state.
+  out.chatgpt = await (stateStub(env)?.chatgptStatus(Date.now()) ?? Promise.resolve(null)).catch(() => null);
 
   // OpenAI: cheap authenticated call, no generation, no cost.
   out.openai = await (async () => {

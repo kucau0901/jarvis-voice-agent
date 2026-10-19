@@ -178,7 +178,13 @@ const timeout = () => AbortSignal.timeout(15_000);
 
 const TESTS: Partial<Record<Group, (eff: Env, origin: string) => Promise<TestResult>>> = {
   async openai(eff) {
-    if (!eff.OPENAI_API_KEY) return { ok: false, detail: "No key set." };
+    if (!eff.OPENAI_API_KEY) {
+      // Optional with the owner's ChatGPT plan connected (lib/chatgpt-plan.ts).
+      const plan = await (stateStub(eff)?.chatgptStatus(Date.now()) ?? Promise.resolve(null)).catch(() => null);
+      return plan?.connected
+        ? { ok: true, detail: `No key: questions use the ChatGPT plan${plan.email ? ` of ${plan.email}` : ""}. Live voice needs a key.` }
+        : { ok: false, detail: "No key set, and no ChatGPT plan connected." };
+    }
     const r = await fetch(`${openaiBase(eff)}/models`, {
       headers: { Authorization: `Bearer ${eff.OPENAI_API_KEY}` },
       signal: timeout(),

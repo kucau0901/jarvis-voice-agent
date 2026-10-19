@@ -38,6 +38,7 @@ console.log("\nwhat a question costs");
   check("Home Assistant's answers are free", costOf(q({ by: "home-assistant", input: 0, output: 0 })) === 0);
   check("a live minute is five cents", near(costOf(q({ by: "gpt-live-1", seconds: 120, input: 0, cached: 0, output: 0 })), 0.1));
   check("an unknown model: no guess", costOf(q({ by: "gpt-7-nova" })) === null);
+  check("on the owner's ChatGPT plan: nothing, searches included", costOf(q({ by: "chatgpt:gpt-6-luna", searches: 3 })) === 0);
 }
 
 console.log("\na day, and the month");

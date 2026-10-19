@@ -19,6 +19,7 @@ import * as devices from "../lib/devices.ts";
 import { handleLiveUsage } from "./usage.ts";
 import { originOf } from "../lib/shared.ts";
 import { mcpReply } from "../lib/mcp-server.ts";
+import { canAsk } from "../lib/openai-auth.ts";
 import { handleConnect } from "./oauth.ts";
 import { JARVIS_VERSION } from "./version.ts";
 
@@ -159,7 +160,7 @@ async function handleAsk(
   principal: Principal,
 ): Promise<Response> {
   if (req.method !== "POST") return err(405, "method not allowed");
-  if (!env.OPENAI_API_KEY) return err(503, "OPENAI_API_KEY is not configured");
+  if (!(await canAsk(env))) return err(503, "neither a ChatGPT plan nor OPENAI_API_KEY is configured");
 
   const parsed = await readJson(req);
   if (!parsed.ok) return parsed.res;
@@ -210,7 +211,7 @@ async function handleMcp(
   principal: Principal,
 ): Promise<Response> {
   if (req.method !== "POST") return err(405, "method not allowed");
-  if (!env.OPENAI_API_KEY) return err(503, "OPENAI_API_KEY is not configured");
+  if (!(await canAsk(env))) return err(503, "neither a ChatGPT plan nor OPENAI_API_KEY is configured");
 
   const parsed = await readJson(req);
   if (!parsed.ok) return parsed.res;

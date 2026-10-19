@@ -1,7 +1,6 @@
-import OpenAI from "openai";
 import type { Env } from "../types.ts";
 import { asQuotedData } from "./quote.ts";
-import { openaiBase } from "./openai-base.ts";
+import { clientFor, modelAuth, planFailed, planRespond, refusalOf } from "./openai-auth.ts";
 import { DEFAULT_ROUTER_MODEL } from "./router-model.ts";
 
 /**
@@ -74,7 +73,7 @@ export function verdictOf(answer: string): { state: boolean | null; text: string
  * what it is about. Never throws: what went wrong comes back as `error`.
  */
 export async function lookAtPage(
-  env: Pick<Env, "OPENAI_API_KEY" | "OPENAI_BASE_URL">,
+  env: Env,
   raw: string,
   question: string,
   condition: string,
@@ -111,17 +110,27 @@ export async function lookAtPage(
     const call =
       ask ??
       (async (inp: string, ins: string) => {
-        if (!env.OPENAI_API_KEY) throw new Error("no OpenAI key is set");
-        const client = new OpenAI({ apiKey: env.OPENAI_API_KEY, baseURL: openaiBase(env) });
-        const r = await client.responses.create({ model: DEFAULT_ROUTER_MODEL, instructions: ins, input: inp }, { signal: AbortSignal.timeout(45_000) });
-        return { text: r.output_text ?? "", input: r.usage?.input_tokens ?? 0, output: r.usage?.output_tokens ?? 0 };
+        // The owner's ChatGPT plan first, else the key (lib/openai-auth.ts).
+        const auth = await modelAuth(env);
+        if (!auth) throw new Error("no ChatGPT plan or OpenAI key is set");
+        if (auth.kind === "plan") {
+          try {
+            const r = await planRespond(clientFor(env, auth), { model: DEFAULT_ROUTER_MODEL, instructions: ins, input: inp }, AbortSignal.timeout(45_000));
+            return { text: r.output_text ?? "", input: r.usage?.input_tokens ?? 0, output: r.usage?.output_tokens ?? 0, model: `chatgpt:${DEFAULT_ROUTER_MODEL}` };
+          } catch (e) {
+            const refused = refusalOf(e);
+            if (!refused || !(await planFailed(env, refused))) throw e;
+          }
+        }
+        const r = await clientFor(env, { kind: "key" }).responses.create({ model: DEFAULT_ROUTER_MODEL, instructions: ins, input: inp }, { signal: AbortSignal.timeout(45_000) });
+        return { text: r.output_text ?? "", input: r.usage?.input_tokens ?? 0, output: r.usage?.output_tokens ?? 0, model: DEFAULT_ROUTER_MODEL };
       });
     const got = await call(input, instructions);
     const v = verdictOf(got.text);
     return {
       ...v,
       ...(v.state === null ? { error: "the page did not say" } : {}),
-      usage: { model: DEFAULT_ROUTER_MODEL, input: got.input, output: got.output, ms: Date.now() - started },
+      usage: { model: "model" in got && typeof got.model === "string" ? got.model : DEFAULT_ROUTER_MODEL, input: got.input, output: got.output, ms: Date.now() - started },
     };
   } catch (e) {
     return { state: null, text: "", error: `it could not be read: ${e instanceof Error ? e.message : String(e)}` };

@@ -1388,5 +1388,77 @@ console.log("\na job has no screen, whoever asked for it");
   check("and keeps everything else", allows(admin, "hermes") && allows(admin, "mail") && allows(admin, "routines"), admin);
 }
 
+console.log("\njobs on the owner's ChatGPT plan (routes/jobs.ts): streamed here, kept in the object between steps");
+{
+  const kv = new Map<string, string>();
+  const CONFIG = { get: async (k: string) => kv.get(k) ?? null, put: async (k: string, v: string) => void kv.set(k, v), delete: async () => {}, list: async () => ({ keys: [] }) };
+  let plan = true;
+  const failed: string[] = [];
+  const stub = new Proxy({}, {
+    get: (_t, m) => (m === "then" ? undefined : async (...a: unknown[]) => (m === "chatgptToken" ? (plan ? { token: "at_plan", model: null } : null) : m === "chatgptFailed" ? (failed.push(String(a[0])), { first: false }) : undefined)),
+  });
+  const env = { CONFIG, OPENAI_API_KEY: "sk-test", TIMEZONE: "Asia/Kuala_Lumpur", STATE: { idFromName: () => "j", get: () => stub } } as never;
+  const kept = fakeStorage();
+  const sent: { by: "plan" | "key"; body: Record<string, unknown> & { input: Record<string, unknown>[] } }[] = [];
+  const answers: (Record<string, unknown>[] | { status: number; code: string })[] = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input instanceof Request ? input.url : input);
+    if (!url.endsWith("/responses")) throw new Error(`nothing else is reached here: ${url}`);
+    const by = new Headers(init?.headers).get("authorization") === "Bearer at_plan" ? "plan" : "key";
+    sent.push({ by, body: JSON.parse(String(init?.body)) });
+    const a = answers.shift()!;
+    if (!Array.isArray(a)) return Response.json({ error: { message: a.code, type: "x", code: a.code } }, { status: a.status });
+    const usage = { input_tokens: 200, output_tokens: 20, input_tokens_details: { cached_tokens: 0 }, output_tokens_details: { reasoning_tokens: 0 } };
+    if (by === "key") return Response.json({ id: "resp_key", object: "response", status: "queued", model: "gpt-6-luna", output: [], usage });
+    const events = [...a.map((item) => ({ type: "response.output_item.done", item })), { type: "response.completed", response: { id: "resp_x", object: "response", status: "completed", model: "gpt-6-luna", output: [], usage } }];
+    return new Response(events.map((e) => `data: ${JSON.stringify(e)}\n\n`).join(""), { headers: { "content-type": "text/event-stream" } });
+  }) as typeof fetch;
+  try {
+    const engine = jobEngine(env, async (a) => ({ alert: a, attempts: [], deliveredBy: null }) as never, async () => env, kept as never);
+    const job = { id: "jp", title: "Notes", task: "What did I save about the boiler?", engine: "jarvis", status: "running", createdBy: "owner", grants: ["*"], createdAt: T0, updatedAt: T0, steps: 0, attempts: 0 } as Job;
+    answers.push([{ type: "function_call", id: "fc_1", call_id: "call_1", name: "recall", namespace: "jarvis", arguments: JSON.stringify({ query: "boiler" }), status: "completed" }]);
+    const started = await engine.start(job);
+    const first = sent[0]!;
+    check("a step starts on the plan: streamed, not stored, no background mode, tools in a namespace",
+      "responseId" in started && started.responseId.startsWith("plan_") && first.by === "plan" && first.body.stream === true && first.body.store === false &&
+      !("background" in first.body) && (first.body.tools as { type: string }[])[0]!.type === "namespace", { started, body: Object.keys(first.body) });
+    const id1 = (started as { responseId: string }).responseId;
+    check("and is kept in the object until it is polled", !!(await kept.get(`jobplan:${id1}`)));
+
+    answers.push([{ type: "message", id: "m1", role: "assistant", status: "completed", content: [{ type: "output_text", text: "SUMMARY: serviced in May.\n\nThe boiler was serviced in May.", annotations: [] }] }]);
+    const step = await engine.poll({ ...job, responseId: id1 });
+    const second = sent[1]!;
+    check("polled: its tools run here, and the next step goes to the plan with the whole exchange",
+      step.kind === "continued" && step.responseId.startsWith("plan_") && second.by === "plan" &&
+      second.body.input.some((i) => i.type === "function_call" && i.call_id === "call_1") && second.body.input.at(-1)!.type === "function_call_output", step);
+    check("counted at nothing, as the plan's", step.kind === "continued" && step.usage?.model === "chatgpt:gpt-6-luna", step);
+    const done = await engine.poll({ ...job, responseId: (step as { responseId: string }).responseId });
+    check("then done, with no further request", done.kind === "done" && done.text.startsWith("SUMMARY: serviced in May.") && sent.length === 2, done);
+
+    answers.push([{ type: "message", id: "m2", role: "assistant", status: "completed", content: [{ type: "output_text", text: "Checked.", annotations: [] }] }]);
+    const checked = await engine.check({ ...job, engine: "research" }, (step as { responseId: string }).responseId);
+    check("a report written on the plan is checked with its whole exchange, then the check",
+      "responseId" in checked && sent[2]!.by === "plan" && JSON.stringify(sent[2]!.body.input.at(-1)) === JSON.stringify({ role: "developer", content: RESEARCH_CHECK }) && sent[2]!.body.input.length > 2, sent[2]?.body.input.length);
+    await engine.cancel({ ...job, responseId: id1 });
+    check("cancelling forgets a kept step", !(await kept.get(`jobplan:${id1}`)));
+    check("a step no longer kept fails plainly", (await engine.poll({ ...job, responseId: "plan_gone" })).kind === "failed");
+
+    answers.push({ status: 429, code: "subscription_sharing_usage_limit_exceeded" });
+    answers.push([]);
+    const limited = await engine.start(job);
+    const key = sent.at(-1)!;
+    check("at the plan's limit: noted, and the key starts it in the background as before",
+      failed.join() === "limit" && "responseId" in limited && limited.responseId === "resp_key" && key.by === "key" && key.body.background === true && !("previous_response_id" in key.body), { failed, limited });
+
+    plan = false;
+    answers.push([]);
+    const keyOnly = await engine.start(job);
+    check("no plan: the key, as before", "responseId" in keyOnly && keyOnly.responseId === "resp_key" && sent.at(-1)!.by === "key");
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

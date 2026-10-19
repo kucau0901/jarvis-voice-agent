@@ -65,7 +65,7 @@ export interface LoopDeps {
   label: string;
   /** Home Assistant's Assist, when it is to be tried first. */
   assist?: () => Promise<AssistOutcome>;
-  /** Without an OpenAI key only Assist can answer. */
+  /** Without a ChatGPT plan or an OpenAI key only Assist can answer (lib/openai-auth.ts). */
   hasKey: boolean;
   /** Tools, memory and the first input: prepareRouter, in production. */
   prepare(): Promise<{ model: string; input: unknown; save(): Promise<void> }>;
@@ -114,7 +114,7 @@ export async function routerLoop(deps: LoopDeps): Promise<void> {
   }
   if (!deps.hasKey) {
     // The house may still answer without one (above); everything else needs it.
-    sink.send({ type: "error", text: "Jarvis has no OpenAI key configured, so only the house can answer right now." });
+    sink.send({ type: "error", text: "Jarvis has no ChatGPT plan connected and no OpenAI key, so only the house can answer right now." });
     return;
   }
 
@@ -241,6 +241,10 @@ export async function routerLoop(deps: LoopDeps): Promise<void> {
  * went to debug the wrong thing.
  */
 export function spokenFailure(msg: string): string {
+  // The owner's ChatGPT plan said no, and the key was not to be used (lib/openai-auth.ts).
+  if (/ChatGPT plan: limit/.test(msg)) return "The ChatGPT plan's usage limit is reached, so I cannot work that out until it resets.";
+  if (/ChatGPT plan: (signin|not_eligible)/.test(msg)) return "The ChatGPT plan is not connected properly; it needs to be connected again in Settings.";
+  if (/ChatGPT plan:/.test(msg)) return "The ChatGPT plan is not answering properly right now. Try again in a moment.";
   if (/insufficient_quota|exceeded your current quota|billing/i.test(msg)) {
     return "My OpenAI account is out of credit, so I cannot work that out right now.";
   }

@@ -40,6 +40,8 @@ export interface UsageEntry {
 /** US dollars, or null for a model with no known price (tokens are still counted). */
 export function costOf(e: UsageEntry): number | null {
   if (e.by === "home-assistant") return 0;
+  // On the owner's ChatGPT plan (lib/chatgpt-plan.ts): part of what they already pay for.
+  if (e.by.startsWith("chatgpt:")) return 0;
   if (e.seconds !== undefined) return (e.seconds / 60) * LIVE_PER_MINUTE;
   const p = priceOf(e.by);
   if (!p) return null;

@@ -23,6 +23,7 @@ import { memoryFor, type MemoryStore } from "./memory.ts";
 import { bookOf } from "./context.ts";
 import { allows, type Grant } from "./scopes.ts";
 import { DRAWS_ON_SCREEN } from "../tools/place.ts";
+import { clientFor, forKey, forPlan, modelAuth, planFailed, planRespond, refusalOf } from "./openai-auth.ts";
 import { DEFAULT_CHAR_BUDGET, glassesInstructions } from "./glasses.ts";
 import { spokenReplyInstructions } from "./prompt.ts";
 import {
@@ -303,6 +304,36 @@ export async function run(
   let effort = effortFor(opts.surface, env.ROUTER_EFFORT);
   const create = (params: OpenAI.Responses.ResponseCreateParamsNonStreaming) =>
     p!.client.responses.create(effort ? { ...params, reasoning: { effort } } : params, { signal });
+  // The owner's ChatGPT plan first, else the key (lib/openai-auth.ts).
+  const auth = await modelAuth(env);
+  const plan = auth?.kind === "plan" ? { client: clientFor(env, auth), model: auth.model } : null;
+  let onPlan = !!plan;
+  /** The model that answered on the plan, for Usage; null once the key took over. */
+  let planModel: string | null = null;
+  // On the plan nothing is stored at OpenAI, so each hop carries the whole
+  // exchange, and keeps doing so on the key after falling back mid-question.
+  let carried: OpenAI.Responses.ResponseInput | null = plan ? [] : null;
+  let lastOutput: OpenAI.Responses.ResponseInput = [];
+  const onPlanHop = async (model: string, input: OpenAI.Responses.ResponseInput) => {
+    const ask = (withEffort: boolean) =>
+      planRespond(plan!.client, {
+        model,
+        instructions: p!.instructions,
+        input: forPlan(input),
+        // Grouped, as the plan's route asks of function tools; calls come back under their own names.
+        tools: [{ type: "namespace", name: "jarvis", description: "Jarvis's own tools", tools: p!.tools.map(toToolSchema) }, ...builtinTools(env)],
+        tool_choice: "auto",
+        include: ["reasoning.encrypted_content"],
+        ...(withEffort && effort ? { reasoning: { effort } } : {}),
+      }, signal);
+    try {
+      return await ask(true);
+    } catch (e) {
+      if (!effort || !effortRefused(e)) throw e;
+      effort = null;
+      return await ask(false);
+    }
+  };
 
   // The loop itself is lib/router-loop.ts; this gives it the real model, tools
   // and house, which is all that differs from its tests.
@@ -310,17 +341,35 @@ export async function run(
     sink: sse,
     signal,
     label: opts.surface ?? "app",
-    hasKey: !!env.OPENAI_API_KEY,
+    hasKey: !!auth,
     ...(assist && ask ? { assist: () => tryAssist(assist, ask) } : {}),
     async prepare() {
       p = await prepareRouter(env, turns, signal, grants, opts, sessions);
       return { model: p.model, input: p.input, save: () => p!.memory.save() };
     },
     async ask(model, input, previousResponseId) {
+      if (carried) carried = carried.length ? [...carried, ...lastOutput, ...(input as OpenAI.Responses.ResponseInput)] : (input as OpenAI.Responses.ResponseInput);
+      if (onPlan) {
+        const used = plan!.model ?? model;
+        try {
+          const res = await onPlanHop(used, carried!);
+          lastOutput = res.output as unknown as OpenAI.Responses.ResponseInput;
+          planModel = used;
+          return res;
+        } catch (e) {
+          const refused = refusalOf(e);
+          if (!refused || !(await planFailed(env, refused))) throw refused ?? e;
+          // The rest of this question on the key, with what the plan has done so far.
+          console.warn(`router: ChatGPT plan ${refused.why}; the key takes over`);
+          onPlan = false;
+          planModel = null;
+          carried = forKey(carried!);
+        }
+      }
       const params: OpenAI.Responses.ResponseCreateParamsNonStreaming = {
         model,
         instructions: p!.instructions,
-        input: input as OpenAI.Responses.ResponseInput,
+        input: carried ?? (input as OpenAI.Responses.ResponseInput),
         tools: [
           ...p!.tools.map(toToolSchema),
           // Executed by OpenAI server-side, so it never returns a
@@ -329,18 +378,21 @@ export async function run(
           ...builtinTools(env),
         ],
         tool_choice: "auto",
-        ...(previousResponseId ? { previous_response_id: previousResponseId } : {}),
+        ...(previousResponseId && !carried ? { previous_response_id: previousResponseId } : {}),
         ...(explicitCache(model) ? { prompt_cache_options: { mode: "explicit" as const, ttl: "30m" as const } } : {}),
         store: true,
       };
+      let res: OpenAI.Responses.Response;
       try {
-        return await create(params);
+        res = await create(params);
       } catch (e) {
         if (!effort || !effortRefused(e)) throw e;
         console.warn(`router: ${model} refused reasoning effort "${effort}"; asking without it`);
         effort = null;
-        return await create(params);
+        res = await create(params);
       }
+      if (carried) lastOutput = forKey(res.output as unknown as OpenAI.Responses.ResponseInput);
+      return res;
     },
     runCalls: (calls) =>
       runCalls(calls as OpenAI.Responses.ResponseFunctionToolCall[], p!.byName, { env, signal, memory: p!.memory, grants, offered: [...p!.byName.keys()] }, sse),
@@ -364,7 +416,8 @@ export async function run(
       writes.push(recordUsage(env, {
         at: Date.now() - r.ms,
         surface: opts.surface ?? "app",
-        by: r.by,
+        // Answered on the plan: free to the owner, and shown so in Usage (lib/usage.ts).
+        by: planModel && r.by !== "home-assistant" ? `chatgpt:${planModel}` : r.by,
         ok: r.ok,
         ms: r.ms,
         ...r.usage,

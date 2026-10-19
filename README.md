@@ -99,10 +99,14 @@ How it works, and why it is built this way: [docs/DESIGN.md](docs/DESIGN.md).
 
 ## What you need
 
-- An **OpenAI** API key with access to GPT‑Live. This is the only required
-  service. Voice is billed per minute of open session, so Jarvis closes a
-  session after 30 seconds in which nobody spoke; while it works on a request,
-  it waits up to two minutes after you last spoke.
+- A **ChatGPT Plus or Pro** plan, or an **OpenAI** API key: either is
+  enough. Connected in settings, your ChatGPT plan pays for every question,
+  chat, job and routine out of the usage it already includes
+  ([below](#use-your-chatgpt-plan)). An API key is needed only for live voice
+  (GPT‑Live, which the plan does not cover) and, if you allow it, to carry on
+  when the plan's limit is reached. Live voice is billed per minute of open
+  session, so Jarvis closes a session after 30 seconds in which nobody spoke;
+  while it works on a request, it waits up to two minutes after you last spoke.
 - Optional, each switching on its own tools: a [Tessie](https://tessie.com)
   account for the car, Home Assistant for the house, a Google Cloud OAuth
   client for mail and calendar, a Spotify app, Google Maps keys, a Hermes agent.
@@ -131,9 +135,29 @@ Then deploy and open the address it prints:
 npm run deploy
 ```
 
-Enter the owner key once on the unlock screen, open **settings**, and paste your
-OpenAI key. That's it; add the other services from the same panel whenever you
-like.
+Enter the owner key once on the unlock screen, open **settings**, and connect
+your ChatGPT plan, or paste an OpenAI key. That's it; add the other services
+from the same panel whenever you like.
+
+### Use your ChatGPT plan
+
+Settings → **ChatGPT plan** → *Connect ChatGPT*. Sign in to ChatGPT in the tab
+that opens and allow Jarvis. The tab then ends on a page at `127.0.0.1` that
+cannot be reached: that is expected, because OpenAI only sends you back to an
+address on your own computer. Copy that page's whole address, paste it into
+Settings and press **Finish**. One plan serves the whole family.
+
+- With an API key too, the plan is used first. The key runs live voice, and,
+  unless you switch it off (*Use the key when the plan is used up*), carries on
+  when the plan's weekly limit is reached; Jarvis tells you when it does.
+- Without a key: no live voice (push-to-talk and typing work, hearing and
+  speaking through Cloudflare's Workers AI), and memory is searched by words
+  rather than by meaning.
+- Usage shows questions answered on the plan at no cost.
+- OpenAI offers this to open-source projects ("Sign in with ChatGPT", plan
+  usage). It describes running such an app on your own server; it also says
+  remotely hosted apps should fill in an interest form, so it may one day ask
+  that of a Worker. If the plan stops working, the API key still runs Jarvis.
 
 > **Error 10063, "You need a workers.dev subdomain"?** Jarvis keeps its memory
 > in a Durable Object, and Cloudflare will not create one until your account has

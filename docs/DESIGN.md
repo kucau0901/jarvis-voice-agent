@@ -185,6 +185,55 @@ and invented a task: asked about tomorrow's calendar, it started a background
 job looking for payroll dates. So `ROUTER_EFFORT` stays at the model's
 default; the setting is there for a heavier router model, where it may matter.
 
+## Paying for it: the ChatGPT plan first
+
+Many owners already pay for ChatGPT, and since DevDay 2026 OpenAI lets an
+open-source app spend a Plus or Pro plan's included usage ("Sign in with
+ChatGPT", plan usage). So a ChatGPT plan or an API key is all Jarvis needs,
+and with both, every model call tries the plan first (`lib/openai-auth.ts`
+`modelAuth`). One plan for the house, the owner's, connected in Settings: the
+family's questions are one household's.
+
+**What the plan cannot do needs the key.** GPT-Live is not part of plan usage,
+so live voice needs a key, and without one the app hides the Live switch
+(`/api/hub/me` `live`). The plan's route has no audio and no embeddings, so
+without a key push-to-talk hears and speaks through Workers AI
+(`lib/speech.ts`), and memory is searched by words.
+
+**Signing in ends with a paste** (`lib/chatgpt-plan.ts`). The plan's OAuth is
+for public clients whose redirect must be `http://127.0.0.1:<port>/auth/callback`;
+a Worker cannot listen there. So the browser ends on a page that does not
+load, its address holds the code, and the owner pastes it into Settings,
+where the object trades it, with PKCE, the way OpenAI's page on remote hosts
+describes ("complete OAuth where the browser is, let the host own the
+refreshes"). The session lives in the Durable Object, never in KV, and only
+the access token for a call ever leaves it. Refresh tokens rotate, so two
+refreshes must never race: the object shares one refresh between callers
+that arrive while it waits on the network.
+
+**The plan's route is narrower than the API's**, and the router follows it
+there (`lib/router.ts`): every request streamed and not stored, so no
+`previous_response_id` and each hop carries the whole exchange; reasoning
+carried as encrypted content; function tools in one namespace; no explicit
+prompt caching, which it refuses. The items come in `response.output_item.done`
+events; the closing event carries none (measured). The key path is as before.
+
+**At the plan's limit** (429 `subscription_sharing_usage_limit_exceeded`) the
+key carries on, mid-question if need be, with what the plan had done so far
+(so no tool runs twice), and the plan is not tried again for an hour; the
+owner is told once a day at most. OpenAI asks that switching billing be the
+user's choice, so it is a setting (`CHATGPT_FALLBACK`), on by default;
+switched off, Jarvis says the limit is reached. Other errors are not a reason
+to spend the key.
+
+**Background jobs** (`routes/jobs.ts`) cannot use OpenAI's background mode on
+the plan, so a step streams inside the object's alarm, as a Hermes question
+already does, and its exchange is kept in the object under `jobplan:<id>` for
+the next step and the research check. `lib/jobs.ts` sees an ordinary step id.
+
+OpenAI also says remotely hosted apps should fill in an interest form; it may
+one day ask that of a Worker. The key still runs everything if it does.
+
 ## The car
 
 Home Assistant mirrors the Tesla's basic state, but only a subset — it cannot push
@@ -755,7 +804,7 @@ assume Home Assistant, a Tesla or a particular phone. Hence:
   alert with one short text-to-speech clip (about a quarter of a cent). If a
   session happens to be open already, the session says it at no extra cost.
 - **An ordered list of channels, not one** (`lib/alerts.ts`). Only the first
-  two are built in, and both need nothing but the OpenAI key: an open screen,
+  two are built in, and both need nothing more than Jarvis itself: an open screen,
   and browser notifications. Telegram, ntfy, a webhook and Home Assistant are
   optional, each one setting.
 

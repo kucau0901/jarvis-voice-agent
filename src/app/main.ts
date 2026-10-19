@@ -1320,8 +1320,15 @@ async function whoAmI() {
       user: { id: string; name: string } | null;
       hasPin: boolean;
       locked: boolean;
+      live?: boolean;
     };
     if (me.space?.agentName) document.title = me.space.agentName;
+    // No OpenAI key, only the ChatGPT plan: no Live voice; push-to-talk answers on the plan.
+    if (me.live === false) {
+      document.querySelector<HTMLElement>('#modes button[data-mode="live"]')?.setAttribute("hidden", "");
+      if (voice === "live") voice = "ptt";
+      if (mode === "live") setMode("ptt");
+    }
     if (me.user) keepPerson({ id: me.user.id, name: me.user.name, hasPin: me.hasPin, token: key });
     // Put aside on this screen (a shared one, left idle): choose who is using it.
     if (me.locked) {

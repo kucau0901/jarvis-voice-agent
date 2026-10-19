@@ -127,7 +127,7 @@ export const GROUPS: readonly GroupDef[] = [
   {
     id: "openai",
     title: "OpenAI",
-    intro: "The only required setting. Create a key at platform.openai.com → API keys.",
+    intro: "A ChatGPT plan (connected in its own section) or an API key is all Jarvis needs; with both, the plan is used first. Live voice needs the key. Create one at platform.openai.com → API keys.",
     needs: ["OPENAI_API_KEY"],
     testable: true,
   },
@@ -229,6 +229,11 @@ export const GROUPS: readonly GroupDef[] = [
 export const SETTINGS: readonly SettingDef[] = [
   // --- OpenAI
   {
+    name: "CHATGPT_FALLBACK", group: "openai", kind: "bool", default: "1",
+    label: "Use the key when the plan is used up",
+    help: "When your ChatGPT plan's usage limit is reached, carry on with the API key, and say so once. Off, Jarvis stops and says the limit is reached until the plan resets.",
+  },
+  {
     name: "ROUTER_EFFORT", group: "openai", kind: "enum", default: "auto", options: EFFORTS,
     label: "Thinking before answering",
     help: "How long the AI thinks on a question you are waiting for: spoken, typed or on the glasses. Auto leaves it to the model, which testing found best for GPT-6 Luna; less can help a heavier model. None can make mistakes. Background jobs and routines are not affected.",
@@ -246,8 +251,9 @@ export const SETTINGS: readonly SettingDef[] = [
     validate: intIn(0, 200),
   },
   {
-    name: "OPENAI_API_KEY", group: "openai", kind: "secret", required: true,
-    label: "API key", help: "Starts with sk-.",
+    name: "OPENAI_API_KEY", group: "openai", kind: "secret",
+    label: "API key",
+    help: "Starts with sk-. Not needed with your ChatGPT plan connected, except for live voice, which only a key can run; with both, the plan is used first.",
     validate: all(noSpaces, (v) => (v.startsWith("sk-") ? null : "should start with sk-"), minLen(20)),
   },
 

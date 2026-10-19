@@ -13,10 +13,16 @@ decision, with the reason written down.
 
 These come from the owner and hold for every change.
 
-- **An OpenAI key is all Jarvis needs.** Every feature works with only
-  `OPENAI_API_KEY` set. Home Assistant, Tessie, Hermes, Google, Spotify,
-  Telegram, ntfy and MCP servers are optional: a tool that needs one declares
-  `available(env)` and disappears without it, and nothing else may assume it.
+- **A ChatGPT plan or an OpenAI key is all Jarvis needs.** Every feature
+  works with only the owner's ChatGPT plan connected, or only
+  `OPENAI_API_KEY` set; with both, model calls use the plan first
+  (`lib/openai-auth.ts`). Live voice (GPT-Live) is the exception: only a key
+  runs it. Ask "is there a plan or a key" with `canAsk()` / `modelAuth()`,
+  never `env.OPENAI_API_KEY` alone, except for what only a key can do (live
+  voice, OpenAI speech, embeddings). Home Assistant, Tessie, Hermes, Google,
+  Spotify, Telegram, ntfy and MCP servers are optional: a tool that needs one
+  declares `available(env)` and disappears without it, and nothing else may
+  assume it.
 - **House safety lives in Home Assistant.** What the house may do is set
   there. No keyword lists, confirmation steps or second model call in front of
   it: scopes decide who reaches the house, Home Assistant what it does. Model

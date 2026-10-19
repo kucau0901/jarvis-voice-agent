@@ -21,6 +21,7 @@ import { handleSpotify } from "./routes/spotify.ts";
 import { handleGoogle } from "./routes/google.ts";
 import { handleV1 } from "./routes/v1.ts";
 import { handleAuthorize, handleToken } from "./routes/oauth.ts";
+import { handleChatgpt } from "./routes/chatgpt.ts";
 import { handleRouter } from "./routes/router.ts";
 import { handleSettings } from "./routes/settings.ts";
 import { withSettings } from "./lib/settings-store.ts";
@@ -220,6 +221,7 @@ async function route(
   if (url.pathname.startsWith("/api/memory")) return await handleMemory(req, env, grantsOf(principal), principal.kind === "device");
   if (url.pathname.startsWith("/api/spotify")) return await handleSpotify(req, env);
   if (url.pathname.startsWith("/api/google")) return await handleGoogle(req, env);
+  if (url.pathname === "/api/chatgpt" || url.pathname.startsWith("/api/chatgpt/")) return await handleChatgpt(req, env);
 
   switch (url.pathname) {
     case "/api/probe":

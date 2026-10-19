@@ -1,4 +1,5 @@
 import { openaiBase } from "../lib/openai-base.ts";
+import { clientFor, planRespond, type ModelAuth } from "../lib/openai-auth.ts";
 import OpenAI from "openai";
 import type { Env } from "../types.ts";
 import { json, err, redact } from "../lib/http.ts";
@@ -150,28 +151,33 @@ const HOP_TIMEOUT_MS = 30_000;
  * `previous_response_id`. A model can appear in /v1/models and still reject any
  * one of those, and each is something every delegation depends on.
  *
- * Costs a few hundred tokens.
+ * Costs a few hundred tokens. On the owner's ChatGPT plan (`plan`), the hops are
+ * shaped as the router sends them there: streamed, not stored, the tool in a
+ * namespace, the second hop carrying the first (lib/openai-auth.ts).
  */
-async function probeModel(env: Env, model: string): Promise<ProbeResult> {
-  if (!env.OPENAI_API_KEY) return { ok: false, model, stage: "call", error: "OPENAI_API_KEY is not set" };
-  const client = new OpenAI({ apiKey: env.OPENAI_API_KEY, baseURL: openaiBase(env) });
-  const tools = [PROBE_TOOL, ...builtinTools(env)];
+export async function probeModel(env: Env, model: string, plan?: Extract<ModelAuth, { kind: "plan" }>): Promise<ProbeResult> {
+  if (!plan && !env.OPENAI_API_KEY) return { ok: false, model, stage: "call", error: "OPENAI_API_KEY is not set" };
+  const client = clientFor(env, plan ?? { kind: "key" });
+  const tools = plan ? [{ type: "namespace" as const, name: "jarvis", description: "Jarvis's own tools", tools: [PROBE_TOOL] }, ...builtinTools(env)] : [PROBE_TOOL, ...builtinTools(env)];
+  const asked: OpenAI.Responses.ResponseInput = [{ role: "user", content: "Run the check." }];
   let stage: "call" | "chain" = "call";
   let toolMs: number | undefined;
 
   try {
     const t0 = Date.now();
-    const first = await client.responses.create(
-      {
-        model,
-        instructions: PROBE_INSTRUCTIONS,
-        input: [{ role: "user", content: "Run the check." }],
-        tools,
-        tool_choice: "auto",
-        store: true,
-      },
-      { signal: AbortSignal.timeout(HOP_TIMEOUT_MS) },
-    );
+    const first = plan
+      ? await planRespond(client, { model, instructions: PROBE_INSTRUCTIONS, input: asked, tools, tool_choice: "auto" }, AbortSignal.timeout(HOP_TIMEOUT_MS))
+      : await client.responses.create(
+          {
+            model,
+            instructions: PROBE_INSTRUCTIONS,
+            input: asked,
+            tools,
+            tool_choice: "auto",
+            store: true,
+          },
+          { signal: AbortSignal.timeout(HOP_TIMEOUT_MS) },
+        );
     toolMs = Date.now() - t0;
 
     const call = first.output.find(
@@ -186,19 +192,22 @@ async function probeModel(env: Env, model: string): Promise<ProbeResult> {
 
     stage = "chain";
     const t1 = Date.now();
-    const second = await client.responses.create(
-      {
-        model,
-        // Not carried over by previous_response_id; the router re-sends it every hop too.
-        instructions: PROBE_INSTRUCTIONS,
-        previous_response_id: first.id,
-        input: [{ type: "function_call_output", call_id: call.call_id, output: "ok" }],
-        tools,
-        tool_choice: "auto",
-        store: true,
-      },
-      { signal: AbortSignal.timeout(HOP_TIMEOUT_MS) },
-    );
+    const result: OpenAI.Responses.ResponseInputItem = { type: "function_call_output", call_id: call.call_id, output: "ok" };
+    const second = plan
+      ? await planRespond(client, { model, instructions: PROBE_INSTRUCTIONS, input: [...asked, ...(first.output as unknown as OpenAI.Responses.ResponseInput), result], tools, tool_choice: "auto" }, AbortSignal.timeout(HOP_TIMEOUT_MS))
+      : await client.responses.create(
+          {
+            model,
+            // Not carried over by previous_response_id; the router re-sends it every hop too.
+            instructions: PROBE_INSTRUCTIONS,
+            previous_response_id: first.id,
+            input: [result],
+            tools,
+            tool_choice: "auto",
+            store: true,
+          },
+          { signal: AbortSignal.timeout(HOP_TIMEOUT_MS) },
+        );
     const chainMs = Date.now() - t1;
 
     if (!second.output_text?.trim()) {

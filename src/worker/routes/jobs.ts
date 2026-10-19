@@ -17,6 +17,8 @@ import { SHARE, angleMessage, mergeMaterial, shareReply, shareTool, teamView } f
 import { prepareRouter, runCalls } from "../lib/router.ts";
 import { recordUsage } from "./usage.ts";
 import { costOf } from "../lib/usage.ts";
+import { canAsk, clientFor, forKey, forPlan, modelAuth, planFailed, planRespond, refusalOf } from "../lib/openai-auth.ts";
+import type { Storage } from "../lib/state-host.ts";
 
 /**
  * Background jobs (lib/jobs.ts): the engine that runs them, and the HTTP
@@ -86,8 +88,26 @@ const researchLimit = (raw: string | undefined): number => {
   return raw !== undefined && raw !== "" && Number.isInteger(n) && n >= 0 ? n : RESEARCH_MONTHLY_DEFAULT;
 };
 
-/** The engine, bound to an environment: what the Durable Object runs jobs with. */
-export function jobEngine(env: Env, deliver: JobDeps["deliver"], envFor: (job: Job) => Promise<Env>): JobDeps {
+/**
+ * A step run on the owner's ChatGPT plan (lib/chatgpt-plan.ts), kept in the
+ * Durable Object under its own id until it is polled. The plan's route has
+ * no background mode and stores nothing, so the step streams here, inside
+ * the alarm as a Hermes question does, and its whole exchange is kept for
+ * the next step instead of a response id at OpenAI.
+ */
+interface PlanStep {
+  at: number;
+  input: OpenAI.Responses.ResponseInput;
+  response: OpenAI.Responses.Response;
+}
+const PLAN_STEP = "plan_";
+const PLAN_KEY = (id: string) => `jobplan:${id}`;
+/** Kept this long, past any job's limit; the research check reads its report's step. */
+const PLAN_KEEP_MS = 2 * 60 * 60_000;
+const isPlanStep = (id: string | undefined): id is string => !!id && id.startsWith(PLAN_STEP);
+
+/** The engine, bound to an environment: what the Durable Object runs jobs with. `kept`, its storage, for steps on the plan. */
+export function jobEngine(env: Env, deliver: JobDeps["deliver"], envFor: (job: Job) => Promise<Env>, kept?: Storage): JobDeps {
   const client = () => new OpenAI({ apiKey: env.OPENAI_API_KEY, baseURL: openaiBase(env) });
   const signal = () => AbortSignal.timeout(60_000);
 
@@ -99,14 +119,17 @@ export function jobEngine(env: Env, deliver: JobDeps["deliver"], envFor: (job: J
     const p = await prepareRouter(env, turns, signal(), jobGrants(job.grants), { surface: research ? "research" : "job", toolFilter: jobTool });
     // Research: the stronger model, thinking hard (lib/jobs.ts "research").
     const model = research ? researchModel(env.RESEARCH_MODEL) : p.model;
+    const functions = [...p.tools.map(toToolSchema), ...(team ? [toToolSchema(shareTool("", [], 0))] : [])];
     return {
       p,
       env,
+      research,
+      functions,
       base: {
         model,
         ...(research ? { reasoning: { effort: "high" as const } } : {}),
         instructions: p.instructions,
-        tools: [...p.tools.map(toToolSchema), ...(team ? [toToolSchema(shareTool("", [], 0))] : []), ...builtinTools(env)],
+        tools: [...functions, ...builtinTools(env)],
         tool_choice: "auto" as const,
         // Background mode: the step runs at OpenAI, and nobody has to stay connected for it.
         background: true,
@@ -116,6 +139,52 @@ export function jobEngine(env: Env, deliver: JobDeps["deliver"], envFor: (job: J
     };
   }
 
+  /**
+   * Start a step: on the owner's ChatGPT plan when it can be used and the
+   * step does not continue a chain at OpenAI (`previous`), else in the
+   * background at OpenAI with the key, as before. At the plan's limit the key
+   * takes over, if the owner allows it (lib/openai-auth.ts).
+   */
+  async function send(
+    r: Awaited<ReturnType<typeof request>>,
+    input: OpenAI.Responses.ResponseInput,
+    toolChoice: "auto" | "none" = "auto",
+    previous?: string,
+  ): Promise<{ responseId: string }> {
+    const auth = kept && !previous ? await modelAuth(r.env) : null;
+    if (auth?.kind === "plan") {
+      try {
+        const res = await planRespond(clientFor(r.env, auth), {
+          model: r.research ? r.base.model : (auth.model ?? r.base.model),
+          instructions: r.base.instructions,
+          input: forPlan(input),
+          tools: [{ type: "namespace", name: "jarvis", description: "Jarvis's own tools", tools: r.functions }, ...builtinTools(r.env)],
+          tool_choice: toolChoice,
+          include: ["reasoning.encrypted_content"],
+          ...(r.research ? { reasoning: { effort: "high" as const } } : {}),
+        }, AbortSignal.timeout(r.research ? 10 * 60_000 : 3 * 60_000));
+        const id = `${PLAN_STEP}${crypto.randomUUID()}`;
+        const now = Date.now();
+        // The old ones go first: a step is kept until its job is long over.
+        for (const [k, s] of await kept!.list<PlanStep>({ prefix: "jobplan:" })) if (now - s.at > PLAN_KEEP_MS) await kept!.delete(k);
+        await kept!.put(PLAN_KEY(id), { at: now, input: [...input, ...(res.output as unknown as OpenAI.Responses.ResponseInput)], response: res } satisfies PlanStep);
+        return { responseId: id };
+      } catch (e) {
+        const refused = refusalOf(e);
+        if (!refused || !(await planFailed(r.env, refused))) throw e;
+        input = forKey(input);
+      }
+    }
+    const res = await r.p.client.responses.create(
+      { ...r.base, tool_choice: toolChoice, input, ...(previous ? { previous_response_id: previous } : {}) },
+      { signal: signal() },
+    );
+    return { responseId: res.id };
+  }
+
+  /** A step kept from the plan, or null. */
+  const planStep = async (id: string): Promise<PlanStep | null> => (kept ? ((await kept.get<PlanStep>(PLAN_KEY(id))) ?? null) : null);
+
   return {
     deliver,
     researchLimit: researchLimit(env.RESEARCH_MONTHLY_LIMIT),
@@ -124,31 +193,26 @@ export function jobEngine(env: Env, deliver: JobDeps["deliver"], envFor: (job: J
     record: (e) => recordUsage(env, e),
 
     async start(job, t) {
-      if (!env.OPENAI_API_KEY) return { error: "no OpenAI key is set" };
+      if (!(await canAsk(env))) return { error: "no ChatGPT plan or OpenAI key is set" };
       try {
-        const { p, base } = await request(job, [{ role: "user", text: job.task }], t !== undefined);
+        const r = await request(job, [{ role: "user", text: job.task }], t !== undefined);
         // A research team's: the same for every team, then its own angle, planned from the user's brief.
         const input: OpenAI.Responses.ResponseInput =
           t === undefined
-            ? p.input
-            : [...p.input, { role: "developer", content: TEAM_INSTRUCTIONS }, { role: "user", content: angleMessage(job.team!.angles![t]!) }];
-        const res = await p.client.responses.create({ ...base, input }, { signal: signal() });
-        return { responseId: res.id };
+            ? r.p.input
+            : [...r.p.input, { role: "developer", content: TEAM_INSTRUCTIONS }, { role: "user", content: angleMessage(job.team!.angles![t]!) }];
+        return await send(r, input);
       } catch (e) {
         return { error: `it could not start: ${e instanceof Error ? e.message : String(e)}`.slice(0, 300) };
       }
     },
 
     async plan(job) {
-      if (!env.OPENAI_API_KEY) return { error: "no OpenAI key is set" };
+      if (!(await canAsk(env))) return { error: "no ChatGPT plan or OpenAI key is set" };
       try {
         // One answer, no searching: the angles, as JSON (lib/jobs.ts parseAngles).
-        const { p, base } = await request(job, [{ role: "user", text: job.task }]);
-        const res = await p.client.responses.create(
-          { ...base, tool_choice: "none", input: [...p.input, { role: "developer", content: PLAN_INSTRUCTIONS }] },
-          { signal: signal() },
-        );
-        return { responseId: res.id };
+        const r = await request(job, [{ role: "user", text: job.task }]);
+        return await send(r, [...r.p.input, { role: "developer", content: PLAN_INSTRUCTIONS }], "none");
       } catch (e) {
         return { error: `the teams could not be planned: ${e instanceof Error ? e.message : String(e)}`.slice(0, 300) };
       }
@@ -157,16 +221,8 @@ export function jobEngine(env: Env, deliver: JobDeps["deliver"], envFor: (job: J
     async merge(job) {
       try {
         // One answer, no searching: what the teams found is all it has, quoted (lib/research-team.ts).
-        const { p, base } = await request(job, [{ role: "user", text: job.task }]);
-        const res = await p.client.responses.create(
-          {
-            ...base,
-            tool_choice: "none",
-            input: [...p.input, { role: "developer", content: MERGE_INSTRUCTIONS }, { role: "user", content: mergeMaterial(job) }],
-          },
-          { signal: signal() },
-        );
-        return { responseId: res.id };
+        const r = await request(job, [{ role: "user", text: job.task }]);
+        return await send(r, [...r.p.input, { role: "developer", content: MERGE_INSTRUCTIONS }, { role: "user", content: mergeMaterial(job) }], "none");
       } catch (e) {
         return { error: `the teams' reports could not be merged: ${e instanceof Error ? e.message : String(e)}`.slice(0, 300) };
       }
@@ -175,21 +231,26 @@ export function jobEngine(env: Env, deliver: JobDeps["deliver"], envFor: (job: J
     async check(job, after) {
       try {
         // The next turn of the chain that wrote the report, with web search still on.
-        const { p, base } = await request(job, []);
-        const res = await p.client.responses.create(
-          { ...base, previous_response_id: after, input: [{ role: "developer", content: RESEARCH_CHECK }] },
-          { signal: signal() },
-        );
-        return { responseId: res.id };
+        const r = await request(job, []);
+        const check: OpenAI.Responses.ResponseInput = [{ role: "developer", content: RESEARCH_CHECK }];
+        // Written on the plan: its whole exchange, then the check.
+        const kept = isPlanStep(after) ? await planStep(after) : null;
+        if (isPlanStep(after) && !kept) return { error: "the report's step is no longer kept" };
+        return kept ? await send(r, [...kept.input, ...check]) : await send(r, check, "auto", after);
       } catch (e) {
         return { error: `the check could not start: ${e instanceof Error ? e.message : String(e)}`.slice(0, 300) };
       }
     },
 
     async poll(job, t): Promise<Step> {
-      const r = await client().responses.retrieve(t === undefined ? job.responseId! : job.team!.chains[t]!.responseId!, {}, { signal: signal() });
+      const id = t === undefined ? job.responseId! : job.team!.chains[t]!.responseId!;
+      // A step on the plan is over by the time it is kept: read here, not at OpenAI.
+      const onPlan = isPlanStep(id) ? await planStep(id) : null;
+      if (isPlanStep(id) && !onPlan) return { kind: "failed", error: "its step on the ChatGPT plan is no longer kept" };
+      const r = onPlan ? onPlan.response : await client().responses.retrieve(id, {}, { signal: signal() });
       if (r.status === "queued" || r.status === "in_progress") return { kind: "wait" };
-      const usage = usageOf(r);
+      // On the plan: part of what the owner already pays for (lib/usage.ts).
+      const usage = onPlan ? { ...usageOf(r), model: `chatgpt:${r.model}` } : usageOf(r);
       if (r.status !== "completed") {
         const why = r.error?.message ?? r.incomplete_details?.reason ?? r.status ?? "unknown";
         return { kind: "failed", error: `OpenAI stopped it (${why})` };
@@ -202,18 +263,21 @@ export function jobEngine(env: Env, deliver: JobDeps["deliver"], envFor: (job: J
         return { kind: "done", text, cited: citationsOf(r), usage };
       }
       // The tools it asked for run here, between steps; then the next step starts.
-      const { p, env: theirs, base } = await request(job, [], t !== undefined);
+      const req = await request(job, [], t !== undefined);
+      const { p, env: theirs } = req;
       // A team's share_findings: posted by lib/jobs.ts teamStep, answered with what the others shared.
       const shared: string[] = [];
       const byName = t === undefined ? p.byName : new Map(p.byName).set(SHARE.name, shareTool(shareReply(job, t), shared, sharesLeft(job, t)));
       const outputs = await runCalls(calls, byName, { env: theirs, signal: signal(), memory: p.memory, grants: jobGrants(job.grants) }, quiet);
       await p.memory.save().catch(() => {});
-      const next = await p.client.responses.create({ ...base, previous_response_id: r.id, input: outputs }, { signal: signal() });
-      return { kind: "continued", responseId: next.id, usage, ...(calls.some((c) => c.name === SHARE.name) ? { shared } : {}) };
+      // On the plan, the whole exchange goes again; at OpenAI, the chain carries it.
+      const next = onPlan ? await send(req, [...onPlan.input, ...outputs]) : await send(req, outputs, "auto", r.id);
+      return { kind: "continued", responseId: next.responseId, usage, ...(calls.some((c) => c.name === SHARE.name) ? { shared } : {}) };
     },
 
     async cancel(job) {
-      if (job.responseId) await client().responses.cancel(job.responseId).catch(() => {});
+      if (isPlanStep(job.responseId)) await kept?.delete(PLAN_KEY(job.responseId));
+      else if (job.responseId) await client().responses.cancel(job.responseId).catch(() => {});
     },
 
     async hermes(job, reference) {

@@ -30,6 +30,7 @@ import type { Relay, RelayKind } from "./relays.ts";
 import type { ChatMessage } from "./chat.ts";
 import type { Panel, PanelItem, Reading } from "./panels.ts";
 import type { Said } from "./conversation.ts";
+import type { PlanFailure, PlanStatus } from "./chatgpt-plan.ts";
 import type { Grant } from "./scopes.ts";
 
 /**
@@ -579,6 +580,17 @@ interface ConversationApi {
   conversationClear(person: string): Promise<void>;
 }
 
+/** The owner's ChatGPT plan, which model calls use first (lib/chatgpt-plan.ts; state.ts). */
+interface PlanApi {
+  chatgptStatus(now: number): Promise<PlanStatus>;
+  chatgptStart(now: number): Promise<string>;
+  chatgptFinish(pasted: string, now: number): Promise<PlanStatus | string>;
+  chatgptToken(now: number): Promise<{ token: string; model: string | null } | null>;
+  chatgptFailed(why: PlanFailure, now: number): Promise<{ first: boolean }>;
+  chatgptSetModel(model: string | null): Promise<boolean>;
+  chatgptDisconnect(): Promise<void>;
+}
+
 /** What the object adds itself, because it holds the sockets (state.ts). */
 interface LiveApi {
   broadcast(alert: Alert, waitMs: number): Promise<LiveResult>;
@@ -624,4 +636,5 @@ export type StateApi = Pick<
   JobApi &
   FamilyApi &
   PanelApi &
-  ConversationApi;
+  ConversationApi &
+  PlanApi;
