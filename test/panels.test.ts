@@ -199,6 +199,7 @@ function sources(over: Partial<PanelSources> = {}) {
     command: async (_c, name) => (asked.commands.push(name), true),
     tool: async () => null,
     ask: async () => "",
+    look: async () => "",
     history: async () => [],
     maps: false,
     routines: async () => [],
@@ -663,9 +664,12 @@ console.log("a reading Jarvis looks up, as Hark's air quality");
 
   const store = new Panels(fakeStorage());
   const asked: string[] = [];
+  const pressed: string[] = [];
   const src = {
     tool: async () => null,
-    ask: async (q: string) => (asked.push(q), answer),
+    // A reading is looked up with reading tools only (routes/panels.ts look), never asked as a button is.
+    ask: async (q: string) => (pressed.push(q), answer),
+    look: async (q: string) => (asked.push(q), answer),
     kept: (t: string) => store.reading("u", t),
     claim: (t: string, every: number) => store.claimReading("u", t, every, Date.now()),
     keep: (t: string, reading: Parameters<Panels["keepReading"]>[2]) => store.keepReading("u", t, reading),
@@ -682,7 +686,8 @@ console.log("a reading Jarvis looks up, as Hark's air quality");
   await store.claimReading("u", "t_other", 3_600_000, Date.now());
   const busy = await readTile(spec, src, "t_other");
   check("while another screen is looking it up, this one waits for it rather than asking too", busy.pending === true && asked.length === 1, busy);
-  const failing = { ...src, ask: async () => { throw new Error("rate limited"); } };
+  check("a reading is never asked the way a pressed button is, which may act", pressed.length === 0);
+  const failing = { ...src, look: async () => { throw new Error("rate limited"); } };
   const failed = await readTile(spec, failing, "t_new");
   check("a look-up that fails with nothing kept says so, and lets the next try",
     failed.status === 502 && failed.text.includes("rate limited") && (await store.claimReading("u", "t_new", 3_600_000, Date.now())).go, failed);

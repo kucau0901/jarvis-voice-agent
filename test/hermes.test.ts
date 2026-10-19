@@ -69,7 +69,10 @@ console.log("\nwhat goes to Hermes without being named");
   check("never without it, whatever else is held", !baseTools(set, ["ask", "home", "mail", "memory.read", "screen"]).some((t) => t.name === "ask_hermes"));
   const d = hermesTool?.description ?? "";
   check("code and the user's computer are its own, sent unasked", /without the user having to name Hermes/.test(d) && /code/.test(d) && /websites and apps/.test(d) && /files,\s*folders, scripts and programs/.test(d), d);
-  check("and never a job, which only reads", /never start a job for it/.test(d));
+  check("and never a job, which only reads", /Never start a job for those/.test(d));
+  check("but never the house, the car or Home Assistant's entities, which are not that computer",
+    /The house, the car and anything in Home Assistant/.test(d) && /NOT that computer/.test(d) && /never with Hermes/.test(d), d);
+  check("nor pressed to do anything rather than say it cannot", !/never answer that it cannot be done/.test(d));
   check("otherwise still the last resort", /last resort/.test(d));
   const start = baseTools(set, ["*"]).find((t) => t.name === "start_job");
   check("start_job's own description does not claim code", !/websites and apps/.test(start?.description ?? ""));

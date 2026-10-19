@@ -116,7 +116,9 @@ WHAT EACH ROUTE COVERS, FASTEST FIRST
   ask_hermes       1-4 min  The user's own computer at home: code (write, change,
                             build, fix or deploy their sites and apps) and files,
                             folders, scripts and programs there. Send those to it
-                            without being asked to name it. For anything else, the
+                            without being asked to name it. Never the house, the
+                            car or Home Assistant's entities and states: those are
+                            home-assistant and car_state. For anything else, the
                             last resort. Runs in the background: its answer
                             reaches the user as a message, so tell them it is
                             coming and move on.

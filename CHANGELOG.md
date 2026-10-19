@@ -54,10 +54,15 @@ of every release, and in the [README](README.md#updating).
   your website, fix or deploy an app, or do something with files or programs
   on the computer Hermes runs on, and Jarvis hands it to Hermes without your
   naming it, from the app, the glasses or Grok alike. Only for people and
-  devices allowed Hermes; for anything else it stays the last resort.
+  devices allowed Hermes; for anything else it stays the last resort. The
+  house, the car and Home Assistant never go to Hermes this way.
 
 ### Fixed
 
+- **A Home tile's reading can only read.** A tile that Jarvis looks up by
+  itself, whenever Home is open, now has only Jarvis's reading tools: it can
+  no longer start Hermes or a job, or change anything. Its buttons are
+  unchanged.
 - **A panel button's answer stays in sight.** What Jarvis answered to a
   button on a Home panel (a tile's button, a gate's Open) was drawn over
   by the panel's own refresh 1.5 seconds later, so a slower answer was

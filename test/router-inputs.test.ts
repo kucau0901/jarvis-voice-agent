@@ -35,7 +35,8 @@ function check(name: string, cond: boolean, got?: unknown) {
 
 // job_results added to the table of routes, after ask_hermes and start_job (19 Oct 2026).
 // ask_hermes: code and the user's computer go to it unasked; start_job: not those (19 Oct 2026).
-const PROMPT_SHA256 = "118545e34721605454e295d810fbd97698b42b65b57e69e8c0e741777004b0be";
+// ask_hermes: never the house, the car or Home Assistant's entities (20 Oct 2026).
+const PROMPT_SHA256 = "416214a601f4b62411fcad735674ae82b81634ccac003e388cf9a08ee19ceba5";
 // panel_set and panel_remove (tools/panels.ts, scope screen): everyone but the guest (14 Oct 2026).
 // look_back (tools/conversation.ts, scope memory.read): everyone but the guest (16 Oct 2026).
 // panel_list (tools/panels.ts, scope screen): everyone but the guest (16 Oct 2026).

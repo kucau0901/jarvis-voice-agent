@@ -106,12 +106,13 @@ const askHermes: Tool = {
   pace: "fast",
   description:
     "The user's own agent on their computer at home, which can run commands there; it takes one " +
-    "to four minutes. Send it, without the user having to name Hermes: (1) code — writing or " +
-    "changing it, and building, fixing or deploying the user's own websites and apps; (2) files, " +
-    "folders, scripts and programs on that computer. Nothing else here can do either: never " +
-    "answer that it cannot be done, and never start a job for it (jobs only read). For anything " +
-    "else it is the last resort: only when no other tool can answer, or when the user asks for " +
-    "Hermes. The question goes to Hermes as a background job and " +
+    "to four minutes. Send it, without the user having to name Hermes, only these: (1) code — " +
+    "writing or changing it, and building, fixing or deploying the user's own websites and apps; " +
+    "(2) files, folders, scripts and programs on that computer. Never start a job for those (jobs " +
+    "only read). The house, the car and anything in Home Assistant (entity ids like sensor.… or " +
+    "lock.…, their states) are NOT that computer: read and work them with the house and car tools, " +
+    "never with Hermes. For anything else it is the last resort: only when no other tool can " +
+    "answer, or when the user asks for Hermes. The question goes to Hermes as a background job and " +
     "this returns at once: Hermes's answer reaches the user as a message when it is ready, " +
     "even if the screen is closed — tell them that, and do not wait for it or guess it. Asked " +
     "later whether it has answered, read it with job_results; never ask Hermes again to find out. It " +

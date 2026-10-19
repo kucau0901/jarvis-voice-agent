@@ -140,8 +140,14 @@ export function tileIcon(spec: TileSpec): PanelIcon {
 export interface TileSources {
   /** One of this person's tools, run as asked; null when they may not use it here. */
   tool: (name: string, args: Record<string, unknown>) => Promise<{ text: string; image?: string } | null>;
-  /** A sentence asked of Jarvis, as typed in Chat: its answer. */
+  /** A sentence asked of Jarvis, as typed in Chat: its answer. For a button pressed. */
   ask: (text: string) => Promise<string>;
+  /**
+   * A reading looked up by Jarvis, with its reading tools only (lib/jobs.ts
+   * jobTool): it is asked with nobody pressing anything, whenever Home is
+   * open, so it may read but never act, nor hand anything to Hermes.
+   */
+  look: (text: string) => Promise<string>;
   /** An asked reading as kept (lib/panels.ts), by the tile's key. */
   kept: (tile: string) => Promise<Reading | null>;
   /** It again, and whether this caller should ask now: stale, and nobody else asking. */
@@ -247,7 +253,7 @@ async function readAsked(read: TileAsk, key: string, cached: boolean, src: TileS
   if (!go) return { status: 200, ...shownOf(reading), pending: !reading || Date.now() - reading.at >= every };
   let answer: string;
   try {
-    answer = await src.ask(`${read.ask}\n\n${FOR_A_TILE}`);
+    answer = await src.look(`${read.ask}\n\n${FOR_A_TILE}`);
   } catch (e) {
     await src.keep(key, null);
     return reading ? { status: 200, ...shownOf(reading) } : { status: 502, text: `Could not look it up just now: ${why(e)}` };
