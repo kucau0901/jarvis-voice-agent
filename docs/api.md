@@ -697,6 +697,45 @@ Suggested scopes for the glasses: `ask`, `home`, `memory.read`, `memory.write`,
 It waits `G2_WAIT_S` seconds (default 240) before answering that it is still
 working, which leaves room for most Hermes questions.
 
+## Grok and other MCP clients
+
+`POST /api/v1/mcp` is Jarvis as a remote MCP server (Streamable HTTP), so an
+assistant that connects to MCP servers — Grok's custom connectors, xAI's
+remote MCP tool, or any other MCP client — can ask it things. Requires `ask`.
+
+It offers one tool, `ask_jarvis`, with one argument, `question`. That is
+`/api/v1/ask` under another name: the same router, memory, conversation across
+devices and limits, and what it may reach is the token's scopes. The assistant
+connecting is one more caller, so it never sees Jarvis's own tools and gets no
+more than the token allows. A question costs the same router call it does on
+any other route.
+
+On grok.com: **Connectors → New Connector → Custom**.
+
+| Field | Value |
+|---|---|
+| URL | `https://jarvis.example.com/api/v1/mcp` |
+| Authentication | API key, sent as the `Authorization` header: `Bearer jdv1_…`, a device token minted as above |
+
+Through xAI's API, the same two values go in the `mcp` tool's `server_url` and
+`authorization`.
+
+Make a device for it, named for it ("Grok"), with only the scopes it should
+have, and revoke it to cut Grok off. Grok runs in xAI's cloud, so whatever it
+asks passes through xAI; leave out `mail`, `car.control` or `home` if that is
+further than you want it to reach. `hermes` is never needed.
+
+**What the route does:**
+
+- Each `POST` carries one JSON-RPC message and is answered with one JSON
+  object (`initialize`, `ping`, `tools/list`, `tools/call`); a notification is
+  answered `202` with no body. Nothing is streamed, so a `GET` is `405`, and no
+  session id is issued.
+- A failed or unfinished answer comes back as the tool's result with
+  `isError: true`, in Jarvis's words, as `/api/v1/ask` would say it. It waits
+  60 seconds.
+- There is no `screen` channel, as on `/api/v1/ask`.
+
 ## Live voice
 
 `POST /api/session` relays a WebRTC SDP offer to OpenAI and returns the answer.

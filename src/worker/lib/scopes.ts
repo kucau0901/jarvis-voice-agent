@@ -153,6 +153,8 @@ export function requiredScope(pathname: string, method: string): RouteRequiremen
     case "/api/v1/stream":
     // Even Realities G2 glasses: the same delegation in the shape their app reads.
     case "/api/v1/chat/completions":
+    // Grok and other MCP clients: /ask as an MCP tool (lib/mcp-server.ts).
+    case "/api/v1/mcp":
       return "ask";
 
     case "/api/session":

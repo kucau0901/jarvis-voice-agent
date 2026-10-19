@@ -1,7 +1,7 @@
 import type { Env } from "../types.ts";
 import { json } from "../lib/http.ts";
 import { updateRepo, versionInfo } from "../lib/version.ts";
-import pkg from "../../../package.json";
+import pkg from "../../../package.json" with { type: "json" };
 
 /** This copy's version: package.json's, set by `npm run release` (docs/RELEASING.md). */
 export const JARVIS_VERSION: string = pkg.version;

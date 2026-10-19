@@ -20,6 +20,8 @@ const SCREENLESS: Grant[] = SCOPES.filter((s) => s !== "screen");
 import * as devices from "../lib/devices.ts";
 import { handleLiveUsage } from "./usage.ts";
 import { originOf } from "../lib/shared.ts";
+import { mcpReply } from "../lib/mcp-server.ts";
+import { JARVIS_VERSION } from "./version.ts";
 
 /**
  * The versioned surface other things talk to.
@@ -191,6 +193,34 @@ async function handleAsk(
     requestId,
     ...(clientRef ? { clientRef } : {}),
   });
+}
+
+/* ---------- POST /api/v1/mcp (Grok and other MCP clients) ---------------- */
+
+/**
+ * Jarvis as an MCP server (lib/mcp-server.ts): its one tool asks what
+ * /api/v1/ask would, with the same grants. Nothing is streamed to the client,
+ * so a GET, which would open that stream, is refused as the spec allows.
+ */
+async function handleMcp(
+  req: Request,
+  env: Env,
+  ctx: ExecutionContext,
+  grants: readonly Grant[],
+  principal: Principal,
+): Promise<Response> {
+  if (req.method !== "POST") return err(405, "method not allowed");
+  if (!env.OPENAI_API_KEY) return err(503, "OPENAI_API_KEY is not configured");
+
+  const parsed = await readJson(req);
+  if (!parsed.ok) return parsed.res;
+
+  const origin = originOf(principal, null) ?? { id: "owner-mcp", label: "an MCP client" };
+  const reply = await mcpReply(parsed.body, async (question) => {
+    const d = await collectWithDeadline(req, env, ctx, turnsFrom({ text: question }), grants, DEFAULT_WAIT_S, "v1/mcp", { origin });
+    return d.timedOut ? { ok: false, text: TIMEOUT_TEXT } : d.result;
+  }, JARVIS_VERSION);
+  return reply ? json(reply) : new Response(null, { status: 202 });
 }
 
 /* ---------- POST /api/v1/chat/completions (Even Realities G2) ------------- */
@@ -393,6 +423,11 @@ export async function handleV1(
     return handleChatCompletions(
       req, env, ctx, grants.includes(WILDCARD) ? SCREENLESS : noScreen, principal,
     );
+  }
+
+  // Grok's connectors and other MCP clients: /ask as an MCP tool, text only.
+  if (url.pathname === "/api/v1/mcp") {
+    return handleMcp(req, env, ctx, grants.includes(WILDCARD) ? SCREENLESS : noScreen, principal);
   }
 
   // The same delegation, streamed, for clients that want progress while a slow

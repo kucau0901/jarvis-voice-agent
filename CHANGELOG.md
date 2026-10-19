@@ -17,6 +17,14 @@ of every release, and in the [README](README.md#updating).
 
 ## [Unreleased]
 
+### Added
+
+- **Jarvis as an MCP server, for Grok.** `POST /api/v1/mcp` lets Grok's custom
+  connectors (grok.com → Connectors → New Connector → Custom), xAI's remote
+  MCP tool and other MCP clients ask Jarvis things through one tool,
+  `ask_jarvis`. It signs in with a device token, so it reaches only what that
+  device was given. Setting it up: [docs/api.md](docs/api.md#grok-and-other-mcp-clients).
+
 ## [2.4.0] - 2026-10-16
 
 ### Added
