@@ -34,7 +34,10 @@ person. A device needs `hermes` ticked as well.
 
 - **"Ask Hermes …"** (`ask_hermes`): a background job. Jarvis replies at once,
   and the answer arrives as a **Hermes answered** alert, usually in one to four
-  minutes, on whatever screen or phone is yours.
+  minutes, on whatever screen or phone is yours. Asked later ("has Hermes
+  answered?"), Jarvis reads the answer from the finished job (`job_results`)
+  rather than asking again: that is how a caller that never sees the alert,
+  such as Grok or `/api/v1/ask`, gets it.
 - **A change at home that Home Assistant can't make** (`control_home`): a last
   resort, used only when the Home Assistant tools fail. In the car, the Live
   session is let go while it waits, so the wait costs nothing.

@@ -19,6 +19,11 @@ of every release, and in the [README](README.md#updating).
 
 ### Added
 
+- **Jarvis reads its background jobs back.** Asked "has Hermes answered?" or
+  "what did that research find?", Jarvis now answers from your finished job
+  (or says it is still working) instead of asking Hermes again or starting a
+  new job. This is how Grok, the glasses and `/api/v1/ask`, which never see
+  the alert, get a Hermes answer.
 - **Jarvis as an MCP server, for Grok.** `POST /api/v1/mcp` lets Grok's custom
   connectors (grok.com → Connectors → New Connector → Custom), xAI's remote
   MCP tool and other MCP clients ask Jarvis things through one tool,

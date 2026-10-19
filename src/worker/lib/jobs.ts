@@ -257,6 +257,7 @@ export const FINDING_MAX = 500;
 const READ_TOOLS = new Set([
   "recall", "car_state", "directions", "place_info", "look_at_camera",
   "mail_check", "mail_search", "contacts_lookup", "calendar_check", "routine_list",
+  "job_results",
 ]);
 
 /**
@@ -341,7 +342,7 @@ export function nextLook(updatedAt: number, now: number): number {
 export const ownResearch = (j: Job, who: string): boolean =>
   j.engine === "research" && j.status === "done" && personOfWho(j.createdBy) === personOfWho(who);
 
-const wordsOf = (s: string): string[] => s.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
+export const wordsOf = (s: string): string[] => s.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
 
 /**
  * The finished research of `who`'s that `asked` names: the most recently

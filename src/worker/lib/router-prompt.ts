@@ -119,6 +119,9 @@ WHAT EACH ROUTE COVERS, FASTEST FIRST
   start_job        minutes  Anything needing many steps: research, comparisons,
                             a lot of mail, planning. Runs in the background and
                             reads but never acts; the result arrives as a message.
+  job_results      instant  What those two came back with, or that they are still
+                            working. "Has Hermes answered?", "what did the
+                            research find?" is this, never a second ask or job.
 
 Take the fastest route that can actually answer. Never use a slow route to check
 a fast one. Do not use the web for anything about the user's own home or data.

@@ -109,7 +109,8 @@ const askHermes: Tool = {
     "but takes one to four minutes. Use it only when no other tool can answer, or when the " +
     "user explicitly asks for Hermes. The question goes to Hermes as a background job and " +
     "this returns at once: Hermes's answer reaches the user as a message when it is ready, " +
-    "even if the screen is closed — tell them that, and do not wait for it or guess it. It " +
+    "even if the screen is closed — tell them that, and do not wait for it or guess it. Asked " +
+    "later whether it has answered, read it with job_results; never ask Hermes again to find out. It " +
     "does NOT have the user's saved facts; those are in the profile block and in recall.",
   parameters: {
     type: "object",

@@ -33,16 +33,19 @@ function check(name: string, cond: boolean, got?: unknown) {
   }
 }
 
-const PROMPT_SHA256 = "e9b65b246d51cdbc73d3df3f721c9c7a72724ac5aa4bda78399f3135a243818e";
+// job_results added to the table of routes, after ask_hermes and start_job (19 Oct 2026).
+const PROMPT_SHA256 = "7991f2c02367154b82e36f44876600801fbb6fc62ba1d8a5699a1d7a045f1154";
 // panel_set and panel_remove (tools/panels.ts, scope screen): everyone but the guest (14 Oct 2026).
 // look_back (tools/conversation.ts, scope memory.read): everyone but the guest (16 Oct 2026).
 // panel_list (tools/panels.ts, scope screen): everyone but the guest (16 Oct 2026).
+// job_results (tools/jobs.ts, no scope beyond ask): everyone, as start_job (19 Oct 2026).
 const EXPECTED: Record<string, { model: string; tools: string[]; input: string }> = {
  "owner key, nothing set up": {
   "model": "gpt-6-luna",
   "tools": [
    "forget",
    "hide_display",
+   "job_results",
    "look_back",
    "panel_list",
    "panel_remove",
@@ -73,6 +76,7 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
    "family_messages",
    "forget",
    "hide_display",
+   "job_results",
    "look_at_camera",
    "look_back",
    "mail_check",
@@ -113,6 +117,7 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
    "family_messages",
    "forget",
    "hide_display",
+   "job_results",
    "look_at_camera",
    "look_back",
    "mail_check",
@@ -152,6 +157,7 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
    "family_messages",
    "forget",
    "hide_display",
+   "job_results",
    "look_back",
    "panel_list",
    "panel_remove",
@@ -172,6 +178,7 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
  "guest with a pass": {
   "model": "gpt-6-luna",
   "tools": [
+   "job_results",
    "place_info",
    "start_job",
    "use_pass"
