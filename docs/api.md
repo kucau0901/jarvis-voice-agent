@@ -663,8 +663,9 @@ In the Even app: **Settings → Even AI → Agent configuration → Add agent**.
 Then tap the agent's name: saving does not select it.
 
 Suggested scopes for the glasses: `ask`, `home`, `memory.read`, `memory.write`,
-`calendar`, `mail`, `media`. There is no `screen` channel on this route, and
-`voice` and `car.control` are not needed.
+`calendar`, `mail`, `media`. Nothing is drawn on the glasses, so maps are
+never offered here; add `screen` only to make Home panels from them. `voice`
+and `car.control` are not needed.
 
 **What the app does**, measured against `EvenCore/1.0`, the real app:
 
@@ -760,7 +761,8 @@ client, and its only job is to hand the client a device token:
 - A failed or unfinished answer comes back as the tool's result with
   `isError: true`, in Jarvis's words, as `/api/v1/ask` would say it. It waits
   60 seconds.
-- There is no `screen` channel, as on `/api/v1/ask`.
+- Nothing is drawn, as on `/api/v1/ask`: maps are never offered, but with
+  `screen` it can make and change Home panels.
 
 ## Live voice
 
@@ -902,8 +904,9 @@ message, `convo`.
 
 **Panels** on a person's Home tab, made by asking (`panel_set`, `panel_remove`;
 needs `screen`, which a guest does not have). Each is the person's own; a
-device granted `screen` (or `*`) can make and remove its owner's through
-`/api/v1/stream`, but the routes below are never a device's. Every thing on a
+device granted `screen` (or `*`) can make and remove its owner's from any
+route that asks (`/api/v1/ask`, `/api/v1/stream`, push-to-talk, the glasses,
+MCP), but the routes below are never a device's. Every thing on a
 panel is read when they are fetched, and its buttons follow its state then:
 
 | Route | |

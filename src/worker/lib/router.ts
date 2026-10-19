@@ -22,6 +22,7 @@ import { stateStub } from "./state-client.ts";
 import { memoryFor, type MemoryStore } from "./memory.ts";
 import { bookOf } from "./context.ts";
 import { allows, type Grant } from "./scopes.ts";
+import { DRAWS_ON_SCREEN } from "../tools/place.ts";
 import { DEFAULT_CHAR_BUDGET, glassesInstructions } from "./glasses.ts";
 import { spokenReplyInstructions } from "./prompt.ts";
 import {
@@ -77,6 +78,12 @@ export interface RunOptions {
   files?: AttachedFile[];
   /** Only these tools are offered (background jobs: reading, not acting — routes/jobs.ts). */
   toolFilter?: (t: Tool) => boolean;
+  /**
+   * Nothing to draw on here: a device's text or voice (routes/v1.ts,
+   * routes/voice.ts). The router is told so and the tools that draw are left
+   * out, while the caller keeps `screen` for a person's panels.
+   */
+  screenless?: boolean;
   /**
    * Which device asked (lib/shared.ts). With it, and memory.read, the other
    * devices' recent turns go with the question, and this one's are kept.
@@ -153,8 +160,8 @@ export async function prepareRouter(
   ]);
   const elsewhere = [sharedBlock(shared, Date.now()), family].filter(Boolean).join("\n\n");
   tools.push(...mcp);
-  if (opts.toolFilter) {
-    const keep = tools.filter(opts.toolFilter);
+  if (opts.toolFilter || opts.screenless) {
+    const keep = tools.filter((t) => (!opts.toolFilter || opts.toolFilter(t)) && !(opts.screenless && DRAWS_ON_SCREEN.includes(t.name)));
     tools.length = 0;
     tools.push(...keep);
   }
@@ -164,7 +171,7 @@ export async function prepareRouter(
   // Chosen in settings (lib/router-model.ts). A first hop the chosen model
   // rejects is retried on the default, and the rest follows it (run()).
   const model = chosen.model;
-  const noScreen = !allows(grants, "screen");
+  const noScreen = opts.screenless === true || !allows(grants, "screen");
   /*
    * Prompt caching. The router prompt and the tool list are ~20k tokens and
    * identical on every question; only the clock, a few per-caller notes, the
@@ -188,7 +195,11 @@ export async function prepareRouter(
         "The caller is a device that can only receive text — there is nothing to " +
         "put a map, a photo or a camera on. If asked to SHOW something, say plainly " +
         "that you cannot display anything here and describe it instead. Do not go " +
-        "looking for another route that might manage it; there is not one."
+        "looking for another route that might manage it; there is not one." +
+        (allows(grants, "screen")
+          ? " Panels on the user's Home tab are not this screen: they are kept for " +
+            "later, so make and change them as asked."
+          : "")
       : "") +
     (opts.surface === "glasses"
       ? glassesInstructions(opts.charBudget ?? DEFAULT_CHAR_BUDGET)

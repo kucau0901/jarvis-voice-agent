@@ -27,6 +27,14 @@ of every release, and in the [README](README.md#updating).
   its own header can use a device token instead. Setting it up:
   [docs/api.md](docs/api.md#grok-and-other-mcp-clients).
 
+### Fixed
+
+- **Panels can be made from devices.** Asking through `/api/v1/ask`, the
+  glasses, push-to-talk or MCP now reaches `panel_set`, `panel_remove` and
+  `panel_list` for a device granted `screen` (or `*`). Those routes used to
+  take `screen` away entirely because there is nothing to show a map on; now
+  they leave out only the map tools.
+
 ## [2.4.0] - 2026-10-16
 
 ### Added

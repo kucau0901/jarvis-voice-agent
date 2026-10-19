@@ -6,7 +6,7 @@ import { Collector, type Collected } from "../lib/collector.ts";
 import { buildHistory, type Turn } from "../lib/history.ts";
 import { MemoryStore } from "../lib/memory.ts";
 import { stateStub } from "../lib/state-client.ts";
-import { allows, SCOPES, WILDCARD, type Grant } from "../lib/scopes.ts";
+import { allows, type Grant } from "../lib/scopes.ts";
 import {
   AUDIO_FORMATS,
   MAX_AUDIO_BYTES,
@@ -218,6 +218,8 @@ async function pipeline(
   await run(env, [...prior, { role: "user", text: transcript }], tee, signal, grants, {
     surface: "voice",
     assist: true,
+    // A screen only when the caller has one to show a map on (RunOptions.screenless).
+    ...(input.opts.screen ? {} : { screenless: true }),
     ...(input.origin ? { origin: input.origin } : {}),
     ...(input.waitUntil ? { waitUntil: input.waitUntil } : {}),
     ...(input.photos?.length ? { images: input.photos } : {}),
@@ -290,12 +292,6 @@ export async function handleVoice(
   // answer, not before it is spoken.
   input.waitUntil = (p) => ctx.waitUntil(p);
 
-  // A screen only when the caller has one to show a map on, and may use it.
-  const scoped: readonly Grant[] = input.opts.screen
-    ? grants
-    : grants.includes(WILDCARD)
-      ? SCOPES.filter((s) => s !== "screen")
-      : grants.filter((g) => g !== "screen");
   const who = whoOf(principal);
   const accept = (req.headers.get("accept") ?? "").toLowerCase();
   const ac = new AbortController();
@@ -310,7 +306,7 @@ export async function handleVoice(
         sse.send(ev);
       };
       try {
-        const o = await pipeline(env, input, scoped, who, emit, ac.signal, "pieces");
+        const o = await pipeline(env, input, grants, who, emit, ac.signal, "pieces");
         if (!resulted) emitResult(emit, o);
       } catch (e) {
         sse.send({ type: "error", text: "Something went wrong on the way to an answer.", detail: e instanceof Error ? e.message : String(e) });
@@ -322,7 +318,7 @@ export async function handleVoice(
     return sse.response();
   }
 
-  const o = await pipeline(env, input, scoped, who, () => {}, ac.signal, "whole");
+  const o = await pipeline(env, input, grants, who, () => {}, ac.signal, "whole");
 
   if (accept.startsWith("audio/") && o.audio?.ok) {
     return new Response(o.audio.audio, {

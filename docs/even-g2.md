@@ -99,7 +99,8 @@ the token has to be pasted into the Even app, and it is 37 characters long.
    | `alerts` | "send that to my phone" |
    | `chat` | "remind Aisyah to buy milk", "tell Dad I'm on my way", "done" to a reminder |
 
-   Leave off `screen` and `voice` (the glasses show text only, and use neither).
+   Leave off `voice`, which the glasses do not use, and `screen` unless you
+   want to make Home panels from them (they show text only, so no maps).
    Leave off `car.control` unless you want to lock, unlock or open the car from
    your glasses, and avoid "everything", which also covers whatever is added
    in later versions.

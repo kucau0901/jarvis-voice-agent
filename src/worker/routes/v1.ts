@@ -15,8 +15,6 @@ import { handleRoutines } from "./routines.ts";
 import { handleVoice } from "./voice.ts";
 import { handleJobs } from "./jobs.ts";
 
-/** Everything a wildcard grant covers, minus the screen this route does not have. */
-const SCREENLESS: Grant[] = SCOPES.filter((s) => s !== "screen");
 import * as devices from "../lib/devices.ts";
 import { handleLiveUsage } from "./usage.ts";
 import { originOf } from "../lib/shared.ts";
@@ -95,8 +93,9 @@ type Deadline =
 /**
  * Run one delegation into a Collector and wait at most `waitS` seconds for it.
  *
- * Shared by /api/v1/ask and the glasses route, so there is exactly one account
- * of what a timeout does to the work still running.
+ * Shared by /api/v1/ask, the glasses route and MCP, so there is exactly one
+ * account of what a timeout does to the work still running. None of them has a
+ * screen to draw on.
  */
 async function collectWithDeadline(
   req: Request,
@@ -113,7 +112,7 @@ async function collectWithDeadline(
   const ac = new AbortController();
   req.signal.addEventListener("abort", () => ac.abort());
 
-  const work = run(env, turns, sink, ac.signal, grants, { ...opts, waitUntil: (p) => ctx.waitUntil(p) }).catch((e) => {
+  const work = run(env, turns, sink, ac.signal, grants, { ...opts, screenless: true, waitUntil: (p) => ctx.waitUntil(p) }).catch((e) => {
     console.error(`${label} failed:`, e instanceof Error ? e.message : String(e));
   });
 
@@ -411,24 +410,19 @@ export async function handleV1(
   const url = new URL(req.url);
   const grants: readonly Grant[] = grantsOf(principal);
 
-  // No display channel on this route at all, so screen tools are dropped
-  // rather than offered and silently discarded.
-  const noScreen = grants.filter((g) => g !== "screen");
-  if (url.pathname === "/api/v1/ask") {
-    return handleAsk(req, env, ctx, grants.includes(WILDCARD) ? SCREENLESS : noScreen, principal);
-  }
+  // No display channel on /ask, the glasses' route or MCP: the tools that draw
+  // are left out rather than offered and silently discarded (RunOptions.screenless).
+  if (url.pathname === "/api/v1/ask") return handleAsk(req, env, ctx, grants, principal);
 
   // Even Realities G2 glasses. Text only, like /ask: the glasses draw text but
   // nothing here can put a map or a camera on them.
   if (url.pathname === "/api/v1/chat/completions") {
-    return handleChatCompletions(
-      req, env, ctx, grants.includes(WILDCARD) ? SCREENLESS : noScreen, principal,
-    );
+    return handleChatCompletions(req, env, ctx, grants, principal);
   }
 
   // Grok's connectors and other MCP clients: /ask as an MCP tool, text only.
   if (url.pathname === "/api/v1/mcp") {
-    return handleMcp(req, env, ctx, grants.includes(WILDCARD) ? SCREENLESS : noScreen, principal);
+    return handleMcp(req, env, ctx, grants, principal);
   }
 
   // The same delegation, streamed, for clients that want progress while a slow

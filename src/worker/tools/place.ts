@@ -180,3 +180,10 @@ const hideDisplay: Tool = {
 };
 
 export const placeTools: Tool[] = [showPlace, hideDisplay];
+
+/**
+ * The `screen` tools that need one in front of the person. Where there is
+ * none (a device's text or voice) only these are left out: the scope's other
+ * tools, a person's panels, keep working from anywhere (lib/router.ts).
+ */
+export const DRAWS_ON_SCREEN: readonly string[] = [showPlace.name, hideDisplay.name];
