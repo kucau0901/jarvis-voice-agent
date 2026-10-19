@@ -37,6 +37,11 @@ of every release, and in the [README](README.md#updating).
 
 ### Fixed
 
+- **A panel button's answer stays in sight.** What Jarvis answered to a
+  button on a Home panel (a tile's button, a gate's Open) was drawn over
+  by the panel's own refresh 1.5 seconds later, so a slower answer was
+  never seen. It now stays under the buttons for two minutes, as "Alert
+  me"'s does.
 - **Panels can be made from devices.** Asking through `/api/v1/ask`, the
   glasses, push-to-talk or MCP now reaches `panel_set`, `panel_remove` and
   `panel_list` for a device granted `screen` (or `*`). Those routes used to

@@ -109,6 +109,8 @@ export class Home {
   private cards: HTMLElement[] = [];
   /** What "Alert me" last answered, by tile, until when. */
   private told = new Map<string, { text: string; until: number }>();
+  /** What a tile's buttons last answered, by tile, until when: drawing again 1.5 s after a press would take it away. */
+  private replied = new Map<string, { text: string; why: boolean; until: number }>();
 
   constructor(key: string) {
     this.key = key;
@@ -529,22 +531,30 @@ export class Home {
     }
     if (r.actions.length) {
       const acts = el("div", "hacts");
+      // Their answer goes under them and stays a while, as "Alert me"'s does.
+      const kept = this.replied.get(at);
+      const fresh = kept && kept.until > Date.now() ? kept : null;
+      const reply = el("small", fresh?.why ? "hreply hwhy" : "hreply", fresh?.text ?? "");
+      const press = (action: string, b: HTMLButtonElement | HTMLInputElement, extra?: { value: string }) =>
+        void this.act(panel, r.key, action, b, reply, name, extra).then(() =>
+          this.replied.set(at, { text: reply.textContent ?? "", why: reply.classList.contains("hwhy"), until: Date.now() + TOLD_MS }),
+        );
       for (const a of r.actions) {
         // A tile's button that takes a number or words first (the music's volume, a message).
         if (a.input?.kind === "slider") {
           const { min, max, step } = a.input;
           const mid = Math.round((min + max) / 2 / step) * step;
-          acts.appendChild(slider(a.label, { value: mid, min, max, step, unit: "" }, (n, input) => void this.act(panel, r.key, a.action, input, said, name, { value: String(n) })));
+          acts.appendChild(slider(a.label, { value: mid, min, max, step, unit: "" }, (n, input) => press(a.action, input, { value: String(n) })));
           continue;
         }
         if (a.input?.kind === "text") {
-          acts.appendChild(typed(a.label, a.input.hint, (text, b) => void this.act(panel, r.key, a.action, b, said, name, { value: text })));
+          acts.appendChild(typed(a.label, a.input.hint, (text, b) => press(a.action, b, { value: text })));
           continue;
         }
-        const b = button(a.label, () => void this.act(panel, r.key, a.action, b, said, name));
+        const b = button(a.label, () => press(a.action, b));
         acts.appendChild(b);
       }
-      t.appendChild(acts);
+      t.append(acts, reply);
     }
     if (r.more) {
       const told = this.told.get(at);
@@ -578,7 +588,7 @@ export class Home {
     extra: { member?: string; code?: string; value?: string } = {},
   ): Promise<void> {
     const ok = await this.post("/api/hub/panels/act", { panel, key, action, ...extra }, b, said);
-    said.className = ok ? "hstate" : "hstate hwhy";
+    said.classList.toggle("hwhy", !ok);
     if (!said.isConnected) after.after(said);
     setTimeout(() => void this.load(), AFTER_PRESS_MS);
   }

@@ -1055,6 +1055,9 @@
   #home [data-icon=terminal] { --icon: var(--i-terminal); } #home [data-icon=route] { --icon: var(--i-route); }
   #home [data-icon=chat] { --icon: var(--i-messages); } #home [data-icon=web] { --icon: var(--i-globe); }
   #home .hwhen { display: block; margin-top: 8px; color: var(--faint); font-size: 12px; }
+  #home .hreply { display: block; margin-top: 8px; color: var(--dim); font-size: 13px; line-height: 1.4; overflow-wrap: anywhere; }
+  #home .hreply.hwhy { color: var(--faint); }
+  #home .hreply:empty { display: none; }
   /* A checklist (ui/Home.ts todo): a row each, a round tick, struck through once ticked, and
      a box to type the next one straight onto the panel. */
   #home .htile.note { grid-column: 1 / -1; flex-direction: row; align-items: center; gap: 8px; min-height: 0; padding: 4px 12px 4px 4px; }
