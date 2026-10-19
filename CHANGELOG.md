@@ -26,6 +26,9 @@ of every release, and in the [README](README.md#updating).
   allowing it makes a device you can revoke in Devices. A client that sends
   its own header can use a device token instead. Setting it up:
   [docs/api.md](docs/api.md#grok-and-other-mcp-clients).
+- **Change what a device may do.** Each device in Devices has an Edit button
+  that changes its scopes and keeps its token, so nothing has to be
+  reflashed or reconnected. A change takes up to a minute to reach it.
 
 ### Fixed
 

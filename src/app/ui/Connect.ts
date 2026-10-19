@@ -1,5 +1,5 @@
 import { api } from "../key";
-import { MEANING } from "./Devices";
+import { scopeLabels } from "./Devices";
 import { button, el } from "./util";
 
 /**
@@ -58,20 +58,7 @@ export class Connect {
     try {
       // What a device of this person's may be given, as the Devices panel offers it.
       const { scopes } = (await api(this.key, "GET", "/api/v1/devices")) as { scopes: string[] };
-      this.scopes.replaceChildren(
-        ...scopes.map((s) => {
-          const label = el("label", s === "*" ? "scope wild" : "scope");
-          const box = document.createElement("input");
-          box.type = "checkbox";
-          box.value = s;
-          box.checked = s === "ask";
-          const text = el("span", "");
-          text.appendChild(el("code", "", s));
-          text.append(` ${MEANING[s] ?? ""}`);
-          label.append(box, text);
-          return label;
-        }),
-      );
+      this.scopes.replaceChildren(...scopeLabels(scopes, ["ask"]));
     } catch (e) {
       this.say(`Could not load what it may do: ${e instanceof Error ? e.message : String(e)}`);
     }

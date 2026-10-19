@@ -1,6 +1,6 @@
 import qrcode from "qrcode-generator";
-import { authHeaders } from "../key";
-import { ago, arm, esc } from "./util";
+import { api, authHeaders } from "../key";
+import { ago, arm, button, el, esc } from "./util";
 
 /**
  * Minting and killing device credentials.
@@ -28,7 +28,7 @@ interface Device {
 }
 
 /** What each scope actually lets a device do, in the words the panel shows. */
-export const MEANING: Record<string, string> = {
+const MEANING: Record<string, string> = {
   "*": "everything, including anything added later",
   ask: "ask questions",
   "memory.read": "read saved facts",
@@ -43,6 +43,21 @@ export const MEANING: Record<string, string> = {
   alerts: "receive alerts and notifications; send notes",
   routines: "make and change routines; send the events that set them off",
 };
+
+/** A tick box per scope, with what it means: making a device, changing one, or allowing one (ui/Connect.ts). */
+export function scopeLabels(scopes: readonly string[], checked: readonly string[]): HTMLLabelElement[] {
+  return scopes.map((s) => {
+    const label = el("label", s === "*" ? "scope wild" : "scope");
+    const box = el("input");
+    box.type = "checkbox";
+    box.value = s;
+    box.checked = checked.includes(s);
+    const text = el("span");
+    text.append(el("code", "", s), ` ${MEANING[s] ?? ""}`);
+    label.append(box, text);
+    return label;
+  });
+}
 
 export class Devices {
   private el: HTMLElement;
@@ -136,15 +151,7 @@ export class Devices {
   private renderScopes(): void {
     const box = this.el.querySelector<HTMLElement>(".scopes")!;
     if (box.children.length) return;
-    box.innerHTML = this.scopes
-      .map(
-        (s) => `
-        <label class="scope${s === "*" ? " wild" : ""}">
-          <input type="checkbox" value="${esc(s)}"${s === "ask" ? " checked" : ""}>
-          <span><code>${esc(s)}</code> ${esc(MEANING[s] ?? "")}</span>
-        </label>`,
-      )
-      .join("");
+    box.replaceChildren(...scopeLabels(this.scopes, ["ask"]));
   }
 
   private chosen(): string[] {
@@ -242,16 +249,18 @@ export class Devices {
           </div>
           <div class="grants">${d.scopes.map((s) => `<code>${esc(s)}</code>`).join(" ")}</div>
           <div class="rowbtns">
-            ${d.revokedAt ? `<span class="dim">revoked</span>` : `<button class="revoke">Revoke</button>`}
+            ${d.revokedAt ? `<span class="dim">revoked</span>` : `<button class="edit">Edit</button><button class="revoke">Revoke</button>`}
             <button class="del">Delete</button>
           </div>
         </div>`,
       )
       .join("");
 
+    const byId = new Map(devices.map((d) => [d.id, d]));
     for (const row of this.list.querySelectorAll<HTMLElement>(".dev")) {
       const id = row.dataset.id!;
       const name = row.querySelector("strong")!.textContent ?? id;
+      row.querySelector(".edit")?.addEventListener("click", () => this.edit(row, byId.get(id)!));
       const rev = row.querySelector<HTMLButtonElement>(".revoke");
       const del = row.querySelector<HTMLButtonElement>(".del");
       if (rev) {
@@ -260,6 +269,33 @@ export class Devices {
         );
       }
       if (del) arm(del, "Delete for good?", () => this.mutate("DELETE", { id }, `Deleted ${name}.`));
+    }
+  }
+
+  /** What a device may do, changed in place: the same token, so nothing needs reflashing or reconnecting. */
+  private edit(row: HTMLElement, d: Device): void {
+    // What a new one may be given, and anything this one already has beyond that.
+    const offer = [...new Set([...this.scopes, ...d.scopes])];
+    const form = el("div", "scopes");
+    form.append(...scopeLabels(offer, d.scopes));
+    const bar = el("div", "rowbtns");
+    bar.append(button("Save", () => void this.saveScopes(d, form), "primary"), button("Cancel", () => void this.load()));
+    row.querySelector(".grants")!.replaceWith(form);
+    row.querySelector(".rowbtns")!.replaceWith(bar);
+  }
+
+  private async saveScopes(d: Device, form: HTMLElement): Promise<void> {
+    const scopes = [...form.querySelectorAll<HTMLInputElement>("input:checked")].map((i) => i.value);
+    if (!scopes.length) {
+      this.msg("Pick at least one thing it may do.", true);
+      return;
+    }
+    try {
+      await api(this.key, "PATCH", "/api/v1/devices", { id: d.id, scopes });
+      this.msg(`Changed what ${d.name} may do. It takes up to a minute to reach it.`);
+      await this.load();
+    } catch (e) {
+      this.msg(`That did not work: ${e instanceof Error ? e.message : String(e)}`, true);
     }
   }
 
