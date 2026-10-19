@@ -48,6 +48,14 @@ of every release, and in the [README](README.md#updating).
   Jarvis to watch that thing. Off ones are not shown. In Alert me a number
   alone, such as 200, now means above it.
 
+### Changed
+
+- **Coding and your computer go to Hermes by themselves.** Ask to change
+  your website, fix or deploy an app, or do something with files or programs
+  on the computer Hermes runs on, and Jarvis hands it to Hermes without your
+  naming it, from the app, the glasses or Grok alike. Only for people and
+  devices allowed Hermes; for anything else it stays the last resort.
+
 ### Fixed
 
 - **A panel button's answer stays in sight.** What Jarvis answered to a

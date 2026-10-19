@@ -52,6 +52,7 @@ console.log("the one tool");
   check("only ask_jarvis", tools.length === 1 && tools[0]!.name === "ask_jarvis", tools);
   check("it needs a question", tools[0]!.inputSchema.required.join() === "question", tools);
   check("no Hermes, house or mail tools of their own", !tools.some((t) => t.name !== ASK_TOOL.name));
+  check("it tells the client that code and the user's computer go through Jarvis too", /code, websites and apps/.test(ASK_TOOL.description) && /files and\s+programs/.test(ASK_TOOL.description), ASK_TOOL.description);
 }
 
 console.log("asking");

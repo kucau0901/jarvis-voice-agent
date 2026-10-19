@@ -1,5 +1,6 @@
 // Hermes (tools/hermes.ts): each person's own memory there, and every line of its answer.
 import { ask, sessionKey } from "../src/worker/tools/hermes.ts";
+import { baseTools } from "../src/worker/tools/registry.ts";
 
 /** The key Hermes has always been asked with (tools/hermes.ts SESSION_KEY). */
 const SESSION_KEY = "jarvis:tesla";
@@ -58,6 +59,20 @@ try {
   check("asked as someone, it is their session", sent[0]?.["x-hermes-session-key"] === `${SESSION_KEY}:u_sara`, sent[0]);
 } finally {
   globalThis.fetch = realFetch;
+}
+
+console.log("\nwhat goes to Hermes without being named");
+{
+  const set = { HERMES_BASE_URL: "https://hermes.example", HERMES_API_KEY: "k" } as never;
+  const hermesTool = baseTools(set, ["*"]).find((t) => t.name === "ask_hermes");
+  check("offered with hermes", !!hermesTool && !!baseTools(set, ["ask", "hermes"]).find((t) => t.name === "ask_hermes"));
+  check("never without it, whatever else is held", !baseTools(set, ["ask", "home", "mail", "memory.read", "screen"]).some((t) => t.name === "ask_hermes"));
+  const d = hermesTool?.description ?? "";
+  check("code and the user's computer are its own, sent unasked", /without the user having to name Hermes/.test(d) && /code/.test(d) && /websites and apps/.test(d) && /files,\s*folders, scripts and programs/.test(d), d);
+  check("and never a job, which only reads", /never start a job for it/.test(d));
+  check("otherwise still the last resort", /last resort/.test(d));
+  const start = baseTools(set, ["*"]).find((t) => t.name === "start_job");
+  check("start_job's own description does not claim code", !/websites and apps/.test(start?.description ?? ""));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

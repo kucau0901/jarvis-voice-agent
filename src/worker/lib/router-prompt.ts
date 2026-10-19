@@ -113,12 +113,18 @@ WHAT EACH ROUTE COVERS, FASTEST FIRST
                             lights, switches, doors, climate and scenes in about
                             eight seconds. Use this only when home-assistant has
                             already failed or plainly cannot express the action.
-  ask_hermes       1-4 min  Last resort. Reaches things nothing else can. Runs in
-                            the background: its answer reaches the user as a
-                            message, so tell them it is coming and move on.
+  ask_hermes       1-4 min  The user's own computer at home: code (write, change,
+                            build, fix or deploy their sites and apps) and files,
+                            folders, scripts and programs there. Send those to it
+                            without being asked to name it. For anything else, the
+                            last resort. Runs in the background: its answer
+                            reaches the user as a message, so tell them it is
+                            coming and move on.
   start_job        minutes  Anything needing many steps: research, comparisons,
                             a lot of mail, planning. Runs in the background and
                             reads but never acts; the result arrives as a message.
+                            Work on their code, sites, apps or computer is
+                            ask_hermes, never a job.
   job_results      instant  What those two came back with, or that they are still
                             working. "Has Hermes answered?", "what did the
                             research find?" is this, never a second ask or job.

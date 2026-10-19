@@ -34,7 +34,8 @@ function check(name: string, cond: boolean, got?: unknown) {
 }
 
 // job_results added to the table of routes, after ask_hermes and start_job (19 Oct 2026).
-const PROMPT_SHA256 = "7991f2c02367154b82e36f44876600801fbb6fc62ba1d8a5699a1d7a045f1154";
+// ask_hermes: code and the user's computer go to it unasked; start_job: not those (19 Oct 2026).
+const PROMPT_SHA256 = "118545e34721605454e295d810fbd97698b42b65b57e69e8c0e741777004b0be";
 // panel_set and panel_remove (tools/panels.ts, scope screen): everyone but the guest (14 Oct 2026).
 // look_back (tools/conversation.ts, scope memory.read): everyone but the guest (16 Oct 2026).
 // panel_list (tools/panels.ts, scope screen): everyone but the guest (16 Oct 2026).

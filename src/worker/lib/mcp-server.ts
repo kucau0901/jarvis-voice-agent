@@ -36,7 +36,9 @@ export const ASK_TOOL = {
   description:
     "Ask Jarvis, the user's own assistant, to answer or do something for them. It knows " +
     "what the user asked it to remember and can reach whatever this connection was granted: " +
-    "their house, car, calendar, mail, music, routines and notes. Ask in plain words, one " +
+    "their house, car, calendar, mail, music, routines and notes, and, where it is set up, " +
+    "their own agent at home, which changes code, websites and apps and works with files and " +
+    "programs on their computer: ask Jarvis for that too. Ask in plain words, one " +
     "request at a time, complete on its own (it does not see this conversation). It answers " +
     "in a few sentences and says so when something is out of its reach.",
   inputSchema: {

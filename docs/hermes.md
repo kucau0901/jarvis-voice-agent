@@ -38,6 +38,12 @@ person. A device needs `hermes` ticked as well.
   answered?"), Jarvis reads the answer from the finished job (`job_results`)
   rather than asking again: that is how a caller that never sees the alert,
   such as Grok or `/api/v1/ask`, gets it.
+- **Code and your computer, without naming Hermes**: asked to change your
+  website, fix or deploy an app, or do something with files, folders, scripts
+  or programs on the computer Hermes runs on, Jarvis hands it to Hermes itself
+  (`ask_hermes`), saying what to change, where, and to report when it is done.
+  "Make the footer say 2027 on my website" is enough. Only for those with
+  `hermes`; for anything else Hermes stays the last resort.
 - **A change at home that Home Assistant can't make** (`control_home`): a last
   resort, used only when the Home Assistant tools fail. In the car, the Live
   session is let go while it waits, so the wait costs nothing.
