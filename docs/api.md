@@ -710,20 +710,46 @@ connecting is one more caller, so it never sees Jarvis's own tools and gets no
 more than the token allows. A question costs the same router call it does on
 any other route.
 
-On grok.com: **Connectors → New Connector → Custom**.
+On grok.com: **Connectors → New Connector → Custom**, with the URL
+`https://jarvis.example.com/api/v1/mcp`. Grok then asks for OAuth details:
 
 | Field | Value |
 |---|---|
-| URL | `https://jarvis.example.com/api/v1/mcp` |
-| Authentication | API key, sent as the `Authorization` header: `Bearer jdv1_…`, a device token minted as above |
+| Client ID | `Grok`: any name; it becomes the device's name |
+| Client Secret | empty |
+| Authorization Endpoint | `https://jarvis.example.com/api/v1/oauth/authorize` |
+| Token Endpoint | `https://jarvis.example.com/api/v1/oauth/token` |
+| Scopes | empty: you pick them in Jarvis |
+| Token Auth Method | none (PKCE only) |
 
-Through xAI's API, the same two values go in the `mcp` tool's `server_url` and
-`authorization`.
+Save & Connect opens Jarvis, which signs you in if need be and asks: tick what
+Grok may do and press **Allow**. That makes a device named after the client
+ID, which is Grok's token from then on, and revoking it in Devices cuts Grok
+off. Through xAI's API, or any client that sends its own header, make a device
+yourself and put `https://jarvis.example.com/api/v1/mcp` and `Bearer jdv1_…`
+in the `mcp` tool's `server_url` and `authorization`.
 
-Make a device for it, named for it ("Grok"), with only the scopes it should
-have, and revoke it to cut Grok off. Grok runs in xAI's cloud, so whatever it
-asks passes through xAI; leave out `mail`, `car.control` or `home` if that is
-further than you want it to reach. `hermes` is never needed.
+Give it only the scopes it should have. Grok runs in xAI's cloud, so whatever
+it asks passes through xAI; leave out `mail`, `car.control` or `home` if that
+is further than you want it to reach. `hermes` is never needed.
+
+**The OAuth** is the authorization code grant with PKCE (S256) for a public
+client, and its only job is to hand the client a device token:
+
+- `GET /api/v1/oauth/authorize` takes `response_type=code`, `client_id`,
+  `redirect_uri` (https), `state`, `code_challenge` and
+  `code_challenge_method=S256`, and sends the browser to the app, where a
+  person signed in allows it (`POST /api/v1/devices/connect`, a person's, never
+  a device's). They go back to `redirect_uri` with `code` and `state`.
+  Closing the sheet instead sends nothing back.
+- `POST /api/v1/oauth/token`, form-encoded, takes `grant_type=authorization_code`,
+  `code`, `client_id`, `redirect_uri` and `code_verifier`, and answers
+  `{"access_token": "jdv1_…", "token_type": "Bearer"}`. A code is good once,
+  for five minutes. There is no refresh token: the device token does not
+  expire. Anything wrong is `400` with `invalid_grant`, `invalid_request` or
+  `unsupported_grant_type`.
+- Neither endpoint takes a credential: the browser carries none, and the code
+  stands in for one.
 
 **What the route does:**
 

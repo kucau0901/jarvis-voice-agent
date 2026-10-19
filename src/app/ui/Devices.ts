@@ -28,7 +28,7 @@ interface Device {
 }
 
 /** What each scope actually lets a device do, in the words the panel shows. */
-const MEANING: Record<string, string> = {
+export const MEANING: Record<string, string> = {
   "*": "everything, including anything added later",
   ask: "ask questions",
   "memory.read": "read saved facts",

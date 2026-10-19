@@ -251,8 +251,8 @@ an HTTPS request. Mint a token per device in the app's **devices** panel, with
 only the scopes it needs, and revoke it there. See [docs/api.md](docs/api.md),
 including an ESP32 example. Even Realities G2 glasses have a step-by-step
 guide of their own: [docs/even-g2.md](docs/even-g2.md). Grok and other
-assistants that connect to MCP servers can ask Jarvis through `/api/v1/mcp`
-with a device token of their own:
+assistants that connect to MCP servers can ask Jarvis through `/api/v1/mcp`,
+signing in with OAuth or a device token, and reach only what you allow:
 [docs/api.md](docs/api.md#grok-and-other-mcp-clients).
 
 ## Security

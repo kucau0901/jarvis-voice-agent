@@ -477,12 +477,12 @@
   .panel .cmd { display: block; padding: 8px 10px; font-size: 13px; overflow-x: auto; white-space: nowrap; }
 
   /* Devices. Minting a credential is a phone-or-laptop job, never a driving one. */
-  #devices .mint { display: grid; gap: 10px; padding: 20px; margin-bottom: 14px; border-radius: 24px; background: var(--glass-hi); }
-  #devices .scopes { display: grid; gap: 6px; }
-  #devices .scope { display: flex; align-items: flex-start; gap: 9px; font-size: 13px;
+  #devices .mint, #connect .mint { display: grid; gap: 10px; padding: 20px; margin-bottom: 14px; border-radius: 24px; background: var(--glass-hi); }
+  #devices .scopes, #connect .scopes { display: grid; gap: 6px; }
+  #devices .scope, #connect .scope { display: flex; align-items: flex-start; gap: 9px; font-size: 13px;
     color: var(--dim); cursor: pointer; }
-  #devices .scope input { margin-top: 3px; min-width: 18px; min-height: 18px; }
-  #devices .scope.wild { color: var(--fg); padding-bottom: 6px; border-bottom: 1px solid var(--hair); }
+  #devices .scope input, #connect .scope input { margin-top: 3px; min-width: 18px; min-height: 18px; }
+  #devices .scope.wild, #connect .scope.wild { color: var(--fg); padding-bottom: 6px; border-bottom: 1px solid var(--hair); }
   #devices .dev { display: grid; gap: 8px; padding: 16px 20px; margin-bottom: 10px; border-radius: 24px; background: var(--glass-hi); }
   #devices .dev.dead { opacity: .5; }
   #devices .who { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; }

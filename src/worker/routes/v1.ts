@@ -21,6 +21,7 @@ import * as devices from "../lib/devices.ts";
 import { handleLiveUsage } from "./usage.ts";
 import { originOf } from "../lib/shared.ts";
 import { mcpReply } from "../lib/mcp-server.ts";
+import { handleConnect } from "./oauth.ts";
 import { JARVIS_VERSION } from "./version.ts";
 
 /**
@@ -440,6 +441,8 @@ export async function handleV1(
   if (url.pathname === "/api/v1/usage/live") return handleLiveUsage(req, env);
 
   if (url.pathname === "/api/v1/devices") return handleDevices(req, env, principal);
+  // An MCP client's OAuth (routes/oauth.ts): allowing it makes a device of the person's.
+  if (url.pathname === "/api/v1/devices/connect") return handleConnect(req, env, principal);
 
   // Alerts: open screens, notifications, and asking Jarvis to tell you something.
   const alerts = await handleAlertApi(req, env, url, principal);

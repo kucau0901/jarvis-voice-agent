@@ -20,6 +20,7 @@ import { handleCamera } from "./routes/camera.ts";
 import { handleSpotify } from "./routes/spotify.ts";
 import { handleGoogle } from "./routes/google.ts";
 import { handleV1 } from "./routes/v1.ts";
+import { handleAuthorize, handleToken } from "./routes/oauth.ts";
 import { handleRouter } from "./routes/router.ts";
 import { handleSettings } from "./routes/settings.ts";
 import { withSettings } from "./lib/settings-store.ts";
@@ -89,6 +90,11 @@ export default {
     if (url.pathname === "/api/google/callback") {
       return withCors(await handleGoogle(req, env), origin, env);
     }
+    // OAuth for MCP clients such as Grok: the client's redirect of a browser
+    // and its server's trade of a code each carry no credential, the code
+    // standing in for one (routes/oauth.ts).
+    if (url.pathname === "/api/v1/oauth/authorize") return handleAuthorize(req);
+    if (url.pathname === "/api/v1/oauth/token") return await handleToken(req, env);
     // A browser cannot put a header on a WebSocket, so an open screen presents
     // a one-time ticket it was issued over an authenticated request instead.
     // The Durable Object checks and spends it (routes/alerts.ts).

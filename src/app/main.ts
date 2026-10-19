@@ -6,6 +6,7 @@ import { Devices } from "./ui/Devices";
 import { Memory } from "./ui/Memory";
 import { Routines } from "./ui/Routines";
 import { Jobs } from "./ui/Jobs";
+import { Connect } from "./ui/Connect";
 import { ThemePanel } from "./ui/ThemePanel";
 import { Home } from "./ui/Home";
 import { Stage, type DisplayPayload } from "./ui/Stage";
@@ -645,6 +646,12 @@ async function openAlert(id: string) {
     void openAlert(id);
   }
 }
+/** An MCP client asking to connect (ui/Connect.ts): it waits in the address until someone is signed in. */
+function openConnect() {
+  const ask = new URL(location.href).searchParams.get("connect");
+  if (ask && key) void new Connect(key, ask).show();
+}
+openConnect();
 navigator.serviceWorker?.addEventListener("message", (e) => {
   const m = e.data as { type?: string; id?: string } | null;
   if (m?.type === "alert-open" && m.id) void openAlert(m.id);
@@ -665,6 +672,7 @@ async function tryKey(candidate: string) {
       void syncPush(key);
       unlock.wrap.classList.remove("show");
       setMode(mode);
+      openConnect();
       // Unlocked with the owner key and no family yet: offer to set one up, once.
       void hubStatus().then((s) => {
         let asked = false;

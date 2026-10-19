@@ -3,6 +3,7 @@ import { WILDCARD, allows, saneGrants, type Grant } from "./scopes.ts";
 import type { StoredKey } from "./webauthn.ts";
 import type { Storage } from "./state-host.ts";
 import { saneAccess, type Access } from "./access.ts";
+import { OAuthCodes, type CodeGrant } from "./oauth.ts";
 
 /**
  * Who uses this Jarvis: people, the families (spaces) they belong to, and how
@@ -1031,6 +1032,16 @@ export class HubHost {
     return c.exp < now ? null : c;
   }
 
+  /* ---------- OAuth codes, for MCP clients that sign in that way (lib/oauth.ts) */
+
+  issueOAuthCode(g: Omit<CodeGrant, "exp">, now: number): Promise<string | null> {
+    return new OAuthCodes(this.storage).issue(g, now);
+  }
+
+  takeOAuthCode(code: string, now: number): Promise<CodeGrant | null> {
+    return new OAuthCodes(this.storage).take(code, now);
+  }
+
   /* ---------- sessions --------------------------------------------------------- */
 
   private async newSession(user: string, space: string, label: string, via: Session["via"], now: number): Promise<string> {
@@ -1188,6 +1199,8 @@ export const HUB_METHODS = [
   "signIn",
   "putChallenge",
   "takeChallenge",
+  "issueOAuthCode",
+  "takeOAuthCode",
   "lookupSession",
   "firstPerson",
   "personView",
