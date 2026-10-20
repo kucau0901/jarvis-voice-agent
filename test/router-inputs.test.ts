@@ -5,6 +5,7 @@
 // Only the clock is taken out of what is compared.
 import { createHash } from "node:crypto";
 import { prepareRouter } from "../src/worker/lib/router.ts";
+import { ROUTER_PROMPT } from "../src/worker/lib/router-prompt.ts";
 import { ROLE_SCOPES } from "../src/worker/lib/hub.ts";
 const kv = new Map<string, string>();
 const CONFIG = { get: async (k: string) => kv.get(k) ?? null, put: async (k: string, v: string) => void kv.set(k, v), delete: async () => {}, list: async () => ({ keys: [] }) };
@@ -36,7 +37,8 @@ function check(name: string, cond: boolean, got?: unknown) {
 // job_results added to the table of routes, after ask_hermes and start_job (19 Oct 2026).
 // ask_hermes: code and the user's computer go to it unasked; start_job: not those (19 Oct 2026).
 // ask_hermes: never the house, the car or Home Assistant's entities (20 Oct 2026).
-const PROMPT_SHA256 = "416214a601f4b62411fcad735674ae82b81634ccac003e388cf9a08ee19ceba5";
+// The answer's language: the user's latest message, never a page's, a tool's or its own (21 Oct 2026).
+const PROMPT_SHA256 = "4c052dbb87c29e01adabcd5415e9c422214ec78828dafe87cdf2cbb5f301155b";
 // panel_set and panel_remove (tools/panels.ts, scope screen): everyone but the guest (14 Oct 2026).
 // look_back (tools/conversation.ts, scope memory.read): everyone but the guest (16 Oct 2026).
 // panel_list (tools/panels.ts, scope screen): everyone but the guest (16 Oct 2026).
@@ -240,6 +242,17 @@ try {
   check("  without screen, no panels, and not told to make them", !noGrant.tools.includes("panel_set") && !noGrant.said.includes("Panels on the user's Home tab"));
 } finally {
   globalThis.fetch = realFetch;
+}
+
+// An English question about a Malay page was answered in Malay (20 Oct 2026): the
+// rule said "match the transcript", which holds Jarvis's own replies too.
+console.log("the answer's language");
+{
+  const rule = ROUTER_PROMPT.slice(ROUTER_PROMPT.indexOf("- Answer in the language"), ROUTER_PROMPT.indexOf("- Numbers as a person"));
+  check("  the user's latest message", /latest message/.test(rule) && /"User:" line/.test(rule), rule);
+  check("  never a page's, a tool's or its own earlier replies", /Tool results, web pages/.test(rule) && /your own earlier replies/.test(rule), rule);
+  check("  still mixed back as they mix it", /mix them back the same way/.test(rule) && /Never translate them/.test(rule), rule);
+  check("  a short message keeps the language before it", /too short to\s+tell/.test(rule), rule);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

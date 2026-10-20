@@ -125,7 +125,7 @@ export class Mine {
       void this.save({
         voice: (this.box.querySelector(".m-voice") as unknown as HTMLSelectElement).value,
         language: this.box.querySelector<HTMLInputElement>(".m-lang")!.value.trim(),
-      }, "Saved. Jarvis answers you in it from now on."),
+      }, "Saved. Jarvis speaks to you in this voice and listens for this language from now on."),
     );
     this.box.querySelector(".m-hear")!.addEventListener("click", async () => {
       const ok = await speakText(this.key, "This is how I sound when I answer you.");

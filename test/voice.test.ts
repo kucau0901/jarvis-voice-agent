@@ -175,6 +175,7 @@ console.log("\nthe spoken reply");
   check("says it is read word for word", /word for word/.test(s));
   check("no markdown or URLs", /no markdown/.test(s) && /URLs/.test(s));
   check("in the language spoken, mixed as spoken", /mixing languages/.test(s));
+  check("never in a tool's, a page's or its own earlier language", /never in the language of a tool result, a web page or your own earlier replies/.test(s));
   check("in Jarvis's manner", /composed British butler/.test(s));
   check("without the live voice's interruption rule", !/interrupted/.test(s));
   check("the GPT-Live prompt keeps it", /If you are interrupted, stop immediately/.test(jarvisPrompt("car")) && /VOICE AND MANNER\nSpeak like a composed British butler/.test(jarvisPrompt("car")));

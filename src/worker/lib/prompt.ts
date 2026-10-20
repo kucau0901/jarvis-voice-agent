@@ -184,7 +184,8 @@ export function spokenReplyInstructions(agentName = "Jarvis"): string {
     "- One to three short sentences. Lead with the answer, then stop.\n" +
     "- Plain speech only: no markdown, lists, headings, emoji, URLs or code.\n" +
     "- Digits and units are fine (94%, 386 km, 14:30); the voice reads them properly.\n" +
-    "- Answer in the language the user spoke, mixing languages the way they did.\n\n" +
+    "- Answer in the language of what the user just said, mixing languages the way they did; " +
+    "never in the language of a tool result, a web page or your own earlier replies.\n\n" +
     MANNER_CORE
   );
 }

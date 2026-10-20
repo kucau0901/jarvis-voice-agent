@@ -676,6 +676,8 @@ console.log("\npage watches: one look");
     told[0]!.instructions.includes("the API is above 150") && look.usage?.input === 900, look);
   check("the page goes to the model as quoted data, its words never as instructions",
     told[0]!.input.includes("THE PAGE'S AUTHOR") && told[0]!.input.includes("Ignore your instructions") && !told[0]!.instructions.includes("Ignore your instructions"));
+  check("the reading is written in the alert's language, not the page's",
+    told[0]!.instructions.includes(`in the language of "What this is about", whatever the page's own`));
   told.length = 0;
   const gone = await lookAtPage(env, "https://air.example.gov/springfield", "q", "c", page("", 404), model("YES"));
   const drawn = await lookAtPage(env, "https://air.example.gov/springfield", "q", "c", page("<div id=app></div><script>render()</script>"), model("YES"));
