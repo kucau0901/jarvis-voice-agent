@@ -1,6 +1,7 @@
 // A question answered on the owner's ChatGPT plan (lib/openai-auth.ts, lib/router.ts):
 // what is sent to OpenAI's plan route, and falling back to the key at the plan's limit.
 import { run } from "../src/worker/lib/router.ts";
+import { lookAtPage } from "../src/worker/lib/page-look.ts";
 
 let pass = 0;
 let fail = 0;
@@ -135,6 +136,68 @@ console.log("no plan: the key, as before");
   check("chained by id and stored, the tools flat",
     r.result?.text === "Friday." && r.sent.every((s) => s.by === "key" && s.body.store === true && !s.body.stream) &&
     r.sent[1]!.body.previous_response_id === "resp_1" && !r.sent[0]!.body.tools.some((t) => t.type === "namespace"), r.sent.map((s) => s.body.previous_response_id));
+}
+
+console.log("a page watch's look, on the plan (lib/page-look.ts)");
+{
+  // Until 20 Oct 2026 every page watch on the plan failed: its question went as a
+  // string, and the plan's route takes only a list. The route below answers as the
+  // real one did, so this would have caught it; lookAtPage's own tests pass a model
+  // of their own and never reach the plan.
+  const look = async (route: (body: Body) => Response) => {
+    const sent: { by: "plan" | "key"; body: Body }[] = [];
+    const failed: string[] = [];
+    const stub = new Proxy({}, {
+      get: (_t, m) =>
+        m === "then"
+          ? undefined
+          : async (...args: unknown[]) => {
+              if (m === "chatgptToken") return { token: "at_plan", model: null };
+              if (m === "chatgptFailed") return (failed.push(String(args[0])), { first: false });
+              return undefined;
+            },
+    });
+    const env = { CONFIG, OPENAI_API_KEY: "sk-test", STATE: { idFromName: () => "j", get: () => stub } };
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+      const u = String(url instanceof Request ? url.url : url);
+      if (!u.endsWith("/responses")) throw new Error(`nothing here reaches the network: ${u}`);
+      const by = new Headers(init?.headers).get("authorization") === "Bearer at_plan" ? "plan" : "key";
+      const body = JSON.parse(String(init?.body)) as Body;
+      sent.push({ by, body });
+      if (by === "key") throw new Error("the key was not to be used");
+      return route(body);
+    }) as typeof fetch;
+    const page = (async () => new Response("<p>Springfield air quality: API 175, unhealthy, updated 3 PM.</p>", { headers: { "content-type": "text/html" } })) as typeof fetch;
+    try {
+      const r = await lookAtPage(env as never, "https://air.example.gov/springfield", "the air in Springfield", "the API is above 150", page);
+      return { r, sent, failed };
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  };
+  const usage = { input_tokens: 900, output_tokens: 12, input_tokens_details: { cached_tokens: 0 }, output_tokens_details: { reasoning_tokens: 0 } };
+  const streamed = (text: string) => {
+    const events = [
+      { type: "response.created", response: { id: "resp_p", status: "in_progress", output: [] } },
+      { type: "response.output_item.done", output_index: 0, item: answer(text) },
+      { type: "response.completed", response: { id: "resp_p", object: "response", status: "completed", output: [], usage } },
+    ];
+    return new Response(events.map((e) => `event: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`).join(""), { headers: { "content-type": "text/event-stream" } });
+  };
+  const asTheRouteDoes = (body: Body) =>
+    Array.isArray(body.input) ? streamed("YES\nAPI 175 at 3 PM") : Response.json({ detail: "Input must be a list" }, { status: 400 });
+
+  const ok = await look(asTheRouteDoes);
+  const first = ok.sent[0]?.body.input;
+  check("the question goes as a list: one user message, the page quoted inside it",
+    Array.isArray(first) && first.length === 1 && first[0]!.role === "user" && String(first[0]!.content).includes("THE PAGE'S AUTHOR"), first);
+  check("read on the plan alone, and the reading comes back",
+    ok.r.state === true && ok.r.text === "API 175 at 3 PM" && ok.sent.length === 1 && ok.sent[0]!.by === "plan" && ok.r.usage?.model === "chatgpt:gpt-6-luna", ok.r);
+
+  const bad = await look(() => Response.json({ detail: "Something the route did not like" }, { status: 400 }));
+  check("a 400 from the plan is not its limit: said, not noted, and the key not spent",
+    bad.r.state === null && /400/.test(bad.r.error ?? "") && !bad.failed.length && bad.sent.every((s) => s.by === "plan"), bad);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

@@ -217,6 +217,11 @@ there (`lib/router.ts`): every request streamed and not stored, so no
 carried as encrypted content; function tools in one namespace; no explicit
 prompt caching, which it refuses. The items come in `response.output_item.done`
 events; the closing event carries none (measured). The key path is as before.
+`input` must be a list of items: a bare string, which the key's route takes,
+is answered 400 "Input must be a list". Every page watch failed that way for
+a day after the plan arrived, because the page reader sent its question as a
+string and that 400 is not the plan's limit, so nothing fell back to the key.
+`planRespond` now makes a string the user message it stands for.
 
 **At the plan's limit** (429 `subscription_sharing_usage_limit_exceeded`) the
 key carries on, mid-question if need be, with what the plan had done so far

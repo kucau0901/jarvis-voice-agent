@@ -101,11 +101,17 @@ type PlanParams = Omit<OpenAI.Responses.ResponseCreateParamsStreaming, "stream" 
  * and read to its end. The output items arrive one by one as each is done;
  * the closing event carries none (measured, 19 Oct 2026), so they are
  * gathered here. Throws PlanRefused when the plan says no.
+ *
+ * The route takes `input` only as a list of items: a bare string, which the
+ * key's route accepts, is answered 400 "Input must be a list" (seen 20 Oct
+ * 2026, when every page watch on the plan failed that way). So a string
+ * becomes the one user message it stands for, here, for every caller.
  */
 export async function planRespond(client: OpenAI, params: PlanParams, signal?: AbortSignal): Promise<OpenAI.Responses.Response> {
+  const input: OpenAI.Responses.ResponseInput | undefined = typeof params.input === "string" ? [{ role: "user", content: params.input }] : params.input;
   let stream: AsyncIterable<OpenAI.Responses.ResponseStreamEvent>;
   try {
-    stream = await client.responses.create({ ...params, stream: true, store: false }, { signal });
+    stream = await client.responses.create({ ...params, input, stream: true, store: false }, { signal });
   } catch (e) {
     throw refusalOf(e) ?? e;
   }
