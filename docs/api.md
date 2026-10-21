@@ -541,7 +541,9 @@ calendar event, tidying mail, a Home Assistant call, sending an email it wrote
 as a draft) is proposed instead, and its result alert carries them as
 `proposals: [{id, risk, says}]`. Only the person who started it can approve
 one, signed in, with `POST /api/hub/proposals/answer {id, answer: "approve" |
-"decline"}`; `GET /api/hub/proposals` is `{open, recent, allowed}`. After
+"decline"}`; an approved one comes back `running`, and Jarvis makes the call
+in the background. `GET /api/hub/proposals` is `{open, recent, allowed}`, and
+says what came of it. After
 approving a reversible one, `POST /api/hub/proposals/allow {id}` lets jobs make
 that one kind of call without asking (a car command another undoes, a calendar
 event, one way of tidying mail; never anything irreversible or for the house),

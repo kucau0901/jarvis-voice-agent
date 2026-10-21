@@ -31,7 +31,8 @@ import { Images, type StoredImage } from "./lib/images.ts";
 import { Specialties } from "./lib/specialties.ts";
 import { Pages, type StoredPage } from "./lib/pages.ts";
 import { Episodes, episodeOfJob, type Episode } from "./lib/episodes.ts";
-import { Proposals, type ProposalInput } from "./lib/proposals.ts";
+import { Proposals, type Proposal, type ProposalInput } from "./lib/proposals.ts";
+import { carryOut } from "./lib/approval.ts";
 import { OWNER, personOfWho, withPerson } from "./lib/context.ts";
 import { lookAtPage } from "./lib/page-look.ts";
 import { runBrief } from "./lib/brief.ts";
@@ -46,8 +47,9 @@ const HELD = "held:";
 
 /**
  * The Durable Object. Memory, settings and push live in lib/state-host.ts,
- * where Node can test them; this class adds the sockets, the alarm (routines,
- * jobs, relays and held alerts), the family's chat and the hub's RPC.
+ * where Node can test them; this class adds the sockets, the alarm (approved
+ * calls, routines, jobs, relays and held alerts), the family's chat and the
+ * hub's RPC.
  *
  * SQLite-backed (see the `new_sqlite_classes` migration in
  * wrangler.example.jsonc), because that is the only kind the Workers free
@@ -403,10 +405,10 @@ export class JarvisState extends DurableObject<Env> {
     };
   }
 
-  /** Point the one alarm at whatever is due first: a routine, a job, a relay or a held alert. */
+  /** Point the one alarm at whatever is due first: an approved call, a routine, a job, a relay or a held alert. */
   private async rearm(): Promise<void> {
     const held = [...(await this.ctx.storage.list<{ until: number }>({ prefix: HELD })).values()].map((h) => h.until);
-    const wakes = [...(await Promise.all([this.scheduler.nextWake(), this.jobs.nextWake(), this.relays.nextWake(), this.panels.nextWake()])), ...held].filter(
+    const wakes = [...(await Promise.all([this.proposals.nextWake(), this.scheduler.nextWake(), this.jobs.nextWake(), this.relays.nextWake(), this.panels.nextWake()])), ...held].filter(
       (t): t is number => t !== null,
     );
     const at = wakes.length ? Math.min(...wakes) : null;
@@ -417,13 +419,28 @@ export class JarvisState extends DurableObject<Env> {
   async alarm() {
     // Each catches per item, so this only throws on a storage failure — and then
     // the runtime retries, which is what is wanted.
-    await this.scheduler.tick();
-    await this.jobs.tick();
-    await this.relays.tick();
-    await this.releaseHeld();
-    // Last, and a couple a run: what this alarm has left of its budget is the panels' (lib/panels.ts).
-    await this.panels.refresh(await this.panelDeps());
+    // Approved calls beside the rest: someone is waiting on them, and a car waking holds up nothing due now.
+    // What comes due while a call is still being made waits for it, as it does for a job's step.
+    const done = await Promise.allSettled([
+      this.proposals.tick({ carryOut: (p, grants) => this.makeApproved(p, grants) }),
+      (async () => {
+        await this.scheduler.tick();
+        await this.jobs.tick();
+        await this.relays.tick();
+        await this.releaseHeld();
+        // Last, and a couple a run: what this alarm has left of its budget is the panels' (lib/panels.ts).
+        await this.panels.refresh(await this.panelDeps());
+      })(),
+    ]);
+    for (const d of done) if (d.status === "rejected") throw d.reason;
     await this.rearm();
+  }
+
+  /** An approved call (lib/proposals.ts tick), made as its person, with no more than its tap allowed and they may reach now. */
+  private async makeApproved(p: Proposal, grants: readonly Grant[]): Promise<{ ok: boolean; text: string }> {
+    const reach = reachNow(grants, await this.people.personView(p.person).catch(() => null));
+    if (!reach) return { ok: false, text: "Whoever it was for is no longer in the family." };
+    return carryOut(await this.personEnv(await this.localEnv(), p.who), p, reach);
   }
 
   /** What keeping panels fresh with Home closed needs (lib/panels.ts refresh). */
@@ -672,8 +689,12 @@ export class JarvisState extends DurableObject<Env> {
     return this.proposals.add(input, now);
   }
 
-  proposalClaim(person: string, id: string, now: number) {
-    return this.proposals.claim(person, id, now);
+  // Made by the alarm, not the request that approved it: a slow call finishes whether or not that screen stays.
+  // A new name (it was proposalClaim, which queued nothing): across a deploy, a Worker and an object on different code fail the call and change nothing.
+  async proposalApprove(person: string, id: string, scopesNow: readonly Grant[] | null | undefined, approver: readonly Grant[], now: number) {
+    const r = await this.proposals.claim(person, id, scopesNow, approver, now);
+    await this.rearm();
+    return r;
   }
 
   proposalDecline(person: string, id: string, now: number) {

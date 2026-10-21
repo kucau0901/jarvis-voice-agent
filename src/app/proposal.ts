@@ -48,6 +48,7 @@ export function proposalCard(key: string, p: ProposalView): HTMLElement {
 }
 
 function draw(key: string, card: HTMLElement, p: ProposalView): void {
+  card.dataset.state = p.state;
   card.replaceChildren(
     el("span", "doctag", p.state === "pending" ? `Waiting for your OK${p.risk === "irreversible" ? " · can't be undone" : ""}` : "Proposed"),
     el("b", "doctitle", p.says),
@@ -57,6 +58,7 @@ function draw(key: string, card: HTMLElement, p: ProposalView): void {
   const said = el("small", "pagesaid", SAID[p.state] + (p.by === "standing" ? " without asking (you allow it)" : "") + (p.outcome?.text ? `: ${p.outcome.text}` : ""));
   if (p.state !== "pending") {
     card.appendChild(said);
+    if (p.state === "running") watch(key, p.id);
     // Approved and done, and of a kind that can be put back: jobs may do it without asking from now on.
     if (p.state === "done" && p.by === "tap" && p.risk === "reversible" && p.category) {
       const allow = button("Let jobs do this without asking", async () => {
@@ -94,9 +96,40 @@ function draw(key: string, card: HTMLElement, p: ProposalView): void {
   card.appendChild(btns);
 }
 
-/** A proposal decided: every card for it on this screen says so. */
+/** A proposal decided: every card for it on this screen says so (one already saying so is left as it is: an Allow being tapped). */
 export function settle(key: string, p: ProposalView): void {
-  for (const card of document.querySelectorAll<HTMLElement>(`[data-proposal="${CSS.escape(p.id)}"]`)) draw(key, card, p);
+  for (const card of document.querySelectorAll<HTMLElement>(`[data-proposal="${CSS.escape(p.id)}"]`)) if (card.dataset.state !== p.state) draw(key, card, p);
+}
+
+/** Proposals being run whose cards are looked at again, by id: one look for all the cards of one. */
+const watched = new Set<string>();
+
+/**
+ * An approved call runs on the server's alarm (lib/proposals.ts tick), not in
+ * the request that approved it: its cards are looked at again, soon and then
+ * less often, while one is on screen, until it is no longer running.
+ */
+function watch(key: string, id: string): void {
+  if (watched.has(id)) return;
+  watched.add(id);
+  let wait = 2000;
+  let misses = 0;
+  const again = async (): Promise<void> => {
+    const shown = !!document.querySelector(`[data-proposal="${CSS.escape(id)}"]`);
+    const r = shown ? ((await api(key, "GET", "/api/hub/proposals").catch(() => null)) as { recent: ProposalView[] } | null) : null;
+    const p = r?.recent.find((q) => q.id === id);
+    misses = r ? 0 : misses + 1;
+    // Still being made, or not answered (offline, a deploy): looked at again, but not after five misses in a row (signed out, locked).
+    // No card left, or no longer running (or no longer kept): done looking.
+    if (shown && (r ? p?.state === "running" : misses < 5)) {
+      wait = Math.min(wait * 1.5, 15_000);
+      setTimeout(() => void again(), wait);
+      return;
+    }
+    watched.delete(id);
+    if (p) settle(key, p);
+  };
+  setTimeout(() => void again(), wait);
 }
 
 /** The cards for a job's proposals, by id, as they stand now (one request). */

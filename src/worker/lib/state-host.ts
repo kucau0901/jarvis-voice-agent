@@ -647,7 +647,7 @@ interface ProposalApi {
   proposalsOf(person: string, now: number): Promise<Proposal[]>;
   proposalGet(person: string, id: string, now: number): Promise<Proposal | null>;
   proposalAdd(input: ProposalInput, now: number): Promise<Proposal | string>;
-  proposalClaim(person: string, id: string, now: number): Promise<Proposal | string>;
+  proposalApprove(person: string, id: string, scopesNow: readonly Grant[] | null | undefined, approver: readonly Grant[], now: number): Promise<Proposal | string>;
   proposalDecline(person: string, id: string, now: number): Promise<Proposal | string>;
   proposalFinish(person: string, id: string, outcome: { ok: boolean; text: string }, now: number): Promise<Proposal | null>;
   proposalAllowed(person: string): Promise<string[]>;

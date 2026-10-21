@@ -1,12 +1,15 @@
 // Approvals (lib/proposals.ts, routes/proposals.ts): what a job proposes, how
-// risky code says it is, and how a tap runs the stored call once.
-import { classify, DECIDE_MS, held, PER_JOB, PENDING_MAX, PROPOSE_ONLY, proposable, Proposals, runGrants, weigh, type Proposal, type ProposalInput } from "../src/worker/lib/proposals.ts";
+// risky code says it is, and how a tap has the stored call made once, on the
+// object's alarm (tick, lib/approval.ts).
+import { classify, DECIDE_MS, held, PER_JOB, PENDING_MAX, PROPOSE_ONLY, proposable, Proposals, runGrants, START_MS, STUCK_MS, weigh, type Proposal, type ProposalInput } from "../src/worker/lib/proposals.ts";
+import { carryOut } from "../src/worker/lib/approval.ts";
 import { handleProposals } from "../src/worker/routes/proposals.ts";
 import { baseTools, type Tool } from "../src/worker/tools/registry.ts";
 import { carCommand } from "../src/worker/tools/tessie.ts";
 import { calendarAdd } from "../src/worker/tools/calendar.ts";
 import { mailManage } from "../src/worker/tools/gmail.ts";
 import { mailDraftSend } from "../src/worker/lib/mail-draft.ts";
+import type { Grant } from "../src/worker/lib/scopes.ts";
 
 let pass = 0;
 let fail = 0;
@@ -65,21 +68,23 @@ console.log("kept, and decided once");
   const big = await props.add(input({ from: { kind: "job", id: "j9", title: "x" }, action: { tool: "calendar_add", args: { title: "x".repeat(5000) } } }), T);
   check("too long to propose", typeof big === "string" && /too long/.test(big));
 
-  const claimed = await props.claim("u_sara", p.id, T + 5000);
+  const claimed = await props.claim("u_sara", p.id, ["*"], ["*"], T + 5000);
   check("approved: running, by a tap, once", typeof claimed !== "string" && claimed.state === "running" && claimed.by === "tap" && claimed.decidedAt === T + 5000, claimed);
-  check("a second tap: already approved", (await props.claim("u_sara", p.id, T + 6000)) === "It was approved already.");
-  check("someone else's: as if there were none", (await props.claim("u_adam", p.id, T)) === "No such proposal." && (await props.get("u_adam", p.id, T)) === null);
+  check("a second tap: already approved", (await props.claim("u_sara", p.id, ["*"], ["*"], T + 6000)) === "It was approved already.");
+  check("someone else's: as if there were none", (await props.claim("u_adam", p.id, ["*"], ["*"], T)) === "No such proposal." && (await props.get("u_adam", p.id, T)) === null);
   const done = await props.finish("u_sara", p.id, { ok: true, text: "Locked. ".repeat(100) }, T + 7000);
   check("finished: done, with what came of it, cut short", done?.state === "done" && done.outcome!.text.length === 300 && (await props.finish("u_sara", p.id, { ok: true, text: "again" }, T)) === null);
 
   const late = (await props.add(input({ from: { kind: "job", id: "j2", title: "x" } }), T)) as Proposal;
-  check("past its day: expired, and can no longer be approved", (await props.get("u_sara", late.id, T + DECIDE_MS))?.state === "expired" && (await props.claim("u_sara", late.id, T + DECIDE_MS)) === "It has expired.");
+  check("past its day: expired, and can no longer be approved", (await props.get("u_sara", late.id, T + DECIDE_MS))?.state === "expired" && (await props.claim("u_sara", late.id, ["*"], ["*"], T + DECIDE_MS)) === "It has expired.");
   const no = (await props.add(input({ from: { kind: "job", id: "j3", title: "x" } }), T)) as Proposal;
   const declined = await props.decline("u_sara", no.id, T + 1);
-  check("declined: not done, and no longer waiting", typeof declined !== "string" && declined.state === "declined" && (await props.claim("u_sara", no.id, T + 2)) === "It was declined.");
+  check("declined: not done, and no longer waiting", typeof declined !== "string" && declined.state === "declined" && (await props.claim("u_sara", no.id, ["*"], ["*"], T + 2)) === "It was declined.");
   const stuck = (await props.add(input({ from: { kind: "job", id: "j4", title: "x" } }), T)) as Proposal;
-  await props.claim("u_sara", stuck.id, T);
-  check("a run that never finished: failed, never run again", (await props.get("u_sara", stuck.id, T + 6 * 60_000))?.state === "failed" && typeof (await props.claim("u_sara", stuck.id, T + 6 * 60_000)) === "string");
+  await props.claim("u_sara", stuck.id, ["*"], ["*"], T);
+  // Not after five minutes, as when the request made the call: the alarm may start it up to START_MS after the tap.
+  check("a run that may still be going is not called failed", (await props.get("u_sara", stuck.id, T + START_MS + 60_000))?.state === "running");
+  check("a run that never finished: failed, never run again", (await props.get("u_sara", stuck.id, T + STUCK_MS + 1))?.state === "failed" && typeof (await props.claim("u_sara", stuck.id, ["*"], ["*"], T + STUCK_MS + 1)) === "string");
 
   const job = (await props.add(input({ from: { kind: "job", id: "j5", title: "x" } }), T)) as Proposal;
   await props.withdrawJob("u_sara", "j5", T + 1);
@@ -96,6 +101,79 @@ console.log("\ntwo identical calls at once");
   const w = weigh(calendarAdd, ev.args, NO_CARS)!;
   const both = await Promise.all([props.add(input({ action: ev, weighed: w }), T), props.add(input({ action: ev, weighed: w }), T)]);
   check("filed once: the second sees the first", [...st._m.keys()].filter((k) => k.startsWith("prop:")).length === 1 && typeof both[0] !== "string" && typeof both[1] !== "string" && both[0].id === both[1].id);
+}
+
+console.log("\nmade on the object's alarm (tick)");
+{
+  const st = fakeStorage();
+  const props = new Proposals(st as never);
+  const made: { id: string; grants: string[] }[] = [];
+  const make = async (p: Proposal, grants: readonly string[]) => (made.push({ id: p.id, grants: [...grants] }), { ok: true, text: "Locked." });
+  const p = (await props.add(input(), T)) as Proposal;
+  check("nothing approved: nothing to wake for", (await props.nextWake(T)) === null);
+  const gone = await props.claim("u_sara", p.id, null, ["*"], T);
+  check("for someone no longer in the family: not claimed, still waiting", gone === "Whoever it was for is no longer in the family." && (await props.get("u_sara", p.id, T))?.state === "pending" && (await props.nextWake(T)) === null);
+  const claimed = await props.claim("u_sara", p.id, ["ask", "car.control", "calendar"], ["car.control", "ask"], T);
+  check("approved: running, nothing made yet, and the alarm wanted at once", typeof claimed !== "string" && claimed.state === "running" && made.length === 0 && (await props.nextWake(T + 10)) === T + 10);
+  await props.tick({ carryOut: make }, T + 100);
+  const done = await props.get("u_sara", p.id, T + 200);
+  check("the alarm makes it once, with what its tap allowed, and keeps what came of it", made.length === 1 && made[0]!.grants.join() === "ask,car.control" && done?.state === "done" && done.outcome?.text === "Locked.", { made, done });
+  await props.tick({ carryOut: make }, T + 200);
+  check("never made again, and nothing left to wake for", made.length === 1 && (await props.nextWake(T + 200)) === null);
+
+  const failing = (await props.add(input({ from: { kind: "job", id: "jf", title: "x" } }), T)) as Proposal;
+  await props.claim("u_sara", failing.id, ["*"], ["*"], T);
+  await props.tick({
+    carryOut: async () => {
+      throw new Error("Tessie unreachable");
+    },
+  }, T + 1);
+  check("a run that throws: failed, with why", (await props.get("u_sara", failing.id, T + 2))?.outcome?.text === "That failed: Tessie unreachable");
+
+  const late = (await props.add(input({ from: { kind: "job", id: "jl", title: "x" } }), T)) as Proposal;
+  await props.claim("u_sara", late.id, ["*"], ["*"], T);
+  await props.tick({ carryOut: make }, T + START_MS + 1);
+  const notMade = await props.get("u_sara", late.id, T + START_MS + 1);
+  check("not started within twenty minutes of the tap (the alarm kept failing): not made, and said so", made.length === 1 && notMade?.state === "failed" && /in time/.test(notMade.outcome?.text ?? ""), notMade);
+
+  // The object goes away mid-call (a deploy): the alarm is tried again by a fresh one, over the same storage.
+  const cut = (await props.add(input({ from: { kind: "job", id: "jc", title: "x" } }), T)) as Proposal;
+  await props.claim("u_sara", cut.id, ["*"], ["*"], T);
+  let tries = 0;
+  void props.tick({ carryOut: () => (tries++, new Promise<never>(() => {})) }, T + 1);
+  await new Promise((r) => setTimeout(r, 0));
+  const fresh = new Proposals(st as never);
+  await fresh.tick({ carryOut: make }, T + 2);
+  check("cut short mid-call: never made a second time", tries === 1 && made.length === 1 && (await fresh.nextWake(T + 2)) === null);
+  check("…and read as failed once it cannot still be going", (await fresh.get("u_sara", cut.id, T + 60_000))?.state === "running" && (await fresh.get("u_sara", cut.id, T + STUCK_MS + 1))?.state === "failed");
+
+  // Queued together behind a busy alarm: made in the order they were tapped, whatever order they are kept in, each after the last has finished.
+  const second = (await props.add(input({ from: { kind: "job", id: "jo", title: "x" }, action: { tool: "car_command", args: { ...lock.args, command: "stop_climate" } } }), T)) as Proposal;
+  const first = (await props.add(input({ from: { kind: "job", id: "jo", title: "x" }, action: { tool: "car_command", args: { ...lock.args, command: "start_climate" } } }), T)) as Proposal;
+  await props.claim("u_sara", second.id, ["*"], ["*"], T + 2);
+  await props.claim("u_sara", first.id, ["*"], ["*"], T + 1);
+  const turns: string[] = [];
+  await props.tick({
+    async carryOut(q) {
+      turns.push(`start ${q.id}`);
+      await new Promise((r) => setTimeout(r, 5));
+      turns.push(`end ${q.id}`);
+      return { ok: true, text: "Done." };
+    },
+  }, T + 3);
+  check("several waiting: made one at a time, in the order they were tapped", turns.join() === [`start ${first.id}`, `end ${first.id}`, `start ${second.id}`, `end ${second.id}`].join(), turns);
+
+  const left = (await props.add(input({ from: { kind: "job", id: "jg", title: "x" } }), T)) as Proposal;
+  await props.claim("u_sara", left.id, ["*"], ["*"], T);
+  await props.forget("u_sara");
+  await props.tick({ carryOut: make }, T + 1);
+  check("its person left before the alarm came: nothing made, nothing kept", made.length === 1 && st._m.size === 0);
+
+  // A claim cut short before its record was written: the entry alone is let go, and it can be tapped again.
+  const half = (await props.add(input({ from: { kind: "job", id: "jh", title: "x" } }), T)) as Proposal;
+  st._m.set(`proprun:u_sara:${half.id}`, { person: "u_sara", id: half.id, grants: ["*"] });
+  await props.tick({ carryOut: make }, T + 1);
+  check("an entry for one still waiting: nothing made, and it still waits", made.length === 1 && (await props.get("u_sara", half.id, T + 1))?.state === "pending" && (await props.nextWake(T + 1)) === null);
 }
 
 console.log("\nshown whole, or not filed");
@@ -206,7 +284,7 @@ console.log("\nallowed without asking: a reversible kind, once approved");
   const props = new Proposals(st as never);
   const p = (await props.add(input(), T)) as Proposal;
   check("not before it is approved and done", typeof (await props.allow("u_sara", p.id, T)) === "string");
-  await props.claim("u_sara", p.id, T);
+  await props.claim("u_sara", p.id, ["*"], ["*"], T);
   await props.finish("u_sara", p.id, { ok: true, text: "Locked." }, T);
   check("once approved by a tap and done: that kind is allowed", (await props.allow("u_sara", p.id, T)) === null && (await props.allowed("u_sara")).join() === "car_command:lock");
   const auto = (await props.add(input({ from: { kind: "job", id: "j2", title: "x" } }), T)) as Proposal;
@@ -273,7 +351,7 @@ console.log("\nanswered by a tap (routes/proposals.ts)");
     },
     proposalsOf: (person: string, now: number) => props.list(person, now),
     proposalGet: (person: string, id: string, now: number) => props.get(person, id, now),
-    proposalClaim: (person: string, id: string, now: number) => props.claim(person, id, now),
+    proposalApprove: (person: string, id: string, scopesNow: Grant[] | null | undefined, approver: Grant[], now: number) => props.claim(person, id, scopesNow, approver, now),
     proposalDecline: (person: string, id: string, now: number) => props.decline(person, id, now),
     proposalFinish: (person: string, id: string, outcome: { ok: boolean; text: string }, now: number) => props.finish(person, id, outcome, now),
     proposalAllowed: (person: string) => props.allowed(person),
@@ -282,17 +360,18 @@ console.log("\nanswered by a tap (routes/proposals.ts)");
   };
   const env = { TESSIE_TOKEN: "t", TESSIE_VIN: "LRWTEST0000000000", STATE: { idFromName: () => "jarvis", get: () => stub } } as never;
   const mia = { kind: "member", id: "u_mia", role: "adult", scopes: ["*"], session: "s" } as never;
-  const ctx = { waitUntil: () => {} } as never;
+  /** The object's alarm, as state.ts runs it: each call made as its person (here, the env given). */
+  const alarm = (e: unknown = env) => props.tick({ carryOut: (q, grants) => carryOut(e as never, q, grants) });
   const req = (path: string, body?: unknown) => new Request(`https://j.test${path}`, body ? { method: "POST", body: JSON.stringify(body) } : {});
   const p = (await props.add(input({ person: "u_mia", who: "u_mia" }), Date.now())) as Proposal;
   const theirs = (await props.add(input({ person: "u_lee", who: "u_lee", from: { kind: "job", id: "jl", title: "x" } }), Date.now())) as Proposal;
 
-  const list = (await (await handleProposals(req("/api/hub/proposals"), env, ctx, mia))!.json()) as { open: Record<string, unknown>[] };
+  const list = (await (await handleProposals(req("/api/hub/proposals"), env, mia))!.json()) as { open: Record<string, unknown>[] };
   check("listed: their own, waiting, without what it would run with", list.open.length === 1 && list.open[0]!.id === p.id && !("grants" in list.open[0]!) && !("who" in list.open[0]!), list);
-  check("not a path of its own: passed on", (await handleProposals(req("/api/hub/me"), env, ctx, mia)) === null);
-  const device = await handleProposals(req("/api/hub/proposals"), env, ctx, { kind: "device", id: "d1", name: "tablet", scopes: ["*"] } as never);
+  check("not a path of its own: passed on", (await handleProposals(req("/api/hub/me"), env, mia)) === null);
+  const device = await handleProposals(req("/api/hub/proposals"), env, { kind: "device", id: "d1", name: "tablet", scopes: ["*"] } as never);
   check("a device: refused", device!.status === 403);
-  check("someone else's: no such proposal", (await handleProposals(req("/api/hub/proposals/answer", { id: theirs.id, answer: "approve" }), env, ctx, mia))!.status === 404);
+  check("someone else's: no such proposal", (await handleProposals(req("/api/hub/proposals/answer", { id: theirs.id, answer: "approve" }), env, mia))!.status === 404);
 
   const sent: string[] = [];
   let refuse = false;
@@ -305,58 +384,85 @@ console.log("\nanswered by a tap (routes/proposals.ts)");
   }) as typeof fetch;
   try {
     // The request says another call: only what was stored is run.
-    const r = await handleProposals(req("/api/hub/proposals/answer", { id: p.id, answer: "approve", tool: "car_command", args: { command: "unlock" } }), env, ctx, mia);
+    const r = await handleProposals(req("/api/hub/proposals/answer", { id: p.id, answer: "approve", tool: "car_command", args: { command: "unlock" } }), env, mia);
     const body = (await r!.json()) as { proposal: Proposal };
-    check("approved: the stored call run, once, and what came of it kept", r!.status === 200 && body.proposal.state === "done" && body.proposal.by === "tap" && sent.some((s) => /\/command\/lock\b/.test(s)) && !sent.some((s) => /unlock/.test(s)), { body, sent });
+    check("approved: answered at once, running, and nothing made in the request", r!.status === 200 && body.proposal.state === "running" && body.proposal.by === "tap" && sent.length === 0, { body, sent });
+    await alarm();
+    const made = await props.get("u_mia", p.id, Date.now());
+    check("then the alarm makes the stored call, once, and what came of it is kept", made?.state === "done" && sent.some((s) => /\/command\/lock\b/.test(s)) && !sent.some((s) => /unlock/.test(s)), { made, sent });
     refuse = true;
     const nope = (await props.add(input({ person: "u_mia", who: "u_mia", from: { kind: "job", id: "jn", title: "x" } }), Date.now())) as Proposal;
-    const refused = (await (await handleProposals(req("/api/hub/proposals/answer", { id: nope.id, answer: "approve" }), env, ctx, mia))!.json()) as { proposal: Proposal };
-    check("the car did not accept it: failed, with its words, so it cannot be allowed without asking", refused.proposal.state === "failed" && /did not accept/.test(refused.proposal.outcome!.text) && (await handleProposals(req("/api/hub/proposals/allow", { id: nope.id }), env, ctx, mia))!.status === 409, refused.proposal);
+    await handleProposals(req("/api/hub/proposals/answer", { id: nope.id, answer: "approve" }), env, mia);
+    await alarm();
+    const refused = (await props.get("u_mia", nope.id, Date.now()))!;
+    check("the car did not accept it: failed, with its words, so it cannot be allowed without asking", refused.state === "failed" && /did not accept/.test(refused.outcome!.text) && (await handleProposals(req("/api/hub/proposals/allow", { id: nope.id }), env, mia))!.status === 409, refused);
     refuse = false;
     const locks = sent.filter((s) => /\/command\/lock\b/.test(s)).length;
-    const twice = await handleProposals(req("/api/hub/proposals/answer", { id: p.id, answer: "approve" }), env, ctx, mia);
+    const twice = await handleProposals(req("/api/hub/proposals/answer", { id: p.id, answer: "approve" }), env, mia);
     check("a second tap: already approved, nothing run", twice!.status === 409 && sent.filter((s) => /\/command\/lock\b/.test(s)).length === locks);
-    const allow = await handleProposals(req("/api/hub/proposals/allow", { id: p.id }), env, ctx, mia);
-    const listed = (await (await handleProposals(req("/api/hub/proposals"), env, ctx, mia))!.json()) as { allowed: string[] };
+    const allow = await handleProposals(req("/api/hub/proposals/allow", { id: p.id }), env, mia);
+    const listed = (await (await handleProposals(req("/api/hub/proposals"), env, mia))!.json()) as { allowed: string[] };
     check("approved and done: that kind allowed without asking, and listed", allow!.status === 200 && listed.allowed.join() === "car_command:lock", listed);
     const reordered = { ...(env as object), JARVIS_CARS: JSON.stringify([{ id: "c9", name: "Ioniq 5", level: "own", mine: true, vin: "VIN_9999", token: "t" }]) } as never;
-    check("allowing that kind does not care which car it was then", (await handleProposals(req("/api/hub/proposals/allow", { id: p.id }), reordered, ctx, mia))!.status === 200);
-    const stop = await handleProposals(new Request("https://j.test/api/hub/proposals/allow?category=car_command%3Alock", { method: "DELETE" }), env, ctx, mia);
+    check("allowing that kind does not care which car it was then", (await handleProposals(req("/api/hub/proposals/allow", { id: p.id }), reordered, mia))!.status === 200);
+    const stop = await handleProposals(new Request("https://j.test/api/hub/proposals/allow?category=car_command%3Alock", { method: "DELETE" }), env, mia);
     check("and asked for again", stop!.status === 200 && (await props.allowed("u_mia")).length === 0);
     // One that named its car, which has since gone: the kind is still allowed.
     const named = { ...lock.args, car: "Model Y" };
     const withY = { ...(env as object), JARVIS_CARS: JSON.stringify([{ id: "c2", name: "Model Y", level: "own", mine: true, vin: "VIN_B", token: "t" }]) } as never;
     const ny = (await props.add(input({ person: "u_mia", who: "u_mia", from: { kind: "job", id: "jny", title: "x" }, action: { tool: "car_command", args: named }, weighed: weigh(carCommand, named, withY)! }), Date.now())) as Proposal;
-    await handleProposals(req("/api/hub/proposals/answer", { id: ny.id, answer: "approve" }), withY, ctx, mia);
-    check("one that named a car since gone: the kind still allowed", (await props.get("u_mia", ny.id, Date.now()))?.state === "done" && (await handleProposals(req("/api/hub/proposals/allow", { id: ny.id }), reordered, ctx, mia))!.status === 200);
+    await handleProposals(req("/api/hub/proposals/answer", { id: ny.id, answer: "approve" }), withY, mia);
+    await alarm(withY);
+    check("one that named a car since gone: the kind still allowed", (await props.get("u_mia", ny.id, Date.now()))?.state === "done" && (await handleProposals(req("/api/hub/proposals/allow", { id: ny.id }), reordered, mia))!.status === 200);
     await props.disallow("u_mia", "car_command:lock");
+    // Approved as its card said; by the time the alarm makes it, the first car is gone and the other would be used.
+    const nameless = { command: "unlock", value: null, temperature: null, percent: null, car: null };
+    const later = (await props.add(input({ person: "u_mia", who: "u_mia", from: { kind: "job", id: "jcar1", title: "x" }, action: { tool: "car_command", args: nameless }, weighed: weigh(carCommand, nameless, CARS)! }), Date.now())) as Proposal;
+    const both = { ...(env as object), ...(CARS as object) } as never;
+    const answered = await handleProposals(req("/api/hub/proposals/answer", { id: later.id, answer: "approve" }), both, mia);
+    const before = sent.length;
+    await alarm({ ...(env as object), JARVIS_CARS: JSON.stringify([{ id: "c2", name: "Model Y", level: "own", mine: true, vin: "VIN_B", token: "t" }]) });
+    const changed = await props.get("u_mia", later.id, Date.now());
+    check("the card no longer matches when the alarm comes: failed, said so, and nothing made", answered!.status === 200 && changed?.state === "failed" && /has changed/.test(changed.outcome?.text ?? "") && sent.length === before, { changed, sent: sent.slice(before) });
   } finally {
     globalThis.fetch = realFetch;
   }
   const kiv = (await props.add(input({ person: "u_kiv", who: "u_kiv", from: { kind: "job", id: "jk", title: "x" } }), Date.now())) as Proposal;
   hubDown = true;
   const kivP = { kind: "member", id: "u_kiv", role: "adult", scopes: ["*"], session: "s" } as never;
-  const later = await handleProposals(req("/api/hub/proposals/answer", { id: kiv.id, answer: "approve" }), env, ctx, kivP);
+  const later = await handleProposals(req("/api/hub/proposals/answer", { id: kiv.id, answer: "approve" }), env, kivP);
   check("who it is for could not be looked up: try again, and it is still waiting", later!.status === 503 && (await props.get("u_kiv", kiv.id, Date.now()))?.state === "pending");
   hubDown = false;
+  const leeP = { kind: "member", id: "u_lee", role: "adult", scopes: ["*"], session: "s" } as never;
+  const left = await handleProposals(req("/api/hub/proposals/answer", { id: theirs.id, answer: "approve" }), env, leeP);
+  check("no longer in the family: refused, nothing queued, and it is still waiting", left!.status === 409 && (await props.get("u_lee", theirs.id, Date.now()))?.state === "pending" && (await props.nextWake(Date.now())) === null);
   const q = (await props.add(input({ person: "u_mia", who: "u_mia", from: { kind: "job", id: "j2", title: "x" } }), Date.now())) as Proposal;
-  const no = await handleProposals(req("/api/hub/proposals/answer", { id: q.id, answer: "decline" }), env, ctx, mia);
+  const no = await handleProposals(req("/api/hub/proposals/answer", { id: q.id, answer: "decline" }), env, mia);
   check("declined", no!.status === 200 && ((await no!.json()) as { proposal: Proposal }).proposal.state === "declined");
-  check("a declined one cannot be allowed without asking", (await handleProposals(req("/api/hub/proposals/allow", { id: q.id }), env, ctx, mia))!.status === 409);
+  check("a declined one cannot be allowed without asking", (await handleProposals(req("/api/hub/proposals/allow", { id: q.id }), env, mia))!.status === 409);
+  // Filed in the morning, approved in the evening, after twenty newer ones were decided: still listed while it is made.
+  const morning = (await props.add(input({ person: "u_mia", who: "u_mia", from: { kind: "job", id: "jam", title: "x" } }), Date.now() - 10 * 3_600_000)) as Proposal;
+  for (let i = 0; i < 20; i++) {
+    const later = (await props.add(input({ person: "u_mia", who: "u_mia", from: { kind: "job", id: `jd${i}`, title: "x" } }), Date.now() - 3_600_000)) as Proposal;
+    await props.decline("u_mia", later.id, Date.now() - 3_600_000);
+  }
+  await handleProposals(req("/api/hub/proposals/answer", { id: morning.id, answer: "approve" }), env, mia);
+  const listedNow = (await (await handleProposals(req("/api/hub/proposals"), env, mia))!.json()) as { recent: Proposal[] };
+  check("one just approved comes first in what was decided lately, however long it waited", listedNow.recent[0]?.id === morning.id && listedNow.recent[0]?.state === "running" && listedNow.recent.length === 20, listedNow.recent.map((p) => p.state));
   // Filed for the first of two cars; by the tap, that car is gone, and the other is first.
   const nameless = { command: "unlock", value: null, temperature: null, percent: null, car: null };
   const moved = (await props.add(input({ person: "u_mia", who: "u_mia", from: { kind: "job", id: "jcar2", title: "x" }, action: { tool: "car_command", args: nameless }, weighed: weigh(carCommand, nameless, CARS)! }), Date.now())) as Proposal;
   const onlyY = { TESSIE_TOKEN: "t", TESSIE_VIN: "LRWTEST0000000000", STATE: { idFromName: () => "jarvis", get: () => stub }, JARVIS_CARS: JSON.stringify([{ id: "c2", name: "Model Y", level: "own", mine: true, vin: "VIN_B", token: "t" }]) } as never;
   const before = sent.length;
-  const changedRes = await handleProposals(req("/api/hub/proposals/answer", { id: moved.id, answer: "approve" }), onlyY, ctx, mia);
+  const changedRes = await handleProposals(req("/api/hub/proposals/answer", { id: moved.id, answer: "approve" }), onlyY, mia);
   const changed = (await changedRes!.json()) as { error?: string };
   check("the car it named is not the one it would now be: not done, said so, and still waiting", moved.says === "Car: unlock (Ioniq 5, …IN_A)" && changedRes!.status === 409 && /has changed/.test(changed.error ?? "") && sent.length === before && (await props.get("u_mia", moved.id, Date.now()))?.state === "pending", changed);
   const r2 = (await props.add(input({ person: "u_mia", who: "u_mia", from: { kind: "job", id: "j3", title: "x" } }), Date.now())) as Proposal;
   const noCar = { STATE: { idFromName: () => "jarvis", get: () => stub } } as never;
-  const goneRes = await handleProposals(req("/api/hub/proposals/answer", { id: r2.id, answer: "approve" }), noCar, ctx, mia);
+  const goneRes = await handleProposals(req("/api/hub/proposals/answer", { id: r2.id, answer: "approve" }), noCar, mia);
   const gone = (await goneRes!.json()) as { error?: string };
   check("a tool no longer set up: not done, it says so, and it still waits", goneRes!.status === 409 && /can no longer be done/.test(gone.error ?? "") && (await props.get("u_mia", r2.id, Date.now()))?.state === "pending", gone);
-  check("an answer that is neither: refused", (await handleProposals(req("/api/hub/proposals/answer", { id: r2.id, answer: "maybe" }), env, ctx, mia))!.status === 400);
+  check("an answer that is neither: refused", (await handleProposals(req("/api/hub/proposals/answer", { id: r2.id, answer: "maybe" }), env, mia))!.status === 400);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);
