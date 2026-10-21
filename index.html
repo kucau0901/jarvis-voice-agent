@@ -358,6 +358,9 @@
     -webkit-mask: var(--i-clock) center / contain no-repeat; mask: var(--i-clock) center / contain no-repeat; }
   .row .frompill span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .row .frompill small { flex: none; font-size: 12px; opacity: .7; }
+  /* A background job's pill (fromRoutine.ts): "On it", breathing while it works, then named by its result. */
+  .row .frompill.job::before { -webkit-mask-image: var(--i-jobs); mask-image: var(--i-jobs); }
+  .row .frompill.working small { animation: pulse 1.3s ease-in-out infinite; }
   .routine.flash { animation: rflash 1.6s ease-out; }
   /* An answer's reply button, at its foot (reply.ts). */
   .row.jarvis { flex-direction: row; align-items: flex-end; gap: 2px; }

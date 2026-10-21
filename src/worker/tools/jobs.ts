@@ -57,6 +57,7 @@ const startJob: Tool = {
       { who: voiceWho(ctx.env), grants: ctx.grants },
     );
     if (typeof j === "string") return `Not started: ${j}.`;
+    ctx.started?.({ id: j.id, title: j.title, engine: j.engine });
     if (team) {
       return `Started a research team on "${j.title}": three teams look into it from different angles and share what they find as they go, ` +
         "then one report is checked against its sources. It takes 20 to 55 minutes and roughly four to seven dollars; the report " +

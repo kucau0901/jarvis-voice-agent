@@ -2,7 +2,7 @@ import { api, authHeaders } from "./key";
 import type { History } from "./history";
 import { Reply } from "./reply";
 import { Attachments } from "./attach";
-import type { RoutineSaid } from "./fromRoutine";
+import type { JobSaid, RoutineSaid } from "./fromRoutine";
 
 /**
  * Your conversation with Jarvis, kept on the server (lib/conversation.ts) so
@@ -26,6 +26,7 @@ export interface Said {
   /** The answer this question replied to (reply.ts). */
   replyTo?: string;
   routine?: { id: string; name: string };
+  job?: { id: string; name: string };
 }
 
 const PATH = "/api/hub/conversation";
@@ -38,7 +39,7 @@ export const saidId = (): string => `c_${Date.now().toString(36)}${(n++ % 1296).
  * Kept; when it cannot be, the conversation goes on all the same.
  * keepalive, so a row that ends as the page closes still arrives.
  */
-export function keep(key: string, said: Omit<Said, "at" | "routine">): void {
+export function keep(key: string, said: Omit<Said, "at" | "routine" | "job">): void {
   if (!key) return;
   void fetch(PATH, { method: "POST", headers: authHeaders(key), body: JSON.stringify({ said: [said] }), keepalive: true }).catch(() => {});
 }
@@ -51,10 +52,11 @@ export const clearKept = (key: string): Promise<unknown> => api(key, "DELETE", P
 export const asked = (to: { text: string } | null, text: string, files: string[]): string =>
   Reply.said(to, text) + (files.length ? `\n(Attached: ${files.join(", ")})` : "");
 
-/** How the chat is drawn (main.ts): a finished row; a routine's words under its name, false when shown already. */
+/** How the chat is drawn (main.ts): a finished row; a routine's or a job's words under its name, false when shown already. */
 export interface Rows {
   row(who: "you" | "jarvis", text: string): HTMLElement;
   routine(s: RoutineSaid): boolean;
+  job(s: JobSaid): boolean;
 }
 
 /** The kept conversation, drawn as it was, and told to the model as it would have been. */
@@ -63,6 +65,10 @@ export function restore(all: Said[], rows: Rows, history: History): void {
   for (const s of all) {
     if (s.routine) {
       if (rows.routine({ id: s.id, at: s.at, title: s.routine.name, text: s.text, routine: s.routine.id })) history.add("assistant", `${s.routine.name}: ${s.text}`, s.at);
+      continue;
+    }
+    if (s.job) {
+      if (rows.job({ id: s.id, at: s.at, title: s.job.name, text: s.text, job: s.job.id })) history.add("assistant", `${s.job.name}: ${s.text}`, s.at);
       continue;
     }
     const row = rows.row(s.role === "user" ? "you" : "jarvis", s.text);

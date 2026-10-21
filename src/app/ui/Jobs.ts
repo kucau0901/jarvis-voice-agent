@@ -124,11 +124,17 @@ export class Jobs {
     });
   }
 
-  async show(): Promise<void> {
+  /** Open; with `focus`, that job opened out, brought into view and marked (a job's pill in the conversation). */
+  async show(focus?: string): Promise<void> {
     this.el.classList.add("open");
+    if (focus) this.open.add(focus);
     // Offered only where Hermes is set up and theirs to ask (routes/hub.ts). A device is not a person: no button.
     this.hermes = await api(this.key, "GET", "/api/hub/me").then((me) => (me as { hermes?: boolean }).hermes === true, () => false);
     await this.load();
+    const row = focus ? [...this.list.querySelectorAll<HTMLElement>(".routine")].find((r) => r.dataset.id === focus) : undefined;
+    if (!row) return;
+    row.scrollIntoView({ block: "center" });
+    row.classList.add("flash");
   }
 
   hide(): void {
@@ -179,6 +185,7 @@ export class Jobs {
   private row(j: JobView): HTMLElement {
     // Only a cancelled job is dimmed: a finished one is there to be read.
     const row = el("div", `routine${j.status === "cancelled" ? " off" : ""}`);
+    row.dataset.id = j.id;
     const top = el("div", "rtop");
     top.appendChild(el("b", "", j.title));
     top.appendChild(el("span", `chip ${j.status === "done" ? "on" : "off"}`, STATUS[j.status]));

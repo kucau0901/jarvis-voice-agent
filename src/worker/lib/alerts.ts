@@ -54,6 +54,12 @@ export interface Alert {
    */
   routine?: string;
   /**
+   * The background job it is the result of (lib/jobs.ts): the app turns that
+   * job's "On it" pill in the conversation into the result, and the pill opens
+   * it in Jobs (src/app/fromRoutine.ts).
+   */
+  job?: string;
+  /**
    * Whose it is (lib/context.ts): a member's id, or none for the first
    * person's. A member's alert reaches only their screens, their phones and
    * their own Telegram chat; the household's channels (ntfy, the webhook,

@@ -204,6 +204,7 @@ console.log("\na job from start to finish");
   check("done, with summary and result", cur.status === "done" && cur.summary === "The A229 is the best buy." && cur.result === "Full comparison…", cur);
   check("usage added up", cur.usage?.input === 300 && cur.usage.output === 410);
   check("one alert: short, so all of it, summary first", h.sent.length === 1 && h.sent[0]!.title === "Done: Dashcams" && h.sent[0]!.text === "The A229 is the best buy.\n\nFull comparison…" && h.sent[0]!.source === "job", h.sent);
+  check("the alert names its job, for its pill in the conversation", h.sent[0]!.job === j.id, h.sent[0]);
   check("recorded how it was delivered", cur.deliveredBy === "push");
   check("nothing more to wake for", (await h.jobs.nextWake(T0 + 60_000)) === null);
   await h.jobs.tick(T0 + 120_000);
@@ -228,6 +229,7 @@ console.log("\nwhen it goes wrong");
   const cur = (await h.jobs.get(j.id))!;
   check("failed, with the reason", cur.status === "failed" && /rate_limit/.test(cur.error!));
   check("the user is told, quietly", h.sent[0]?.title.startsWith("Could not finish") === true && h.sent[0]!.speak === false);
+  check("…and the alert names its job too", h.sent[0]?.job === j.id, h.sent[0]);
   const h2 = harness([], { start: { error: "it could not start: 401" } });
   const j2 = (await h2.jobs.create({ task: "x" }, BY, T0)) as Job;
   await h2.jobs.tick(T0);
@@ -472,9 +474,11 @@ console.log("\nask_hermes: handing over research by voice");
   };
   const env = { HERMES_BASE_URL: "https://hermes.example", HERMES_API_KEY: "test-hermes-key", TIMEZONE: "Asia/Kuala_Lumpur", STATE: { idFromName: () => "jarvis", get: () => stub } } as never;
   const tool = baseTools(env).find((t) => t.name === "ask_hermes")!;
+  const started: { id: string; title: string; engine: string }[] = [];
   const ask = async (research: string | null) => {
     made.length = 0;
-    const said = String(await tool.run({ question: INSTRUCTION, research }, { env, grants: ["*"], signal: new AbortController().signal, progress() {}, display() {} } as never));
+    started.length = 0;
+    const said = String(await tool.run({ question: INSTRUCTION, research }, { env, grants: ["*"], signal: new AbortController().signal, progress() {}, display() {}, started: (j: { id: string; title: string; engine: string }) => started.push(j) } as never));
     // Out of the way, so the next ask is not held back by the running-jobs limit.
     for (const j of await h.jobs.list()) if (j.engine === "hermes" && j.status === "running") await h.jobs.cancel(j.id, T0);
     return { said, made: made[0] };
@@ -484,8 +488,10 @@ console.log("\nask_hermes: handing over research by voice");
   check("…and the reply names it", latest.said.includes("Home EV chargers"), latest.said);
   const dash = await ask("dashcam RM800");
   check("title words pick the newest research that has them all", dash.made?.from === "jdash", dash);
+  check("typed chat is told the job it started, for its pill", started.length === 1 && started[0]!.engine === "hermes" && started[0]!.title.startsWith("Hermes: ") && (await h.jobs.get(started[0]!.id))?.engine === "hermes", started);
   const none = await ask("solar panels");
   check("no match: nothing is started", !none.made && !(await h.jobs.list()).some((j) => j.engine === "hermes" && j.from === "jsolar"), none);
+  check("…and no job is reported", started.length === 0, started);
   check("…and the reply lists the research there is (the caller's own)", none.said.startsWith("No finished research matches 'solar panels'.") && none.said.includes('"Home EV chargers"') && none.said.includes('"Dashcams under RM800"') && !none.said.includes("Rooftop") && !none.said.includes("Heat pumps"), none.said);
   const plain = await ask(null);
   check("research: null asks Hermes as before", !!plain.made && !("from" in plain.made) && plain.made.engine === "hermes" && plain.made.title === `Hermes: ${INSTRUCTION.slice(0, 60)}` && plain.said.startsWith("Asked Hermes."), plain);
@@ -499,6 +505,23 @@ console.log("\nask_hermes: handing over research by voice");
   const schema = tool.parameters as { properties: Record<string, { type: unknown }>; required: string[]; additionalProperties: boolean };
   check("the schema stays strict: research is a string or null, and required",
     JSON.stringify(schema.properties.research?.type) === JSON.stringify(["string", "null"]) && schema.required.includes("research") && schema.required.includes("question") && schema.additionalProperties === false, schema);
+}
+
+console.log("\nstart_job: the job is reported to typed chat, for its pill");
+{
+  const h = harness();
+  const stub = { listJobs: () => h.jobs.list(), createJob: (input: Record<string, unknown>, by: unknown) => h.jobs.create(input as never, by as never, T0) };
+  const env = { TIMEZONE: "Asia/Kuala_Lumpur", STATE: { idFromName: () => "jarvis", get: () => stub } } as never;
+  const tool = baseTools(env).find((t) => t.name === "start_job")!;
+  const started: { id: string; title: string; engine: string }[] = [];
+  const run = (args: Record<string, unknown>, grants: string[]) =>
+    tool.run(args, { env, grants, signal: new AbortController().signal, progress() {}, display() {}, started: (j: { id: string; title: string; engine: string }) => started.push(j) } as never);
+  const said = String(await run({ title: "Dashcams", task: "Compare dashcams under RM800.", research: "no" }, ["*"]));
+  const made = (await h.jobs.list())[0];
+  check("started, and its id, title and engine reported", said.startsWith('Started "Dashcams"') && started.length === 1 && started[0]!.id === made?.id && started[0]!.title === "Dashcams" && started[0]!.engine === "jarvis", { said, started });
+  started.length = 0;
+  const refused = String(await run({ title: "Deep", task: "Research heat pumps in depth.", research: "yes" }, ["ask"]));
+  check("not started: nothing reported", refused.startsWith("Not started") && started.length === 0, { refused, started });
 }
 
 console.log("\nreading the jobs back");

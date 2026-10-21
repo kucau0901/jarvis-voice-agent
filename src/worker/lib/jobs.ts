@@ -850,21 +850,24 @@ export class Jobs {
       done.status = "done";
       done.summary = summary;
       done.result = result.slice(0, MAX_RESULT);
-      alert = makeAlert(
-        {
-          title: j.engine === "hermes" ? "Hermes answered" : j.engine === "research" ? `Research done: ${j.title}` : `Done: ${j.title}`,
-          text: whole.length <= ALERT_WHOLE ? whole : `${summary}\n\nThe full result is in Jobs.`,
-        },
-        "job",
-        now,
-        personOfWho(j.createdBy),
-      )!;
+      alert = {
+        ...makeAlert(
+          {
+            title: j.engine === "hermes" ? "Hermes answered" : j.engine === "research" ? `Research done: ${j.title}` : `Done: ${j.title}`,
+            text: whole.length <= ALERT_WHOLE ? whole : `${summary}\n\nThe full result is in Jobs.`,
+          },
+          "job",
+          now,
+          personOfWho(j.createdBy),
+        )!,
+        job: j.id,
+      };
     } else {
       done.status = "failed";
       done.error = "error" in out ? out.error.slice(0, 500) : "it finished without an answer";
       // Hermes past the wait has not failed: it is still working, and says so itself when it is done.
       const title = "late" in out && out.late ? `Still working: ${j.title}` : `Could not finish: ${j.title}`;
-      alert = makeAlert({ title, text: done.error, speak: false }, "job", now, personOfWho(j.createdBy))!;
+      alert = { ...makeAlert({ title, text: done.error, speak: false }, "job", now, personOfWho(j.createdBy))!, job: j.id };
     }
     await this.save(done); // before delivering: a retried alarm must not tell the user twice
     const d = await deps.deliver(alert).catch(() => null);

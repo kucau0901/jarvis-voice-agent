@@ -24,7 +24,7 @@ import { HUB_METHODS, HubHost, liveSessionIds } from "./lib/hub.ts";
 import { Relays, type Relay, type RelayDeps, type RelayKind } from "./lib/relays.ts";
 import { Chat, dmId, type ChatMessage } from "./lib/chat.ts";
 import { Panels, type PanelItem, type Reading } from "./lib/panels.ts";
-import { Conversation, routineSaid, type Said } from "./lib/conversation.ts";
+import { Conversation, jobSaid, routineSaid, type Said } from "./lib/conversation.ts";
 import { OWNER, personOfWho, withPerson } from "./lib/context.ts";
 import { lookAtPage } from "./lib/page-look.ts";
 import { dayOf } from "./lib/usage.ts";
@@ -76,7 +76,13 @@ export class JarvisState extends DurableObject<Env> {
       const env = await this.localEnv();
       // Each job runs as whoever started it: their memory, their mail (lib/context.ts).
       // Its storage, for steps run on the owner's ChatGPT plan (routes/jobs.ts).
-      return jobEngine(env, (alert) => deliver(env, this, alert), (job) => this.personEnv(env, job.createdBy), ctx.storage);
+      // What a job comes back with is in its starter's conversation too, as a routine's words are.
+      const deliverJob = async (alert: Alert) => {
+        const said = jobSaid(alert);
+        if (said) await this.conversation.add(alert.for ?? OWNER, [said], Date.now());
+        return deliver(env, this, alert);
+      };
+      return jobEngine(env, deliverJob, (job) => this.personEnv(env, job.createdBy), ctx.storage);
     });
     // Screens ping to keep their socket open through proxies. The runtime
     // answers these itself, so a hibernating object is not woken to say pong.

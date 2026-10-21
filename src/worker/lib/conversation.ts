@@ -31,6 +31,8 @@ export interface Said {
   replyTo?: string;
   /** The routine that said it: its id, to open it, and its name. Only the server says this. */
   routine?: { id: string; name: string };
+  /** The background job it is the result of: its id, to open it in Jobs, and its alert's title. Only the server says this. */
+  job?: { id: string; name: string };
 }
 
 export const KEEP = 200;
@@ -77,6 +79,11 @@ export function trimmed(log: readonly Said[], now: number): Said[] {
 /** What a routine said (lib/scheduler.ts), as kept in its maker's conversation; null for any other alert. */
 export function routineSaid(a: Pick<Alert, "id" | "at" | "title" | "text" | "routine">): Said | null {
   return a.routine ? { id: a.id, at: a.at, role: "assistant", text: a.text.slice(0, MAX_TEXT), routine: { id: a.routine, name: a.title } } : null;
+}
+
+/** What a background job came back with (lib/jobs.ts), as kept in its starter's conversation; null for any other alert. */
+export function jobSaid(a: Pick<Alert, "id" | "at" | "title" | "text" | "job">): Said | null {
+  return a.job ? { id: a.id, at: a.at, role: "assistant", text: a.text.slice(0, MAX_TEXT), job: { id: a.job, name: a.title } } : null;
 }
 
 const wordsOf = (text: string) => text.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean);

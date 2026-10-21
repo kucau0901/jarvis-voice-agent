@@ -469,6 +469,7 @@ export async function runCalls(
           ...base,
           progress: (t) => sse.send({ type: "progress", text: t, name: call.name, id: call.call_id }),
           display: (payload) => sse.send({ type: "display", ...payload }),
+          started: (job) => sse.send({ type: "job", ...job }),
         }, sse)
         : `No such tool: ${call.name}`;
 

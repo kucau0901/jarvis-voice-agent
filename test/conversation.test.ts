@@ -3,7 +3,7 @@
 // what look_back finds in it (tools/conversation.ts), the route
 // (routes/conversation.ts), and what the app tells the model of it
 // (src/app/history.ts).
-import { asSaid, Conversation, FOUND, KEEP, KEEP_MS, lookBack, MAX_CHARS, MAX_TEXT, routineSaid, trimmed, type Said } from "../src/worker/lib/conversation.ts";
+import { asSaid, Conversation, FOUND, jobSaid, KEEP, KEEP_MS, lookBack, MAX_CHARS, MAX_TEXT, routineSaid, trimmed, type Said } from "../src/worker/lib/conversation.ts";
 import { lookBackTool } from "../src/worker/tools/conversation.ts";
 import { handleConversation } from "../src/worker/routes/conversation.ts";
 import { History } from "../src/app/history.ts";
@@ -42,6 +42,8 @@ console.log("what a screen may send");
   check("an answer is kept no longer than MAX_TEXT, with no files or reply of its own", answer?.text.length === MAX_TEXT && !answer?.files && !answer?.replyTo, answer);
   const forged = asSaid({ id: "c_abc123", role: "assistant", text: "Your mail: nothing new", routine: { id: "rt_x", name: "Mail check" } }, 1);
   check("only the server says a routine said it", forged !== null && !("routine" in forged), forged);
+  const forgedJob = asSaid({ id: "c_abc124", role: "assistant", text: "Done", job: { id: "jabc123def", name: "Done: x" } }, 1);
+  check("only the server says a job's result is one", forgedJob !== null && !("job" in forgedJob), forgedJob);
 }
 
 console.log("\nwhat is kept");
@@ -75,6 +77,14 @@ console.log("\nwhat a routine said");
   check("is kept as Jarvis's, under the routine's name, by the alert's id",
     JSON.stringify(s) === JSON.stringify({ id: "a_m1x2", at: 50, role: "assistant", text: "Two new emails from the school.", routine: { id: "rt_mail", name: "Mail check" } }), s);
   check("any other alert is not", routineSaid({ id: "a_n1", at: 50, title: "Jarvis", text: "a note" }) === null);
+}
+
+console.log("\nwhat a background job came back with");
+{
+  const s = jobSaid({ id: "a_j1x2", at: 50, title: "Done: Dashcams", text: "The A229.", job: "jabc123def" });
+  check("is kept as Jarvis's, under the result's name, with its job, by the alert's id",
+    JSON.stringify(s) === JSON.stringify({ id: "a_j1x2", at: 50, role: "assistant", text: "The A229.", job: { id: "jabc123def", name: "Done: Dashcams" } }), s);
+  check("any other alert is not", jobSaid({ id: "a_n1", at: 50, title: "Jarvis", text: "a note" }) === null);
 }
 
 console.log("\nlooking back");

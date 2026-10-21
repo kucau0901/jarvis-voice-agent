@@ -38,6 +38,8 @@ export interface ToolContext {
   memory: MemoryStore;
   /** Put something on the car's screen. Separate from what Jarvis says aloud. */
   display(payload: Record<string, unknown>): void;
+  /** A background job was started (start_job, ask_hermes): typed chat shows it as a pill until its result comes (src/app/fromRoutine.ts). */
+  started?(job: { id: string; title: string; engine: string }): void;
   /**
    * What the caller may reach. A routine made by voice keeps these, so it can
    * never later do more than the person or device that asked for it.
@@ -170,6 +172,7 @@ const askHermes: Tool = {
       { who: voiceWho(ctx.env), grants: ctx.grants },
     );
     if (typeof j === "string") return `Hermes was not asked: ${j}.`;
+    ctx.started?.({ id: j.id, title: j.title, engine: j.engine });
     const what = from ? `Asked Hermes, with the whole report "${from.title}".` : "Asked Hermes.";
     return `${what} It usually takes one to four minutes; the answer will reach the user as a message when it is ready. Tell them so, briefly.`;
   },

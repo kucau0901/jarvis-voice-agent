@@ -26,6 +26,8 @@ export interface Alert {
   convo?: string;
   /** The routine that said it: shown under its name in the conversation (fromRoutine.ts). */
   routine?: string;
+  /** The background job it is the result of: its pill in the conversation takes it (fromRoutine.ts). */
+  job?: string;
 }
 
 /** What this screen is called in "shown on …" and in the list of devices. */

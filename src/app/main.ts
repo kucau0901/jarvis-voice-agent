@@ -21,7 +21,7 @@ import { doing, said as stepSaid } from "./steps";
 import { keyboardSpace, watchKeyboard } from "./keyboard";
 import { Attachments, type Attached } from "./attach";
 import { Reply } from "./reply";
-import { fromRoutine, type RoutineSaid } from "./fromRoutine";
+import { fromJob, fromRoutine, jobStarted, type JobSaid, type RoutineSaid } from "./fromRoutine";
 import { asked, clearKept, keep, kept, restore, saidId } from "./conversation";
 import { inCar } from "./client";
 import { arm, richText } from "./ui/util";
@@ -588,10 +588,20 @@ function routineSaid(a: RoutineSaid): boolean {
   return true;
 }
 
+/** What a job came back with: its pill, moved down from where it was started on this screen, then its words (fromRoutine.ts). */
+function jobSaid(a: JobSaid): boolean {
+  const label = fromJob(a, openJob);
+  if (!label) return false;
+  els.transcript.appendChild(label);
+  addRow("jarvis", a.text);
+  return true;
+}
+
 function onAlert(a: Alert) {
   const card = showAlert(a);
-  // A routine's words go into the conversation under its name; anything else while typing, as well as on the card.
+  // A routine's or a job's words go into the conversation under its name; anything else while typing, as well as on the card.
   if (a.routine) routineSaid({ ...a, routine: a.routine });
+  else if (a.job) jobSaid({ ...a, job: a.job });
   else if (mode === "type") addRow("jarvis", a.title !== "Jarvis" ? `${a.title}: ${a.text}` : a.text);
   // Into the conversation either way: "yes, do that" after Hermes asks a
   // question in an alert must have the question to refer to.
@@ -623,7 +633,7 @@ if (key) {
   live.start();
   void syncPush(key);
   // The conversation kept from before, routines' words and all (conversation.ts).
-  void kept(key).then((all) => restore(all, { row: (who, text) => addRow(who, text), routine: routineSaid }, history)).catch(() => {});
+  void kept(key).then((all) => restore(all, { row: (who, text) => addRow(who, text), routine: routineSaid, job: jobSaid }, history)).catch(() => {});
 }
 
 /** A tapped notification: it carries only an id, so the text is fetched. */
@@ -1010,11 +1020,13 @@ $("openMemory").addEventListener("click", () => {
 });
 
 let jobs: Jobs | null = null;
-$("openJobs").addEventListener("click", () => {
+/** Jobs, with one of them opened out when a job's pill in the conversation was pressed. */
+function openJob(id?: string) {
   if (!key) { requireKey(); return; }
   jobs ??= new Jobs(key);
-  void jobs.show();
-});
+  void jobs.show(id);
+}
+$("openJobs").addEventListener("click", () => openJob());
 
 let routines: Routines | null = null;
 /** Routines, with one of them in view when a routine's pill in the conversation was pressed. */
@@ -1304,6 +1316,11 @@ async function sendTyped() {
     opened: () => row.appendChild(Object.assign(document.createElement("small"), { className: "seen", textContent: "Read" })),
     tool: (ev) => work.tool(ev),
     progress: (t, call) => work.note(t, call),
+    // Handed to a background job: its pill at once, which the result takes when it comes (fromRoutine.ts).
+    job: (j) => {
+      els.transcript.insertBefore(jobStarted(j, openJob), els.transcript.querySelector(".row.working"));
+      els.transcript.scrollTop = els.transcript.scrollHeight;
+    },
     display: (payload) => {
       stage ??= new Stage(key);
       void stage.show(payload as unknown as DisplayPayload);
