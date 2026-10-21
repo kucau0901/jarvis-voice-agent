@@ -409,6 +409,9 @@ const COMMANDS: Record<string, { slug: string; param?: "temperature" | "percent"
   navigate_to: { slug: "share", param: "value" },
 };
 
+/** Commands another command undoes, or that change nothing that stays: what a job may propose as reversible. */
+const UNDONE = new Set(["lock", "start_climate", "stop_climate", "set_temperature", "start_charging", "stop_charging", "set_charge_limit", "close_windows", "flash_lights"]);
+
 /**
  * `share` also accepts a video URL, so anything that can write text the user
  * later asks about could otherwise put arbitrary content on the car's screen.
@@ -472,6 +475,15 @@ export const carCommand: Tool = {
     },
     required: ["command", "value", "temperature", "percent", "car"],
     additionalProperties: false,
+  },
+  // Proposed by a job (lib/proposals.ts): what another command puts back is reversible; what opens, sounds or shows is not.
+  propose(args) {
+    const c = typeof args.command === "string" ? args.command : "";
+    if (!(c in COMMANDS)) return null;
+    const which = typeof args.car === "string" && args.car.trim() ? ` (${args.car.trim()})` : "";
+    const detail = c === "set_temperature" ? ` to ${args.temperature}°C` : c === "set_charge_limit" ? ` to ${args.percent}%` : c === "navigate_to" ? `: ${String(args.value ?? "").slice(0, 160)}` : "";
+    const says = `Car${which}: ${c.replace(/_/g, " ")}${detail}`;
+    return UNDONE.has(c) ? { risk: "reversible", says, category: `car_command:${c}` } : { risk: "irreversible", says };
   },
   async run(args, ctx) {
     const picked = pickCar(ctx.env, args.car);

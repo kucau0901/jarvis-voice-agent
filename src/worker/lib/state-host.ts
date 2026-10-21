@@ -11,6 +11,7 @@ import type { StoredImage } from "./images.ts";
 import type { Specialty } from "./specialties.ts";
 import type { StoredPage } from "./pages.ts";
 import type { Episode } from "./episodes.ts";
+import type { Proposal, ProposalInput } from "./proposals.ts";
 import { addToDay, budgetStep, emptyDay, report, spentOf, type DayTotals, type UsageEntry, type UsageReport } from "./usage.ts";
 import { fromOthers, keep, type SharedTurn } from "./shared.ts";
 import { personOfWho } from "./context.ts";
@@ -641,6 +642,16 @@ interface RecallApi {
   recallFor(person: string, ask: string): Promise<{ specialty: Specialty | null; past: Episode[] }>;
 }
 
+/** What jobs propose for a person's tap (lib/proposals.ts; routes/proposals.ts). */
+interface ProposalApi {
+  proposalsOf(person: string, now: number): Promise<Proposal[]>;
+  proposalGet(person: string, id: string, now: number): Promise<Proposal | null>;
+  proposalAdd(input: ProposalInput, now: number): Promise<Proposal | string>;
+  proposalClaim(person: string, id: string, now: number): Promise<Proposal | string>;
+  proposalDecline(person: string, id: string, now: number): Promise<Proposal | string>;
+  proposalFinish(person: string, id: string, outcome: { ok: boolean; text: string }, now: number): Promise<Proposal | null>;
+}
+
 /** The owner's ChatGPT plan, which model calls use first (lib/chatgpt-plan.ts; state.ts). */
 interface PlanApi {
   chatgptStatus(now: number): Promise<PlanStatus>;
@@ -702,4 +713,5 @@ export type StateApi = Pick<
   ImageApi &
   RecallApi &
   PageApi &
+  ProposalApi &
   PlanApi;

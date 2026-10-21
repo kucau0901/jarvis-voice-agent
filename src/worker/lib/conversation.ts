@@ -39,6 +39,8 @@ export interface Said {
   links?: { url: string; title: string }[];
   /** A page the answer made (lib/pages.ts), drawn as a card under it (src/app/pageCard.ts). */
   page?: { id: string; title: string };
+  /** What the job it is the result of proposed (lib/proposals.ts): their cards, drawn under it. Only the server says this. */
+  proposals?: string[];
 }
 
 export const KEEP = 200;
@@ -114,8 +116,10 @@ export function routineSaid(a: Pick<Alert, "id" | "at" | "title" | "text" | "rou
 }
 
 /** What a background job came back with (lib/jobs.ts), as kept in its starter's conversation; null for any other alert. */
-export function jobSaid(a: Pick<Alert, "id" | "at" | "title" | "text" | "job">): Said | null {
-  return a.job ? { id: a.id, at: a.at, role: "assistant", text: a.text.slice(0, MAX_TEXT), job: { id: a.job, name: a.title } } : null;
+export function jobSaid(a: Pick<Alert, "id" | "at" | "title" | "text" | "job" | "proposals">): Said | null {
+  if (!a.job) return null;
+  const proposals = (a.proposals ?? []).map((p) => p.id);
+  return { id: a.id, at: a.at, role: "assistant", text: a.text.slice(0, MAX_TEXT), job: { id: a.job, name: a.title }, ...(proposals.length ? { proposals } : {}) };
 }
 
 const wordsOf = (text: string) => text.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean);

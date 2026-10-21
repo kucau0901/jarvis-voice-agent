@@ -85,6 +85,9 @@ console.log("\nwhat a background job came back with");
   check("is kept as Jarvis's, under the result's name, with its job, by the alert's id",
     JSON.stringify(s) === JSON.stringify({ id: "a_j1x2", at: 50, role: "assistant", text: "The A229.", job: { id: "jabc123def", name: "Done: Dashcams" } }), s);
   check("any other alert is not", jobSaid({ id: "a_n1", at: 50, title: "Jarvis", text: "a note" }) === null);
+  const proposed = jobSaid({ id: "a_j2", at: 50, title: "Done: Tidy", text: "SUMMARY: tidied.", job: "jabc123def", proposals: [{ id: "a0123456789abcdefghjk", risk: "reversible", says: "Car: lock" }] });
+  check("what the job proposed goes with it, by id, for its cards", JSON.stringify(proposed?.proposals) === JSON.stringify(["a0123456789abcdefghjk"]) && !("proposals" in s!), proposed);
+  check("a screen cannot say a message carries proposals", !("proposals" in (asSaid({ id: "x1", at: 1, role: "assistant", text: "hi", proposals: ["a0123456789abcdefghjk"] }, 1) ?? {})));
 }
 
 console.log("\nlooking back");

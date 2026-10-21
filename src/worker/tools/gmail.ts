@@ -781,6 +781,14 @@ export const mailManage: Tool = {
     required: ["message_id", "action"],
     additionalProperties: false,
   },
+  // Proposed by a job (lib/proposals.ts): each action is undone by another, but trash always asks.
+  propose(args) {
+    const action = typeof args.action === "string" && ACTIONS[args.action] ? args.action : "";
+    const id = typeof args.message_id === "string" ? args.message_id.trim() : "";
+    if (!action || !MESSAGE_ID.test(id)) return null;
+    const says = `Mail: ${action.replace(/_/g, " ")} message ${id}`;
+    return action === "trash" ? { risk: "irreversible", says } : { risk: "reversible", says, category: `mail_manage:${action}` };
+  },
   async run(args, ctx) {
     return (await guard(async () => {
       const cfg = cfgOf(ctx);

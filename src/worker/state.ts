@@ -31,6 +31,7 @@ import { Images, type StoredImage } from "./lib/images.ts";
 import { Specialties } from "./lib/specialties.ts";
 import { Pages, type StoredPage } from "./lib/pages.ts";
 import { Episodes, episodeOfJob, type Episode } from "./lib/episodes.ts";
+import { Proposals, type ProposalInput } from "./lib/proposals.ts";
 import { OWNER, personOfWho, withPerson } from "./lib/context.ts";
 import { lookAtPage } from "./lib/page-look.ts";
 import { budgetOf, budgetSays, costOf, dayOf } from "./lib/usage.ts";
@@ -69,6 +70,7 @@ export class JarvisState extends DurableObject<Env> {
   private specialties: Specialties;
   private pages: Pages;
   private episodes: Episodes;
+  private proposals: Proposals;
   /** The owner's ChatGPT plan, which model calls use first (lib/chatgpt-plan.ts). */
   private plan: ChatGptPlan;
 
@@ -84,6 +86,7 @@ export class JarvisState extends DurableObject<Env> {
     this.specialties = new Specialties(ctx.storage);
     this.pages = new Pages(ctx.storage);
     this.episodes = new Episodes(ctx.storage);
+    this.proposals = new Proposals(ctx.storage);
     this.plan = new ChatGptPlan(ctx.storage, (input, init) => fetch(input, init));
     this.relays = new Relays(ctx.storage, () => this.relayDeps());
     this.jobs = new Jobs(ctx.storage, async () => {
@@ -92,9 +95,11 @@ export class JarvisState extends DurableObject<Env> {
       // Its storage, for steps run on the owner's ChatGPT plan (routes/jobs.ts).
       // What a job comes back with is in its starter's conversation too, as a routine's words are.
       // Not for someone who has left meanwhile: their conversation went with them (forgetMember).
-      const deliverJob = async (alert: Alert) => {
+      const deliverJob = async (given: Alert) => {
+        const who = given.for ?? OWNER;
+        // What the job proposed goes with its result: one alert, its cards in the conversation (lib/proposals.ts).
+        const alert = await this.proposals.attach(given, who, Date.now());
         const said = jobSaid(alert);
-        const who = alert.for ?? OWNER;
         if (said && (who === OWNER || (await this.people.personView(who).catch(() => null))?.space)) await this.conversation.add(who, [said], Date.now());
         return deliver(env, this, alert);
       };
@@ -277,6 +282,7 @@ export class JarvisState extends DurableObject<Env> {
     await this.pages.clear(person);
     await this.specialties.clear(person);
     await this.episodes.clear(person);
+    await this.proposals.forget(person);
     await this.rearm();
   }
 
@@ -633,6 +639,30 @@ export class JarvisState extends DurableObject<Env> {
     return this.episodes.forget(person, id);
   }
 
+  proposalsOf(person: string, now: number) {
+    return this.proposals.list(person, now);
+  }
+
+  proposalGet(person: string, id: string, now: number) {
+    return this.proposals.get(person, id, now);
+  }
+
+  proposalAdd(input: ProposalInput, now: number) {
+    return this.proposals.add(input, now);
+  }
+
+  proposalClaim(person: string, id: string, now: number) {
+    return this.proposals.claim(person, id, now);
+  }
+
+  proposalDecline(person: string, id: string, now: number) {
+    return this.proposals.decline(person, id, now);
+  }
+
+  proposalFinish(person: string, id: string, outcome: { ok: boolean; text: string }, now: number) {
+    return this.proposals.finish(person, id, outcome, now);
+  }
+
   /** What the router is given beside the question (lib/router.ts): the specialty it asks for, and past attempts like it. One call, so the question waits on one. */
   async recallFor(person: string, ask: string) {
     const [specialty, past] = await Promise.all([this.specialties.match(person, ask), this.episodes.match(person, ask, Date.now())]);
@@ -706,14 +736,18 @@ export class JarvisState extends DurableObject<Env> {
     return j;
   }
 
+  // A job cancelled or removed: what it proposed is not to be done (lib/proposals.ts).
   async cancelJob(id: string) {
     const j = await this.jobs.cancel(id);
+    if (typeof j !== "string") await this.proposals.withdrawJob(personOfWho(j.createdBy), id, Date.now());
     await this.rearm();
     return j;
   }
 
   async removeJob(id: string) {
+    const j = await this.jobs.get(id);
     const ok = await this.jobs.remove(id);
+    if (ok && j) await this.proposals.withdrawJob(personOfWho(j.createdBy), id, Date.now());
     await this.rearm();
     return ok;
   }

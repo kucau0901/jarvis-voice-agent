@@ -158,7 +158,7 @@ const FORBIDDEN_SERVICES = [
 ];
 
 /** Best-effort extraction of "domain.service" from an arbitrary tool payload. */
-function calledService(args: Record<string, unknown>): string | null {
+export function calledService(args: Record<string, unknown>): string | null {
   const direct = typeof args.service === "string" ? args.service : null;
   if (direct) {
     return direct.includes(".") && typeof args.domain === "string"

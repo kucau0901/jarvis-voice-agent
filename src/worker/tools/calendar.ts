@@ -260,6 +260,15 @@ export const calendarAdd: Tool = {
     required: ["title", "start", "duration_minutes", "location"],
     additionalProperties: false,
   },
+  // Proposed by a job (lib/proposals.ts): an event in the user's own calendar, which they can delete.
+  propose: (args) =>
+    typeof args.title === "string" && typeof args.start === "string"
+      ? {
+          risk: "reversible",
+          says: `Calendar: “${args.title.slice(0, 120)}”, ${args.start}, ${typeof args.duration_minutes === "number" ? args.duration_minutes : 60} min${typeof args.location === "string" && args.location ? `, at ${args.location.slice(0, 120)}` : ""}`,
+          category: "calendar_add",
+        }
+      : null,
   async run(args, ctx) {
     const tz = localeOf(ctx.env).timeZone;
     return (await guard(async () => {

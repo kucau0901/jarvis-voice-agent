@@ -329,6 +329,29 @@ function attachedSaid(opts: RunOptions): string {
  * reading tools only, as a background job has (lib/jobs.ts jobTool). Its
  * words. For Home (routes/panels.ts) and the alarm (lib/panels.ts refresh).
  */
+/**
+ * One of a person's tools, run outside any question, as the router would
+ * offer it to them now: a Home tile's button (routes/panels.ts), an approved
+ * proposal (routes/proposals.ts). Null when it is not theirs to use now.
+ * Errors are the caller's: a tile shows them, a proposal records them.
+ */
+export async function runTool(env: Env, grants: readonly Grant[], name: string, args: Record<string, unknown>, signal: AbortSignal): Promise<ToolOutput | null> {
+  let tool = baseTools(env, grants).find((t) => t.name === name);
+  const sessions = mcpSessions();
+  try {
+    if (!tool && name.includes("__") && allows(grants, "home")) tool = (await mcpTools(env, sessions)).find((t) => t.name === name);
+    if (!tool) return null;
+    // As the router does: a tool that needs no memory still runs when it cannot be loaded.
+    const memory = memoryFor(env, grants);
+    await memory.load().catch((e) => console.warn(`${name}: memory unavailable:`, e instanceof Error ? e.message : String(e)));
+    const out = await tool.run(args, { env, signal, progress: () => {}, display: () => {}, memory, grants });
+    await memory.save().catch((e) => console.warn(`${name}: memory not saved:`, e instanceof Error ? e.message : String(e)));
+    return out;
+  } finally {
+    await sessions.close();
+  }
+}
+
 export async function lookUp(env: Env, text: string, grants: readonly Grant[], signal: AbortSignal): Promise<string> {
   const sink = new Collector();
   await run(env, [{ role: "user", text }], sink, signal, grants, { surface: "chat", assist: true, toolFilter: jobTool });

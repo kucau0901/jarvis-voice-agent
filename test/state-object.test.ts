@@ -168,6 +168,23 @@ console.log("\nsigning out closes that sign-in's open screens, and no others");
   check("one for a live sign-in is accepted, tagged with it", (await open("x_live")) === "accepted" && accepted.at(-1)?.join() === "u_sara,s:x_live", accepted);
 }
 
+console.log("\nproposals, through the object (lib/proposals.ts)");
+{
+  const now = Date.now();
+  const filed = (person: string, job: string) =>
+    jarvis.proposalAdd({ who: person, person, from: { kind: "job", id: job, title: "x" }, action: { tool: "car_command", args: { command: "lock" } }, weighed: { risk: "reversible", says: "Car: lock", category: "car_command:lock" }, grants: ["*"] }, now);
+  const ana = await filed("u_ana", "j_a1");
+  check("filed, and listed as its person's only", typeof ana !== "string" && (await jarvis.proposalsOf("u_ana", now)).length === 1 && (await jarvis.proposalsOf("u_ben", now)).length === 0);
+  check("approved only as its own person", typeof ana !== "string" && (await jarvis.proposalClaim("u_ben", ana.id, now)) === "No such proposal." && typeof (await jarvis.proposalClaim("u_ana", ana.id, now)) !== "string");
+  check("finished as its own person", typeof ana !== "string" && (await jarvis.proposalFinish("u_ana", ana.id, { ok: true, text: "Locked." }, now))?.state === "done");
+  const job = await jarvis.createJob({ title: "Tidy", task: "Tidy the car up after the trip.", engine: "jarvis" }, { who: "u_ana", grants: ["*"] });
+  const waiting = typeof job !== "string" ? await filed("u_ana", job.id) : "no job";
+  if (typeof job !== "string") await jarvis.cancelJob(job.id);
+  check("its job cancelled: withdrawn", typeof waiting !== "string" && (await jarvis.proposalGet("u_ana", waiting.id, now))?.state === "withdrawn", waiting);
+  await jarvis.forgetMember("u_ana");
+  check("someone who left: none of theirs kept", (await jarvis.proposalsOf("u_ana", now)).length === 0);
+}
+
 console.log("\nevery pass-through to StateHost forwards what it is given");
 {
   /** The parameter names in a method's source: after type stripping, `a, b = x(), c` and the like. */

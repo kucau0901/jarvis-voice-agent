@@ -1,5 +1,6 @@
 import type { Env } from "../types.ts";
 import type { DraftCard } from "../lib/mail-draft.ts";
+import type { Weighed } from "../lib/proposals.ts";
 import type { MemoryStore } from "../lib/memory.ts";
 import { allows, type Grant, type Scope } from "../lib/scopes.ts";
 import * as hermes from "./hermes.ts";
@@ -103,6 +104,13 @@ export interface Tool {
    * changing what it means. The MCP server validates its own arguments anyway.
    */
   strict?: boolean;
+  /**
+   * How a background job may propose this call for the user's tap
+   * (lib/proposals.ts): how risky it is, worked out from its arguments, and
+   * what it does in words; null when these arguments cannot be proposed.
+   * Without it, a job is never handed the tool. Not sent to the model.
+   */
+  propose?(args: Record<string, unknown>): Weighed | null;
   run(args: Record<string, unknown>, ctx: ToolContext): Promise<ToolOutput>;
 }
 
