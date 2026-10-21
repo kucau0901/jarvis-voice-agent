@@ -1019,7 +1019,25 @@
   #home .hmenu button::before { flex: none; width: 18px; height: 18px; }
   #home .hmenu button:hover { background: var(--wash); }
   #home .hmenu .hreload { --icon: var(--i-refresh); }
+  #home .hmenu .hask { --icon: var(--i-reply); }
+  #home .hmenu .habout { --icon: var(--i-clock); }
   #home .hmenu .hremove { --icon: var(--i-trash); color: var(--danger); }
+  /* More info (ui/Home.ts infoOf): how often each thing on a panel is read, from where, when last and when next. */
+  #home .hinfo { position: relative; display: grid; gap: 8px; margin: 0 0 12px; padding: 12px 52px 12px 14px; border-radius: 16px;
+    background: var(--wash); color: var(--dim); font-size: 13px; line-height: 1.45; }
+  #home .hinfo p { margin: 0; }
+  #home .hinfo b { color: var(--fg); font-weight: 500; }
+  #home .hinfo a { color: var(--accent-ink); }
+  #home .hinfox { position: absolute; top: 4px; right: 4px; display: grid; place-items: center; width: 44px; height: 44px; padding: 0;
+    border: 0; border-radius: 50%; background: none; color: var(--dim); cursor: pointer; }
+  #home .hinfox::before { content: ""; width: 16px; height: 16px; background: currentColor;
+    -webkit-mask: var(--i-close) center / contain no-repeat; mask: var(--i-close) center / contain no-repeat; }
+  /* A panel in the making (ui/Home.ts building): its tiles breathing until the panel itself takes its place, as Hark's do. */
+  #home .hsketch { pointer-events: none; }
+  #home .hsketch h3 { flex: 1; margin: 0; font-size: 16px; font-weight: 500; color: var(--dim); }
+  #home .hsketch .htile { min-height: 84px; animation: hsketch 1.4s ease-in-out infinite; }
+  @keyframes hsketch { 50% { opacity: .45; } }
+  @media (prefers-reduced-motion: reduce) { #home .hsketch .htile { animation: none; } }
   #home .hmenu .hremove.armed { background: var(--danger); color: var(--on-accent); }
   #home .hgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(152px, 1fr)); grid-auto-flow: row dense; gap: 10px; }
   #home .hmember { --tint: var(--warn); --on-tint: var(--fg); }

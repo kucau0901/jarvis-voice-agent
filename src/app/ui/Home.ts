@@ -1,5 +1,5 @@
 import { api } from "../key";
-import type { PanelRow, PanelView, PanelsReply } from "../../shared/panels";
+import { everyWords, type PanelRow, type PanelView, type PanelsReply } from "../../shared/panels";
 import { arm, button, el } from "./util";
 import { moreBody, slider, typed, type SetAlert } from "./HomeMore";
 import { lineChart, mapImage } from "./HomeChart";
@@ -34,6 +34,8 @@ const TOLD_MS = 120_000;
 const READ_MS = 60_000;
 /** How soon to look again when another screen is already looking a reading up. */
 const SOON_MS = 20_000;
+/** A card in the making never outstays a panel_set that never said it was done (a question stopped, a dropped line). */
+const MAKING_MS = 90_000;
 
 /** A tile's reading as the server sends it (GET /api/hub/panels/read). */
 type Shown = {
@@ -44,6 +46,8 @@ type Shown = {
   chart?: { title: string; points: { x: string; y: number }[] };
   map?: { lat: number; lng: number };
   at?: number;
+  /** Where a reading Jarvis looked up came from: an https page, for More info. */
+  source?: string;
   stale?: boolean;
   pending?: boolean;
   failed?: boolean;
@@ -111,9 +115,20 @@ export class Home {
   private told = new Map<string, { text: string; until: number }>();
   /** What a tile's buttons last answered, by tile, until when: drawing again 1.5 s after a press would take it away. */
   private replied = new Map<string, { text: string; why: boolean; until: number }>();
+  /** Panels whose More info is open, by id: it stays open when the panels are drawn again. */
+  private info = new Set<string>();
+  /** When the panels were last read, for More info. */
+  private drawn = 0;
+  /** panel_set runs under way for a question asked on this screen: while any is, a card in the making. */
+  private making = 0;
+  private makingTimer = 0;
+  private sketched: HTMLElement | null = null;
+  /** Chat, with words typed in its box to finish: a panel's Reply (main.ts). */
+  private chat: (text: string) => void;
 
-  constructor(key: string) {
+  constructor(key: string, chat: (text: string) => void) {
     this.key = key;
+    this.chat = chat;
     this.root = document.getElementById("home")!;
     document.addEventListener("visibilitychange", () => {
       if (!document.hidden && this.timer) void this.load();
@@ -124,7 +139,7 @@ export class Home {
     // The page's width decides how many columns there are, and how many tiles fit a row, so which cards are tall enough to fold.
     new ResizeObserver(() => {
       const wall = this.root.querySelector<HTMLElement>(":scope > .hwall");
-      if (wall && wall.dataset.cols !== String(columnsFor(wall.clientWidth))) layOut(wall, this.cards);
+      if (wall && wall.dataset.cols !== String(columnsFor(wall.clientWidth))) layOut(wall, this.laid());
       this.measure();
     }).observe(this.root);
     document.addEventListener("keydown", (e) => {
@@ -176,14 +191,15 @@ export class Home {
   }
 
   private render(r: PanelsReply): void {
-    if (!r.panels.length) return this.root.replaceChildren(...this.empty(r));
+    this.drawn = Date.now();
+    if (!r.panels.length && !this.making) return this.root.replaceChildren(...this.empty(r));
     const shut = folded();
     const wall = el("div", "hwall");
     this.root.replaceChildren(wall);
     this.cards = r.panels.map((p) => this.card(p, shut.has(p.id)));
     const panels: Moving = {
       items: this.cards,
-      lay: () => layOut(wall, this.cards),
+      lay: () => layOut(wall, this.laid()),
       page: this.root,
       moved: () => void this.order({ order: this.cards.map((c) => c.dataset.panel!) }),
     };
@@ -297,10 +313,96 @@ export class Home {
     extra.appendChild(lineChart(h.points.map((p) => p.v), h.unit ? ` ${h.unit}` : "", "Last 24 hours", clock(h.points[0]!.t), "now"));
   }
 
+  /**
+   * Jarvis making or changing a panel (panel_set's tool events, for a question
+   * asked on this screen, main.ts): a card in the making meanwhile, then the
+   * panels read again so the new one takes its place.
+   */
+  building(on: boolean): void {
+    this.making = Math.max(0, this.making + (on ? 1 : -1));
+    clearTimeout(this.makingTimer);
+    if (this.making) {
+      this.makingTimer = setTimeout(() => {
+        this.making = 0;
+        if (this.timer) void this.load();
+      }, MAKING_MS);
+    }
+    const wall = this.root.querySelector<HTMLElement>(":scope > .hwall");
+    // Laid out at once where there are cards; with none yet, or once done, the panels are read again.
+    if (on && wall) layOut(wall, this.laid());
+    else if (this.timer) void this.load();
+  }
+
+  /** The cards as the wall lays them out: a card in the making last, never one to drag or put in order. */
+  private laid(): HTMLElement[] {
+    return this.making ? [...this.cards, this.sketch()] : this.cards;
+  }
+
+  /** A card in the making, as Hark shows one: its name, and tiles waiting to be filled. */
+  private sketch(): HTMLElement {
+    if (this.sketched) return this.sketched;
+    const card = el("section", "hcard hsketch");
+    card.setAttribute("aria-busy", "true");
+    card.setAttribute("aria-label", "Jarvis is making a panel");
+    const head = el("div", "hhead");
+    head.append(el("span", "hic"), el("h3", "", "Making your panel…"));
+    const grid = el("div", "hgrid");
+    grid.append(el("div", "htile"), el("div", "htile"), el("div", "htile"));
+    card.append(head, grid);
+    return (this.sketched = card);
+  }
+
+  /** More info, from a panel's … menu: how often each thing on it is read, from where, when last and when next. */
+  private infoOf(p: PanelView): HTMLElement {
+    const box = el("div", "hinfo");
+    const shut = button("", () => {
+      this.info.delete(p.id);
+      box.remove();
+    }, "hinfox");
+    shut.setAttribute("aria-label", "Close More info");
+    box.appendChild(shut);
+    const line = (name: string, ...parts: (string | HTMLElement)[]) => {
+      const l = el("p");
+      l.append(el("b", "", name));
+      for (const part of parts) l.append(" · ", part);
+      box.appendChild(l);
+    };
+    const live = p.rows.filter((r) => r.kind !== "note" && !r.read).map((r) => r.label);
+    if (live.length) line(list(live), `live, read every ${EVERY_MS / 1000} seconds while Home is open`, `last read ${clock(this.drawn)}`);
+    for (const r of p.rows) {
+      if (!r.read) continue;
+      const seen = this.readings.get(`${p.id}\n${r.key}`);
+      if (r.every) {
+        const got = seen?.got;
+        const parts: (string | HTMLElement)[] = [`updates every ${everyWords(r.every)}`];
+        // Where a model's answer said it came from: a link only to an https page, its name only as words.
+        if (got?.source?.startsWith("https://")) {
+          try {
+            const a = el("a", "", `from ${new URL(got.source).hostname}`) as HTMLAnchorElement;
+            a.href = got.source;
+            a.target = "_blank";
+            a.rel = "noopener noreferrer";
+            parts.push(a);
+          } catch {
+            // Not a URL after all: left out.
+          }
+        }
+        if (got?.at) parts.push(`last checked ${clock(got.at)}`);
+        const next = got?.at ? got.at + r.every * 60_000 : 0;
+        parts.push(got?.pending ? "being looked up now" : next > Date.now() ? `next check when Home is open after ${clock(next)}` : "next check when Home is next open");
+        line(r.label, ...parts);
+      } else {
+        line(r.label, `reads ${r.tool ?? "a tool"} every minute while Home is open`, ...(seen ? [`last read ${clock(seen.fetched)}`] : []));
+      }
+    }
+    if (box.childElementCount === 1) line(p.title, "to-dos only: nothing here is read");
+    return box;
+  }
+
   /** Only a card taller than a folded one (--fold, index.html) offers to fold. */
   private measure(): void {
     const fold = parseFloat(getComputedStyle(this.root).getPropertyValue("--fold"));
-    for (const card of this.root.querySelectorAll<HTMLElement>(".hcard")) {
+    for (const card of this.root.querySelectorAll<HTMLElement>(".hcard:not(.hsketch)")) {
       const tall = card.querySelector(".hgrid")!.scrollHeight > fold + 12;
       card.classList.toggle("tall", tall);
       // Not disabled: a disabled button gets no pointer, and its name is what a panel is moved by.
@@ -362,11 +464,27 @@ export class Home {
       this.closeMenus();
       void this.load();
     }, "hreload");
+    // Hark's Reply: changing a panel is asking Jarvis to, so it opens Chat with the start of the question typed.
+    const ask = button("Reply", () => {
+      this.closeMenus();
+      this.chat(`Change the panel "${p.title}": `);
+    }, "hask");
+    const about = button("More info", () => {
+      this.closeMenus();
+      const open = card.querySelector(":scope > .hinfo");
+      if (open) {
+        this.info.delete(p.id);
+        open.remove();
+      } else {
+        this.info.add(p.id);
+        head.after(this.infoOf(p));
+      }
+    }, "habout");
     const remove = el("button", "hremove", "Remove panel");
     remove.type = "button";
     arm(remove, "Tap again to remove", () => this.remove(p));
     // A checklist's ticked to-dos go only when asked to: a mis-tap is undone by tapping again.
-    const items = [reload, ...(p.rows.some((r) => r.done) ? [button("Clear ticked", () => void this.note(p.id, { clear: true }), "hclear")] : []), remove];
+    const items = [ask, reload, about, ...(p.rows.some((r) => r.done) ? [button("Clear ticked", () => void this.note(p.id, { clear: true }), "hclear")] : []), remove];
     for (const b of items) b.setAttribute("role", "menuitem");
     menu.append(...items);
     head.append(fold, more, menu);
@@ -388,7 +506,7 @@ export class Home {
     };
     for (const f of firsts) draggable(f, f.querySelector<HTMLElement>(".htop, .hname")!, things);
     things.lay();
-    card.append(head, grid);
+    card.append(head, ...(this.info.has(p.id) ? [this.infoOf(p)] : []), grid);
     if (p.rows.some((r) => r.kind === "note")) card.appendChild(this.adder(p));
     return card;
   }

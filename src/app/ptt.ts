@@ -24,6 +24,8 @@ interface PttHooks {
   display(payload: Record<string, unknown>): void;
   thinking(on: boolean): void;
   history(): Turn[];
+  /** A tool call started or finished (lib/router.ts runCalls): Home shows a panel in the making (main.ts panelTool). */
+  tool?(name: string, phase: string): void;
 }
 
 interface VoiceConfig {
@@ -331,6 +333,7 @@ export class PushToTalk {
           }
           if (ev.type === "transcript" && !q.text) this.hooks.heard(String(ev.text ?? ""));
           else if (ev.type === "progress" && ev.text) this.hooks.status(`${String(ev.text)}…`);
+          else if (ev.type === "tool" && typeof ev.name === "string") this.hooks.tool?.(ev.name, String(ev.phase ?? ""));
           else if (ev.type === "display") this.hooks.display(ev);
           else if (ev.type === "result" || ev.type === "error") {
             answer = String(ev.text ?? "");

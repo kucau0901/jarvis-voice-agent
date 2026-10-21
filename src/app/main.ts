@@ -297,6 +297,7 @@ function onEvent(ev: ServerEvent) {
             void stage.show(payload as unknown as DisplayPayload);
           },
           slow: (name) => dropSessionKeepWaiting(`${name} takes minutes; not paying to listen`),
+          tool: (name, phase) => panelTool(name, phase),
           done: finish,
         },
         mine.signal,
@@ -1097,6 +1098,7 @@ function pushToTalk(): PushToTalk {
     },
     thinking: (on) => { thinking = on; },
     history: () => history.snapshot(),
+    tool: (name, phase) => panelTool(name, phase),
   }));
 }
 
@@ -1140,15 +1142,28 @@ function markTabs() {
 }
 // Jarvis talks, in the way last chosen on this screen; Chat types; Home is this person's panels (ui/Home.ts).
 let home: Home | null = null;
-for (const b of document.querySelectorAll<HTMLButtonElement>("#tabs button")) {
-  b.addEventListener("click", () => {
-    const tab = b.dataset.tab;
-    document.body.classList.toggle("home", tab === "home");
-    if (tab === "home") (home ??= new Home(key)).show();
-    else home?.hide();
-    if ((tab === "chat") !== (mode === "type")) setMode(tab === "chat" ? "type" : voice);
-    else markTabs();
-  });
+function showTab(tab: string | undefined) {
+  document.body.classList.toggle("home", tab === "home");
+  if (tab === "home") (home ??= new Home(key, chatWith)).show();
+  else home?.hide();
+  if ((tab === "chat") !== (mode === "type")) setMode(tab === "chat" ? "type" : voice);
+  else markTabs();
+}
+for (const b of document.querySelectorAll<HTMLButtonElement>("#tabs button")) b.addEventListener("click", () => showTab(b.dataset.tab));
+
+/** Chat, with words typed in its box to finish: a panel's Reply (ui/Home.ts). */
+function chatWith(text: string) {
+  showTab("chat");
+  typed.value = text;
+  fitTyped();
+  typed.focus();
+  typed.setSelectionRange(text.length, text.length);
+}
+
+/** panel_set or panel_remove under way for a question asked here, any way: Home shows a card in the making, then reads its panels again (ui/Home.ts). */
+function panelTool(name: string, phase: string) {
+  if (name === "panel_set") home?.building(phase === "start");
+  else if (name === "panel_remove" && phase !== "start") home?.building(false);
 }
 
 els.orb.addEventListener("click", () => {
@@ -1314,7 +1329,10 @@ async function sendTyped() {
   await askTyped(key, history.snapshot(), {
     // It reached Jarvis (Hark shows the same): said once, under the question.
     opened: () => row.appendChild(Object.assign(document.createElement("small"), { className: "seen", textContent: "Read" })),
-    tool: (ev) => work.tool(ev),
+    tool: (ev) => {
+      work.tool(ev);
+      panelTool(ev.name, ev.phase);
+    },
     progress: (t, call) => work.note(t, call),
     // Handed to a background job: its pill at once, which the result takes when it comes (fromRoutine.ts).
     job: (j) => {

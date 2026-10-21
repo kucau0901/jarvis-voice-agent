@@ -11,6 +11,7 @@ import { historyOf, readTileOf } from "../src/worker/lib/panel-view.ts";
 import { entityHistory } from "../src/worker/lib/ha.ts";
 import { alertChoice, alertsOn, setAlert, watchFor, type AlertDeps } from "../src/worker/lib/panel-alerts.ts";
 import type { Routine, RoutineInput } from "../src/worker/lib/routines.ts";
+import { everyWords } from "../src/shared/panels.ts";
 
 let pass = 0, fail = 0;
 function check(name: string, cond: boolean, got?: unknown) {
@@ -718,6 +719,13 @@ console.log("what the model is told is on them (panel_list)");
       told.includes('to-do "Renew the road tax"; to-do "Book the dentist" (ticked off); What you have used (usage); Music (tile: shows music_state; buttons Pause); Air (tile: asks "How is the air in Springfield?").') &&
       told.includes('"Empty": nothing yet.'), told);
   check("none at all says so", panelsText([]) === "They have no panels yet.");
+  const [daily] = await viewPanels([panels[1]!], sources().src);
+  const rowOf = (label: string) => daily!.rows.find((r) => r.label === label);
+  check("a tile's row says what it reads, for More info: the tool, or how often it is looked up",
+    rowOf("Music")?.tool === "music_state" && rowOf("Music")?.every === undefined && rowOf("Air")?.every === 60 && rowOf("Air")?.tool === undefined &&
+      !rowOf("What you have used")?.tool && !rowOf("Renew the road tax")?.every, daily!.rows.map((r) => [r.label, r.tool, r.every]));
+  check("how often, in words", everyWords(60) === "hour" && everyWords(180) === "3 hours" && everyWords(90) === "90 minutes" && everyWords(1440) === "day",
+    [60, 180, 90, 1440].map(everyWords));
   const asked: string[] = [];
   const STATE = { idFromName: () => "j", get: () => ({ panelsOf: async (p: string) => (asked.push(p), panels) }) };
   const out = String(await panelList.run({}, { env: { STATE, JARVIS_PERSON: "u_sam" }, grants: ["*"], signal: new AbortController().signal, progress: () => {}, memory: null, display: () => {} } as never));
@@ -792,10 +800,14 @@ console.log("the tool");
     const made = kept.at(-1)?.items[0] as { kind: string; ref: string; label: string } | undefined;
     check("a tile wired to the asker's own tools, an MCP server's among them, and a sentence to ask",
       wired.startsWith("Done") && made?.kind === "tile" && parseTile(made.ref)?.buttons.map((b) => b.tool?.tool ?? `ask:${b.ask}`).join() === "music_control,spotify__queue,ask:play something calm", { wired, made });
-    await run({ title: "Air", mode: "add", items: [tile({ tool: null, args: null, ask: "Latest air-quality reading for Springfield", every_minutes: 30 }, null)] }, ctx(["*"]));
+    const airSaid = await run({ title: "Air", mode: "add", items: [tile({ tool: null, args: null, ask: "Latest air-quality reading for Springfield", every_minutes: 30 }, null)] }, ctx(["*"]));
     const air = parseTile((kept.at(-1)?.items[0] as { ref: string }).ref);
     check("a reading no tool has is asked for instead, looked up at most hourly",
       !!air?.read && "ask" in air.read && air.read.ask.includes("Springfield") && air.read.every === 60, air);
+    check("…and the answer says how often, as Hark's \"updates every hour\" does", airSaid.startsWith("Done") && airSaid.includes("(updates every hour while Home is open)"), airSaid);
+    const slower = await run({ title: "Air later", mode: "add", items: [tile({ tool: null, args: null, ask: "Pollen count for Springfield", every_minutes: 180 }, null)] }, ctx(["*"]));
+    check("…in its own words for longer", slower.includes("updates every 3 hours"), slower);
+    check("a tool's tile says nothing of the kind: it is read while Home is open", !wired.includes("updates every"), wired);
     check("a tool they were not offered is refused", (await run({ title: "X", mode: "add", items: [tile({ tool: "mail_send", args: "{}" }, null)] }, ctx(["*"]))).includes("not one of the tools"));
     check("…and so are the panel tools themselves", (await run({ title: "X", mode: "add", items: [tile(null, [{ label: "Again", tool: "panel_set", args: "{}", ask: null }])] }, ctx(["*"]))).includes("not one of the tools"));
     check("arguments that are not JSON are refused", (await run({ title: "X", mode: "add", items: [tile({ tool: "music_state", args: "{oops" }, null)] }, ctx(["*"]))).includes("not JSON"));

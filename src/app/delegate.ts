@@ -34,6 +34,8 @@ interface DelegateHandlers {
    * not, so the app can drop the session and keep waiting here for nothing.
    */
   slow?(name: string): void;
+  /** A tool call started or finished: Home shows a panel in the making (main.ts panelTool). */
+  tool?(name: string, phase: string): void;
   done(): void;
 }
 
@@ -111,6 +113,7 @@ export async function runDelegation(
             if (ev.phase === "start" && typeof ev.name === "string" && SLOW_TOOLS.has(ev.name)) {
               h.slow?.(ev.name);
             }
+            if (typeof ev.name === "string") h.tool?.(ev.name, String(ev.phase ?? ""));
             break;
 
           case "progress":

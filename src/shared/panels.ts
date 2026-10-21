@@ -34,6 +34,10 @@ export interface PanelRow {
   more?: PanelMore;
   /** A tile whose reading comes on its own (GET /api/hub/panels/read), since a tool can be slow. */
   read?: boolean;
+  /** That reading, for its panel's More info: the tool it runs each time it is read (lib/panel-tiles.ts)… */
+  tool?: string;
+  /** …or, for one Jarvis looks up, how many minutes old it may get before it is looked up again (TileAsk.every). */
+  every?: number;
   /** A to-do ticked off: struck through, at the bottom, until cleared. */
   done?: boolean;
   /** The alerts set on it, a few words each ("above 200", "opens"): routines of theirs that watch it. */
@@ -77,3 +81,6 @@ export interface PanelsReply {
   /** What a panel could show for this person, for the empty Home tab to say so. */
   can: { home: boolean; car: boolean };
 }
+
+/** "hour", "3 hours", "90 minutes", "day": how often a reading Jarvis looks up is looked up again, from minutes (panel_set's reply, Home's More info). */
+export const everyWords = (m: number): string => (m === 60 ? "hour" : m === 1440 ? "day" : m % 60 ? `${m} minutes` : `${m / 60} hours`);

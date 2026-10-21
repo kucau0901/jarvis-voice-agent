@@ -6,7 +6,8 @@ import { entityState, haConfig } from "../lib/ha.ts";
 import { pickCar } from "./tessie.ts";
 import { TOGETHER } from "../lib/panel-view.ts";
 import { areasOf, arrange, lightIds } from "../lib/panel-arrange.ts";
-import { parseTile, tileSpec } from "../lib/panel-tiles.ts";
+import { isAsk, parseTile, tileSpec } from "../lib/panel-tiles.ts";
+import { everyWords } from "../../shared/panels.ts";
 import { idsOf, ticked, type Panel, type PanelItem } from "../lib/panels.ts";
 
 /**
@@ -235,7 +236,12 @@ export const panelSet: Tool = {
     const out = await state.panelSet(me, old?.title ?? title, arrange(given, areas, kept), "replace");
     if (typeof out === "string") return `Nothing was changed: ${out}`;
     const all = await state.panelsOf(me);
-    const shown = out.items.map((i) => (idsOf(i).length > 1 ? `${i.label} (${idsOf(i).length} lights in one row)` : i.label));
+    // A reading Jarvis looks up says how often, so the answer can, as Hark's "updates every hour" does.
+    const shown = out.items.map((i) => {
+      if (idsOf(i).length > 1) return `${i.label} (${idsOf(i).length} lights in one row)`;
+      const read = i.kind === "tile" ? parseTile(i.ref)?.read : undefined;
+      return read && isAsk(read) ? `${i.label} (updates every ${everyWords(read.every)} while Home is open)` : i.label;
+    });
     return `Done: "${out.title}" on their Home tab shows ${shown.join(", ") || "nothing yet"}. Their panels: ${all.map((p) => p.title).join(", ")}.`;
   },
 };

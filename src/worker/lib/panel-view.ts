@@ -411,7 +411,8 @@ export async function viewPanels(panels: Panel[], src: PanelSources): Promise<Pa
           const input = b.input ? (({ arg: _, ...shown }) => shown)(b.input) : undefined;
           return [{ action: `b${i}`, label: b.label, ...(input ? { input } : {}) }];
         }),
-        ...(spec.read ? { read: true } : {}),
+        // And what it reads, for the panel's More info: the tool, or how often it is looked up.
+        ...(spec.read ? { read: true, ...(isAsk(spec.read) ? { every: spec.read.every } : { tool: spec.read.tool }) } : {}),
         // A reading Jarvis looks up can alert, by a page watch: what to alert on is typed.
         ...(spec.read && isAsk(spec.read) && allows(src.grants, "routines") ? { more: { alert: { kind: "words" as const } } } : {}),
       }];
