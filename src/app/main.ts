@@ -1343,9 +1343,11 @@ async function sendTyped() {
       stage ??= new Stage(key);
       void stage.show(payload as unknown as DisplayPayload);
     },
-    answer: (reply, ok) => {
+    // A limit, as Hark shows one: a notice in the thread, not a failure in red.
+    limit: (text) => void addRow("jarvis", text, "limit"),
+    answer: (reply, ok, limit) => {
       work.stop();
-      const said = addRow("jarvis", reply, ok ? "" : "bad");
+      const said = addRow("jarvis", reply, ok ? "" : limit ? "bad limit" : "bad");
       // What went wrong is not kept, nor told to the model again later.
       if (ok) {
         said.dataset.said = saidId();

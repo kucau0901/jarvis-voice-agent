@@ -1,5 +1,6 @@
 import {
   DAILY_JOBS,
+  isResearchCap,
   Jobs,
   jobTool,
   KEEP_JOBS,
@@ -597,7 +598,9 @@ console.log("\nresearch in depth");
   const nextMonth = T0 + 32 * 86_400_000;
   check("next month, it starts again", typeof (await h.jobs.create({ task: "e", engine: "research" }, BY, nextMonth)) !== "string");
   const off = harness([], { researchLimit: 0 });
-  check("0 switches research off", String(await off.jobs.create({ task: "a", engine: "research" }, BY, T0)).includes("switched off"));
+  const offSaid = String(await off.jobs.create({ task: "a", engine: "research" }, BY, T0));
+  check("0 switches research off", offSaid.includes("switched off"));
+  check("both are known for the cap they are, for typed chat's notice", isResearchCap(String(r3)) && isResearchCap(offSaid) && !isResearchCap("3 jobs are already running; wait for one to finish"), { r3, offSaid });
   check(`${RESEARCH_MONTHLY_DEFAULT} a month when unset`, RESEARCH_MONTHLY_DEFAULT === 10);
 }
 

@@ -125,12 +125,14 @@ console.log("the limit, with the key not to be used");
   const r = await ask({ plan: true, fallback: "0", plans: [{ error: { status: 429, code: "subscription_sharing_usage_limit_exceeded" } }] });
   check("says the plan's limit is reached, and nothing goes to the key",
     r.result?.type === "error" && /usage limit is reached/.test(String(r.result.text)) && !r.sent.some((s) => s.by === "key"), r.result);
+  check("…marked as a limit, for typed chat's notice", r.result?.limit === "chatgpt", r.result);
 }
 
 console.log("another error is not a reason to spend the key");
 {
   const r = await ask({ plan: true, plans: [{ error: { status: 500, code: "server_error" } }] });
   check("no fallback, no note", r.result?.type === "error" && !r.sent.some((s) => s.by === "key") && !r.failed.length, r.result);
+  check("…and not marked as a limit", !("limit" in (r.result ?? {})), r.result);
 }
 
 console.log("no plan: the key, as before");

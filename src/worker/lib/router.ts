@@ -23,6 +23,7 @@ import { memoryFor, type MemoryStore } from "./memory.ts";
 import { bookOf } from "./context.ts";
 import { allows, type Grant } from "./scopes.ts";
 import { DRAWS_ON_SCREEN } from "../tools/place.ts";
+import { isResearchCap } from "./jobs.ts";
 import { clientFor, forKey, forPlan, modelAuth, planFailed, planRespond, refusalOf } from "./openai-auth.ts";
 import { DEFAULT_CHAR_BUDGET, glassesInstructions } from "./glasses.ts";
 import { spokenReplyInstructions } from "./prompt.ts";
@@ -492,6 +493,8 @@ export async function runCalls(
         args: call.arguments.slice(0, 300),
         preview: outputText(output).slice(0, 400),
         ...(typeof output === "string" ? {} : { images: output.images.length }),
+        // A month's research used up is a limit, which typed chat shows as one (src/app/chat.ts).
+        ...(call.name === "start_job" && isResearchCap(outputText(output)) ? { limit: /switched off/.test(outputText(output)) ? "research-off" : "research" } : {}),
       });
 
       return {

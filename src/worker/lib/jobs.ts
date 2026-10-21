@@ -219,6 +219,8 @@ export const RESEARCH_MAX_MS = 45 * 60_000;
 export const RESEARCH_CHECK_MS = 10 * 60_000;
 export const RESEARCH_MONTHLY_DEFAULT = 10;
 const RESEARCH_MONTH = "jobs:research:month";
+/** Whether start_job was refused for the month's research cap (create, below), so typed chat can show it as a limit, not a failure. */
+export const isResearchCap = (said: string): boolean => /research jobs (for this month have been used|are switched off)/.test(said);
 /** And this long, whatever it is doing. */
 export const MAX_JOB_MS = 20 * 60_000;
 const MAX_TASK = 4000;

@@ -251,6 +251,12 @@ export const SETTINGS: readonly SettingDef[] = [
     validate: intIn(0, 200),
   },
   {
+    name: "USAGE_BUDGET", group: "openai", kind: "number",
+    label: "Monthly budget (US dollars)",
+    help: "What Jarvis may cost a month at OpenAI's published prices, as Settings → Usage and cost counts it. You are told at 80% and again at 100%, once each a month; nothing is stopped. Answers on your ChatGPT plan or by Home Assistant count as nothing. Empty for no budget.",
+    validate: intIn(1, 100_000),
+  },
+  {
     name: "OPENAI_API_KEY", group: "openai", kind: "secret",
     label: "API key",
     help: "Starts with sk-. Not needed with your ChatGPT plan connected, except for live voice, which only a key can run; with both, the plan is used first.",

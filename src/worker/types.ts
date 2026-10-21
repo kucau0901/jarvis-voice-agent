@@ -75,6 +75,8 @@ export interface Env {
   RESEARCH_MODEL?: string;
   /** Research jobs allowed a month; "0" switches them off. Default 10. */
   RESEARCH_MONTHLY_LIMIT?: string;
+  /** A month's budget in US dollars (lib/usage.ts): told at 80% and at 100%; unset for none. */
+  USAGE_BUDGET?: string;
   /** How long the router thinks on a question someone is waiting on (lib/router-model.ts effortFor). */
   ROUTER_EFFORT?: string;
   /** Where to look for new releases: owner/name on GitHub, "off", or empty for this project's own. */

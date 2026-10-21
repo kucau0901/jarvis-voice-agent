@@ -27,6 +27,8 @@ interface UsageView {
   pricesAsOf: string;
   /** Each person's part of the month: "owner" is the first person (lib/context.ts). */
   byPerson?: Record<string, { questions: number; cost: { router: number; live: number; jobs: number } }>;
+  /** The month's budget in US dollars (Settings → OpenAI), for those who see everyone's; null for none. */
+  budget?: number | null;
 }
 
 /** Dollars as the panel says them: small amounts are the usual case. */
@@ -272,6 +274,11 @@ export class Settings {
       if (t.jobs) parts.push(`${money(t.cost.jobs)} in ${t.jobs} job${t.jobs === 1 ? "" : "s"}`);
       line("Cost so far:", `about ${money(cost)}: ${parts.join(", ")}.` +
         (t.unpriced ? ` Plus ${t.unpriced.toLocaleString()} tokens from a model with no listed price.` : ""));
+      if (u.budget) {
+        const [y, m] = u.month.split("-").map(Number);
+        const resets = new Date(y!, m!, 1).toLocaleDateString([], { day: "numeric", month: "long" });
+        line("Budget:", `${Math.floor((100 * cost) / u.budget)}% of ${money(u.budget)} used; it resets on ${resets}. You are told at 80% and at 100%.`);
+      }
       // With a family, each person's part, by name.
       const people = Object.entries(u.byPerson ?? {});
       if (people.length > 1 || (people.length === 1 && people[0]![0] !== "owner")) {

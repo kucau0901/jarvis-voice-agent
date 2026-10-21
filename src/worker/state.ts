@@ -7,7 +7,7 @@ import type { Changes } from "./lib/settings.ts";
 import { LiveHub, type LiveClient, type LiveSocket } from "./lib/live.ts";
 import type { Alert, Delivery } from "./lib/alerts.ts";
 import type { PushRecord } from "./lib/state-host.ts";
-import { deliver } from "./lib/alerts.ts";
+import { deliver, makeAlert } from "./lib/alerts.ts";
 import { effectiveEnv } from "./lib/settings.ts";
 import { localeOf } from "./lib/locale.ts";
 import { upcomingEvents } from "./lib/leave.ts";
@@ -27,7 +27,7 @@ import { Panels, type PanelItem, type Reading } from "./lib/panels.ts";
 import { Conversation, jobSaid, routineSaid, type Said } from "./lib/conversation.ts";
 import { OWNER, personOfWho, withPerson } from "./lib/context.ts";
 import { lookAtPage } from "./lib/page-look.ts";
-import { dayOf } from "./lib/usage.ts";
+import { budgetOf, budgetSays, costOf, dayOf } from "./lib/usage.ts";
 import { nextAllowed } from "./lib/access.ts";
 import { ChatGptPlan, type PlanFailure } from "./lib/chatgpt-plan.ts";
 
@@ -699,8 +699,17 @@ export class JarvisState extends DurableObject<Env> {
     return this.host.recentShared(origin, now, book);
   }
 
-  recordUsage(e: UsageEntry, day: string) {
-    return this.host.recordUsage(e, day);
+  async recordUsage(e: UsageEntry, day: string) {
+    await this.host.recordUsage(e, day);
+    // The month's budget (USAGE_BUDGET, Settings → OpenAI): told at 80% and at 100%, once each a month; nothing is stopped.
+    if (!costOf(e)) return;
+    const env = await this.localEnv();
+    const budget = budgetOf(env.USAGE_BUDGET);
+    if (!budget) return;
+    const crossed = await this.host.budgetCrossed(day, budget);
+    if (!crossed) return;
+    const alert = makeAlert({ title: "Usage budget", text: budgetSays(crossed.step, crossed.spent, budget, day.slice(0, 7)), speak: false }, "note", Date.now(), OWNER);
+    if (alert) await deliver(env, this, alert, { skipLive: true }).catch(() => {});
   }
 
   usageReport(today: string, person?: string) {

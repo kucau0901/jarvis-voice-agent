@@ -1,11 +1,11 @@
 import type { Env } from "../types.ts";
 import { err, json, readObject } from "../lib/http.ts";
-import { grantsOf, personOf, whoOf, type Principal } from "../lib/auth.ts";
+import { grantsOf, isAdmin, personOf, whoOf, type Principal } from "../lib/auth.ts";
 import { allows } from "../lib/scopes.ts";
 import { stateStub } from "../lib/state-client.ts";
 import { haConfig } from "../lib/ha.ts";
 import { localeOf } from "../lib/locale.ts";
-import { dayOf } from "../lib/usage.ts";
+import { budgetOf, dayOf, spentOf } from "../lib/usage.ts";
 import { carById, pickCar } from "../tools/tessie.ts";
 import { actOn, historyOf, LIVE, readTileOf, viewPanels, type PanelSources } from "../lib/panel-view.ts";
 import { setAlert } from "../lib/panel-alerts.ts";
@@ -59,6 +59,12 @@ export async function handlePanels(req: Request, env: Env, principal: Principal)
     pick: (named) => pickCar(env, named),
     maps: !!env.GOOGLE_MAPS_API_KEY,
     usage: () => state.usageReport(dayOf(Date.now(), timeZone), me),
+    // The budget is the household's: its whole month against it, shown to those who run the house.
+    budget: async () => {
+      const limit = budgetOf(env.USAGE_BUDGET);
+      if (!limit || !isAdmin(principal)) return null;
+      return { limit, spent: spentOf((await state.usageReport(dayOf(Date.now(), timeZone))).total) };
+    },
     routines: async () => (await state.listRoutines()).filter((r) => isTheirs(r.createdBy, me)),
     // One of this person's tools, as the router would offer it to them now.
     async tool(name, args) {

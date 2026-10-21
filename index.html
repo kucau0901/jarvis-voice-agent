@@ -725,6 +725,9 @@
   body.typing #transcript .row .txt { white-space: pre-wrap; overflow-wrap: anywhere; }
   body.typing #transcript .row .txt a { color: var(--accent-ink); }
   #transcript .row.bad .txt { color: var(--danger); }
+  /* A limit met (chat.ts): a notice in amber, as Hark's inline banner, after .bad so it wins for "bad limit". */
+  #transcript .row.limit .txt { color: var(--fg); background: color-mix(in srgb, var(--warn) 16%, transparent);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--warn) 45%, transparent); }
   /* The question being answered stays at the top while its answer is read (main.ts pin). Its see-through bubble
      is laid on the page's own colour so nothing shows through, and a long one is cut short. Not over the car's
      keyboard, whose band is too short to give a row up. */

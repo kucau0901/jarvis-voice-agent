@@ -237,6 +237,12 @@ console.log("reading a panel");
   check("…each with the button its state offers, and none to charge while unplugged", car.map((r) => r.actions.map((a) => a.label).join("+")).join("|") === "|Unlock|Climate on", car);
   check("…drawn as the car, a lock and the climate", car.map((r) => r.icon).join() === "car,lock,climate");
   check("the usage as tiles", row("usage").tiles.map((t) => t.value).join("|") === "3 asked|40 asked|$1.75|10 min", row("usage").tiles);
+  check("…with no budget, nothing said of one", row("usage").value === "", row("usage"));
+  const budgeted = sources({ budget: async () => ({ limit: 20, spent: 10 }) });
+  const [withBudget] = await viewPanels([panel], budgeted.src);
+  const usage = withBudget!.rows.find((r) => r.key === "usage")!;
+  check("with a budget: how much of it is gone first, then the money, and when it resets",
+    usage.tiles.map((t) => `${t.label}: ${t.value}`).join("|") === "Budget used: 50% of $20.00|Today: $0.00|Spent this month: $1.75|Live this month: 10 min" && usage.value === "Resets 1 November", usage);
   check("a note as itself", view!.rows.some((r) => r.kind === "note" && r.label === "Renew the road tax"));
   check("a thing on two panels is read once", asked.reads === 2 && asked.snapshots === 1, asked);
 }

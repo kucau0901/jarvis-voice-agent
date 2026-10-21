@@ -20,8 +20,17 @@ interface ChatHooks {
   /** A note from a tool as it works, with the call it belongs to when the server says. */
   progress(text: string, call?: string): void;
   display(payload: Record<string, unknown>): void;
-  answer(text: string, ok: boolean): void;
+  /** The answer; `limit` when a limit stopped it (a device's day, the ChatGPT plan's), shown as a notice rather than a failure. */
+  answer(text: string, ok: boolean, limit?: boolean): void;
+  /** A limit met on the way to an answer that was still given (this month's research used up): a notice under it. */
+  limit?(text: string): void;
 }
+
+/** What typed chat says when start_job met the month's research cap, or research is switched off (lib/jobs.ts isResearchCap). */
+const RESEARCH_CAP: Record<string, string> = {
+  research: "This month's research jobs are used up: the limit is in Settings → OpenAI.",
+  "research-off": "Research jobs are switched off: Settings → OpenAI → Research jobs a month.",
+};
 
 export async function askTyped(key: string, transcript: Turn[], hooks: ChatHooks, signal: AbortSignal, attached: Attached[] = []): Promise<void> {
   // Photos and files go with this question only (attach.ts); what stays in the transcript is their names.
@@ -37,10 +46,13 @@ export async function askTyped(key: string, transcript: Turn[], hooks: ChatHooks
       signal,
     });
     if (!res.ok || !res.body) {
-      const why = ((await res.json().catch(() => ({}))) as { error?: string }).error;
-      hooks.answer(why ? `Could not ask: ${why}.` : `Could not ask (server said ${res.status}).`, false);
+      const b = (await res.json().catch(() => ({}))) as { error?: string; text?: string };
+      // A device's day or a burst of requests (index.ts): its own words, as a notice.
+      if (res.status === 429 && b.text) return hooks.answer(b.text, false, true);
+      hooks.answer(b.error ? `Could not ask: ${b.error}.` : `Could not ask (server said ${res.status}).`, false);
       return;
     }
+    let notice = "";
     hooks.opened?.();
     const reader = res.body.getReader();
     const dec = new TextDecoder();
@@ -61,12 +73,16 @@ export async function askTyped(key: string, transcript: Turn[], hooks: ChatHooks
           continue;
         }
         if (ev.type === "progress" && ev.text) hooks.progress(String(ev.text), typeof ev.id === "string" ? ev.id : typeof ev.name === "string" ? ev.name : undefined);
-        else if (ev.type === "tool" && typeof ev.name === "string") hooks.tool?.({ name: ev.name, id: typeof ev.id === "string" ? ev.id : undefined, phase: String(ev.phase) });
+        else if (ev.type === "tool" && typeof ev.name === "string") {
+          hooks.tool?.({ name: ev.name, id: typeof ev.id === "string" ? ev.id : undefined, phase: String(ev.phase) });
+          if (typeof ev.limit === "string" && RESEARCH_CAP[ev.limit]) notice = RESEARCH_CAP[ev.limit]!;
+        }
         else if (ev.type === "job" && typeof ev.id === "string" && typeof ev.title === "string") hooks.job?.({ id: ev.id, title: ev.title, engine: String(ev.engine ?? "") });
         else if (ev.type === "display") hooks.display(ev);
         else if (ev.type === "result" || ev.type === "error") {
           answered = true;
-          hooks.answer(String(ev.text ?? ""), ev.type === "result");
+          hooks.answer(String(ev.text ?? ""), ev.type === "result", ev.type === "error" && !!ev.limit);
+          if (notice) hooks.limit?.(notice);
         }
       }
     }

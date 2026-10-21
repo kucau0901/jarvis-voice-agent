@@ -189,3 +189,36 @@ function reportAll(days: DayTotals[], recent: UsageEntry[], today: string): Usag
     recent,
   };
 }
+
+/* ---------- the month's budget (USAGE_BUDGET) ----------------------------- */
+
+/** The month's budget in US dollars, or null for none: whole dollars from Settings → OpenAI. */
+export function budgetOf(raw: string | undefined): number | null {
+  const n = Number(raw);
+  return raw && Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/** What a month or a day cost, in US dollars: answers, live talk and jobs. */
+export const spentOf = (t: Totals): number => t.cost.router + t.cost.live + t.cost.jobs;
+
+/** The step just passed, 80 or 100 (percent of the budget), if it is past the last one told; a jump past both says only 100. */
+export function budgetStep(spent: number, budget: number, told: number): 80 | 100 | null {
+  // To a hundredth of a percent: a month at exactly 80% is at 80%, whatever the float says.
+  const pct = Math.round((10_000 * spent) / budget) / 100;
+  const step = pct >= 100 ? 100 : pct >= 80 ? 80 : null;
+  return step && step > told ? step : null;
+}
+
+/** "1 November": when a usage month ("2026-10") starts again, as Settings → Usage counts months. */
+export function resetsOn(month: string): string {
+  const [y, m] = month.split("-").map(Number);
+  return new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "long", timeZone: "UTC" }).format(Date.UTC(y!, m!, 1));
+}
+
+/** What the owner is told on passing a step: advice, as nothing is stopped. */
+export function budgetSays(step: 80 | 100, spent: number, budget: number, month: string): string {
+  const of = `this month's $${budget} budget`;
+  return step >= 100
+    ? `Jarvis has reached ${of}: about $${spent.toFixed(2)} so far. Nothing is stopped; it resets on ${resetsOn(month)}.`
+    : `Jarvis has used 80% of ${of}: about $${spent.toFixed(2)} so far. It resets on ${resetsOn(month)}.`;
+}

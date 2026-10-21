@@ -7,7 +7,7 @@ import {
   type Changes,
   type SavedSettings,
 } from "./settings.ts";
-import { addToDay, emptyDay, report, type DayTotals, type UsageEntry, type UsageReport } from "./usage.ts";
+import { addToDay, budgetStep, emptyDay, report, spentOf, type DayTotals, type UsageEntry, type UsageReport } from "./usage.ts";
 import { fromOthers, keep, type SharedTurn } from "./shared.ts";
 import { personOfWho } from "./context.ts";
 import {
@@ -106,6 +106,8 @@ const SHARED = "convo:shared";
 /** Usage (lib/usage.ts): a day's totals under its date, and the last questions. */
 const USAGE_DAY = "usage:day:";
 const USAGE_RECENT = "usage:recent";
+/** The month's budget: which step of it (80, 100) the owner was last told of, for that month and that budget. */
+const USAGE_TOLD = "usage:budget";
 export const USAGE_RECENT_MAX = 50;
 /** Thirteen months, so the same month last year can still be looked at. */
 export const USAGE_KEEP_DAYS = 400;
@@ -435,6 +437,24 @@ export class StateHost {
       const days = [...(await this.storage.list<DayTotals>({ prefix: USAGE_DAY })).keys()].sort();
       for (const k of days.slice(0, Math.max(0, days.length - USAGE_KEEP_DAYS))) await this.storage.delete(k);
     }
+  }
+
+  /**
+   * Whether the month's spending has just passed a step of the budget (80% or
+   * 100%), and what it comes to. Each step is said once a month; a budget
+   * changed in the month starts again. Noted before it is said, so a retry
+   * cannot say it twice.
+   */
+  async budgetCrossed(day: string, budget: number): Promise<{ step: 80 | 100; spent: number } | null> {
+    const month = day.slice(0, 7);
+    const days = [...(await this.storage.list<DayTotals>({ prefix: USAGE_DAY + month })).values()];
+    const spent = spentOf(report(days, [], day).total);
+    const was = await this.storage.get<{ month: string; budget: number; told: number }>(USAGE_TOLD);
+    const told = was?.month === month && was.budget === budget ? was.told : 0;
+    const step = budgetStep(spent, budget, told);
+    if (!step) return null;
+    await this.storage.put(USAGE_TOLD, { month, budget, told: step });
+    return { step, spent };
   }
 
   /** This month so far, today, and the recent questions, as Settings → Usage shows them. */

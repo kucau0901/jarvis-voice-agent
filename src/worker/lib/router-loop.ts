@@ -212,7 +212,8 @@ export async function routerLoop(deps: LoopDeps): Promise<void> {
     // something whenever the stream is still open, whatever the cause.
     const said = signal.aborted ? "That request was cut off before your home answered." : spokenFailure(msg);
     if (!sink.isClosed) {
-      sink.send({ type: "error", text: said, detail: msg.slice(0, 300), aborted: signal.aborted, model, usage });
+      // The plan's usage limit is a limit, not a failure: typed chat shows it as a notice (src/app/chat.ts).
+      sink.send({ type: "error", text: said, detail: msg.slice(0, 300), aborted: signal.aborted, model, usage, ...(/ChatGPT plan: limit/.test(msg) ? { limit: "chatgpt" } : {}) });
     }
     settle(model, false, said);
   } finally {
