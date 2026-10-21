@@ -1,7 +1,8 @@
 import type { Env } from "../types.ts";
 import { json, err } from "../lib/http.ts";
-import { MemoryStore, memoryFor, sane, sanitise, slugify, PROFILE_BUDGET, type Kind } from "../lib/memory.ts";
+import { MemoryStore, memoryFor, relationOf, sane, sanitise, slugify, PROFILE_BUDGET, type Kind } from "../lib/memory.ts";
 import { allows, type Grant } from "../lib/scopes.ts";
+import { workFromCalendar } from "../lib/work-place.ts";
 
 const KINDS: readonly Kind[] = ["place", "person", "preference", "vehicle", "routine", "note", "reference"];
 
@@ -42,6 +43,15 @@ export async function handleMemory(req: Request, env: Env, grants: readonly Gran
   // Their own book comes with the family's attached, so "what Jarvis reads" shows both, as the router reads them.
   const store = family ? new MemoryStore(env, env.JARVIS_FAMILY) : memoryFor(env, grants);
   await store.load();
+
+  // Where they work, as their calendar suggests: only offered (ui/Profile.ts), never saved here.
+  if (url.pathname === "/api/memory/work") {
+    if (req.method !== "GET" || family) return err(405, "GET, for your own");
+    if (!allows(grants, "calendar")) return err(403, 'reading your calendar for it needs "calendar"', { need: "calendar" });
+    const known = ["home", "work"].map((p) => store.findPlace(p)?.address).filter((a): a is string => !!a);
+    const guess = await workFromCalendar(env, Date.now(), known);
+    return json(typeof guess === "string" ? { suggestion: null, note: guess } : { suggestion: guess });
+  }
 
   if (url.pathname === "/api/memory/search") {
     if (req.method !== "POST") return err(405, "method not allowed");
@@ -119,12 +129,16 @@ export async function handleMemory(req: Request, env: Env, grants: readonly Gran
       kind === "place" && typeof b.address === "string" && b.address.trim()
         ? b.address.trim().slice(0, 300)
         : undefined;
+    // Who someone is to you: yours alone, so never in the family's book.
+    const relation = kind === "person" && !family ? relationOf(b.relation) : undefined;
+    if (kind === "person" && !family && typeof b.relation === "string" && b.relation.trim() && !relation) return err(400, "say who they are to you in a word or two, such as wife or daughter");
 
     const { fact, replaced } = store.add({
       text: clean.text,
       kind,
       slug: name,
       address,
+      relation,
       pinned: kind !== "reference" && b.pinned === true ? true : undefined,
       source: "ui",
     });
@@ -154,6 +168,9 @@ export async function handleMemory(req: Request, env: Env, grants: readonly Gran
     const address =
       fact.kind === "place" ? (typeof b.address === "string" ? b.address.trim().slice(0, 300) || undefined : fact.address) : undefined;
     if (fact.kind === "place" && (!slug || !address)) return err(400, "a place needs what you call it and its address");
+    // Absent keeps it, "" clears it; only in their own book.
+    const relation = fact.kind !== "person" || family || typeof b.relation !== "string" ? undefined : b.relation.trim() ? relationOf(b.relation) : "";
+    if (relation === undefined && fact.kind === "person" && !family && typeof b.relation === "string" && b.relation.trim()) return err(400, "say who they are to you in a word or two, such as wife or daughter");
     // Two of them by the same name would contradict each other.
     if (slug && named && store.facts.some((f) => f.id !== id && f.kind === fact.kind && f.slug === slug)) {
       return err(409, `another ${fact.kind} is already called "${slug}"`);
@@ -161,7 +178,7 @@ export async function handleMemory(req: Request, env: Env, grants: readonly Gran
 
     let saved;
     if (hot) {
-      ({ fact: saved } = store.add({ text: clean.text, kind: fact.kind, slug, address, replaces: id, pinned: fact.pinned, source: fact.source }));
+      ({ fact: saved } = store.add({ text: clean.text, kind: fact.kind, slug, address, relation, replaces: id, pinned: fact.pinned, source: fact.source }));
     } else {
       // Reference lives apart and is replaced whole: a new id, the rest kept.
       await store.removeReference(id);

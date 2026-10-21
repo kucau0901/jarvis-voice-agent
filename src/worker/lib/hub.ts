@@ -89,6 +89,9 @@ export interface Prefs {
   telegram?: string;
   /** Their Home Assistant person, for "when she gets home" (lib/relays.ts): person.aisyah. */
   presence?: string;
+  /** What they like to be called, and their birthday, YYYY-MM-DD (ui/Profile.ts), for the router (lib/router-prompt.ts). */
+  nickname?: string;
+  birthday?: string;
 }
 
 /** A user as stored: the PIN never leaves this file. */
@@ -536,7 +539,7 @@ export class HubHost {
     const u = await this.storedUser(id);
     if (!u) return fail("no such person");
     const next: Prefs = { ...u.prefs };
-    for (const k of ["voice", "style", "language", "telegram", "presence"] as const) {
+    for (const k of ["voice", "style", "language", "telegram", "presence", "nickname", "birthday"] as const) {
       const v = patch[k];
       if (v === undefined) continue;
       const clean = typeof v === "string" ? v.replace(/[\u0000-\u001f\u007f]/g, " ").trim().slice(0, k === "style" ? 300 : 40) : "";

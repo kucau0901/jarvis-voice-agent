@@ -222,6 +222,12 @@ only the owner key can.
 
 - **Memory.** "Remember that…" saves to your own. Only you see it, in
   **Memory → Yours**.
+- **About you.** In **Family → You → About you**: what you like to be called
+  and your birthday, your home and work, and the people in your life with
+  who each is to you (wife, daughter…), so "remind my wife" and "how long to
+  work" know who and where. If your calendar keeps you at one address on three
+  or more days in a month, it is offered as work; it is saved only if you say
+  so.
 - **Mail, calendar and contacts.** Link your own Google in **Family →
   Accounts**. If the family's Google app is still in testing, an admin
   adds your Google address as a test user in Google Cloud first.

@@ -19,6 +19,9 @@ export interface Env {
   JARVIS_PERSON?: string;
   /** Their name, for the model to address them by. */
   JARVIS_PERSON_NAME?: string;
+  /** What they like to be called, and their birthday (YYYY-MM-DD), when they said (ui/Profile.ts). */
+  JARVIS_PERSON_NICKNAME?: string;
+  JARVIS_PERSON_BIRTHDAY?: string;
   /** What the family calls its assistant. */
   JARVIS_AGENT_NAME?: string;
   /** The family's shared memory book, when there is a family. */

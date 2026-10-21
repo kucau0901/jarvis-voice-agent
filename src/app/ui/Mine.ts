@@ -1,6 +1,7 @@
 import { authHeaders } from "../key";
 import { speakText } from "../alerts";
 import { AlertsPanel } from "./AlertsPanel";
+import { Profile } from "./Profile";
 import { el, esc } from "./util";
 
 /**
@@ -18,6 +19,8 @@ export interface Prefs {
   language?: string;
   telegram?: string;
   presence?: string;
+  nickname?: string;
+  birthday?: string;
 }
 
 /** The voices the server accepts (lib/speech.ts TTS_VOICES). */
@@ -67,6 +70,11 @@ export class Mine {
     // Each a section of Family's menu (sections.ts), under You.
     this.box.innerHTML = `
       <div class="res m-res"></div>
+      <section class="svc" data-section="m-profile" data-title="About you">
+        <h3>About you</h3>
+        <div class="m-profile"></div>
+      </section>
+
       <section class="svc" data-section="m-accounts" data-title="Accounts">
         <h3>Your accounts</h3>
         <div class="m-accounts"></div>
@@ -150,6 +158,7 @@ export class Mine {
       "m-alerts": may("alerts"),
     };
     for (const [id, ok] of Object.entries(shown)) if (!ok) this.box.querySelector(`[data-section="${id}"]`)?.remove();
+    new Profile(this.key, this.box.querySelector(".m-profile")!, this.prefs, may, (p, ok) => this.save(p, ok), (t, bad) => this.say(t, bad)).render();
     // Their own Home Assistant user is for the house itself; getting home needs only chat.
     if (!may("home")) this.box.querySelectorAll(".m-hauser").forEach((e) => e.remove());
     if (shown["m-cars"]) void this.cars();

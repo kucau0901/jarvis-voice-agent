@@ -86,7 +86,14 @@ function prefsProblem(p: Record<string, unknown>): string | null {
   const telegram = s("telegram");
   const style = s("style");
   const presence = s("presence");
-  if (voice === null || language === null || telegram === null || style === null || presence === null) return "each choice is text";
+  const nickname = s("nickname");
+  const birthday = s("birthday");
+  if (voice === null || language === null || telegram === null || style === null || presence === null || nickname === null || birthday === null) return "each choice is text";
+  // Both go into what the router is told (lib/router-prompt.ts): letters only, and a real date.
+  if (nickname && !/^[\p{L}\p{M}' .-]{1,40}$/u.test(nickname)) return "a nickname is a name: letters, spaces, ' . or -";
+  if (birthday && !(/^\d{4}-\d{2}-\d{2}$/.test(birthday) && new Date(`${birthday}T00:00:00Z`).toISOString().slice(0, 10) === birthday && Date.parse(birthday) <= Date.now())) {
+    return "a birthday is a date that has been, YYYY-MM-DD";
+  }
   if (presence && !/^(person|device_tracker)\.[a-z0-9_]+$/.test(presence)) return "the Home Assistant person is an entity id such as person.aisyah";
   if (voice && !(TTS_VOICES as readonly string[]).includes(voice)) return `voice must be one of ${TTS_VOICES.join(", ")}`;
   if (language && !/^[a-z]{2,3}(-[A-Za-z0-9]{2,8})?$/.test(language)) return "language is a tag such as en, ms or en-GB";

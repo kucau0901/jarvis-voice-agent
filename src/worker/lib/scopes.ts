@@ -124,6 +124,8 @@ export function requiredScope(pathname: string, method: string): RouteRequiremen
     if (pathname === "/api/memory/search") return "memory.read";
     if (pathname === "/api/memory") return m === "GET" ? "memory.read" : "memory.write";
     if (pathname === "/api/memory/move") return "memory.write";
+    // Read from their calendar, so a person's alone: the route checks `calendar`.
+    if (pathname === "/api/memory/work") return "person";
     return "owner";
   }
   // Each person's own devices; an admin's view is everyone's (routes/v1.ts). Never a device's.

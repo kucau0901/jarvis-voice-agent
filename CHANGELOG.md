@@ -83,6 +83,11 @@ of every release, and in the [README](README.md#updating).
 - **Export your data.** Settings → Export your data downloads one JSON file
   of your memory, routines, panels, conversation and jobs, and the household's
   settings without any key or token. For the owner and admins.
+- **About you.** Family → You → About you keeps what you like to be called,
+  your birthday, your home and work, and the people in your life with who
+  each is to you, so "remind my wife" and "how long to work" just work. A
+  work address seen in your calendar on three or more days is offered, and
+  saved only if you say so.
 - **Search in Chat.** One box finds what you and Jarvis said, what it
   remembers and your mail, grouped as Top hit, Messages, Memory and Mail;
   memory and mail only for those allowed them. A message found is shown in

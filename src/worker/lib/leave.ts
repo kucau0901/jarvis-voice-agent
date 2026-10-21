@@ -149,21 +149,31 @@ export function eventsFrom(items: CalItem[]): LeaveEvent[] {
 }
 
 /** The next few hours of the primary calendar, or a sentence saying why not. */
-export async function upcomingEvents(env: Env, now: number): Promise<LeaveEvent[] | string> {
+export function upcomingEvents(env: Env, now: number): Promise<LeaveEvent[] | string> {
+  return calendarEvents(env, now, now + HORIZON_MS, 15, false);
+}
+
+/**
+ * The primary calendar's events with a place, from `from` to `to`, or a
+ * sentence saying why not. `accepted`: only those they made or said yes to,
+ * not an invitation anyone could send (lib/work-place.ts).
+ */
+export async function calendarEvents(env: Env, from: number, to: number, max: number, accepted: boolean): Promise<LeaveEvent[] | string> {
   const cfg = googleConfig(env, "https://jarvis.invalid");
   if (!cfg) return "Google is not set up, so there is no calendar to read.";
   const p = new URLSearchParams({
-    timeMin: new Date(now).toISOString(),
-    timeMax: new Date(now + HORIZON_MS).toISOString(),
+    timeMin: new Date(from).toISOString(),
+    timeMax: new Date(to).toISOString(),
     singleEvents: "true",
     orderBy: "startTime",
-    maxResults: "15",
+    maxResults: String(max),
   });
   try {
     const res = await call(env, cfg, `/calendars/primary/events?${p}`, { base: CALENDAR, signal: AbortSignal.timeout(10_000) });
     const problem = explain(res);
     if (problem) return problem;
-    return eventsFrom(((res.body as { items?: CalItem[] } | null)?.items ?? []) as CalItem[]);
+    const items = ((res.body as { items?: CalItem[] } | null)?.items ?? []) as CalItem[];
+    return eventsFrom(accepted ? items.filter((e) => !e.attendees?.length || e.attendees.some((a) => a.self && a.responseStatus === "accepted")) : items);
   } catch (e) {
     if (e instanceof NeedsRelink) return "The Google link has expired; link it again in the settings panel.";
     const msg = e instanceof Error ? e.message : String(e);

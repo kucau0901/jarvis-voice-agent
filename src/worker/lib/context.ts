@@ -101,6 +101,8 @@ export function withPerson(
   if (p.voice) out.VOICE_TTS_VOICE = p.voice;
   if (p.style) out.VOICE_STYLE = p.style;
   if (p.language) out.LOCALE = p.language;
+  if (p.nickname) out.JARVIS_PERSON_NICKNAME = p.nickname;
+  if (p.birthday) out.JARVIS_PERSON_BIRTHDAY = p.birthday;
   // A member's messages go to their own chat, or nowhere: never the first person's.
   if (o.person !== OWNER) out.TELEGRAM_CHAT_ID = p.telegram ?? "";
   else if (p.telegram) out.TELEGRAM_CHAT_ID = p.telegram;

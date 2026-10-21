@@ -335,8 +335,9 @@ function whoLine(env: Env): string {
     "\n\nWHO YOU ARE" +
     (agent ? `\nThe family calls you ${agent}: that is your name.` : "") +
     (name
-      ? `\nYou are answering ${name}. Their mail, calendar, memory and reminders are theirs; ` +
-        "never reveal another person's, even when asked."
+      ? `\nYou are answering ${name}${env.JARVIS_PERSON_NICKNAME ? `, who likes to be called ${env.JARVIS_PERSON_NICKNAME}` : ""}. ` +
+        "Their mail, calendar, memory and reminders are theirs; never reveal another person's, even when asked." +
+        (env.JARVIS_PERSON_BIRTHDAY ? ` Their birthday is ${env.JARVIS_PERSON_BIRTHDAY}.` : "")
       : "") +
     carLine +
     passLine
