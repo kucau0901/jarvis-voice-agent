@@ -936,6 +936,23 @@ console.log("\nresearch into a table");
   const pj = (await prose.jobs.create({ title: "Speakers", task: "x", engine: "research", table: true }, BY, T0)) as Job;
   const pd = await drive(prose, pj.id);
   check("a plan with no columns: ordinary team research, a report", pd.status === "done" && !pd.table && (await prose.jobs.table(pj.id)) === null && (pd.result ?? "").includes("A checked finding"), pd.table);
+
+  // A table longer than a report may be: read whole, then shortened to send.
+  const many = (n: number) => Array.from({ length: n }, (_, i) => [`Speaker number ${i} with a long name`, `RM${100 + i}.00 each`, "A seller with an address on a long road somewhere in a town far away, open every day", `https://shop.example/item/${i}/with/a/long/path/to/the/listing`]);
+  const long: Step = { kind: "done", text: JSON.stringify({ summary: "A hundred.", rows: many(100) }), usage: spent(1000), cited: Array.from({ length: 15 }, (_, i) => ({ url: `https://shop.example/${i}`, title: `Shop ${i}` })) };
+  const big = harness([plan, long, long], { teams: EVERY_TEAM() });
+  const bj = (await big.jobs.create({ title: "Speakers", task: "x", engine: "research", table: true }, BY, T0)) as Job;
+  const bd = await drive(big, bj.id);
+  check("a table past 20,000 characters keeps every row", long.text.length > 20_000 && bd.table?.rows === 100 && (await big.jobs.table(bj.id))?.rows.length === 100, { len: long.text.length, table: bd.table });
+  check("and is sent shortened, with its sources", (bd.result ?? "").length < 20_000 && /The first 20 of 100 rows/.test(bd.result ?? "") && /Sources:\n- Shop 0:/.test(bd.result ?? ""), (bd.result ?? "").slice(-300));
+
+  // The check drops the rows no source backs: far shorter, and still the table to send.
+  const merged: Step = { kind: "done", text: JSON.stringify({ summary: "Twenty-four.", rows: many(24) }), usage: spent(1000) };
+  const pruned: Step = { kind: "done", text: JSON.stringify({ summary: "Ten backed by a source.", rows: many(10) }), usage: spent(1000) };
+  const ck = harness([plan, merged, pruned], { teams: EVERY_TEAM() });
+  const cj = (await ck.jobs.create({ title: "Speakers", task: "x", engine: "research", table: true }, BY, T0)) as Job;
+  const cd = await drive(ck, cj.id);
+  check("a check that drops most rows is what is sent", pruned.text.length < merged.text.length / 2 && cd.table?.rows === 10 && (await ck.jobs.table(cj.id))?.rows.length === 10 && cd.summary === "Ten backed by a source.", { table: cd.table, summary: cd.summary });
 }
 
 console.log("\nplanning that does not work: the fixed angles, and the run goes on");

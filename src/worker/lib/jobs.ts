@@ -756,10 +756,13 @@ export class Jobs {
         j.updatedAt = j.nextAt = now;
         return this.save(j);
       }
-      // A check that answered with notes rather than the report would lose the report.
-      if (step.text.length < j.draft.text.length / 2) return this.finish(j, deps, now, { error: "the check did not give the report back" });
+      // A check that answered with notes rather than the report would lose the report. A table's check
+      // drops the rows no source backs, so it may come back much shorter: it is judged by still being a table.
+      const cols = j.table?.columns;
+      const gaveBack = cols && tableOf(j.draft.text, cols) ? tableOf(step.text, cols) !== null : step.text.length >= j.draft.text.length / 2;
+      if (!gaveBack) return this.finish(j, deps, now, { error: "the check did not give the report back" });
       // The check's own pages first: withSources keeps fifteen, and they back what is sent.
-      return this.finish(j, deps, now, { text: withSources(step.text, [...(step.cited ?? []), ...j.draft.cited]) });
+      return this.finish(j, deps, now, { text: step.text, cited: [...(step.cited ?? []), ...j.draft.cited] });
     }
     if (planning) return this.planned(j, TEAM_ANGLES, now);
     return this.finish(j, deps, now, { error: step.error });
@@ -843,7 +846,8 @@ export class Jobs {
     return this.finish(j, deps, Date.now(), r.ok ? { text: r.text } : { error: r.text, ...(r.late ? { late: true } : {}) });
   }
 
-  private async finish(j: Job, deps: JobDeps, now: number, out: { text: string } | { error: string; late?: boolean }): Promise<void> {
+  /** A job ended. A research report comes with its pages uncut (`cited`), so a table is read whole before it is shortened to send. */
+  private async finish(j: Job, deps: JobDeps, now: number, out: { text: string; cited?: readonly Cited[] } | { error: string; late?: boolean }): Promise<void> {
     const cur = await this.get(j.id);
     if (!cur || cur.status !== "running") return; // cancelled or removed while it ran
     const done = { ...cur, ...j, finishedAt: now, updatedAt: now };
@@ -852,20 +856,20 @@ export class Jobs {
       // The check never costs the report: if it did not finish, the report goes out as written.
       // Nor does the merge cost the teams' reports: unmerged, each goes out as it was written.
       const each = done.team ? unmerged(done.team) : null;
-      if (done.draft) out = { text: withSources(done.draft.text, done.draft.cited) };
-      else if (each && done.team) out = { text: withSources(each, teamCited(done.team)) };
+      if (done.draft) out = { text: done.draft.text, cited: done.draft.cited };
+      else if (each && done.team) out = { text: each, cited: teamCited(done.team) };
     }
     delete done.draft;
     if (done.team) done.team = slimTeam(done.team);
-    // Into a table: its rows kept to download, the result their summary and the first of them.
-    if (done.table?.columns && "text" in out) {
-      const t = tableOf(out.text, done.table.columns);
-      if (t) {
-        await this.storage.put(T + done.id, { columns: done.table.columns, rows: t.rows });
-        done.table = { ...done.table, rows: t.rows.length };
-        const at = out.text.lastIndexOf("\n\nSources:");
-        out = { text: tableResult(t, done.table.columns!, at >= 0 ? out.text.slice(at) : "") };
-      }
+    if ("text" in out) {
+      // Into a table: its rows kept to download, the result their summary and the first of them.
+      const columns = done.table?.columns;
+      const t = columns ? tableOf(out.text, columns) : null;
+      if (t && columns) {
+        await this.storage.put(T + done.id, { columns, rows: t.rows });
+        done.table = { columns, rows: t.rows.length };
+        out = { text: tableResult(t, columns, withSources("", out.cited ?? [])) };
+      } else if (out.cited) out = { text: withSources(out.text, out.cited) };
     }
     let alert: Alert;
     if ("text" in out && out.text.trim()) {
