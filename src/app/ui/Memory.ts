@@ -1,7 +1,7 @@
 import { authHeaders } from "../key";
 import { ago, arm, esc } from "./util";
 import { SectionMenu, type NavGroup } from "./sections";
-import { showSpecialties } from "./memory-recall";
+import { showPast, showSpecialties } from "./memory-recall";
 
 /**
  * What Jarvis remembers, where the owner can see it.
@@ -144,6 +144,12 @@ export class Memory {
               <h3>Specialties</h3>
               <p class="note">Ways of doing something you asked Jarvis to save, followed again when you ask for them.</p>
               <div class="speclist"></div>
+            </section>
+
+            <section class="svc" data-section="past" data-title="Past attempts">
+              <h3>Past attempts</h3>
+              <p class="note">What Jarvis tried for you and how it went, given to it when you ask for something like it.</p>
+              <div class="pastlist"></div>
             </section>
 
             <section class="svc" data-section="trash" data-title="Recently forgotten">
@@ -477,8 +483,9 @@ export class Memory {
       ? gone.map(({ f, b }) => `<div class="gone">${esc(f.text)}${this.hasFamily && b === "family" ? ` <span class="dim">the family's</span>` : ""}</div>`).join("")
       : `<p class="note">Nothing forgotten lately.</p>`;
 
-    groups.push(["Add and check", ["add", "find", "reads", "specialties", "trash"]]);
+    groups.push(["Add and check", ["add", "find", "reads", "specialties", "past", "trash"]]);
     void showSpecialties(this.key, this.$(".speclist")).then((n) => (this.$(".setbody [data-section=specialties]").dataset.aside = String(n)));
+    void showPast(this.key, this.$(".pastlist")).then((n) => (this.$(".setbody [data-section=past]").dataset.aside = String(n)));
     this.menu.build(groups, groups[0]?.[1][0] ?? "add");
   }
 

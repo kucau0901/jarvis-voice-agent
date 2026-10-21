@@ -15,7 +15,7 @@ import { Scheduler, type SchedulerDeps } from "./lib/scheduler.ts";
 import type { Routine, RoutineInput } from "./lib/routines.ts";
 import { narrow, type Grant } from "./lib/scopes.ts";
 import { askForRoutine, travelFor } from "./routes/routines.ts";
-import { Jobs } from "./lib/jobs.ts";
+import { Jobs, type Job } from "./lib/jobs.ts";
 import { jobEngine } from "./routes/jobs.ts";
 import type { UsageEntry } from "./lib/usage.ts";
 import type { SharedTurn } from "./lib/shared.ts";
@@ -27,6 +27,7 @@ import { Panels, type PanelItem, type Reading } from "./lib/panels.ts";
 import { Conversation, jobSaid, routineSaid, type Said } from "./lib/conversation.ts";
 import { Images, type StoredImage } from "./lib/images.ts";
 import { Specialties } from "./lib/specialties.ts";
+import { Episodes, episodeOfJob, type Episode } from "./lib/episodes.ts";
 import { OWNER, personOfWho, withPerson } from "./lib/context.ts";
 import { lookAtPage } from "./lib/page-look.ts";
 import { budgetOf, budgetSays, costOf, dayOf } from "./lib/usage.ts";
@@ -63,6 +64,7 @@ export class JarvisState extends DurableObject<Env> {
   private conversation: Conversation;
   private images: Images;
   private specialties: Specialties;
+  private episodes: Episodes;
   /** The owner's ChatGPT plan, which model calls use first (lib/chatgpt-plan.ts). */
   private plan: ChatGptPlan;
 
@@ -76,6 +78,7 @@ export class JarvisState extends DurableObject<Env> {
     this.conversation = new Conversation(ctx.storage);
     this.images = new Images(ctx.storage);
     this.specialties = new Specialties(ctx.storage);
+    this.episodes = new Episodes(ctx.storage);
     this.plan = new ChatGptPlan(ctx.storage, (input, init) => fetch(input, init));
     this.relays = new Relays(ctx.storage, () => this.relayDeps());
     this.jobs = new Jobs(ctx.storage, async () => {
@@ -90,7 +93,9 @@ export class JarvisState extends DurableObject<Env> {
         if (said && (who === OWNER || (await this.people.personView(who).catch(() => null))?.space)) await this.conversation.add(who, [said], Date.now());
         return deliver(env, this, alert);
       };
-      return jobEngine(env, deliverJob, (job) => this.personEnv(env, job.createdBy), ctx.storage);
+      // How it went, for the next question like it (lib/episodes.ts).
+      const episode = (job: Job) => this.episodes.add(personOfWho(job.createdBy), episodeOfJob(job), Date.now());
+      return { ...jobEngine(env, deliverJob, (job) => this.personEnv(env, job.createdBy), ctx.storage), episode };
     });
     // Screens ping to keep their socket open through proxies. The runtime
     // answers these itself, so a hibernating object is not woken to say pong.
@@ -259,6 +264,7 @@ export class JarvisState extends DurableObject<Env> {
     await this.conversation.clear(person);
     await this.images.clear(person);
     await this.specialties.clear(person);
+    await this.episodes.clear(person);
     await this.rearm();
   }
 
@@ -554,9 +560,22 @@ export class JarvisState extends DurableObject<Env> {
     return this.specialties.forget(person, which);
   }
 
-  /** What the router is given beside the question (lib/router.ts): the specialty it asks for, if any. One call, so the question waits on one. */
+  episodesOf(person: string, now: number) {
+    return this.episodes.of(person, now);
+  }
+
+  episodeAdd(person: string, e: Omit<Episode, "at" | "keys" | "seen">, now: number) {
+    return this.episodes.add(person, e, now);
+  }
+
+  episodeForget(person: string, id: string) {
+    return this.episodes.forget(person, id);
+  }
+
+  /** What the router is given beside the question (lib/router.ts): the specialty it asks for, and past attempts like it. One call, so the question waits on one. */
   async recallFor(person: string, ask: string) {
-    return { specialty: await this.specialties.match(person, ask) };
+    const [specialty, past] = await Promise.all([this.specialties.match(person, ask), this.episodes.match(person, ask, Date.now())]);
+    return { specialty, past };
   }
 
   conversationOf(person: string, now: number) {

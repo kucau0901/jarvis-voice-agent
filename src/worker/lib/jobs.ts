@@ -203,6 +203,8 @@ export interface JobDeps {
   researchBlocked?: string | null;
   /** A finished job, for Settings → Usage. */
   record?(e: UsageEntry): Promise<void>;
+  /** A finished job, for the next question like it (lib/episodes.ts). */
+  episode?(j: Job): Promise<void>;
 }
 
 const J = "job:";
@@ -876,6 +878,8 @@ export class Jobs {
     done.deliveredBy = d?.deliveredBy ?? null;
     await this.save(done);
     await deps.record?.(usageEntry(done, done.status === "done", now)).catch(() => {});
+    // How it went, for next time (lib/episodes.ts): not Hermes still working past the wait, which has not failed.
+    if (!("late" in out && out.late)) await deps.episode?.(done).catch(() => {});
   }
 
   /** Keep the newest KEEP_JOBS finished ones. */

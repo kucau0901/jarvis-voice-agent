@@ -112,6 +112,8 @@ function harness(
   const merged: string[] = [];
   const heard: string[] = [];
   const recorded: UsageEntry[] = [];
+  /** Finished jobs, as past attempts (lib/episodes.ts). */
+  const episodes: Job[] = [];
   /** What each question to Hermes was handed besides its task: a research report, or nothing. */
   const handed: (string | undefined)[] = [];
   const queue = [...steps];
@@ -161,10 +163,13 @@ function harness(
     async record(e) {
       recorded.push(e);
     },
+    async episode(j) {
+      episodes.push(j);
+    },
     ...(opts.researchLimit !== undefined ? { researchLimit: opts.researchLimit } : {}),
   };
   const storage = fakeStorage();
-  return { jobs: new Jobs(storage, async () => deps), sent, log, storage, deps, merged, heard, recorded, handed };
+  return { jobs: new Jobs(storage, async () => deps), sent, log, storage, deps, merged, heard, recorded, handed, episodes };
 }
 
 /** Tick a job along, each time when it asks to be looked at, until it is no longer running. */
@@ -207,6 +212,7 @@ console.log("\na job from start to finish");
   check("one alert: short, so all of it, summary first", h.sent.length === 1 && h.sent[0]!.title === "Done: Dashcams" && h.sent[0]!.text === "The A229 is the best buy.\n\nFull comparison…" && h.sent[0]!.source === "job", h.sent);
   check("the alert names its job, for its pill in the conversation", h.sent[0]!.job === j.id, h.sent[0]);
   check("recorded how it was delivered", cur.deliveredBy === "push");
+  check("kept as a past attempt, once, as it finished", h.episodes.length === 1 && h.episodes[0]!.id === j.id && h.episodes[0]!.status === "done");
   check("nothing more to wake for", (await h.jobs.nextWake(T0 + 60_000)) === null);
   await h.jobs.tick(T0 + 120_000);
   check("never told twice", h.sent.length === 1);
@@ -399,6 +405,7 @@ console.log("\nHermes past the wait: still working, not failed");
   await h.jobs.tick(T0);
   const done = (await h.jobs.get(j.id))!;
   check("the person is told it is still working, quietly, with why", h.sent.length === 1 && h.sent[0]!.title === `Still working: ${j.title}` && h.sent[0]!.speak === false && /within 6 minutes/.test(h.sent[0]!.text), h.sent);
+  check("…and it is not a failed attempt: Hermes is still at it", h.episodes.length === 0);
   check("the job has no answer to keep", done.status === "failed" && /within 6 minutes/.test(done.error ?? ""), done);
 }
 

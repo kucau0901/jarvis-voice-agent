@@ -22,6 +22,8 @@ import { stateStub } from "./state-client.ts";
 import { memoryFor, type MemoryStore } from "./memory.ts";
 import { bookOf, OWNER } from "./context.ts";
 import { specialtyBlock } from "./specialties.ts";
+import { episodeOfChain, pastBlock } from "./episodes.ts";
+import { localeOf } from "./locale.ts";
 import { allows, type Grant } from "./scopes.ts";
 import { DRAWS_ON_SCREEN } from "../tools/place.ts";
 import { isResearchCap } from "./jobs.ts";
@@ -149,7 +151,8 @@ export async function prepareRouter(
   const shares = !!opts.origin && allows(grants, "memory.read");
   // The family, and what is waiting for this person to answer (lib/relays.ts), when they talk with the family.
   const talks = !!env.JARVIS_FAMILY && allows(grants, "chat");
-  // A specialty the question asks for (lib/specialties.ts): by words, in the same wait as the rest, for those whose memory it is.
+  // A specialty the question asks for (lib/specialties.ts), and past attempts like it (lib/episodes.ts):
+  // by words, in the same wait as the rest, for those whose memory it is.
   const asked = lastAsk(turns);
   const recalls = !!asked && allows(grants, "memory.read");
   const [, mcp, chosen, shared, family, recalled] = await Promise.all([
@@ -268,6 +271,8 @@ export async function prepareRouter(
     ...(profile ? [{ role: "user" as const, content: profile }] : []),
     // The user's own approved way, to follow if it fits: theirs, so a user message, as the profile is.
     ...(recalled?.specialty ? [{ role: "user" as const, content: specialtyBlock(recalled.specialty) }] : []),
+    // What happened before, quoted as data: it can carry what a site or a tool said.
+    ...(recalled?.past?.length ? [{ role: "user" as const, content: pastBlock(recalled.past, localeOf(env).timeZone) }] : []),
     // What was said, like the profile: a user message, never an instruction.
     ...(elsewhere ? [{ role: "user" as const, content: elsewhere }] : []),
     { role: "user" as const, content: `Conversation so far:\n\n${conversation}` },
@@ -330,6 +335,7 @@ export async function run(
   // exchange, and keeps doing so on the key after falling back mid-question.
   let carried: OpenAI.Responses.ResponseInput | null = plan ? [] : null;
   let lastOutput: OpenAI.Responses.ResponseInput = [];
+  const failed: { tool: string; said: string }[] = [];
   const onPlanHop = async (model: string, input: OpenAI.Responses.ResponseInput) => {
     const ask = (withEffort: boolean) =>
       planRespond(plan!.client, {
@@ -410,13 +416,25 @@ export async function run(
       if (carried) lastOutput = forKey(res.output as unknown as OpenAI.Responses.ResponseInput);
       return res;
     },
-    runCalls: (calls) =>
-      runCalls(calls as OpenAI.Responses.ResponseFunctionToolCall[], p!.byName, { env, signal, memory: p!.memory, grants, offered: [...p!.byName.keys()], asked: lastAsk(turns) ?? undefined }, sse),
+    runCalls: async (calls) => {
+      const out = await runCalls(calls as OpenAI.Responses.ResponseFunctionToolCall[], p!.byName, { env, signal, memory: p!.memory, grants, offered: [...p!.byName.keys()], asked: lastAsk(turns) ?? undefined }, sse);
+      // Tools that failed, for a past attempt (lib/episodes.ts): what callTool says when one throws.
+      out.forEach((o, i) => {
+        const said = "output" in o && typeof o.output === "string" ? o.output : "";
+        if (said.startsWith("That failed:")) failed.push({ tool: (calls[i] as { name: string }).name, said });
+      });
+      return out;
+    },
     close: () => sessions.close(),
     // Settings → Usage: after the answer, where the request allows, so the
     // glasses and push-to-talk do not wait on the write.
     record(r) {
       const writes: Promise<void>[] = [];
+      // A question whose tools failed is remembered, so the next like it knows (lib/episodes.ts).
+      const tried = lastAsk(turns);
+      if (failed.length && tried && allows(grants, "memory.read")) {
+        writes.push((stateStub(env)?.episodeAdd(env.JARVIS_PERSON || OWNER, episodeOfChain(tried, failed), Date.now()) ?? Promise.resolve()).catch(() => {}));
+      }
       // One conversation across devices (lib/shared.ts): what was asked here, and answered.
       const asked = lastAsk(turns);
       if (opts.origin && allows(grants, "memory.read") && r.ok && asked) {

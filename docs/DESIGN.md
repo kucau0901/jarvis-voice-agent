@@ -568,6 +568,18 @@ has now. Matched by words, in the same wait as the rest of the question's
 preparation (one call to the Durable Object), so a question pays no model call
 and the car no extra wait.
 
+**Past attempts: what happened last time.** Each background job, question
+for Hermes and research run, and each question whose tools failed, is noted
+as one line (`lib/episodes.ts`): what was wanted, whether it worked, and what
+came of it. A question sharing two words with one is given the best three, in
+the same call as the specialty, so Jarvis does not walk into the same wall
+twice. Hark tidies its memory overnight with a model; this tidies as each
+note is written, for nothing: older than 180 days goes, the same attempt again
+is counted rather than kept twice (as memory's near-duplicates are), and
+beyond 500 the oldest goes. A note can carry what a site or a tool said, so it
+is always quoted as data. Memory → Past attempts lists them, each forgettable;
+they are in the export, and gone when the person leaves.
+
 **Recall by meaning, only when searching.** The facts that matter everywhere
 travel with every question, so an ordinary question makes no extra call. Only
 an explicit search (`recall`) embeds the question, with OpenAI's

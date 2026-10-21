@@ -42,6 +42,7 @@ export async function handleMemory(req: Request, env: Env, grants: readonly Gran
 
   if (url.pathname === "/api/memory/move") return move(req, env, grants);
   if (url.pathname === "/api/memory/specialties") return family ? err(404, "specialties are each person's own") : specialties(req, env, url);
+  if (url.pathname === "/api/memory/past") return family ? err(404, "past attempts are each person's own") : past(req, env, url);
 
   // Their own book comes with the family's attached, so "what Jarvis reads" shows both, as the router reads them.
   const store = family ? new MemoryStore(env, env.JARVIS_FAMILY) : memoryFor(env, grants);
@@ -295,4 +296,17 @@ async function specialties(req: Request, env: Env, url: URL): Promise<Response> 
   if (req.method === "GET") return json({ specialties: await state.specialtiesOf(person) });
   if (req.method !== "DELETE") return err(405, "GET or DELETE");
   return (await state.specialtyForget(person, url.searchParams.get("id") ?? "")) ? json({ ok: true }) : err(404, "no such specialty");
+}
+
+/**
+ *   GET    /api/memory/past        {past}: what Jarvis tried for you, and how it went (lib/episodes.ts)
+ *   DELETE /api/memory/past?id=    one forgotten
+ */
+async function past(req: Request, env: Env, url: URL): Promise<Response> {
+  const state = stateStub(env);
+  if (!state) return err(503, "past attempts need the STATE Durable Object");
+  const person = env.JARVIS_PERSON || OWNER;
+  if (req.method === "GET") return json({ past: await state.episodesOf(person, Date.now()) });
+  if (req.method !== "DELETE") return err(405, "GET or DELETE");
+  return (await state.episodeForget(person, url.searchParams.get("id") ?? "")) ? json({ ok: true }) : err(404, "no such attempt");
 }

@@ -83,6 +83,11 @@ of every release, and in the [README](README.md#updating).
 - **Export your data.** Settings → Export your data downloads one JSON file
   of your memory, routines, panels, conversation and jobs, and the household's
   settings without any key or token. For the owner and admins.
+- **Past attempts.** Jarvis notes how each background job, question for
+  Hermes and research run went, and each question whose tools failed, and
+  when you ask for something like one of them, it is told what happened
+  last time. Memory → Past attempts lists them, each forgettable; no model
+  is used to keep them tidy.
 - **Specialties.** Say "save this as my Monday report" after Jarvis does
   something in a few steps, and next time you ask for it, by name or as you
   usually would, Jarvis does it the same way. Only you can save one, in your

@@ -9,6 +9,7 @@ import {
 } from "./settings.ts";
 import type { StoredImage } from "./images.ts";
 import type { Specialty } from "./specialties.ts";
+import type { Episode } from "./episodes.ts";
 import { addToDay, budgetStep, emptyDay, report, spentOf, type DayTotals, type UsageEntry, type UsageReport } from "./usage.ts";
 import { fromOthers, keep, type SharedTurn } from "./shared.ts";
 import { personOfWho } from "./context.ts";
@@ -614,7 +615,10 @@ interface RecallApi {
   specialtiesOf(person: string): Promise<Specialty[]>;
   specialtySave(person: string, input: { name: unknown; when: unknown; steps: unknown; why?: unknown }, now: number): Promise<Specialty | string>;
   specialtyForget(person: string, which: string): Promise<boolean>;
-  recallFor(person: string, ask: string): Promise<{ specialty: Specialty | null }>;
+  episodesOf(person: string, now: number): Promise<Episode[]>;
+  episodeAdd(person: string, e: Omit<Episode, "at" | "keys" | "seen">, now: number): Promise<void>;
+  episodeForget(person: string, id: string): Promise<boolean>;
+  recallFor(person: string, ask: string): Promise<{ specialty: Specialty | null; past: Episode[] }>;
 }
 
 /** The owner's ChatGPT plan, which model calls use first (lib/chatgpt-plan.ts; state.ts). */
