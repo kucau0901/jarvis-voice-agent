@@ -327,6 +327,8 @@ export class Panels {
     const due = (await this.due(now)).filter((t) => t.next <= now + 1000).sort((a, b) => a.next - b.next).slice(0, MAX_PER_RUN);
     if (!due.length) return;
     const paused = await deps.paused();
+    // Each claim stamped when it is made, not when the run began: a run's first look can take a minute and more.
+    const start = Date.now();
     for (const t of due) {
       if (!paused && (await deps.may(t.person))) {
         await readTile(t.spec, {
@@ -334,7 +336,7 @@ export class Panels {
           ask: async () => "",
           look: (text) => deps.look(t.person, text),
           kept: (tile) => this.reading(t.person, tile),
-          claim: (tile, every) => this.claimReading(t.person, tile, every, now),
+          claim: (tile, every) => this.claimReading(t.person, tile, every, now + (Date.now() - start)),
           keep: (tile, reading) => this.keepReading(t.person, tile, reading),
         }, t.key).catch(() => null);
       }

@@ -691,6 +691,28 @@ console.log("a reading kept fresh with Home closed");
   await quiet.refresh(deps({ paused: async () => true }), T);
   await quiet.refresh(deps({ may: async () => false }), T + 16 * 60_000);
   check("no plan or key, or someone who left: nothing asked", asked.length === before);
+
+  // The run's first look is slow; Home asks for the second tile while it is looked up.
+  answer = "Good: API 40\nAPI: 40";
+  const two = new Panels(fakeStorage());
+  await two.set("u_sara", "Two", [21, 22].map((n) => ({ kind: "tile" as const, ref: ref(n, "hourly"), label: `T${n}` })), "replace", T);
+  const realNow = Date.now;
+  let skew = 0;
+  let home: { go: boolean } | null = null;
+  Date.now = () => realNow() + skew;
+  try {
+    let looks = 0;
+    await two.refresh(deps({
+      look: async (person, text) => {
+        if (looks++ === 0) skew += 100_000;
+        else home = await two.claimReading(person, tileKey(ref(Number(/Reading (\d+)/.exec(text)![1]), "hourly")), 3_600_000, Date.now() + 30_000);
+        return answer;
+      },
+    }), T);
+  } finally {
+    Date.now = realNow;
+  }
+  check("a claim late in a run is stamped then, so Home does not pay for the same reading", home !== null && home!.go === false, home);
 }
 
 console.log("a reading Jarvis looks up, as Hark's air quality");

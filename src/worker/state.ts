@@ -394,9 +394,9 @@ export class JarvisState extends DurableObject<Env> {
     await this.scheduler.tick();
     await this.jobs.tick();
     await this.relays.tick();
+    await this.releaseHeld();
     // Last, and a couple a run: what this alarm has left of its budget is the panels' (lib/panels.ts).
     await this.panels.refresh(await this.panelDeps());
-    await this.releaseHeld();
     await this.rearm();
   }
 

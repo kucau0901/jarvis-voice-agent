@@ -389,7 +389,9 @@ export class Home {
         }
         if (got?.at) parts.push(`last checked ${clock(got.at)}`);
         const next = got?.at ? got.at + r.every * 60_000 : 0;
-        parts.push(got?.pending ? "being looked up now" : next > Date.now() ? `next check when Home is open after ${clock(next)}` : "next check when Home is next open");
+        // Kept fresh, it is checked whether Home is open or not.
+        const after = r.refresh ? (next > Date.now() ? `next check about ${clock(next)}` : "next check soon") : next > Date.now() ? `next check when Home is open after ${clock(next)}` : "next check when Home is next open";
+        parts.push(got?.pending ? "being looked up now" : after);
         line(r.label, ...parts);
       } else {
         line(r.label, `reads ${r.tool ?? "a tool"} every minute while Home is open`, ...(seen ? [`last read ${clock(seen.fetched)}`] : []));
