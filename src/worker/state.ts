@@ -26,6 +26,7 @@ import { Chat, dmId, type ChatMessage } from "./lib/chat.ts";
 import { Panels, type PanelItem, type Reading } from "./lib/panels.ts";
 import { Conversation, jobSaid, routineSaid, type Said } from "./lib/conversation.ts";
 import { Images, type StoredImage } from "./lib/images.ts";
+import { Specialties } from "./lib/specialties.ts";
 import { OWNER, personOfWho, withPerson } from "./lib/context.ts";
 import { lookAtPage } from "./lib/page-look.ts";
 import { budgetOf, budgetSays, costOf, dayOf } from "./lib/usage.ts";
@@ -61,6 +62,7 @@ export class JarvisState extends DurableObject<Env> {
   /** Each person's conversation with Jarvis, kept (lib/conversation.ts). */
   private conversation: Conversation;
   private images: Images;
+  private specialties: Specialties;
   /** The owner's ChatGPT plan, which model calls use first (lib/chatgpt-plan.ts). */
   private plan: ChatGptPlan;
 
@@ -73,6 +75,7 @@ export class JarvisState extends DurableObject<Env> {
     this.panels = new Panels(ctx.storage);
     this.conversation = new Conversation(ctx.storage);
     this.images = new Images(ctx.storage);
+    this.specialties = new Specialties(ctx.storage);
     this.plan = new ChatGptPlan(ctx.storage, (input, init) => fetch(input, init));
     this.relays = new Relays(ctx.storage, () => this.relayDeps());
     this.jobs = new Jobs(ctx.storage, async () => {
@@ -255,6 +258,7 @@ export class JarvisState extends DurableObject<Env> {
     await this.panels.forget(person);
     await this.conversation.clear(person);
     await this.images.clear(person);
+    await this.specialties.clear(person);
     await this.rearm();
   }
 
@@ -536,6 +540,23 @@ export class JarvisState extends DurableObject<Env> {
 
   imageGet(person: string, id: string, now: number) {
     return this.images.get(person, id, now);
+  }
+
+  specialtiesOf(person: string) {
+    return this.specialties.of(person);
+  }
+
+  specialtySave(person: string, input: { name: unknown; when: unknown; steps: unknown; why?: unknown }, now: number) {
+    return this.specialties.save(person, input, now);
+  }
+
+  specialtyForget(person: string, which: string) {
+    return this.specialties.forget(person, which);
+  }
+
+  /** What the router is given beside the question (lib/router.ts): the specialty it asks for, if any. One call, so the question waits on one. */
+  async recallFor(person: string, ask: string) {
+    return { specialty: await this.specialties.match(person, ask) };
   }
 
   conversationOf(person: string, now: number) {

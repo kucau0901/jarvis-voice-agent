@@ -83,6 +83,11 @@ of every release, and in the [README](README.md#updating).
 - **Export your data.** Settings → Export your data downloads one JSON file
   of your memory, routines, panels, conversation and jobs, and the household's
   settings without any key or token. For the owner and admins.
+- **Specialties.** Say "save this as my Monday report" after Jarvis does
+  something in a few steps, and next time you ask for it, by name or as you
+  usually would, Jarvis does it the same way. Only you can save one, in your
+  own words; Memory → Specialties lists them, with Forget. They are in the
+  data export.
 - **About you.** Family → You → About you keeps what you like to be called,
   your birthday, your home and work, and the people in your life with who
   each is to you, so "remind my wife" and "how long to work" just work. A

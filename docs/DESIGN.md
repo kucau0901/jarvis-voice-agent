@@ -555,6 +555,19 @@ the slow path. Memory is now local: one document in the Durable Object, plus a
 second for reference material, and retrieval by words (BM25-lite) and by
 meaning (embeddings), merged.
 
+**Specialties: the user's own way, saved.** "Save this as my Monday report"
+keeps the steps Jarvis just took (`lib/specialties.ts`), and a later question
+that names it, or shares two words with it, gets them beside the profile, as
+Hark's Specialties do. Steps are followed, so they are a standing instruction
+of the user's, and only the user can make one: `specialty_save` takes their
+own words asking for it, which must be in their latest message, so a page, a
+mail or a tool's output cannot save one, and jobs are never offered it. They
+go to the router as a user message, as the profile does, worded as a
+procedure the user approved, to follow only if it fits and with the tools it
+has now. Matched by words, in the same wait as the rest of the question's
+preparation (one call to the Durable Object), so a question pays no model call
+and the car no extra wait.
+
 **Recall by meaning, only when searching.** The facts that matter everywhere
 travel with every question, so an ordinary question makes no extra call. Only
 an explicit search (`recall`) embeds the question, with OpenAI's

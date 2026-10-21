@@ -44,6 +44,7 @@ const PROMPT_SHA256 = "4c052dbb87c29e01adabcd5415e9c422214ec78828dafe87cdf2cbb5f
 // panel_list (tools/panels.ts, scope screen): everyone but the guest (16 Oct 2026).
 // job_results (tools/jobs.ts, no scope beyond ask): everyone, as start_job (19 Oct 2026).
 // make_image (tools/image.ts, scope screen, the OpenAI key only): everyone but the guest (21 Oct 2026).
+// specialty_save and specialty_forget (tools/specialties.ts, scope memory.write): everyone but the guest (21 Oct 2026).
 const EXPECTED: Record<string, { model: string; tools: string[]; input: string }> = {
  "owner key, nothing set up": {
   "model": "gpt-6-luna",
@@ -62,6 +63,8 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
    "routine_list",
    "routine_remove",
    "send_note",
+   "specialty_forget",
+   "specialty_save",
    "start_job"
   ],
   "input": "802a8e76891d234f"
@@ -106,6 +109,8 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
    "send_note",
    "show_camera",
    "show_place",
+   "specialty_forget",
+   "specialty_save",
    "start_job"
   ],
   "input": "c3e8500a4e0a9c83"
@@ -148,6 +153,8 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
    "send_note",
    "show_camera",
    "show_place",
+   "specialty_forget",
+   "specialty_save",
    "start_job"
   ],
   "input": "8a479f675d659285" // car levels said as check/control (28 Sep 2026)
@@ -180,6 +187,8 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
    "routine_remove",
    "send_note",
    "show_place",
+   "specialty_forget",
+   "specialty_save",
    "start_job"
   ],
   "input": "7760bbcac8b42817"
@@ -246,6 +255,16 @@ try {
   check("  and it is told both", none.said.includes("THIS REQUEST HAS NO SCREEN") && none.said.includes("Panels on the user's Home tab are not this screen"));
   const noGrant = await names(["ask"], true);
   check("  without screen, no panels, and not told to make them", !noGrant.tools.includes("panel_set") && !noGrant.said.includes("Panels on the user's Home tab"));
+
+  // A specialty the question asks for (lib/specialties.ts): the user's own way, as a user message, to follow only if it fits.
+  const monday = { id: "s1", name: "Monday report", when: [], steps: ["Check the calendar for the week", "Then the unread mail"], keys: [], createdAt: 0, updatedAt: 0 };
+  const recalling = new Proxy({}, { get: (_t, m) => (m === "then" ? undefined : async () => (m === "recallFor" ? { specialty: monday } : undefined)) });
+  const withSpecialty = { ...base, STATE: { idFromName: () => "j", get: () => recalling } };
+  const asked = (grants: string[]) => prepareRouter(withSpecialty as never, [{ role: "user", text: "run my Monday report" }], new AbortController().signal, grants as never, {});
+  const sp = (await asked(["*"])).input.find((m) => JSON.stringify(m).includes("A SPECIALTY THE USER SAVED")) as { role?: string; content?: string } | undefined;
+  console.log("a specialty the question asks for");
+  check("  given as the user's, to follow only if it fits, with its steps", sp?.role === "user" && /only if it fits this request/.test(sp.content ?? "") && (sp.content ?? "").includes("1. Check the calendar for the week"), sp);
+  check("  never to someone whose memory it is not", !JSON.stringify((await asked(["ask"])).input).includes("A SPECIALTY"));
 } finally {
   globalThis.fetch = realFetch;
 }

@@ -13,7 +13,7 @@ import { JARVIS_VERSION } from "./version.ts";
  *   GET /api/export   everything Jarvis keeps of the asker, as one JSON file
  *
  * Their memory (and the family's shared book, for one in a family), their
- * routines, panels, conversation and jobs, and the household's settings with
+ * specialties, routines, panels, conversation and jobs, and the household's settings with
  * no secret among them: a secret is never sent to the browser, here as in
  * Settings. Admins only (lib/scopes.ts), and only their own: nobody else's
  * words are in it.
@@ -29,7 +29,7 @@ export async function handleExport(req: Request, env: Env, principal: Principal)
   const me = personOf(principal);
   const book = bookOf(env.JARVIS_PERSON);
   const now = Date.now();
-  const [memory, reference, familyMemory, familyReference, routines, panels, conversation, jobs, saved] = await Promise.all([
+  const [memory, reference, familyMemory, familyReference, routines, panels, conversation, jobs, saved, specialties] = await Promise.all([
     state.loadMemory(book),
     state.loadReference(book),
     env.JARVIS_FAMILY ? state.loadMemory(env.JARVIS_FAMILY) : null,
@@ -39,6 +39,7 @@ export async function handleExport(req: Request, env: Env, principal: Principal)
     state.conversationOf(me, now),
     state.listJobs(),
     state.getSettings(),
+    state.specialtiesOf(me),
   ]);
   // Only what Settings would show as a value: a secret's never, nor a name no setting has.
   const plain = new Set(SETTINGS.filter((s) => s.kind !== "secret").map((s) => s.name));
@@ -51,6 +52,7 @@ export async function handleExport(req: Request, env: Env, principal: Principal)
     family: familyMemory && familyReference ? { facts: familyMemory.facts, trash: familyMemory.trash, reference: familyReference.facts } : null,
     routines: routines.filter((r) => isTheirs(r.createdBy, me)),
     panels,
+    specialties,
     conversation,
     jobs: jobs.filter((j) => isTheirs(j.createdBy, me)).map((j) => jobView(j, true)),
     settings,

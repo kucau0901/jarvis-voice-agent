@@ -4,6 +4,7 @@ import { allows, type Grant, type Scope } from "../lib/scopes.ts";
 import * as hermes from "./hermes.ts";
 import { memoryTools } from "./memory.ts";
 import { lookBackTool } from "./conversation.ts";
+import { specialtyTools } from "./specialties.ts";
 import { tessieTools } from "./tessie.ts";
 import { directionsTools } from "./directions.ts";
 import { placeTools } from "./place.ts";
@@ -48,6 +49,8 @@ export interface ToolContext {
   grants: readonly Grant[];
   /** The tools the router was offered for this question, by name: what a panel's tile may be wired to (tools/panels.ts). */
   offered?: readonly string[];
+  /** The user's latest message, as they said it: what only they can ask for must be in it (tools/specialties.ts). */
+  asked?: string;
 }
 
 /** A picture for the router to look at, as a data: URL. */
@@ -220,6 +223,7 @@ const controlHome: Tool = {
 /** Every local tool. MCP tools are appended separately at request time. */
 const ALL: Tool[] = [
   ...memoryTools,
+  ...specialtyTools,
   lookBackTool,
   ...tessieTools,
   ...directionsTools,

@@ -20,7 +20,8 @@ import { recordUsage } from "../routes/usage.ts";
 import { sharedBlock, type Origin, type SharedTurn } from "./shared.ts";
 import { stateStub } from "./state-client.ts";
 import { memoryFor, type MemoryStore } from "./memory.ts";
-import { bookOf } from "./context.ts";
+import { bookOf, OWNER } from "./context.ts";
+import { specialtyBlock } from "./specialties.ts";
 import { allows, type Grant } from "./scopes.ts";
 import { DRAWS_ON_SCREEN } from "../tools/place.ts";
 import { isResearchCap } from "./jobs.ts";
@@ -148,7 +149,10 @@ export async function prepareRouter(
   const shares = !!opts.origin && allows(grants, "memory.read");
   // The family, and what is waiting for this person to answer (lib/relays.ts), when they talk with the family.
   const talks = !!env.JARVIS_FAMILY && allows(grants, "chat");
-  const [, mcp, chosen, shared, family] = await Promise.all([
+  // A specialty the question asks for (lib/specialties.ts): by words, in the same wait as the rest, for those whose memory it is.
+  const asked = lastAsk(turns);
+  const recalls = !!asked && allows(grants, "memory.read");
+  const [, mcp, chosen, shared, family, recalled] = await Promise.all([
     memory.load().catch((e) => {
       console.warn("memory unavailable:", e instanceof Error ? e.message : String(e));
     }),
@@ -161,6 +165,7 @@ export async function prepareRouter(
       ? (stateStub(env)?.recentShared(opts.origin!.id, Date.now(), bookOf(env.JARVIS_PERSON)) ?? Promise.resolve([] as SharedTurn[])).catch(() => [] as SharedTurn[])
       : Promise.resolve([] as SharedTurn[]),
     talks ? familyBlock(env).catch(() => "") : Promise.resolve(""),
+    recalls ? (stateStub(env)?.recallFor(env.JARVIS_PERSON || OWNER, asked!) ?? Promise.resolve(null)).catch(() => null) : Promise.resolve(null),
   ]);
   const elsewhere = [sharedBlock(shared, Date.now()), family].filter(Boolean).join("\n\n");
   tools.push(...mcp);
@@ -261,6 +266,8 @@ export async function prepareRouter(
     },
     { role: "developer" as const, content: context },
     ...(profile ? [{ role: "user" as const, content: profile }] : []),
+    // The user's own approved way, to follow if it fits: theirs, so a user message, as the profile is.
+    ...(recalled?.specialty ? [{ role: "user" as const, content: specialtyBlock(recalled.specialty) }] : []),
     // What was said, like the profile: a user message, never an instruction.
     ...(elsewhere ? [{ role: "user" as const, content: elsewhere }] : []),
     { role: "user" as const, content: `Conversation so far:\n\n${conversation}` },
@@ -404,7 +411,7 @@ export async function run(
       return res;
     },
     runCalls: (calls) =>
-      runCalls(calls as OpenAI.Responses.ResponseFunctionToolCall[], p!.byName, { env, signal, memory: p!.memory, grants, offered: [...p!.byName.keys()] }, sse),
+      runCalls(calls as OpenAI.Responses.ResponseFunctionToolCall[], p!.byName, { env, signal, memory: p!.memory, grants, offered: [...p!.byName.keys()], asked: lastAsk(turns) ?? undefined }, sse),
     close: () => sessions.close(),
     // Settings → Usage: after the answer, where the request allows, so the
     // glasses and push-to-talk do not wait on the write.
@@ -463,7 +470,7 @@ export async function run(
 export async function runCalls(
   calls: OpenAI.Responses.ResponseFunctionToolCall[],
   byName: Map<string, Tool>,
-  base: { env: Env; signal: AbortSignal; memory: MemoryStore; grants: readonly Grant[]; offered?: readonly string[] },
+  base: { env: Env; signal: AbortSignal; memory: MemoryStore; grants: readonly Grant[]; offered?: readonly string[]; asked?: string },
   sse: EventSink,
 ): Promise<OpenAI.Responses.ResponseInput> {
   return Promise.all(

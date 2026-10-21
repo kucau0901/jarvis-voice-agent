@@ -13,7 +13,7 @@ export function exportSection(key: string): HTMLElement {
   box.dataset.state = "on";
   box.appendChild(el("h3", "", "Export your data"));
   box.appendChild(el("p", "note",
-    "Your memory, routines, panels, conversation and jobs, and the household's settings without any key or token, " +
+    "Your memory, specialties, routines, panels, conversation and jobs, and the household's settings without any key or token, " +
     "as one JSON file."));
   const res = el("div", "res");
   const go = button("Download", async () => {
