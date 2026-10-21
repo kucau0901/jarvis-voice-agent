@@ -195,7 +195,8 @@ export function requiredScope(pathname: string, method: string): RouteRequiremen
     case "/api/camera":
       return "home";
 
-    // Diagnostics and the stored probe runs are the owner's business.
+    // Diagnostics, the stored probe runs and the data export are the owner's business.
+    case "/api/export":
     case "/api/diag":
     case "/api/probe":
       return "owner";

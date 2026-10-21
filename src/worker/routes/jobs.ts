@@ -309,7 +309,7 @@ const MAX_BODY = 16 * 1024;
 
 
 /** The panel's view: everything but the grants and the internals; of a research team, its progress. */
-function jobView(j: Job, whole = false) {
+export function jobView(j: Job, whole = false) {
   const { grants: _g, responseId: _r, draft: _d, team: _t, ...rest } = j;
   void _g;
   void _r;
