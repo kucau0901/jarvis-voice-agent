@@ -221,13 +221,19 @@ console.log("\nanswering an invitation (calendar_rsvp): for a tap only");
   const every = calendarRsvp.propose!({ ...args, response: "accepted", recurring: true }, env);
   check("a repeating one: answered every time, one subject whenever its next time is", every?.verb === "Accept" && every.about === "rsvp:evt12345abc" && /, every time \(next Fri, 23 Oct 2026, 10:00\)/.test(every.says), every);
   check("an all-day one by its date", /Sat, 24 Oct 2026, all day/.test(calendarRsvp.propose!({ ...args, start: "2026-10-24" }, env)?.says ?? ""));
+  check("a one-off's card waits until it begins; an all-day one's until its day is out, in their zone; a repeating one's, its day",
+    w?.until === Date.parse("2026-10-23T02:00:00.000Z") && calendarRsvp.propose!({ ...args, start: "2026-10-24" }, env)?.until === Date.UTC(2026, 9, 24, 16) && every?.until === undefined,
+    [w?.until, calendarRsvp.propose!({ ...args, start: "2026-10-24" }, env)?.until]);
   check("not one: a bad id, an answer that is neither, no start", [{ ...args, event_id: "../x" }, { ...args, response: "tentative" }, { ...args, start: "Friday" }].every((a) => calendarRsvp.propose!(a, env) === null));
   check("never among the tools the router or a job is given", !baseTools(env, ["*"]).some((t) => t.name === "calendar_rsvp") && !calendarTools.includes(calendarRsvp));
 
   const kv = new Map<string, string>([["google:refresh", "refresh-token"]]);
   const CONFIG = { get: async (k: string) => kv.get(k) ?? null, put: async (k: string, v: string) => void kv.set(k, v), delete: async (k: string) => void kv.delete(k) };
   const live = { ...(env as object), CONFIG } as never;
-  const run = async (event: Record<string, unknown> | number, a: Record<string, unknown> = args) => {
+  // Two days from whenever this runs, to the minute: a card is answered only before its time.
+  const soon = new Date(Math.ceil((Date.now() + 2 * 86_400_000) / 60_000) * 60_000).toISOString();
+  const upcoming = { ...args, start: soon };
+  const run = async (event: Record<string, unknown> | number, a: Record<string, unknown> = upcoming) => {
     const calls: { url: string; method: string; body: string }[] = [];
     const real = globalThis.fetch;
     globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
@@ -245,7 +251,7 @@ console.log("\nanswering an invitation (calendar_rsvp): for a tap only");
       globalThis.fetch = real;
     }
   };
-  const invite = { status: "confirmed", start: { dateTime: "2026-10-23T10:00:00+08:00" }, attendees: [{ email: "lead@example.com", responseStatus: "accepted" }, { email: "me@example.com", self: true, responseStatus: "needsAction" }] };
+  const invite = { status: "confirmed", start: { dateTime: soon }, attendees: [{ email: "lead@example.com", responseStatus: "accepted" }, { email: "me@example.com", self: true, responseStatus: "needsAction" }] };
   const ok = await run(invite);
   const patch = ok.calls.find((c) => c.method === "PATCH");
   const body = JSON.parse(patch?.body ?? "{}") as { attendeesOmitted?: boolean; attendees?: { email: string; responseStatus: string }[] };
@@ -254,13 +260,15 @@ console.log("\nanswering an invitation (calendar_rsvp): for a tap only");
     JSON.stringify(body.attendees) === JSON.stringify([{ email: "me@example.com", responseStatus: "declined" }]), { ok, body });
   const refused = [
     await run({ ...invite, status: "cancelled" }),
-    await run({ ...invite, start: { dateTime: "2026-10-23T11:00:00+08:00" } }),
+    await run({ ...invite, start: { dateTime: new Date(Date.parse(soon) + 3_600_000).toISOString() } }),
     await run({ ...invite, attendees: [{ email: "me@example.com", self: true, responseStatus: "accepted" }] }),
     await run({ ...invite, attendees: [{ email: "lead@example.com", responseStatus: "accepted" }] }),
     await run(404),
   ];
   check("not sent when it was cancelled, moved, answered already, they are off its list, or it is gone", refused.every((r) => !r.done && !r.calls.some((c) => c.method === "PATCH")), refused.map((r) => r.out));
   check("…each said so", /cancelled/.test(refused[0]!.out) && /moved/.test(refused[1]!.out) && /answered it already \(accepted\)/.test(refused[2]!.out) && /guest list/.test(refused[3]!.out) && /no longer in the calendar/.test(refused[4]!.out), refused.map((r) => r.out));
+  const past = await run({ ...invite, start: { dateTime: "2020-10-23T10:00:00+08:00" } }, { ...args, start: "2020-10-23T02:00:00.000Z" });
+  check("its time come and gone: nothing sent, however it still reads", !past.done && !past.calls.some((c) => c.method === "PATCH") && /come and gone/.test(past.out), past.out);
   const series = await run({ ...invite, start: { dateTime: "2026-01-05T09:00:00+08:00" }, recurrence: ["RRULE:FREQ=DAILY"] }, { ...args, recurring: true, response: "accepted" });
   check("a repeating one is answered whole, whenever its first time was", series.done && series.calls.some((c) => c.method === "PATCH"), series.out);
   const some = [

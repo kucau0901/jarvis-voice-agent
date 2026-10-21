@@ -528,6 +528,27 @@ console.log("\na brief's cards: one subject, offered once, dismissed for a while
   // Refused for what it would show (too long to show whole): the card it was to replace still waits.
   const refused = await refusing.add({ ...brief("r"), detail: async () => "x".repeat(9_000) }, T + DECIDE_MS - 60_000);
   check("a fresh one refused: the old card is left waiting, not let go", typeof refused === "string" && (await refusing.get("u_sara", keep.id, T + DECIDE_MS - 60_000))?.state === "pending", refused);
+  // While the fresh card's sample is fetched, the person answers the old one: their answer stands.
+  for (const how of ["approve", "decline"] as const) {
+    const store = fakeStorage();
+    const race = new Proposals(store as never);
+    const old = (await race.add(brief(`o${how}`), T)) as Proposal;
+    const at = T + DECIDE_MS - 60_000;
+    const fresh = await race.add({ ...brief(`f${how}`), detail: async () => {
+      if (how === "approve") await race.claim("u_sara", old.id, ["*"], ["*"], at);
+      else await race.decline("u_sara", old.id, at);
+      return "Among them:\nShop Example: Sale";
+    } }, at);
+    const after = await race.get("u_sara", old.id, at);
+    const pending = (await race.list("u_sara", at)).filter((p) => p.state === "pending");
+    check(`the old card ${how === "approve" ? "approved" : "dismissed"} meanwhile: kept as answered, and no fresh card filed`,
+      typeof fresh === "string" && after?.state === (how === "approve" ? "running" : "declined") && pending.length === 0 &&
+      (how === "approve" ? [...store._m.keys()].some((k) => k === `proprun:u_sara:${old.id}`) : true), { fresh, after: after?.state, pending: pending.length });
+  }
+  const meeting = new Proposals(fakeStorage() as never);
+  const soonAt = T + 3 * 3_600_000;
+  const invite = await meeting.add(input({ from: { kind: "brief", id: "rb@i", title: "Brief", routine: "rb" }, weighed: { risk: "irreversible", says: "Calendar: accept “Offsite”", verb: "Accept", about: "rsvp:x@y", until: soonAt } }), T);
+  check("a card that stops making sense at a time waits no longer than that", typeof invite !== "string" && invite.expires === soonAt && (await meeting.get("u_sara", invite.id, soonAt))?.state === "expired", invite);
   const kept = (st._m.get("propgone:u_sara") ?? {}) as Record<string, number>;
   check("remembered by its subject, beside the proposals, for 30 days", kept["inbox:promotions"] === T + 2 * 3_600_000 + GONE_MS && !(await props.list("u_sara", T)).some((p) => p.about === undefined && p.state === "pending"), kept);
   const later = await props.add(brief("4"), T + 2 * 3_600_000 + GONE_MS + 1);

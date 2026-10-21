@@ -1114,8 +1114,9 @@ be undone and Home Assistant decides what each does. A job's email is only ever
 drafted, and its sending proposed (`lib/mail-draft.ts`), so mail has one way
 out, Send. A brief proposes too (`lib/brief.ts`), but what it puts to the
 person code chooses, never a model: an answer to an invitation left
-unanswered (Decline when it clashes, else Accept), and archiving old
-promotions. Its cards are filed before its one model call, so they wait
+unanswered (Decline when it clashes, else Accept; its card waits no longer
+than the meeting's start, and the tap refuses once it has begun), and
+archiving old promotions. Its cards are filed before its one model call, so they wait
 whatever becomes of the opening. Each has a subject (`about`): one waiting
 already is listed again rather than filed twice (unless it has under two
 hours left, as yesterday's from a daily brief has, when a fresh one takes its

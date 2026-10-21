@@ -42,6 +42,8 @@ export interface Weighed {
   verb?: string;
   /** What a brief's card is about ("rsvp:<event>", "inbox:promotions"): offered once, and not again once dismissed. */
   about?: string;
+  /** When it stops making sense, if before a day is out (an invitation, at its start): it waits no longer. */
+  until?: number;
 }
 
 export type ProposalState = "pending" | "running" | "done" | "failed" | "declined" | "expired" | "withdrawn";
@@ -258,11 +260,16 @@ export class Proposals {
       ...(about ? { about } : {}),
       grants: [...input.grants],
       createdAt: now,
-      expires: now + DECIDE_MS,
+      expires: Math.min(now + DECIDE_MS, input.weighed.until ?? Infinity),
       ...(standing ? { state: "running", by: "standing", decidedAt: now } : { state: "pending" }),
     };
-    // The one it replaces let go only now: refused above, that card would still be waiting.
-    if (lapsing) await this.storage.put(key(input.person, lapsing.id), { ...lapsing, state: "expired", decidedAt: now });
+    // The one it replaces let go only now (refused above, it would still be waiting), as it is now:
+    // the sample's fetch let other things in, and a tap on that card meanwhile is the person's answer.
+    if (lapsing) {
+      const still = await this.storage.get<Proposal>(key(input.person, lapsing.id));
+      if (still?.state !== "pending") return "Answered meanwhile: not filed again.";
+      await this.storage.put(key(input.person, lapsing.id), { ...still, state: "expired", decidedAt: now });
+    }
     await this.storage.put(key(p.person, p.id), p);
     await this.prune(input.person, now);
     return p;

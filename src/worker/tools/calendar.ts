@@ -1,7 +1,7 @@
 import type { Env } from "../types.ts";
 import { localeOf } from "../lib/locale.ts";
 import { CALENDAR, call, explain, googleConfig, guardTool, type GoogleConfig } from "../lib/google.ts";
-import { localParts, zonedToUtc } from "../lib/routines.ts";
+import { dayBegins, localParts, zonedToUtc } from "../lib/routines.ts";
 import { asQuotedData, tidy } from "../lib/quote.ts";
 import { clampLimit } from "./args.ts";
 import type { Tool, ToolContext } from "./registry.ts";
@@ -344,7 +344,7 @@ const DAY = /^\d{4}-\d{2}-\d{2}$/;
 const RESPONSES: Record<string, string> = { accepted: "Accept", declined: "Decline" };
 
 /** An invitation's answer as the card shows it, from its arguments alone (lib/brief.ts makes them); null when they are not one. */
-function rsvpOf(args: Record<string, unknown>, env: Env): { id: string; start: string; title: string; verb: string; says: string; about: string } | null {
+function rsvpOf(args: Record<string, unknown>, env: Env): { id: string; start: string; title: string; verb: string; says: string; about: string; until?: number } | null {
   const id = typeof args.event_id === "string" ? args.event_id : "";
   const start = typeof args.start === "string" ? args.start.trim() : "";
   const verb = RESPONSES[String(args.response)];
@@ -360,11 +360,15 @@ function rsvpOf(args: Record<string, unknown>, env: Env): { id: string; start: s
     : fmt(localeOf(env).timeZone, at, { weekday: "short", day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: false });
   // A repeating one is answered for every time it happens, and is one subject whenever its next time is.
   const every = args.recurring === true;
+  // A one-off is answered before it begins (an all-day one, before its day is out), not after.
+  const next = new Date(at.getTime() + 86_400_000);
+  const until = every ? undefined : DAY.test(start) ? dayBegins(next.getUTCFullYear(), next.getUTCMonth() + 1, next.getUTCDate(), localeOf(env).timeZone) : at.getTime();
   return {
     id,
     start,
     title,
     verb,
+    ...(until !== undefined ? { until } : {}),
     says: `Calendar: ${verb.toLowerCase()} “${title}”${every ? `, every time (next ${when})` : `, ${when}`}${from ? `, from ${from}, who is told` : " (the organiser is told)"}`,
     about: every ? `rsvp:${id}` : `rsvp:${id}@${start}`,
   };
@@ -397,7 +401,7 @@ export const calendarRsvp: Tool = {
   },
   propose(args, env) {
     const r = rsvpOf(args, env);
-    return r ? { risk: "irreversible", says: r.says, verb: r.verb, about: r.about } : null;
+    return r ? { risk: "irreversible", says: r.says, verb: r.verb, about: r.about, ...(r.until !== undefined ? { until: r.until } : {}) } : null;
   },
   async run(args, ctx) {
     const r = rsvpOf(args, ctx.env);
@@ -415,6 +419,7 @@ export const calendarRsvp: Tool = {
       const was = e.start?.dateTime ? Date.parse(e.start.dateTime) : e.start?.date ?? null;
       const shown = DAY.test(r.start) ? r.start : Date.parse(r.start);
       if (args.recurring !== true && was !== shown) return "It has moved since it was proposed, so nothing was sent.";
+      if (r.until !== undefined && Date.now() >= r.until) return "Its time has come and gone, so nothing was sent.";
       const self = e.attendees?.find((a) => a.self);
       // A repeating one is answered whole only as a whole: any of its times still waiting are theirs to answer in Google Calendar.
       const every = args.recurring === true;
