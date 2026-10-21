@@ -48,10 +48,14 @@ export function pageCard(key: string, page: { id: string; title: string }): HTML
       tell(e instanceof Error ? e.message : String(e));
     }
   }, "docopen");
-  stop.hidden = true;
+  share.hidden = stop.hidden = true;
   btns.append(share, stop);
   card.appendChild(btns);
-  // Whether it is shared already, to offer Stop sharing.
-  void api(key, "GET", `/api/page?id=${encodeURIComponent(page.id)}`).then((m) => (stop.hidden = !(m as { shared?: boolean }).shared), () => {});
+  // Whether they may share it (an admin), and whether it is shared already, to offer Stop sharing.
+  void api(key, "GET", `/api/page?id=${encodeURIComponent(page.id)}`).then((m) => {
+    const { shared, canShare } = m as { shared?: boolean; canShare?: boolean };
+    share.hidden = !canShare;
+    stop.hidden = !shared;
+  }, () => {});
   return card;
 }

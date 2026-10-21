@@ -23,7 +23,6 @@ export function asDraft(ev: Record<string, unknown>, hook?: (d: Draft) => void):
 }
 
 export function draftCard(key: string, d: Draft): HTMLElement {
-  const row = el("div", "row jarvis");
   const card = el("div", "pagecard draftcard");
   const said = el("small", "pagesaid", "Not sent: it waits in Drafts for you.");
   card.append(
@@ -46,9 +45,8 @@ export function draftCard(key: string, d: Draft): HTMLElement {
     }
   }, "docopen primary");
   const open = button("Open in Gmail", () => void window.open("https://mail.google.com/mail/#drafts", "_blank", "noopener"), "docopen");
-  const later = button("Not now", () => row.remove(), "docopen");
+  const later = button("Not now", () => (card.closest(".row") ?? card).remove(), "docopen");
   btns.append(send, open, later);
   card.appendChild(btns);
-  row.appendChild(card);
-  return row;
+  return card;
 }

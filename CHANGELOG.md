@@ -105,9 +105,9 @@ of every release, and in the [README](README.md#updating).
   number. Long work becomes a background job whose result comes there.
 - **Pages.** "Make me a page comparing these chargers" makes a small web
   page, in sections and tabs, light or dark, marked as made by an AI. It
-  comes as a card under the answer to open; those who run the house can
-  Share it as a link anyone can open, and Stop sharing. Each person's newest
-  20 are kept for 30 days; clearing the chat removes them.
+  comes as a card under the answer to open, typed or spoken; those who run
+  the house can Share it as a link anyone can open, and Stop sharing. Each
+  person's newest 20 are kept for 30 days; clearing the chat removes them.
 - **Research into a table.** Ask for a list of many things found and
   compared ("the 10 cheapest genuine Xiaomi speakers in Malaysia, with seller
   and rating"), or tick As a table in Jobs: a research team fills the rows,

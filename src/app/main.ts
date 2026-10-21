@@ -106,6 +106,8 @@ const inviteToken = (() => {
 // rather than a new row appearing per fragment.
 type Row = { who: "you" | "jarvis"; el: HTMLElement; text: string };
 let current: { you?: Row; jarvis?: Row } = {};
+/** A page a spoken answer made (tools/page.ts): its card goes under that answer when its row ends, and is kept with it. */
+let voicePage: { id: string; title: string } | null = null;
 
 function append(who: "you" | "jarvis", delta: string) {
   let row = current[who];
@@ -126,8 +128,13 @@ function endRow(who: "you" | "jarvis") {
   const row = current[who];
   current[who] = undefined;
   if (!row?.text.trim()) return;
+  const page = who === "jarvis" ? voicePage : null;
+  if (page) {
+    voicePage = null;
+    if (key) row.el.appendChild(pageCard(key, page));
+  }
   row.el.dataset.said = saidId();
-  keep(key, { id: row.el.dataset.said, role: who === "you" ? "user" : "assistant", text: row.text });
+  keep(key, { id: row.el.dataset.said, role: who === "you" ? "user" : "assistant", text: row.text, ...(page ? { page } : {}) });
 }
 const endRows = () => { endRow("you"); endRow("jarvis"); };
 /** A pause on one side ends that row. */
@@ -313,6 +320,7 @@ function onEvent(ev: ServerEvent) {
           log: (type, data) => logEvent({ type, ...data }),
           display: (payload) => {
             if (!key) return;
+            if (payload.kind === "page" && typeof payload.page === "string") voicePage = { id: payload.page, title: String(payload.label ?? "Page") };
             stage ??= new Stage(key);
             void stage.show(payload as unknown as DisplayPayload);
           },
@@ -1132,12 +1140,16 @@ function pushToTalk(): PushToTalk {
     answered: (text, ok) => {
       append("jarvis", text);
       if (!ok) current.jarvis = undefined; // what went wrong is not kept
+      // Nor does a page it made wait for the next answer: its card goes here.
+      if (!ok && voicePage && key) showCard(pageCard(key, voicePage));
+      if (!ok) voicePage = null;
       endRows();
       history.add("assistant", text);
       if (!ok) errorFlash = 1;
     },
     display: (payload) => {
       if (!key) return;
+      if (payload.kind === "page" && typeof payload.page === "string") voicePage = { id: payload.page, title: String(payload.label ?? "Page") };
       stage ??= new Stage(key);
       void stage.show(payload as unknown as DisplayPayload);
     },
@@ -1298,11 +1310,17 @@ function forgetChat() {
 arm($<HTMLButtonElement>("clearChat"), "Clear all of it?", () =>
   clearKept(key).then(forgetChat, (e) => status(`not cleared: ${e instanceof Error ? e.message : String(e)}`, true)));
 
-/** A mail held for the person's tap (Draft first), in the thread above what is still working. */
-function showDraft(d: Draft) {
-  if (!key) return;
-  els.transcript.insertBefore(draftCard(key, d), els.transcript.querySelector(".row.working"));
+/** A card in a row of its own, in the thread above what is still working. */
+function showCard(card: HTMLElement) {
+  const row = document.createElement("div");
+  row.className = "row jarvis";
+  row.appendChild(card);
+  els.transcript.insertBefore(row, els.transcript.querySelector(".row.working"));
   els.transcript.scrollTop = els.transcript.scrollHeight;
+}
+/** A mail held for the person's tap (Draft first). */
+function showDraft(d: Draft) {
+  if (key) showCard(draftCard(key, d));
 }
 
 let reader: Reader | null = null;
@@ -1364,7 +1382,11 @@ async function sendTyped() {
     },
     display: (payload) => {
       // A page Jarvis made goes under the answer, as a card to open (pageCard.ts), not on the stage.
-      if (payload.kind === "page" && typeof payload.page === "string") return void (made = { id: payload.page, title: String(payload.label ?? "Page") });
+      if (payload.kind === "page" && typeof payload.page === "string") {
+        // A second page in one answer: the first gets a card of its own, the answer keeps the last.
+        if (made) showCard(pageCard(key, made));
+        return void (made = { id: payload.page, title: String(payload.label ?? "Page") });
+      }
       stage ??= new Stage(key);
       void stage.show(payload as unknown as DisplayPayload);
     },
@@ -1372,7 +1394,8 @@ async function sendTyped() {
     limit: (text) => void addRow("jarvis", text, "limit"),
     answer: (reply, ok, limit, links) => {
       work.stop();
-      const page = ok ? made ?? undefined : undefined;
+      // Its card even if the answer failed: the page was made, and nothing else reaches it.
+      const page = made ?? undefined;
       const said = addRow("jarvis", reply, ok ? "" : limit ? "bad limit" : "bad", ok ? links : undefined, page);
       // What went wrong is not kept, nor told to the model again later.
       if (ok) {

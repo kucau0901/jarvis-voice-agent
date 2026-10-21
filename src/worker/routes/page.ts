@@ -46,14 +46,15 @@ export async function handlePageMeta(req: Request, env: Env, principal: Principa
   const now = Date.now();
   const base = `${publicOrigin(env, url.origin)}/api/v1/p/`;
   if (url.pathname === "/api/page/share") {
-    // Public is the owner's call, as Hark's Share is: what a page says can come from mail or a calendar.
-    if (!isAdmin(principal)) return err(403, "only those who run the house may share a page");
     if (req.method === "POST") {
+      // Public is the owner's call, as Hark's Share is: what a page says can come from mail or a calendar.
+      if (!isAdmin(principal)) return err(403, "only those who run the house may share a page");
       const b = (await req.json().catch(() => null)) as { id?: unknown } | null;
       const id = typeof b?.id === "string" ? b.id : "";
       const token = PAGE_ID.test(id) ? await state.pageShare(me, id, now) : null;
       return token ? json({ shareUrl: `${base}${id}?k=${token}` }) : err(404, "no such page");
     }
+    // Stopping is anyone's for a page of their own: someone who is no longer an admin can still take back a link.
     if (req.method === "DELETE") {
       const id = url.searchParams.get("id") ?? "";
       return PAGE_ID.test(id) && (await state.pageUnshare(me, id, now)) ? json({ ok: true }) : err(404, "not shared");
@@ -65,5 +66,5 @@ export async function handlePageMeta(req: Request, env: Env, principal: Principa
   const page = PAGE_ID.test(id) ? await state.pageMine(me, id, now) : null;
   const view = page ? await state.pageView(me, id, now) : null;
   if (!page || !view) return err(404, "no such page");
-  return json({ title: page.title, at: page.at, viewUrl: `${base}${id}?k=${view}`, shared: !!page.share });
+  return json({ title: page.title, at: page.at, viewUrl: `${base}${id}?k=${view}`, shared: !!page.share, canShare: isAdmin(principal) });
 }

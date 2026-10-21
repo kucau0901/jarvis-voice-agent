@@ -989,10 +989,11 @@ thing under a name that will not move.
 `make_page` makes a small web page from sections Jarvis writes as words (a
 heading, paragraphs, lists, links, a table), drawn by one fixed template,
 escaped, with no script. `GET /api/page?id=` (needs `screen`, your own) is
-`{title, at, viewUrl, shared}`; `viewUrl` opens it for an hour.
-`POST /api/page/share {id}` (admins only) is `{shareUrl}`, a link anyone can open
-until `DELETE /api/page/share?id=`; sharing again makes a new one and the old
-dies. `GET /api/v1/p/<id>?k=<token>` is the page itself, served before any
+`{title, at, viewUrl, shared, canShare}`; `viewUrl` opens it for an hour, and
+`canShare` says whether you may share it. `POST /api/page/share {id}` (admins
+only) is `{shareUrl}`, a link anyone can open until `DELETE /api/page/share?id=`,
+which is yours for a page of your own whatever your role; sharing again makes a
+new one and the old dies. `GET /api/v1/p/<id>?k=<token>` is the page itself, served before any
 sign-in, its token its proof, sandboxed (`Content-Security-Policy: sandbox`,
 `default-src 'none'`) and not cached; anything else is the same 404. Each
 person keeps their newest 20 pages for 30 days; clearing the chat, or leaving

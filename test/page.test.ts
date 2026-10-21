@@ -85,6 +85,7 @@ console.log("\nserved");
     if (m === "pageMine") return p.mine(a[0] as string, a[1] as string, a[2] as number);
     if (m === "pageView") return p.viewToken(a[0] as string, a[1] as string, a[2] as number);
     if (m === "pageShare") return p.share(a[0] as string, a[1] as string, a[2] as number);
+    if (m === "pageUnshare") return p.unshare(a[0] as string, a[1] as string, a[2] as number);
     return undefined;
   }) });
   const env = { STATE: { idFromName: () => "j", get: () => stub } } as never;
@@ -101,7 +102,12 @@ console.log("\nserved");
   check("a link of the wrong shape: the same 404, and the state not asked", bad.status === 404 && !calls.length);
   check("someone else's: no such page", (await handlePageMeta(new Request(`https://j.test/api/page?id=${id}`), env, { kind: "member", id: "u_adam", role: "adult", scopes: ["*"], session: "s" } as never)).status === 404);
   const share = (who: unknown) => handlePageMeta(new Request("https://j.test/api/page/share", { method: "POST", body: JSON.stringify({ id }) }), env, who as never);
-  check("sharing is for those who run the house", (await share(sara)).status === 403 && (await share({ kind: "member", id: "u_sara", role: "admin", scopes: ["*"], session: "s" })).status === 200);
+  const admin = { kind: "member", id: "u_sara", role: "admin", scopes: ["*"], session: "s" };
+  check("sharing is for those who run the house", (await share(sara)).status === 403 && (await share(admin)).status === 200);
+  const can = async (who: unknown) => ((await (await handlePageMeta(new Request(`https://j.test/api/page?id=${id}`), env, who as never)).json()) as { canShare?: boolean }).canShare;
+  check("the card is told whether they may share", (await can(sara)) === false && (await can(admin)) === true);
+  const stop = await handlePageMeta(new Request(`https://j.test/api/page/share?id=${id}`, { method: "DELETE" }), env, sara);
+  check("one no longer an admin can still stop sharing their own", stop.status === 200 && calls.includes("pageUnshare"), stop.status);
   check("scopes: a screen's to open from the app, a person's to share", requiredScope("/api/page", "GET") === "screen" && requiredScope("/api/page/share", "POST") === "person");
 }
 
