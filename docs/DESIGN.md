@@ -742,6 +742,16 @@ promised:
 - **One message per call.** `mail_manage` has no bulk verb, so a misheard
   sentence costs one message rather than a mailbox.
 
+**Draft first** (Settings → Google, off by default) takes sending away from
+the model altogether: `mail_send` saves every mail as a draft, the screen
+shows it as a card with Send (`src/app/draft.ts`), and only that tap sends
+it, by Gmail's own `drafts.send` (`lib/mail-draft.ts`). Gmail's Drafts are
+the waiting list, so nothing is stored here, and a draft from a screenless
+question (Telegram, the car) waits there for the person. The card has no
+Discard: deleting a draft is for ever, and nothing here deletes for ever.
+A household footer (Settings → Google → Footer on mail Jarvis writes) goes
+under every mail Jarvis writes, after the usual `-- ` line.
+
 `gmail.settings.*` remains deliberately absent, and nothing above changes that —
 it is the one Gmail permission that would let a single bad turn install an
 auto-forwarding rule and turn a mistake into ongoing exfiltration. Note that

@@ -17,6 +17,7 @@ import { watchTheme } from "./theme";
 import { Sky } from "./orb/Sky";
 import { watchSky } from "./sky";
 import { runDelegation } from "./delegate";
+import { draftCard, type Draft } from "./draft";
 import { LiveLink, releasePush, speakAlert, speakHere, speakText, syncPush, type Alert } from "./alerts";
 import { askTyped } from "./chat";
 import { pin, working } from "./working";
@@ -317,6 +318,7 @@ function onEvent(ev: ServerEvent) {
           },
           slow: (name) => dropSessionKeepWaiting(`${name} takes minutes; not paying to listen`),
           tool: (name, phase) => panelTool(name, phase),
+          drafted: showDraft,
           done: finish,
         },
         mine.signal,
@@ -1143,6 +1145,7 @@ function pushToTalk(): PushToTalk {
     history: () => history.snapshot(),
     tool: (name, phase) => panelTool(name, phase),
     dictated: (text) => insertTyped(text),
+    drafted: showDraft,
   }));
 }
 
@@ -1295,6 +1298,13 @@ function forgetChat() {
 arm($<HTMLButtonElement>("clearChat"), "Clear all of it?", () =>
   clearKept(key).then(forgetChat, (e) => status(`not cleared: ${e instanceof Error ? e.message : String(e)}`, true)));
 
+/** A mail held for the person's tap (Draft first), in the thread above what is still working. */
+function showDraft(d: Draft) {
+  if (!key) return;
+  els.transcript.insertBefore(draftCard(key, d), els.transcript.querySelector(".row.working"));
+  els.transcript.scrollTop = els.transcript.scrollHeight;
+}
+
 let reader: Reader | null = null;
 /** A finished row of its own, its markdown drawn, a document as a card to open (ui/rich.ts), and the pages it cited. */
 function addRow(who: "you" | "jarvis", text: string, cls = "", links?: { url: string; title: string }[], page?: { id: string; title: string }) {
@@ -1346,6 +1356,7 @@ async function sendTyped() {
       panelTool(ev.name, ev.phase);
     },
     progress: (t, call) => work.note(t, call),
+    drafted: showDraft,
     // Handed to a background job: its pill at once, which the result takes when it comes (fromRoutine.ts).
     job: (j) => {
       els.transcript.insertBefore(jobStarted(j, openJob), els.transcript.querySelector(".row.working"));

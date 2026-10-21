@@ -7,7 +7,7 @@
  */
 export interface SseEvent {
   /** transcript and audio are push-to-talk's (routes/voice.ts); the rest are the router's. */
-  type: "progress" | "result" | "error" | "tool" | "used" | "display" | "job" | "transcript" | "audio";
+  type: "progress" | "result" | "error" | "tool" | "used" | "display" | "job" | "draft" | "transcript" | "audio";
   [k: string]: unknown;
 }
 

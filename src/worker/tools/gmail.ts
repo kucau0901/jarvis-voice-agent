@@ -14,6 +14,8 @@ import {
 import { resolveContact } from "../lib/contacts.ts";
 import { asQuotedData } from "../lib/quote.ts";
 import { clampLimit } from "./args.ts";
+import { draftFirst, withFooter } from "../lib/mail-draft.ts";
+import { allows } from "../lib/scopes.ts";
 import type { Tool, ToolContext } from "./registry.ts";
 
 /**
@@ -629,7 +631,9 @@ export const mailSend: Tool = {
     return (await guard(async () => {
       const cfg = cfgOf(ctx);
       const body = String(args.body ?? "").replace(/\r\n/g, "\n").trim();
-      const asDraft = args.draft === true;
+      // Draft first (Settings → Google): the person sends it, never the model (lib/mail-draft.ts).
+      const asDraft = args.draft === true || draftFirst(ctx.env);
+      const held = !args.draft && asDraft;
       const replyId = typeof args.reply_to === "string" ? args.reply_to.trim() : "";
 
       if (!body) return "There was no message body, so nothing was sent.";
@@ -688,7 +692,7 @@ export const mailSend: Tool = {
         subject = subject || "(no subject)";
       }
 
-      const raw = b64urlEncode(buildRaw(to, subject, body, inReplyTo, references));
+      const raw = b64urlEncode(buildRaw(to, subject, withFooter(body, ctx.env), inReplyTo, references));
       const message = { raw, ...(threadId ? { threadId } : {}) };
 
       ctx.progress(asDraft ? "saving that draft" : "sending that email");
@@ -713,6 +717,13 @@ export const mailSend: Tool = {
       // user cannot correct a mistake they were not told about.
       const who = resolvedFrom ? `${resolvedFrom} at ${to}` : to;
 
+      const draft = (res.body as { id?: unknown } | null)?.id;
+      if (asDraft && typeof draft === "string") ctx.drafted?.({ draft, to: who, subject, body: withFooter(body, ctx.env), reply: !!replyId });
+      if (held) {
+        return allows(ctx.grants, "screen")
+          ? `Saved as a draft to ${who}, NOT sent: a card with Send is on the user's screen, and only they can send it, by tapping Send. If they say send it, tell them to tap Send.`
+          : `Saved as a draft to ${who}, NOT sent: it is in Gmail's Drafts for them to send.`;
+      }
       if (asDraft) {
         return replyId
           ? `Saved a draft reply to ${who}. It is in Drafts, not sent.`

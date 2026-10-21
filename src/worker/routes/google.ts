@@ -1,5 +1,6 @@
 import type { Env } from "../types.ts";
-import { err, escapeHtml, HTML_PAGE_HEADERS } from "../lib/http.ts";
+import { err, escapeHtml, HTML_PAGE_HEADERS, json, readObject } from "../lib/http.ts";
+import { sendDraft } from "../lib/mail-draft.ts";
 import { withSettings } from "../lib/settings-store.ts";
 import {
   beginAuth,
@@ -9,6 +10,7 @@ import {
   explain,
   googleConfig,
   isLinked,
+  NeedsRelink,
   unlink,
 } from "../lib/google.ts";
 
@@ -164,6 +166,18 @@ export async function handleGoogle(req: Request, env: Env): Promise<Response> {
       ),
       { headers: { "content-type": "application/json" } },
     );
+  }
+
+  // A draft Jarvis wrote, sent by the person's own tap (lib/mail-draft.ts): the draft is in their mailbox alone.
+  if (url.pathname === "/api/google/drafts/send") {
+    if (req.method !== "POST") return err(405, "POST only");
+    const b = await readObject(req, 1024);
+    try {
+      const why = await sendDraft(env, cfg, typeof b?.id === "string" ? b.id : "");
+      return why ? err(400, why) : json({ ok: true });
+    } catch (e) {
+      return err(e instanceof NeedsRelink ? 409 : 502, e instanceof NeedsRelink ? "Gmail needs linking again: Family → Accounts." : `Gmail: ${e instanceof Error ? e.message : String(e)}`);
+    }
   }
 
   return err(404, `no route for ${url.pathname}`);

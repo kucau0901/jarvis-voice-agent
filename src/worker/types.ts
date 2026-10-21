@@ -130,6 +130,10 @@ export interface Env {
    */
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;
+  /** "1": mail is only drafted, sent by the person's tap (lib/mail-draft.ts). */
+  MAIL_DRAFT_FIRST?: string;
+  /** A line under every email Jarvis writes. */
+  MAIL_FOOTER?: string;
 
   /**
    * Origins allowed to call the API from a browser, comma-separated and matched

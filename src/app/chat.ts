@@ -2,6 +2,7 @@ import { authHeaders } from "./key";
 import { originHere } from "./alerts";
 import type { Turn } from "./history";
 import type { Attached } from "./attach";
+import { asDraft, type Draft } from "./draft";
 
 /**
  * Typed chat: the conversation so far, sent to the same router a spoken
@@ -19,6 +20,8 @@ interface ChatHooks {
   job?(j: { id: string; title: string; engine: string }): void;
   /** A note from a tool as it works, with the call it belongs to when the server says. */
   progress(text: string, call?: string): void;
+  /** A mail written and held for the person's tap (Draft first): its card (draft.ts). */
+  drafted?(d: Draft): void;
   display(payload: Record<string, unknown>): void;
   /** The answer; `limit` when a limit stopped it (a device's day, the ChatGPT plan's), shown as a notice rather than a failure. */
   answer(text: string, ok: boolean, limit?: boolean, links?: { url: string; title: string }[]): void;
@@ -78,6 +81,7 @@ export async function askTyped(key: string, transcript: Turn[], hooks: ChatHooks
           if (typeof ev.limit === "string" && RESEARCH_CAP[ev.limit]) notice = RESEARCH_CAP[ev.limit]!;
         }
         else if (ev.type === "job" && typeof ev.id === "string" && typeof ev.title === "string") hooks.job?.({ id: ev.id, title: ev.title, engine: String(ev.engine ?? "") });
+        else if (ev.type === "draft") asDraft(ev, hooks.drafted);
         else if (ev.type === "display") hooks.display(ev);
         else if (ev.type === "result" || ev.type === "error") {
           answered = true;

@@ -1,4 +1,5 @@
 import type { Env } from "../types.ts";
+import type { DraftCard } from "../lib/mail-draft.ts";
 import type { MemoryStore } from "../lib/memory.ts";
 import { allows, type Grant, type Scope } from "../lib/scopes.ts";
 import * as hermes from "./hermes.ts";
@@ -43,6 +44,8 @@ export interface ToolContext {
   display(payload: Record<string, unknown>): void;
   /** A background job was started (start_job, ask_hermes): typed chat shows it as a pill until its result comes (src/app/fromRoutine.ts). */
   started?(job: { id: string; title: string; engine: string }): void;
+  /** A Gmail draft waiting for the person's tap (lib/mail-draft.ts): the screen shows it as a card with Send (src/app/draft.ts). */
+  drafted?(d: DraftCard): void;
   /**
    * What the caller may reach. A routine made by voice keeps these, so it can
    * never later do more than the person or device that asked for it.

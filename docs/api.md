@@ -655,10 +655,14 @@ meantime. Most devices should not bother.
 - `: open\n\n` comes first, the moment the question is taken, and `: ping\n\n`
   every 15 seconds after. Skip comments; treat a gap as a dead link.
 - **There is no `[DONE]` sentinel.** The stream simply ends.
-- Event `type` is one of `progress`, `tool`, `used`, `display`, `job`, `result`,
-  `error`. Skip a type you do not know: more may be added.
+- Event `type` is one of `progress`, `tool`, `used`, `display`, `job`, `draft`,
+  `result`, `error`. Skip a type you do not know: more may be added.
 - `job` is a background job the question started (`{"type":"job","id","title","engine"}`);
   its result comes later as an alert, not in this stream.
+- `draft` is a mail Jarvis wrote and saved to the person's Gmail Drafts
+  (`{"type":"draft","draft","to","subject","body","reply"}`), held for them to
+  send when Settings → Google → Draft first is on. A screen shows it with Send;
+  the app sends it with `POST /api/google/drafts/send {"id": draft}`.
 - `display` may be `{kind: "page", page, label}`: a page Jarvis made (below).
 - `result` may carry `links: [{url, title}]`, the https pages the answer cited
   (up to six), for showing beside it. The answer's words are complete without them.

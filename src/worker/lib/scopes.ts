@@ -117,6 +117,8 @@ export function requiredScope(pathname: string, method: string): RouteRequiremen
   // unlinking and inspecting the grant affect the credential itself, so a
   // device, even one with `mail`, gets the tools and nothing else.
   if (pathname.startsWith("/api/spotify")) return "person";
+  // A draft's Send (lib/mail-draft.ts): as far as mail_send reaches, and from their own mailbox only.
+  if (pathname === "/api/google/drafts/send") return "mail";
   if (pathname.startsWith("/api/google")) return "person";
   // Each person's own memory (and, with ?book=family, the family's: the route
   // checks `family` for changing that). Devices only read here (routes/memory.ts).

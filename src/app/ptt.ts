@@ -3,6 +3,7 @@ import { authHeaders } from "./key";
 import type { VoiceLevels } from "./audio";
 import type { Turn } from "./history";
 import { originHere } from "./alerts";
+import { asDraft, type Draft } from "./draft";
 
 /**
  * Push-to-talk: the cheap way to talk to Jarvis.
@@ -28,6 +29,8 @@ interface PttHooks {
   tool?(name: string, phase: string): void;
   /** Dictation's words, for the chat box: heard, never asked (dictate). */
   dictated?(text: string): void;
+  /** A mail written and held for the person's tap (Draft first): its card (draft.ts). */
+  drafted?(d: Draft): void;
 }
 
 interface VoiceConfig {
@@ -398,6 +401,7 @@ export class PushToTalk {
           if (ev.type === "transcript" && !q.text) this.hooks.heard(String(ev.text ?? ""));
           else if (ev.type === "progress" && ev.text) this.hooks.status(`${String(ev.text)}…`);
           else if (ev.type === "tool" && typeof ev.name === "string") this.hooks.tool?.(ev.name, String(ev.phase ?? ""));
+          else if (ev.type === "draft") asDraft(ev, this.hooks.drafted);
           else if (ev.type === "display") this.hooks.display(ev);
           else if (ev.type === "result" || ev.type === "error") {
             answer = String(ev.text ?? "");

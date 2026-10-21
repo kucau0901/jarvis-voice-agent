@@ -83,6 +83,11 @@ of every release, and in the [README](README.md#updating).
 - **Export your data.** Settings → Export your data downloads one JSON file
   of your memory, routines, panels, conversation and jobs, and the household's
   settings without any key or token. For the owner and admins.
+- **Draft first.** Switch on Settings → Google → Draft first, and mail
+  Jarvis writes for you is saved to Gmail's Drafts, never sent by Jarvis: a
+  card shows who it is to and what it says, with Send, Open in Gmail and
+  Not now. Asked from Telegram or the car, it waits in Drafts. Footer on
+  mail Jarvis writes, beside it, puts a line of yours under each one.
 - **Panels kept up to date with Home closed.** Ask for a tile to "keep it
   updated", and Jarvis refreshes its reading hourly or daily on its own, as
   Hark's tiles do, so it is fresh when you open Home or an alert needs it.

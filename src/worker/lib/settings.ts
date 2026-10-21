@@ -344,6 +344,16 @@ export const SETTINGS: readonly SettingDef[] = [
     label: "OAuth client secret", help: "Shown next to the client ID in Google Cloud.",
     validate: all(noSpaces, minLen(16)),
   },
+  {
+    name: "MAIL_DRAFT_FIRST", group: "google", kind: "bool", default: "0",
+    label: "Draft first",
+    help: "Jarvis only drafts mail, in your name: a card with Send shows it on your screen, and it goes only when you tap Send. Asked from a device with no screen, it waits in Gmail's Drafts.",
+  },
+  {
+    name: "MAIL_FOOTER", group: "google", kind: "text",
+    label: "Footer on mail Jarvis writes", help: "Added under every email Jarvis writes for you, e.g. Written with Jarvis, my AI assistant. Empty for none.",
+    validate: (v) => (v.length <= 200 ? null : "keep it under 200 characters"),
+  },
 
   // --- Spotify
   {
