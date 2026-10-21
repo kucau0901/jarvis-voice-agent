@@ -485,7 +485,8 @@ export const carCommand: Tool = {
     const want = typeof args.car === "string" ? args.car.trim().toLowerCase() : "";
     const car = cars.length ? (want ? cars.find((x) => x.name.toLowerCase() === want) : cars[0]) : null;
     if (cars.length && !car) return null;
-    const which = car ? ` (${car.name})` : "";
+    // Its name and the end of its VIN, as Family shows it: two cars may share a name.
+    const which = car ? ` (${car.name}, …${car.vin.slice(-4)})` : "";
     const detail = c === "set_temperature" ? ` to ${args.temperature}°C` : c === "set_charge_limit" ? ` to ${args.percent}%` : c === "navigate_to" ? `: ${String(args.value ?? "")}` : "";
     const says = `Car: ${c.replace(/_/g, " ")}${detail}${which}`;
     return UNDONE.has(c) ? { risk: "reversible", says, category: `car_command:${c}` } : { risk: "irreversible", says };

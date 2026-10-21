@@ -789,6 +789,12 @@ export const mailManage: Tool = {
     const says = `Mail: ${action.replace(/_/g, " ")} message ${id}`;
     return action === "trash" ? { risk: "irreversible", says } : { risk: "reversible", says, category: `mail_manage:${action}` };
   },
+  // Which email it is, for the card: the id alone says nothing to the person.
+  async detail(args, ctx) {
+    const id = typeof args.message_id === "string" ? args.message_id.trim() : "";
+    const [m] = MESSAGE_ID.test(id) ? await hydrate(ctx, cfgOf(ctx), [id], "metadata") : [];
+    return m ? ["From", "Subject", "Date"].map((h) => `${h}: ${tidy(headerOf(m, h)).slice(0, 300)}`).join("\n") : null;
+  },
   async run(args, ctx) {
     return (await guard(async () => {
       const cfg = cfgOf(ctx);

@@ -267,12 +267,15 @@ export const calendarAdd: Tool = {
   },
   // Proposed by a job (lib/proposals.ts): an event in the user's own calendar, which they can delete,
   // said as run() will make it; what it would cut short is not proposed.
-  propose(args) {
+  propose(args, env) {
     const title = tidy(String(args.title ?? ""));
     const where = args.location ? tidy(String(args.location)) : "";
     const start = typeof args.start === "string" ? args.start.trim() : "";
-    if (!title || !start || title.length > MAX_TEXT || where.length > MAX_TEXT) return null;
-    return { risk: "reversible", says: `Calendar: “${title}”, ${start}, ${durationOf(args.duration_minutes)} min${where ? `, at ${where}` : ""}`, category: "calendar_add" };
+    const at = ISO.test(start) ? new Date(start) : null;
+    if (!title || !at || Number.isNaN(at.getTime()) || title.length > MAX_TEXT || where.length > MAX_TEXT) return null;
+    // When it will be, in their time zone, as a date (never "tomorrow": the card is read again when approved).
+    const when = fmt(localeOf(env).timeZone, at, { weekday: "short", day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: false });
+    return { risk: "reversible", says: `Calendar: “${title}”, ${when}, ${durationOf(args.duration_minutes)} min${where ? `, at ${where}` : ""}`, category: "calendar_add" };
   },
   async run(args, ctx) {
     const tz = localeOf(ctx.env).timeZone;

@@ -344,7 +344,8 @@ export function held(tools: readonly Tool[], file: File, finish: Finish): Tool[]
       async run(args, ctx): Promise<ToolOutput> {
         const w = weigh(t, args, ctx.env);
         if (!w) return "That cannot be proposed from a job: say in your answer what you would do.";
-        const p = await file({ tool: t.name, args }, w, ctx);
+        const shown = t.detail ? await t.detail(args, ctx).catch(() => null) : null;
+        const p = await file({ tool: t.name, args }, w, ctx, shown ?? undefined);
         if (typeof p === "string" || p.state !== "running" || p.by !== "standing") return filed(p);
         // Allowed without asking: done now, once, and said so; done only if the tool says it was.
         try {

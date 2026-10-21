@@ -117,6 +117,8 @@ export interface Tool {
    * Without it, a job is never handed the tool. Not sent to the model.
    */
   propose?(args: Record<string, unknown>, env: Env): Weighed | null;
+  /** What the card shows of the thing the call acts on, looked up when it is filed (an email's sender and subject). Shown only. */
+  detail?(args: Record<string, unknown>, ctx: ToolContext): Promise<string | null>;
   run(args: Record<string, unknown>, ctx: ToolContext): Promise<ToolOutput>;
 }
 

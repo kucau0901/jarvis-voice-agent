@@ -3,7 +3,7 @@ import { baseTools } from "../src/worker/tools/registry.ts";
 import { b64urlDecode } from "../src/worker/lib/google.ts";
 import { requiredScope } from "../src/worker/lib/scopes.ts";
 import { SETTINGS } from "../src/worker/lib/settings.ts";
-import { mailSend } from "../src/worker/tools/gmail.ts";
+import { mailManage, mailSend } from "../src/worker/tools/gmail.ts";
 import { runCalls } from "../src/worker/lib/router.ts";
 
 let pass = 0;
@@ -174,6 +174,18 @@ console.log("\na background job's mail: drafted, and its sending proposed (draft
     sendIt.restore();
   }
   check("a draft id of the wrong shape cannot be proposed", mailDraftSend.propose!({ draft: "../x", to: "a", subject: "b" }, {} as never) === null);
+}
+
+console.log("\nmail_manage proposed: which email, for its card");
+{
+  const g = google(() => Response.json({ id: "199a2b3c4d5e6f70", payload: { headers: [{ name: "From", value: "Sam <sam@example.com>" }, { name: "Subject", value: "Dinner" }, { name: "Date", value: "Wed, 21 Oct 2026 09:00" }] } }));
+  try {
+    const shown = await mailManage.detail!({ message_id: "199a2b3c4d5e6f70", action: "archive" }, ctx({}, ["mail"]));
+    check("its sender, subject and date, from Gmail", shown === "From: Sam <sam@example.com>\nSubject: Dinner\nDate: Wed, 21 Oct 2026 09:00" && g.calls[0]?.url.includes("format=metadata") === true, shown);
+    check("an id of the wrong shape: nothing looked up", (await mailManage.detail!({ message_id: "../x", action: "archive" }, ctx({}, ["mail"]))) === null && g.calls.length === 1);
+  } finally {
+    g.restore();
+  }
 }
 
 console.log("\nsendDraft — the tap");

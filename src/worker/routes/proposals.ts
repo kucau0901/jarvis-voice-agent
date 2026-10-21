@@ -59,7 +59,8 @@ export async function handleProposals(req: Request, env: Env, ctx: ExecutionCont
     // Weighed again from what is stored: only a call that still reads as reversible, of the kind it was filed as.
     const local = baseTools(env).find((t) => t.name === p.action.tool);
     const w = local ? weigh(local, p.action.args, env) : null;
-    if (!w || w.risk !== "reversible" || w.category !== p.category || w.says !== p.says) return err(409, "Only a reversible kind of thing can be allowed without asking.");
+    // The kind, not this one call: which car it was does not matter to what is allowed.
+    if (!w || w.risk !== "reversible" || w.category !== p.category) return err(409, "Only a reversible kind of thing can be allowed without asking.");
     const why = await state.proposalAllow(me, id, now);
     return why ? err(409, why) : json({ ok: true, allowed: await state.proposalAllowed(me) });
   }
