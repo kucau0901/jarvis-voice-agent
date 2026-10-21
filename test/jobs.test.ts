@@ -953,6 +953,11 @@ console.log("\nresearch into a table");
   const cj = (await ck.jobs.create({ title: "Speakers", task: "x", engine: "research", table: true }, BY, T0)) as Job;
   const cd = await drive(ck, cj.id);
   check("a check that drops most rows is what is sent", pruned.text.length < merged.text.length / 2 && cd.table?.rows === 10 && (await ck.jobs.table(cj.id))?.rows.length === 10 && cd.summary === "Ten backed by a source.", { table: cd.table, summary: cd.summary });
+  const emptiedCheck: Step = { kind: "done", text: JSON.stringify({ summary: "No source backs any of them.", rows: [] }), usage: spent(1000) };
+  const nh = harness([plan, merged, emptiedCheck], { teams: EVERY_TEAM() });
+  const nj = (await nh.jobs.create({ title: "Speakers", task: "x", engine: "research", table: true }, BY, T0)) as Job;
+  const nd = await drive(nh, nj.id);
+  check("a check that drops every row: none sent or kept, and it says why", nd.status === "done" && nd.table?.rows === undefined && (await nh.jobs.table(nj.id)) === null && nd.summary === "No source backs any of them." && /no source for any row/.test(nd.result ?? ""), { table: nd.table, summary: nd.summary, result: nd.result });
 }
 
 console.log("\nplanning that does not work: the fixed angles, and the run goes on");

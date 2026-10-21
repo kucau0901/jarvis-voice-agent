@@ -68,6 +68,14 @@ export function tableOf(text: string, columns: readonly string[]): { summary: st
   return { summary: typeof v.summary === "string" && v.summary.trim() ? tidy(v.summary) : `${rows.length} found.`, rows };
 }
 
+/** A checked table with every row taken out, none backed by a source: its summary. Null for anything else, rows left or not a table. */
+export function emptied(text: string): string | null {
+  const end = text.lastIndexOf("\n\nSources:");
+  const v = jsonIn(end >= 0 ? text.slice(0, end) : text) as { summary?: unknown; rows?: unknown } | null;
+  if (!v || !Array.isArray(v.rows) || v.rows.some(Array.isArray)) return null;
+  return typeof v.summary === "string" && v.summary.trim() ? tidy(v.summary) : "No row was backed by a source.";
+}
+
 /** The result as read in a message and in Jobs: the summary, the first rows as a table, and where the rest is. */
 export function tableResult(t: { summary: string; rows: string[][] }, columns: readonly string[], sources: string): string {
   const cell = (c: string) => c.replace(/\|/g, "/");

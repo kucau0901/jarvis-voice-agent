@@ -1,7 +1,7 @@
 import type { Storage } from "./state-host.ts";
 import type { Grant } from "./scopes.ts";
 import { sourcesOf } from "./links.ts";
-import { parseTablePlan, tableOf, tableResult } from "./research-table.ts";
+import { emptied, parseTablePlan, tableOf, tableResult } from "./research-table.ts";
 import { makeAlert, type Alert, type Delivery } from "./alerts.ts";
 import { personOfWho } from "./context.ts";
 import { tidy } from "./quote.ts";
@@ -759,7 +759,11 @@ export class Jobs {
       // A check that answered with notes rather than the report would lose the report. A table's check
       // drops the rows no source backs, so it may come back much shorter: it is judged by still being a table.
       const cols = j.table?.columns;
-      const gaveBack = cols && tableOf(j.draft.text, cols) ? tableOf(step.text, cols) !== null : step.text.length >= j.draft.text.length / 2;
+      const draftTable = !!cols && tableOf(j.draft.text, cols) !== null;
+      // Every row taken out: that is the check's answer, and the merge it rejected is not sent instead.
+      const none = draftTable ? emptied(step.text) : null;
+      if (none !== null) return this.finish({ ...j, draft: undefined }, deps, now, { text: `SUMMARY: ${none}\n\nThe check found no source for any row of the table, so none was kept.` });
+      const gaveBack = draftTable && cols ? tableOf(step.text, cols) !== null : step.text.length >= j.draft.text.length / 2;
       if (!gaveBack) return this.finish(j, deps, now, { error: "the check did not give the report back" });
       // The check's own pages first: withSources keeps fifteen, and they back what is sent.
       return this.finish(j, deps, now, { text: step.text, cited: [...(step.cited ?? []), ...j.draft.cited] });
