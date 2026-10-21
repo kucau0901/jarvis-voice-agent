@@ -25,6 +25,7 @@ import { Relays, type Relay, type RelayDeps, type RelayKind } from "./lib/relays
 import { Chat, dmId, type ChatMessage } from "./lib/chat.ts";
 import { Panels, type PanelItem, type Reading } from "./lib/panels.ts";
 import { Conversation, jobSaid, routineSaid, type Said } from "./lib/conversation.ts";
+import { Images, type StoredImage } from "./lib/images.ts";
 import { OWNER, personOfWho, withPerson } from "./lib/context.ts";
 import { lookAtPage } from "./lib/page-look.ts";
 import { budgetOf, budgetSays, costOf, dayOf } from "./lib/usage.ts";
@@ -59,6 +60,7 @@ export class JarvisState extends DurableObject<Env> {
   private panels: Panels;
   /** Each person's conversation with Jarvis, kept (lib/conversation.ts). */
   private conversation: Conversation;
+  private images: Images;
   /** The owner's ChatGPT plan, which model calls use first (lib/chatgpt-plan.ts). */
   private plan: ChatGptPlan;
 
@@ -70,6 +72,7 @@ export class JarvisState extends DurableObject<Env> {
     this.chat = new Chat(ctx.storage);
     this.panels = new Panels(ctx.storage);
     this.conversation = new Conversation(ctx.storage);
+    this.images = new Images(ctx.storage);
     this.plan = new ChatGptPlan(ctx.storage, (input, init) => fetch(input, init));
     this.relays = new Relays(ctx.storage, () => this.relayDeps());
     this.jobs = new Jobs(ctx.storage, async () => {
@@ -249,6 +252,7 @@ export class JarvisState extends DurableObject<Env> {
     await this.relays.forget(person);
     await this.panels.forget(person);
     await this.conversation.clear(person);
+    await this.images.clear(person);
     await this.rearm();
   }
 
@@ -522,6 +526,16 @@ export class JarvisState extends DurableObject<Env> {
 
   /* ---------- each person's conversation with Jarvis (lib/conversation.ts) ------- */
 
+  /* ---------- pictures Jarvis made (lib/images.ts) ---------------------------------- */
+
+  imagePut(person: string, img: Pick<StoredImage, "mime" | "data" | "prompt">, now: number) {
+    return this.images.put(person, img, now);
+  }
+
+  imageGet(person: string, id: string, now: number) {
+    return this.images.get(person, id, now);
+  }
+
   conversationOf(person: string, now: number) {
     return this.conversation.list(person, now);
   }
@@ -563,6 +577,8 @@ export class JarvisState extends DurableObject<Env> {
   /** Cleared on every open screen of theirs too, not only the one it was cleared on. */
   async conversationClear(person: string) {
     await this.conversation.clear(person);
+    // The pictures made in it go with it (lib/images.ts).
+    await this.images.clear(person);
     this.hub.tell(this.sockets(), person, { type: "conversation.cleared" });
   }
 

@@ -7,6 +7,7 @@ import {
   type Changes,
   type SavedSettings,
 } from "./settings.ts";
+import type { StoredImage } from "./images.ts";
 import { addToDay, budgetStep, emptyDay, report, spentOf, type DayTotals, type UsageEntry, type UsageReport } from "./usage.ts";
 import { fromOthers, keep, type SharedTurn } from "./shared.ts";
 import { personOfWho } from "./context.ts";
@@ -600,6 +601,12 @@ interface ConversationApi {
   conversationClear(person: string): Promise<void>;
 }
 
+/** Pictures Jarvis made (lib/images.ts; state.ts). */
+interface ImageApi {
+  imagePut(person: string, img: Pick<StoredImage, "mime" | "data" | "prompt">, now: number): Promise<string>;
+  imageGet(person: string, id: string, now: number): Promise<StoredImage | null>;
+}
+
 /** The owner's ChatGPT plan, which model calls use first (lib/chatgpt-plan.ts; state.ts). */
 interface PlanApi {
   chatgptStatus(now: number): Promise<PlanStatus>;
@@ -657,4 +664,5 @@ export type StateApi = Pick<
   FamilyApi &
   PanelApi &
   ConversationApi &
+  ImageApi &
   PlanApi;

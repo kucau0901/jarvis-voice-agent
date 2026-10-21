@@ -43,6 +43,7 @@ const PROMPT_SHA256 = "4c052dbb87c29e01adabcd5415e9c422214ec78828dafe87cdf2cbb5f
 // look_back (tools/conversation.ts, scope memory.read): everyone but the guest (16 Oct 2026).
 // panel_list (tools/panels.ts, scope screen): everyone but the guest (16 Oct 2026).
 // job_results (tools/jobs.ts, no scope beyond ask): everyone, as start_job (19 Oct 2026).
+// make_image (tools/image.ts, scope screen, the OpenAI key only): everyone but the guest (21 Oct 2026).
 const EXPECTED: Record<string, { model: string; tools: string[]; input: string }> = {
  "owner key, nothing set up": {
   "model": "gpt-6-luna",
@@ -51,6 +52,7 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
    "hide_display",
    "job_results",
    "look_back",
+   "make_image",
    "panel_list",
    "panel_remove",
    "panel_set",
@@ -87,6 +89,7 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
    "mail_manage",
    "mail_search",
    "mail_send",
+   "make_image",
    "music_control",
    "music_play",
    "music_state",
@@ -128,6 +131,7 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
    "mail_manage",
    "mail_search",
    "mail_send",
+   "make_image",
    "music_control",
    "music_play",
    "music_state",
@@ -163,6 +167,7 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
    "hide_display",
    "job_results",
    "look_back",
+   "make_image",
    "panel_list",
    "panel_remove",
    "panel_set",
@@ -236,6 +241,7 @@ try {
   check("  with a screen, maps and panels", ["show_place", "hide_display", "panel_set"].every((n) => here.tools.includes(n)) && !here.said.includes("THIS REQUEST HAS NO SCREEN"));
   const none = await names(["*"], true);
   check("  without one, no maps", !none.tools.includes("show_place") && !none.tools.includes("hide_display"), none.tools);
+  check("  nor pictures to make", !none.tools.includes("make_image"), none.tools);
   check("  but panels, for whoever has screen", ["panel_set", "panel_remove", "panel_list"].every((n) => none.tools.includes(n)), none.tools);
   check("  and it is told both", none.said.includes("THIS REQUEST HAS NO SCREEN") && none.said.includes("Panels on the user's Home tab are not this screen"));
   const noGrant = await names(["ask"], true);

@@ -167,6 +167,7 @@ export function requiredScope(pathname: string, method: string): RouteRequiremen
       return "voice";
 
     case "/api/map":
+    case "/api/image":
       return "screen";
 
     // Receiving alerts, and raising one. The same scope for both: a device

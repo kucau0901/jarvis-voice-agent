@@ -16,7 +16,7 @@ const DAY_S = 24 * 3600;
 export interface UsageEntry {
   at: number;
   /** "app" is Live and the API; "live" a Live session's own time. */
-  surface: "app" | "voice" | "glasses" | "chat" | "routine" | "job" | "research" | "live";
+  surface: "app" | "voice" | "glasses" | "chat" | "routine" | "job" | "research" | "live" | "image";
   /** The model that answered, "home-assistant", or "gpt-live-1". */
   by: string;
   ok: boolean;
@@ -104,6 +104,9 @@ function addTo<T extends Totals>(d: T, e: UsageEntry): T {
   } else if (e.surface === "job") {
     out.jobs += 1;
     out.cost.jobs += cost ?? 0;
+  } else if (e.surface === "image") {
+    // A picture made (tools/image.ts): what it cost, without counting a question.
+    out.cost.router += cost ?? 0;
   } else {
     out.questions += 1;
     if (e.by === "home-assistant") out.byHouse += 1;
@@ -177,7 +180,7 @@ function reportAll(days: DayTotals[], recent: UsageEntry[], today: string): Usag
       jobs: t.jobs + d.jobs,
       unpriced: t.unpriced + d.unpriced,
     }), emptyDay(month));
-  const questions = recent.filter((e) => e.seconds === undefined && e.surface !== "job");
+  const questions = recent.filter((e) => e.seconds === undefined && e.surface !== "job" && e.surface !== "image");
   const times = questions.map((e) => e.ms).sort((a, b) => a - b);
   const medianMs = times.length ? times[Math.floor((times.length - 1) / 2)]! : null;
   return {

@@ -198,7 +198,8 @@ family's questions are one household's.
 so live voice needs a key, and without one the app hides the Live switch
 (`/api/hub/me` `live`). The plan's route has no audio and no embeddings, so
 without a key push-to-talk hears and speaks through Workers AI
-(`lib/speech.ts`), and memory is searched by words.
+(`lib/speech.ts`), and memory is searched by words. Nor has it images: making
+a picture (`tools/image.ts`) is offered only with a key.
 
 **Signing in ends with a paste** (`lib/chatgpt-plan.ts`). The plan's OAuth is
 for public clients whose redirect must be `http://127.0.0.1:<port>/auth/callback`;

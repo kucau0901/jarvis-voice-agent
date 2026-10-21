@@ -73,6 +73,11 @@ of every release, and in the [README](README.md#updating).
 - **Dictation.** The mic in the chat's message box now writes what you say
   into the box, to read over before sending. `POST /api/v1/voice` takes
   `transcribe=1` to only hear a recording.
+- **Jarvis draws pictures.** Ask for a picture ("draw me a red car on a
+  beach") and it appears on the screen with a Download button. It needs the
+  OpenAI key (the ChatGPT plan has no images), makes up to 10 a day for each
+  person, and keeps each person's newest 20 for 30 days; clearing the chat
+  removes them.
 
 ### Changed
 

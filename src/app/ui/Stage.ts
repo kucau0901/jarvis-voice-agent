@@ -2,9 +2,11 @@ import { authHeaders } from "../key";
 import { MAP_STYLE_VERSION } from "../../shared/version";
 
 export interface DisplayPayload {
-  kind: "map" | "streetview" | "camera" | "close";
+  kind: "map" | "streetview" | "camera" | "image" | "close";
   /** camera only. */
   entity?: string;
+  /** image only: the picture Jarvis made, by id (GET /api/image, tools/image.ts). */
+  image?: string;
   lat: number;
   lng: number;
   label?: string;
@@ -27,6 +29,8 @@ export class Stage {
   private img: HTMLImageElement;
   private frame: HTMLIFrameElement;
   private caption: HTMLElement;
+  /** A made picture's Download: only while one is shown. */
+  private dl: HTMLAnchorElement;
   private objectUrl: string | null = null;
   private token = 0;
   private embedTimer = 0;
@@ -47,11 +51,13 @@ export class Stage {
                 allow="fullscreen" style="display:none"></iframe>
         <div class="cap"></div>
         <button class="close" aria-label="Close">Close</button>
+        <a class="dl" hidden>Download</a>
       </div>`;
     document.body.appendChild(this.el);
     this.img = this.el.querySelector("img")!;
     this.frame = this.el.querySelector("iframe")!;
     this.caption = this.el.querySelector(".cap")!;
+    this.dl = this.el.querySelector(".dl")!;
     this.el.querySelector(".close")!.addEventListener("click", () => this.hide());
     // Touching the panel means it is still wanted, so restart the fuse.
     this.el.addEventListener("pointerdown", () => {
@@ -67,7 +73,8 @@ export class Stage {
 
     const mine = ++this.token;
     this.caption.textContent = p.label ?? "";
-    const what = p.kind === "camera" ? `camera:${p.entity}` : "";
+    const what = p.kind === "camera" ? `camera:${p.entity}` : p.kind === "image" ? `image:${p.image}` : "";
+    this.dl.hidden = true;
     if (what !== this.shown) this.img.removeAttribute("src");
     this.shown = what;
     document.body.classList.add("staged");
@@ -79,6 +86,10 @@ export class Stage {
 
     if (p.kind === "camera") {
       await this.showCamera(p, mine);
+      return;
+    }
+    if (p.kind === "image") {
+      await this.showImage(p, mine);
       return;
     }
     if (p.embedUrl) {
@@ -222,8 +233,33 @@ export class Stage {
     }
   }
 
+  /** A picture Jarvis made, fetched as the map is (with the auth header), and offered to Download. */
+  private async showImage(p: DisplayPayload, mine: number): Promise<void> {
+    this.frame.style.display = "none";
+    this.frame.src = "about:blank";
+    this.img.style.display = "block";
+    try {
+      const res = await fetch(`/api/image?id=${encodeURIComponent(p.image ?? "")}`, { headers: authHeaders(this.key) });
+      if (!res.ok) throw new Error(`picture ${res.status}`);
+      const blob = await res.blob();
+      if (mine !== this.token) return;
+      this.revoke();
+      this.objectUrl = URL.createObjectURL(blob);
+      this.img.src = this.objectUrl;
+      this.img.alt = p.label ?? "";
+      this.dl.href = this.objectUrl;
+      this.dl.download = `jarvis-${p.image}.jpg`;
+      this.dl.hidden = false;
+    } catch (e) {
+      if (mine !== this.token) return;
+      this.caption.textContent = `Could not load the picture: ${e instanceof Error ? e.message : String(e)}`;
+    }
+  }
+
   hide(): void {
     this.token++;
+    this.dl.hidden = true;
+    this.dl.removeAttribute("href");
     clearTimeout(this.embedTimer);
     clearTimeout(this.dismissTimer);
     clearTimeout(this.refreshTimer);

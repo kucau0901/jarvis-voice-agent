@@ -156,7 +156,7 @@ existence, or argued around.
 | `media` | Spotify. |
 | `mail` | Gmail: `mail_check`, `mail_search`, `mail_send`, `mail_manage`, `contacts_lookup`. Reads, sends, replies, drafts, trashes and archives — there is no read-only half. Also reads Google Contacts to turn a name into an address. |
 | `calendar` | Google Calendar: `calendar_check`, `calendar_add`. Reads the diary **and creates events**. |
-| `screen` | `show_place`, `hide_display`, `/api/map`, and a person's panels (`panel_set`, `panel_remove`, `/api/hub/panels`). |
+| `screen` | `show_place`, `hide_display`, `/api/map`, `make_image` and `/api/image` (pictures Jarvis makes), and a person's panels (`panel_set`, `panel_remove`, `/api/hub/panels`). |
 | `voice` | `/api/session`, `/api/tts`, `/api/voices`, and push-to-talk `/api/v1/voice` (which also needs `ask`). |
 | `ask` (jobs) | `/api/v1/jobs`, `/api/v1/jobs/cancel`, `start_job`. A job for Hermes also needs `hermes`. Each job runs with its creator's grants, and only their reading tools. |
 | `routines` | `/api/v1/routines`, `/api/v1/routines/run`, `/api/v1/trigger`; `routine_add`, `routine_list`, `routine_remove`. A routine's question runs with **its creator's** grants, never more. |

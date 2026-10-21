@@ -16,6 +16,7 @@ import { handleTts } from "./routes/tts.ts";
 import { handleMcp } from "./routes/mcp.ts";
 import { handleMemory } from "./routes/memory.ts";
 import { handleMap } from "./routes/map.ts";
+import { handleImage } from "./routes/image.ts";
 import { handleCamera } from "./routes/camera.ts";
 import { handleSpotify } from "./routes/spotify.ts";
 import { handleGoogle } from "./routes/google.ts";
@@ -240,6 +241,8 @@ async function route(
       return await handleCamera(req, env);
     case "/api/map":
       return await handleMap(req, env);
+    case "/api/image":
+      return await handleImage(req, env);
     case "/api/diag":
       return await handleDiag(env);
     case "/api/router":

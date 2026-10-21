@@ -9,6 +9,7 @@ import { directionsTools } from "./directions.ts";
 import { placeTools } from "./place.ts";
 import { placesTools } from "./places.ts";
 import { cameraTools } from "./camera.ts";
+import { makeImage } from "./image.ts";
 import { spotifyTools } from "./spotify.ts";
 import { gmailTools } from "./gmail.ts";
 import { calendarTools } from "./calendar.ts";
@@ -225,6 +226,7 @@ const ALL: Tool[] = [
   ...placeTools,
   ...placesTools,
   ...cameraTools,
+  makeImage,
   ...spotifyTools,
   ...gmailTools,
   ...calendarTools,

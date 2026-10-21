@@ -587,6 +587,12 @@
     min-height: 56px; min-width: 88px; padding: 12px 22px; border-radius: 999px; border: 0;
     background: var(--glass-hi); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur);
     color: var(--fg); font: inherit; font-size: 15px; font-weight: 600; cursor: pointer; }
+  /* A picture Jarvis made (ui/Stage.ts showImage): Download, opposite Close. */
+  #stage .dl { position: absolute; top: 10px; left: 10px; display: inline-flex; align-items: center;
+    min-height: 56px; padding: 12px 22px; border-radius: 999px;
+    background: var(--glass-hi); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur);
+    color: var(--fg); font-size: 15px; font-weight: 600; text-decoration: none; }
+  #stage .dl[hidden] { display: none; }
   @keyframes stageIn { from { opacity: 0; transform: translateY(16px) scale(.97) }
                        to   { opacity: 1; transform: none } }
 

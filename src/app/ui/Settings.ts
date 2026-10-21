@@ -291,7 +291,7 @@ export class Settings {
       }
       const d = u.today;
       line("Today:", `${d.questions} question${d.questions === 1 ? "" : "s"}, about ${money(d.cost.router + d.cost.live + d.cost.jobs)}.`);
-      if (u.medianMs !== null) line("Typical answer:", `${(u.medianMs / 1000).toFixed(1)} s, over the last ${u.recent.filter((e) => e.seconds === undefined && e.surface !== "job").length} questions.`);
+      if (u.medianMs !== null) line("Typical answer:", `${(u.medianMs / 1000).toFixed(1)} s, over the last ${u.recent.filter((e) => e.seconds === undefined && e.surface !== "job" && e.surface !== "image").length} questions.`);
       if (u.slowest.length) {
         lines.push(node("h4", "Slowest recently"));
         const ul = node("ul", "");
