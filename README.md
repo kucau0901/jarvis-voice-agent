@@ -61,7 +61,9 @@ enough) or run it yourself with **Docker**.
 - **Background jobs** — "look into the best dashcams under RM800 and let me
   know": work that takes minutes runs on its own, even with every screen
   closed, and the result arrives as an alert and waits in the **jobs** panel.
-  Jobs read (web, mail, calendar, memory, car, cameras) but never act. Ask for
+  Jobs read (web, mail, calendar, memory, car, cameras) and never act on their
+  own: what one would do (lock the car, add an event, archive mail, send an
+  email, a Home Assistant call) it proposes, and only your tap does it. Ask for
   research in depth and it runs on a stronger model, searches widely and comes
   back as a report, checked against its sources, for roughly $1–2 (the Jobs panel shows
   what each one cost), or as a team: three teams take different angles and

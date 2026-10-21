@@ -40,6 +40,7 @@ import { LiveVoice, wakeVoice } from "./loud";
 import { Family } from "./ui/Family";
 import { Chat } from "./ui/Chat";
 import { relayActions } from "./relay";
+import { proposalCards } from "./proposal";
 import { hubStatus, inviteInfo, joinWithInvite, pairThisScreen, signInWithPasskey } from "./account";
 import { passkeyError, passkeysSupported } from "./passkey";
 import { describe, dropPerson, endSignIn, keepPerson, loadPeople, lockPerson, unlockPerson, type Person } from "./people";
@@ -592,6 +593,8 @@ function showAlert(a: Alert): HTMLElement {
   body.appendChild(markdown(a.text, ""));
   card.appendChild(head);
   card.appendChild(body);
+  // What a job proposed: Approve or Not now, right here (proposal.ts).
+  if (a.proposals?.length && key) card.appendChild(proposalCards(key, a.proposals.map((p) => p.id)));
   // Passed on from someone in the family: answer it right here (relay.ts).
   if (a.relay && a.relay.kind !== "tell") {
     const acts = relayActions(key, a.relay, (said) => {
@@ -630,7 +633,9 @@ function jobSaid(a: JobSaid): boolean {
   const label = fromJob(a, openJob);
   if (!label) return false;
   els.transcript.appendChild(label);
-  addRow("jarvis", a.text);
+  const row = addRow("jarvis", a.text);
+  // Under the answer, in its bubble, as a page's card is (addRow).
+  if (a.proposals?.length && key) (row.querySelector(":scope > .who + *") ?? row).appendChild(proposalCards(key, a.proposals));
   return true;
 }
 
@@ -638,7 +643,7 @@ function onAlert(a: Alert) {
   const card = showAlert(a);
   // A routine's or a job's words go into the conversation under its name; anything else while typing, as well as on the card.
   if (a.routine) routineSaid({ ...a, routine: a.routine });
-  else if (a.job) jobSaid({ ...a, job: a.job });
+  else if (a.job) jobSaid({ ...a, job: a.job, proposals: a.proposals?.map((p) => p.id) });
   else if (mode === "type") addRow("jarvis", a.title !== "Jarvis" ? `${a.title}: ${a.text}` : a.text);
   // Into the conversation either way: "yes, do that" after Hermes asks a
   // question in an alert must have the question to refer to.

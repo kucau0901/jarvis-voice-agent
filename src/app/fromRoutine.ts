@@ -17,7 +17,8 @@ import { button, el } from "./ui/util";
  */
 
 export type RoutineSaid = Pick<Alert, "id" | "at" | "title" | "text"> & { routine: string };
-export type JobSaid = Pick<Alert, "id" | "at" | "title" | "text"> & { job: string };
+/** `proposals`: what the job proposed, by id, for their cards (proposal.ts). */
+export type JobSaid = Pick<Alert, "id" | "at" | "title" | "text"> & { job: string; proposals?: string[] };
 
 const shown = new Set<string>();
 /** Jobs started from this screen and not back yet: their pills, by job id. */

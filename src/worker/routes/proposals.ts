@@ -6,6 +6,7 @@ import { personView } from "../lib/hub-client.ts";
 import { runTool } from "../lib/router.ts";
 import { PROPOSAL_ID, runGrants, viewOf, weigh, type Proposal } from "../lib/proposals.ts";
 import { baseTools, outputText } from "../tools/registry.ts";
+import { mailDraftSend } from "../lib/mail-draft.ts";
 
 /**
  *   GET  /api/hub/proposals            {open, recent}: what the person's jobs proposed (lib/proposals.ts)
@@ -20,6 +21,8 @@ import { baseTools, outputText } from "../tools/registry.ts";
 /** As long as waking the car may take (tools/tessie.ts), and then some. */
 const RUN_MS = 120_000;
 const RECENT = 20;
+/** What only an approval runs: never offered to the router. */
+const APPROVED_ONLY = [mailDraftSend];
 
 export async function handleProposals(req: Request, env: Env, ctx: ExecutionContext, principal: Principal): Promise<Response | null> {
   const url = new URL(req.url);
@@ -60,15 +63,17 @@ export async function handleProposals(req: Request, env: Env, ctx: ExecutionCont
 /** The stored call, run once, as it is now allowed to be; what came of it, in words. */
 export async function carryOut(env: Env, approver: Principal, p: Proposal): Promise<{ ok: boolean; text: string }> {
   // Weighed again from what is stored: a call that no longer reads as one that can be proposed is not run.
-  const local = baseTools(env).find((t) => t.name === p.action.tool);
+  const local = [...baseTools(env), ...APPROVED_ONLY].find((t) => t.name === p.action.tool);
+  const gone = { ok: false, text: `That can no longer be done: ${p.action.tool} is not set up, or not yours to use now.` };
+  if (!local && !p.action.tool.includes("__")) return gone;
   if (!weigh(local ?? { name: p.action.tool }, p.action.args)) return { ok: false, text: "That can no longer be done." };
   const view = await personView(env, p.person);
   if (view.scopes === null) return { ok: false, text: "Whoever it was for is no longer in the family." };
   const grants = runGrants(p.grants, view.scopes, grantsOf(approver));
   if (!grants) return { ok: false, text: "Who it is for could not be checked just now: try again." };
   try {
-    const out = await runTool(env, grants, p.action.tool, p.action.args, AbortSignal.timeout(RUN_MS));
-    if (out === null) return { ok: false, text: `That can no longer be done: ${p.action.tool} is not set up, or not yours to use now.` };
+    const out = await runTool(env, grants, p.action.tool, p.action.args, AbortSignal.timeout(RUN_MS), APPROVED_ONLY);
+    if (out === null) return gone;
     return { ok: true, text: outputText(out) };
   } catch (e) {
     return { ok: false, text: `That failed: ${e instanceof Error ? e.message : String(e)}` };

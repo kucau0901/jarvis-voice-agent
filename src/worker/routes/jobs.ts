@@ -2,7 +2,7 @@ import { openaiBase } from "../lib/openai-base.ts";
 import OpenAI from "openai";
 import type { Env } from "../types.ts";
 import { whoOf, grantsOf, personOf, type Principal } from "../lib/auth.ts";
-import { isTheirs } from "../lib/context.ts";
+import { isTheirs, personOfWho } from "../lib/context.ts";
 import type { EventSink } from "../lib/sse.ts";
 import { err, json, readObject } from "../lib/http.ts";
 import { asQuotedData } from "../lib/quote.ts";
@@ -16,7 +16,10 @@ import { citationsOf } from "../lib/links.ts";
 import { toCsv } from "../lib/research-table.ts";
 import { MERGE_INSTRUCTIONS, PLAN_INSTRUCTIONS, RESEARCH_CHECK, TABLE_CHECK, TABLE_MERGE_INSTRUCTIONS, TABLE_PLAN_INSTRUCTIONS, TABLE_TEAM_INSTRUCTIONS, TEAM_INSTRUCTIONS } from "../lib/router-prompt.ts";
 import { SHARE, angleMessage, mergeMaterial, shareReply, shareTool, teamView } from "../lib/research-team.ts";
-import { prepareRouter, runCalls } from "../lib/router.ts";
+import { prepareRouter, runCalls, type Prepared } from "../lib/router.ts";
+import { held, proposable, type File } from "../lib/proposals.ts";
+import { draftThenAsk } from "../lib/mail-draft.ts";
+import { mailSend } from "../tools/gmail.ts";
 import { recordUsage } from "./usage.ts";
 import { costOf } from "../lib/usage.ts";
 import { canAsk, clientFor, forKey, forPlan, modelAuth, planFailed, planRespond, refusalOf } from "../lib/openai-auth.ts";
@@ -93,6 +96,22 @@ const PLAN_KEY = (id: string) => `jobplan:${id}`;
 const PLAN_KEEP_MS = 2 * 60 * 60_000;
 const isPlanStep = (id: string | undefined): id is string => !!id && id.startsWith(PLAN_STEP);
 
+/**
+ * A job's tools that act, held (lib/proposals.ts): each call files a proposal
+ * for whoever started it to approve with a tap. Mail is drafted, and its
+ * sending proposed (lib/mail-draft.ts draftThenAsk).
+ */
+function proposing(p: Prepared, job: Job): Prepared {
+  const file: File = async (action, weighed, ctx) => {
+    const state = stateStub(ctx.env);
+    if (!state) return "Nothing can be proposed on this deployment: it has no state object.";
+    return state.proposalAdd({ who: job.createdBy, person: personOfWho(job.createdBy), from: { kind: "job", id: job.id, title: job.title }, action, weighed, grants: ctx.grants }, Date.now());
+  };
+  const mail = p.byName.get(mailSend.name);
+  const tools = [...held(p.tools, file), ...(mail ? [draftThenAsk(mail, file)] : [])];
+  return { ...p, tools, byName: new Map(tools.map((t) => [t.name, t])) };
+}
+
 /** The engine, bound to an environment: what the Durable Object runs jobs with. `kept`, its storage, for steps on the plan. */
 /** `reachFor`: what a job may reach now, null when whoever started it has left (lib/scopes.ts reachNow); as it was given, without. */
 export function jobEngine(
@@ -113,7 +132,10 @@ export function jobEngine(
     const reach = await reachFor(job);
     if (!reach) throw new Error("whoever started it is no longer in the family");
     const grants = jobGrants(reach);
-    const p = await prepareRouter(env, turns, signal(), grants, { surface: research ? "research" : "job", toolFilter: jobTool });
+    // A job that may act proposes instead (lib/proposals.ts); research only reads.
+    const toolFilter = research ? jobTool : (t: { name: string }) => jobTool(t) || proposable(t) || t.name === mailSend.name;
+    const prepared = await prepareRouter(env, turns, signal(), grants, { surface: research ? "research" : "job", toolFilter });
+    const p = research ? prepared : proposing(prepared, job);
     // Research: the stronger model, thinking hard (lib/jobs.ts "research").
     const model = research ? researchModel(env.RESEARCH_MODEL) : p.model;
     const functions = [...p.tools.map(toToolSchema), ...(team ? [toToolSchema(shareTool("", [], 0))] : [])];

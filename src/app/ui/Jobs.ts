@@ -79,7 +79,7 @@ export class Jobs {
       el("p", "note",
         "Work that takes minutes — research, comparisons, going through mail, a question for Hermes. " +
         "It runs on its own, even with every screen closed, and the result comes to you as an alert " +
-        "and stays here. Jobs read but never act: anything they would do, they tell you instead. " +
+        "and stays here. Jobs read, and never act on their own: what one would do, it proposes, and only your tap does it. " +
         "Usually quicker to say: \"look into the best dashcams under RM800 and let me know\"."),
     );
     this.list = el("div", "rlist");

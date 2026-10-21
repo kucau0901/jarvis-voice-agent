@@ -535,9 +535,14 @@ result; `POST /api/v1/jobs/cancel {id}` stops one; `DELETE ?id=` removes it.
 
 A job may READ — web search, mail, calendar, memory, contacts, the car,
 cameras, and the reading tools of MCP servers (judged by name: `get`, `list`,
-`search`… in, `set`, `call`, `control`… out) — and nothing else. It cannot
-send, book, delete, unlock or switch anything; when the work leads to an
-action, it says what it would do. At most 3 run at once and 30 are started a
+`search`… in, `set`, `call`, `control`… out). It cannot send, book, delete,
+unlock or switch anything itself: a call it would make (a car command, a
+calendar event, tidying mail, a Home Assistant call, sending an email it wrote
+as a draft) is proposed instead, and its result alert carries them as
+`proposals: [{id, risk, says}]`. Only the person who started it can approve
+one, signed in, with `POST /api/hub/proposals/answer {id, answer: "approve" |
+"decline"}`; `GET /api/hub/proposals` is `{open, recent}`. A device never can:
+everything under `/api/hub/` is a person's. A proposal waits a day. At most 3 run at once and 30 are started a
 day; one is stopped after 25 steps or 20 minutes.
 
 ### Handing research to Hermes

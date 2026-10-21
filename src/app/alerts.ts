@@ -28,6 +28,8 @@ export interface Alert {
   routine?: string;
   /** The background job it is the result of: its pill in the conversation takes it (fromRoutine.ts). */
   job?: string;
+  /** What that job proposed for a tap (proposal.ts). */
+  proposals?: { id: string; risk: string; says: string }[];
 }
 
 /** What this screen is called in "shown on …" and in the list of devices. */

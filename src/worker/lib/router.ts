@@ -335,8 +335,16 @@ function attachedSaid(opts: RunOptions): string {
  * proposal (routes/proposals.ts). Null when it is not theirs to use now.
  * Errors are the caller's: a tile shows them, a proposal records them.
  */
-export async function runTool(env: Env, grants: readonly Grant[], name: string, args: Record<string, unknown>, signal: AbortSignal): Promise<ToolOutput | null> {
-  let tool = baseTools(env, grants).find((t) => t.name === name);
+export async function runTool(
+  env: Env,
+  grants: readonly Grant[],
+  name: string,
+  args: Record<string, unknown>,
+  signal: AbortSignal,
+  /** Tools the router is never offered that this call may still run (an approval's: lib/mail-draft.ts mailDraftSend). */
+  also: readonly Tool[] = [],
+): Promise<ToolOutput | null> {
+  let tool = [...baseTools(env, grants), ...also.filter((t) => (!t.available || t.available(env)) && (!t.scope || allows(grants, t.scope)))].find((t) => t.name === name);
   const sessions = mcpSessions();
   try {
     if (!tool && name.includes("__") && allows(grants, "home")) tool = (await mcpTools(env, sessions)).find((t) => t.name === name);

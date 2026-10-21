@@ -19,6 +19,14 @@ of every release, and in the [README](README.md#updating).
 
 ### Added
 
+- **Jobs ask before they act.** A background job that would do something
+  (lock the car, put an event in your calendar, archive or star an email,
+  send an email it wrote, a Home Assistant call) now proposes it: its result
+  comes with a card for each, with Approve and Not now, on the alert and
+  under its answer in the chat. Only your tap does it, once, with no more
+  than the job could reach; a card says when something can't be undone, and
+  waits a day. An email a job writes is saved to your Drafts, and its card's
+  Approve sends it. Routines act as they always have.
 - **Run Jarvis on your ChatGPT plan.** Connect your ChatGPT Plus or Pro in
   Settings → ChatGPT plan, and every question, chat, job, research run and
   routine comes out of the usage your plan already includes, at no cost in
@@ -154,6 +162,8 @@ of every release, and in the [README](README.md#updating).
 
 ### Changed
 
+- **Jobs no longer only say what they would do:** they propose it, for your
+  tap (above).
 - **Coding and your computer go to Hermes by themselves.** Ask to change
   your website, fix or deploy an app, or do something with files or programs
   on the computer Hermes runs on, and Jarvis hands it to Hermes without your

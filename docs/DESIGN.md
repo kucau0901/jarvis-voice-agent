@@ -1073,11 +1073,27 @@ is the same one routines use, pointed at whichever is due first. Nothing is
 held open for minutes, so a redeploy in the middle loses nothing: the step
 carries on at OpenAI and the next alarm picks it up.
 
-**Read, never act.** A job runs with nobody watching and reads text written by
-others — web pages, mail — so it is offered only reading tools: Jarvis's own by
-name, MCP tools by what their names say (`ha_get_state` in, `ha_call_service`
-out; an unknown name is out). It cannot be talked into sending, deleting or
-unlocking, because it has nothing that could. It says what it would do instead.
+**Read; propose, never act.** A job runs with nobody watching and reads text
+written by others — web pages, mail — so it reads with Jarvis's reading tools
+and the MCP tools whose names say they read (`ha_get_state` in,
+`ha_call_service` out; an unknown name is out). What it would do, it can only
+propose (`lib/proposals.ts`): each tool that acts is handed to it as a held
+copy, the same name and arguments, whose run files that one call for the
+person who started the job, and the real run is never among its tools. It
+cannot be talked into sending, deleting or unlocking, because nothing it has
+can. The person approves with a tap, on the card the job's result brings
+(`routes/proposals.ts`, under the ordinary sign-in), and the stored call runs
+once, with no model, with no more than the job had, its maker still may and
+the approver may, and never Hermes or a screen. How risky a call is, code works
+out from the tool and its arguments, when it is filed and again when it is
+approved: a tool says so in its `propose` field (a car command another undoes is
+reversible, unlocking is not), and every house or other MCP call that writes is
+irreversible, since Jarvis keeps no list of which of the house's services can
+be undone and Home Assistant decides what each does. A job's email is only ever
+drafted, and its sending proposed (`lib/mail-draft.ts`), so mail has one way
+out, Send. Routines act as they always have: they are what the person set up
+to happen, and nothing here stands in front of the house when it is asked
+directly. The decided proposal is the audit: who, when, and what came of it.
 
 **Hermes, the same way.** A question to Hermes takes one to four minutes, and
 used to hold the car's tab open for the answer; closed, the answer was lost.

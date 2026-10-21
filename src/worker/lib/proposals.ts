@@ -256,13 +256,15 @@ export function filed(p: Proposal | string): string {
 
 /**
  * A job's tools: those that read as they are; each that writes, a copy with
- * the same name and arguments whose run files the call instead (`file`).
- * The real run is never among a job's tools, so no step can reach it.
+ * the same name and arguments whose run files the call instead (`file`);
+ * any other, left out. The real run is never among a job's tools, so no step
+ * can reach it.
  */
 export function held(tools: readonly Tool[], file: File): Tool[] {
-  return tools.map((t): Tool => {
-    if (jobTool(t) || !proposable(t)) return t;
-    return {
+  return tools.flatMap((t): Tool[] => {
+    if (jobTool(t)) return [t];
+    if (!proposable(t)) return [];
+    return [{
       name: t.name,
       description: PROPOSE_ONLY + t.description,
       parameters: t.parameters,
@@ -275,7 +277,7 @@ export function held(tools: readonly Tool[], file: File): Tool[] {
         if (!w) return "That cannot be proposed from a job: say in your answer what you would do.";
         return filed(await file({ tool: t.name, args }, w, ctx));
       },
-    };
+    }];
   });
 }
 
