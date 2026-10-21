@@ -21,16 +21,30 @@ import type { Tool } from "../tools/registry.ts";
 export const PROMOTIONS = "in:inbox category:promotions older_than:2d -is:starred -is:important";
 /** As many as Gmail lists in one call. */
 export const MAX_IDS = 500;
+/** Pages read looking for a card's messages again: 5,000 messages at most. */
+const MAX_PAGES = 10;
 
-export async function listMailIds(env: Env, query: string, max: number, signal: AbortSignal): Promise<string[] | string> {
+/**
+ * The ids a search matches, newest first: one page of at most `max`; with
+ * `until`, page after page (at most MAX_PAGES) until all of those are seen.
+ */
+export async function listMailIds(env: Env, query: string, max: number, signal: AbortSignal, until?: readonly string[]): Promise<string[] | string> {
   return guardTool(async () => {
     const cfg = googleConfig(env, "https://jarvis.invalid");
     if (!cfg) return "Gmail is not set up.";
     const n = Math.min(MAX_IDS, Math.max(1, Math.floor(max)));
-    const list = await call(env, cfg, `/users/me/messages?q=${encodeURIComponent(query)}&maxResults=${n}`, { signal });
-    const problem = explain(list);
-    if (problem) return problem;
-    return ((list.body as { messages?: { id: string }[] } | null)?.messages ?? []).map((m) => m.id).filter((id) => MESSAGE_ID.test(id));
+    const out: string[] = [];
+    let page = "";
+    for (let i = 0; i < (until ? MAX_PAGES : 1); i++) {
+      const list = await call(env, cfg, `/users/me/messages?q=${encodeURIComponent(query)}&maxResults=${n}${page ? `&pageToken=${encodeURIComponent(page)}` : ""}`, { signal });
+      const problem = explain(list);
+      if (problem) return problem;
+      const body = list.body as { messages?: { id: string }[]; nextPageToken?: string } | null;
+      out.push(...(body?.messages ?? []).map((m) => m.id).filter((id) => MESSAGE_ID.test(id)));
+      page = body?.nextPageToken ?? "";
+      if (!page || !until?.some((id) => !out.includes(id))) break;
+    }
+    return out;
   }, { notLinked: "Link your Gmail in Family → Accounts to see it here.", relink: "Gmail needs linking again: Family → Accounts.", prefix: "Gmail" });
 }
 
@@ -79,7 +93,8 @@ export const mailArchiveMany: Tool = {
     const ids = idsOf(args.ids);
     const total = typeof args.total === "number" && Number.isInteger(args.total) ? args.total : -1;
     if (!ids || total < ids.length) return null;
-    const of = total > ids.length ? ` (the oldest, of ${total} in your Inbox)` : "";
+    // A full page is the newest MAX_IDS: past it, neither how many there are nor which are oldest is known.
+    const of = total >= MAX_IDS ? ` (of ${MAX_IDS} or more in your Inbox)` : total > ids.length ? ` (the oldest, of ${total} in your Inbox)` : "";
     return { risk: "reversible", says: `Mail: archive ${many(ids.length, "promotion")} older than 2 days${of}; they stay in All Mail`, verb: "Archive", about: PROMOTIONS_ABOUT };
   },
   detail: (args, ctx) => sampleOf(ctx.env, idsOf(args.ids) ?? [], ctx.signal),
@@ -87,8 +102,8 @@ export const mailArchiveMany: Tool = {
     return (await guardTool(async () => {
       const ids = idsOf(args.ids);
       if (!ids) return "Those are not message ids, so nothing was archived.";
-      // Only those still promotions in the Inbox: the set shown can only shrink.
-      const still = await listMailIds(ctx.env, PROMOTIONS, MAX_IDS, ctx.signal);
+      // Only those still promotions in the Inbox, looked for past the first page: the set shown can only shrink.
+      const still = await listMailIds(ctx.env, PROMOTIONS, MAX_IDS, ctx.signal, ids);
       if (typeof still === "string") return `Nothing was archived. ${still}`;
       const go = ids.filter((id) => still.includes(id));
       if (!go.length) return "Nothing was archived: those have left the Inbox already.";

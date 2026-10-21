@@ -348,8 +348,10 @@ function rsvpOf(args: Record<string, unknown>, env: Env): { id: string; start: s
   const id = typeof args.event_id === "string" ? args.event_id : "";
   const start = typeof args.start === "string" ? args.start.trim() : "";
   const verb = RESPONSES[String(args.response)];
-  const title = tidy(String(args.title ?? "")).slice(0, MAX_TEXT) || "(no title)";
-  const from = tidy(String(args.organizer ?? "")).slice(0, 80);
+  // Short enough that the card is always filed whole (Proposals' MAX_SAYS): 120 and 40, with the rest at most about 110.
+  const cut = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1).trimEnd()}…` : s);
+  const title = cut(tidy(String(args.title ?? "")), 120) || "(no title)";
+  const from = cut(tidy(String(args.organizer ?? "")), 40);
   const at = ISO.test(start) ? new Date(start) : DAY.test(start) ? new Date(`${start}T00:00:00Z`) : null;
   if (!EVENT_ID.test(id) || !verb || !at || Number.isNaN(at.getTime())) return null;
   // As a date, in their zone (an all-day one as its own date): the card is read again when approved.
@@ -363,7 +365,7 @@ function rsvpOf(args: Record<string, unknown>, env: Env): { id: string; start: s
     start,
     title,
     verb,
-    says: `Calendar: ${verb.toLowerCase()} “${title}”${every ? `, every time (next ${when})` : `, ${when}`}${from ? `, from ${from}` : ""} (${from || "the organiser"} is told)`,
+    says: `Calendar: ${verb.toLowerCase()} “${title}”${every ? `, every time (next ${when})` : `, ${when}`}${from ? `, from ${from}, who is told` : " (the organiser is told)"}`,
     about: every ? `rsvp:${id}` : `rsvp:${id}@${start}`,
   };
 }
@@ -414,6 +416,8 @@ export const calendarRsvp: Tool = {
       const shown = DAY.test(r.start) ? r.start : Date.parse(r.start);
       if (args.recurring !== true && was !== shown) return "It has moved since it was proposed, so nothing was sent.";
       const self = e.attendees?.find((a) => a.self);
+      // A repeating one is answered whole only as a whole: asked to only some of its times, or with the rest answered, those are theirs to answer.
+      if (args.recurring === true && self?.responseStatus !== "needsAction") return "Only some of its times wait for your answer: answer those in Google Calendar. Nothing was sent.";
       if (!self?.email) return "You are not on its guest list any more, so nothing was sent.";
       if (self.responseStatus !== "needsAction") return `You have answered it already (${self.responseStatus ?? "unknown"}), so nothing was sent.`;
       const res = await call(ctx.env, cfg, `${path}?sendUpdates=all`, {

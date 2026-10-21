@@ -220,8 +220,10 @@ export class Proposals {
     const about = input.weighed.about;
     if (about) {
       if (((await this.gone(input.person))[about] ?? 0) > now) return "Dismissed: not offered again for now.";
+      // Waiting with time left: that card again. Nearly out of it (yesterday's, from a daily brief): let go, and a fresh one filed.
       const waiting = mine.find((p) => p.about === about && p.state === "pending");
-      if (waiting) return waiting;
+      if (waiting && waiting.expires - now > DECIDE_MS / 2) return waiting;
+      if (waiting) await this.storage.put(key(input.person, waiting.id), { ...waiting, state: "expired", decidedAt: now });
       if (mine.some((p) => p.about === about && (p.state === "running" || p.state === "done" || p.state === "failed") && now - (p.decidedAt ?? p.createdAt) < TRIED_MS)) return "Tried lately: not offered again yet.";
     }
     // Allowed without asking: a reversible call of a kind the person said their jobs may make, and only that.
@@ -365,12 +367,17 @@ export class Proposals {
     return u;
   }
 
-  /** What came of a run: the audit. */
+  /** What came of a run: the audit. A Put back that did not work can be tapped again. */
   async finish(person: string, id: string, outcome: { ok: boolean; text: string }, now: number): Promise<Proposal | null> {
     const p = await this.storage.get<Proposal>(key(person, id));
     if (!p || p.state !== "running") return null;
     const done: Proposal = { ...p, state: outcome.ok ? "done" : "failed", outcome: { ok: outcome.ok, text: outcome.text.slice(0, MAX_SAYS) }, decidedAt: p.decidedAt ?? now };
     await this.storage.put(key(person, id), done);
+    const of = p.undoes && !outcome.ok ? await this.storage.get<Proposal>(key(person, p.undoes)) : undefined;
+    if (of?.undone === id) {
+      const { undone: _u, ...again } = of;
+      await this.storage.put(key(person, of.id), again);
+    }
     return done;
   }
 

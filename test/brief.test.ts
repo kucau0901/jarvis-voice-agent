@@ -366,7 +366,7 @@ console.log("\nwhat a brief puts to them, chosen by code");
   check("then the promotions: the oldest 150 (Gmail lists the newest first), of how many", c[3]?.tool.name === "mail_archive_many" && (a[3]!.ids as string[]).length === 150 && (a[3]!.ids as string[])[0] === "promo050x" && a[3]!.total === 200, a[3]);
   check(`fewer than ${PROMOTIONS_MIN}: no card`, !candidatesOf({ invites: [], promotions: promos(PROMOTIONS_MIN - 1) }, TZ).length && candidatesOf({ invites: [], promotions: promos(PROMOTIONS_MIN) }, TZ).length === 1);
   const many = candidatesOf({ invites: Array.from({ length: 8 }, (_, i) => ({ event: invite({ id: `e${i}x`, start: at(10, 0, 23) }), clash: false })), promotions: promos(50) }, TZ);
-  check(`at most ${BRIEF_MAX}`, many.length === BRIEF_MAX && many.every((x) => x.tool.name === "calendar_rsvp"));
+  check(`every one chosen, the cap of ${BRIEF_MAX} left to the filing`, many.length === 9 && many.at(-1)?.tool.name === "mail_archive_many");
 }
 
 console.log("\nfiled for their tap, before the model, once");
@@ -423,8 +423,42 @@ console.log("\nfiled for their tap, before the model, once");
       throw new Error("quota");
     });
     check("the model failing: the cards are filed and listed all the same", failed.proposals.length === 2 && failed.text.includes("## For your OK"), failed.proposals);
+    order.length = 0;
     const device = await runBrief(ROUTINE, NOW, { ...deps({ env, house: null, jobs: [], grants: ["calendar", "mail", "routines"] }), ...filing(5) }, asking("x"));
-    check("without asking, nothing is put to them", device.proposals.length === 0 && !device.text.includes("## For your OK"), device.text);
+    check("without asking, nothing is put to them: nothing filed at all", !order.some((o) => o.startsWith("file:")) && device.proposals.length === 0 && !device.text.includes("## For your OK"), { order, text: device.text });
+  } finally {
+    globalThis.fetch = real;
+  }
+}
+
+console.log("\nat most five cards, and one refused takes no place");
+{
+  let filed = 0;
+  const tried: string[] = [];
+  const env = { ...GOOGLE, TIMEZONE: TZ } as never;
+  const real = globalThis.fetch;
+  globalThis.fetch = (async (url: string | URL | Request) => {
+    const u = String(url instanceof Request ? url.url : url);
+    if (u.includes("oauth2")) return Response.json({ access_token: "access", expires_in: 3600 });
+    if (u.includes("/calendars/primary/events")) {
+      return Response.json({ items: Array.from({ length: 7 }, (_, i) => ({ id: `inv${i}abcd`, summary: `Invite ${i}`, start: { dateTime: iso(at(10 + i, 0, 23)) }, end: { dateTime: iso(at(10 + i, 30, 23)) }, created: iso(NOW - 5 * DAY), organizer: { displayName: "Sam" }, attendees: [{ self: true, responseStatus: "needsAction" }] })) });
+    }
+    if (u.includes("/users/me/messages?")) return Response.json({ messages: new URL(u).searchParams.get("q")!.includes("promotions") ? Array.from({ length: 30 }, (_, i) => ({ id: `promo${String(i).padStart(3, "0")}x` })) : [] });
+    return Response.json({ id: "p", payload: { headers: [] } });
+  }) as typeof fetch;
+  try {
+    // The first three invitations were dismissed: refused, they take no place, and the archive still comes.
+    await runBrief(ROUTINE, NOW, {
+      ...deps({ env, house: null, jobs: [] }),
+      waiting: async () => [],
+      file: async (action) => {
+        tried.push(String(action.args.event_id ?? action.tool));
+        if (/^inv[012]/.test(String(action.args.event_id ?? ""))) return "Dismissed: not offered again for now.";
+        filed++;
+        return proposal("x");
+      },
+    }, model("x"));
+    check(`${BRIEF_MAX} filed past the dismissed ones, the archive among them`, filed === BRIEF_MAX && tried.length === BRIEF_MAX + 3 && tried.at(-1) === "mail_archive_many", tried);
   } finally {
     globalThis.fetch = real;
   }

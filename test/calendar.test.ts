@@ -214,7 +214,10 @@ console.log("\nanswering an invitation (calendar_rsvp): for a tap only");
   const w = calendarRsvp.propose!(args, env);
   check("can't be undone (the organiser is told), no kind to allow, its button, its subject",
     w?.risk === "irreversible" && !w.category && w.verb === "Decline" && w.about === "rsvp:evt12345abc@2026-10-23T02:00:00.000Z", w);
-  check("says when, in their zone, as a date, and who is told", w?.says === "Calendar: decline “Team offsite”, Fri, 23 Oct 2026, 10:00, from Sam Example (Sam Example is told)", w?.says);
+  check("says when, in their zone, as a date, and who is told", w?.says === "Calendar: decline “Team offsite”, Fri, 23 Oct 2026, 10:00, from Sam Example, who is told", w?.says);
+  const long = calendarRsvp.propose!({ ...args, title: "T".repeat(200), organizer: "O".repeat(80), recurring: true }, env);
+  check("however long its title and who sent it, the card fits whole (filed, never cut by Proposals)", !!long && long.says.length <= 300 && long.says.includes("…"), long?.says.length);
+  check("no organiser named: the organiser is told", /\(the organiser is told\)$/.test(calendarRsvp.propose!({ ...args, organizer: "" }, env)?.says ?? ""));
   const every = calendarRsvp.propose!({ ...args, response: "accepted", recurring: true }, env);
   check("a repeating one: answered every time, one subject whenever its next time is", every?.verb === "Accept" && every.about === "rsvp:evt12345abc" && /, every time \(next Fri, 23 Oct 2026, 10:00\)/.test(every.says), every);
   check("an all-day one by its date", /Sat, 24 Oct 2026, all day/.test(calendarRsvp.propose!({ ...args, start: "2026-10-24" }, env)?.says ?? ""));
@@ -260,6 +263,11 @@ console.log("\nanswering an invitation (calendar_rsvp): for a tap only");
   check("…each said so", /cancelled/.test(refused[0]!.out) && /moved/.test(refused[1]!.out) && /answered it already \(accepted\)/.test(refused[2]!.out) && /guest list/.test(refused[3]!.out) && /no longer in the calendar/.test(refused[4]!.out), refused.map((r) => r.out));
   const series = await run({ ...invite, start: { dateTime: "2026-01-05T09:00:00+08:00" }, recurrence: ["RRULE:FREQ=DAILY"] }, { ...args, recurring: true, response: "accepted" });
   check("a repeating one is answered whole, whenever its first time was", series.done && series.calls.some((c) => c.method === "PATCH"), series.out);
+  const some = [
+    await run({ ...invite, recurrence: ["RRULE:FREQ=DAILY"], attendees: [{ email: "me@example.com", self: true, responseStatus: "accepted" }] }, { ...args, recurring: true }),
+    await run({ ...invite, recurrence: ["RRULE:FREQ=DAILY"], attendees: [{ email: "lead@example.com", responseStatus: "accepted" }] }, { ...args, recurring: true }),
+  ];
+  check("asked to only some of its times, or the rest answered: nothing sent, and said so truly", some.every((r) => !r.done && !r.calls.some((c) => c.method === "PATCH") && /Only some of its times/.test(r.out)), some.map((r) => r.out));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

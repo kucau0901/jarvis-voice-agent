@@ -470,10 +470,13 @@ console.log("\nanswered by a tap (routes/proposals.ts)");
   check("Put back on something not done yet: refused", (await handleProposals(req("/api/hub/proposals/answer", { id: archived.id, answer: "undo" }), env, mia))!.status === 409);
   await props.claim("u_mia", archived.id, ["*"], ["*"], Date.now());
   await props.finish("u_mia", archived.id, { ok: true, text: "Archived 1 promotion." }, Date.now());
+  const lee = { ...mia, id: "u_lee" } as never;
+  scopes.u_lee = ["*"];
+  check("someone else's cannot be put back: no such proposal, nothing queued", (await handleProposals(req("/api/hub/proposals/answer", { id: archived.id, answer: "undo" }), env, lee))!.status === 404 && !(await props.get("u_mia", archived.id, Date.now()))?.undone);
   const undone = await handleProposals(req("/api/hub/proposals/answer", { id: archived.id, answer: "undo", tool: "mail_manage", args: { action: "trash" } }), env, mia);
   const ub = (await undone!.json()) as { proposal: Proposal };
   check("Put back once done: its undo comes back running, made from what was stored, whatever the request says", undone!.status === 200 && ub.proposal.state === "running" && ub.proposal.action.tool === "mail_inbox_many" && ub.proposal.undoes === archived.id && !("grants" in ub.proposal), ub);
-  check("someone else's cannot be put back", (await handleProposals(req("/api/hub/proposals/answer", { id: archived.id, answer: "undo" }), env, { ...mia, id: "u_lee" } as never))!.status !== 200);
+
 }
 
 console.log("\na brief's cards: one subject, offered once, dismissed for a while");
@@ -494,6 +497,12 @@ console.log("\na brief's cards: one subject, offered once, dismissed for a while
   await props.decline("u_sara", first.id, T + 2 * 3_600_000);
   const gone = await props.add(brief("3"), T + 86_400_000);
   check("dismissed: not offered again", gone === "Dismissed: not offered again for now.", gone);
+  const daily = new Proposals(fakeStorage() as never);
+  const yesterday = (await daily.add(brief("y"), T + 800)) as Proposal;
+  const today = await daily.add(brief("t"), T + DECIDE_MS + 200);
+  check("yesterday's card, a moment from expiring, does not stand in for today's: a fresh one, with its day", typeof today !== "string" && today.id !== yesterday.id && today.expires === T + DECIDE_MS + 200 + DECIDE_MS && (await daily.get("u_sara", yesterday.id, T + DECIDE_MS + 200))?.state === "expired", today);
+  const soon = await daily.add(brief("s"), T + DECIDE_MS + 200 + 3_600_000);
+  check("…while one with most of its day left is that card again", typeof soon !== "string" && typeof today !== "string" && soon.id === today.id);
   const kept = (st._m.get("propgone:u_sara") ?? {}) as Record<string, number>;
   check("remembered by its subject, beside the proposals, for 30 days", kept["inbox:promotions"] === T + 2 * 3_600_000 + GONE_MS && !(await props.list("u_sara", T)).some((p) => p.about === undefined && p.state === "pending"), kept);
   const later = await props.add(brief("4"), T + 2 * 3_600_000 + GONE_MS + 1);
@@ -544,6 +553,16 @@ console.log("\nPut back: archived promotions, for a week, once");
   const queued = [...st._m.entries()].filter(([k]) => k.startsWith("proprun:"));
   check("queued for the alarm with no more than the tap and its person allow", queued.length === 1 && JSON.stringify((queued[0]![1] as { grants: string[] }).grants) === JSON.stringify(["mail"]), queued);
   check("once only", (await props.undo("u_sara", p.id, inverse, ["*"], ["*"], T + 4)) === "It was put back already." && (await props.get("u_sara", p.id, T))?.undone === (back as Proposal).id);
+  const retry = await (async () => {
+    const own = new Proposals(fakeStorage() as never);
+    const q = (await own.add(input({ from: { kind: "brief", id: "rb@9", title: "Brief", routine: "rb" }, action: archive, weighed: weigh(mailArchiveMany, archive.args, NO_CARS)! }), T)) as Proposal;
+    await own.claim("u_sara", q.id, ["*"], ["*"], T);
+    await own.finish("u_sara", q.id, { ok: true, text: "x" }, T);
+    const first = (await own.undo("u_sara", q.id, inverse, ["*"], ["*"], T + 1)) as Proposal;
+    await own.tick({ carryOut: async () => ({ ok: false, text: "Gmail said 503." }) }, T + 2);
+    return { failed: await own.get("u_sara", first.id, T + 3), again: await own.undo("u_sara", q.id, inverse, ["*"], ["*"], T + 3) };
+  })();
+  check("a Put back that did not work can be tapped again", retry.failed?.state === "failed" && typeof retry.again !== "string" && retry.again.state === "running", retry);
   const made: string[] = [];
   await props.tick({ carryOut: async (q) => (made.push(q.action.tool), { ok: true, text: "Put 2 messages back in the Inbox." }) }, T + 5);
   check("and the alarm makes it", made.join() === "mail_inbox_many" && (await props.get("u_sara", (back as Proposal).id, T + 6))?.state === "done");

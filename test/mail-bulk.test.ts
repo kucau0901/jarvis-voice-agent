@@ -45,6 +45,7 @@ console.log("the card, from its arguments alone");
     w?.risk === "reversible" && !w.category && w.verb === "Archive" && w.about === PROMOTIONS_ABOUT, w);
   check("says how many, of how many, and where they stay", w?.says === "Mail: archive 150 promotions older than 2 days (the oldest, of 212 in your Inbox); they stay in All Mail", w?.says);
   check("all of them: no 'of'", mailArchiveMany.propose!({ ids: ids(25), total: 25 }, env)?.says === "Mail: archive 25 promotions older than 2 days; they stay in All Mail");
+  check("a full page listed: of 500 or more, and not said to be the oldest", mailArchiveMany.propose!({ ids: ids(150), total: 500 }, env)?.says === "Mail: archive 150 promotions older than 2 days (of 500 or more in your Inbox); they stay in All Mail");
   const bad = [
     { ids: [], total: 0 },
     { ids: ids(MAX_BATCH + 1), total: 500 },
@@ -97,6 +98,31 @@ console.log("\narchiving: only what still matches, only out of the Inbox");
     check("Gmail refuses: not done, with why", !done && /Nothing was archived/.test(String(out)), out);
   } finally {
     refused.restore();
+  }
+}
+
+console.log("\nlooked for past the first page");
+{
+  // Newer promotions have pushed the card's own past the first 500: they still match, a page further on.
+  const pages = [ids(500, 1000), ids(500, 0)];
+  const calls: string[] = [];
+  const real = globalThis.fetch;
+  globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+    const u = String(url instanceof Request ? url.url : url);
+    if (u.includes("oauth2")) return Response.json({ access_token: "access", expires_in: 3600 });
+    calls.push(`${init?.method ?? "GET"} ${u}`);
+    if (u.includes("/messages?")) {
+      const n = new URL(u).searchParams.get("pageToken") === "p2" ? 1 : 0;
+      return Response.json({ messages: pages[n]!.map((id) => ({ id })), ...(n === 0 ? { nextPageToken: "p2" } : {}) });
+    }
+    return new Response(null, { status: 204 });
+  }) as typeof fetch;
+  try {
+    let done = false;
+    const out = await mailArchiveMany.run({ ids: ids(150, 350), total: 500 }, ctx(() => (done = true)));
+    check("the next page read too, and all of them archived", done && calls.filter((c) => c.includes("/messages?")).length === 2 && /Archived 150 promotions/.test(String(out)), { out, calls: calls.length });
+  } finally {
+    globalThis.fetch = real;
   }
 }
 

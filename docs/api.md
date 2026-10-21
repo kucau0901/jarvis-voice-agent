@@ -548,7 +548,7 @@ says what came of it; each proposal may carry `verb`, `about` (a brief's card,
 whose decline is remembered: the next brief does not offer it again for 30
 days), `undoes` and `undone` (Put back). `"undo"` is Put back on archived
 promotions, done by a tap within the week: what undoes it comes back
-`running`, once. After
+`running`, once (again only if that did not work). After
 approving a reversible one, `POST /api/hub/proposals/allow {id}` lets jobs make
 that one kind of call without asking (a car command another undoes, a calendar
 event, one way of tidying mail; never anything irreversible or for the house),

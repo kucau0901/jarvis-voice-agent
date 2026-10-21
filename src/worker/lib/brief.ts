@@ -243,10 +243,11 @@ async function mailSection(d: BriefDeps, read: Read): Promise<Section | null> {
 }
 
 /**
- * What code would put to them, most worth it first, at most BRIEF_MAX: an
- * answer to each invitation left unanswered (Decline when it clashes, else
- * Accept; a repeating one answered whole), then archiving the Inbox's oldest
- * promotions once there are PROMOTIONS_MIN.
+ * What code would put to them, most worth it first: an answer to each
+ * invitation left unanswered (Decline when it clashes, else Accept; a
+ * repeating one answered whole), then archiving the Inbox's oldest
+ * promotions once there are PROMOTIONS_MIN. All of them: the filing stops at
+ * BRIEF_MAX cards (runBrief), so one dismissed does not take a place.
  */
 export function candidatesOf(read: Read, timeZone: string): Candidate[] {
   const out: Candidate[] = read.invites.map(({ event: e, clash }) => {
@@ -260,7 +261,7 @@ export function candidatesOf(read: Read, timeZone: string): Candidate[] {
   const promos = read.promotions ?? [];
   // Gmail lists the newest first: the oldest are last.
   if (promos.length >= PROMOTIONS_MIN) out.push({ tool: mailArchiveMany, args: { ids: promos.slice(-MAX_BATCH), total: promos.length } });
-  return out.slice(0, BRIEF_MAX);
+  return out;
 }
 
 /** Their jobs still running, and those that ended since `since`. */
@@ -292,12 +293,17 @@ export async function runBrief(r: Routine, now: number, d: BriefDeps, ask?: Ask)
   const asks = allows(d.grants, "ask");
   // Filed before the model is asked anything: the cards wait whatever becomes of the opening.
   if (asks) {
+    // At most BRIEF_MAX cards, counting those filed or still waiting: one refused (dismissed, tried lately) takes no place.
+    let cards = 0;
     for (const c of candidatesOf(read, d.timeZone)) {
+      if (cards >= BRIEF_MAX) break;
       const weighed = c.tool.propose?.(c.args, d.env);
       if (!weighed) continue;
       // Who sent a few of the promotions, for the card: read only for a card filed anew.
       const detail = c.tool === mailArchiveMany ? () => sampleOf(d.env, c.args.ids as string[], AbortSignal.timeout(SOURCE_MS)) : undefined;
-      await d.file({ tool: c.tool.name, args: c.args }, weighed, detail).catch((e) => console.warn("brief: not filed:", why(e)));
+      const p = await d.file({ tool: c.tool.name, args: c.args }, weighed, detail).catch((e) => `not filed: ${why(e)}`);
+      if (typeof p === "string") console.warn(`brief: ${c.tool.name} not filed: ${p}`);
+      else cards++;
     }
   }
   const waiting = asks ? await d.waiting() : [];
