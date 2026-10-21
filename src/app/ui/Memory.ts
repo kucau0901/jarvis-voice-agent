@@ -1,6 +1,7 @@
 import { authHeaders } from "../key";
 import { ago, arm, esc } from "./util";
 import { SectionMenu, type NavGroup } from "./sections";
+import { showPast, showSpecialties } from "./memory-recall";
 
 /**
  * What Jarvis remembers, where the owner can see it.
@@ -137,6 +138,18 @@ export class Memory {
                 <span class="budget"></span>
               </div>
               <pre class="profile"></pre>
+            </section>
+
+            <section class="svc" data-section="specialties" data-title="Specialties">
+              <h3>Specialties</h3>
+              <p class="note">Ways of doing something you asked Jarvis to save, followed again when you ask for them.</p>
+              <div class="speclist"></div>
+            </section>
+
+            <section class="svc" data-section="past" data-title="Past attempts">
+              <h3>Past attempts</h3>
+              <p class="note">What Jarvis tried for you and how it went, given to it when you ask for something like it.</p>
+              <div class="pastlist"></div>
             </section>
 
             <section class="svc" data-section="trash" data-title="Recently forgotten">
@@ -470,7 +483,15 @@ export class Memory {
       ? gone.map(({ f, b }) => `<div class="gone">${esc(f.text)}${this.hasFamily && b === "family" ? ` <span class="dim">the family's</span>` : ""}</div>`).join("")
       : `<p class="note">Nothing forgotten lately.</p>`;
 
-    groups.push(["Add and check", ["add", "find", "reads", "trash"]]);
+    groups.push(["Add and check", ["add", "find", "reads", "specialties", "past", "trash"]]);
+    // Their counts arrive after the menu is drawn: put in its buttons as they do.
+    const count = (id: string) => (n: number) => {
+      this.$(`.setbody [data-section=${id}]`).dataset.aside = String(n);
+      const b = this.el.querySelector(`.setnav button[data-for="${id}"]`);
+      if (b) (b.querySelector(".st.aside") ?? b.appendChild(Object.assign(document.createElement("span"), { className: "st aside" }))).textContent = String(n);
+    };
+    void showSpecialties(this.key, this.$(".speclist")).then(count("specialties"));
+    void showPast(this.key, this.$(".pastlist")).then(count("past"));
     this.menu.build(groups, groups[0]?.[1][0] ?? "add");
   }
 

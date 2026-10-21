@@ -16,6 +16,8 @@ import { handleTts } from "./routes/tts.ts";
 import { handleMcp } from "./routes/mcp.ts";
 import { handleMemory } from "./routes/memory.ts";
 import { handleMap } from "./routes/map.ts";
+import { handleImage } from "./routes/image.ts";
+import { handleExport } from "./routes/export.ts";
 import { handleCamera } from "./routes/camera.ts";
 import { handleSpotify } from "./routes/spotify.ts";
 import { handleGoogle } from "./routes/google.ts";
@@ -32,6 +34,10 @@ import { handleAuth, handleHub } from "./routes/hub.ts";
 import { handleFamily } from "./routes/family.ts";
 import { handlePanels } from "./routes/panels.ts";
 import { handleConversation } from "./routes/conversation.ts";
+import { handleSearch } from "./routes/search.ts";
+import { handlePage, handlePageMeta } from "./routes/page.ts";
+import { handleTelegram } from "./routes/telegram.ts";
+import { TELEGRAM_PATH } from "./lib/telegram.ts";
 
 // The Durable Object class must be exported from the entry for the runtime to find it.
 export { JarvisState } from "./state.ts";
@@ -95,11 +101,15 @@ export default {
     // and its server's trade of a code each carry no credential, the code
     // standing in for one (routes/oauth.ts).
     if (url.pathname === "/api/v1/oauth/authorize") return handleAuthorize(req);
+    // A page Jarvis made (routes/page.ts): opened by its link, which carries its own proof, so by anyone it was given to.
+    if (url.pathname.startsWith("/api/v1/p/")) return await handlePage(req, env);
     if (url.pathname === "/api/v1/oauth/token") return await handleToken(req, env);
     // A browser cannot put a header on a WebSocket, so an open screen presents
     // a one-time ticket it was issued over an authenticated request instead.
     // The Durable Object checks and spends it (routes/alerts.ts).
     if (isTicketedSocket(req, url)) return openTicketedSocket(req, env);
+    // Telegram's webhook (routes/telegram.ts): it cannot send a key, so its secret header is the proof.
+    if (url.pathname === TELEGRAM_PATH) return await handleTelegram(req, await withSettings(env), ctx, forPerson);
     // Signing in, which by its nature comes before a credential (routes/hub.ts).
     if (url.pathname.startsWith("/api/auth/")) {
       try {
@@ -215,6 +225,8 @@ async function route(
     return (await handleFamily(req, env, ctx, principal))!;
   }
   if (url.pathname === "/api/hub/conversation") return await handleConversation(req, env, principal);
+  if (url.pathname === "/api/hub/search") return await handleSearch(req, env, principal);
+  if (url.pathname === "/api/page" || url.pathname === "/api/page/share") return await handlePageMeta(req, env, principal);
   if (url.pathname.startsWith("/api/hub/panels")) return (await handlePanels(req, env, principal)) ?? (await handleHub(req, env, principal));
   if (url.pathname.startsWith("/api/hub/")) return await handleHub(req, env, principal);
   if (url.pathname.startsWith("/api/mcp")) return await handleMcp(req, env, principal.kind === "owner");
@@ -240,8 +252,12 @@ async function route(
       return await handleCamera(req, env);
     case "/api/map":
       return await handleMap(req, env);
+    case "/api/image":
+      return await handleImage(req, env);
     case "/api/diag":
       return await handleDiag(env);
+    case "/api/export":
+      return await handleExport(req, env, principal);
     case "/api/router":
     case "/api/router/test":
       return await handleRouter(req, env);

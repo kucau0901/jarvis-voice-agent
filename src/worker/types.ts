@@ -19,6 +19,9 @@ export interface Env {
   JARVIS_PERSON?: string;
   /** Their name, for the model to address them by. */
   JARVIS_PERSON_NAME?: string;
+  /** What they like to be called, and their birthday (YYYY-MM-DD), when they said (ui/Profile.ts). */
+  JARVIS_PERSON_NICKNAME?: string;
+  JARVIS_PERSON_BIRTHDAY?: string;
   /** What the family calls its assistant. */
   JARVIS_AGENT_NAME?: string;
   /** The family's shared memory book, when there is a family. */
@@ -75,6 +78,8 @@ export interface Env {
   RESEARCH_MODEL?: string;
   /** Research jobs allowed a month; "0" switches them off. Default 10. */
   RESEARCH_MONTHLY_LIMIT?: string;
+  /** A month's budget in US dollars (lib/usage.ts): told at 80% and at 100%; unset for none. */
+  USAGE_BUDGET?: string;
   /** How long the router thinks on a question someone is waiting on (lib/router-model.ts effortFor). */
   ROUTER_EFFORT?: string;
   /** Where to look for new releases: owner/name on GitHub, "off", or empty for this project's own. */
@@ -125,6 +130,10 @@ export interface Env {
    */
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;
+  /** "1": mail is only drafted, sent by the person's tap (lib/mail-draft.ts). */
+  MAIL_DRAFT_FIRST?: string;
+  /** A line under every email Jarvis writes. */
+  MAIL_FOOTER?: string;
 
   /**
    * Origins allowed to call the API from a browser, comma-separated and matched
@@ -185,6 +194,8 @@ export interface Env {
   TELEGRAM_BOT_TOKEN?: string;
   /** Who the bot writes to: your own chat id, or a group's. */
   TELEGRAM_CHAT_ID?: string;
+  /** "1": messages to the bot are answered (routes/telegram.ts). */
+  TELEGRAM_ASK?: string;
   /** An ntfy topic's full address. On a public server the topic name is the only secret. */
   NTFY_URL?: string;
   /** For a topic that needs one. */

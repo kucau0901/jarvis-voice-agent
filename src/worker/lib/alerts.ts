@@ -1,4 +1,5 @@
 import type { Env } from "../types.ts";
+import { sendTelegram } from "./telegram.ts";
 import { OWNER } from "./context.ts";
 import { MAX_PAYLOAD, sendPush, type Subscription, type VapidKeys } from "./webpush.ts";
 import { haUrl } from "./ha.ts";
@@ -53,6 +54,12 @@ export interface Alert {
    * (src/app/fromRoutine.ts).
    */
   routine?: string;
+  /**
+   * The background job it is the result of (lib/jobs.ts): the app turns that
+   * job's "On it" pill in the conversation into the result, and the pill opens
+   * it in Jobs (src/app/fromRoutine.ts).
+   */
+  job?: string;
   /**
    * Whose it is (lib/context.ts): a member's id, or none for the first
    * person's. A member's alert reaches only their screens, their phones and
@@ -310,19 +317,8 @@ const SEND: Record<Channel, Sender> = {
       ? await state.chatFor?.(alert.for).catch(() => null)
       : ((await state.chatFor?.(OWNER).catch(() => null)) || env.TELEGRAM_CHAT_ID);
     if (!env.TELEGRAM_BOT_TOKEN || !chat) return null;
-    const r = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        chat_id: chat,
-        text: alert.title === "Jarvis" ? alert.text : `${alert.title}\n\n${alert.text}`,
-        disable_notification: false,
-      }),
-      signal: timeout(),
-    });
-    if (r.ok) return { channel: "telegram", ok: true, detail: "sent" };
-    const why = ((await r.json().catch(() => null)) as { description?: string } | null)?.description ?? "";
-    return { channel: "telegram", ok: false, detail: `Telegram answered ${r.status}${why ? `: ${brief(why)}` : ""}` };
+    const why = await sendTelegram(env, chat, alert.title === "Jarvis" ? alert.text : `${alert.title}\n\n${alert.text}`, timeout());
+    return why ? { channel: "telegram", ok: false, detail: brief(why) } : { channel: "telegram", ok: true, detail: "sent" };
   },
 
   async ntfy(env, _state, alert) {

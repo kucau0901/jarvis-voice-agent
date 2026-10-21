@@ -40,7 +40,9 @@ import { originOf, type Origin } from "../lib/shared.ts";
  *   Options: reply ("audio", default, or "text"), format ("mp3", "wav",
  *   "opus", "pcm"), thread (a short id: follow-ups are understood for five
  *   minutes), context (the conversation so far, instead of a thread), screen
- *   (true if there is somewhere to show a map).
+ *   (true if there is somewhere to show a map), transcribe (true: only hear
+ *   it, and send the words back as {ok, transcript, heardBy}, nothing answered
+ *   or spoken: the chat box's dictation).
  *
  *   The answer: JSON by default — {transcript, text, ok, audio: {format, mime,
  *   data (base64)}} — or, with Accept: text/event-stream, the same as it
@@ -55,6 +57,8 @@ interface Options {
   thread?: string;
   context?: unknown;
   screen: boolean;
+  /** Only hear it: the words back, nothing answered or spoken (the chat box's dictation, src/app/ptt.ts). */
+  transcribe: boolean;
   /** Which screen asked, for the conversation shared across devices (lib/shared.ts). */
   origin?: unknown;
 }
@@ -82,6 +86,7 @@ function options(raw: Record<string, unknown>): Options {
     ...(thread ? { thread } : {}),
     ...(raw.context !== undefined ? { context: raw.context } : {}),
     screen: raw.screen === true || raw.screen === "1" || raw.screen === "true",
+    transcribe: raw.transcribe === true || raw.transcribe === "1" || raw.transcribe === "true",
     ...(raw.origin !== undefined ? { origin: raw.origin } : {}),
   };
 }
@@ -181,9 +186,7 @@ async function pipeline(
   let transcript = input.text ?? "";
   let heardBy = "text";
   if (!transcript && input.audio) {
-    const memory = new MemoryStore(env);
-    const doc = await memory.load().catch(() => null);
-    const heard = await transcribe(env, input.audio.buf, input.audio.mime, recognitionHints(doc));
+    const heard = await hear(env, input.audio);
     if (!heard.ok) {
       console.warn("voice: transcription failed:", heard.error);
       return { transcript: "", heardBy: "none", reply: { ok: false, text: "I couldn't make that out just now.", error: "transcription", tools: [] } };
@@ -263,6 +266,13 @@ function emitResult(emit: (ev: SseEvent) => void, o: Outcome): void {
   });
 }
 
+/** A recording heard, with the names Jarvis knows as hints: for a question, or for dictation. */
+async function hear(env: Env, audio: { buf: ArrayBuffer; mime: string }) {
+  const memory = new MemoryStore(env);
+  const doc = await memory.load().catch(() => null);
+  return transcribe(env, audio.buf, audio.mime, recognitionHints(doc));
+}
+
 const audioJson = (a: Spoken | undefined) =>
   a?.ok ? { audio: { format: a.format, mime: a.mime, by: a.by, data: audioToBase64(a.audio) } } : a ? { audioError: a.error } : {};
 
@@ -286,6 +296,16 @@ export async function handleVoice(
   // still be answered by Home Assistant's Assist, and run() says the rest.
   if (!env.OPENAI_API_KEY && input.audio && speechConfig(env).stt === "openai") {
     return err(503, "OPENAI_API_KEY is not configured, and hearing is set to OpenAI");
+  }
+  // Dictation: only heard, its words sent back to go into the chat box; nothing is asked or said.
+  if (input.opts.transcribe) {
+    if (!input.audio) return err(400, "nothing to transcribe: send a recording");
+    const heard = await hear(env, input.audio);
+    if (!heard.ok) {
+      console.warn("voice: transcription failed:", heard.error);
+      return err(502, "I couldn't make that out just now.");
+    }
+    return json({ ok: true, transcript: heard.text, heardBy: heard.by });
   }
   input.origin = originOf(principal, input.opts.origin) ?? undefined;
   // Bookkeeping (usage, the shared conversation, a stale tool list) after the

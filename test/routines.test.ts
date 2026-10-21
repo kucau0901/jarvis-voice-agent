@@ -1,9 +1,12 @@
 import {
   buildRoutine,
+  describeAction,
   describeTrigger,
   MAX_PAGES,
   localParts,
+  nextCron,
   nextDaily,
+  parseCron,
   zonedToUtc,
   type Routine,
 } from "../src/worker/lib/routines.ts";
@@ -15,11 +18,11 @@ import {
   mergeEvents,
   type LeaveEvent,
 } from "../src/worker/lib/leave.ts";
-import { DAILY_GRACE_MS, EVENT_COOLDOWN_MS, Scheduler, WATCH_ERRORS_SLOW, WATCH_EVERY_MS, WATCH_SLOW_MS, type SchedulerDeps } from "../src/worker/lib/scheduler.ts";
+import { DAILY_GRACE_MS, EVENT_COOLDOWN_MS, isNothing, Scheduler, WATCH_ERRORS_SLOW, WATCH_EVERY_MS, WATCH_SLOW_MS, type SchedulerDeps } from "../src/worker/lib/scheduler.ts";
 import { haConfig, haUrl, renderTemplate, truthy } from "../src/worker/lib/ha.ts";
 import type { Alert, Delivery } from "../src/worker/lib/alerts.ts";
 import { requiredScope } from "../src/worker/lib/scopes.ts";
-import { lookAtPage, pageText, pageUrl, verdictOf } from "../src/worker/lib/page-look.ts";
+import { lookAtPage, pageCondition, pageText, pageUrl, verdictOf } from "../src/worker/lib/page-look.ts";
 
 let pass = 0;
 let fail = 0;
@@ -64,6 +67,47 @@ console.log("\nthe next daily time");
   check("across a DST change it stays 08:00 local", iso(before) === "2026-03-29T07:00:00.000Z" && iso(after) === "2026-03-30T07:00:00.000Z", [iso(before), iso(after)]);
 }
 
+console.log("\nthe next cron time");
+{
+  const tz = "Asia/Kuala_Lumpur";
+  const at = (d: number, h: number, mi = 0) => iso(zonedToUtc(2026, 9, d, h, mi, tz));
+  const fri0700 = zonedToUtc(2026, 9, 25, 7, 0, tz); // a Friday
+  check("several times a day: the next of them", iso(nextCron("0 8,12 * * *", tz, fri0700)) === at(25, 8) &&
+    iso(nextCron("0 8,12 * * *", tz, zonedToUtc(2026, 9, 25, 9, 0, tz))) === at(25, 12) &&
+    iso(nextCron("0 8,12 * * *", tz, zonedToUtc(2026, 9, 25, 12, 0, tz))) === at(26, 8));
+  const friEve = zonedToUtc(2026, 9, 25, 20, 0, tz);
+  check("weekdays by name, as daily would", iso(nextCron("30 7 * * mon-fri", tz, friEve)) === iso(nextDaily("07:30", [1, 2, 3, 4, 5], tz, friEve)));
+  check("one time a day is daily", iso(nextCron("45 6 * * *", tz, fri0700)) === iso(nextDaily("06:45", [], tz, fri0700)));
+  let t = fri0700;
+  const sixes: string[] = [];
+  for (let i = 0; i < 4; i++) sixes.push(iso((t = nextCron("0 */6 * * *", tz, t)!)));
+  check("every six hours", sixes.join() === [at(25, 12), at(25, 18), at(26, 0), at(26, 6)].join(), sixes);
+  check("Sunday is 0 or 7", iso(nextCron("0 9 * * 7", tz, fri0700)) === iso(nextCron("0 9 * * 0", tz, fri0700)) && iso(nextCron("0 9 * * sun", tz, fri0700)) === at(27, 9));
+  // Both day fields given: either will do, as cron has it.
+  check("the 1st, or a Monday", iso(nextCron("0 9 1 * mon", tz, fri0700)) === at(28, 9) && iso(nextCron("0 9 1 * mon", tz, zonedToUtc(2026, 9, 28, 10, 0, tz))) === iso(zonedToUtc(2026, 10, 1, 9, 0, tz)));
+  check("the 31st skips months without one", iso(nextCron("0 9 31 * *", tz, fri0700)) === iso(zonedToUtc(2026, 10, 31, 9, 0, tz)));
+  // A step in a day field is a restriction, not "every day": "*/2" is every other day of the month, or every other weekday.
+  let d = fri0700;
+  const odd: number[] = [];
+  for (let k = 0; k < 3; k++) odd.push(localParts((d = nextCron("0 9 */2 * *", tz, d)!), tz).d);
+  check("every other day of the month", odd.join() === "25,27,29", odd);
+  const days: number[] = [];
+  d = fri0700;
+  for (let k = 0; k < 3; k++) days.push(localParts((d = nextCron("0 9 * * */2", tz, d)!), tz).dow);
+  check("every other weekday (Sunday, Tuesday, Thursday, Saturday)", days.join() === "6,0,2", days);
+  const leap = nextCron("0 9 29 2 *", tz, fri0700);
+  check("29 February comes round, and comes round again", iso(leap) === iso(zonedToUtc(2028, 2, 29, 9, 0, tz)) && iso(nextCron("0 9 29 2 *", tz, leap!)) === iso(zonedToUtc(2032, 2, 29, 9, 0, tz)));
+  check("exactly now is not 'next'", nextCron("0 7 * * *", tz, fri0700)! > fri0700);
+  check("never: nothing", nextCron("0 9 30 2 *", tz, fri0700) === undefined && nextCron("bad", tz, fri0700) === undefined);
+  const lon = "Europe/London";
+  const before = nextCron("0 8 * * *", lon, Date.UTC(2026, 2, 28, 12));
+  check("across a DST change it stays 08:00 local", iso(before) === "2026-03-29T07:00:00.000Z" && iso(nextCron("0 8 * * *", lon, before!)) === "2026-03-30T07:00:00.000Z");
+  const c = parseCron("0 9 * jan,JUL sat-sun");
+  check("names and ranges", typeof c !== "string" && c.mon.join() === "1,7" && c.dow.join() === "0,6", c);
+  const why = ["0 9 * *", "0 25 * * *", "0 9 * * funday", "0 9 L * *", "0 9 * * 1#2"].map((e) => String(parseCron(e)));
+  check("what it cannot read, it says", [/five fields/, /hour cannot be "25"/, /weekday cannot be "funday"/, /day of the month cannot be "l"/, /weekday cannot be "1#2"/].every((re, i) => re.test(why[i]!)), why);
+}
+
 /* ---------- building ------------------------------------------------------------ */
 
 console.log("\nbuilding one from what was said");
@@ -88,7 +132,22 @@ console.log("\nbuilding one from what was said");
   const l = buildRoutine({ when: "leave" }, tz, now);
   check("leave needs no message, spares 10 minutes by default", l.ok && l.trigger.kind === "leave" && l.trigger.bufferMin === 10 && l.action.kind === "leave");
   check("unknown kinds are refused", !buildRoutine({ when: "hourly", say: "x" }, tz, now).ok);
+  const q = buildRoutine({ when: "daily", time: "07:30", ask: "Anything urgent in my email?", notify: "if-important" }, tz, now);
+  check("an ask can wait for something worth telling", q.ok && q.action.kind === "ask" && q.action.notify === "if-important", q);
+  check("…and says so", q.ok && describeAction(q.action).endsWith("and send the answer only if something deserves attention"), q.ok && describeAction(q.action));
+  const always = buildRoutine({ when: "daily", time: "07:30", ask: "What's my day?", notify: "always" }, tz, now);
+  check("always, or nothing given, is kept as nothing: it is the default", always.ok && always.action.kind === "ask" && !("notify" in always.action) && d.ok && !("notify" in d.action), always);
+  check("anything else is refused", !buildRoutine({ when: "daily", time: "07:30", ask: "x", notify: "sometimes" }, tz, now).ok);
+  const said = buildRoutine({ when: "daily", time: "07:30", say: "Bins", notify: "if-important" }, tz, now);
+  check("a message to say is always said", said.ok && said.action.kind === "say" && !("notify" in said.action), said);
   check("described", describeTrigger({ kind: "daily", time: "07:30", days: [1, 2, 3, 4, 5] }, tz) === "weekdays at 07:30" && describeTrigger({ kind: "daily", time: "08:00", days: [] }, tz) === "every day at 08:00");
+  const c = buildRoutine({ when: "cron", cron: "  0  8,12 * * MON-fri ", ask: "Anything new in my mail?" }, tz, now);
+  check("cron, kept tidy", c.ok && c.trigger.kind === "cron" && c.trigger.expr === "0 8,12 * * mon-fri", c);
+  check("…and described", c.ok && describeTrigger(c.trigger, tz) === 'on the schedule "0 8,12 * * mon-fri" (minute hour day month weekday)');
+  check("at most hourly: one minute only", !buildRoutine({ when: "cron", cron: "* * * * *", say: "x" }, tz, now).ok && !buildRoutine({ when: "cron", cron: "*/5 * * * *", say: "x" }, tz, now).ok);
+  const never = buildRoutine({ when: "cron", cron: "0 9 30 2 *", say: "x" }, tz, now);
+  check("one that never comes round is refused, saying so", !never.ok && /never comes round/.test(never.error), never);
+  check("one cron cannot read is refused", !buildRoutine({ when: "cron", cron: "0 9 * *", say: "x" }, tz, now).ok && !buildRoutine({ when: "cron", cron: "", say: "x" }, tz, now).ok);
 }
 
 /* ---------- the engine ---------------------------------------------------------- */
@@ -248,6 +307,34 @@ console.log("\na daily briefing asks Jarvis, with its creator's reach");
   check("an alarm that fires twice runs it once", h.asked.length === 1);
 }
 
+console.log("\nan ask that speaks only when it matters");
+{
+  const h = harness();
+  let answer = "NOTHING";
+  const deps = await (h.s as unknown as { deps: () => Promise<SchedulerDeps> }).deps();
+  deps.ask = async () => ({ ok: true, text: answer });
+  await h.s.add({ when: "daily", time: "10:30", ask: "Anything urgent in my email?", notify: "if-important" }, OWNER, T0);
+  await h.s.tick(T0 + 30 * MIN);
+  let r = (await h.s.list())[0]!;
+  check("nothing worth telling: nothing sent", h.sent.length === 0, h.sent);
+  check("…but Routines shows it ran", r.lastRun?.ok === true && r.lastRun.detail === "nothing to report", r.lastRun);
+  check("…and it is set for tomorrow", iso(r.nextAt) === iso(zonedToUtc(2026, 9, 26, 10, 30, tz)));
+  answer = "The bank wrote: a payment is due today.";
+  await h.s.tick(T0 + 30 * MIN + 86_400_000);
+  r = (await h.s.list())[0]!;
+  check("something worth telling: sent", h.sent.length === 1 && h.sent[0]!.text === answer && /^sent by /.test(r.lastRun?.detail ?? ""), { sent: h.sent, last: r.lastRun });
+  answer = "**Nothing.**";
+  await h.s.tick(T0 + 30 * MIN + 2 * 86_400_000);
+  check("nothing, however it is dressed, is still nothing", h.sent.length === 1);
+  check("only NOTHING alone: an answer that says more is sent", isNothing(" NOTHING ") && isNothing("\"Nothing.\"") && !isNothing("Nothing urgent, but the bank wrote.") && !isNothing("Tiada"));
+  const h2 = harness();
+  const deps2 = await (h2.s as unknown as { deps: () => Promise<SchedulerDeps> }).deps();
+  deps2.ask = async () => ({ ok: true, text: "NOTHING" });
+  await h2.s.add({ when: "daily", time: "10:30", ask: "Anything new?" }, OWNER, T0);
+  await h2.s.tick(T0 + 30 * MIN);
+  check("an ordinary ask sends whatever it was answered", h2.sent.length === 1 && h2.sent[0]!.text === "NOTHING");
+}
+
 console.log("\na stale daily is skipped, not sent at noon");
 {
   const h = harness();
@@ -297,6 +384,47 @@ console.log("\nrun now, remove, limits");
   check("removing twice is false", !(await h.s.remove(r.id)));
   for (let i = 0; i < 50; i++) await h.s.add({ when: "event", event: `e${i}`, say: "x" }, OWNER, T0);
   check("at most fifty", typeof (await h.s.add({ when: "event", event: "one-more", say: "x" }, OWNER, T0)) === "string");
+}
+
+console.log("\na cron routine in the engine");
+{
+  const h = harness();
+  await h.s.add({ when: "cron", cron: "0 11,15 * * *", ask: "Anything new?" }, OWNER, T0);
+  check("wakes at the first time", (await h.s.nextWake(T0)) === zonedToUtc(2026, 9, 25, 11, 0, tz));
+  await h.s.tick(zonedToUtc(2026, 9, 25, 11, 0, tz));
+  let r = (await h.s.list())[0]!;
+  check("asks then, and is set for the next", h.asked.length === 1 && h.sent.length === 1 && iso(r.nextAt) === iso(zonedToUtc(2026, 9, 25, 15, 0, tz)));
+  await h.s.tick(zonedToUtc(2026, 9, 25, 11, 0, tz) + 5000);
+  check("an alarm that fires twice runs it once", h.asked.length === 1);
+  await h.s.tick(zonedToUtc(2026, 9, 25, 15, 0, tz) + DAILY_GRACE_MS + MIN);
+  r = (await h.s.list())[0]!;
+  check("late by more than half an hour: missed, and set for the next", h.asked.length === 1 && /^missed/.test(r.lastRun?.detail ?? "") && iso(r.nextAt) === iso(zonedToUtc(2026, 9, 26, 11, 0, tz)), r.lastRun);
+}
+
+console.log("\npast runs");
+{
+  const h = harness();
+  const r = (await h.s.add({ when: "event", event: "ping", ask: "Anything?" }, OWNER, T0)) as Routine;
+  for (let i = 0; i < 25; i++) {
+    await h.s.fireEvent("ping", undefined, T0 + i * EVENT_COOLDOWN_MS * 2);
+    await h.s.tick(T0 + i * EVENT_COOLDOWN_MS * 2);
+  }
+  const runs = await h.s.runs(r.id);
+  check("the last twenty, newest first", runs.length === 20 && runs[0]!.at > runs[19]!.at, runs.length);
+  check("with what each said", runs[0]!.said === "Your first meeting is at 9." && runs[0]!.ok);
+  const last = (await h.s.list())[0]!.lastRun!;
+  check("the last run is the newest of them, as before", last.at === runs[0]!.at && last.detail === runs[0]!.detail && !("said" in last));
+  check("kept beside the routines, not among them", (await h.s.list()).length === 1);
+  await h.s.remove(r.id);
+  check("removing a routine removes its runs", !h.storage._m.has(`runs:${r.id}`) && !(await h.s.runs(r.id)).length);
+  const q = harness();
+  const deps = await (q.s as unknown as { deps: () => Promise<SchedulerDeps> }).deps();
+  deps.ask = async () => ({ ok: true, text: "NOTHING" });
+  const quiet = (await q.s.add({ when: "event", event: "ping", ask: "Urgent mail?", notify: "if-important" }, OWNER, T0)) as Routine;
+  await q.s.fireEvent("ping", undefined, T0);
+  await q.s.tick(T0);
+  const nothing = await q.s.runs(quiet.id);
+  check("a run with nothing to tell is among them, said so", nothing.length === 1 && nothing[0]!.detail === "nothing to report" && !nothing[0]!.said, nothing);
 }
 
 console.log("\nnothing delivered is recorded honestly");
@@ -422,6 +550,7 @@ console.log("\nleave now: no calendar is reported, and not hammered");
   h.state.events = [];
   await h.s.tick(T0 + 15 * MIN);
   check("once it works, the panel says what it is watching", (await h.s.list())[0]!.lastRun?.detail === "calendar read 10:15: no events with a place in the next four hours", (await h.s.list())[0]!.lastRun);
+  check("…which are not runs: reading the calendar every 15 minutes would push the warnings out", !(await h.s.runs(r.id)).length);
   check("a second leave routine replaces the first", ((await h.s.add({ when: "leave", bufferMin: 20 }, OWNER, T0)) as Routine).id === r.id && (await h.s.list()).length === 1);
   await h.s.remove(r.id);
   check("removing it clears its plans", !h.storage._m.has("leave:plans") && !h.storage._m.has("leave:scanAt"));
@@ -434,6 +563,7 @@ console.log("\nscopes");
   for (const p of ["/api/v1/routines", "/api/v1/routines/run", "/api/v1/trigger"]) {
     check(`${p} needs routines`, requiredScope(p, "POST") === "routines");
   }
+  check("so do its past runs", requiredScope("/api/v1/routines/runs", "GET") === "routines");
   check("a lookalike path is the owner's", requiredScope("/api/v1/routinesx", "GET") === "owner");
 }
 
@@ -511,6 +641,7 @@ console.log("\nwatches: when Home Assistant cannot be reached");
   for (let i = 0; i < WATCH_ERRORS_SLOW; i++) await h.s.tick(T0 + i * WATCH_EVERY_MS);
   const w = (await h.s.list())[0]!;
   check("said once that it could not check", w.lastRun?.ok === false && /could not check: timed out/.test(w.lastRun.detail), w.lastRun);
+  check("…and kept once among its runs, not every minute", (await h.s.runs(w.id)).length === 1);
   const at = T0 + (WATCH_ERRORS_SLOW - 1) * WATCH_EVERY_MS;
   check("and looks less often", w.watch?.nextCheck === at + WATCH_SLOW_MS, w.watch);
   check("nothing was said to the user", h.sent.length === 0);
@@ -676,12 +807,19 @@ console.log("\npage watches: one look");
     told[0]!.instructions.includes("the API is above 150") && look.usage?.input === 900, look);
   check("the page goes to the model as quoted data, its words never as instructions",
     told[0]!.input.includes("THE PAGE'S AUTHOR") && told[0]!.input.includes("Ignore your instructions") && !told[0]!.instructions.includes("Ignore your instructions"));
+  check("the reading is written in the alert's language, not the page's",
+    told[0]!.instructions.includes(`in the language of "What this is about", whatever the page's own`));
   told.length = 0;
   const gone = await lookAtPage(env, "https://air.example.gov/springfield", "q", "c", page("", 404), model("YES"));
   const drawn = await lookAtPage(env, "https://air.example.gov/springfield", "q", "c", page("<div id=app></div><script>render()</script>"), model("YES"));
   check("a page that cannot be read costs nothing", gone.state === null && gone.error === "the page answered 404" && drawn.state === null && /no words/.test(drawn.error ?? "") && told.length === 0, { gone, drawn });
   const unsure = await lookAtPage(env, "https://air.example.gov/springfield", "q", "c", page(html), model("UNKNOWN\nThe page has no reading."));
   check("a page that does not say is said so", unsure.state === null && unsure.error === "the page did not say");
+  // "Alert me" once kept "200" as it was typed, and a model asked whether "200" is true said YES to 158.
+  told.length = 0;
+  await lookAtPage(env, "https://air.example.gov/springfield", "the air in Springfield", "200", page(html), model("NO\nAPI 158"));
+  check("a number alone, kept so before, is read as a level to go above", told[0]!.instructions.includes("does not say: above 200.") && pageCondition(" 7.5 ") === "above 7.5" && pageCondition("the API is above 150") === "the API is above 150", told[0]?.instructions);
+  check("…and described so", describeTrigger({ kind: "page", url: "https://air.example.gov/springfield", question: "q", condition: "200", everyMin: 60 }, "Asia/Kuala_Lumpur").startsWith("when air.example.gov says above 200 "));
 }
 
 console.log("\nhaUrl: one way to join a Home Assistant address");

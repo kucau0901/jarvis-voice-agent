@@ -41,6 +41,8 @@ interface SettingsResponse {
   settings: SettingView[];
   saved?: boolean;
   errors?: Record<string, string>;
+  /** Saved, but Telegram would not take the address for Ask Jarvis on Telegram: why. */
+  telegram?: string;
 }
 
 const SOURCE: Record<SettingView["source"], string> = {
@@ -232,8 +234,9 @@ export class Services {
       if (body.errors) return say(res, Object.values(body.errors).join(" · "), true);
       if (!r.ok) return say(res, body.error ?? `server said ${r.status}`, true);
       this.render(body);
-      const again = this.root.querySelector(`[data-group="${this.groupOf(Object.keys(changes)[0]!)}"] .res`);
-      if (again) say(again as HTMLElement, "Saved. Takes effect within about 15 seconds.");
+      // The section's own line: an extra in it (Alerts' This device) has its own .res.
+      const again = this.root.querySelector(`[data-group="${this.groupOf(Object.keys(changes)[0]!)}"] > .res`);
+      if (again) say(again as HTMLElement, body.telegram ? `Saved, but Telegram would not send messages here: ${body.telegram}` : "Saved. Takes effect within about 15 seconds.", !!body.telegram);
     } catch (e) {
       say(res, message(e), true);
     }
@@ -247,7 +250,11 @@ export class Services {
         body: JSON.stringify({ changes: { [s.name]: null } }),
       });
       if (!r.ok) throw new Error(`server said ${r.status}`);
-      this.render((await r.json()) as SettingsResponse);
+      const body = (await r.json()) as SettingsResponse;
+      this.render(body);
+      // Its row is drawn afresh by render, so a Telegram refusal goes in its section's line.
+      const again = this.root.querySelector(`[data-group="${s.group}"] > .res`);
+      if (body.telegram && again) say(again as HTMLElement, `Cleared, but Telegram would not send messages here: ${body.telegram}`, true);
     } catch (e) {
       row.appendChild(el("div", "warn", message(e)));
     }

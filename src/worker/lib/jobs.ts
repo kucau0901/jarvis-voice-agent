@@ -1,5 +1,7 @@
 import type { Storage } from "./state-host.ts";
 import type { Grant } from "./scopes.ts";
+import { sourcesOf } from "./links.ts";
+import { emptied, parseTablePlan, tableOf, tableResult } from "./research-table.ts";
 import { makeAlert, type Alert, type Delivery } from "./alerts.ts";
 import { personOfWho } from "./context.ts";
 import { tidy } from "./quote.ts";
@@ -88,6 +90,12 @@ export interface Job {
   team?: TeamRun;
   /** hermes: the creator's own finished research job it hands over, read when Hermes is asked. */
   from?: string;
+  /**
+   * research into a table (lib/research-table.ts): a team that fills rows. Its
+   * columns once planned, and how many rows it came back with; the rows are
+   * kept apart (jobtable:<id>), to download.
+   */
+  table?: { columns?: string[]; rows?: number };
 }
 
 /** A page the web search cited: what a report's Sources list is made of. */
@@ -203,9 +211,13 @@ export interface JobDeps {
   researchBlocked?: string | null;
   /** A finished job, for Settings → Usage. */
   record?(e: UsageEntry): Promise<void>;
+  /** A finished job, for the next question like it (lib/episodes.ts). */
+  episode?(j: Job): Promise<void>;
 }
 
 const J = "job:";
+/** A table job's rows (Job.table), beside the job: not under "job:", which list() reads. */
+const T = "jobtable:";
 const DAY = "jobs:day";
 
 export const MAX_RUNNING = 3;
@@ -219,6 +231,8 @@ export const RESEARCH_MAX_MS = 45 * 60_000;
 export const RESEARCH_CHECK_MS = 10 * 60_000;
 export const RESEARCH_MONTHLY_DEFAULT = 10;
 const RESEARCH_MONTH = "jobs:research:month";
+/** Whether start_job was refused for the month's research cap (create, below), so typed chat can show it as a limit, not a failure. */
+export const isResearchCap = (said: string): boolean => /research jobs (for this month have been used|are switched off)/.test(said);
 /** And this long, whatever it is doing. */
 export const MAX_JOB_MS = 20 * 60_000;
 const MAX_TASK = 4000;
@@ -306,24 +320,7 @@ export function limitsOf(engine: JobEngine): { maxMs: number; maxSteps: number }
  * being what is cut.
  */
 export function withSources(text: string, cited: readonly Cited[]): string {
-  const seen = new Set<string>();
-  const lines: string[] = [];
-  for (const c of cited) {
-    let url: string;
-    try {
-      const u = new URL(c.url);
-      if (u.protocol !== "https:" && u.protocol !== "http:") continue;
-      // Tracking tags make one page look like several.
-      for (const k of [...u.searchParams.keys()]) if (k.startsWith("utm_")) u.searchParams.delete(k);
-      url = u.toString();
-    } catch {
-      continue;
-    }
-    if (seen.has(url)) continue;
-    seen.add(url);
-    lines.push(`- ${c.title?.trim() ? `${c.title.trim()}: ` : ""}${url}`);
-    if (lines.length === 15) break;
-  }
+  const lines = sourcesOf(cited, 15).map((c) => `- ${c.title ? `${c.title}: ` : ""}${c.url}`);
   if (!lines.length) return text;
   const list = `\n\nSources:\n${lines.join("\n")}`;
   const body = text.trimEnd();
@@ -530,7 +527,7 @@ export class Jobs {
   }
 
   async create(
-    input: { title?: unknown; task?: unknown; engine?: unknown; team?: unknown; from?: unknown },
+    input: { title?: unknown; task?: unknown; engine?: unknown; team?: unknown; from?: unknown; table?: unknown },
     by: { who: string; grants: readonly Grant[] },
     now = Date.now(),
   ): Promise<Job | string> {
@@ -547,7 +544,9 @@ export class Jobs {
       from = src.id;
     }
     // Research as a team: a way of doing research, and one at a time. It takes one of the month's research jobs, the owner's choice.
-    const team = engine === "research" && input.team === true;
+    // Into a table: a research team that fills rows, so one too.
+    const table = engine === "research" && input.table === true;
+    const team = engine === "research" && (input.team === true || table);
     const all = await this.list();
     if (all.filter((j) => j.status === "running").length >= MAX_RUNNING) {
       return `${MAX_RUNNING} jobs are already running; wait for one to finish`;
@@ -584,6 +583,7 @@ export class Jobs {
       steps: 0,
       attempts: 0,
       ...(team ? { team: newTeam(now) } : {}),
+      ...(table ? { table: {} } : {}),
       ...(from ? { from } : {}),
     };
     await this.save(job);
@@ -624,7 +624,13 @@ export class Jobs {
     const j = await this.get(id);
     if (!j) return false;
     if (j.status === "running") await this.cancel(id);
+    await this.storage.delete(T + id);
     return this.storage.delete(J + id);
+  }
+
+  /** A table job's rows, with its columns; null for any other job, or one that came back as prose. */
+  async table(id: string): Promise<{ columns: string[]; rows: string[][] } | null> {
+    return (await this.storage.get<{ columns: string[]; rows: string[][] }>(T + id)) ?? null;
   }
 
   async nextWake(now = Date.now()): Promise<number | null> {
@@ -733,6 +739,13 @@ export class Jobs {
     }
     if (step.kind === "done") {
       if (j.engine !== "research") return this.finish(j, deps, now, { text: step.text });
+      if (planning && j.table) {
+        // A plan that gives no columns makes it ordinary team research: a report, not a table.
+        const plan = parseTablePlan(step.text, TEAMS);
+        if (plan) return this.planned({ ...j, table: { columns: plan.columns } }, plan.angles, now);
+        const { table: _, ...prose } = j;
+        return this.planned(prose, TEAM_ANGLES, now);
+      }
       if (planning) return this.planned(j, parseAngles(step.text) ?? TEAM_ANGLES, now);
       if (!j.draft) {
         // Written (a team's, merged): checked against its sources before anyone is told. The next tick starts the check.
@@ -743,10 +756,17 @@ export class Jobs {
         j.updatedAt = j.nextAt = now;
         return this.save(j);
       }
-      // A check that answered with notes rather than the report would lose the report.
-      if (step.text.length < j.draft.text.length / 2) return this.finish(j, deps, now, { error: "the check did not give the report back" });
+      // A check that answered with notes rather than the report would lose the report. A table's check
+      // drops the rows no source backs, so it may come back much shorter: it is judged by still being a table.
+      const cols = j.table?.columns;
+      const draftTable = !!cols && tableOf(j.draft.text, cols) !== null;
+      // Every row taken out: that is the check's answer, and the merge it rejected is not sent instead.
+      const none = draftTable ? emptied(step.text) : null;
+      if (none !== null) return this.finish({ ...j, draft: undefined }, deps, now, { text: `SUMMARY: ${none}\n\nThe check found no source for any row of the table, so none was kept.` });
+      const gaveBack = draftTable && cols ? tableOf(step.text, cols) !== null : step.text.length >= j.draft.text.length / 2;
+      if (!gaveBack) return this.finish(j, deps, now, { error: "the check did not give the report back" });
       // The check's own pages first: withSources keeps fifteen, and they back what is sent.
-      return this.finish(j, deps, now, { text: withSources(step.text, [...(step.cited ?? []), ...j.draft.cited]) });
+      return this.finish(j, deps, now, { text: step.text, cited: [...(step.cited ?? []), ...j.draft.cited] });
     }
     if (planning) return this.planned(j, TEAM_ANGLES, now);
     return this.finish(j, deps, now, { error: step.error });
@@ -830,7 +850,8 @@ export class Jobs {
     return this.finish(j, deps, Date.now(), r.ok ? { text: r.text } : { error: r.text, ...(r.late ? { late: true } : {}) });
   }
 
-  private async finish(j: Job, deps: JobDeps, now: number, out: { text: string } | { error: string; late?: boolean }): Promise<void> {
+  /** A job ended. A research report comes with its pages uncut (`cited`), so a table is read whole before it is shortened to send. */
+  private async finish(j: Job, deps: JobDeps, now: number, out: { text: string; cited?: readonly Cited[] } | { error: string; late?: boolean }): Promise<void> {
     const cur = await this.get(j.id);
     if (!cur || cur.status !== "running") return; // cancelled or removed while it ran
     const done = { ...cur, ...j, finishedAt: now, updatedAt: now };
@@ -839,43 +860,61 @@ export class Jobs {
       // The check never costs the report: if it did not finish, the report goes out as written.
       // Nor does the merge cost the teams' reports: unmerged, each goes out as it was written.
       const each = done.team ? unmerged(done.team) : null;
-      if (done.draft) out = { text: withSources(done.draft.text, done.draft.cited) };
-      else if (each && done.team) out = { text: withSources(each, teamCited(done.team)) };
+      if (done.draft) out = { text: done.draft.text, cited: done.draft.cited };
+      else if (each && done.team) out = { text: each, cited: teamCited(done.team) };
     }
     delete done.draft;
     if (done.team) done.team = slimTeam(done.team);
+    if ("text" in out) {
+      // Into a table: its rows kept to download, the result their summary and the first of them.
+      const columns = done.table?.columns;
+      const t = columns ? tableOf(out.text, columns) : null;
+      if (t && columns) {
+        await this.storage.put(T + done.id, { columns, rows: t.rows });
+        done.table = { columns, rows: t.rows.length };
+        out = { text: tableResult(t, columns, withSources("", out.cited ?? [])) };
+      } else if (out.cited) out = { text: withSources(out.text, out.cited) };
+    }
     let alert: Alert;
     if ("text" in out && out.text.trim()) {
       const { summary, result, whole } = splitResult(out.text);
       done.status = "done";
       done.summary = summary;
       done.result = result.slice(0, MAX_RESULT);
-      alert = makeAlert(
-        {
-          title: j.engine === "hermes" ? "Hermes answered" : j.engine === "research" ? `Research done: ${j.title}` : `Done: ${j.title}`,
-          text: whole.length <= ALERT_WHOLE ? whole : `${summary}\n\nThe full result is in Jobs.`,
-        },
-        "job",
-        now,
-        personOfWho(j.createdBy),
-      )!;
+      alert = {
+        ...makeAlert(
+          {
+            title: j.engine === "hermes" ? "Hermes answered" : j.engine === "research" ? `Research done: ${j.title}` : `Done: ${j.title}`,
+            text: whole.length <= ALERT_WHOLE ? whole : `${summary}\n\nThe full result is in Jobs.`,
+          },
+          "job",
+          now,
+          personOfWho(j.createdBy),
+        )!,
+        job: j.id,
+      };
     } else {
       done.status = "failed";
       done.error = "error" in out ? out.error.slice(0, 500) : "it finished without an answer";
       // Hermes past the wait has not failed: it is still working, and says so itself when it is done.
       const title = "late" in out && out.late ? `Still working: ${j.title}` : `Could not finish: ${j.title}`;
-      alert = makeAlert({ title, text: done.error, speak: false }, "job", now, personOfWho(j.createdBy))!;
+      alert = { ...makeAlert({ title, text: done.error, speak: false }, "job", now, personOfWho(j.createdBy))!, job: j.id };
     }
     await this.save(done); // before delivering: a retried alarm must not tell the user twice
     const d = await deps.deliver(alert).catch(() => null);
     done.deliveredBy = d?.deliveredBy ?? null;
     await this.save(done);
     await deps.record?.(usageEntry(done, done.status === "done", now)).catch(() => {});
+    // How it went, for next time (lib/episodes.ts): not Hermes still working past the wait, which has not failed.
+    if (!("late" in out && out.late)) await deps.episode?.(done).catch(() => {});
   }
 
   /** Keep the newest KEEP_JOBS finished ones. */
   private async prune(): Promise<void> {
     const finished = (await this.list()).filter((j) => j.status !== "running");
-    for (const j of finished.slice(KEEP_JOBS)) await this.storage.delete(J + j.id);
+    for (const j of finished.slice(KEEP_JOBS)) {
+      await this.storage.delete(T + j.id);
+      await this.storage.delete(J + j.id);
+    }
   }
 }

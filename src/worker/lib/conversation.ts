@@ -1,5 +1,7 @@
 import type { Storage } from "./state-host.ts";
 import type { Alert } from "./alerts.ts";
+import { tidy } from "./quote.ts";
+import { PAGE_ID } from "./pages.ts";
 
 /**
  * Each person's conversation with Jarvis, kept so it is still there when the
@@ -31,6 +33,12 @@ export interface Said {
   replyTo?: string;
   /** The routine that said it: its id, to open it, and its name. Only the server says this. */
   routine?: { id: string; name: string };
+  /** The background job it is the result of: its id, to open it in Jobs, and its alert's title. Only the server says this. */
+  job?: { id: string; name: string };
+  /** An answer's cited pages, drawn as cards under it (src/app/ui/rich.ts). */
+  links?: { url: string; title: string }[];
+  /** A page the answer made (lib/pages.ts), drawn as a card under it (src/app/pageCard.ts). */
+  page?: { id: string; title: string };
 }
 
 export const KEEP = 200;
@@ -43,7 +51,25 @@ export const MAX_CHARS = 400_000;
 export const MAX_POSTED = 10;
 const MAX_FILES = 4;
 const MAX_NAME = 120;
+const MAX_LINKS = 6;
+const MAX_URL = 500;
 const ID = /^[A-Za-z0-9_-]{6,64}$/;
+
+/** An answer's links as a screen sent them: web pages over https only, each title tidied. */
+function linksOf(raw: unknown): { url: string; title: string }[] {
+  if (!Array.isArray(raw)) return [];
+  const out: { url: string; title: string }[] = [];
+  for (const l of raw.slice(0, MAX_LINKS)) {
+    const { url, title } = (l && typeof l === "object" ? l : {}) as { url?: unknown; title?: unknown };
+    if (typeof url !== "string" || url.length > MAX_URL) continue;
+    try {
+      if (new URL(url).protocol === "https:") out.push({ url, title: typeof title === "string" ? tidy(title).slice(0, MAX_NAME) : "" });
+    } catch {
+      // not an address: left out
+    }
+  }
+  return out;
+}
 
 const key = (person: string) => `conversation:${person}`;
 
@@ -56,6 +82,9 @@ export function asSaid(raw: unknown, at: number): Said | null {
   const text = r.text.trim().slice(0, MAX_TEXT);
   // A question may be only what was attached to it.
   if (!text && !files.length) return null;
+  const links = r.role === "assistant" ? linksOf(r.links) : [];
+  const p = r.page && typeof r.page === "object" ? (r.page as { id?: unknown; title?: unknown }) : null;
+  const page = r.role === "assistant" && typeof p?.id === "string" && PAGE_ID.test(p.id) && typeof p.title === "string" ? { id: p.id, title: tidy(p.title).slice(0, MAX_NAME) } : null;
   return {
     id: r.id,
     at,
@@ -63,14 +92,19 @@ export function asSaid(raw: unknown, at: number): Said | null {
     text,
     ...(files.length && r.role === "user" ? { files } : {}),
     ...(typeof r.replyTo === "string" && ID.test(r.replyTo) && r.role === "user" ? { replyTo: r.replyTo } : {}),
+    ...(links.length ? { links } : {}),
+    ...(page ? { page } : {}),
   };
 }
+
+/** What one message takes of the person's MAX_CHARS: its words, and its links. */
+const size = (s: Said) => s.text.length + (s.links ?? []).reduce((n, l) => n + l.url.length + l.title.length, 0);
 
 /** The log as kept: the newest KEEP of the past KEEP_MS, within MAX_CHARS. */
 export function trimmed(log: readonly Said[], now: number): Said[] {
   const kept = log.filter((s) => now - s.at <= KEEP_MS).slice(-KEEP);
-  let chars = kept.reduce((n, s) => n + s.text.length, 0);
-  while (chars > MAX_CHARS) chars -= kept.shift()!.text.length;
+  let chars = kept.reduce((n, s) => n + size(s), 0);
+  while (chars > MAX_CHARS) chars -= size(kept.shift()!);
   return kept;
 }
 
@@ -79,7 +113,33 @@ export function routineSaid(a: Pick<Alert, "id" | "at" | "title" | "text" | "rou
   return a.routine ? { id: a.id, at: a.at, role: "assistant", text: a.text.slice(0, MAX_TEXT), routine: { id: a.routine, name: a.title } } : null;
 }
 
+/** What a background job came back with (lib/jobs.ts), as kept in its starter's conversation; null for any other alert. */
+export function jobSaid(a: Pick<Alert, "id" | "at" | "title" | "text" | "job">): Said | null {
+  return a.job ? { id: a.id, at: a.at, role: "assistant", text: a.text.slice(0, MAX_TEXT), job: { id: a.job, name: a.title } } : null;
+}
+
 const wordsOf = (text: string) => text.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+
+/** The words looked for: two letters at least, each once. */
+export const asked = (words: string) => [...new Set(wordsOf(words).filter((w) => w.length >= 2))];
+
+/**
+ * The messages with any of `words`, those with most of them first, then the
+ * newest: each with its place in the log and how many it has (look_back, and
+ * Chat's search, lib/search.ts). Each message's words are read once.
+ */
+export function matching(log: readonly Said[], words: string): { s: Said; i: number; n: number }[] {
+  const ws = asked(words);
+  if (!ws.length) return [];
+  return log
+    .map((s, i) => {
+      const said = wordsOf(s.text);
+      // A word asked about is the start of one said: "insur" finds "insurance", "AC" is not in "each".
+      return { s, i, n: ws.filter((w) => said.some((t) => t.startsWith(w))).length };
+    })
+    .filter((x) => x.n > 0)
+    .sort((a, b) => b.n - a.n || b.i - a.i);
+}
 
 /** As much as a look back returns: enough to answer from, not the month. */
 export const FOUND = 12;
@@ -91,16 +151,11 @@ const FOUND_TEXT = 600;
  * question it answers or the answer it got. Oldest first, each shortened.
  */
 export function lookBack(log: readonly Said[], words: string, day: string | null, dayOf: (at: number) => string): Said[] {
-  const ws = new Set(wordsOf(words).filter((w) => w.length >= 2));
-  if (words.trim() && !ws.size) return [];
-  const on = log.map((s, i) => ({ s, i })).filter(({ s }) => !day || dayOf(s.at) === day);
-  const best = ws.size
-    ? on
-        // A word asked about is the start of one said: "insur" finds "insurance", "AC" is not in "each".
-        .map((x) => ({ ...x, n: [...ws].filter((w) => wordsOf(x.s.text).some((t) => t.startsWith(w))).length }))
-        .filter((x) => x.n > 0)
-        .sort((a, b) => b.n - a.n || b.i - a.i)
-    : on.reverse();
+  const ws = asked(words);
+  if (words.trim() && !ws.length) return [];
+  const best = ws.length
+    ? matching(log, words).filter(({ s }) => !day || dayOf(s.at) === day)
+    : log.map((s, i) => ({ s, i })).filter(({ s }) => !day || dayOf(s.at) === day).reverse();
   const picked = new Set<number>();
   for (const { s, i } of best) {
     if (picked.size >= FOUND) break;

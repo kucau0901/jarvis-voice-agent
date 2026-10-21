@@ -14,6 +14,8 @@ import {
 import { resolveContact } from "../lib/contacts.ts";
 import { asQuotedData } from "../lib/quote.ts";
 import { clampLimit } from "./args.ts";
+import { draftFirst, withFooter } from "../lib/mail-draft.ts";
+import { allows } from "../lib/scopes.ts";
 import type { Tool, ToolContext } from "./registry.ts";
 
 /**
@@ -241,7 +243,7 @@ const MESSAGE_ID = /^[A-Za-z0-9_-]{5,64}$/;
 
 /** Fetch message details in bounded parallel — the list call returns only ids. */
 async function hydrate(
-  ctx: ToolContext,
+  ctx: Pick<ToolContext, "env" | "signal">,
   cfg: GoogleConfig,
   ids: string[],
   format: "metadata" | "full",
@@ -347,6 +349,36 @@ export const mailCheck: Tool = {
 };
 
 /* ---------- finding and reading one --------------------------------------- */
+
+/** One message found for Chat's search (lib/search.ts): for the screen, never for a model. */
+export interface MailFound {
+  id: string;
+  from: string;
+  subject: string;
+  at: number;
+  unread: boolean;
+  snippet: string;
+}
+
+/** Gmail's own search, as the screen shows it; why not, in words for the screen, when it cannot. */
+export async function findMail(env: Env, query: string, limit: number, signal: AbortSignal): Promise<MailFound[] | string> {
+  return guardTool(async () => {
+    const cfg = googleConfig(env, "https://jarvis.invalid");
+    if (!cfg) return "Gmail is not set up.";
+    const list = await call(env, cfg, `/users/me/messages?q=${encodeURIComponent(query)}&maxResults=${limit}`, { signal });
+    const problem = explain(list);
+    if (problem) return problem;
+    const ids = ((list.body as { messages?: { id: string }[] } | null)?.messages ?? []).map((m) => m.id).filter((id) => MESSAGE_ID.test(id));
+    return (await hydrate({ env, signal }, cfg, ids, "metadata")).map((m) => ({
+      id: m.id,
+      from: senderName(headerOf(m, "From")),
+      subject: tidy(headerOf(m, "Subject")) || "(no subject)",
+      at: Number(m.internalDate) || 0,
+      unread: !!m.labelIds?.includes("UNREAD"),
+      snippet: tidy(m.snippet ?? "").slice(0, 180),
+    }));
+  }, { notLinked: "Link your Gmail in Family → Accounts to search it here.", relink: "Gmail needs linking again: Family → Accounts.", prefix: "Gmail" });
+}
 
 export const mailSearch: Tool = {
   name: "mail_search",
@@ -599,7 +631,9 @@ export const mailSend: Tool = {
     return (await guard(async () => {
       const cfg = cfgOf(ctx);
       const body = String(args.body ?? "").replace(/\r\n/g, "\n").trim();
-      const asDraft = args.draft === true;
+      // Draft first (Settings → Google): the person sends it, never the model (lib/mail-draft.ts).
+      const asDraft = args.draft === true || draftFirst(ctx.env);
+      const held = !args.draft && asDraft;
       const replyId = typeof args.reply_to === "string" ? args.reply_to.trim() : "";
 
       if (!body) return "There was no message body, so nothing was sent.";
@@ -658,7 +692,7 @@ export const mailSend: Tool = {
         subject = subject || "(no subject)";
       }
 
-      const raw = b64urlEncode(buildRaw(to, subject, body, inReplyTo, references));
+      const raw = b64urlEncode(buildRaw(to, subject, withFooter(body, ctx.env), inReplyTo, references));
       const message = { raw, ...(threadId ? { threadId } : {}) };
 
       ctx.progress(asDraft ? "saving that draft" : "sending that email");
@@ -683,6 +717,13 @@ export const mailSend: Tool = {
       // user cannot correct a mistake they were not told about.
       const who = resolvedFrom ? `${resolvedFrom} at ${to}` : to;
 
+      const draft = (res.body as { id?: unknown } | null)?.id;
+      if (asDraft && typeof draft === "string") ctx.drafted?.({ draft, to: who, subject, body: withFooter(body, ctx.env), reply: !!replyId });
+      if (held) {
+        return ctx.drafted && allows(ctx.grants, "screen")
+          ? `Saved as a draft to ${who}, NOT sent: a card with Send is on the user's screen, and only they can send it, by tapping Send. If they say send it, tell them to tap Send.`
+          : `Saved as a draft to ${who}, NOT sent: it is in Gmail's Drafts for them to send.`;
+      }
       if (asDraft) {
         return replyId
           ? `Saved a draft reply to ${who}. It is in Drafts, not sent.`

@@ -52,8 +52,8 @@ export const SEM_MIN = 0.35;
 export const DUPLICATE_MIN = 0.75;
 
 /** What is embedded for a fact: its words, and what it is called and where. */
-export function embedText(f: Pick<Fact, "text" | "slug" | "address">): string {
-  return [f.text, f.slug ? `(${f.slug})` : "", f.address ? `— ${f.address}` : ""].filter(Boolean).join(" ");
+export function embedText(f: Pick<Fact, "text" | "slug" | "address" | "relation">): string {
+  return [f.text, f.slug ? `(${f.slug})` : "", f.relation ? `(${f.relation})` : "", f.address ? `— ${f.address}` : ""].filter(Boolean).join(" ");
 }
 
 /** FNV-1a: enough to notice a fact's text changed, with no async digest. */
@@ -67,7 +67,7 @@ function fnv(s: string): string {
 }
 
 /** Changes when the fact's text does, or the model: either way it must be embedded again. */
-export const factHash = (f: Pick<Fact, "text" | "slug" | "address">): string =>
+export const factHash = (f: Pick<Fact, "text" | "slug" | "address" | "relation">): string =>
   `${EMBED_MODEL}/${EMBED_DIMS}/${fnv(embedText(f))}`;
 
 export function toB64(v: Float32Array): string {

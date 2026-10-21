@@ -148,6 +148,19 @@ Device pixel ratio is deliberately capped at 1: honouring the car's 1.53 would
 cost about 2.3x the fragment work for no visible gain on a dashboard at arm's
 length.
 
+**The sky behind it** (`src/app/orb/Sky.ts`) is one full-screen quad in the
+theme's palette (night #000 to #171A20, day #DDE3EA to #F4F4F4, so what is over
+it stays as readable as before), with the sun where it is now (where home is,
+from Home Assistant's `zone.home`, else by the clock), the clouds and rain of
+the first weather entity, and haze from a panel's kept air-quality reading
+(`GET /api/hub/panels/sky`: one template, no model). Everything over it is
+blurred glass that is redrawn with it, so it draws at half the screen's
+resolution or less, ten frames a second, governed as the orb is (the same
+`Governor`, fed the time between frames too, since the blur costs the GPU
+rather than the script), and goes still when even its lowest step is too
+much. It holds still in the car's driving view and where less motion is
+asked for, and without WebGL the old backdrop stays.
+
 ## Where an answer can come from
 
 | | route | typical |
@@ -198,7 +211,8 @@ family's questions are one household's.
 so live voice needs a key, and without one the app hides the Live switch
 (`/api/hub/me` `live`). The plan's route has no audio and no embeddings, so
 without a key push-to-talk hears and speaks through Workers AI
-(`lib/speech.ts`), and memory is searched by words.
+(`lib/speech.ts`), and memory is searched by words. Nor has it images: making
+a picture (`tools/image.ts`) is offered only with a key.
 
 **Signing in ends with a paste** (`lib/chatgpt-plan.ts`). The plan's OAuth is
 for public clients whose redirect must be `http://127.0.0.1:<port>/auth/callback`;
@@ -217,6 +231,11 @@ there (`lib/router.ts`): every request streamed and not stored, so no
 carried as encrypted content; function tools in one namespace; no explicit
 prompt caching, which it refuses. The items come in `response.output_item.done`
 events; the closing event carries none (measured). The key path is as before.
+`input` must be a list of items: a bare string, which the key's route takes,
+is answered 400 "Input must be a list". Every page watch failed that way for
+a day after the plan arrived, because the page reader sent its question as a
+string and that 400 is not the plan's limit, so nothing fell back to the key.
+`planRespond` now makes a string the user message it stands for.
 
 **At the plan's limit** (429 `subscription_sharing_usage_limit_exceeded`) the
 key carries on, mid-question if need be, with what the plan had done so far
@@ -504,7 +523,14 @@ so a question that is not about panels costs no more.
   nobody looks, where Hark checks every hour regardless). A screen shows
   the kept answer at once and asks for a new one only when it is stale; two
   screens open at once do not both pay for it, since the first claims it for
-  two minutes.
+  two minutes. The exception is one asked for: "keep it updated" makes a
+  tile refresh hourly or daily with Home closed (lib/panels.ts refresh),
+  from the state object's one alarm, as Hark's tiles are. At most three a
+  person and two a run, last in the alarm so they take what its budget has
+  left, through the same claim so Home and the alarm never both pay; with
+  reading tools only and without the house (no MCP to discover with nobody
+  waiting); after a look that found nothing, again in a quarter hour, then
+  less often; and nothing at all with no plan and no key.
 - **Alerts from a panel.** "Alert me", in an opened tile, makes a routine of
   its person's (lib/panel-alerts.ts; POST /api/hub/panels/alert), so it
   needs `routines` and is changed or removed in Routines. A thing in the
@@ -548,6 +574,31 @@ reached through `X-Hermes-Session-Key` — which meant every memory question too
 the slow path. Memory is now local: one document in the Durable Object, plus a
 second for reference material, and retrieval by words (BM25-lite) and by
 meaning (embeddings), merged.
+
+**Specialties: the user's own way, saved.** "Save this as my Monday report"
+keeps the steps Jarvis just took (`lib/specialties.ts`), and a later question
+that names it, or shares two words with it, gets them beside the profile, as
+Hark's Specialties do. Steps are followed, so they are a standing instruction
+of the user's, and only the user can make one: `specialty_save` takes their
+own words asking for it, which must be in their latest message, so a page, a
+mail or a tool's output cannot save one, and jobs are never offered it. They
+go to the router as a user message, as the profile does, worded as a
+procedure the user approved, to follow only if it fits and with the tools it
+has now. Matched by words, in the same wait as the rest of the question's
+preparation (one call to the Durable Object), so a question pays no model call
+and the car no extra wait.
+
+**Past attempts: what happened last time.** Each background job, question
+for Hermes and research run, and each question whose tools failed, is noted
+as one line (`lib/episodes.ts`): what was wanted, whether it worked, and what
+came of it. A question sharing two words with one is given the best three, in
+the same call as the specialty, so Jarvis does not walk into the same wall
+twice. Hark tidies its memory overnight with a model; this tidies as each
+note is written, for nothing: older than 180 days goes, the same attempt again
+is counted rather than kept twice (as memory's near-duplicates are), and
+beyond 500 the oldest goes. A note can carry what a site or a tool said, so it
+is always quoted as data. Memory → Past attempts lists them, each forgettable;
+they are in the export, and gone when the person leaves.
 
 **Recall by meaning, only when searching.** The facts that matter everywhere
 travel with every question, so an ordinary question makes no extra call. Only
@@ -690,6 +741,16 @@ promised:
   message for good.
 - **One message per call.** `mail_manage` has no bulk verb, so a misheard
   sentence costs one message rather than a mailbox.
+
+**Draft first** (Settings → Google, off by default) takes sending away from
+the model altogether: `mail_send` saves every mail as a draft, the screen
+shows it as a card with Send (`src/app/draft.ts`), and only that tap sends
+it, by Gmail's own `drafts.send` (`lib/mail-draft.ts`). Gmail's Drafts are
+the waiting list, so nothing is stored here, and a draft from a screenless
+question (Telegram, the car) waits there for the person. The card has no
+Discard: deleting a draft is for ever, and nothing here deletes for ever.
+A household footer (Settings → Google → Footer on mail Jarvis writes) goes
+under every mail Jarvis writes, after the usual `-- ` line.
 
 `gmail.settings.*` remains deliberately absent, and nothing above changes that —
 it is the one Gmail permission that would let a single bad turn install an
@@ -906,8 +967,17 @@ quiet one. The conversation goes to the router as text and the answer comes back
 (`src/app/chat.ts`), so there is no speech either way and it is the cheapest of
 the three — about $0.0005 a question on Luna. The router is told the answer is
 read, not heard (`CHAT_INSTRUCTIONS`), so it can carry what a voice cannot:
-exact figures, a number to copy, a link, a short list, in light markdown that
-the app renders as text and elements, never HTML. All three modes share one
+exact figures, a number to copy, a link, a list or a table, in markdown that
+the app draws as text and elements, never HTML (`src/app/markdown.ts`,
+`ui/rich.ts`): a table with Copy and Download CSV (a cell a spreadsheet would
+run as a formula made text first), and, only when something is asked for to
+keep or read at length, a document, "# " and a title then "## " sections,
+shown as a card that opens full-screen with Copy and Reply. The pages an
+answer cited come with it from the web search's own citations, on the key and
+the plan alike, and are drawn as cards under it, each its title and site:
+nothing is fetched from those pages to draw them, so no third party sees the
+screen and nothing is spent. Only typed chat is asked for any of this; voice,
+the glasses, routines and jobs are not, and read only the words. All three modes share one
 history, so a typed question can be followed by a spoken one; in Chat the
 orb, small in the corner, still takes a single spoken question. Coming back to
 the Jarvis tab returns to the way it last talked on that screen, so a
@@ -954,6 +1024,18 @@ insurance?"), the router can read back into the kept month with `look_back`
 says as much about a person as memory does. There is no summarising of old
 turns: that would be a model call every few exchanges, and a longer question
 every time, to keep what memory and look_back already reach.
+
+**Search, by words only.** Chat's Search box (`lib/search.ts`,
+`ui/Search.ts`) looks through the person's conversation, memory (their own
+book and the family's) and mail at once, as Hark's does, and groups what it
+finds as Top hit, Messages, Memory and Mail. It ranks by words, as look_back
+and memory's word recall do: no model and no embeddings, so it costs nothing
+and is the same on the ChatGPT plan or a key, and it counts no fact as used.
+Memory needs `memory.read` and mail `mail`; a person's own messages are
+theirs to search, as they are to read. It is a POST, so what was looked for
+stays out of addresses and logs, and it runs on Enter, not each letter,
+which would ask Gmail every time. Mail's subjects and snippets go only to the
+screen, as text, never to a model.
 
 **The router has to be Jarvis.** With GPT-Live, the live voice re-says what
 the router found in its own words and manner. Push-to-talk has nothing in
@@ -1023,6 +1105,16 @@ answers with notes rather than the report, the report goes out as it was
 written. It makes a report cost more, by how much is to be measured: the Jobs
 panel shows each one's real cost.
 
+**Research into a table, as Hark's wide research.** "The 10 cheapest genuine
+Xiaomi speakers, with seller and rating" is a research team that fills rows
+(`lib/research-table.ts`): the plan fixes the columns and splits the list
+between the teams (by brand, region or shop), each team gives one line per
+item it found, and the merge and the check give the rows back as JSON, which
+the job keeps apart (`jobtable:<id>`, at most 100 rows and 256 kB) to download
+as CSV. The cells come from strangers' pages, so a cell a spreadsheet would
+run as a formula is made text. A plan that gives no columns, or a merge that
+gives prose, makes it the ordinary team's report, so nothing is lost.
+
 **Research as a team, in one job.** Asked for in so many words, three teams
 research the brief at once, each a chain of background responses of its own on
 the one job record (`team`, beside `engine: "research"`). One record means a
@@ -1065,9 +1157,20 @@ now" in `lib/leave.ts`.
 **One alarm, pointed at the earliest thing due.** A Durable Object has a single
 alarm. After every change and every run it is set to the earliest due moment;
 the handler runs what is due and sets it again. Alarms survive restarts and
-redeploys, run on the free plan, and work the same in Docker's workerd. No cron
-is needed: the calendar is re-read every 15 minutes by the same alarm, only
-while a leave routine is on.
+redeploys, run on the free plan, and work the same in Docker's workerd. No
+Cloudflare Cron Trigger is needed: the calendar is re-read every 15 minutes by
+the same alarm, only while a leave routine is on, and a routine on a cron
+schedule ("0 8,12 * * *") is one more next time on it, worked out in the
+deployment's zone as a daily one's is. Its minute is one number, so it runs at
+most hourly: an `ask` is a paid answer each time.
+
+**A log beside the routine.** Routines → Past runs shows a routine's last 20
+runs, with the start of what each said, kept under `runs:<id>` rather than in
+the routine: the routine's stored shape stays as it was, and `lastRun` stays
+too, because `GET /api/v1/routines` returns it and the event cooldown reads it.
+A leave routine's calendar reads ("calendar read 10:15: …") are shown as its
+last run but not kept among its runs, or a read every 15 minutes would push
+the warnings out.
 
 **What a routine says is in the conversation too**, as Hark shows what its
 checks found: under a pill with the routine's name, on the asking side, hooked
@@ -1174,9 +1277,16 @@ there is live state, and a cached one is a wrong one.
 
 ## Security
 
-Every `/api/*` route is gated by the owner key or a device token. The two
+Every `/api/*` route is gated by the owner key or a device token. The
 exceptions are the Google and Spotify sign-in callbacks, which a third party
-redirects to and which carry a single-use `state` value instead. Enter the owner
+redirects to and which carry a single-use `state` value instead, and a page
+Jarvis made (`/api/v1/p/<id>`, `routes/page.ts`), whose link carries its own
+proof: a view link signed with a key that never leaves the Durable Object,
+good for an hour, or, once an admin taps Share, a random token kept only as
+its hash, until Stop sharing. A page is served on the app's own origin, beside
+the stored owner key, so it is never written by the model as HTML: Jarvis gives
+words in sections and one fixed template escapes them, and its policy
+sandboxes it (an origin of its own) and allows no script at all. Enter the owner
 key once on the unlock screen (or pass `#key=…` once) and it is remembered in
 `localStorage`.
 

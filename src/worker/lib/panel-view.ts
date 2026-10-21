@@ -8,7 +8,7 @@ import { idsOf, keyOf, ticked, type Panel, type PanelItem } from "./panels.ts";
 import { controlCall, controlsOf } from "./panel-controls.ts";
 import { alertChoice, alertsOn } from "./panel-alerts.ts";
 import { isAsk, parseTile, pressTile, readTile, tileIcon, type TileButton, type TileSources } from "./panel-tiles.ts";
-import type { UsageReport } from "./usage.ts";
+import { resetsOn, spentOf, type UsageReport } from "./usage.ts";
 import type { Routine } from "./routines.ts";
 import type { PanelIcon, PanelRow, PanelView } from "../../shared/panels.ts";
 
@@ -46,6 +46,8 @@ export interface PanelSources extends TileSources {
   command: (cfg: TessieConfig, name: string, extra: Record<string, string>, signal: AbortSignal) => Promise<boolean>;
   /** This person's usage this month and today. */
   usage: () => Promise<UsageReport | null>;
+  /** The household's month against its budget (USAGE_BUDGET), for an admin; null for none, or for anyone else. */
+  budget?: () => Promise<{ limit: number; spent: number } | null>;
   /** This person's own routines: a row's alerts are among them (lib/panel-alerts.ts alertsOn). */
   routines: () => Promise<Routine[]>;
   /** A thing's numeric readings over the last day, oldest first (a chart). */
@@ -369,8 +371,17 @@ async function fitsTheCar(b: TileButton, src: PanelSources, reads: Map<string, P
 
 const money = (n: number) => `$${n.toFixed(2)}`;
 
-function usageTiles(r: UsageReport): { label: string; value: string }[] {
-  const spent = r.total.cost.router + r.total.cost.live + r.total.cost.jobs;
+function usageTiles(r: UsageReport, b: { limit: number; spent: number } | null = null): { label: string; value: string }[] {
+  const spent = spentOf(r.total);
+  // With a budget, as Hark's usage panel has it: how much of it is gone, then the money.
+  if (b) {
+    return [
+      { label: "Budget used", value: `${Math.floor((100 * b.spent) / b.limit)}% of ${money(b.limit)}` },
+      { label: "Today", value: money(spentOf(r.today)) },
+      { label: "Spent this month", value: money(spent) },
+      { label: "Live this month", value: `${Math.round(r.total.liveSeconds / 60)} min` },
+    ];
+  }
   return [
     { label: "Today", value: `${r.today.questions} asked` },
     { label: "This month", value: `${r.total.questions} asked` },
@@ -392,6 +403,7 @@ export async function viewPanels(panels: Panel[], src: PanelSources): Promise<Pa
   const houseReads = new Map<string, Promise<HouseState | null>>();
   const carReads = new Map<string, Promise<CarSnapshot>>();
   let usage: Promise<UsageReport | null> | null = null;
+  let budget: Promise<{ limit: number; spent: number } | null> | null = null;
 
   // One row a thing, but a car is its tile and one for each of its controls.
   const rows = async (item: PanelItem): Promise<PanelRow[]> => {
@@ -411,15 +423,17 @@ export async function viewPanels(panels: Panel[], src: PanelSources): Promise<Pa
           const input = b.input ? (({ arg: _, ...shown }) => shown)(b.input) : undefined;
           return [{ action: `b${i}`, label: b.label, ...(input ? { input } : {}) }];
         }),
-        ...(spec.read ? { read: true } : {}),
+        // And what it reads, for the panel's More info: the tool, or how often it is looked up.
+        ...(spec.read ? { read: true, ...(isAsk(spec.read) ? { every: spec.read.every, ...(spec.read.refresh ? { refresh: true } : {}) } : { tool: spec.read.tool }) } : {}),
         // A reading Jarvis looks up can alert, by a page watch: what to alert on is typed.
         ...(spec.read && isAsk(spec.read) && allows(src.grants, "routines") ? { more: { alert: { kind: "words" as const } } } : {}),
       }];
     }
     if (item.kind === "usage") {
       const r = await (usage ??= src.usage().catch(() => null));
+      const b = await (budget ??= (src.budget?.() ?? Promise.resolve(null)).catch(() => null));
       return r
-        ? [{ key: item.ref, kind: "usage", label: item.label, value: "", icon: "usage", active: false, tiles: usageTiles(r), actions: [] }]
+        ? [{ key: item.ref, kind: "usage", label: item.label, value: b ? `Resets ${resetsOn(r.month)}` : "", icon: "usage", active: false, tiles: usageTiles(r, b), actions: [] }]
         : empty(item, "Could not read the usage just now.");
     }
     if (item.kind === "home") {

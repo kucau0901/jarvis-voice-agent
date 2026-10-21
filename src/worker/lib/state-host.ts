@@ -7,7 +7,11 @@ import {
   type Changes,
   type SavedSettings,
 } from "./settings.ts";
-import { addToDay, emptyDay, report, type DayTotals, type UsageEntry, type UsageReport } from "./usage.ts";
+import type { StoredImage } from "./images.ts";
+import type { Specialty } from "./specialties.ts";
+import type { StoredPage } from "./pages.ts";
+import type { Episode } from "./episodes.ts";
+import { addToDay, budgetStep, emptyDay, report, spentOf, type DayTotals, type UsageEntry, type UsageReport } from "./usage.ts";
 import { fromOthers, keep, type SharedTurn } from "./shared.ts";
 import { personOfWho } from "./context.ts";
 import {
@@ -24,7 +28,7 @@ import { generateVapid, type VapidKeys } from "./webpush.ts";
 import { cosine, fromB64, type Near } from "./embeddings.ts";
 import type { Alert, Delivery, LiveResult, PushTarget } from "./alerts.ts";
 import type { LiveClient } from "./live.ts";
-import type { Routine, RoutineInput } from "./routines.ts";
+import type { Routine, RoutineInput, RunEntry } from "./routines.ts";
 import type { Job } from "./jobs.ts";
 import type { Relay, RelayKind } from "./relays.ts";
 import type { ChatMessage } from "./chat.ts";
@@ -106,6 +110,8 @@ const SHARED = "convo:shared";
 /** Usage (lib/usage.ts): a day's totals under its date, and the last questions. */
 const USAGE_DAY = "usage:day:";
 const USAGE_RECENT = "usage:recent";
+/** The month's budget: which step of it (80, 100) the owner was last told of, for that month and that budget. */
+const USAGE_TOLD = "usage:budget";
 export const USAGE_RECENT_MAX = 50;
 /** Thirteen months, so the same month last year can still be looked at. */
 export const USAGE_KEEP_DAYS = 400;
@@ -241,6 +247,14 @@ export class StateHost {
    * biggest spender of the free plan's 1,000 writes. One record per device,
    * reset when the day changes, so nothing accumulates.
    */
+  /** A Telegram update not seen before (routes/telegram.ts): true the first time, false for Telegram's retry of it. The last 100. */
+  async telegramSeen(updateId: number): Promise<boolean> {
+    const ids = (await this.storage.get<number[]>("tg:seen")) ?? [];
+    if (ids.includes(updateId)) return false;
+    await this.storage.put("tg:seen", [...ids, updateId].slice(-100));
+    return true;
+  }
+
   async consume(deviceId: string, cap: number, day: string): Promise<{ ok: boolean; n: number }> {
     const key = `spend:${deviceId}`;
     const rec = await this.storage.get<{ day: string; n: number }>(key);
@@ -437,6 +451,24 @@ export class StateHost {
     }
   }
 
+  /**
+   * Whether the month's spending has just passed a step of the budget (80% or
+   * 100%), and what it comes to. Each step is said once a month; a budget
+   * changed in the month starts again. Noted before it is said, so a retry
+   * cannot say it twice.
+   */
+  async budgetCrossed(day: string, budget: number): Promise<{ step: 80 | 100; spent: number } | null> {
+    const month = day.slice(0, 7);
+    const days = [...(await this.storage.list<DayTotals>({ prefix: USAGE_DAY + month })).values()];
+    const spent = spentOf(report(days, [], day).total);
+    const was = await this.storage.get<{ month: string; budget: number; told: number }>(USAGE_TOLD);
+    const told = was?.month === month && was.budget === budget ? was.told : 0;
+    const step = budgetStep(spent, budget, told);
+    if (!step) return null;
+    await this.storage.put(USAGE_TOLD, { month, budget, told: step });
+    return { step, spent };
+  }
+
   /** This month so far, today, and the recent questions, as Settings → Usage shows them. */
   async usageReport(today: string, person?: string): Promise<UsageReport> {
     const days = [...(await this.storage.list<DayTotals>({ prefix: USAGE_DAY + today.slice(0, 7) })).values()];
@@ -520,6 +552,7 @@ interface RoutineApi {
   updateRoutine(id: string, patch: { enabled?: boolean; name?: string }): Promise<Routine | string>;
   removeRoutine(id: string): Promise<boolean>;
   runRoutine(id: string): Promise<Routine | string>;
+  routineRuns(id: string): Promise<RunEntry[]>;
   fireEvent(event: string, data?: string, only?: string): Promise<string[]>;
 }
 
@@ -527,7 +560,8 @@ interface RoutineApi {
 interface JobApi {
   listJobs(): Promise<Job[]>;
   getJob(id: string): Promise<Job | undefined>;
-  createJob(input: { title?: unknown; task?: unknown; engine?: unknown; team?: unknown; from?: unknown }, by: { who: string; grants: readonly Grant[] }): Promise<Job | string>;
+  createJob(input: { title?: unknown; task?: unknown; engine?: unknown; team?: unknown; from?: unknown; table?: unknown }, by: { who: string; grants: readonly Grant[] }): Promise<Job | string>;
+  jobTable(id: string): Promise<{ columns: string[]; rows: string[][] } | null>;
   cancelJob(id: string): Promise<Job | string>;
   removeJob(id: string): Promise<boolean>;
 }
@@ -580,6 +614,33 @@ interface ConversationApi {
   conversationClear(person: string): Promise<void>;
 }
 
+/** Pictures Jarvis made (lib/images.ts; state.ts). */
+interface ImageApi {
+  imagePut(person: string, img: Pick<StoredImage, "mime" | "data" | "prompt">, now: number): Promise<string>;
+  imageGet(person: string, id: string, now: number): Promise<StoredImage | null>;
+}
+
+/** Pages Jarvis made (lib/pages.ts): each person's own, opened by a link that carries its proof. */
+interface PageApi {
+  pagePut(person: string, page: Pick<StoredPage, "title" | "subtitle" | "sections">, now: number): Promise<string>;
+  pageMine(person: string, id: string, now: number): Promise<StoredPage | null>;
+  pageView(person: string, id: string, now: number): Promise<string | null>;
+  pageShare(person: string, id: string, now: number): Promise<string | null>;
+  pageUnshare(person: string, id: string, now: number): Promise<boolean>;
+  pageOpen(id: string, token: string, now: number): Promise<StoredPage | null>;
+}
+
+/** Each person's specialties (lib/specialties.ts), and what is recalled with a question (lib/router.ts). */
+interface RecallApi {
+  specialtiesOf(person: string): Promise<Specialty[]>;
+  specialtySave(person: string, input: { name: unknown; when: unknown; steps: unknown; why?: unknown }, now: number): Promise<Specialty | string>;
+  specialtyForget(person: string, which: string): Promise<boolean>;
+  episodesOf(person: string, now: number): Promise<Episode[]>;
+  episodeAdd(person: string, e: Omit<Episode, "at" | "keys" | "seen">, now: number): Promise<void>;
+  episodeForget(person: string, id: string): Promise<boolean>;
+  recallFor(person: string, ask: string): Promise<{ specialty: Specialty | null; past: Episode[] }>;
+}
+
 /** The owner's ChatGPT plan, which model calls use first (lib/chatgpt-plan.ts; state.ts). */
 interface PlanApi {
   chatgptStatus(now: number): Promise<PlanStatus>;
@@ -610,6 +671,7 @@ export type StateApi = Pick<
   | "loadReference"
   | "applyMemory"
   | "consume"
+  | "telegramSeen"
   | "loadThread"
   | "appendThread"
   | "getSettings"
@@ -637,4 +699,7 @@ export type StateApi = Pick<
   FamilyApi &
   PanelApi &
   ConversationApi &
+  ImageApi &
+  RecallApi &
+  PageApi &
   PlanApi;

@@ -9,11 +9,12 @@ import { asSaid, MAX_POSTED, MAX_TEXT, type Said } from "../lib/conversation.ts"
  * own, never a device's (the gate refuses devices everything under /api/hub/).
  *
  *   GET    /api/hub/conversation   {said}: yours, oldest first
- *   POST   /api/hub/conversation   {said: [{id, role, text, files?, replyTo?}]}: what was just said
+ *   POST   /api/hub/conversation   {said: [{id, role, text, files?, replyTo?, links?}]}: what was just said
  *   DELETE /api/hub/conversation   emptied, on every screen of yours
  */
 
-const MAX_BODY = MAX_POSTED * (MAX_TEXT + 1024) * 2;
+// Each message's words, its names and replies, and an answer's links (six of up to 620 characters).
+const MAX_BODY = MAX_POSTED * (MAX_TEXT + 1024 + 4000) * 2;
 
 export async function handleConversation(req: Request, env: Env, principal: Principal): Promise<Response> {
   const state = stateStub(env);

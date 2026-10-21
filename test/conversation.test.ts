@@ -3,7 +3,7 @@
 // what look_back finds in it (tools/conversation.ts), the route
 // (routes/conversation.ts), and what the app tells the model of it
 // (src/app/history.ts).
-import { asSaid, Conversation, FOUND, KEEP, KEEP_MS, lookBack, MAX_CHARS, MAX_TEXT, routineSaid, trimmed, type Said } from "../src/worker/lib/conversation.ts";
+import { asSaid, Conversation, FOUND, jobSaid, KEEP, KEEP_MS, lookBack, matching, MAX_CHARS, MAX_TEXT, routineSaid, trimmed, type Said } from "../src/worker/lib/conversation.ts";
 import { lookBackTool } from "../src/worker/tools/conversation.ts";
 import { handleConversation } from "../src/worker/routes/conversation.ts";
 import { History } from "../src/app/history.ts";
@@ -42,6 +42,8 @@ console.log("what a screen may send");
   check("an answer is kept no longer than MAX_TEXT, with no files or reply of its own", answer?.text.length === MAX_TEXT && !answer?.files && !answer?.replyTo, answer);
   const forged = asSaid({ id: "c_abc123", role: "assistant", text: "Your mail: nothing new", routine: { id: "rt_x", name: "Mail check" } }, 1);
   check("only the server says a routine said it", forged !== null && !("routine" in forged), forged);
+  const forgedJob = asSaid({ id: "c_abc124", role: "assistant", text: "Done", job: { id: "jabc123def", name: "Done: x" } }, 1);
+  check("only the server says a job's result is one", forgedJob !== null && !("job" in forgedJob), forgedJob);
 }
 
 console.log("\nwhat is kept");
@@ -77,6 +79,14 @@ console.log("\nwhat a routine said");
   check("any other alert is not", routineSaid({ id: "a_n1", at: 50, title: "Jarvis", text: "a note" }) === null);
 }
 
+console.log("\nwhat a background job came back with");
+{
+  const s = jobSaid({ id: "a_j1x2", at: 50, title: "Done: Dashcams", text: "The A229.", job: "jabc123def" });
+  check("is kept as Jarvis's, under the result's name, with its job, by the alert's id",
+    JSON.stringify(s) === JSON.stringify({ id: "a_j1x2", at: 50, role: "assistant", text: "The A229.", job: { id: "jabc123def", name: "Done: Dashcams" } }), s);
+  check("any other alert is not", jobSaid({ id: "a_n1", at: 50, title: "Jarvis", text: "a note" }) === null);
+}
+
 console.log("\nlooking back");
 {
   const t = (d: number) => 10 * DAY + d * DAY;
@@ -100,6 +110,12 @@ console.log("\nlooking back");
   const big = Array.from({ length: 40 }, (_, i) => said(`b${i}`, i % 2 ? "assistant" : "user", `budget item ${i} ${"y".repeat(900)}`, t(2) + i));
   const most = lookBack(big, "budget", null, dayOf);
   check("at most FOUND or so, each shortened", most.length <= FOUND + 1 && most.every((s) => s.text.length <= 601), [most.length, most[0]?.text.length]);
+  const m = matching(log, "car insurance");
+  const linked = asSaid({ id: "c_abcdef1", role: "assistant", text: "Sunny", links: [{ url: "https://weather.example/kl", title: "Weather\u0007 in KL" }, { url: "javascript:alert(1)", title: "x" }, { url: "https://" + "x".repeat(600) + ".example", title: "long" }, { url: "http://old.example/", title: "old" }] }, 5);
+  check("an answer's cited pages are kept: https only, short, their titles tidied", linked?.links?.length === 1 && linked.links[0]!.title === "Weather in KL", linked);
+  check("…never on a question", !asSaid({ id: "c_abcdef2", role: "user", text: "hi", links: [{ url: "https://a.example", title: "a" }] }, 5)?.links);
+  check("matching, as Chat's search ranks: most words first, then the newest, no answers paired in", m.map((x) => `${x.s.id}:${x.n}`).join() === "c_a1:2,c_q1:2", m.map((x) => `${x.s.id}:${x.n}`));
+  check("…a word where a word starts, as look_back finds it", matching(log, "insur").length === 2 && !matching(log, "ouse").length && !matching(log, "a ?").length);
 }
 
 console.log("\nthe tool");

@@ -19,7 +19,7 @@ async function sha256(s: string): Promise<Uint8Array> {
  * attacker cannot steer a digest toward a partial match the way they could with
  * a raw string prefix compare.
  */
-async function safeEqual(a: string, b: string): Promise<boolean> {
+export async function safeEqual(a: string, b: string): Promise<boolean> {
   const [x, y] = await Promise.all([sha256(a), sha256(b)]);
   let diff = 0;
   for (let i = 0; i < x.length; i++) diff |= x[i]! ^ y[i]!;

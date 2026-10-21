@@ -8,6 +8,12 @@
  */
 const VERSION = "v1";
 const SHELL = `jarvis-shell-${VERSION}`;
+/** What another app shared into Jarvis, held until the page takes it (src/app/share.ts). */
+const SHARED = "jarvis-shared";
+/** As many as a question can carry: two photos and two files (src/app/attach.ts). */
+const MAX_SHARED = 4;
+/** A file bigger than this is not kept: more than any photo, and over the 10 MB a PDF may be (src/app/attach.ts). */
+const MAX_SHARED_BYTES = 25 * 1024 * 1024;
 
 self.addEventListener("install", () => {
   // Take over immediately: a stale worker serving a stale bundle is the classic
@@ -19,7 +25,7 @@ self.addEventListener("activate", (event) => {
   event.waitUntil(
     (async () => {
       for (const key of await caches.keys()) {
-        if (key !== SHELL) await caches.delete(key);
+        if (key !== SHELL && key !== SHARED) await caches.delete(key);
       }
       await self.clients.claim();
     })(),
@@ -28,10 +34,15 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("fetch", (event) => {
   const req = event.request;
-  if (req.method !== "GET") return;
-
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
+
+  // A phone's share sheet (share_target in manifest.webmanifest): kept here, then Chat.
+  if (req.method === "POST" && url.pathname === "/share") {
+    event.respondWith(takeShare(req));
+    return;
+  }
+  if (req.method !== "GET") return;
 
   /*
    * Never touch the API. Every one of these is live state — what the car is
@@ -126,6 +137,40 @@ self.addEventListener("notificationclick", (event) => {
     })(),
   );
 });
+
+/**
+ * Something shared into Jarvis from another app: its words and files, kept in
+ * a cache of their own until the page takes them, which it does once and then
+ * deletes (src/app/share.ts). Only the newest share is kept. Nothing is sent
+ * anywhere from here: the page puts them in the message box, to be sent or
+ * not. A share that cannot be read still opens Jarvis.
+ */
+async function takeShare(req) {
+  try {
+    const form = await req.formData();
+    const cache = await caches.open(SHARED);
+    for (const key of await cache.keys()) await cache.delete(key);
+    const words = [];
+    for (const name of ["title", "text", "url"]) {
+      const v = form.get(name);
+      // A link is often in the text as well: said once.
+      if (typeof v === "string" && v.trim() && !words.some((w) => w.includes(v.trim()))) words.push(v.trim());
+    }
+    const all = form.getAll("files").filter((f) => f instanceof File && f.size);
+    const files = all.filter((f) => f.size <= MAX_SHARED_BYTES).slice(0, MAX_SHARED);
+    // Named, so the page can say why they are not attached.
+    const tooBig = all.filter((f) => f.size > MAX_SHARED_BYTES).map((f) => f.name || "A file");
+    await cache.put("/shared/words", new Response(JSON.stringify({ words, files: files.length, tooBig })));
+    for (const [i, f] of files.entries()) {
+      await cache.put(`/shared/file/${i}`, new Response(f, {
+        headers: { "content-type": f.type || "application/octet-stream", "x-name": encodeURIComponent(f.name || `Shared ${i + 1}`) },
+      }));
+    }
+  } catch {
+    // Nothing kept: Jarvis opens as it would.
+  }
+  return Response.redirect(new URL("/?shared=1", self.location.origin).href, 303);
+}
 
 /**
  * Drop cached bundles the current page no longer references.

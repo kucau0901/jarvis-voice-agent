@@ -1,7 +1,7 @@
 // Panels on a person's Home tab: what is kept (lib/panels.ts), how each thing
 // is read and which buttons its state offers (lib/panel-view.ts), what a press
 // is checked against, and what the tool will put on one (tools/panels.ts).
-import { MAX_HOUSE, MAX_ITEMS, MAX_PANELS, noteKey, Panels, tileKey, type Panel } from "../src/worker/lib/panels.ts";
+import { MAX_HOUSE, MAX_ITEMS, MAX_PANELS, MAX_REFRESHED, noteKey, Panels, tileKey, type Panel, type PanelRefreshDeps } from "../src/worker/lib/panels.ts";
 import { actOn, carActions, houseActions, houseActive, houseIcon, houseValue, viewPanels, type PanelSources } from "../src/worker/lib/panel-view.ts";
 import { panelList, panelRemove, panelSet, panelsText } from "../src/worker/tools/panels.ts";
 import { areasOf, arrange } from "../src/worker/lib/panel-arrange.ts";
@@ -11,6 +11,7 @@ import { historyOf, readTileOf } from "../src/worker/lib/panel-view.ts";
 import { entityHistory } from "../src/worker/lib/ha.ts";
 import { alertChoice, alertsOn, setAlert, watchFor, type AlertDeps } from "../src/worker/lib/panel-alerts.ts";
 import type { Routine, RoutineInput } from "../src/worker/lib/routines.ts";
+import { everyWords } from "../src/shared/panels.ts";
 
 let pass = 0, fail = 0;
 function check(name: string, cond: boolean, got?: unknown) {
@@ -236,6 +237,12 @@ console.log("reading a panel");
   check("…each with the button its state offers, and none to charge while unplugged", car.map((r) => r.actions.map((a) => a.label).join("+")).join("|") === "|Unlock|Climate on", car);
   check("…drawn as the car, a lock and the climate", car.map((r) => r.icon).join() === "car,lock,climate");
   check("the usage as tiles", row("usage").tiles.map((t) => t.value).join("|") === "3 asked|40 asked|$1.75|10 min", row("usage").tiles);
+  check("…with no budget, nothing said of one", row("usage").value === "", row("usage"));
+  const budgeted = sources({ budget: async () => ({ limit: 20, spent: 10 }) });
+  const [withBudget] = await viewPanels([panel], budgeted.src);
+  const usage = withBudget!.rows.find((r) => r.key === "usage")!;
+  check("with a budget: how much of it is gone first, then the money, and when it resets",
+    usage.tiles.map((t) => `${t.label}: ${t.value}`).join("|") === "Budget used: 50% of $20.00|Today: $0.00|Spent this month: $1.75|Live this month: 10 min" && usage.value === "Resets 1 November", usage);
   check("a note as itself", view!.rows.some((r) => r.kind === "note" && r.label === "Renew the road tax"));
   check("a thing on two panels is read once", asked.reads === 2 && asked.snapshots === 1, asked);
 }
@@ -638,6 +645,76 @@ console.log("a tile's car buttons follow the car");
     stale.status === 409 && fine.status === 200 && ran.join() === "car_command unlock", { stale, fine, ran });
 }
 
+console.log("a reading kept fresh with Home closed");
+{
+  const hourly = tileSpec({ read: { ask: "Latest air quality for Springfield", every: 300, refresh: "hourly" }, buttons: [] });
+  check("hourly or daily, its pace the refresh's", typeof hourly === "object" && "ask" in hourly.read! && hourly.read.refresh === "hourly" && hourly.read.every === 60 &&
+    (tileSpec({ read: { ask: "x", refresh: "daily" }, buttons: [] }) as { read: { every: number } }).read.every === 1440 && !("refresh" in (tileSpec({ read: { ask: "x", refresh: "weekly" }, buttons: [] }) as { read: object }).read), hourly);
+  // A reading is stamped with the clock as it is looked up, so the test runs on it.
+  const T = Date.now();
+  const near = (a: number | null, b: number) => a !== null && Math.abs(a - b) < 5_000;
+  const ref = (n: number, refresh?: string) => JSON.stringify({ read: { ask: `Reading ${n}`, every: 60, ...(refresh ? { refresh } : {}) }, buttons: [] });
+  const p = new Panels(fakeStorage());
+  check("nothing to wake for without one", (await p.nextWake(T)) === null);
+  await p.set("u_sara", "Outside", [{ kind: "tile", ref: ref(1, "hourly"), label: "Air" }, { kind: "tile", ref: ref(2), label: "Weather" }], "replace", T);
+  check("one kept fresh: due at once", (await p.nextWake(T)) === T);
+  const many = await p.set("u_sara", "More", [1, 2, 3].map((n) => ({ kind: "tile" as const, ref: ref(10 + n, "daily"), label: `T${n}` })), "replace", T);
+  check(`at most ${MAX_REFRESHED} a person`, typeof many === "string" && /At most 3/.test(many), many);
+  await p.set("u_sara", "More", [1, 2].map((n) => ({ kind: "tile" as const, ref: ref(10 + n, "daily"), label: `T${n}` })), "replace", T);
+  const asked: string[] = [];
+  let answer = "Good: API 40\nAPI: 40";
+  const deps = (over: Partial<PanelRefreshDeps> = {}): PanelRefreshDeps => ({
+    paused: async () => false,
+    may: async () => true,
+    look: async (person, text) => (asked.push(`${person}:${text.split("\n")[0]}`), answer),
+    ...over,
+  });
+  await p.refresh(deps(), T);
+  check("a couple a run, the rest after", asked.length === 2, asked);
+  await p.refresh(deps(), T + 1000);
+  check("…the third next run; the one only shown on Home never", asked.length === 3 && !asked.some((a) => a.endsWith("Reading 2")), asked);
+  const air = tileKey(ref(1, "hourly"));
+  check("kept where Home reads it", (await p.reading("u_sara", air))?.figures[0]?.value === "40");
+  check("next due at its pace from the reading", near(await p.nextWake(T + 2000), T + 60 * 60_000), (await p.nextWake(T + 2000))! - T);
+  await p.refresh(deps(), T + 30 * 60_000);
+  check("not before then", asked.length === 3);
+  answer = "";
+  const late = T + 61 * 60_000;
+  await p.refresh(deps(), late);
+  const failed = asked.length;
+  await p.refresh(deps(), late + 1000);
+  check("a look that found nothing: not again at once", asked.length === failed, asked.length - failed);
+  check("…but again in a quarter of an hour", near(await p.nextWake(late + 2000), late + 15 * 60_000), (await p.nextWake(late + 2000))! - late);
+  const quiet = new Panels(fakeStorage());
+  await quiet.set("u_sara", "Outside", [{ kind: "tile", ref: ref(1, "hourly"), label: "Air" }], "replace", T);
+  const before = asked.length;
+  await quiet.refresh(deps({ paused: async () => true }), T);
+  await quiet.refresh(deps({ may: async () => false }), T + 16 * 60_000);
+  check("no plan or key, or someone who left: nothing asked", asked.length === before);
+
+  // The run's first look is slow; Home asks for the second tile while it is looked up.
+  answer = "Good: API 40\nAPI: 40";
+  const two = new Panels(fakeStorage());
+  await two.set("u_sara", "Two", [21, 22].map((n) => ({ kind: "tile" as const, ref: ref(n, "hourly"), label: `T${n}` })), "replace", T);
+  const realNow = Date.now;
+  let skew = 0;
+  let home: { go: boolean } | null = null;
+  Date.now = () => realNow() + skew;
+  try {
+    let looks = 0;
+    await two.refresh(deps({
+      look: async (person, text) => {
+        if (looks++ === 0) skew += 100_000;
+        else home = await two.claimReading(person, tileKey(ref(Number(/Reading (\d+)/.exec(text)![1]), "hourly")), 3_600_000, Date.now() + 30_000);
+        return answer;
+      },
+    }), T);
+  } finally {
+    Date.now = realNow;
+  }
+  check("a claim late in a run is stamped then, so Home does not pay for the same reading", home !== null && home!.go === false, home);
+}
+
 console.log("a reading Jarvis looks up, as Hark's air quality");
 {
   const aqi = tileSpec({ read: { ask: "Latest air-quality reading (AQI) for Springfield", every: 30 }, buttons: [] });
@@ -718,6 +795,13 @@ console.log("what the model is told is on them (panel_list)");
       told.includes('to-do "Renew the road tax"; to-do "Book the dentist" (ticked off); What you have used (usage); Music (tile: shows music_state; buttons Pause); Air (tile: asks "How is the air in Springfield?").') &&
       told.includes('"Empty": nothing yet.'), told);
   check("none at all says so", panelsText([]) === "They have no panels yet.");
+  const [daily] = await viewPanels([panels[1]!], sources().src);
+  const rowOf = (label: string) => daily!.rows.find((r) => r.label === label);
+  check("a tile's row says what it reads, for More info: the tool, or how often it is looked up",
+    rowOf("Music")?.tool === "music_state" && rowOf("Music")?.every === undefined && rowOf("Air")?.every === 60 && rowOf("Air")?.tool === undefined &&
+      !rowOf("What you have used")?.tool && !rowOf("Renew the road tax")?.every, daily!.rows.map((r) => [r.label, r.tool, r.every]));
+  check("how often, in words", everyWords(60) === "hour" && everyWords(180) === "3 hours" && everyWords(90) === "90 minutes" && everyWords(1440) === "day",
+    [60, 180, 90, 1440].map(everyWords));
   const asked: string[] = [];
   const STATE = { idFromName: () => "j", get: () => ({ panelsOf: async (p: string) => (asked.push(p), panels) }) };
   const out = String(await panelList.run({}, { env: { STATE, JARVIS_PERSON: "u_sam" }, grants: ["*"], signal: new AbortController().signal, progress: () => {}, memory: null, display: () => {} } as never));
@@ -792,10 +876,14 @@ console.log("the tool");
     const made = kept.at(-1)?.items[0] as { kind: string; ref: string; label: string } | undefined;
     check("a tile wired to the asker's own tools, an MCP server's among them, and a sentence to ask",
       wired.startsWith("Done") && made?.kind === "tile" && parseTile(made.ref)?.buttons.map((b) => b.tool?.tool ?? `ask:${b.ask}`).join() === "music_control,spotify__queue,ask:play something calm", { wired, made });
-    await run({ title: "Air", mode: "add", items: [tile({ tool: null, args: null, ask: "Latest air-quality reading for Springfield", every_minutes: 30 }, null)] }, ctx(["*"]));
+    const airSaid = await run({ title: "Air", mode: "add", items: [tile({ tool: null, args: null, ask: "Latest air-quality reading for Springfield", every_minutes: 30 }, null)] }, ctx(["*"]));
     const air = parseTile((kept.at(-1)?.items[0] as { ref: string }).ref);
     check("a reading no tool has is asked for instead, looked up at most hourly",
       !!air?.read && "ask" in air.read && air.read.ask.includes("Springfield") && air.read.every === 60, air);
+    check("…and the answer says how often, as Hark's \"updates every hour\" does", airSaid.startsWith("Done") && airSaid.includes("(updates every hour while Home is open)"), airSaid);
+    const slower = await run({ title: "Air later", mode: "add", items: [tile({ tool: null, args: null, ask: "Pollen count for Springfield", every_minutes: 180 }, null)] }, ctx(["*"]));
+    check("…in its own words for longer", slower.includes("updates every 3 hours"), slower);
+    check("a tool's tile says nothing of the kind: it is read while Home is open", !wired.includes("updates every"), wired);
     check("a tool they were not offered is refused", (await run({ title: "X", mode: "add", items: [tile({ tool: "mail_send", args: "{}" }, null)] }, ctx(["*"]))).includes("not one of the tools"));
     check("…and so are the panel tools themselves", (await run({ title: "X", mode: "add", items: [tile(null, [{ label: "Again", tool: "panel_set", args: "{}", ask: null }])] }, ctx(["*"]))).includes("not one of the tools"));
     check("arguments that are not JSON are refused", (await run({ title: "X", mode: "add", items: [tile({ tool: "music_state", args: "{oops" }, null)] }, ctx(["*"]))).includes("not JSON"));

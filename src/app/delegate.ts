@@ -1,6 +1,7 @@
 import { authHeaders } from "./key";
 import type { Turn } from "./history";
 import { originHere } from "./alerts";
+import { asDraft, type Draft } from "./draft";
 
 /**
  * Drive one delegation from GPT-Live to the Worker and back.
@@ -34,6 +35,10 @@ interface DelegateHandlers {
    * not, so the app can drop the session and keep waiting here for nothing.
    */
   slow?(name: string): void;
+  /** A tool call started or finished: Home shows a panel in the making (main.ts panelTool). */
+  tool?(name: string, phase: string): void;
+  /** A mail written and held for the person's tap (Draft first): its card (draft.ts). */
+  drafted?(d: Draft): void;
   done(): void;
 }
 
@@ -111,6 +116,7 @@ export async function runDelegation(
             if (ev.phase === "start" && typeof ev.name === "string" && SLOW_TOOLS.has(ev.name)) {
               h.slow?.(ev.name);
             }
+            if (typeof ev.name === "string") h.tool?.(ev.name, String(ev.phase ?? ""));
             break;
 
           case "progress":
@@ -130,6 +136,10 @@ export async function runDelegation(
 
           case "display":
             h.display(ev);
+            break;
+
+          case "draft":
+            asDraft(ev, h.drafted);
             break;
 
           case "used":

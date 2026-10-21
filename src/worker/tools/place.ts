@@ -186,4 +186,4 @@ export const placeTools: Tool[] = [showPlace, hideDisplay];
  * none (a device's text or voice) only these are left out: the scope's other
  * tools, a person's panels, keep working from anywhere (lib/router.ts).
  */
-export const DRAWS_ON_SCREEN: readonly string[] = [showPlace.name, hideDisplay.name];
+export const DRAWS_ON_SCREEN: readonly string[] = [showPlace.name, hideDisplay.name, "make_image", "make_page"];

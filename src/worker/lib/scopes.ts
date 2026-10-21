@@ -117,6 +117,8 @@ export function requiredScope(pathname: string, method: string): RouteRequiremen
   // unlinking and inspecting the grant affect the credential itself, so a
   // device, even one with `mail`, gets the tools and nothing else.
   if (pathname.startsWith("/api/spotify")) return "person";
+  // A draft's Send (lib/mail-draft.ts): as far as mail_send reaches, and from their own mailbox only.
+  if (pathname === "/api/google/drafts/send") return "mail";
   if (pathname.startsWith("/api/google")) return "person";
   // Each person's own memory (and, with ?book=family, the family's: the route
   // checks `family` for changing that). Devices only read here (routes/memory.ts).
@@ -124,6 +126,9 @@ export function requiredScope(pathname: string, method: string): RouteRequiremen
     if (pathname === "/api/memory/search") return "memory.read";
     if (pathname === "/api/memory") return m === "GET" ? "memory.read" : "memory.write";
     if (pathname === "/api/memory/move") return "memory.write";
+    // Read from their calendar, so a person's alone: the route checks `calendar`.
+    if (pathname === "/api/memory/work") return "person";
+    if (pathname === "/api/memory/specialties" || pathname === "/api/memory/past") return m === "GET" ? "memory.read" : "memory.write";
     return "owner";
   }
   // Each person's own devices; an admin's view is everyone's (routes/v1.ts). Never a device's.
@@ -167,7 +172,13 @@ export function requiredScope(pathname: string, method: string): RouteRequiremen
       return "voice";
 
     case "/api/map":
+    case "/api/image":
+    case "/api/page":
       return "screen";
+    // Sharing a page is a person's, and only an admin's (routes/page.ts checks). The page itself,
+    // /api/v1/p/<id>, is served before this gate, opened by the proof its link carries.
+    case "/api/page/share":
+      return "person";
 
     // Receiving alerts, and raising one. The same scope for both: a device
     // that may be told things may also ask to be told something.
@@ -183,6 +194,7 @@ export function requiredScope(pathname: string, method: string): RouteRequiremen
     // so this does not widen what a device can reach.
     case "/api/v1/routines":
     case "/api/v1/routines/run":
+    case "/api/v1/routines/runs":
     case "/api/v1/trigger":
       return "routines";
 
@@ -190,11 +202,13 @@ export function requiredScope(pathname: string, method: string): RouteRequiremen
     // `hermes`, checked in the route. Each runs with its creator's grants.
     case "/api/v1/jobs":
     case "/api/v1/jobs/cancel":
+    case "/api/v1/jobs/csv":
       return "ask";
     case "/api/camera":
       return "home";
 
-    // Diagnostics and the stored probe runs are the owner's business.
+    // Diagnostics, the stored probe runs and the data export are the owner's business.
+    case "/api/export":
     case "/api/diag":
     case "/api/probe":
       return "owner";

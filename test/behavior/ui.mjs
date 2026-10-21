@@ -23,7 +23,7 @@ import { join } from "node:path";
 const [BASE, TOKENS, OUT] = process.argv.slice(2);
 const CHROME = process.env.CHROME ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const PORT = Number(process.env.CHROME_PORT ?? 9333);
-const PANELS = ["openFamily", "openMemory", "openRoutines", "openJobs", "openChat", "openDevices", "openSettings", "openTheme"];
+const PANELS = ["openFamily", "openMemory", "openRoutines", "openJobs", "openChat", "openDevices", "openSettings", "openTheme", "openSearch"];
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const profile = mkdtempSync(join(tmpdir(), "jarvis-chrome-"));

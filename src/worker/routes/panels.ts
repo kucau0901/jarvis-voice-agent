@@ -1,22 +1,23 @@
 import type { Env } from "../types.ts";
+import { hazeOf, SKY_TEMPLATE, skyOf } from "../lib/sky.ts";
+import { renderTemplate } from "../lib/ha.ts";
 import { err, json, readObject } from "../lib/http.ts";
-import { grantsOf, personOf, whoOf, type Principal } from "../lib/auth.ts";
+import { grantsOf, isAdmin, personOf, whoOf, type Principal } from "../lib/auth.ts";
 import { allows } from "../lib/scopes.ts";
 import { stateStub } from "../lib/state-client.ts";
 import { haConfig } from "../lib/ha.ts";
 import { localeOf } from "../lib/locale.ts";
-import { dayOf } from "../lib/usage.ts";
+import { budgetOf, dayOf, spentOf } from "../lib/usage.ts";
 import { carById, pickCar } from "../tools/tessie.ts";
 import { actOn, historyOf, LIVE, readTileOf, viewPanels, type PanelSources } from "../lib/panel-view.ts";
 import { setAlert } from "../lib/panel-alerts.ts";
 import { keyOf } from "../lib/panels.ts";
 import { isTheirs } from "../lib/context.ts";
-import { jobTool } from "../lib/jobs.ts";
 import { baseTools, outputText } from "../tools/registry.ts";
 import { mcpSessions, mcpTools } from "../tools/mcp.ts";
 import { memoryFor } from "../lib/memory.ts";
 import { Collector } from "../lib/collector.ts";
-import { run } from "../lib/router.ts";
+import { lookUp, run } from "../lib/router.ts";
 import type { PanelsReply } from "../../shared/panels.ts";
 
 /**
@@ -25,6 +26,8 @@ import type { PanelsReply } from "../../shared/panels.ts";
  * guest does not have; never a device.
  *
  *   GET  /api/hub/panels       your panels, each thing read now, with the buttons its state offers
+ *   GET  /api/hub/panels/sky   {lat?, lng?, cloud, rain, haze}: what the sky behind the app is drawn
+ *        from (lib/sky.ts): home's place and the weather with `home`, the air from a kept reading
  *   GET  /api/hub/panels/read?panel=&key=[&cached=1]   a tile's reading: one of your tools, run now, or
  *        its question's kept answer, looked up again when stale (cached=1: what was kept, at once)
  *   GET  /api/hub/panels/history?panel=&key=   a number's last day from Home Assistant, for its chart
@@ -42,7 +45,7 @@ import type { PanelsReply } from "../../shared/panels.ts";
  */
 export async function handlePanels(req: Request, env: Env, principal: Principal): Promise<Response | null> {
   const p = new URL(req.url).pathname;
-  if (!["/api/hub/panels", "/api/hub/panels/read", "/api/hub/panels/history", "/api/hub/panels/act", "/api/hub/panels/alert", "/api/hub/panels/remove", "/api/hub/panels/order", "/api/hub/panels/note"].includes(p)) return null;
+  if (!["/api/hub/panels", "/api/hub/panels/sky", "/api/hub/panels/read", "/api/hub/panels/history", "/api/hub/panels/act", "/api/hub/panels/alert", "/api/hub/panels/remove", "/api/hub/panels/order", "/api/hub/panels/note"].includes(p)) return null;
   if (principal.kind === "device") return err(403, "that is for a person, not a device");
   const grants = grantsOf(principal);
   if (!allows(grants, "screen")) return err(403, 'panels need "screen"', { need: "screen" });
@@ -59,6 +62,12 @@ export async function handlePanels(req: Request, env: Env, principal: Principal)
     pick: (named) => pickCar(env, named),
     maps: !!env.GOOGLE_MAPS_API_KEY,
     usage: () => state.usageReport(dayOf(Date.now(), timeZone), me),
+    // The budget is the household's: its whole month against it, shown to those who run the house.
+    budget: async () => {
+      const limit = budgetOf(env.USAGE_BUDGET);
+      if (!limit || !isAdmin(principal)) return null;
+      return { limit, spent: spentOf((await state.usageReport(dayOf(Date.now(), timeZone))).total) };
+    },
     routines: async () => (await state.listRoutines()).filter((r) => isTheirs(r.createdBy, me)),
     // One of this person's tools, as the router would offer it to them now.
     async tool(name, args) {
@@ -84,15 +93,12 @@ export async function handlePanels(req: Request, env: Env, principal: Principal)
     // A sentence asked of Jarvis, as if typed in Chat.
     async ask(text) {
       const sink = new Collector();
-      await run(env, [{ role: "user", text }], sink, AbortSignal.any([req.signal, AbortSignal.timeout(90_000)]), grants, { surface: "chat", assist: true });
+      // Its answer is the tile's text: nothing it would draw, nor a draft's card, is shown (screenless).
+      await run(env, [{ role: "user", text }], sink, AbortSignal.any([req.signal, AbortSignal.timeout(90_000)]), grants, { surface: "chat", assist: true, screenless: true });
       return sink.finish().text;
     },
     // A tile's reading: asked with nobody pressing anything, so reading tools only, as a background job has.
-    async look(text) {
-      const sink = new Collector();
-      await run(env, [{ role: "user", text }], sink, AbortSignal.any([req.signal, AbortSignal.timeout(90_000)]), grants, { surface: "chat", assist: true, toolFilter: jobTool });
-      return sink.finish().text;
-    },
+    look: (text) => lookUp(env, text, grants, AbortSignal.any([req.signal, AbortSignal.timeout(90_000)])),
   };
 
   if (p === "/api/hub/panels" && req.method === "GET") {
@@ -101,6 +107,13 @@ export async function handlePanels(req: Request, env: Env, principal: Principal)
       can: { home: !!src.house && allows(grants, "home"), car: allows(grants, "car.read") && typeof pickCar(env) !== "string" },
     };
     return json(reply);
+  }
+  if (p === "/api/hub/panels/sky" && req.method === "GET") {
+    const [weather, haze] = await Promise.all([
+      src.house && allows(grants, "home") ? renderTemplate(src.house, SKY_TEMPLATE).then(skyOf, () => ({ cloud: 0, rain: 0 })) : { cloud: 0, rain: 0 },
+      state.panelsOf(me).then((all) => hazeOf(all, (key) => state.panelReading(me, key))),
+    ]);
+    return json({ ...weather, haze, at: Date.now() });
   }
   if (p === "/api/hub/panels/read" && req.method === "GET") {
     const q = new URL(req.url).searchParams;

@@ -89,6 +89,9 @@ export interface Prefs {
   telegram?: string;
   /** Their Home Assistant person, for "when she gets home" (lib/relays.ts): person.aisyah. */
   presence?: string;
+  /** What they like to be called, and their birthday, YYYY-MM-DD (ui/Profile.ts), for the router (lib/router-prompt.ts). */
+  nickname?: string;
+  birthday?: string;
 }
 
 /** A user as stored: the PIN never leaves this file. */
@@ -536,7 +539,7 @@ export class HubHost {
     const u = await this.storedUser(id);
     if (!u) return fail("no such person");
     const next: Prefs = { ...u.prefs };
-    for (const k of ["voice", "style", "language", "telegram", "presence"] as const) {
+    for (const k of ["voice", "style", "language", "telegram", "presence", "nickname", "birthday"] as const) {
       const v = patch[k];
       if (v === undefined) continue;
       const clean = typeof v === "string" ? v.replace(/[\u0000-\u001f\u007f]/g, " ").trim().slice(0, k === "style" ? 300 : 40) : "";
@@ -590,6 +593,16 @@ export class HubHost {
 
   async prefsOf(id: string): Promise<Prefs> {
     return (await this.storedUser(id))?.prefs ?? {};
+  }
+
+  /** Whose Telegram chat this is, by the number they gave (Family → You): "owner" for the first person; null for none, or two. */
+  async telegramPerson(chat: string): Promise<string | null> {
+    const meta = await this.meta();
+    if (!meta.space) return null;
+    const first = await this.firstPerson();
+    const mine: string[] = [];
+    for (const m of await this.membersOf(meta.space)) if ((await this.storedUser(m.user))?.prefs?.telegram === chat) mine.push(m.user);
+    return mine.length === 1 ? (mine[0] === first ? "owner" : mine[0]!) : null;
   }
 
   /* ---------- cars ------------------------------------------------------------- */
@@ -1214,6 +1227,7 @@ export const HUB_METHODS = [
   "updateCar",
   "removeCar",
   "prefsOf",
+  "telegramPerson",
   "setPin",
   "lockSession",
   "unlockSession",

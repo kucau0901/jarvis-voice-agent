@@ -120,6 +120,17 @@ console.log("\na tool, then the answer");
   const h = harness([reply("r1", { output: [{ type: "web_search_call" }, { type: "web_search_call" }, { type: "message" }], output_text: "Sunny, 31°C" })]);
   await routerLoop(h.deps);
   check("web searches are counted, as OpenAI charges for each", (last(h.events).usage as { searches: number }).searches === 2 && h.records[0]?.usage.searches === 2);
+  const searched = h.events.filter((e) => e.type === "tool" && e.name === "web_search");
+  check("typed chat is told the web was searched, once for the hop", searched.length === 1 && searched[0]!.phase === "done" && last(h.events).type === "result", h.events);
+  check("…and with no page cited, no links", !("links" in last(h.events)));
+}
+{
+  const cite = (url: string, title = "A page") => ({ type: "url_citation", url, title });
+  const text = { type: "output_text", text: "Sunny", annotations: [cite("https://weather.example/kl?utm_source=openai"), cite("https://weather.example/kl"), cite("http://old.example/"), cite("javascript:alert(1)"), ...Array.from({ length: 8 }, (_, i) => cite(`https://p${i}.example/`, `Page ${i}`))] };
+  const h = harness([reply("r1", { output: [{ type: "web_search_call" }, { type: "message", content: [text] } as { type: string }], output_text: "Sunny" })]);
+  await routerLoop(h.deps);
+  const links = last(h.events).links as { url: string; title: string }[];
+  check("the pages an answer cited come with it: https, once each, no tracking tags, six at most", links?.length === 6 && links[0]!.url === "https://weather.example/kl" && links.every((l) => l.url.startsWith("https://")) && links[1]!.title === "Page 0", links);
 }
 
 console.log("\na model OpenAI refuses");

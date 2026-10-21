@@ -2,6 +2,7 @@ import type { PanelMore } from "../../shared/panels.ts";
 import type { HaConfig } from "./ha.ts";
 import { idsOf, tileKey, type Panel, type PanelItem, type Reading } from "./panels.ts";
 import { isAsk, parseTile } from "./panel-tiles.ts";
+import { pageCondition } from "./page-look.ts";
 import type { Routine, RoutineInput } from "./routines.ts";
 
 /**
@@ -139,9 +140,7 @@ export async function setAlert(
 
   const spec = parseTile(item.ref);
   if (!spec?.read || !isAsk(spec.read)) return { status: 409, text: "Only a reading Jarvis looks up can alert from here." };
-  const typed = typeof body.condition === "string" ? body.condition.trim().slice(0, 200) : "";
-  // A number alone is a level to go above: "200" is "above 200".
-  const condition = /^\d+(\.\d+)?$/.test(typed) ? `above ${typed}` : typed;
+  const condition = pageCondition(typeof body.condition === "string" ? body.condition.slice(0, 200) : "");
   if (condition.length < 3) return { status: 400, text: "Say when to alert you, e.g. the API is above 150." };
   const read = spec.read;
   const known = (await d.kept(key).catch(() => null))?.source;
@@ -180,7 +179,7 @@ export function alertsOn(item: PanelItem, routines: readonly Routine[]): string[
   if (item.kind === "tile") {
     const read = parseTile(item.ref)?.read;
     if (!read || !isAsk(read)) return [];
-    for (const r of routines) if (r.enabled && r.trigger.kind === "page" && r.trigger.question === read.ask) out.add(r.trigger.condition);
+    for (const r of routines) if (r.enabled && r.trigger.kind === "page" && r.trigger.question === read.ask) out.add(pageCondition(r.trigger.condition));
   } else if (item.kind === "home" && idsOf(item).length === 1) {
     const named = [`'${item.ref}'`, `"${item.ref}"`];
     for (const r of routines) {

@@ -12,6 +12,7 @@ import {
 } from "../src/worker/lib/speech.ts";
 import { jarvisPrompt, spokenReplyInstructions } from "../src/worker/lib/prompt.ts";
 import { requiredScope } from "../src/worker/lib/scopes.ts";
+import { handleVoice } from "../src/worker/routes/voice.ts";
 import { validateChanges } from "../src/worker/lib/settings.ts";
 
 let pass = 0;
@@ -151,6 +152,9 @@ console.log("\nwhat is actually said");
   const cited = "Check the tyres and lights before you go. ([nhtsa.gov](https://www.nhtsa.gov/summer-driving-tips?utm_source=openai))";
   check("a web citation is not read out", speakable(cited) === "Check the tyres and lights before you go.", speakable(cited));
   check("a link keeps its words", speakable("See [the charger map](https://x.example/map) for more.") === "See the charger map for more.");
+  const table = speakable("Compared:\n\n| Speaker | Price |\n|---|---:|\n| Mi A | RM99 |\n| Mi B | RM149 |\n\nThe **Mi A** is cheaper.");
+  check("a table is read as its rows, not its bars", table === "Compared: Speaker, Price. Mi A, RM99. Mi B, RM149. The Mi A is cheaper.", table);
+  check("…and a dash in a sentence is left alone", speakable("It is 3 - 2 now.") === "It is 3 - 2 now.");
   check("a bare address goes", speakable("It is at https://example.com/a?b=c today.") === "It is at today.");
   check("markdown is dropped", speakable("**Yes** — the *gate* is `closed`.") === "Yes — the gate is closed.");
   check("bullets become plain lines", speakable("- tyres\n- lights\n1. brakes") === "tyres lights brakes");
@@ -175,6 +179,7 @@ console.log("\nthe spoken reply");
   check("says it is read word for word", /word for word/.test(s));
   check("no markdown or URLs", /no markdown/.test(s) && /URLs/.test(s));
   check("in the language spoken, mixed as spoken", /mixing languages/.test(s));
+  check("never in a tool's, a page's or its own earlier language", /never in the language of a tool result, a web page or your own earlier replies/.test(s));
   check("in Jarvis's manner", /composed British butler/.test(s));
   check("without the live voice's interruption rule", !/interrupted/.test(s));
   check("the GPT-Live prompt keeps it", /If you are interrupted, stop immediately/.test(jarvisPrompt("car")) && /VOICE AND MANNER\nSpeak like a composed British butler/.test(jarvisPrompt("car")));
@@ -184,6 +189,39 @@ console.log("\nwho may");
 {
   check("/api/v1/voice needs voice", requiredScope("/api/v1/voice", "POST") === "voice");
   check("a lookalike path is the owner's", requiredScope("/api/v1/voicex", "POST") === "owner");
+}
+
+console.log("\ndictation: only heard (the chat box's mic)");
+{
+  const ctx = { waitUntil() {}, passThroughOnException() {} } as never;
+  const owner = { kind: "owner" } as never;
+  const dictate = (body: BodyInit, url = "https://j.test/api/v1/voice", headers?: HeadersInit) =>
+    handleVoice(new Request(url, { method: "POST", body, ...(headers ? { headers } : {}) }), env(), ctx, owner, ["*"] as never);
+  const form = () => {
+    const f = new FormData();
+    f.append("audio", new Blob([new Uint8Array([1, 2, 3, 4])], { type: "audio/webm" }), "dictation");
+    f.append("options", JSON.stringify({ transcribe: true }));
+    return f;
+  };
+  calls = [];
+  answer = () => Response.json({ text: " Buy milk " });
+  const r = await dictate(form());
+  const b = (await r.json()) as Record<string, unknown>;
+  check("the words come back, nothing else", r.status === 200 && b.ok === true && b.transcript === "Buy milk" && b.heardBy === "openai", b);
+  check("…heard only: nothing asked, nothing spoken", calls.length === 1 && calls[0]!.url.endsWith("/audio/transcriptions"), calls.map((c) => c.url));
+  calls = [];
+  const raw = await dictate(new Uint8Array([1, 2, 3, 4]), "https://j.test/api/v1/voice?transcribe=1", { "content-type": "audio/webm" });
+  check("a bare recording with ?transcribe=1 is only heard too", raw.status === 200 && ((await raw.json()) as { transcript?: string }).transcript === "Buy milk" && calls.length === 1);
+  const words = new FormData();
+  words.append("text", "hello");
+  words.append("options", JSON.stringify({ transcribe: true }));
+  check("nothing to hear is said so", (await dictate(words)).status === 400);
+  answer = () => new Response("quota", { status: 429 });
+  const failed = await dictate(form());
+  check("hearing that fails says so, and does not throw", failed.status === 502 && typeof ((await failed.json()) as { error?: unknown }).error === "string");
+  const noAsk = await handleVoice(new Request("https://j.test/api/v1/voice", { method: "POST", body: form() }), env(), ctx, owner, ["voice"] as never);
+  check("still needs ask, as asking does", noAsk.status === 403);
+  answer = () => Response.json({ text: "hello" });
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

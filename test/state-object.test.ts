@@ -125,6 +125,15 @@ try {
   const relays = await (jarvis as unknown as { relayDeps(): Promise<{ deliver(a: unknown): Promise<unknown> }> }).relayDeps();
   got = await to(() => relays.deliver(makeAlert({ text: "No answer from Nenek", urgent: true }, "relay", NOW, "u_sara")!));
   check("an urgent one for Sara: urgent tries every channel, but still only hers", got === "sara-browser,sara-phone", got);
+
+  // A job's result, from inside the object: kept in its starter's conversation, unless they have left the family.
+  const inside: { jobs: { deps(): Promise<{ deliver(a: unknown): Promise<unknown> }> } } = jarvis as never;
+  const jobDeps = await inside.jobs.deps();
+  const done = (who?: string) => ({ ...makeAlert({ title: "Done: Dashcams", text: "The A229." }, "job", NOW, who)!, job: "jabc123def" });
+  await jobDeps.deliver(done());
+  check("a job's result for the first person: kept in their conversation", (await jarvis.conversationOf("owner", NOW)).some((s) => s.job?.id === "jabc123def"));
+  await jobDeps.deliver(done("u_gone"));
+  check("…not for someone no longer in the family: theirs went when they left", (await jarvis.conversationOf("u_gone", NOW)).length === 0);
 } finally {
   globalThis.fetch = realFetch;
 }

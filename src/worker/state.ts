@@ -7,15 +7,17 @@ import type { Changes } from "./lib/settings.ts";
 import { LiveHub, type LiveClient, type LiveSocket } from "./lib/live.ts";
 import type { Alert, Delivery } from "./lib/alerts.ts";
 import type { PushRecord } from "./lib/state-host.ts";
-import { deliver } from "./lib/alerts.ts";
+import { deliver, makeAlert } from "./lib/alerts.ts";
 import { effectiveEnv } from "./lib/settings.ts";
 import { localeOf } from "./lib/locale.ts";
 import { upcomingEvents } from "./lib/leave.ts";
 import { Scheduler, type SchedulerDeps } from "./lib/scheduler.ts";
 import type { Routine, RoutineInput } from "./lib/routines.ts";
-import { narrow, type Grant } from "./lib/scopes.ts";
+import { allows, narrow, SCOPES, type Grant } from "./lib/scopes.ts";
+import { canAsk } from "./lib/openai-auth.ts";
+import { lookUp } from "./lib/router.ts";
 import { askForRoutine, travelFor } from "./routes/routines.ts";
-import { Jobs } from "./lib/jobs.ts";
+import { Jobs, type Job } from "./lib/jobs.ts";
 import { jobEngine } from "./routes/jobs.ts";
 import type { UsageEntry } from "./lib/usage.ts";
 import type { SharedTurn } from "./lib/shared.ts";
@@ -23,11 +25,15 @@ import { haConfig, renderTemplate, truthy } from "./lib/ha.ts";
 import { HUB_METHODS, HubHost, liveSessionIds } from "./lib/hub.ts";
 import { Relays, type Relay, type RelayDeps, type RelayKind } from "./lib/relays.ts";
 import { Chat, dmId, type ChatMessage } from "./lib/chat.ts";
-import { Panels, type PanelItem, type Reading } from "./lib/panels.ts";
-import { Conversation, routineSaid, type Said } from "./lib/conversation.ts";
+import { Panels, type PanelItem, type PanelRefreshDeps, type Reading } from "./lib/panels.ts";
+import { Conversation, jobSaid, routineSaid, type Said } from "./lib/conversation.ts";
+import { Images, type StoredImage } from "./lib/images.ts";
+import { Specialties } from "./lib/specialties.ts";
+import { Pages, type StoredPage } from "./lib/pages.ts";
+import { Episodes, episodeOfJob, type Episode } from "./lib/episodes.ts";
 import { OWNER, personOfWho, withPerson } from "./lib/context.ts";
 import { lookAtPage } from "./lib/page-look.ts";
-import { dayOf } from "./lib/usage.ts";
+import { budgetOf, budgetSays, costOf, dayOf } from "./lib/usage.ts";
 import { nextAllowed } from "./lib/access.ts";
 import { ChatGptPlan, type PlanFailure } from "./lib/chatgpt-plan.ts";
 
@@ -59,6 +65,10 @@ export class JarvisState extends DurableObject<Env> {
   private panels: Panels;
   /** Each person's conversation with Jarvis, kept (lib/conversation.ts). */
   private conversation: Conversation;
+  private images: Images;
+  private specialties: Specialties;
+  private pages: Pages;
+  private episodes: Episodes;
   /** The owner's ChatGPT plan, which model calls use first (lib/chatgpt-plan.ts). */
   private plan: ChatGptPlan;
 
@@ -70,13 +80,27 @@ export class JarvisState extends DurableObject<Env> {
     this.chat = new Chat(ctx.storage);
     this.panels = new Panels(ctx.storage);
     this.conversation = new Conversation(ctx.storage);
+    this.images = new Images(ctx.storage);
+    this.specialties = new Specialties(ctx.storage);
+    this.pages = new Pages(ctx.storage);
+    this.episodes = new Episodes(ctx.storage);
     this.plan = new ChatGptPlan(ctx.storage, (input, init) => fetch(input, init));
     this.relays = new Relays(ctx.storage, () => this.relayDeps());
     this.jobs = new Jobs(ctx.storage, async () => {
       const env = await this.localEnv();
       // Each job runs as whoever started it: their memory, their mail (lib/context.ts).
       // Its storage, for steps run on the owner's ChatGPT plan (routes/jobs.ts).
-      return jobEngine(env, (alert) => deliver(env, this, alert), (job) => this.personEnv(env, job.createdBy), ctx.storage);
+      // What a job comes back with is in its starter's conversation too, as a routine's words are.
+      // Not for someone who has left meanwhile: their conversation went with them (forgetMember).
+      const deliverJob = async (alert: Alert) => {
+        const said = jobSaid(alert);
+        const who = alert.for ?? OWNER;
+        if (said && (who === OWNER || (await this.people.personView(who).catch(() => null))?.space)) await this.conversation.add(who, [said], Date.now());
+        return deliver(env, this, alert);
+      };
+      // How it went, for the next question like it (lib/episodes.ts).
+      const episode = (job: Job) => this.episodes.add(personOfWho(job.createdBy), episodeOfJob(job), Date.now());
+      return { ...jobEngine(env, deliverJob, (job) => this.personEnv(env, job.createdBy), ctx.storage), episode };
     });
     // Screens ping to keep their socket open through proxies. The runtime
     // answers these itself, so a hibernating object is not woken to say pong.
@@ -149,6 +173,10 @@ export class JarvisState extends DurableObject<Env> {
 
   consume(deviceId: string, cap: number, day: string) {
     return this.host.consume(deviceId, cap, day);
+  }
+
+  telegramSeen(updateId: number) {
+    return this.host.telegramSeen(updateId);
   }
 
   loadThread(key: string) {
@@ -243,6 +271,10 @@ export class JarvisState extends DurableObject<Env> {
     await this.relays.forget(person);
     await this.panels.forget(person);
     await this.conversation.clear(person);
+    await this.images.clear(person);
+    await this.pages.clear(person);
+    await this.specialties.clear(person);
+    await this.episodes.clear(person);
     await this.rearm();
   }
 
@@ -348,7 +380,7 @@ export class JarvisState extends DurableObject<Env> {
   /** Point the one alarm at whatever is due first: a routine, a job, a relay or a held alert. */
   private async rearm(): Promise<void> {
     const held = [...(await this.ctx.storage.list<{ until: number }>({ prefix: HELD })).values()].map((h) => h.until);
-    const wakes = [...(await Promise.all([this.scheduler.nextWake(), this.jobs.nextWake(), this.relays.nextWake()])), ...held].filter(
+    const wakes = [...(await Promise.all([this.scheduler.nextWake(), this.jobs.nextWake(), this.relays.nextWake(), this.panels.nextWake()])), ...held].filter(
       (t): t is number => t !== null,
     );
     const at = wakes.length ? Math.min(...wakes) : null;
@@ -363,7 +395,28 @@ export class JarvisState extends DurableObject<Env> {
     await this.jobs.tick();
     await this.relays.tick();
     await this.releaseHeld();
+    // Last, and a couple a run: what this alarm has left of its budget is the panels' (lib/panels.ts).
+    await this.panels.refresh(await this.panelDeps());
     await this.rearm();
+  }
+
+  /** What keeping panels fresh with Home closed needs (lib/panels.ts refresh). */
+  private async panelDeps(): Promise<PanelRefreshDeps> {
+    const env = await this.localEnv();
+    const view = (person: string) => this.people.personView(person).catch(() => null);
+    return {
+      paused: async () => !(await canAsk(env)),
+      may: async (person) => {
+        const v = await view(person);
+        return !!v?.scopes && allows(v.scopes, "screen");
+      },
+      // As them, with what they may reach, less the house (no MCP to discover on an alarm) and Hermes.
+      look: async (person, text) => {
+        const v = await view(person);
+        const grants = narrow(v?.scopes ?? [], SCOPES.filter((s) => s !== "home" && s !== "hermes"));
+        return lookUp(await this.personEnv(env, person), text, grants, AbortSignal.timeout(90_000));
+      },
+    };
   }
 
   /* ---------- the family's messages (lib/relays.ts, lib/chat.ts) ------------------- */
@@ -474,12 +527,17 @@ export class JarvisState extends DurableObject<Env> {
     return this.panels.list(person);
   }
 
-  panelSet(person: string, title: string, items: PanelItem[], mode: "add" | "replace") {
-    return this.panels.set(person, title, items, mode);
+  // A tile kept fresh with Home closed wakes the alarm (lib/panels.ts refresh).
+  async panelSet(person: string, title: string, items: PanelItem[], mode: "add" | "replace") {
+    const p = await this.panels.set(person, title, items, mode);
+    await this.rearm();
+    return p;
   }
 
-  panelRemove(person: string, title: string, item: string | null) {
-    return this.panels.remove(person, title, item);
+  async panelRemove(person: string, title: string, item: string | null) {
+    const left = await this.panels.remove(person, title, item);
+    await this.rearm();
+    return left;
   }
 
   panelOrder(person: string, ids: string[]) {
@@ -515,6 +573,70 @@ export class JarvisState extends DurableObject<Env> {
   }
 
   /* ---------- each person's conversation with Jarvis (lib/conversation.ts) ------- */
+
+  /* ---------- pictures Jarvis made (lib/images.ts) ---------------------------------- */
+
+  imagePut(person: string, img: Pick<StoredImage, "mime" | "data" | "prompt">, now: number) {
+    return this.images.put(person, img, now);
+  }
+
+  imageGet(person: string, id: string, now: number) {
+    return this.images.get(person, id, now);
+  }
+
+  pagePut(person: string, page: Pick<StoredPage, "title" | "subtitle" | "sections">, now: number) {
+    return this.pages.put(person, page, now);
+  }
+
+  pageMine(person: string, id: string, now: number) {
+    return this.pages.mine(person, id, now);
+  }
+
+  pageView(person: string, id: string, now: number) {
+    return this.pages.viewToken(person, id, now);
+  }
+
+  pageShare(person: string, id: string, now: number) {
+    return this.pages.share(person, id, now);
+  }
+
+  pageUnshare(person: string, id: string, now: number) {
+    return this.pages.unshare(person, id, now);
+  }
+
+  pageOpen(id: string, token: string, now: number) {
+    return this.pages.open(id, token, now);
+  }
+
+  specialtiesOf(person: string) {
+    return this.specialties.of(person);
+  }
+
+  specialtySave(person: string, input: { name: unknown; when: unknown; steps: unknown; why?: unknown }, now: number) {
+    return this.specialties.save(person, input, now);
+  }
+
+  specialtyForget(person: string, which: string) {
+    return this.specialties.forget(person, which);
+  }
+
+  episodesOf(person: string, now: number) {
+    return this.episodes.of(person, now);
+  }
+
+  episodeAdd(person: string, e: Omit<Episode, "at" | "keys" | "seen">, now: number) {
+    return this.episodes.add(person, e, now);
+  }
+
+  episodeForget(person: string, id: string) {
+    return this.episodes.forget(person, id);
+  }
+
+  /** What the router is given beside the question (lib/router.ts): the specialty it asks for, and past attempts like it. One call, so the question waits on one. */
+  async recallFor(person: string, ask: string) {
+    const [specialty, past] = await Promise.all([this.specialties.match(person, ask), this.episodes.match(person, ask, Date.now())]);
+    return { specialty, past };
+  }
 
   conversationOf(person: string, now: number) {
     return this.conversation.list(person, now);
@@ -557,6 +679,9 @@ export class JarvisState extends DurableObject<Env> {
   /** Cleared on every open screen of theirs too, not only the one it was cleared on. */
   async conversationClear(person: string) {
     await this.conversation.clear(person);
+    // The pictures and pages made in it go with it (lib/images.ts, lib/pages.ts).
+    await this.images.clear(person);
+    await this.pages.clear(person);
     this.hub.tell(this.sockets(), person, { type: "conversation.cleared" });
   }
 
@@ -566,11 +691,15 @@ export class JarvisState extends DurableObject<Env> {
     return this.jobs.list();
   }
 
+  jobTable(id: string) {
+    return this.jobs.table(id);
+  }
+
   getJob(id: string) {
     return this.jobs.get(id);
   }
 
-  async createJob(input: { title?: unknown; task?: unknown; engine?: unknown; team?: unknown; from?: unknown }, by: { who: string; grants: readonly Grant[] }) {
+  async createJob(input: { title?: unknown; task?: unknown; engine?: unknown; team?: unknown; from?: unknown; table?: unknown }, by: { who: string; grants: readonly Grant[] }) {
     const j = await this.jobs.create(input, by);
     await this.rearm();
     return j;
@@ -640,6 +769,10 @@ export class JarvisState extends DurableObject<Env> {
     return r;
   }
 
+  routineRuns(id: string) {
+    return this.scheduler.runs(id);
+  }
+
   async fireEvent(event: string, data?: string, only?: string) {
     const started = await this.scheduler.fireEvent(event, data, Date.now(), only);
     if (started.length) await this.rearm();
@@ -693,8 +826,17 @@ export class JarvisState extends DurableObject<Env> {
     return this.host.recentShared(origin, now, book);
   }
 
-  recordUsage(e: UsageEntry, day: string) {
-    return this.host.recordUsage(e, day);
+  async recordUsage(e: UsageEntry, day: string) {
+    await this.host.recordUsage(e, day);
+    // The month's budget (USAGE_BUDGET, Settings → OpenAI): told at 80% and at 100%, once each a month; nothing is stopped.
+    if (!costOf(e)) return;
+    const env = await this.localEnv();
+    const budget = budgetOf(env.USAGE_BUDGET);
+    if (!budget) return;
+    const crossed = await this.host.budgetCrossed(day, budget);
+    if (!crossed) return;
+    const alert = makeAlert({ title: "Usage budget", text: budgetSays(crossed.step, crossed.spent, budget, day.slice(0, 7)), speak: false }, "note", Date.now(), OWNER);
+    if (alert) await deliver(env, this, alert, { skipLive: true }).catch(() => {});
   }
 
   usageReport(today: string, person?: string) {

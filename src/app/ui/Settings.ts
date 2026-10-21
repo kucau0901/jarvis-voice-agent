@@ -5,12 +5,13 @@ import { LOUDNESS, loudness, setLoudness, type Loudness } from "../loud";
 import { speakText } from "../alerts";
 import { SectionMenu, type NavGroup } from "./sections";
 import { ChatGptPlan } from "./ChatGptPlan";
+import { exportSection } from "./Export";
 
 /** The settings menu: groups, and the sections in each, by id. */
 const NAV: NavGroup[] = [
   ["Connections", ["chatgpt", "openai", "car", "home", "hermes", "google", "spotify", "maps", "cameras", "mcp"]],
   ["How Jarvis behaves", ["router", "voice", "screen", "alerts", "locale"]],
-  ["Access and advanced", ["usage", "owner", "devices", "advanced"]],
+  ["Access and advanced", ["usage", "owner", "devices", "export", "advanced"]],
 ];
 const SECTION_KEY = "jarvis.settings.section";
 const LOUD_LABEL: Record<Loudness, string> = { normal: "Normal", louder: "Louder", loudest: "Loudest" };
@@ -27,6 +28,8 @@ interface UsageView {
   pricesAsOf: string;
   /** Each person's part of the month: "owner" is the first person (lib/context.ts). */
   byPerson?: Record<string, { questions: number; cost: { router: number; live: number; jobs: number } }>;
+  /** The month's budget in US dollars (Settings → OpenAI), for those who see everyone's; null for none. */
+  budget?: number | null;
 }
 
 /** Dollars as the panel says them: small amounts are the usual case. */
@@ -178,6 +181,7 @@ export class Settings {
     );
     this.plan = new ChatGptPlan(key, () => this.buildNav());
     this.el.querySelector(".setbody")!.prepend(this.plan.el);
+    this.el.querySelector(".setbody")!.append(exportSection(key));
     this.renderLoud();
     this.el.querySelector(".hear")!.addEventListener("click", () => void this.hearLoud());
     this.buildNav();
@@ -272,6 +276,11 @@ export class Settings {
       if (t.jobs) parts.push(`${money(t.cost.jobs)} in ${t.jobs} job${t.jobs === 1 ? "" : "s"}`);
       line("Cost so far:", `about ${money(cost)}: ${parts.join(", ")}.` +
         (t.unpriced ? ` Plus ${t.unpriced.toLocaleString()} tokens from a model with no listed price.` : ""));
+      if (u.budget) {
+        const [y, m] = u.month.split("-").map(Number);
+        const resets = new Date(y!, m!, 1).toLocaleDateString([], { day: "numeric", month: "long" });
+        line("Budget:", `${Math.floor((100 * cost) / u.budget)}% of ${money(u.budget)} used; it resets on ${resets}. You are told at 80% and at 100%.`);
+      }
       // With a family, each person's part, by name.
       const people = Object.entries(u.byPerson ?? {});
       if (people.length > 1 || (people.length === 1 && people[0]![0] !== "owner")) {
@@ -284,7 +293,7 @@ export class Settings {
       }
       const d = u.today;
       line("Today:", `${d.questions} question${d.questions === 1 ? "" : "s"}, about ${money(d.cost.router + d.cost.live + d.cost.jobs)}.`);
-      if (u.medianMs !== null) line("Typical answer:", `${(u.medianMs / 1000).toFixed(1)} s, over the last ${u.recent.filter((e) => e.seconds === undefined && e.surface !== "job").length} questions.`);
+      if (u.medianMs !== null) line("Typical answer:", `${(u.medianMs / 1000).toFixed(1)} s, over the last ${u.recent.filter((e) => e.seconds === undefined && e.surface !== "job" && e.surface !== "image").length} questions.`);
       if (u.slowest.length) {
         lines.push(node("h4", "Slowest recently"));
         const ul = node("ul", "");

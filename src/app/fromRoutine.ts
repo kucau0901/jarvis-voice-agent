@@ -9,11 +9,19 @@ import { button, el } from "./ui/util";
  * whichever tab is up; said while it was closed, it is in the conversation
  * kept for you (conversation.ts), which the server adds it to. Each is shown
  * once.
+ *
+ * A background job asked for in typed chat (start_job, ask_hermes) gets the
+ * same pill at once, "On it — " and its title, still working. When its result
+ * comes, that pill moves down to it and takes the result's name; pressed, the
+ * job opens in Jobs.
  */
 
 export type RoutineSaid = Pick<Alert, "id" | "at" | "title" | "text"> & { routine: string };
+export type JobSaid = Pick<Alert, "id" | "at" | "title" | "text"> & { job: string };
 
 const shown = new Set<string>();
+/** Jobs started from this screen and not back yet: their pills, by job id. */
+const working = new Map<string, HTMLElement>();
 
 /** When it was said: the time today, the day too before then (a kept one may be weeks old). */
 const when = (at: number) =>
@@ -21,14 +29,59 @@ const when = (at: number) =>
     ? new Date(at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
     : new Date(at).toLocaleString([], { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
 
+/** A pill on the asking side, hooked to what is under it. */
+function pillRow(label: string, small: string, onPress: () => void, cls: string, aria: string): HTMLElement {
+  const row = el("div", "row you from");
+  const pill = button("", onPress, cls);
+  pill.append(el("span", "", label), el("small", "", small));
+  pill.setAttribute("aria-label", aria);
+  row.append(el("span", "hook"), pill);
+  return row;
+}
+
 /** The pill naming the routine, or null when this one is in the conversation already. */
 export function fromRoutine(a: RoutineSaid, open: (id: string) => void): HTMLElement | null {
   if (shown.has(a.id)) return null;
   shown.add(a.id);
-  const row = el("div", "row you from");
-  const pill = button("", () => open(a.routine), "frompill");
-  pill.append(el("span", "", a.title), el("small", "", when(a.at)));
-  pill.setAttribute("aria-label", `${a.title}, a routine: open it`);
-  row.append(el("span", "hook"), pill);
+  return pillRow(a.title, when(a.at), () => open(a.routine), "frompill", `${a.title}, a routine: open it`);
+}
+
+/** A job just started from this screen: its pill, working, until the result comes (fromJob). */
+export function jobStarted(j: { id: string; title: string }, open: (id: string) => void): HTMLElement {
+  const row = pillRow(`On it — ${j.title}`, "working", () => open(j.id), "frompill job working", `${j.title}, a job still working: open it in Jobs`);
+  working.set(j.id, row);
+  return row;
+}
+
+/**
+ * Jobs as Jobs lists them (ui/Jobs.ts): a pill whose job was cancelled, so no
+ * result will come to it, stops saying it is working. One not listed is left
+ * as it is: a screen on a device token is not shown the jobs its chat starts.
+ */
+export function jobsSeen(jobs: { id: string; title: string; status: string }[]): void {
+  for (const j of jobs) {
+    const row = working.get(j.id);
+    if (!row || j.status !== "cancelled") continue;
+    working.delete(j.id);
+    const pill = row.querySelector<HTMLElement>(".frompill")!;
+    pill.classList.remove("working");
+    pill.querySelector("span")!.textContent = j.title;
+    pill.querySelector("small")!.textContent = "cancelled";
+    pill.setAttribute("aria-label", `${j.title}, a job cancelled: open it in Jobs`);
+  }
+}
+
+/** What a job came back with: its pill, taken from where it was started if it was here, named by the result; null when shown already. */
+export function fromJob(a: JobSaid, open: (id: string) => void): HTMLElement | null {
+  if (shown.has(a.id)) return null;
+  shown.add(a.id);
+  const row = working.get(a.job);
+  working.delete(a.job);
+  if (!row) return pillRow(a.title, when(a.at), () => open(a.job), "frompill job", `${a.title}, a job: open it in Jobs`);
+  const pill = row.querySelector<HTMLElement>(".frompill")!;
+  pill.classList.remove("working");
+  pill.querySelector("span")!.textContent = a.title;
+  pill.querySelector("small")!.textContent = when(a.at);
+  pill.setAttribute("aria-label", `${a.title}, a job: open it in Jobs`);
   return row;
 }

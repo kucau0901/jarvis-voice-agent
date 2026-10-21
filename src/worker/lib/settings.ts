@@ -251,6 +251,12 @@ export const SETTINGS: readonly SettingDef[] = [
     validate: intIn(0, 200),
   },
   {
+    name: "USAGE_BUDGET", group: "openai", kind: "number",
+    label: "Monthly budget (US dollars)",
+    help: "What Jarvis may cost a month at OpenAI's published prices, as Settings → Usage and cost counts it. You are told at 80% and again at 100%, once each a month; nothing is stopped. Answers on your ChatGPT plan or by Home Assistant count as nothing. Empty for no budget.",
+    validate: intIn(1, 100_000),
+  },
+  {
     name: "OPENAI_API_KEY", group: "openai", kind: "secret",
     label: "API key",
     help: "Starts with sk-. Not needed with your ChatGPT plan connected, except for live voice, which only a key can run; with both, the plan is used first.",
@@ -338,6 +344,16 @@ export const SETTINGS: readonly SettingDef[] = [
     label: "OAuth client secret", help: "Shown next to the client ID in Google Cloud.",
     validate: all(noSpaces, minLen(16)),
   },
+  {
+    name: "MAIL_DRAFT_FIRST", group: "google", kind: "bool", default: "0",
+    label: "Draft first",
+    help: "Jarvis only drafts mail, in your name: a card with Send shows it on your screen, and it goes only when you tap Send. Asked from a device with no screen, it waits in Gmail's Drafts.",
+  },
+  {
+    name: "MAIL_FOOTER", group: "google", kind: "text",
+    label: "Footer on mail Jarvis writes", help: "Added under every email Jarvis writes for you, e.g. Written with Jarvis, my AI assistant. Empty for none.",
+    validate: (v) => (v.length <= 200 ? null : "keep it under 200 characters"),
+  },
 
   // --- Spotify
   {
@@ -405,8 +421,13 @@ export const SETTINGS: readonly SettingDef[] = [
   },
   {
     name: "TELEGRAM_CHAT_ID", group: "alerts", kind: "text",
-    label: "Telegram chat ID", help: "Send your bot a message, then open api.telegram.org/bot<token>/getUpdates and copy chat.id.",
+    label: "Telegram chat ID", help: "With Ask Jarvis on Telegram on, send your bot a message and it tells you this number; otherwise open api.telegram.org/bot<token>/getUpdates and copy chat.id.",
     validate: (v) => (/^-?\d{3,20}$/.test(v) ? null : "is a number, negative for a group"),
+  },
+  {
+    name: "TELEGRAM_ASK", group: "alerts", kind: "bool", default: "0",
+    label: "Ask Jarvis on Telegram",
+    help: "Messages to your bot are answered, as Jarvis, for whoever sent them: only from a private chat someone gave in Family → You → Telegram (anyone else is told their number). Not Hermes, nothing on a screen. Saving sets the bot to send its messages here, so getUpdates stops working for it.",
   },
   {
     name: "NTFY_URL", group: "alerts", kind: "secret",
@@ -539,6 +560,8 @@ export const NOT_SETTINGS: Readonly<Record<string, string>> = {
   JARVIS_SHARED_SECRET: "the owner key: deploy-time only, so login never depends on storage",
   JARVIS_PERSON: "per request: whose data (lib/context.ts)",
   JARVIS_PERSON_NAME: "per request: who is asking (lib/context.ts)",
+  JARVIS_PERSON_NICKNAME: "per request: what they like to be called (lib/context.ts)",
+  JARVIS_PERSON_BIRTHDAY: "per request: their birthday (lib/context.ts)",
   JARVIS_AGENT_NAME: "per request: the family's name for the assistant (lib/context.ts)",
   JARVIS_FAMILY: "per request: the family's shared memory (lib/context.ts)",
   JARVIS_CARS: "per request: the cars this person may reach (lib/context.ts)",

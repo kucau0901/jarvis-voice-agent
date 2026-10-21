@@ -27,6 +27,8 @@ const routineAdd: Tool = {
     "Something every day or on some weekdays ('every weekday at 7:30 tell me my first " +
     "meeting and the traffic to work'): when=daily with time and days; use ask when the " +
     "answer has to be looked up at the time, say when it is a fixed message. " +
+    "What daily cannot say ('at 8 and at 12', 'every 6 hours', 'on the 1st of every month'): " +
+    "when=cron with cron, five fields in the user's zone (minute hour day month weekday), at most hourly. " +
     "Warnings about when to set off for calendar events ('tell me when to leave for my " +
     "appointments'): when=leave. " +
     "Something to do when another system sends an event ('when I get home, remind me to take " +
@@ -47,12 +49,15 @@ const routineAdd: Tool = {
     "if she is well': pass_kind ask, escalate true), medicine ('at eight and eight remind Grandpa " +
     "to take his tablets': escalate true). say is then the words for them; escalate tells the whole " +
     "family if it goes unanswered for an hour. " +
+    "When the user wants to hear only if something turns up ('every morning, tell me only if there is " +
+    "urgent email', 'check the news and only tell me if there is a storm warning'), use ask with " +
+    "notify=if-important: a run with nothing worth saying sends nothing, and Routines shows it ran. " +
     "Afterwards read back what was set and when it will next happen.",
   parameters: {
     type: "object",
     properties: {
       name: { type: ["string", "null"], description: "A few words to title it by. Null to use the message." },
-      when: { type: "string", enum: ["once", "daily", "event", "leave", "watch"] },
+      when: { type: "string", enum: ["once", "daily", "cron", "event", "leave", "watch"] },
       local_time: {
         type: ["string", "null"],
         description: "once: the user's local date and time, YYYY-MM-DDTHH:MM, from RIGHT NOW in the instructions.",
@@ -63,6 +68,10 @@ const routineAdd: Tool = {
         type: ["array", "null"],
         items: { type: "string", enum: DAYS },
         description: "daily: which days. Null for every day.",
+      },
+      cron: {
+        type: ["string", "null"],
+        description: "cron: minute hour day month weekday, e.g. '0 8,12 * * *' or '0 9 1 * *'. One number for the minute. Only when daily cannot say it.",
       },
       event: { type: ["string", "null"], description: "event: its name, lower case, e.g. arrived_home." },
       buffer_min: { type: ["integer", "null"], description: "leave: minutes to spare on top of the drive. Null for 10." },
@@ -75,6 +84,10 @@ const routineAdd: Tool = {
       ask: {
         type: ["string", "null"],
         description: "A request for Jarvis to carry out at the time, with the answer sent to the user.",
+      },
+      notify: {
+        type: ["string", "null"],
+        description: "With ask: \"if-important\" to send the answer only when something deserves attention; null or \"always\" to send it every time.",
       },
       pass_to: {
         type: ["array", "null"],
@@ -89,7 +102,7 @@ const routineAdd: Tool = {
         description: "With pass_to: how long they have to answer before the user (or family) is told; nudged halfway. Null for the family's usual (an hour). Medicine might be 20.",
       },
     },
-    required: ["name", "when", "local_time", "in_minutes", "time", "days", "event", "buffer_min", "condition", "for_minutes", "say", "ask", "pass_to", "pass_kind", "points", "escalate", "answer_within_minutes"],
+    required: ["name", "when", "local_time", "in_minutes", "time", "days", "cron", "event", "buffer_min", "condition", "for_minutes", "say", "ask", "notify", "pass_to", "pass_kind", "points", "escalate", "answer_within_minutes"],
     additionalProperties: false,
   },
   async run(args, ctx) {
@@ -103,12 +116,14 @@ const routineAdd: Tool = {
         inMinutes: args.in_minutes,
         time: args.time,
         days: args.days,
+        cron: args.cron,
         event: args.event,
         bufferMin: args.buffer_min,
         condition: args.condition,
         forMinutes: args.for_minutes,
         say: args.say,
         ask: args.ask,
+        notify: args.notify,
         ...(Array.isArray(args.pass_to) && args.pass_to.length
           ? { passTo: args.pass_to, passKind: args.pass_kind, points: args.points, escalate: args.escalate, answerMin: args.answer_within_minutes }
           : {}),
@@ -127,7 +142,9 @@ const routineAdd: Tool = {
             : "";
     return r.action.kind === "relay"
       ? `Set up: ${said(r, tz)}${extra} Each time, it reaches them on their own screens and phone, and what they say comes back to the user.`
-      : `Set up: ${said(r, tz)}${extra} It will reach the user as an alert.`;
+      : r.action.kind === "ask" && r.action.notify === "if-important"
+        ? `Set up: ${said(r, tz)}${extra} It will reach the user as an alert only when there is something worth telling.`
+        : `Set up: ${said(r, tz)}${extra} It will reach the user as an alert.`;
   },
 };
 

@@ -13,6 +13,7 @@ import type { AttachedFile } from "./photos.ts";
 import type { EventSink } from "./sse.ts";
 import type { Turn } from "./history.ts";
 import { baseTools, outputText, toToolSchema, type Tool, type ToolContext, type ToolOutput } from "../tools/registry.ts";
+import type { DraftCard } from "./mail-draft.ts";
 import { mcpSessions, mcpTools } from "../tools/mcp.ts";
 import { assistConfig, lastAsk, tryAssist } from "./assist.ts";
 import { routerLoop } from "./router-loop.ts";
@@ -20,9 +21,14 @@ import { recordUsage } from "../routes/usage.ts";
 import { sharedBlock, type Origin, type SharedTurn } from "./shared.ts";
 import { stateStub } from "./state-client.ts";
 import { memoryFor, type MemoryStore } from "./memory.ts";
-import { bookOf } from "./context.ts";
+import { bookOf, OWNER } from "./context.ts";
+import { specialtyBlock } from "./specialties.ts";
+import { episodeOfChain, pastBlock } from "./episodes.ts";
+import { localeOf } from "./locale.ts";
 import { allows, type Grant } from "./scopes.ts";
 import { DRAWS_ON_SCREEN } from "../tools/place.ts";
+import { isResearchCap, jobTool } from "./jobs.ts";
+import { Collector } from "./collector.ts";
 import { clientFor, forKey, forPlan, modelAuth, planFailed, planRespond, refusalOf } from "./openai-auth.ts";
 import { DEFAULT_CHAR_BUDGET, glassesInstructions } from "./glasses.ts";
 import { spokenReplyInstructions } from "./prompt.ts";
@@ -69,6 +75,8 @@ export interface RunOptions {
   charBudget?: number;
   /** For a routine: its name, so the answer knows what it is answering. */
   routineName?: string;
+  /** For a routine: say NOTHING, and nothing is sent, when nothing deserves attention (lib/scheduler.ts). */
+  routineIfImportant?: boolean;
   /**
    * Photos the user just took and is asking about (data: URLs). They go to the
    * router beside the conversation, so it can look and use tools on what it
@@ -145,7 +153,11 @@ export async function prepareRouter(
   const shares = !!opts.origin && allows(grants, "memory.read");
   // The family, and what is waiting for this person to answer (lib/relays.ts), when they talk with the family.
   const talks = !!env.JARVIS_FAMILY && allows(grants, "chat");
-  const [, mcp, chosen, shared, family] = await Promise.all([
+  // A specialty the question asks for (lib/specialties.ts), and past attempts like it (lib/episodes.ts):
+  // by words, in the same wait as the rest, for those whose memory it is.
+  const asked = lastAsk(turns);
+  const recalls = !!asked && allows(grants, "memory.read");
+  const [, mcp, chosen, shared, family, recalled] = await Promise.all([
     memory.load().catch((e) => {
       console.warn("memory unavailable:", e instanceof Error ? e.message : String(e));
     }),
@@ -158,6 +170,7 @@ export async function prepareRouter(
       ? (stateStub(env)?.recentShared(opts.origin!.id, Date.now(), bookOf(env.JARVIS_PERSON)) ?? Promise.resolve([] as SharedTurn[])).catch(() => [] as SharedTurn[])
       : Promise.resolve([] as SharedTurn[]),
     talks ? familyBlock(env).catch(() => "") : Promise.resolve(""),
+    recalls ? (stateStub(env)?.recallFor(env.JARVIS_PERSON || OWNER, asked!) ?? Promise.resolve(null)).catch(() => null) : Promise.resolve(null),
   ]);
   const elsewhere = [sharedBlock(shared, Date.now()), family].filter(Boolean).join("\n\n");
   tools.push(...mcp);
@@ -214,7 +227,13 @@ export async function prepareRouter(
         `The user set this up to run by itself${opts.routineName ? ` ("${opts.routineName.replace(/"/g, "'")}")` : ""}. ` +
         "Nobody is listening right now and nobody can answer a question back. Do what it " +
         "asks, then write the result as one short message to the user: it is sent as a " +
-        "notification or read aloud. No greeting, no questions, no offers of more help."
+        "notification or read aloud. No greeting, no questions, no offers of more help." +
+        // In English capitals whatever the language: the answer's language follows the user's, and "Tiada" would be sent.
+        (opts.routineIfImportant
+          ? " Only tell the user if something deserves their attention. If nothing does (nothing new, nothing out of the " +
+            "ordinary), reply with exactly NOTHING, in English capitals whatever language you would otherwise answer in, " +
+            "and nothing else: it is then not sent."
+          : "")
       : "");
   const byName = new Map(tools.map((t) => [t.name, t]));
 
@@ -252,6 +271,10 @@ export async function prepareRouter(
     },
     { role: "developer" as const, content: context },
     ...(profile ? [{ role: "user" as const, content: profile }] : []),
+    // The user's own approved way, to follow if it fits: theirs, so a user message, as the profile is.
+    ...(recalled?.specialty ? [{ role: "user" as const, content: specialtyBlock(recalled.specialty) }] : []),
+    // What happened before, quoted as data: it can carry what a site or a tool said.
+    ...(recalled?.past?.length ? [{ role: "user" as const, content: pastBlock(recalled.past, localeOf(env).timeZone) }] : []),
     // What was said, like the profile: a user message, never an instruction.
     ...(elsewhere ? [{ role: "user" as const, content: elsewhere }] : []),
     { role: "user" as const, content: `Conversation so far:\n\n${conversation}` },
@@ -276,6 +299,20 @@ export async function prepareRouter(
   return { client, model, instructions, input, tools, byName, memory };
 }
 
+/**
+ * What the person themselves said in their latest message, for what only they
+ * may ask for (tools/specialties.ts): none in a routine, whose question its
+ * maker set long ago and whose event carries others' words; in the family
+ * room their own message, not the room around it (assistAsk); and never an
+ * earlier answer quoted in a reply (src/app/reply.ts).
+ */
+export function ownWords(turns: Turn[], opts: Pick<RunOptions, "surface" | "assistAsk">): string | undefined {
+  if (opts.surface === "routine") return undefined;
+  const said = opts.assistAsk ?? lastAsk(turns) ?? "";
+  const reply = /^\(Replying to this answer of yours: "[\s\S]*?"\)\n/.exec(said);
+  return (reply ? said.slice(reply[0].length) : said).trim() || undefined;
+}
+
 /** What the router is told of photos and files that came with the latest message. */
 function attachedSaid(opts: RunOptions): string {
   const n = (opts.images?.length ?? 0) + (opts.files?.length ?? 0);
@@ -285,6 +322,17 @@ function attachedSaid(opts: RunOptions): string {
       : "The user took these photos just now, with their phone, and their latest message is about them.";
   }
   return n === 1 ? "The user attached this to their latest message, which is about it." : "The user attached these to their latest message, which is about them.";
+}
+
+/**
+ * A reading for a panel's tile, asked with nobody pressing anything: with
+ * reading tools only, as a background job has (lib/jobs.ts jobTool). Its
+ * words. For Home (routes/panels.ts) and the alarm (lib/panels.ts refresh).
+ */
+export async function lookUp(env: Env, text: string, grants: readonly Grant[], signal: AbortSignal): Promise<string> {
+  const sink = new Collector();
+  await run(env, [{ role: "user", text }], sink, signal, grants, { surface: "chat", assist: true, toolFilter: jobTool });
+  return sink.finish().text;
 }
 
 export async function run(
@@ -314,6 +362,7 @@ export async function run(
   // exchange, and keeps doing so on the key after falling back mid-question.
   let carried: OpenAI.Responses.ResponseInput | null = plan ? [] : null;
   let lastOutput: OpenAI.Responses.ResponseInput = [];
+  const failed: { tool: string; said: string }[] = [];
   const onPlanHop = async (model: string, input: OpenAI.Responses.ResponseInput) => {
     const ask = (withEffort: boolean) =>
       planRespond(plan!.client, {
@@ -394,13 +443,25 @@ export async function run(
       if (carried) lastOutput = forKey(res.output as unknown as OpenAI.Responses.ResponseInput);
       return res;
     },
-    runCalls: (calls) =>
-      runCalls(calls as OpenAI.Responses.ResponseFunctionToolCall[], p!.byName, { env, signal, memory: p!.memory, grants, offered: [...p!.byName.keys()] }, sse),
+    runCalls: async (calls) => {
+      const out = await runCalls(calls as OpenAI.Responses.ResponseFunctionToolCall[], p!.byName, { env, signal, memory: p!.memory, grants, offered: [...p!.byName.keys()], asked: ownWords(turns, opts), screenless: opts.screenless === true }, sse);
+      // Tools that failed, for a past attempt (lib/episodes.ts): what callTool says when one throws.
+      out.forEach((o, i) => {
+        const said = "output" in o && typeof o.output === "string" ? o.output : "";
+        if (said.startsWith("That failed:")) failed.push({ tool: (calls[i] as { name: string }).name, said });
+      });
+      return out;
+    },
     close: () => sessions.close(),
     // Settings → Usage: after the answer, where the request allows, so the
     // glasses and push-to-talk do not wait on the write.
     record(r) {
       const writes: Promise<void>[] = [];
+      // A question whose tools failed is remembered, so the next like it knows (lib/episodes.ts).
+      const tried = lastAsk(turns);
+      if (failed.length && tried && allows(grants, "memory.read")) {
+        writes.push((stateStub(env)?.episodeAdd(env.JARVIS_PERSON || OWNER, episodeOfChain(tried, failed), Date.now()) ?? Promise.resolve()).catch(() => {}));
+      }
       // One conversation across devices (lib/shared.ts): what was asked here, and answered.
       const asked = lastAsk(turns);
       if (opts.origin && allows(grants, "memory.read") && r.ok && asked) {
@@ -454,19 +515,24 @@ export async function run(
 export async function runCalls(
   calls: OpenAI.Responses.ResponseFunctionToolCall[],
   byName: Map<string, Tool>,
-  base: { env: Env; signal: AbortSignal; memory: MemoryStore; grants: readonly Grant[]; offered?: readonly string[] },
+  { screenless, ...base }: { env: Env; signal: AbortSignal; memory: MemoryStore; grants: readonly Grant[]; offered?: readonly string[]; asked?: string; screenless?: boolean },
   sse: EventSink,
 ): Promise<OpenAI.Responses.ResponseInput> {
   return Promise.all(
     calls.map(async (call) => {
       const tool = byName.get(call.name);
-      sse.send({ type: "tool", name: call.name, phase: "start" });
+      // The call's id rides along, and on its progress notes, so typed chat can
+      // keep one status pill per call when two run at once (src/app/steps.ts).
+      sse.send({ type: "tool", name: call.name, id: call.call_id, phase: "start" });
 
       const output = tool
         ? await callTool(tool, call.arguments, {
           ...base,
-          progress: (t) => sse.send({ type: "progress", text: t }),
+          progress: (t) => sse.send({ type: "progress", text: t, name: call.name, id: call.call_id }),
           display: (payload) => sse.send({ type: "display", ...payload }),
+          started: (job) => sse.send({ type: "job", ...job }),
+          // A draft's card only where a screen will draw it (src/app/draft.ts): otherwise it waits in Drafts.
+          ...(screenless ? {} : { drafted: (d: DraftCard) => sse.send({ type: "draft", ...d }) }),
         }, sse)
         : `No such tool: ${call.name}`;
 
@@ -476,10 +542,13 @@ export async function runCalls(
       sse.send({
         type: "tool",
         name: call.name,
+        id: call.call_id,
         phase: "done",
         args: call.arguments.slice(0, 300),
         preview: outputText(output).slice(0, 400),
         ...(typeof output === "string" ? {} : { images: output.images.length }),
+        // A month's research used up is a limit, which typed chat shows as one (src/app/chat.ts).
+        ...(call.name === "start_job" && isResearchCap(outputText(output)) ? { limit: /switched off/.test(outputText(output)) ? "research-off" : "research" } : {}),
       });
 
       return {
@@ -522,7 +591,7 @@ async function callTool(
   const ladder = tool.pace === "slow" ? WAITING_SLOW : WAITING_FAST;
   const timers = ladder.map((w) =>
     setTimeout(() => {
-      if (!sse.isClosed) sse.send({ type: "progress", text: w.say });
+      if (!sse.isClosed) ctx.progress(w.say);
     }, w.after),
   );
 

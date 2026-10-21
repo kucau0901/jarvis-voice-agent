@@ -2,7 +2,7 @@
  * Ashima's 3D simplex noise (MIT). Used for surface displacement; cheap enough
  * to run per-vertex on a 20k-triangle sphere in an in-car GPU budget.
  */
-const SIMPLEX = /* glsl */ `
+export const SIMPLEX = /* glsl */ `
 vec3 mod289(vec3 x){return x-floor(x*(1.0/289.0))*289.0;}
 vec4 mod289(vec4 x){return x-floor(x*(1.0/289.0))*289.0;}
 vec4 permute(vec4 x){return mod289(((x*34.0)+1.0)*x);}
@@ -262,3 +262,45 @@ void main() {
   c = mix(c, uSpeak, clamp(uAgent * 1.6, 0.0, 1.0));
   gl_FragColor = vec4(c, clamp(a, 0.0, 1.0));
 }`;
+
+/**
+ * The sky behind the app (Sky.ts): a full-screen gradient in Tesla's colours,
+ * warmed at the horizon by a low sun, slow clouds from simplex noise, a fall
+ * of rain, and haze that greys it. Cheap: a few noise calls a pixel, at a
+ * fraction of the screen's resolution, ten frames a second.
+ */
+export const SKY_VERT = /* glsl */ `
+varying vec2 vUv;
+void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }
+`;
+
+export const SKY_FRAG = /* glsl */ `
+precision mediump float;
+uniform float uTime;
+uniform float uSun;
+uniform float uCloud;
+uniform float uRain;
+uniform float uHaze;
+uniform vec3 uTop;
+uniform vec3 uBottom;
+varying vec2 vUv;
+${SIMPLEX}
+void main() {
+  vec3 col = mix(uBottom, uTop, smoothstep(0.0, 1.0, vUv.y));
+  // A low sun warms the horizon, a little; high or set, none.
+  float low = exp(-pow(uSun * 4.0, 2.0)) * smoothstep(-0.3, 0.1, uSun);
+  col = mix(col, vec3(0.93, 0.55, 0.35), low * 0.22 * (1.0 - vUv.y));
+  // Clouds drift slowly across the upper sky.
+  vec2 p = vec2(vUv.x * 3.0 + uTime * 0.01, vUv.y * 1.6);
+  float n = 0.5 + 0.5 * snoise(vec3(p, uTime * 0.02));
+  n = 0.6 * n + 0.4 * (0.5 + 0.5 * snoise(vec3(p * 2.3, uTime * 0.03)));
+  float cloud = smoothstep(1.0 - uCloud, 1.05, n) * uCloud * smoothstep(0.15, 0.9, vUv.y);
+  col = mix(col, mix(uTop, vec3(0.62), 0.5), cloud * 0.5);
+  // Rain: thin streaks falling.
+  float streak = step(0.985, fract(sin(floor(vUv.x * 180.0) * 43758.5453))) * fract(vUv.y * 6.0 + uTime * 1.5);
+  col = mix(col, vec3(0.75), streak * uRain * 0.18);
+  // Haze greys and browns it.
+  col = mix(col, vec3(0.62, 0.58, 0.52), uHaze * 0.35);
+  gl_FragColor = vec4(col, 1.0);
+}
+`;

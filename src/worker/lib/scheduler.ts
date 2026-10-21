@@ -8,14 +8,15 @@ import {
   MAX_WATCHES,
   buildRoutine,
   makeRoutine,
-  nextDaily,
   nextRun,
   whenSaid,
   type Routine,
   type RoutineInput,
+  type RunEntry,
   type RunRecord,
   type WatchState,
 } from "./routines.ts";
+import { tidy } from "./quote.ts";
 import { truthy } from "./ha.ts";
 import {
   FRESH_MS,
@@ -68,6 +69,13 @@ export interface SchedulerDeps {
 }
 
 const R = "routine:";
+/**
+ * Each routine's past runs, newest first, for Routines → Past runs: beside
+ * the routine, not in it, whose stored shape (and lastRun, which the API
+ * returns) stays as it was. Not under "routine:", which list() reads.
+ */
+const RUNS = "runs:";
+const MAX_RUNS = 20;
 const PLANS = "leave:plans";
 const SCAN_AT = "leave:scanAt";
 /**
@@ -193,10 +201,16 @@ export class Scheduler {
     return r;
   }
 
+  /** A routine's past runs, newest first (RUNS). */
+  async runs(id: string): Promise<RunEntry[]> {
+    return (await this.storage.get<RunEntry[]>(RUNS + id)) ?? [];
+  }
+
   async remove(id: string): Promise<boolean> {
     const r = await this.get(id);
     if (!r) return false;
     await this.storage.delete(R + id);
+    await this.storage.delete(RUNS + id);
     if (r.trigger.kind === "leave") {
       await this.storage.delete(plansKey(r.createdBy));
       await this.storage.delete(scanKey(r.createdBy));
@@ -319,8 +333,8 @@ export class Scheduler {
     const dueAt = r.nextAt;
     const late = now - dueAt;
     const t = r.trigger;
-    if (t.kind === "daily") {
-      const next = nextDaily(t.time, t.days, deps.timeZone, Math.max(now, dueAt));
+    if (t.kind !== "once") {
+      const next = nextRun(r, deps.timeZone, Math.max(now, dueAt));
       if (next === undefined) delete r.nextAt;
       else r.nextAt = next;
     } else {
@@ -328,9 +342,11 @@ export class Scheduler {
       r.enabled = false;
     }
 
-    if ((t.kind === "daily" && late > DAILY_GRACE_MS) || (t.kind === "once" && late > ONCE_GRACE_MS)) {
+    // A cron routine is a daily one by the hour: late by more than the grace, it is missed, not run.
+    if ((t.kind !== "once" && late > DAILY_GRACE_MS) || (t.kind === "once" && late > ONCE_GRACE_MS)) {
       r.lastRun = { at: now, ok: false, detail: `missed: it was due ${whenSaid(dueAt, deps.timeZone)}` };
       await this.save(r);
+      await this.log(r.id, r.lastRun);
       return;
     }
     await this.save(r);
@@ -395,6 +411,7 @@ export class Scheduler {
       // Said once, when it has failed enough times to matter, not every minute.
       if (w.errors === WATCH_ERRORS_SLOW) r.lastRun = { at: now, ok: false, detail: `could not check: ${error}`.slice(0, 300) };
       await this.save(r);
+      if (w.errors === WATCH_ERRORS_SLOW && r.lastRun) await this.log(r.id, r.lastRun);
       return;
     }
 
@@ -437,6 +454,7 @@ export class Scheduler {
         cur.action = { ...cur.action, turn: (turn + 1) % cur.action.to.length };
         cur.lastRun = { at: now, ok: true, detail: `passed on to ${to.name}` };
         await this.save(cur);
+        await this.log(r.id, cur.lastRun, r.action.text);
       } else if (why) {
         await this.record(r.id, { at: now, ok: false, detail: `not passed on: ${why}` });
       }
@@ -456,6 +474,11 @@ export class Scheduler {
         return;
       }
       text = answer.text;
+      // Asked to speak only when it matters, and nothing did: it ran, and Routines says so (Hark's "so I sent nothing").
+      if (r.action.notify === "if-important" && isNothing(text)) {
+        await this.record(r.id, { at: now, ok: true, detail: "nothing to report" });
+        return;
+      }
     } else {
       return; // leave has its own path
     }
@@ -466,7 +489,7 @@ export class Scheduler {
     }
     const alert = { ...makeAlert({ title: r.name, text }, "routine", now, personOfWho(r.createdBy))!, routine: r.id };
     const d = await deps.deliver(alert);
-    await this.record(r.id, outcome(d, now));
+    await this.record(r.id, outcome(d, now), text);
   }
 
   private async tickLeave(r: Routine, deps: SchedulerDeps, now: number): Promise<void> {
@@ -482,7 +505,8 @@ export class Scheduler {
       await this.storage.put(SCAN_AT, now + SCAN_MS);
       const events = await deps.events(now, person);
       if (typeof events === "string") {
-        await this.record(r.id, { at: now, ok: false, detail: events });
+        // The calendar is read every 15 minutes: how that went is shown, not kept among the runs.
+        await this.note(r.id, { at: now, ok: false, detail: events });
       } else {
         plans = mergeEvents(plans, events, buffer, now) as Stored;
         for (const p of Object.values(plans)) {
@@ -500,7 +524,7 @@ export class Scheduler {
           const n = events.length;
           const hhmm = new Intl.DateTimeFormat("en-GB", { timeZone: deps.timeZone, hour: "2-digit", minute: "2-digit", hour12: false })
             .format(new Date(now));
-          await this.record(r.id, {
+          await this.note(r.id, {
             at: now,
             ok: true,
             detail: `calendar read ${hhmm}: ${n || "no"} event${n === 1 ? "" : "s"} with a place in the next four hours`,
@@ -535,16 +559,28 @@ export class Scheduler {
       const m = leaveMessage(p, deps.timeZone, now);
       // No use once the event has begun: a phone that was off all along is not told late.
       const d = await deps.deliver({ ...makeAlert({ title: m.title, text: m.text, expiresAt: p.start }, "routine", now, personOfWho(r.createdBy))!, routine: r.id });
-      await this.record(r.id, { ...outcome(d, now), detail: `${p.summary}: ${outcome(d, now).detail}` });
+      await this.record(r.id, { ...outcome(d, now), detail: `${p.summary}: ${outcome(d, now).detail}` }, m.text);
     }
     await this.storage.put(PLANS, plans);
   }
 
-  private async record(id: string, rec: RunRecord): Promise<void> {
+  /** A run: shown as the routine's last, and kept among its past runs with what it said. */
+  private async record(id: string, rec: RunRecord, said?: string): Promise<void> {
+    if (await this.note(id, rec)) await this.log(id, rec, said);
+  }
+
+  /** Shown as the routine's last run only: false when it was removed while it ran. */
+  private async note(id: string, rec: RunRecord): Promise<boolean> {
     const cur = await this.get(id);
-    if (!cur) return; // removed while it ran
+    if (!cur) return false;
     cur.lastRun = rec;
     await this.save(cur);
+    return true;
+  }
+
+  private async log(id: string, rec: RunRecord, said?: string): Promise<void> {
+    const entry: RunEntry = said ? { ...rec, said: tidy(said).slice(0, 300) } : { ...rec };
+    await this.storage.put(RUNS + id, [entry, ...(await this.runs(id))].slice(0, MAX_RUNS));
   }
 
   /** One-offs that fired a week ago, and leave plans long past. */
@@ -552,6 +588,7 @@ export class Scheduler {
     for (const r of await this.list()) {
       if (r.trigger.kind === "once" && !r.enabled && r.lastRun && now - r.lastRun.at > KEEP_DONE_MS) {
         await this.storage.delete(R + r.id);
+        await this.storage.delete(RUNS + r.id);
       }
     }
     // Everyone's plans ("leave:plans" and each person's "leave:plans:…").
@@ -581,3 +618,6 @@ export function outcome(d: Delivery, now: number): RunRecord {
       : "nothing is set up to receive it — turn on notifications in Settings → Alerts",
   };
 }
+
+/** An answer that is only NOTHING, however dressed ("NOTHING.", "**Nothing**"): an if-important routine with nothing to tell. */
+export const isNothing = (text: string): boolean => /^\W*nothing\W*$/i.test(text.trim());

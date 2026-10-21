@@ -3,7 +3,7 @@ import { err, json } from "../lib/http.ts";
 import { stateStub } from "../lib/state-client.ts";
 import { localeOf } from "../lib/locale.ts";
 import { PRICES_AS_OF } from "../lib/prices.ts";
-import { dayOf, type UsageEntry } from "../lib/usage.ts";
+import { budgetOf, dayOf, type UsageEntry } from "../lib/usage.ts";
 
 /**
  * Usage (lib/usage.ts): recording it, and Settings → Usage.
@@ -30,7 +30,8 @@ export async function handleUsage(req: Request, env: Env, everyone: boolean): Pr
   if (!state) return err(503, "usage needs the STATE Durable Object");
   const timeZone = localeOf(env).timeZone;
   const r = await state.usageReport(dayOf(Date.now(), timeZone), everyone ? undefined : (env.JARVIS_PERSON ?? "owner"));
-  return json({ ...r, pricesAsOf: PRICES_AS_OF, timeZone });
+  // The month's budget is the household's: for those who see everyone's, Settings → Usage shows how much of it is gone.
+  return json({ ...r, pricesAsOf: PRICES_AS_OF, timeZone, ...(everyone ? { budget: budgetOf(env.USAGE_BUDGET) } : {}) });
 }
 
 /**

@@ -1,14 +1,18 @@
 import type { Env } from "../types.ts";
+import type { DraftCard } from "../lib/mail-draft.ts";
 import type { MemoryStore } from "../lib/memory.ts";
 import { allows, type Grant, type Scope } from "../lib/scopes.ts";
 import * as hermes from "./hermes.ts";
 import { memoryTools } from "./memory.ts";
 import { lookBackTool } from "./conversation.ts";
+import { specialtyTools } from "./specialties.ts";
 import { tessieTools } from "./tessie.ts";
 import { directionsTools } from "./directions.ts";
 import { placeTools } from "./place.ts";
 import { placesTools } from "./places.ts";
 import { cameraTools } from "./camera.ts";
+import { makeImage } from "./image.ts";
+import { makePage } from "./page.ts";
 import { spotifyTools } from "./spotify.ts";
 import { gmailTools } from "./gmail.ts";
 import { calendarTools } from "./calendar.ts";
@@ -38,6 +42,10 @@ export interface ToolContext {
   memory: MemoryStore;
   /** Put something on the car's screen. Separate from what Jarvis says aloud. */
   display(payload: Record<string, unknown>): void;
+  /** A background job was started (start_job, ask_hermes): typed chat shows it as a pill until its result comes (src/app/fromRoutine.ts). */
+  started?(job: { id: string; title: string; engine: string }): void;
+  /** A Gmail draft waiting for the person's tap (lib/mail-draft.ts): the screen shows it as a card with Send (src/app/draft.ts). */
+  drafted?(d: DraftCard): void;
   /**
    * What the caller may reach. A routine made by voice keeps these, so it can
    * never later do more than the person or device that asked for it.
@@ -45,6 +53,8 @@ export interface ToolContext {
   grants: readonly Grant[];
   /** The tools the router was offered for this question, by name: what a panel's tile may be wired to (tools/panels.ts). */
   offered?: readonly string[];
+  /** The user's latest message, as they said it: what only they can ask for must be in it (tools/specialties.ts). */
+  asked?: string;
 }
 
 /** A picture for the router to look at, as a data: URL. */
@@ -170,6 +180,7 @@ const askHermes: Tool = {
       { who: voiceWho(ctx.env), grants: ctx.grants },
     );
     if (typeof j === "string") return `Hermes was not asked: ${j}.`;
+    ctx.started?.({ id: j.id, title: j.title, engine: j.engine });
     const what = from ? `Asked Hermes, with the whole report "${from.title}".` : "Asked Hermes.";
     return `${what} It usually takes one to four minutes; the answer will reach the user as a message when it is ready. Tell them so, briefly.`;
   },
@@ -216,12 +227,15 @@ const controlHome: Tool = {
 /** Every local tool. MCP tools are appended separately at request time. */
 const ALL: Tool[] = [
   ...memoryTools,
+  ...specialtyTools,
   lookBackTool,
   ...tessieTools,
   ...directionsTools,
   ...placeTools,
   ...placesTools,
   ...cameraTools,
+  makeImage,
+  makePage,
   ...spotifyTools,
   ...gmailTools,
   ...calendarTools,

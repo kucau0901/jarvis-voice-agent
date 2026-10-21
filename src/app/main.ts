@@ -14,16 +14,27 @@ import { Orb } from "./orb/Orb";
 import { VoiceLevels } from "./audio";
 import { closeIn, QUIET_MS, WORKING_MS } from "./quiet";
 import { watchTheme } from "./theme";
+import { Sky } from "./orb/Sky";
+import { watchSky } from "./sky";
 import { runDelegation } from "./delegate";
+import { draftCard, type Draft } from "./draft";
 import { LiveLink, releasePush, speakAlert, speakHere, speakText, syncPush, type Alert } from "./alerts";
 import { askTyped } from "./chat";
+import { pin, working } from "./working";
+import { firstRun } from "./firstRun";
+import { Search } from "./ui/Search";
+import { takeShared } from "./share";
 import { keyboardSpace, watchKeyboard } from "./keyboard";
 import { Attachments, type Attached } from "./attach";
 import { Reply } from "./reply";
-import { fromRoutine, type RoutineSaid } from "./fromRoutine";
+import { fromJob, fromRoutine, jobStarted, jobsSeen, type JobSaid, type RoutineSaid } from "./fromRoutine";
 import { asked, clearKept, keep, kept, restore, saidId } from "./conversation";
 import { inCar } from "./client";
-import { arm, richText } from "./ui/util";
+import { arm } from "./ui/util";
+import { answerBody, linkCards, markdown } from "./ui/rich";
+import { Reader } from "./ui/Reader";
+import { pageCard } from "./pageCard";
+import { MadePages, type Page } from "./madePages";
 import { PushToTalk } from "./ptt";
 import { LiveVoice, wakeVoice } from "./loud";
 import { Family } from "./ui/Family";
@@ -96,6 +107,8 @@ const inviteToken = (() => {
 // rather than a new row appearing per fragment.
 type Row = { who: "you" | "jarvis"; el: HTMLElement; text: string };
 let current: { you?: Row; jarvis?: Row } = {};
+/** Pages a spoken answer made: the card under that answer when its row ends, kept with it (madePages.ts). */
+const voicePages = new MadePages(pageApart);
 
 function append(who: "you" | "jarvis", delta: string) {
   let row = current[who];
@@ -116,8 +129,10 @@ function endRow(who: "you" | "jarvis") {
   const row = current[who];
   current[who] = undefined;
   if (!row?.text.trim()) return;
+  const page = who === "jarvis" ? voicePages.take() : undefined;
+  if (page && key) row.el.appendChild(pageCard(key, page));
   row.el.dataset.said = saidId();
-  keep(key, { id: row.el.dataset.said, role: who === "you" ? "user" : "assistant", text: row.text });
+  keep(key, { id: row.el.dataset.said, role: who === "you" ? "user" : "assistant", text: row.text, ...(page ? { page } : {}) });
 }
 const endRows = () => { endRow("you"); endRow("jarvis"); };
 /** A pause on one side ends that row. */
@@ -172,7 +187,20 @@ try {
   console.warn("orb unavailable:", e);
 }
 addEventListener("resize", () => orb?.resize());
-watchTheme((t) => orb?.setTheme(t === "light"));
+// The sky behind it all (orb/Sky.ts, sky.ts): as with the orb, the app works without it.
+let sky: Sky | null = null;
+/** The weather for the sky now: after an unlock that gave this screen a key. */
+let refreshSky: (() => void) | null = null;
+try {
+  sky = new Sky($<HTMLCanvasElement>("skyCanvas"));
+  refreshSky = watchSky(() => key, sky);
+} catch (e) {
+  console.warn("sky unavailable:", e);
+}
+watchTheme((t) => {
+  orb?.setTheme(t === "light");
+  sky?.setTheme(t === "light");
+});
 
 let thinking = false;
 /** When the Live session was last spoken in, for armIdle below (performance.now(): a clock change must not move it). */
@@ -292,11 +320,18 @@ function onEvent(ev: ServerEvent) {
           log: (type, data) => logEvent({ type, ...data }),
           display: (payload) => {
             if (!key) return;
+            voicePages.seen(payload);
             stage ??= new Stage(key);
             void stage.show(payload as unknown as DisplayPayload);
           },
           slow: (name) => dropSessionKeepWaiting(`${name} takes minutes; not paying to listen`),
-          done: finish,
+          tool: (name, phase) => panelTool(name, phase),
+          drafted: showDraft,
+          // Given up on (another question took its place): a page it made is not left for the next answer.
+          done: () => {
+            if (mine.signal.aborted) voicePages.flush();
+            finish();
+          },
         },
         mine.signal,
       );
@@ -316,6 +351,8 @@ function status(text: string, bad = false) {
   // Every state change of a live session and of push-to-talk passes through
   // here, so this is where focus mode follows whether anyone is talking.
   document.body.classList.toggle("focus", !!(session || userWantsSession || ptt?.busy));
+  // The chat box's mic, marked while it is taking down what is said (ptt.ts dictate).
+  document.getElementById("askAloud")?.setAttribute("aria-pressed", String(!!ptt?.dictatingNow));
 }
 
 /**
@@ -549,9 +586,10 @@ function showAlert(a: Alert): HTMLElement {
   close.setAttribute("aria-label", "Dismiss");
   close.addEventListener("click", () => card.remove());
   for (const n of [title, when, hear, close]) head.appendChild(n);
+  // A job's result can be a table or a list (ui/rich.ts): drawn as it is meant, from text nodes.
   const body = document.createElement("div");
   body.className = "atext";
-  body.textContent = a.text;
+  body.appendChild(markdown(a.text, ""));
   card.appendChild(head);
   card.appendChild(body);
   // Passed on from someone in the family: answer it right here (relay.ts).
@@ -587,10 +625,20 @@ function routineSaid(a: RoutineSaid): boolean {
   return true;
 }
 
+/** What a job came back with: its pill, moved down from where it was started on this screen, then its words (fromRoutine.ts). */
+function jobSaid(a: JobSaid): boolean {
+  const label = fromJob(a, openJob);
+  if (!label) return false;
+  els.transcript.appendChild(label);
+  addRow("jarvis", a.text);
+  return true;
+}
+
 function onAlert(a: Alert) {
   const card = showAlert(a);
-  // A routine's words go into the conversation under its name; anything else while typing, as well as on the card.
+  // A routine's or a job's words go into the conversation under its name; anything else while typing, as well as on the card.
   if (a.routine) routineSaid({ ...a, routine: a.routine });
+  else if (a.job) jobSaid({ ...a, job: a.job });
   else if (mode === "type") addRow("jarvis", a.title !== "Jarvis" ? `${a.title}: ${a.text}` : a.text);
   // Into the conversation either way: "yes, do that" after Hermes asks a
   // question in an alert must have the question to refer to.
@@ -622,7 +670,11 @@ if (key) {
   live.start();
   void syncPush(key);
   // The conversation kept from before, routines' words and all (conversation.ts).
-  void kept(key).then((all) => restore(all, { row: (who, text) => addRow(who, text), routine: routineSaid }, history)).catch(() => {});
+  void kept(key).then((all) => {
+    restore(all, { row: (who, text, links, page) => addRow(who, text, "", links, page), routine: routineSaid, job: jobSaid, apart: (p) => showCard(pageCard(key, p)) }, history);
+    // Nothing said yet: the first run, once on this screen (firstRun.ts).
+    if (!all.length) void firstRun(key, els.transcript, chatWith);
+  }).catch(() => {});
 }
 
 /** A tapped notification: it carries only an id, so the text is fetched. */
@@ -670,6 +722,7 @@ async function tryKey(candidate: string) {
       key = saveKey(candidate);
       live.start(key);
       void syncPush(key);
+      refreshSky?.();
       unlock.wrap.classList.remove("show");
       setMode(mode);
       openConnect();
@@ -1009,10 +1062,29 @@ $("openMemory").addEventListener("click", () => {
 });
 
 let jobs: Jobs | null = null;
-$("openJobs").addEventListener("click", () => {
+/** Jobs, with one of them opened out when a job's pill in the conversation was pressed. */
+function openJob(id?: string) {
   if (!key) { requireKey(); return; }
-  jobs ??= new Jobs(key);
-  void jobs.show();
+  jobs ??= new Jobs(key, jobsSeen);
+  void jobs.show(id);
+}
+$("openJobs").addEventListener("click", () => openJob());
+
+let search: Search | null = null;
+/** A message found by Search, shown where it is in the chat; false when this screen does not have it. */
+function showSaid(id: string): boolean {
+  const row = els.transcript.querySelector<HTMLElement>(`[data-said="${CSS.escape(id)}"]`);
+  if (!row) return false;
+  showTab("chat");
+  row.scrollIntoView({ block: "center" });
+  row.classList.remove("flash");
+  void row.offsetWidth;
+  row.classList.add("flash");
+  return true;
+}
+$("openSearch").addEventListener("click", () => {
+  if (!key) return requireKey();
+  (search ??= new Search(key, { message: showSaid, routine: openRoutine, job: openJob })).show();
 });
 
 let routines: Routines | null = null;
@@ -1068,6 +1140,8 @@ function pushToTalk(): PushToTalk {
     heard: (text) => {
       endRows();
       append("you", text);
+      // Whole as heard: kept now, before any page its answer makes is kept apart.
+      endRow("you");
       history.add("user", text);
     },
     answered: (text, ok) => {
@@ -1079,15 +1153,25 @@ function pushToTalk(): PushToTalk {
     },
     display: (payload) => {
       if (!key) return;
+      voicePages.seen(payload);
       stage ??= new Stage(key);
       void stage.show(payload as unknown as DisplayPayload);
     },
-    thinking: (on) => { thinking = on; },
+    // Done: a page no answer took (it failed, or was stopped) gets its own card.
+    thinking: (on) => {
+      thinking = on;
+      if (!on) voicePages.flush();
+    },
     history: () => history.snapshot(),
+    tool: (name, phase) => panelTool(name, phase),
+    dictated: (text) => insertTyped(text),
+    drafted: showDraft,
   }));
 }
 
 function setMode(m: Mode) {
+  // Out of Chat, dictation would write into a box no one can see: put down.
+  if (m !== "type" && ptt?.dictatingNow) ptt.stop();
   mode = m;
   if (m !== "type") voice = m;
   try {
@@ -1127,15 +1211,34 @@ function markTabs() {
 }
 // Jarvis talks, in the way last chosen on this screen; Chat types; Home is this person's panels (ui/Home.ts).
 let home: Home | null = null;
-for (const b of document.querySelectorAll<HTMLButtonElement>("#tabs button")) {
-  b.addEventListener("click", () => {
-    const tab = b.dataset.tab;
-    document.body.classList.toggle("home", tab === "home");
-    if (tab === "home") (home ??= new Home(key)).show();
-    else home?.hide();
-    if ((tab === "chat") !== (mode === "type")) setMode(tab === "chat" ? "type" : voice);
-    else markTabs();
-  });
+function showTab(tab: string | undefined) {
+  document.body.classList.toggle("home", tab === "home");
+  if (tab === "home") (home ??= new Home(key, chatWith)).show();
+  else home?.hide();
+  if ((tab === "chat") !== (mode === "type")) setMode(tab === "chat" ? "type" : voice);
+  else markTabs();
+}
+for (const b of document.querySelectorAll<HTMLButtonElement>("#tabs button")) b.addEventListener("click", () => showTab(b.dataset.tab));
+
+/** Chat, with words typed in its box to finish: a panel's Reply (ui/Home.ts). */
+/** What chatWith last put in the box: still there untouched, it gives way to the next rather than piling up. */
+let offered = "";
+function chatWith(text: string) {
+  showTab("chat");
+  // Anything already being written stays, the new words after it.
+  let draft = typed.value.trimEnd();
+  if (offered && draft.endsWith(offered)) draft = draft.slice(0, -offered.length).trimEnd();
+  typed.value = draft && text ? `${draft}\n${text}` : draft || text;
+  offered = text.trimEnd();
+  fitTyped();
+  typed.focus();
+  typed.setSelectionRange(typed.value.length, typed.value.length);
+}
+
+/** panel_set or panel_remove under way for a question asked here, any way: Home shows a card in the making, then reads its panels again (ui/Home.ts). */
+function panelTool(name: string, phase: string) {
+  if (name === "panel_set") home?.building(phase === "start");
+  else if (name === "panel_remove" && phase !== "start") home?.building(false);
 }
 
 els.orb.addEventListener("click", () => {
@@ -1159,6 +1262,13 @@ const sendBtn = $<HTMLButtonElement>("send");
 const tray = $("tray");
 const attachments = new Attachments(tray, $<HTMLButtonElement>("attach"), $("attachMenu"), $<HTMLInputElement>("attachInput"), (t) => status(t, true));
 const reply = new Reply(tray, typed);
+// Shared from another app (share.ts): into Chat's box and tray, never sent.
+if (key) void takeShared().then((shared) => {
+  if (!shared) return;
+  chatWith(shared.text);
+  void attachments.add(shared.files);
+  if (shared.tooBig.length) status(`${shared.tooBig.join(", ")}: too big to share into Jarvis.`, true);
+});
 // The chat makes room for the tray, however many rows it holds (--tray, index.html), the newest message kept in view.
 new ResizeObserver(() => {
   const t = els.transcript;
@@ -1181,7 +1291,13 @@ function showReadAloud() {
 }
 showReadAloud();
 // The orb's spoken question, from the message box: the orb is small here.
-$("askAloud").addEventListener("click", () => els.orb.click());
+// Dictation: the box's mic writes what is said into the box, to read over before sending (ptt.ts). Asking aloud stays the orb's, top left in Chat.
+$("askAloud").addEventListener("click", () => {
+  if (!key) return requireKey();
+  const p = pushToTalk();
+  p.setKey(key);
+  void p.dictate();
+});
 readAloudBtn.addEventListener("click", () => {
   readAloud = !readAloud;
   try {
@@ -1195,6 +1311,7 @@ readAloudBtn.addEventListener("click", () => {
 /** The chat emptied: cleared here or on another screen of yours (conversation.ts), or its person put aside. */
 function forgetChat() {
   current = {};
+  voicePages.clear();
   els.transcript.replaceChildren();
   history.clear();
   reply.clear();
@@ -1202,8 +1319,30 @@ function forgetChat() {
 arm($<HTMLButtonElement>("clearChat"), "Clear all of it?", () =>
   clearKept(key).then(forgetChat, (e) => status(`not cleared: ${e instanceof Error ? e.message : String(e)}`, true)));
 
-/** A finished row of its own, with links and bold made real. */
-function addRow(who: "you" | "jarvis", text: string, cls = "") {
+/** A card in a row of its own, in the thread above what is still working. */
+function showCard(card: HTMLElement): HTMLElement {
+  const row = document.createElement("div");
+  row.className = "row jarvis";
+  row.appendChild(card);
+  els.transcript.insertBefore(row, els.transcript.querySelector(".row.working"));
+  els.transcript.scrollTop = els.transcript.scrollHeight;
+  return row;
+}
+/** A page no answer took (madePages.ts): its card, kept as an entry of its own, so it can be opened again. */
+function pageApart(p: Page) {
+  if (!key) return;
+  const row = showCard(pageCard(key, p));
+  row.dataset.said = saidId();
+  keep(key, { id: row.dataset.said, role: "assistant", text: p.title, page: p });
+}
+/** A mail held for the person's tap (Draft first). */
+function showDraft(d: Draft) {
+  if (key) showCard(draftCard(key, d));
+}
+
+let reader: Reader | null = null;
+/** A finished row of its own, its markdown drawn, a document as a card to open (ui/rich.ts), and the pages it cited. */
+function addRow(who: "you" | "jarvis", text: string, cls = "", links?: { url: string; title: string }[], page?: { id: string; title: string }) {
   endRows();
   const el = document.createElement("div");
   el.className = `row ${who}${cls ? ` ${cls}` : ""}`;
@@ -1211,7 +1350,10 @@ function addRow(who: "you" | "jarvis", text: string, cls = "") {
   w.className = "who";
   w.textContent = who === "you" ? "You" : "Jarvis";
   el.appendChild(w);
-  el.appendChild(who === "jarvis" ? richText(text) : Object.assign(document.createElement("span"), { className: "txt", textContent: text }));
+  const body = who === "jarvis" ? answerBody(text, (doc) => (reader ??= new Reader()).show(doc, () => reply.quote(el, text))) : Object.assign(document.createElement("span"), { className: "txt", textContent: text });
+  if (links?.length) body.appendChild(linkCards(links));
+  if (page && key) body.appendChild(pageCard(key, page));
+  el.appendChild(body);
   if (who === "jarvis" && !cls) reply.offer(el, text);
   els.transcript.appendChild(el);
   els.transcript.scrollTop = els.transcript.scrollHeight;
@@ -1222,6 +1364,8 @@ let typedAbort: AbortController | null = null;
 async function sendTyped() {
   const text = typed.value.trim();
   if ((!text && !attachments.list.length) || typedAbort) return;
+  /** The pages this question made, for their cards. */
+  const pages = new MadePages(pageApart);
   if (!key) return requireKey();
   const to = reply.take();
   const attached: Attached[] = attachments.take();
@@ -1230,6 +1374,7 @@ async function sendTyped() {
   const row = addRow("you", text);
   if (attached.length) row.insertBefore(Attachments.shown(attached), row.querySelector(".txt"));
   if (to) Reply.hook(row, to.row);
+  pin(els.transcript, row);
   const files = attached.map((a) => a.name);
   row.dataset.said = saidId();
   keep(key, { id: row.dataset.said, role: "user", text, files, replyTo: to?.row.dataset.said });
@@ -1237,29 +1382,61 @@ async function sendTyped() {
   typedAbort = new AbortController();
   sendBtn.disabled = true;
   thinking = true;
-  status("thinking…");
+  const work = working(els.transcript);
   await askTyped(key, history.snapshot(), {
-    progress: (t) => status(`${t}…`),
+    // It reached Jarvis (Hark shows the same): said once, under the question.
+    opened: () => row.appendChild(Object.assign(document.createElement("small"), { className: "seen", textContent: "Read" })),
+    tool: (ev) => {
+      work.tool(ev);
+      panelTool(ev.name, ev.phase);
+    },
+    progress: (t, call) => work.note(t, call),
+    drafted: showDraft,
+    // Handed to a background job: its pill at once, which the result takes when it comes (fromRoutine.ts).
+    job: (j) => {
+      els.transcript.insertBefore(jobStarted(j, openJob), els.transcript.querySelector(".row.working"));
+      els.transcript.scrollTop = els.transcript.scrollHeight;
+    },
     display: (payload) => {
+      // A page Jarvis made goes under the answer, as a card to open (pageCard.ts), not on the stage.
+      if (pages.seen(payload)) return;
       stage ??= new Stage(key);
       void stage.show(payload as unknown as DisplayPayload);
     },
-    answer: (reply, ok) => {
-      const said = addRow("jarvis", reply, ok ? "" : "bad");
+    // A limit, as Hark shows one: a notice in the thread, not a failure in red.
+    limit: (text) => void addRow("jarvis", text, "limit"),
+    answer: (reply, ok, limit, links) => {
+      work.stop();
+      // A failed answer is not kept, so its page's card goes apart, where it is.
+      if (!ok) pages.flush();
+      const page = pages.take();
+      const said = addRow("jarvis", reply, ok ? "" : limit ? "bad limit" : "bad", ok ? links : undefined, page);
       // What went wrong is not kept, nor told to the model again later.
       if (ok) {
         said.dataset.said = saidId();
-        keep(key, { id: said.dataset.said, role: "assistant", text: reply });
+        keep(key, { id: said.dataset.said, role: "assistant", text: reply, ...(links?.length ? { links } : {}), ...(page ? { page } : {}) });
       }
       history.add("assistant", reply);
       if (!ok) errorFlash = 1;
       if (ok && readAloud) void speakText(key, reply);
     },
   }, typedAbort.signal, attached);
+  // Stopped with Escape, no answer comes to take its place, nor its page.
+  pages.flush();
+  work.stop();
   typedAbort = null;
   sendBtn.disabled = false;
   thinking = false;
   if (mode === "type") status("");
+}
+
+/** Dictated words (ptt.ts dictate), put where the cursor is, never sent. */
+function insertTyped(text: string) {
+  const at = typed.selectionStart ?? typed.value.length;
+  const before = typed.value.slice(0, at);
+  typed.setRangeText((before && !/\s$/.test(before) ? " " : "") + text, at, typed.selectionEnd ?? at, "end");
+  fitTyped();
+  if (!matchMedia("(pointer: coarse)").matches && !inCar()) typed.focus();
 }
 
 /** The box grows with what is typed, up to a limit. */

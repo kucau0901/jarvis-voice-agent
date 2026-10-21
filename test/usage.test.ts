@@ -1,5 +1,5 @@
 import { PRICES_AS_OF, priceOf, TOKEN_PRICES } from "../src/worker/lib/prices.ts";
-import { addToDay, costOf, dayOf, emptyDay, report, type UsageEntry } from "../src/worker/lib/usage.ts";
+import { addToDay, budgetOf, budgetSays, budgetStep, costOf, dayOf, emptyDay, report, resetsOn, spentOf, type UsageEntry } from "../src/worker/lib/usage.ts";
 import { StateHost, USAGE_KEEP_DAYS, USAGE_RECENT_MAX } from "../src/worker/lib/state-host.ts";
 
 let pass = 0;
@@ -95,6 +95,38 @@ console.log("\nkept in the Durable Object");
   await host.recordUsage(q(), "2026-09-27");
   const kept = [...m.keys()].filter((k) => k.startsWith("usage:day:"));
   check(`only ${USAGE_KEEP_DAYS} days are kept, the oldest go`, kept.length === USAGE_KEEP_DAYS && kept.includes("usage:day:2026-09-27"), kept.length);
+}
+
+console.log("\nthe month's budget (USAGE_BUDGET)");
+{
+  check("a budget is whole dollars above nothing, or none", budgetOf("20") === 20 && budgetOf("") === null && budgetOf("0") === null && budgetOf(undefined) === null && budgetOf("x") === null);
+  check("told at 80%, then at 100%, each once", budgetStep(15.9, 20, 0) === null && budgetStep(16, 20, 0) === 80 && budgetStep(17, 20, 80) === null && budgetStep(20, 20, 80) === 100 && budgetStep(25, 20, 100) === null);
+  check("a jump past both says only 100", budgetStep(21, 20, 0) === 100);
+  check("it resets on the 1st of the next month", resetsOn("2026-10") === "1 November" && resetsOn("2026-12") === "1 January", [resetsOn("2026-10"), resetsOn("2026-12")]);
+  check("what is said, nothing stopped", budgetSays(80, 16.1, 20, "2026-10") === "Jarvis has used 80% of this month's $20 budget: about $16.10 so far. It resets on 1 November." &&
+    budgetSays(100, 20.4, 20, "2026-10").includes("Nothing is stopped"), budgetSays(80, 16.1, 20, "2026-10"));
+
+  const m = new Map<string, unknown>();
+  const storage = {
+    get: async <T,>(k: string) => (m.has(k) ? (structuredClone(m.get(k)) as T) : undefined),
+    put: async (k: string, v: unknown) => void m.set(k, structuredClone(v)),
+    delete: async (k: string) => m.delete(k),
+    list: async <T,>({ prefix }: { prefix: string }) => new Map([...m].filter(([k]) => k.startsWith(prefix)).map(([k, v]) => [k, structuredClone(v) as T])),
+  };
+  const host = new StateHost(storage, {} as never);
+  const each = costOf(q())!;
+  const budget = each * 10;
+  const steps: unknown[] = [];
+  for (let i = 0; i < 12; i++) {
+    await host.recordUsage(q(), "2026-10-15");
+    steps.push((await host.budgetCrossed("2026-10-15", budget))?.step ?? null);
+  }
+  check("80% once, then 100% once, as the month is spent", JSON.stringify(steps) === JSON.stringify([null, null, null, null, null, null, null, 80, null, 100, null, null]), steps);
+  const r = await host.usageReport("2026-10-15");
+  check("…of what the month has cost", Math.abs(spentOf(r.total) - each * 12) < 1e-9);
+  check("a budget changed in the month starts again", (await host.budgetCrossed("2026-10-15", budget * 1.25))?.step === 80);
+  await host.recordUsage(q(), "2026-11-01");
+  check("a new month starts again", (await host.budgetCrossed("2026-11-01", each / 2))?.step === 100);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

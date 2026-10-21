@@ -109,6 +109,7 @@ console.log("\nvalidation");
   const nope = validateChanges({ JARVIS_SHARED_SECRET: "X" });
   check("the owner key is refused, with the reason", !nope.ok && /deploy-time/.test(nope.errors.JARVIS_SHARED_SECRET!));
   check("an unknown name is refused", !validateChanges({ NOT_A_THING: "x" }).ok);
+  check("a month's budget is whole dollars, from one", validateChanges({ USAGE_BUDGET: "20" }).ok && !validateChanges({ USAGE_BUDGET: "0" }).ok && !validateChanges({ USAGE_BUDGET: "12.5" }).ok);
   check("empty is refused — Clear is the way to remove", !validateChanges({ HERMES_MODEL: "  " }).ok);
   const b = validateChanges({ DISABLE_WEB_SEARCH: "on", HA_ASSIST: "off" });
   check("booleans are normalised to 1/0", b.ok && b.changes.DISABLE_WEB_SEARCH === "1" && b.changes.HA_ASSIST === "0");

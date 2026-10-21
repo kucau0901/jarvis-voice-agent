@@ -98,8 +98,8 @@ type Deadline =
  * account of what a timeout does to the work still running. None of them has a
  * screen to draw on.
  */
-async function collectWithDeadline(
-  req: Request,
+export async function collectWithDeadline(
+  signal: AbortSignal,
   env: Env,
   ctx: ExecutionContext,
   turns: Turn[],
@@ -111,7 +111,7 @@ async function collectWithDeadline(
   const startedAt = Date.now();
   const sink = new Collector();
   const ac = new AbortController();
-  req.signal.addEventListener("abort", () => ac.abort());
+  signal.addEventListener("abort", () => ac.abort());
 
   const work = run(env, turns, sink, ac.signal, grants, { ...opts, screenless: true, waitUntil: (p) => ctx.waitUntil(p) }).catch((e) => {
     console.error(`${label} failed:`, e instanceof Error ? e.message : String(e));
@@ -148,7 +148,7 @@ async function collectWithDeadline(
   return { timedOut: false, ms, result: sink.finish() };
 }
 
-const TIMEOUT_TEXT = "That is taking longer than I can wait on. Ask me again in a moment.";
+export const TIMEOUT_TEXT = "That is taking longer than I can wait on. Ask me again in a moment.";
 
 /* ---------- POST /api/v1/ask --------------------------------------------- */
 
@@ -174,7 +174,7 @@ async function handleAsk(
   const requestId = "r_" + crypto.randomUUID().replace(/-/g, "").slice(0, 8);
 
   const origin = originOf(principal, body.origin);
-  const d = await collectWithDeadline(req, env, ctx, turns, grants, waitS, "v1/ask", origin ? { origin } : undefined);
+  const d = await collectWithDeadline(req.signal, env, ctx, turns, grants, waitS, "v1/ask", origin ? { origin } : undefined);
 
   if (d.timedOut) {
     return json({
@@ -218,7 +218,7 @@ async function handleMcp(
 
   const origin = originOf(principal, null) ?? { id: "owner-mcp", label: "an MCP client" };
   const reply = await mcpReply(parsed.body, async (question) => {
-    const d = await collectWithDeadline(req, env, ctx, turnsFrom({ text: question }), grants, DEFAULT_WAIT_S, "v1/mcp", { origin });
+    const d = await collectWithDeadline(req.signal, env, ctx, turnsFrom({ text: question }), grants, DEFAULT_WAIT_S, "v1/mcp", { origin });
     return d.timedOut ? { ok: false, text: TIMEOUT_TEXT } : d.result;
   }, JARVIS_VERSION);
   return reply ? json(reply) : new Response(null, { status: 202 });
@@ -264,7 +264,7 @@ async function handleChatCompletions(
   const turns: Turn[] = [...(await priorTurns(env, thread)), { role: "user", text }];
   // Assist first (RunOptions.assist): the house answers what it understands.
   const d = await collectWithDeadline(
-    req, env, ctx, turns, grants, waitSeconds(env.G2_WAIT_S), "v1/chat/completions",
+    req.signal, env, ctx, turns, grants, waitSeconds(env.G2_WAIT_S), "v1/chat/completions",
     {
       surface: "glasses", charBudget: budget, assist: true,
       // One conversation across devices (lib/shared.ts); the owner key on glasses is "glasses".
@@ -289,7 +289,7 @@ async function handleChatCompletions(
 const threadOf = (p: Principal): string => whoOf(p);
 
 /** Never throws: an unreadable thread costs a follow-up its context, not the question. */
-async function priorTurns(env: Env, key: string): Promise<Turn[]> {
+export async function priorTurns(env: Env, key: string): Promise<Turn[]> {
   const state = stateStub(env);
   if (!state) return [];
   try {
@@ -300,7 +300,7 @@ async function priorTurns(env: Env, key: string): Promise<Turn[]> {
   }
 }
 
-async function recordTurns(env: Env, key: string, asked: string, answered: string): Promise<void> {
+export async function recordTurns(env: Env, key: string, asked: string, answered: string): Promise<void> {
   const state = stateStub(env);
   if (!state) return;
   try {

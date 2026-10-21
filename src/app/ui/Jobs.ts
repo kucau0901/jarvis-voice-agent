@@ -1,5 +1,6 @@
-import { api } from "../key";
-import { button, el, richText } from "./util";
+import { api, authHeaders } from "../key";
+import { button, el } from "./util";
+import { markdown } from "./rich";
 
 /**
  * Background jobs (src/worker/lib/jobs.ts): what is running, what came back,
@@ -29,6 +30,8 @@ interface JobView {
   cost?: number | null;
   /** Research as a team: how many teams reported and, while it runs, which part it is in. */
   team?: { of: number; reported: number; phase?: "planning" | "teams" | "merging" | "checking" };
+  /** Research into a table: its columns, and how many rows it came back with, to download. */
+  table?: { columns?: string[]; rows?: number };
 }
 
 /** What a running research team is doing, after "min so far". */
@@ -59,8 +62,12 @@ export class Jobs {
   /** Research being handed to Hermes: the job, and the instruction as typed so far. */
   private handing = new Map<string, string>();
 
-  constructor(key: string) {
+  /** Told what is listed each time, so the chat's job pills keep up (fromRoutine.ts jobsSeen). */
+  private seen: (jobs: JobView[]) => void;
+
+  constructor(key: string, seen: (jobs: JobView[]) => void) {
     this.key = key;
+    this.seen = seen;
     this.el = el("div", "panel");
     this.el.id = "jobs";
     const sheet = el("div", "sheet");
@@ -97,11 +104,23 @@ export class Jobs {
     asTeam.appendChild(teamBox);
     asTeam.appendChild(document.createTextNode(" As a team: three teams, each from an angle chosen for the question, sharing what they find; 20–55 minutes, roughly $4–7, one at a time"));
     form.appendChild(asTeam);
+    const asTable = el("label", "on");
+    const tableBox = document.createElement("input");
+    tableBox.type = "checkbox";
+    asTable.appendChild(tableBox);
+    asTable.appendChild(document.createTextNode(" As a table: the team fills rows of many items instead of writing a report, to download as CSV"));
+    form.appendChild(asTable);
+    tableBox.addEventListener("change", () => {
+      if (tableBox.checked) deepBox.checked = teamBox.checked = true;
+    });
     teamBox.addEventListener("change", () => {
       if (teamBox.checked) deepBox.checked = true;
     });
     deepBox.addEventListener("change", () => {
-      if (!deepBox.checked) teamBox.checked = false;
+      if (!deepBox.checked) teamBox.checked = tableBox.checked = false;
+    });
+    teamBox.addEventListener("change", () => {
+      if (!teamBox.checked) tableBox.checked = false;
     });
     form.appendChild(
       button("Start", () =>
@@ -110,9 +129,10 @@ export class Jobs {
             task: task.value,
             ...(deepBox.checked ? { engine: "research" } : {}),
             ...(teamBox.checked ? { team: true } : {}),
+            ...(tableBox.checked ? { table: true } : {}),
           });
           task.value = "";
-          deepBox.checked = teamBox.checked = false;
+          deepBox.checked = teamBox.checked = tableBox.checked = false;
         }, "Started — it arrives as an alert when done."), "primary"),
     );
     sheet.appendChild(form);
@@ -124,11 +144,17 @@ export class Jobs {
     });
   }
 
-  async show(): Promise<void> {
+  /** Open; with `focus`, that job opened out, brought into view and marked (a job's pill in the conversation). */
+  async show(focus?: string): Promise<void> {
     this.el.classList.add("open");
+    if (focus) this.open.add(focus);
     // Offered only where Hermes is set up and theirs to ask (routes/hub.ts). A device is not a person: no button.
     this.hermes = await api(this.key, "GET", "/api/hub/me").then((me) => (me as { hermes?: boolean }).hermes === true, () => false);
     await this.load();
+    const row = focus ? [...this.list.querySelectorAll<HTMLElement>(".routine")].find((r) => r.dataset.id === focus) : undefined;
+    if (!row) return;
+    row.scrollIntoView({ block: "center" });
+    row.classList.add("flash");
   }
 
   hide(): void {
@@ -161,6 +187,7 @@ export class Jobs {
       this.list.replaceChildren(el("p", "warn", `Could not load jobs: ${e instanceof Error ? e.message : String(e)}`));
       return;
     }
+    this.seen(jobs);
     // A report no longer here (removed, pruned) is no longer being handed over.
     for (const id of this.handing.keys()) {
       if (!jobs.some((j) => j.id === id && j.engine === "research" && j.status === "done")) this.handing.delete(id);
@@ -179,6 +206,7 @@ export class Jobs {
   private row(j: JobView): HTMLElement {
     // Only a cancelled job is dimmed: a finished one is there to be read.
     const row = el("div", `routine${j.status === "cancelled" ? " off" : ""}`);
+    row.dataset.id = j.id;
     const top = el("div", "rtop");
     top.appendChild(el("b", "", j.title));
     top.appendChild(el("span", `chip ${j.status === "done" ? "on" : "off"}`, STATUS[j.status]));
@@ -211,6 +239,7 @@ export class Jobs {
         }),
       );
     }
+    if (j.table?.rows) btns.appendChild(button(`Download CSV (${j.table.rows} rows)`, () => void this.act(() => this.csv(j))));
     if (j.engine === "research" && j.status === "done" && this.hermes) {
       btns.appendChild(
         button(this.handing.has(j.id) ? "Don't send" : "Send to Hermes", () => {
@@ -225,6 +254,15 @@ export class Jobs {
     row.appendChild(btns);
     if (this.handing.has(j.id)) row.appendChild(this.handOver(j));
     return row;
+  }
+
+  /** A research table's rows, saved as a spreadsheet file (GET /api/v1/jobs/csv). */
+  private async csv(j: JobView): Promise<void> {
+    const r = await fetch(`/api/v1/jobs/csv?id=${encodeURIComponent(j.id)}`, { headers: authHeaders(this.key) });
+    if (!r.ok) throw new Error(`Could not download it: the server said ${r.status}`);
+    const url = URL.createObjectURL(await r.blob());
+    Object.assign(document.createElement("a"), { href: url, download: `${j.title.replace(/[\\/:*?"<>|]/g, "").slice(0, 60) || "table"}.csv` }).click();
+    setTimeout(() => URL.revokeObjectURL(url), 10_000);
   }
 
   /** What Hermes should do with a finished report: sent with the whole report, which it gets as reference, not instructions. */
@@ -249,7 +287,7 @@ export class Jobs {
     try {
       const j = ((await api(this.key, "GET", `/api/v1/jobs?id=${encodeURIComponent(id)}`)) as { job: JobView }).job;
       box.replaceChildren();
-      if (j.result) box.appendChild(richText(j.result, "jobtext"));
+      if (j.result) box.appendChild(markdown(j.result, "jobtext"));
       const asked = el("details", "");
       asked.appendChild(el("summary", "", "What was asked"));
       asked.appendChild(el("div", "jobtext", j.task));

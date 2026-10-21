@@ -45,6 +45,8 @@ export interface Fact {
   slug?: string;
   /** place only: what a maps API gets handed. */
   address?: string;
+  /** person only, in their own book: who they are to the user ("wife", "daughter"). */
+  relation?: string;
   createdAt: number;
   updatedAt: number;
   lastUsedAt?: number;
@@ -154,6 +156,12 @@ export function sanitise(raw: unknown): { ok: true; text: string } | { ok: false
   return { ok: true, text };
 }
 
+/** Who someone is to the user, a word or two of letters ("wife", "step-daughter"), or nothing. */
+export function relationOf(raw: unknown): string | undefined {
+  const r = typeof raw === "string" ? raw.replace(CONTROL_CHARS, " ").replace(/\s+/g, " ").trim().toLowerCase() : "";
+  return /^[\p{L}\p{M}' -]{1,30}$/u.test(r) ? r : undefined;
+}
+
 /* ---------- scoring ------------------------------------------------------- */
 
 export interface Hit {
@@ -226,13 +234,15 @@ export function sane(raw: unknown): Fact[] {
     if (!clean.ok) continue;
     const kind = KINDS.includes(f.kind as Kind) ? (f.kind as Kind) : "note";
     const slug = typeof f.slug === "string" && f.slug ? slugify(f.slug).slice(0, 60) : undefined;
+    const relation = kind === "person" ? relationOf(f.relation) : undefined;
     out.push({
       id: typeof f.id === "string" && f.id ? f.id.slice(0, 40) : newId(),
       text: clean.text,
       kind,
-      keys: tokenise(clean.text + " " + (slug ?? "")),
+      keys: tokenise(clean.text + " " + (slug ?? "") + " " + (relation ?? "")),
       slug,
       address: typeof f.address === "string" ? f.address.slice(0, 300) : undefined,
+      relation,
       createdAt: Number.isFinite(f.createdAt) ? (f.createdAt as number) : Date.now(),
       updatedAt: Number.isFinite(f.updatedAt) ? (f.updatedAt as number) : Date.now(),
       lastUsedAt: Number.isFinite(f.lastUsedAt) ? (f.lastUsedAt as number) : undefined,
@@ -616,6 +626,8 @@ export class MemoryStore {
     kind: Kind;
     slug?: string;
     address?: string;
+    /** person: who they are to the user; absent keeps what it was, "" clears it. */
+    relation?: string;
     replaces?: string;
     pinned?: boolean;
     source?: "voice" | "ui";
@@ -654,14 +666,16 @@ export class MemoryStore {
       existing = doc.facts.find((f) => f.kind === input.kind && f.slug === slug);
     }
     if (!existing) existing = this.nearDuplicate(input.text, input.kind);
+    const relation = input.kind !== "person" ? undefined : input.relation === undefined ? existing?.relation : input.relation || undefined;
 
     const fact: Fact = {
       id: existing?.id ?? newId(),
       text: input.text,
       kind: input.kind,
-      keys: tokenise(input.text + " " + (slug ?? "")),
+      keys: tokenise(input.text + " " + (slug ?? "") + " " + (relation ?? "")),
       slug,
       address: input.address,
+      relation,
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
       lastUsedAt: existing?.lastUsedAt,
@@ -921,7 +935,8 @@ export class MemoryStore {
       const ageDays = Math.round((now - f.updatedAt) / 86_400_000);
       const age = ageDays > 90 ? ` (noted ${Math.round(ageDays / 30)} months ago)` : "";
       const where = f.address ? ` — ${f.address}` : "";
-      const line = `- [${f.id}] ${f.text}${where}${age}`;
+      const who = f.relation ? ` (the user's ${f.relation})` : "";
+      const line = `- [${f.id}] ${f.text}${who}${where}${age}`;
       if (used + line.length > PROFILE_BUDGET) break;
       lines.push(line);
       used += line.length;

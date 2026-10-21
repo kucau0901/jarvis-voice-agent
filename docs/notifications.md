@@ -29,6 +29,13 @@ Alerts**.
 "Send that to my phone" skips step 1: it goes straight to your notifications,
 even when you ask from the car.
 
+**Asking back on Telegram.** With **Settings → Alerts → Ask Jarvis on
+Telegram** on, the bot answers too: a message from a private chat someone
+gave in **Family → You → Telegram** is answered as that person, within their
+hours, without Hermes or anything on a screen. A chat nobody gave is told its
+number, and nothing else. Saving the setting points the bot at Jarvis, so
+anything that read the bot with getUpdates stops working.
+
 ## Turning on notifications
 
 On each device you want them on:

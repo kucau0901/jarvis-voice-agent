@@ -156,10 +156,10 @@ existence, or argued around.
 | `media` | Spotify. |
 | `mail` | Gmail: `mail_check`, `mail_search`, `mail_send`, `mail_manage`, `contacts_lookup`. Reads, sends, replies, drafts, trashes and archives — there is no read-only half. Also reads Google Contacts to turn a name into an address. |
 | `calendar` | Google Calendar: `calendar_check`, `calendar_add`. Reads the diary **and creates events**. |
-| `screen` | `show_place`, `hide_display`, `/api/map`, and a person's panels (`panel_set`, `panel_remove`, `/api/hub/panels`). |
+| `screen` | `show_place`, `hide_display`, `/api/map`, `make_image` and `/api/image` (pictures Jarvis makes), `make_page` and `/api/page` (pages Jarvis makes), and a person's panels (`panel_set`, `panel_remove`, `/api/hub/panels`). |
 | `voice` | `/api/session`, `/api/tts`, `/api/voices`, and push-to-talk `/api/v1/voice` (which also needs `ask`). |
 | `ask` (jobs) | `/api/v1/jobs`, `/api/v1/jobs/cancel`, `start_job`. A job for Hermes also needs `hermes`. Each job runs with its creator's grants, and only their reading tools. |
-| `routines` | `/api/v1/routines`, `/api/v1/routines/run`, `/api/v1/trigger`; `routine_add`, `routine_list`, `routine_remove`. A routine's question runs with **its creator's** grants, never more. |
+| `routines` | `/api/v1/routines`, `/api/v1/routines/run`, `/api/v1/routines/runs`, `/api/v1/trigger`; `routine_add`, `routine_list`, `routine_remove`. A routine's question runs with **its creator's** grants, never more. |
 | `alerts` | Receiving alerts (`/api/v1/events`, `/api/v1/push`, `/api/v1/alerts`), raising one (`/api/v1/notify`), and `send_note`. The same scope both ways: a device that may be told things may ask to be told something. |
 
 Ask for something out of reach and you get a normal answer explaining it is not
@@ -172,10 +172,12 @@ available — not an error. `tools` will be empty.
 > named scopes to anything you would not want to widen silently.
 
 Everything to do with administration — `/api/v1/devices`, `/api/alerts`, `/api/mcp/*`,
-`/api/spotify/*`, `/api/google/*`, `/api/chatgpt/*`, `/api/diag`, `/api/probe`, and adding, editing
+`/api/spotify/*`, `/api/google/*`, `/api/chatgpt/*`, `/api/diag`, `/api/probe`, `/api/export`, and adding, editing
 or forgetting through `/api/memory` (`POST`, `PUT`, `DELETE`) —
 is reachable **only with the owner's key**, whatever scopes a device holds. A
-device can never mint its own successor.
+device can never mint its own successor. The one exception is
+`POST /api/google/drafts/send`, a draft card's Send, which `mail` reaches: it
+sends no more than `mail_send` could.
 
 > **`mail` is the widest scope here after `*`.** It can read every message in
 > the account, send as the account holder, and move messages to the trash.
@@ -351,6 +353,10 @@ the speaking. The app sends `multipart/form-data` — an `audio` file and an
 as `audio` events, so it starts talking about a second after the words are
 ready.
 
+`transcribe=1` (or `"transcribe": true` in the app's `options`) only hears
+the recording: `{ok, transcript, heardBy}`, nothing answered or spoken. The
+chat box's mic uses it to dictate. The same `voice` and `ask` grants apply.
+
 How it hears and speaks is set in Settings → Voice, which also sets the voice
 of alerts said aloud: OpenAI (default; any language, mixed ones too; hearing
 about $0.003 a minute, speaking about $0.015), Cloudflare Workers AI (needs
@@ -514,6 +520,14 @@ times as much (roughly $4–7); one runs at a time; the teams have 35 minutes,
 and the whole run takes 20–55 minutes. Its view carries
 `team: {of, reported, phase}`, where `phase` is `planning`, `teams`, `merging`
 or `checking` while it runs. Without `engine: "research"`, `team` is ignored.
+With `"table": true` as well (or instead of `team`), the same team fills a
+table rather than writing a report: the plan fixes two to seven columns, the
+last `Source`, and splits the list between the teams, and the merge and the
+check give rows. Its view then carries `table: {columns, rows}`, its result
+is the summary and the first 20 rows as a markdown table, and
+`GET /api/v1/jobs/csv?id=` (needs `ask`) is all of them as CSV, at most 100
+rows, a cell a spreadsheet would run as a formula made text. A plan that gives
+no columns makes it ordinary team research.
 Each job's `cost` so far, at OpenAI's prices, comes with it. `task` must
 be complete on its own: a job never sees a conversation. `GET /api/v1/jobs`
 lists them (a device sees its own); `GET ?id=` returns one with its whole
@@ -573,17 +587,25 @@ POST /api/v1/routines
 |---|---|
 | `once` | `localTime` (`"2026-09-26T17:00"`, in the time zone set in Settings), or `inMinutes`, or `at` (ms since the epoch) |
 | `daily` | `time` (`"HH:MM"`), optional `days` (`"mon"`…`"sun"` or 0–6, Sunday first; absent = every day) |
+| `cron` | `cron`: five fields, minute hour day month weekday, in the time zone set in Settings (`"0 8,12 * * *"`, `"0 */6 * * *"`, `"0 9 1 * *"`). Lists, ranges, steps and names (`mon-fri`, `jan`); no `L`, `W`, `#` or `@daily`. One number for the minute, so at most hourly. With both day fields given, either will do |
 | `event` | `event`: a name like `arrived_home` |
 | `leave` | optional `bufferMin` (default 10). No message: it warns before each calendar event with a place |
 | `watch` | `condition`: a Home Assistant template, true while the thing is happening (`"{{ is_state('cover.main_gate', 'open') }}"`); optional `forMinutes` (how long it must stay true first, default 0) |
 
 Every kind but `leave` takes exactly one of `say` (a fixed message) or `ask`
 (a request for Jarvis, answered at the time with the creator's grants and sent).
+An `ask` may also take `notify: "if-important"`: Jarvis answers NOTHING when
+nothing deserves attention, nothing is sent, and the last result says
+"nothing to report".
 `GET /api/v1/routines` lists them with plain-English `when` and `does`, the
 next run and the last result; `PATCH` takes `{id, enabled?, name?}`; `DELETE
 ?id=` removes one; `POST /api/v1/routines/run {id}` runs one now.
+`GET /api/v1/routines/runs?id=` is its last 20 runs, newest first:
+`{id, runs: [{at, ok, detail, said?}]}`, where `said` is the start of what it
+sent (up to 300 characters). A leave routine's calendar reads are not runs; its
+warnings are.
 
-A daily routine more than 30 minutes late (Jarvis was not running) is skipped
+A daily or cron routine more than 30 minutes late (Jarvis was not running) is skipped
 rather than sent at the wrong time; a one-off reminder up to 12 hours late is
 still given, marked with when it was due.
 
@@ -632,9 +654,20 @@ Use it when a question may run for minutes and you want to say something in the
 meantime. Most devices should not bother.
 
 - Frames are `data: {json}\n\n`. **There are no `event:`, `id:` or `retry:` lines.**
-- `: ping\n\n` arrives every 15 seconds. Skip those; treat a gap as a dead link.
+- `: open\n\n` comes first, the moment the question is taken, and `: ping\n\n`
+  every 15 seconds after. Skip comments; treat a gap as a dead link.
 - **There is no `[DONE]` sentinel.** The stream simply ends.
-- Event `type` is one of `progress`, `tool`, `used`, `display`, `result`, `error`.
+- Event `type` is one of `progress`, `tool`, `used`, `display`, `job`, `draft`,
+  `result`, `error`. Skip a type you do not know: more may be added.
+- `job` is a background job the question started (`{"type":"job","id","title","engine"}`);
+  its result comes later as an alert, not in this stream.
+- `draft` is a mail Jarvis wrote and saved to the person's Gmail Drafts
+  (`{"type":"draft","draft","to","subject","body","reply"}`), held for them to
+  send when Settings → Google → Draft first is on. A screen shows it with Send;
+  the app sends it with `POST /api/google/drafts/send {"id": draft}`.
+- `display` may be `{kind: "page", page, label}`: a page Jarvis made (below).
+- `result` may carry `links: [{url, title}]`, the https pages the answer cited
+  (up to six), for showing beside it. The answer's words are complete without them.
 - Exactly one of `result` or `error` is terminal — **except when the turn is
   aborted**, where the stream can close having sent neither. Treat end-of-stream
   without either as a failure, as `/api/v1/ask` does internally.
@@ -947,8 +980,43 @@ addresses were kept) and must be entered again.
 
 ## Not part of this contract
 
-`/api/probe`, `/api/diag`, `/api/mcp/*`, `/api/memory`, `/api/spotify/*`,
+`/api/probe`, `/api/diag`, `/api/export` (Settings → Export your data), `/api/mcp/*`, `/api/memory`, `/api/spotify/*`,
 `/api/chatgpt/*` (connecting the owner's ChatGPT plan, from Settings) and
 `/api/delegate` are internal and may change without notice. `/api/delegate` in
 particular is the browser's own route; use `/api/v1/stream`, which is the same
 thing under a name that will not move.
+
+## Pages
+
+`make_page` makes a small web page from sections Jarvis writes as words (a
+heading, paragraphs, lists, links, a table), drawn by one fixed template,
+escaped, with no script. `GET /api/page?id=` (needs `screen`, your own) is
+`{title, at, viewUrl, shared, canShare}`; `viewUrl` opens it for an hour, and
+`canShare` says whether you may share it. `POST /api/page/share {id}` (admins
+only) is `{shareUrl}`, a link anyone can open until `DELETE /api/page/share?id=`,
+which is yours for a page of your own whatever your role; sharing again makes a
+new one and the old dies. `GET /api/v1/p/<id>?k=<token>` is the page itself, served before any
+sign-in, its token its proof, sandboxed (`Content-Security-Policy: sandbox`,
+`default-src 'none'`) and not cached; anything else is the same 404. Each
+person keeps their newest 20 pages for 30 days; clearing the chat, or leaving
+the family, removes them.
+
+## Telegram
+
+Saving `TELEGRAM_ASK` on (again, too, which is how a failed one is retried),
+or a new `PUBLIC_URL` while it is on, sets the bot's webhook to
+`POST /api/v1/telegram`; a webhook Telegram refused is said in the save's
+reply as `telegram`. Telegram sends a secret token back on every update
+(`X-Telegram-Bot-Api-Secret-Token`, made from the owner key and the bot's
+token together); anything without it is a 401, and with the setting off the
+path is a 404. Only a text message in a private chat, from the chat's own
+person, is taken; groups, channels, edits and other bots never are, and each
+update is answered once however often Telegram sends it. The chat is matched
+to the person who gave its number in Family → You → Telegram (the first
+person's may be `TELEGRAM_CHAT_ID`); two who gave the same number, or none,
+and it is told its number instead. The answer is as that person's device
+would get it: their scopes less `hermes` and `screen`, their hours, a device's
+limits, and the chat's recent turns. A forwarded message is quoted as someone
+else's words: it never goes to Home Assistant's Assist, nor saves a
+specialty. It comes within about 20 seconds, or says to ask for a background
+job.

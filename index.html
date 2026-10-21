@@ -147,6 +147,10 @@
   body { height: 100dvh; display: flex; flex-direction: column; align-items: center;
     justify-content: center; gap: 22px; padding: calc(var(--barTop) + 56px) 20px 20px;
     background: var(--backdrop); }
+  /* The live sky (orb/Sky.ts), behind everything once it has drawn; the backdrop above until then, or without WebGL. */
+  #skyCanvas { position: fixed; inset: 0; width: 100vw; height: 100dvh; z-index: -1; pointer-events: none; display: none; }
+  html.sky #skyCanvas { display: block; }
+  html.sky body { background: transparent; }
 
   h1 { position: fixed; top: calc(var(--barTop) + 14px); left: 22px; margin: 0; font-size: 15px;
     font-weight: 400; letter-spacing: 6px; color: var(--dim);
@@ -358,6 +362,16 @@
     -webkit-mask: var(--i-clock) center / contain no-repeat; mask: var(--i-clock) center / contain no-repeat; }
   .row .frompill span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .row .frompill small { flex: none; font-size: 12px; opacity: .7; }
+  /* The first run (firstRun.ts): Jarvis's words, then what to do next, in pills; gone once anything is said. */
+  #transcript .row.jarvis.firstrun { flex-direction: column; align-items: flex-start; gap: 8px; }
+  .row .frbtns { display: flex; flex-wrap: wrap; gap: 8px; }
+  .row .frpill { min-height: 44px; padding: 8px 16px; border: 0; border-radius: 999px; background: var(--solid); color: var(--on-solid);
+    font: inherit; font-size: 14px; font-weight: 500; cursor: pointer; }
+  .row .frpill.quiet { background: var(--wash); color: var(--dim); }
+  #transcript:has(> .row:not(.firstrun)) > .row.firstrun { display: none; }
+  /* A background job's pill (fromRoutine.ts): "On it", breathing while it works, then named by its result. */
+  .row .frompill.job::before { -webkit-mask-image: var(--i-jobs); mask-image: var(--i-jobs); }
+  .row .frompill.working small { animation: pulse 1.3s ease-in-out infinite; }
   .routine.flash { animation: rflash 1.6s ease-out; }
   /* An answer's reply button, at its foot (reply.ts). */
   .row.jarvis { flex-direction: row; align-items: flex-end; gap: 2px; }
@@ -379,6 +393,17 @@
   .row .att { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: flex-end; gap: 6px; margin-bottom: 6px; max-width: min(480px, 88%); }
   .row .attimg { max-width: 180px; max-height: 140px; border-radius: 16px; object-fit: cover; }
   .row .att .tchip { padding-right: 14px; box-shadow: none; }
+  /* A question Jarvis has received (main.ts sendTyped): "Read" under it, as Hark's chat says. */
+  .row .seen { margin-top: 3px; font-size: 12px; color: var(--faint); }
+  .row.you.replies .seen { flex-basis: 100%; text-align: right; }
+  /* Jarvis at work (main.ts working, steps.ts): a pill per tool call, the running ones breathing, the finished ones ticked. */
+  .row.working .steps { display: flex; flex-wrap: wrap; gap: 6px; max-width: min(480px, 88%); }
+  .row .step { display: inline-flex; align-items: center; min-height: 30px; padding: 4px 12px; border-radius: 999px;
+    background: var(--wash); color: var(--dim); font-size: 13px; font-weight: 500; }
+  .row .step[hidden] { display: none; }
+  .row .step.run, .row .step.think { color: var(--fg); animation: pulse 1.3s ease-in-out infinite; }
+  .row .step.done { color: var(--faint); }
+  .row .step.done::before { content: "✓"; margin-right: 6px; color: var(--ok); }
 
   #logWrap { position: fixed; inset: auto 0 0 0; height: 0; overflow: hidden; z-index: 10;
     background: var(--glass-hi); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur);
@@ -573,6 +598,12 @@
     min-height: 56px; min-width: 88px; padding: 12px 22px; border-radius: 999px; border: 0;
     background: var(--glass-hi); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur);
     color: var(--fg); font: inherit; font-size: 15px; font-weight: 600; cursor: pointer; }
+  /* A picture Jarvis made (ui/Stage.ts showImage): Download, opposite Close. */
+  #stage .dl { position: absolute; top: 10px; left: 10px; display: inline-flex; align-items: center;
+    min-height: 56px; padding: 12px 22px; border-radius: 999px;
+    background: var(--glass-hi); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur);
+    color: var(--fg); font-size: 15px; font-weight: 600; text-decoration: none; }
+  #stage .dl[hidden] { display: none; }
   @keyframes stageIn { from { opacity: 0; transform: translateY(16px) scale(.97) }
                        to   { opacity: 1; transform: none } }
 
@@ -710,16 +741,72 @@
   body.typing #transcript .row { font-size: 16px; }
   body.typing #transcript .row .txt { white-space: pre-wrap; overflow-wrap: anywhere; }
   body.typing #transcript .row .txt a { color: var(--accent-ink); }
+  /* An answer's markdown (ui/rich.ts): blocks spaced as a page, not pre-wrapped lines. */
+  .md { white-space: normal !important; }
+  .md > :first-child { margin-top: 0; }
+  .md > :last-child { margin-bottom: 0; }
+  .md p, .md ul, .md ol, .md pre, .md blockquote, .md .mdtable { margin: 0 0 10px; }
+  .md p { white-space: pre-wrap; }
+  .md h3, .md h4, .md h5 { margin: 14px 0 6px; font-weight: 600; line-height: 1.3; }
+  .md h3 { font-size: 1.15em; } .md h4 { font-size: 1.05em; } .md h5 { font-size: 1em; color: var(--dim); }
+  .md ul, .md ol { padding-left: 1.3em; }
+  .md li + li { margin-top: 3px; }
+  .md code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.9em; padding: 1px 5px; border-radius: 6px; background: color-mix(in srgb, var(--fg) 8%, transparent); }
+  .md pre { overflow-x: auto; padding: 10px 12px; border-radius: 12px; background: color-mix(in srgb, var(--fg) 7%, transparent); }
+  .md pre code { padding: 0; background: none; }
+  .md blockquote { padding-left: 12px; border-left: 3px solid var(--hair); color: var(--dim); white-space: pre-wrap; }
+  .md hr { border: 0; border-top: 1px solid var(--hair); margin: 12px 0; }
+  .mdscroll { overflow-x: auto; max-width: 100%; }
+  .mdtable table { border-collapse: collapse; font-size: 0.92em; min-width: 100%; }
+  .mdtable th, .mdtable td { padding: 6px 10px; border-bottom: 1px solid var(--hair); text-align: left; vertical-align: top; }
+  .mdtable th { font-weight: 600; white-space: nowrap; }
+  .mdbtns { display: flex; gap: 8px; margin-top: 6px; }
+  .mdbtns button, .doc .docopen { min-height: 34px; padding: 0 14px; border: 1px solid var(--hair); border-radius: 999px; background: var(--glass); color: var(--fg); font: inherit; font-size: 13px; cursor: pointer; }
+  /* A document Jarvis wrote, as a card that opens in the reader (ui/Reader.ts). */
+  .doc { display: grid !important; gap: 6px; white-space: normal !important; }
+  .doc .doctag { font-size: 12px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--dim); }
+  .doc .doctitle { font-size: 1.1em; line-height: 1.3; }
+  .doc .docfirst { color: var(--dim); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .doc .docopen { justify-self: start; }
+  #reader .sheet { max-width: 760px; }
+  #reader .reading { font-size: 16px; line-height: 1.6; color: var(--fg); }
+  #reader .reading .md h3 { font-size: 1.3em; } #reader .reading .md h4 { font-size: 1.12em; }
+  /* A page Jarvis made (pageCard.ts), under the answer that made it. */
+  .pagecard { display: grid; gap: 6px; margin-top: 10px; padding: 12px 14px; border: 1px solid var(--hair); border-radius: 16px; background: var(--glass); white-space: normal; }
+  .pagecard .doctag { font-size: 12px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--dim); }
+  .pagecard .doctitle { font-size: 1.05em; line-height: 1.3; }
+  .pagecard .pagesaid { color: var(--dim); font-size: 12px; overflow-wrap: anywhere; }
+  .pagecard .docopen { min-height: 34px; padding: 0 14px; border: 1px solid var(--hair); border-radius: 999px; background: var(--glass); color: var(--fg); font: inherit; font-size: 13px; cursor: pointer; }
+  .pagecard .docopen.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); font-weight: 600; }
+  .draftcard .draftbody { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 14em; overflow-y: auto; font-size: 14px; line-height: 1.5; }
+  /* The pages an answer cited (ui/rich.ts linkCards), under it. */
+  .links { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; white-space: normal; }
+  .links .lcard { display: grid; gap: 2px; max-width: 240px; padding: 8px 12px; border: 1px solid var(--hair); border-radius: 14px; background: var(--glass); color: var(--fg) !important; text-decoration: none; }
+  .links .lcard b { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .links .lcard small { font-size: 12px; color: var(--dim); }
   #transcript .row.bad .txt { color: var(--danger); }
+  /* A limit met (chat.ts): a notice in amber, as Hark's inline banner, after .bad so it wins for "bad limit". */
+  #transcript .row.limit .txt { color: var(--fg); background: color-mix(in srgb, var(--warn) 16%, transparent);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--warn) 45%, transparent); }
+  /* The question being answered stays at the top while its answer is read (main.ts pin). Its see-through bubble
+     is laid on the page's own colour so nothing shows through, and a long one is cut short until tapped. Not over the car's
+     keyboard, whose band is too short to give a row up. */
+  body.typing:not(.kbover) #transcript > .row.you.pinned { position: sticky; top: 0; z-index: 1; padding-bottom: 6px;
+    background: color-mix(in srgb, var(--bg) 70%, transparent); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); }
+  body.typing:not(.kbover) #transcript > .row.you.pinned .txt { background: linear-gradient(var(--bubble-you), var(--bubble-you)), var(--bg);
+    max-height: 7.2em; overflow: hidden; }
+  body.typing:not(.kbover) #transcript > .row.you.pinned.whole .txt { max-height: none; }
   /* Clear chat (conversation.ts): above the conversation, in Chat, once there is one; two taps. */
   #chathead { display: none; }
-  body.typing:not(.kbover):has(#transcript > .row) #chathead { display: flex; flex: none; justify-content: flex-end; width: min(720px, 100%); margin-bottom: -6px; }
-  #clearChat { min-height: 40px; padding: 0 16px; border: 1px solid var(--hair); border-radius: 999px;
+  /* Search (ui/Search.ts) is there from the start; Clear chat once there is something to clear. */
+  body.typing:not(.kbover) #chathead { display: flex; flex: none; justify-content: flex-end; gap: 8px; width: min(720px, 100%); margin-bottom: -6px; }
+  body:not(:has(#transcript > .row)) #clearChat { display: none; }
+  #clearChat, #openSearch { min-height: 40px; padding: 0 16px; border: 1px solid var(--hair); border-radius: 999px;
     background: var(--glass); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur);
     color: var(--dim); font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; }
   #clearChat.armed { background: var(--danger); border-color: var(--danger); color: var(--on-accent); }
   /* The message box, Hark's: one glass pill holding the text and its buttons —
-     ask aloud (what the orb does in Chat), read replies aloud, and send. */
+     dictate into it (asking aloud is the orb's in Chat), read replies aloud, and send. */
   body.typing #typebar { display: flex; position: fixed; left: 50%; transform: translateX(-50%); z-index: 20;
     bottom: calc(var(--kb, 0px) + 12px + env(safe-area-inset-bottom)); width: min(720px, calc(100vw - 28px));
     align-items: flex-end; gap: 2px; padding: 4px; border-radius: 26px; border: 1px solid var(--hair);
@@ -736,6 +823,8 @@
   #typebar > button::before { content: ""; width: 22px; height: 22px; background: currentColor;
     -webkit-mask: var(--icon) center / contain no-repeat; mask: var(--icon) center / contain no-repeat; }
   #typebar #askAloud { --icon: var(--i-mic); }
+  /* Taking down what is said (ptt.ts dictate): the mic in red, as a recorder's is. */
+  #typebar #askAloud[aria-pressed="true"] { color: var(--danger); animation: pulse 1.3s ease-in-out infinite; }
   #typebar #readAloud { --icon: var(--i-speaker); }
   #typebar #readAloud[aria-pressed="true"] { --icon: var(--i-speaking); color: var(--accent-ink); }
   #typebar #send { --icon: var(--i-send); background: var(--solid); color: var(--on-solid); }
@@ -927,6 +1016,15 @@
   .panel .routine .rwhen { font-size: 13px; color: var(--fg); overflow-wrap: anywhere; }
   .panel .routine .rfacts { font-size: 12px; color: var(--dim); overflow-wrap: anywhere; }
   .panel .routine .rfacts.bad { color: var(--danger); }
+  /* Search (ui/Search.ts): a message or a mail found is pressed to go to it. */
+  .panel .routine.found.go { cursor: pointer; }
+  .panel .routine.found .rtop small { color: var(--dim); }
+  /* A specialty's steps (ui/memory-recall.ts). */
+  .panel .routine .rsteps { margin: 6px 0 0; padding-left: 20px; font-size: 13px; color: var(--dim); }
+  /* Past runs (ui/Routines.ts), under the routine when opened. */
+  .panel .routine .rruns { display: grid; gap: 6px; margin-top: 8px; }
+  .panel .routine .rruns[hidden] { display: none; }
+  .panel .routine .rruns .note { margin: 0 0 4px; }
   .panel .rform { display: grid; gap: 8px; margin-top: 10px; }
   .panel .rform input:not([type=checkbox]), .panel .rform textarea {
     background: var(--field); color: var(--fg); border: 1px solid transparent; border-radius: 14px;
@@ -998,7 +1096,25 @@
   #home .hmenu button::before { flex: none; width: 18px; height: 18px; }
   #home .hmenu button:hover { background: var(--wash); }
   #home .hmenu .hreload { --icon: var(--i-refresh); }
+  #home .hmenu .hask { --icon: var(--i-reply); }
+  #home .hmenu .habout { --icon: var(--i-clock); }
   #home .hmenu .hremove { --icon: var(--i-trash); color: var(--danger); }
+  /* More info (ui/Home.ts infoOf): how often each thing on a panel is read, from where, when last and when next. */
+  #home .hinfo { position: relative; display: grid; gap: 8px; margin: 0 0 12px; padding: 12px 52px 12px 14px; border-radius: 16px;
+    background: var(--wash); color: var(--dim); font-size: 13px; line-height: 1.45; }
+  #home .hinfo p { margin: 0; }
+  #home .hinfo b { color: var(--fg); font-weight: 500; }
+  #home .hinfo a { color: var(--accent-ink); }
+  #home .hinfox { position: absolute; top: 4px; right: 4px; display: grid; place-items: center; width: 44px; height: 44px; padding: 0;
+    border: 0; border-radius: 50%; background: none; color: var(--dim); cursor: pointer; }
+  #home .hinfox::before { content: ""; width: 16px; height: 16px; background: currentColor;
+    -webkit-mask: var(--i-close) center / contain no-repeat; mask: var(--i-close) center / contain no-repeat; }
+  /* A panel in the making (ui/Home.ts building): its tiles breathing until the panel itself takes its place, as Hark's do. */
+  #home .hsketch { pointer-events: none; }
+  #home .hsketch h3 { flex: 1; margin: 0; font-size: 16px; font-weight: 500; color: var(--dim); }
+  #home .hsketch .htile { min-height: 84px; animation: hsketch 1.4s ease-in-out infinite; }
+  @keyframes hsketch { 50% { opacity: .45; } }
+  @media (prefers-reduced-motion: reduce) { #home .hsketch .htile { animation: none; } }
   #home .hmenu .hremove.armed { background: var(--danger); color: var(--on-accent); }
   #home .hgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(152px, 1fr)); grid-auto-flow: row dense; gap: 10px; }
   #home .hmember { --tint: var(--warn); --on-tint: var(--fg); }
@@ -1175,6 +1291,7 @@
 </style>
 </head>
 <body>
+  <canvas id="skyCanvas" aria-hidden="true"></canvas>
   <h1 id="title">JARVIS</h1>
   <button id="menuBtn" type="button" aria-label="Menu" aria-haspopup="dialog" aria-expanded="false"></button>
   <div id="hub" role="dialog" aria-modal="true" aria-label="Menu">
@@ -1229,7 +1346,7 @@
       </div>
     </div>
   </div>
-  <div id="chathead"><button id="clearChat" type="button">Clear chat</button></div>
+  <div id="chathead"><button id="openSearch" type="button">Search</button><button id="clearChat" type="button">Clear chat</button></div>
   <div id="transcript"></div>
   <section id="home" aria-label="Your panels"></section>
   <form id="typebar" autocomplete="off">
@@ -1242,7 +1359,7 @@
       <button type="button" role="menuitem" data-pick="photo">Take photo</button>
     </div>
     <input id="attachInput" type="file" multiple hidden accept="image/*,application/pdf,text/*,.md,.csv,.tsv,.json,.log,.xml,.yaml,.yml">
-    <button id="askAloud" type="button" title="Ask aloud" aria-label="Ask aloud"></button>
+    <button id="askAloud" type="button" title="Dictate" aria-label="Dictate" aria-pressed="false"></button>
     <button id="readAloud" type="button" aria-pressed="false" title="Read replies aloud" aria-label="Read replies aloud"></button>
     <button id="send" type="submit" aria-label="Send"></button>
   </form>

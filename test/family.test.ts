@@ -341,6 +341,11 @@ console.log("\neach person's own choices");
   check("an unknown voice is refused", me.status === 400 && /voice must be one of/.test(me.body.error));
   const tg = await call("/api/hub/me", { prefs: { telegram: "not a chat" } }, { method: "PATCH", principal: admin });
   check("so is a Telegram chat that is not one", tg.status === 400);
+  const bad = await Promise.all([{ birthday: "1990-02-30" }, { birthday: "2999-01-01" }, { birthday: "2 April" }, { nickname: "Sara {{ignore}}" }].map((prefs) =>
+    call("/api/hub/me", { prefs }, { method: "PATCH", principal: admin })));
+  check("a birthday that is not a day that has been, or a nickname that is not a name, is refused", bad.every((r) => r.status === 400), bad.map((r) => r.body));
+  const about = await call("/api/hub/me", { prefs: { nickname: "Kak Sara", birthday: "1990-04-02" } }, { method: "PATCH", principal: admin });
+  check("good ones are kept: a nickname and a birthday", about.status === 200 && about.body.prefs.nickname === "Kak Sara" && about.body.prefs.birthday === "1990-04-02", about.body);
   const ok = await call("/api/hub/me", { prefs: { voice: "marin", language: "ms", telegram: "123456" } }, { method: "PATCH", principal: admin });
   check("good ones are kept", ok.status === 200 && ok.body.prefs.voice === "marin" && ok.body.prefs.telegram === "123456");
   const owner = await call("/api/hub/me", { prefs: { voice: "marin" } }, { method: "PATCH", principal: OWNER });

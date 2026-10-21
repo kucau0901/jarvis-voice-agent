@@ -15,6 +15,8 @@ interface RoutineView {
   name: string;
   enabled: boolean;
   trigger: { kind: string; event?: string };
+  /** What it does; an ask may wait for something worth telling (notify "if-important"). */
+  action?: { kind: string; notify?: string };
   createdBy: string;
   nextAt?: number;
   lastRun?: { at: number; ok: boolean; detail: string };
@@ -126,12 +128,33 @@ export class Routines {
       if (r.createdBy !== "owner" && r.createdBy !== "voice") facts.push("made by a device");
       if (facts.length) row.appendChild(el("div", `rfacts${r.lastRun && !r.lastRun.ok ? " bad" : ""}`, facts.join(" · ")));
       const btns = el("div", "rowbtns");
-      btns.appendChild(button("Run now", () => void this.act(() => api(this.key, "POST", "/api/v1/routines/run", { id: r.id }), "Running — it arrives as an alert.")));
+      const quietly = r.action?.notify === "if-important";
+      btns.appendChild(button("Run now", () => void this.act(() => api(this.key, "POST", "/api/v1/routines/run", { id: r.id }),
+        quietly ? "Running — it arrives as an alert if there is anything to tell." : "Running — it arrives as an alert.")));
       btns.appendChild(button("Remove", () => void this.act(() => api(this.key, "DELETE", `/api/v1/routines?id=${encodeURIComponent(r.id)}`))));
-      row.appendChild(btns);
+      const past = el("div", "rruns");
+      past.hidden = true;
+      btns.appendChild(button("Past runs", () => void this.runs(r.id, past)));
+      row.append(btns, past);
       return row;
     });
     this.list.replaceChildren(...rows);
+  }
+
+  /** A routine's last runs, newest first, with what each said: opened under it, and closed again. */
+  private async runs(id: string, box: HTMLElement): Promise<void> {
+    box.hidden = !box.hidden;
+    if (box.hidden) return;
+    box.replaceChildren(el("p", "note", "Loading…"));
+    try {
+      const { runs } = (await api(this.key, "GET", `/api/v1/routines/runs?id=${encodeURIComponent(id)}`)) as { runs: { at: number; ok: boolean; detail: string; said?: string }[] };
+      box.replaceChildren(...(runs.length ? runs.flatMap((x) => [
+        el("div", `rfacts${x.ok ? "" : " bad"}`, `${when(x.at, this.tz)}: ${x.ok ? "✓" : "✗"} ${x.detail}`),
+        ...(x.said ? [el("p", "note", x.said)] : []),
+      ]) : [el("p", "note", "No runs yet.")]));
+    } catch (e) {
+      box.replaceChildren(el("p", "note", message(e)));
+    }
   }
 
   private async act(fn: () => Promise<unknown>, done = ""): Promise<void> {
@@ -149,7 +172,7 @@ export class Routines {
   private form(): HTMLElement {
     const f = el("div", "rform");
     const name = input("text", "name (optional)");
-    const kind = select([["once", "Once, at a time"], ["daily", "Every day or some days"], ["event", "When an event arrives"], ["leave", "Before calendar events: when to leave"]]);
+    const kind = select([["once", "Once, at a time"], ["daily", "Every day or some days"], ["cron", "On a cron schedule"], ["event", "When an event arrives"], ["leave", "Before calendar events: when to leave"]]);
     const at = input("datetime-local", "");
     const time = input("time", "");
     time.value = "07:30";
@@ -165,6 +188,7 @@ export class Routines {
       days.appendChild(l);
       return b;
     });
+    const cron = input("text", "0 8,12 * * *  (minute hour day month weekday)");
     const event = input("text", "event name, e.g. arrived_home");
     const buffer = input("number", "");
     buffer.value = "10";
@@ -177,16 +201,23 @@ export class Routines {
     const text = document.createElement("textarea");
     text.rows = 2;
     text.placeholder = "Call Mum";
+    // An answer is sent only when it is worth sending, as Hark's checks say "nothing important, so I sent nothing".
+    const quiet = document.createElement("input");
+    quiet.type = "checkbox";
+    const quietRow = el("label", "on");
+    quietRow.appendChild(quiet);
+    quietRow.appendChild(document.createTextNode(" Only if there is something worth telling me"));
 
     const tzline = el("p", "note tzline");
-    const shown: Record<string, HTMLElement[]> = { once: [at], daily: [time, days], event: [event], leave: [bufferRow] };
-    const all = [at, time, days, event, bufferRow];
+    const shown: Record<string, HTMLElement[]> = { once: [at], daily: [time, days], cron: [cron], event: [event], leave: [bufferRow] };
+    const all = [at, time, days, cron, event, bufferRow];
     const sync = () => {
       for (const x of all) x.style.display = "none";
       for (const x of shown[kind.value] ?? []) x.style.display = "";
       const leave = kind.value === "leave";
       doKind.style.display = leave ? "none" : "";
       text.style.display = leave ? "none" : "";
+      quietRow.style.display = !leave && doKind.value === "ask" ? "" : "none";
       text.placeholder = doKind.value === "ask" ? "What's on my calendar today, and the traffic to work?" : "Call Mum";
     };
     kind.addEventListener("change", sync);
@@ -201,15 +232,18 @@ export class Routines {
           body.time = time.value;
           body.days = dayBoxes.filter((b) => b.checked).map((b) => b.value);
         }
+        if (kind.value === "cron") body.cron = cron.value;
         if (kind.value === "event") body.event = event.value;
         if (kind.value === "leave") body.bufferMin = Number(buffer.value);
         else body[doKind.value] = text.value;
+        if (kind.value !== "leave" && doKind.value === "ask" && quiet.checked) body.notify = "if-important";
         await api(this.key, "POST", "/api/v1/routines", body);
         name.value = "";
         text.value = "";
+        quiet.checked = false;
       }, "Added."), "primary");
 
-    for (const x of [name, kind, at, time, days, event, bufferRow, doKind, text, tzline, add]) f.appendChild(x);
+    for (const x of [name, kind, at, time, days, cron, event, bufferRow, doKind, text, quietRow, tzline, add]) f.appendChild(x);
     return f;
   }
 

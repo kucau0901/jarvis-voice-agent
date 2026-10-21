@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { CORE_VERT, CORE_FRAG, SHELL_VERT, SHELL_FRAG, HALO_VERT, HALO_FRAG } from "./shaders";
+import { Governor } from "./governor";
 
 interface OrbInputs {
   user: number;   // driver's voice, 0..1
@@ -44,9 +45,9 @@ export class Orb {
   private halo!: THREE.Mesh;
   private uniforms: Record<string, THREE.IUniform>;
   private clock = new THREE.Clock();
-  private frames: number[] = [];
+  // Budget is generous: at 30fps a frame has 33ms, and the browser needs some of that for audio and the data channel.
+  private governor = new Governor(20, 7);
   private detail: number;
-  private lastTune = 0;
   private running = false;
   private observer: ResizeObserver | null = null;
   private resizePending = 0;
@@ -257,20 +258,8 @@ export class Orb {
    * clearly headroom. Hysteresis is wide so it settles instead of oscillating.
    */
   private tune(cost: number) {
-    this.frames.push(cost);
-    if (this.frames.length < 90) return;
-
-    const now = performance.now();
-    if (now - this.lastTune < 4000) { this.frames.length = 0; return; }
-    this.lastTune = now;
-
-    const sorted = this.frames.slice().sort((a, b) => a - b);
-    const median = sorted[Math.floor(sorted.length / 2)]!;
-    this.frames.length = 0;
-
-    // Budget is generous: at 30fps a frame has 33ms, and the browser needs some
-    // of that for audio and the data channel.
-    if (median > 20) {
+    const step = this.governor.push(cost);
+    if (step < 0) {
       // Shed the per-pixel veins before the geometry: they are pure fragment
       // cost, and losing them is less visible than a coarser silhouette.
       if (this.uniforms.uVeinQuality!.value === 1) {
@@ -279,7 +268,7 @@ export class Orb {
       } else if (this.detail > 4) {
         this.detail--; this.tier = Math.max(0, this.tier - 1); this.rebuildGeometry();
       }
-    } else if (median < 7) {
+    } else if (step > 0) {
       if (this.detail < 6) {
         this.detail++; this.tier = Math.min(2, this.tier + 1); this.rebuildGeometry();
       } else if (this.uniforms.uVeinQuality!.value === 0) {

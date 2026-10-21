@@ -71,7 +71,7 @@ export function shareReply(j: Job, t: number): string {
 /** What the merge is given, as a user message: each team's report with its pages, or why it has none, and the board. */
 export function mergeMaterial(j: Job): string {
   const team = j.team!;
-  const parts = ["The research teams' work on this brief:"];
+  const parts = [j.table?.columns ? `The research teams' work on this brief, for a table with the columns: ${j.table.columns.join(" | ")}` : "The research teams' work on this brief:"];
   team.chains.forEach((c, i) => {
     const who = `Team ${i + 1} (${nameOf(team, i)})`;
     const shared = team.board.some((b) => b.team === i);
@@ -88,7 +88,8 @@ export function mergeMaterial(j: Job): string {
 }
 
 /** A team's angle, as the user message that starts its chain. */
-export const angleMessage = (angle: TeamAngle): string => `Your angle: ${angle.name}. ${angle.brief}`;
+export const angleMessage = (angle: TeamAngle, columns?: readonly string[]): string =>
+  `Your angle: ${angle.name}. ${angle.brief}${columns ? `\nThe table's columns: ${columns.join(" | ")}` : ""}`;
 
 /** What the Jobs panel is told of a research team: how many reported and, while it runs, which part it is in. */
 export function teamView(j: Job): { of: number; reported: number; phase?: "planning" | "teams" | "merging" | "checking" } {

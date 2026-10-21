@@ -346,7 +346,7 @@ export class Family {
    */
   private buildMenu(members: Member[], admin: boolean): void {
     const groups: NavGroup[] = [
-      ["You", ["owner", "pass", "you", "m-accounts", "m-cars", "m-home", "m-voice", "m-alerts", "m-usage"]],
+      ["You", ["owner", "pass", "you", "m-profile", "m-accounts", "m-cars", "m-home", "m-voice", "m-alerts", "m-usage"]],
       ["The family", [...(admin ? members.map((m) => `member:${m.id}`) : ["members"]), "invite", "chores", "names"]],
       ["Screens", ["screen", "pair", "signin"]],
     ];

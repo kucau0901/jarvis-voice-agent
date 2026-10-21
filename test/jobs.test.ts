@@ -1,5 +1,6 @@
 import {
   DAILY_JOBS,
+  isResearchCap,
   Jobs,
   jobTool,
   KEEP_JOBS,
@@ -111,6 +112,8 @@ function harness(
   const merged: string[] = [];
   const heard: string[] = [];
   const recorded: UsageEntry[] = [];
+  /** Finished jobs, as past attempts (lib/episodes.ts). */
+  const episodes: Job[] = [];
   /** What each question to Hermes was handed besides its task: a research report, or nothing. */
   const handed: (string | undefined)[] = [];
   const queue = [...steps];
@@ -160,10 +163,13 @@ function harness(
     async record(e) {
       recorded.push(e);
     },
+    async episode(j) {
+      episodes.push(j);
+    },
     ...(opts.researchLimit !== undefined ? { researchLimit: opts.researchLimit } : {}),
   };
   const storage = fakeStorage();
-  return { jobs: new Jobs(storage, async () => deps), sent, log, storage, deps, merged, heard, recorded, handed };
+  return { jobs: new Jobs(storage, async () => deps), sent, log, storage, deps, merged, heard, recorded, handed, episodes };
 }
 
 /** Tick a job along, each time when it asks to be looked at, until it is no longer running. */
@@ -204,7 +210,9 @@ console.log("\na job from start to finish");
   check("done, with summary and result", cur.status === "done" && cur.summary === "The A229 is the best buy." && cur.result === "Full comparison…", cur);
   check("usage added up", cur.usage?.input === 300 && cur.usage.output === 410);
   check("one alert: short, so all of it, summary first", h.sent.length === 1 && h.sent[0]!.title === "Done: Dashcams" && h.sent[0]!.text === "The A229 is the best buy.\n\nFull comparison…" && h.sent[0]!.source === "job", h.sent);
+  check("the alert names its job, for its pill in the conversation", h.sent[0]!.job === j.id, h.sent[0]);
   check("recorded how it was delivered", cur.deliveredBy === "push");
+  check("kept as a past attempt, once, as it finished", h.episodes.length === 1 && h.episodes[0]!.id === j.id && h.episodes[0]!.status === "done");
   check("nothing more to wake for", (await h.jobs.nextWake(T0 + 60_000)) === null);
   await h.jobs.tick(T0 + 120_000);
   check("never told twice", h.sent.length === 1);
@@ -228,6 +236,7 @@ console.log("\nwhen it goes wrong");
   const cur = (await h.jobs.get(j.id))!;
   check("failed, with the reason", cur.status === "failed" && /rate_limit/.test(cur.error!));
   check("the user is told, quietly", h.sent[0]?.title.startsWith("Could not finish") === true && h.sent[0]!.speak === false);
+  check("…and the alert names its job too", h.sent[0]?.job === j.id, h.sent[0]);
   const h2 = harness([], { start: { error: "it could not start: 401" } });
   const j2 = (await h2.jobs.create({ task: "x" }, BY, T0)) as Job;
   await h2.jobs.tick(T0);
@@ -396,6 +405,7 @@ console.log("\nHermes past the wait: still working, not failed");
   await h.jobs.tick(T0);
   const done = (await h.jobs.get(j.id))!;
   check("the person is told it is still working, quietly, with why", h.sent.length === 1 && h.sent[0]!.title === `Still working: ${j.title}` && h.sent[0]!.speak === false && /within 6 minutes/.test(h.sent[0]!.text), h.sent);
+  check("…and it is not a failed attempt: Hermes is still at it", h.episodes.length === 0);
   check("the job has no answer to keep", done.status === "failed" && /within 6 minutes/.test(done.error ?? ""), done);
 }
 
@@ -472,9 +482,11 @@ console.log("\nask_hermes: handing over research by voice");
   };
   const env = { HERMES_BASE_URL: "https://hermes.example", HERMES_API_KEY: "test-hermes-key", TIMEZONE: "Asia/Kuala_Lumpur", STATE: { idFromName: () => "jarvis", get: () => stub } } as never;
   const tool = baseTools(env).find((t) => t.name === "ask_hermes")!;
+  const started: { id: string; title: string; engine: string }[] = [];
   const ask = async (research: string | null) => {
     made.length = 0;
-    const said = String(await tool.run({ question: INSTRUCTION, research }, { env, grants: ["*"], signal: new AbortController().signal, progress() {}, display() {} } as never));
+    started.length = 0;
+    const said = String(await tool.run({ question: INSTRUCTION, research }, { env, grants: ["*"], signal: new AbortController().signal, progress() {}, display() {}, started: (j: { id: string; title: string; engine: string }) => started.push(j) } as never));
     // Out of the way, so the next ask is not held back by the running-jobs limit.
     for (const j of await h.jobs.list()) if (j.engine === "hermes" && j.status === "running") await h.jobs.cancel(j.id, T0);
     return { said, made: made[0] };
@@ -484,8 +496,10 @@ console.log("\nask_hermes: handing over research by voice");
   check("…and the reply names it", latest.said.includes("Home EV chargers"), latest.said);
   const dash = await ask("dashcam RM800");
   check("title words pick the newest research that has them all", dash.made?.from === "jdash", dash);
+  check("typed chat is told the job it started, for its pill", started.length === 1 && started[0]!.engine === "hermes" && started[0]!.title.startsWith("Hermes: ") && (await h.jobs.get(started[0]!.id))?.engine === "hermes", started);
   const none = await ask("solar panels");
   check("no match: nothing is started", !none.made && !(await h.jobs.list()).some((j) => j.engine === "hermes" && j.from === "jsolar"), none);
+  check("…and no job is reported", started.length === 0, started);
   check("…and the reply lists the research there is (the caller's own)", none.said.startsWith("No finished research matches 'solar panels'.") && none.said.includes('"Home EV chargers"') && none.said.includes('"Dashcams under RM800"') && !none.said.includes("Rooftop") && !none.said.includes("Heat pumps"), none.said);
   const plain = await ask(null);
   check("research: null asks Hermes as before", !!plain.made && !("from" in plain.made) && plain.made.engine === "hermes" && plain.made.title === `Hermes: ${INSTRUCTION.slice(0, 60)}` && plain.said.startsWith("Asked Hermes."), plain);
@@ -499,6 +513,23 @@ console.log("\nask_hermes: handing over research by voice");
   const schema = tool.parameters as { properties: Record<string, { type: unknown }>; required: string[]; additionalProperties: boolean };
   check("the schema stays strict: research is a string or null, and required",
     JSON.stringify(schema.properties.research?.type) === JSON.stringify(["string", "null"]) && schema.required.includes("research") && schema.required.includes("question") && schema.additionalProperties === false, schema);
+}
+
+console.log("\nstart_job: the job is reported to typed chat, for its pill");
+{
+  const h = harness();
+  const stub = { listJobs: () => h.jobs.list(), createJob: (input: Record<string, unknown>, by: unknown) => h.jobs.create(input as never, by as never, T0) };
+  const env = { TIMEZONE: "Asia/Kuala_Lumpur", STATE: { idFromName: () => "jarvis", get: () => stub } } as never;
+  const tool = baseTools(env).find((t) => t.name === "start_job")!;
+  const started: { id: string; title: string; engine: string }[] = [];
+  const run = (args: Record<string, unknown>, grants: string[]) =>
+    tool.run(args, { env, grants, signal: new AbortController().signal, progress() {}, display() {}, started: (j: { id: string; title: string; engine: string }) => started.push(j) } as never);
+  const said = String(await run({ title: "Dashcams", task: "Compare dashcams under RM800.", research: "no" }, ["*"]));
+  const made = (await h.jobs.list())[0];
+  check("started, and its id, title and engine reported", said.startsWith('Started "Dashcams"') && started.length === 1 && started[0]!.id === made?.id && started[0]!.title === "Dashcams" && started[0]!.engine === "jarvis", { said, started });
+  started.length = 0;
+  const refused = String(await run({ title: "Deep", task: "Research heat pumps in depth.", research: "yes" }, ["ask"]));
+  check("not started: nothing reported", refused.startsWith("Not started") && started.length === 0, { refused, started });
 }
 
 console.log("\nreading the jobs back");
@@ -574,7 +605,9 @@ console.log("\nresearch in depth");
   const nextMonth = T0 + 32 * 86_400_000;
   check("next month, it starts again", typeof (await h.jobs.create({ task: "e", engine: "research" }, BY, nextMonth)) !== "string");
   const off = harness([], { researchLimit: 0 });
-  check("0 switches research off", String(await off.jobs.create({ task: "a", engine: "research" }, BY, T0)).includes("switched off"));
+  const offSaid = String(await off.jobs.create({ task: "a", engine: "research" }, BY, T0));
+  check("0 switches research off", offSaid.includes("switched off"));
+  check("both are known for the cap they are, for typed chat's notice", isResearchCap(String(r3)) && isResearchCap(offSaid) && !isResearchCap("3 jobs are already running; wait for one to finish"), { r3, offSaid });
   check(`${RESEARCH_MONTHLY_DEFAULT} a month when unset`, RESEARCH_MONTHLY_DEFAULT === 10);
 }
 
@@ -877,6 +910,59 @@ console.log("\nresearch as a team, from start to finish");
   check("while it is checked: the draft kept, and nothing the teams wrote",
     !!atCheck?.draft && atCheck.team!.board.length === 0 && atCheck.team!.chains.every((c) => c.report === undefined && c.cited === undefined), atCheck?.team);
   check("nothing the teams wrote is left on the record", !("draft" in done) && done.team!.board.length === 0 && done.team!.chains.every((c) => c.report === undefined && c.cited === undefined && c.responseId === undefined), done.team);
+}
+
+console.log("\nresearch into a table");
+{
+  const columns = ["Speaker", "Price", "Seller", "Source"];
+  const plan: Step = { kind: "done", text: JSON.stringify({ columns, angles: ANGLES }), usage: spent(50) };
+  const rows = [["Mi Smart Speaker", "RM199", "Example Store", "https://shop.example/a"], ["Mi Portable", "=1+1", "Other Shop", "https://shop.example/b"]];
+  const table = (summary: string): Step => ({ kind: "done", text: JSON.stringify({ summary, rows }), usage: spent(1000) });
+  const h = harness([plan, table("Two speakers, the cheapest first."), { ...table("Two speakers, the cheapest first."), cited: [{ url: "https://shop.example/a", title: "Shop" }] }], { teams: EVERY_TEAM() });
+  const j = (await h.jobs.create({ title: "Cheapest speakers", task: "The cheapest genuine Xiaomi speakers in Malaysia.", engine: "research", table: true }, BY, T0)) as Job;
+  check("a research team that fills a table", j.engine === "research" && !!j.team && !!j.table && !j.table.columns);
+  await h.jobs.tick(T0);
+  await h.jobs.tick(T0 + 5_000);
+  check("its columns are planned with the teams' shares", JSON.stringify((await h.jobs.get(j.id))!.table?.columns) === JSON.stringify(columns));
+  const done = await drive(h, j.id, T0 + 5_000);
+  const kept = await h.jobs.table(j.id);
+  check("its rows are kept to download, as many as came back", done.status === "done" && done.table?.rows === 2 && kept?.rows.length === 2 && kept.columns.join() === columns.join(), { done: done.table, kept });
+  check("the merge is told the columns", (h.merged[0] ?? "").includes("for a table with the columns: Speaker | Price | Seller | Source"));
+  check("the result: the summary, the first rows as a table, where the rest is, the sources",
+    (done.result ?? "").startsWith("| Speaker | Price | Seller | Source |") && done.summary === "Two speakers, the cheapest first." && /The whole table is in Jobs/.test(done.result ?? "") && /Sources:\n- Shop: https:\/\/shop\.example\/a/.test(done.result ?? ""), done.result);
+  await h.jobs.remove(j.id);
+  check("removed with its job", (await h.jobs.table(j.id)) === null);
+  const prose = harness([{ kind: "done", text: JSON.stringify({ angles: ANGLES }), usage: spent(50) }, MERGED, CHECKED], { teams: EVERY_TEAM() });
+  const pj = (await prose.jobs.create({ title: "Speakers", task: "x", engine: "research", table: true }, BY, T0)) as Job;
+  const pd = await drive(prose, pj.id);
+  check("a plan with no columns: ordinary team research, a report", pd.status === "done" && !pd.table && (await prose.jobs.table(pj.id)) === null && (pd.result ?? "").includes("A checked finding"), pd.table);
+
+  // A table longer than a report may be: read whole, then shortened to send.
+  const many = (n: number) => Array.from({ length: n }, (_, i) => [`Speaker number ${i} with a long name`, `RM${100 + i}.00 each`, "A seller with an address on a long road somewhere in a town far away, open every day", `https://shop.example/item/${i}/with/a/long/path/to/the/listing`]);
+  const long: Step = { kind: "done", text: JSON.stringify({ summary: "A hundred.", rows: many(100) }), usage: spent(1000), cited: Array.from({ length: 15 }, (_, i) => ({ url: `https://shop.example/${i}`, title: `Shop ${i}` })) };
+  const big = harness([plan, long, long], { teams: EVERY_TEAM() });
+  const bj = (await big.jobs.create({ title: "Speakers", task: "x", engine: "research", table: true }, BY, T0)) as Job;
+  const bd = await drive(big, bj.id);
+  check("a table past 20,000 characters keeps every row", long.text.length > 20_000 && bd.table?.rows === 100 && (await big.jobs.table(bj.id))?.rows.length === 100, { len: long.text.length, table: bd.table });
+  check("and is sent shortened, with its sources", (bd.result ?? "").length < 20_000 && /The first 20 of 100 rows/.test(bd.result ?? "") && /Sources:\n- Shop 0:/.test(bd.result ?? ""), (bd.result ?? "").slice(-300));
+
+  // The check drops the rows no source backs: far shorter, and still the table to send.
+  const merged: Step = { kind: "done", text: JSON.stringify({ summary: "Twenty-four.", rows: many(24) }), usage: spent(1000) };
+  const pruned: Step = { kind: "done", text: JSON.stringify({ summary: "Ten backed by a source.", rows: many(10) }), usage: spent(1000) };
+  const ck = harness([plan, merged, pruned], { teams: EVERY_TEAM() });
+  const cj = (await ck.jobs.create({ title: "Speakers", task: "x", engine: "research", table: true }, BY, T0)) as Job;
+  const cd = await drive(ck, cj.id);
+  check("a check that drops most rows is what is sent", pruned.text.length < merged.text.length / 2 && cd.table?.rows === 10 && (await ck.jobs.table(cj.id))?.rows.length === 10 && cd.summary === "Ten backed by a source.", { table: cd.table, summary: cd.summary });
+  const emptiedCheck: Step = { kind: "done", text: JSON.stringify({ summary: "No source backs any of them.", rows: [] }), usage: spent(1000) };
+  const nh = harness([plan, merged, emptiedCheck], { teams: EVERY_TEAM() });
+  const nj = (await nh.jobs.create({ title: "Speakers", task: "x", engine: "research", table: true }, BY, T0)) as Job;
+  const nd = await drive(nh, nj.id);
+  const asObjects: Step = { kind: "done", text: JSON.stringify({ summary: "Ten.", rows: many(10).map(([a, b, c, d]) => ({ Speaker: a, Price: b, Seller: c, Source: d })) }), usage: spent(1000) };
+  const oh = harness([plan, merged, asObjects], { teams: EVERY_TEAM() });
+  const oj = (await oh.jobs.create({ title: "Speakers", task: "x", engine: "research", table: true }, BY, T0)) as Job;
+  const od = await drive(oh, oj.id);
+  check("a check whose rows are not rows has not emptied the table: the merge goes out", od.table?.rows === 24 && !/no source for any row/.test(od.result ?? ""), { table: od.table, summary: od.summary });
+  check("a check that drops every row: none sent or kept, and it says why", nd.status === "done" && nd.table?.rows === undefined && (await nh.jobs.table(nj.id)) === null && nd.summary === "No source backs any of them." && /no source for any row/.test(nd.result ?? ""), { table: nd.table, summary: nd.summary, result: nd.result });
 }
 
 console.log("\nplanning that does not work: the fixed angles, and the run goes on");

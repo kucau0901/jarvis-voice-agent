@@ -16,7 +16,7 @@ const DAY_S = 24 * 3600;
 export interface UsageEntry {
   at: number;
   /** "app" is Live and the API; "live" a Live session's own time. */
-  surface: "app" | "voice" | "glasses" | "chat" | "routine" | "job" | "research" | "live";
+  surface: "app" | "voice" | "glasses" | "chat" | "routine" | "job" | "research" | "live" | "image";
   /** The model that answered, "home-assistant", or "gpt-live-1". */
   by: string;
   ok: boolean;
@@ -104,6 +104,9 @@ function addTo<T extends Totals>(d: T, e: UsageEntry): T {
   } else if (e.surface === "job") {
     out.jobs += 1;
     out.cost.jobs += cost ?? 0;
+  } else if (e.surface === "image") {
+    // A picture made (tools/image.ts): what it cost, without counting a question.
+    out.cost.router += cost ?? 0;
   } else {
     out.questions += 1;
     if (e.by === "home-assistant") out.byHouse += 1;
@@ -177,7 +180,7 @@ function reportAll(days: DayTotals[], recent: UsageEntry[], today: string): Usag
       jobs: t.jobs + d.jobs,
       unpriced: t.unpriced + d.unpriced,
     }), emptyDay(month));
-  const questions = recent.filter((e) => e.seconds === undefined && e.surface !== "job");
+  const questions = recent.filter((e) => e.seconds === undefined && e.surface !== "job" && e.surface !== "image");
   const times = questions.map((e) => e.ms).sort((a, b) => a - b);
   const medianMs = times.length ? times[Math.floor((times.length - 1) / 2)]! : null;
   return {
@@ -188,4 +191,37 @@ function reportAll(days: DayTotals[], recent: UsageEntry[], today: string): Usag
     slowest: [...questions].sort((a, b) => b.ms - a.ms).slice(0, 5),
     recent,
   };
+}
+
+/* ---------- the month's budget (USAGE_BUDGET) ----------------------------- */
+
+/** The month's budget in US dollars, or null for none: whole dollars from Settings → OpenAI. */
+export function budgetOf(raw: string | undefined): number | null {
+  const n = Number(raw);
+  return raw && Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/** What a month or a day cost, in US dollars: answers, live talk and jobs. */
+export const spentOf = (t: Totals): number => t.cost.router + t.cost.live + t.cost.jobs;
+
+/** The step just passed, 80 or 100 (percent of the budget), if it is past the last one told; a jump past both says only 100. */
+export function budgetStep(spent: number, budget: number, told: number): 80 | 100 | null {
+  // To a hundredth of a percent: a month at exactly 80% is at 80%, whatever the float says.
+  const pct = Math.round((10_000 * spent) / budget) / 100;
+  const step = pct >= 100 ? 100 : pct >= 80 ? 80 : null;
+  return step && step > told ? step : null;
+}
+
+/** "1 November": when a usage month ("2026-10") starts again, as Settings → Usage counts months. */
+export function resetsOn(month: string): string {
+  const [y, m] = month.split("-").map(Number);
+  return new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "long", timeZone: "UTC" }).format(Date.UTC(y!, m!, 1));
+}
+
+/** What the owner is told on passing a step: advice, as nothing is stopped. */
+export function budgetSays(step: 80 | 100, spent: number, budget: number, month: string): string {
+  const of = `this month's $${budget} budget`;
+  return step >= 100
+    ? `Jarvis has reached ${of}: about $${spent.toFixed(2)} so far. Nothing is stopped; it resets on ${resetsOn(month)}.`
+    : `Jarvis has used 80% of ${of}: about $${spent.toFixed(2)} so far. It resets on ${resetsOn(month)}.`;
 }

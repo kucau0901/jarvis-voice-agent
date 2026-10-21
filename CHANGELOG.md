@@ -47,6 +47,110 @@ of every release, and in the [README](README.md#updating).
   "Alert: above 200", whether the alert was set with Alert me or by asking
   Jarvis to watch that thing. Off ones are not shown. In Alert me a number
   alone, such as 200, now means above it.
+- **See what Jarvis is doing.** While a typed question is worked on, the chat
+  shows a pill for each thing Jarvis checks ("Checking the house", "Checking
+  your calendar"), ticked as each is done, where the answer will appear. A
+  question says "Read" once Jarvis has it, and stays at the top while its
+  answer is read.
+- **"On it" for a background job.** A job or a question for Hermes started
+  from the chat shows its pill at once; when the result comes, that pill moves
+  down to it and takes its name, and opens the job in Jobs. The result is kept
+  in the conversation, so it is still there after a reload. A device reading
+  `POST /api/v1/stream` gets a `job` event for it
+  ([docs/api.md](docs/api.md#streaming-if-you-want-progress)).
+- **More info and Reply on a Home panel.** A panel's … menu now has Reply,
+  which opens the chat ready to ask for a change, and More info, which says
+  how often each thing on it is read, from where, and when it was last and is
+  next checked. While Jarvis makes a panel asked for on that screen, a card in
+  the making stands in for it.
+- **Routines that only speak up when it matters.** A routine that asks Jarvis
+  something can now be told to send the answer only when there is something
+  worth telling ("every morning, tell me only if there is urgent mail", or the
+  new box in Routines). A run with nothing to tell sends nothing, and Routines
+  shows "nothing to report".
+- **A monthly budget.** Settings → OpenAI → Monthly budget (US dollars): you
+  are told at 80% and at 100% of it, once each a month, and nothing is
+  stopped. For those who run the house, the Home usage tile and Settings →
+  Usage then show how much of it is gone and when it resets.
+- **Dictation.** The mic in the chat's message box now writes what you say
+  into the box, to read over before sending. `POST /api/v1/voice` takes
+  `transcribe=1` to only hear a recording.
+- **Jarvis draws pictures.** Ask for a picture ("draw me a red car on a
+  beach") and it appears on the screen with a Download button. It needs the
+  OpenAI key (the ChatGPT plan has no images), makes up to 10 a day for each
+  person, and keeps each person's newest 20 for 30 days; clearing the chat
+  removes them. Each counts in Usage, and toward a budget, at OpenAI's price.
+- **Export your data.** Settings → Export your data downloads one JSON file
+  of your memory, routines, panels, conversation and jobs, and the household's
+  settings without any key or token. For the owner and admins.
+- **Draft first.** Switch on Settings → Google → Draft first, and mail
+  Jarvis writes for you is saved to Gmail's Drafts, never sent by Jarvis: a
+  card shows who it is to and what it says, with Send, Open in Gmail and
+  Not now. Asked from Telegram or the car, it waits in Drafts. Footer on
+  mail Jarvis writes, beside it, puts a line of yours under each one.
+- **Panels kept up to date with Home closed.** Ask for a tile to "keep it
+  updated", and Jarvis refreshes its reading hourly or daily on its own, as
+  Hark's tiles do, so it is fresh when you open Home or an alert needs it.
+  At most three such tiles each; More info says so. Each refresh is an
+  answer from the model, so it costs what one does.
+- **A live sky.** Behind the app, a sky in the theme's colours follows the
+  sun where your home is, and the clouds and rain from your Home
+  Assistant weather, hazy when a panel's air-quality reading is poor. It
+  holds still in the car's driving view, and steps down or stops on a
+  screen that struggles.
+- **Ask Jarvis on Telegram.** Switch on Settings → Alerts → Ask Jarvis on
+  Telegram, and the family's bot answers as well as alerts: a message from
+  the private chat someone gave in Family → You → Telegram is answered as
+  them, within their hours, without Hermes. A chat nobody gave is told its
+  number. Long work becomes a background job whose result comes there.
+- **Pages.** "Make me a page comparing these chargers" makes a small web
+  page, in sections and tabs, light or dark, marked as made by an AI. It
+  comes as a card under the answer to open, typed or spoken; those who run
+  the house can Share it as a link anyone can open, and Stop sharing. Each
+  person's newest 20 are kept for 30 days; clearing the chat removes them.
+- **Research into a table.** Ask for a list of many things found and
+  compared ("the 10 cheapest genuine Xiaomi speakers in Malaysia, with seller
+  and rating"), or tick As a table in Jobs: a research team fills the rows,
+  each from a page it read, checked against its sources. The first rows come
+  as a message, and Jobs → Download CSV has them all. It costs as a team does.
+- **Formatted answers in Chat.** Lists, headings, code and tables are drawn
+  as they are meant, a table with Copy and Download CSV. Something asked for
+  to keep or read at length (a plan, a guide, a letter) comes as a document
+  card that opens full-screen, with Copy and Reply. The pages an answer cited
+  are cards under it. Read aloud, a table is read as its rows.
+- **Past attempts.** Jarvis notes how each background job, question for
+  Hermes and research run went, and each question whose tools failed, and
+  when you ask for something like one of them, it is told what happened
+  last time. Memory → Past attempts lists them, each forgettable; no model
+  is used to keep them tidy.
+- **Specialties.** Say "save this as my Monday report" after Jarvis does
+  something in a few steps, and next time you ask for it, by name or as you
+  usually would, Jarvis does it the same way. Only you can save one, in your
+  own words; Memory → Specialties lists them, with Forget. They are in the
+  data export.
+- **About you.** Family → You → About you keeps what you like to be called,
+  your birthday, your home and work, and the people in your life with who
+  each is to you, so "remind my wife" and "how long to work" just work. A
+  work address seen in your calendar on three or more days is offered, and
+  saved only if you say so.
+- **Search in Chat.** One box finds what you and Jarvis said, what it
+  remembers and your mail, grouped as Top hit, Messages, Memory and Mail;
+  memory and mail only for those allowed them. A message found is shown in
+  the chat, a mail opens in Gmail. It costs nothing in Usage.
+- **Routines on a cron schedule, and their past runs.** For what "every day
+  at" cannot say, a routine can run on a cron schedule, such as
+  `0 8,12 * * *` (at 8 and at 12) or `0 9 1 * *` (on the 1st of the month),
+  set by asking or in Routines, at most hourly. Routines → Past runs shows a
+  routine's last 20 runs, with what each said.
+- **A first run.** The first time a chat is empty on a screen, Jarvis asks
+  you to connect Google if your mail and calendar are not linked yet, then
+  offers a first thing to take off you (the car, the house, your mail), each
+  only if you may use it. An example goes into the message box, not sent.
+  Shown once on each screen.
+- **Share into Jarvis.** With Jarvis added to a phone's home screen, it is
+  in the phone's share sheet: a link, words, photos, PDFs or text files
+  shared to it open in Chat, in the message box and attached, to send or not.
+  Up to two photos and two files, as when attaching them yourself.
 
 ### Changed
 
@@ -56,9 +160,26 @@ of every release, and in the [README](README.md#updating).
   naming it, from the app, the glasses or Grok alike. Only for people and
   devices allowed Hermes; for anything else it stays the last resort. The
   house, the car and Home Assistant never go to Hermes this way.
+- **The chat box's mic dictates instead of asking aloud.** To ask aloud from
+  the chat, press the orb at its top left, as before.
+- **Limits are notices, not failures.** When a limit stops or changes an
+  answer in the chat (a device's daily allowance, the ChatGPT plan's limit,
+  the month's research jobs used up or switched off), it is said in an amber
+  notice instead of a red error.
 
 ### Fixed
 
+- **Page watches work on the ChatGPT plan.** With the plan connected, every
+  page watch (including Alert me on a reading Jarvis looks up) failed with
+  "Input must be a list", and setting up a new one failed too.
+- **A page watch set to a number alone alerts at that level.** One made
+  with Alert me and a number alone ("200") before it said "above 200" could
+  alert whatever the reading. Such a watch is now read, and shown, as above
+  that number.
+- **Answers are in the language you asked in.** An English question about a
+  Malay page, or after an earlier Malay answer, could be answered in Malay.
+  Jarvis now answers in the language of your latest message, still mixing
+  languages the way you do.
 - **A Home tile's reading can only read.** A tile that Jarvis looks up by
   itself, whenever Home is open, now has only Jarvis's reading tools: it can
   no longer start Hermes or a job, or change anything. Its buttons are
