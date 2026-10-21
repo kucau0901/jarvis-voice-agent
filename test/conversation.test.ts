@@ -3,7 +3,7 @@
 // what look_back finds in it (tools/conversation.ts), the route
 // (routes/conversation.ts), and what the app tells the model of it
 // (src/app/history.ts).
-import { asSaid, Conversation, FOUND, jobSaid, KEEP, KEEP_MS, lookBack, MAX_CHARS, MAX_TEXT, routineSaid, trimmed, type Said } from "../src/worker/lib/conversation.ts";
+import { asSaid, Conversation, FOUND, jobSaid, KEEP, KEEP_MS, lookBack, matching, MAX_CHARS, MAX_TEXT, routineSaid, trimmed, type Said } from "../src/worker/lib/conversation.ts";
 import { lookBackTool } from "../src/worker/tools/conversation.ts";
 import { handleConversation } from "../src/worker/routes/conversation.ts";
 import { History } from "../src/app/history.ts";
@@ -110,6 +110,9 @@ console.log("\nlooking back");
   const big = Array.from({ length: 40 }, (_, i) => said(`b${i}`, i % 2 ? "assistant" : "user", `budget item ${i} ${"y".repeat(900)}`, t(2) + i));
   const most = lookBack(big, "budget", null, dayOf);
   check("at most FOUND or so, each shortened", most.length <= FOUND + 1 && most.every((s) => s.text.length <= 601), [most.length, most[0]?.text.length]);
+  const m = matching(log, "car insurance");
+  check("matching, as Chat's search ranks: most words first, then the newest, no answers paired in", m.map((x) => `${x.s.id}:${x.n}`).join() === "c_a1:2,c_q1:2", m.map((x) => `${x.s.id}:${x.n}`));
+  check("…a word where a word starts, as look_back finds it", matching(log, "insur").length === 2 && !matching(log, "ouse").length && !matching(log, "a ?").length);
 }
 
 console.log("\nthe tool");

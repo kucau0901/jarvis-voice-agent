@@ -19,6 +19,7 @@ import { LiveLink, releasePush, speakAlert, speakHere, speakText, syncPush, type
 import { askTyped } from "./chat";
 import { pin, working } from "./working";
 import { firstRun } from "./firstRun";
+import { Search } from "./ui/Search";
 import { takeShared } from "./share";
 import { keyboardSpace, watchKeyboard } from "./keyboard";
 import { Attachments, type Attached } from "./attach";
@@ -1036,6 +1037,22 @@ function openJob(id?: string) {
   void jobs.show(id);
 }
 $("openJobs").addEventListener("click", () => openJob());
+
+let search: Search | null = null;
+/** A message found by Search, shown where it is in the chat. */
+function showSaid(id: string) {
+  showTab("chat");
+  const row = els.transcript.querySelector<HTMLElement>(`[data-said="${CSS.escape(id)}"]`);
+  if (!row) return;
+  row.scrollIntoView({ block: "center" });
+  row.classList.remove("flash");
+  void row.offsetWidth;
+  row.classList.add("flash");
+}
+$("openSearch").addEventListener("click", () => {
+  if (!key) return requireKey();
+  (search ??= new Search(key, { message: showSaid, routine: openRoutine, job: openJob })).show();
+});
 
 let routines: Routines | null = null;
 /** Routines, with one of them in view when a routine's pill in the conversation was pressed. */

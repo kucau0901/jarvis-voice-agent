@@ -961,6 +961,18 @@ says as much about a person as memory does. There is no summarising of old
 turns: that would be a model call every few exchanges, and a longer question
 every time, to keep what memory and look_back already reach.
 
+**Search, by words only.** Chat's Search box (`lib/search.ts`,
+`ui/Search.ts`) looks through the person's conversation, memory (their own
+book and the family's) and mail at once, as Hark's does, and groups what it
+finds as Top hit, Messages, Memory and Mail. It ranks by words, as look_back
+and memory's word recall do: no model and no embeddings, so it costs nothing
+and is the same on the ChatGPT plan or a key, and it counts no fact as used.
+Memory needs `memory.read` and mail `mail`; a person's own messages are
+theirs to search, as they are to read. It is a POST, so what was looked for
+stays out of addresses and logs, and it runs on Enter, not each letter,
+which would ask Gmail every time. Mail's subjects and snippets go only to the
+screen, as text, never to a model.
+
 **The router has to be Jarvis.** With GPT-Live, the live voice re-says what
 the router found in its own words and manner. Push-to-talk has nothing in
 between: text-to-speech reads the router's reply word for word. So a

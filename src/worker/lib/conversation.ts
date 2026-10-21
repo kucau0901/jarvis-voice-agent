@@ -88,6 +88,27 @@ export function jobSaid(a: Pick<Alert, "id" | "at" | "title" | "text" | "job">):
 
 const wordsOf = (text: string) => text.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean);
 
+/** The words looked for: two letters at least, each once. */
+export const asked = (words: string) => [...new Set(wordsOf(words).filter((w) => w.length >= 2))];
+
+/**
+ * The messages with any of `words`, those with most of them first, then the
+ * newest: each with its place in the log and how many it has (look_back, and
+ * Chat's search, lib/search.ts). Each message's words are read once.
+ */
+export function matching(log: readonly Said[], words: string): { s: Said; i: number; n: number }[] {
+  const ws = asked(words);
+  if (!ws.length) return [];
+  return log
+    .map((s, i) => {
+      const said = wordsOf(s.text);
+      // A word asked about is the start of one said: "insur" finds "insurance", "AC" is not in "each".
+      return { s, i, n: ws.filter((w) => said.some((t) => t.startsWith(w))).length };
+    })
+    .filter((x) => x.n > 0)
+    .sort((a, b) => b.n - a.n || b.i - a.i);
+}
+
 /** As much as a look back returns: enough to answer from, not the month. */
 export const FOUND = 12;
 const FOUND_TEXT = 600;
@@ -98,16 +119,11 @@ const FOUND_TEXT = 600;
  * question it answers or the answer it got. Oldest first, each shortened.
  */
 export function lookBack(log: readonly Said[], words: string, day: string | null, dayOf: (at: number) => string): Said[] {
-  const ws = new Set(wordsOf(words).filter((w) => w.length >= 2));
-  if (words.trim() && !ws.size) return [];
-  const on = log.map((s, i) => ({ s, i })).filter(({ s }) => !day || dayOf(s.at) === day);
-  const best = ws.size
-    ? on
-        // A word asked about is the start of one said: "insur" finds "insurance", "AC" is not in "each".
-        .map((x) => ({ ...x, n: [...ws].filter((w) => wordsOf(x.s.text).some((t) => t.startsWith(w))).length }))
-        .filter((x) => x.n > 0)
-        .sort((a, b) => b.n - a.n || b.i - a.i)
-    : on.reverse();
+  const ws = asked(words);
+  if (words.trim() && !ws.length) return [];
+  const best = ws.length
+    ? matching(log, words).filter(({ s }) => !day || dayOf(s.at) === day)
+    : log.map((s, i) => ({ s, i })).filter(({ s }) => !day || dayOf(s.at) === day).reverse();
   const picked = new Set<number>();
   for (const { s, i } of best) {
     if (picked.size >= FOUND) break;

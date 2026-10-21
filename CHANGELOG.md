@@ -83,6 +83,10 @@ of every release, and in the [README](README.md#updating).
 - **Export your data.** Settings → Export your data downloads one JSON file
   of your memory, routines, panels, conversation and jobs, and the household's
   settings without any key or token. For the owner and admins.
+- **Search in Chat.** One box finds what you and Jarvis said, what it
+  remembers and your mail, grouped as Top hit, Messages, Memory and Mail;
+  memory and mail only for those allowed them. A message found is shown in
+  the chat, a mail opens in Gmail. It costs nothing in Usage.
 - **Routines on a cron schedule, and their past runs.** For what "every day
   at" cannot say, a routine can run on a cron schedule, such as
   `0 8,12 * * *` (at 8 and at 12) or `0 9 1 * *` (on the 1st of the month),

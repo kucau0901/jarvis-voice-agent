@@ -241,7 +241,7 @@ const MESSAGE_ID = /^[A-Za-z0-9_-]{5,64}$/;
 
 /** Fetch message details in bounded parallel — the list call returns only ids. */
 async function hydrate(
-  ctx: ToolContext,
+  ctx: Pick<ToolContext, "env" | "signal">,
   cfg: GoogleConfig,
   ids: string[],
   format: "metadata" | "full",
@@ -347,6 +347,36 @@ export const mailCheck: Tool = {
 };
 
 /* ---------- finding and reading one --------------------------------------- */
+
+/** One message found for Chat's search (lib/search.ts): for the screen, never for a model. */
+export interface MailFound {
+  id: string;
+  from: string;
+  subject: string;
+  at: number;
+  unread: boolean;
+  snippet: string;
+}
+
+/** Gmail's own search, as the screen shows it; why not, in words for the screen, when it cannot. */
+export async function findMail(env: Env, query: string, limit: number, signal: AbortSignal): Promise<MailFound[] | string> {
+  return guardTool(async () => {
+    const cfg = googleConfig(env, "https://jarvis.invalid");
+    if (!cfg) return "Gmail is not set up.";
+    const list = await call(env, cfg, `/users/me/messages?q=${encodeURIComponent(query)}&maxResults=${limit}`, { signal });
+    const problem = explain(list);
+    if (problem) return problem;
+    const ids = ((list.body as { messages?: { id: string }[] } | null)?.messages ?? []).map((m) => m.id).filter((id) => MESSAGE_ID.test(id));
+    return (await hydrate({ env, signal }, cfg, ids, "metadata")).map((m) => ({
+      id: m.id,
+      from: senderName(headerOf(m, "From")),
+      subject: tidy(headerOf(m, "Subject")) || "(no subject)",
+      at: Number(m.internalDate) || 0,
+      unread: !!m.labelIds?.includes("UNREAD"),
+      snippet: tidy(m.snippet ?? "").slice(0, 180),
+    }));
+  }, { notLinked: "Link your Gmail in Family → Accounts to search it here.", relink: "Gmail needs linking again: Family → Accounts.", prefix: "Gmail" });
+}
 
 export const mailSearch: Tool = {
   name: "mail_search",

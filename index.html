@@ -751,8 +751,10 @@
   body.typing:not(.kbover) #transcript > .row.you.pinned.whole .txt { max-height: none; }
   /* Clear chat (conversation.ts): above the conversation, in Chat, once there is one; two taps. */
   #chathead { display: none; }
-  body.typing:not(.kbover):has(#transcript > .row) #chathead { display: flex; flex: none; justify-content: flex-end; width: min(720px, 100%); margin-bottom: -6px; }
-  #clearChat { min-height: 40px; padding: 0 16px; border: 1px solid var(--hair); border-radius: 999px;
+  /* Search (ui/Search.ts) is there from the start; Clear chat once there is something to clear. */
+  body.typing:not(.kbover) #chathead { display: flex; flex: none; justify-content: flex-end; gap: 8px; width: min(720px, 100%); margin-bottom: -6px; }
+  body:not(:has(#transcript > .row)) #clearChat { display: none; }
+  #clearChat, #openSearch { min-height: 40px; padding: 0 16px; border: 1px solid var(--hair); border-radius: 999px;
     background: var(--glass); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur);
     color: var(--dim); font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; }
   #clearChat.armed { background: var(--danger); border-color: var(--danger); color: var(--on-accent); }
@@ -967,6 +969,9 @@
   .panel .routine .rwhen { font-size: 13px; color: var(--fg); overflow-wrap: anywhere; }
   .panel .routine .rfacts { font-size: 12px; color: var(--dim); overflow-wrap: anywhere; }
   .panel .routine .rfacts.bad { color: var(--danger); }
+  /* Search (ui/Search.ts): a message or a mail found is pressed to go to it. */
+  .panel .routine.found.go { cursor: pointer; }
+  .panel .routine.found .rtop small { color: var(--dim); }
   /* Past runs (ui/Routines.ts), under the routine when opened. */
   .panel .routine .rruns { display: grid; gap: 6px; margin-top: 8px; }
   .panel .routine .rruns .note { margin: 0 0 4px; }
@@ -1290,7 +1295,7 @@
       </div>
     </div>
   </div>
-  <div id="chathead"><button id="clearChat" type="button">Clear chat</button></div>
+  <div id="chathead"><button id="openSearch" type="button">Search</button><button id="clearChat" type="button">Clear chat</button></div>
   <div id="transcript"></div>
   <section id="home" aria-label="Your panels"></section>
   <form id="typebar" autocomplete="off">
