@@ -489,7 +489,8 @@ export const carCommand: Tool = {
     const which = car ? ` (${car.name}, …${car.vin.slice(-4)})` : "";
     const detail = c === "set_temperature" ? ` to ${args.temperature}°C` : c === "set_charge_limit" ? ` to ${args.percent}%` : c === "navigate_to" ? `: ${String(args.value ?? "")}` : "";
     const says = `Car: ${c.replace(/_/g, " ")}${detail}${which}`;
-    return UNDONE.has(c) ? { risk: "reversible", says, category: `car_command:${c}` } : { risk: "irreversible", says };
+    const verb = cap(c.replace(/_/g, " "));
+    return UNDONE.has(c) ? { risk: "reversible", says, category: `car_command:${c}`, verb } : { risk: "irreversible", says, verb };
   },
   async run(args, ctx) {
     const picked = pickCar(ctx.env, args.car);

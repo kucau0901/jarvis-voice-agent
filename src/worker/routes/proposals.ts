@@ -9,8 +9,10 @@ import { baseTools } from "../tools/registry.ts";
 
 /**
  *   GET    /api/hub/proposals            {open, recent, allowed}: what the person's jobs proposed (lib/proposals.ts)
- *   POST   /api/hub/proposals/answer     {id, answer: "approve" | "decline"}: approved, it comes back running,
- *                                         and the object's alarm makes the call (Proposals.tick); GET says what came of it
+ *   POST   /api/hub/proposals/answer     {id, answer: "approve" | "decline" | "undo"}: approved, it comes back running,
+ *                                         and the object's alarm makes the call (Proposals.tick); GET says what came of it.
+ *                                         Declined, a brief's card is not offered again for a while. "undo" is Put back on
+ *                                         one done (archived promotions): its undo, made by code, comes back running
  *   POST   /api/hub/proposals/allow      {id}: let jobs make that kind of call without asking
  *   DELETE /api/hub/proposals/allow?category=   ask again for that kind
  *
@@ -70,10 +72,14 @@ export async function handleProposals(req: Request, env: Env, principal: Princip
     const p = await state.proposalDecline(me, id, now);
     return typeof p === "string" ? err(p === "No such proposal." ? 404 : 409, p) : json({ proposal: viewOf(p) });
   }
-  if (b.answer !== "approve") return err(400, 'answer is "approve" or "decline"');
+  if (b.answer !== "approve" && b.answer !== "undo") return err(400, 'answer is "approve", "decline" or "undo"');
   // Who it is for, before it is claimed: a lookup that failed leaves it waiting, to be tapped again.
   const view = await personView(env, me);
   if (view.scopes === undefined) return err(503, "Who it is for could not be checked just now: try again.");
+  if (b.answer === "undo") {
+    const back = await state.proposalUndo(me, id, view.scopes, grantsOf(principal), now);
+    return typeof back === "string" ? err(back === "No such proposal." ? 404 : 409, back) : json({ proposal: viewOf(back) });
+  }
   // Not claimed unless it would run as its card says: otherwise it stays waiting (a passing blip can be tapped again).
   const waiting = await state.proposalGet(me, id, now);
   const unlike = waiting?.state === "pending" ? notAsShown(env, waiting) : null;

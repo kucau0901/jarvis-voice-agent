@@ -16,7 +16,7 @@ import { button, el } from "./ui/util";
  * job opens in Jobs.
  */
 
-export type RoutineSaid = Pick<Alert, "id" | "at" | "title" | "text"> & { routine: string };
+export type RoutineSaid = Pick<Alert, "id" | "at" | "title" | "text"> & { routine: string; proposals?: string[] };
 /** `proposals`: what the job proposed, by id, for their cards (proposal.ts). */
 export type JobSaid = Pick<Alert, "id" | "at" | "title" | "text"> & { job: string; proposals?: string[] };
 

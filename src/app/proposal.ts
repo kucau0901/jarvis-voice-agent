@@ -2,11 +2,13 @@ import { api } from "./key";
 import { button, el } from "./ui/util";
 
 /**
- * What a background job proposed (src/worker/lib/proposals.ts), as a card:
- * the call in words, as the server's code wrote them, where it came from, how
- * long it waits, and Approve and Not now. Only a tap here does it: nothing a
- * model says can. Every card for the same proposal on this screen (an
- * alert's, the conversation's) shows the same, once one is answered.
+ * What a background job or a brief proposed (src/worker/lib/proposals.ts), as
+ * a card: the call in words, as the server's code wrote them, where it came
+ * from, how long it waits, and its verb (Approve when it has none) beside Not
+ * now, or, on a brief's card, X: "Don't suggest this again", which the server
+ * remembers. Only a tap here does it: nothing a model says can. Every card for
+ * the same proposal on this screen (an alert's, the conversation's) shows the
+ * same, once one is answered. Archived promotions can be put back for a week.
  */
 export interface ProposalView {
   id: string;
@@ -20,9 +22,20 @@ export interface ProposalView {
   action: { tool: string; args: Record<string, unknown> };
   outcome?: { ok: boolean; text: string };
   by?: "tap" | "standing";
+  decidedAt?: number;
   /** A reversible kind (car_command:lock), which jobs may then be let do without asking. */
   category?: string;
+  /** The button's word ("Lock", "Archive"); absent, Approve. */
+  verb?: string;
+  /** A brief's card: its X is remembered, and the next brief does not offer it again. */
+  about?: string;
+  /** Put back: the one it undoes; on that one, this one. */
+  undoes?: string;
+  undone?: string;
 }
+
+/** How long Put back is offered once promotions are archived (lib/proposals.ts UNDO_MS). */
+const UNDO_MS = 7 * 86_400_000;
 
 const SAID: Record<ProposalView["state"], string> = {
   pending: "",
@@ -55,10 +68,28 @@ function draw(key: string, card: HTMLElement, p: ProposalView): void {
     ...(p.body ? [el("div", "draftbody", p.body)] : []),
     el("small", "pagesaid", p.state === "pending" ? `${p.why} · ${left(p.expires)}` : p.why),
   );
-  const said = el("small", "pagesaid", SAID[p.state] + (p.by === "standing" ? " without asking (you allow it)" : "") + (p.outcome?.text ? `: ${p.outcome.text}` : ""));
+  const done = p.state === "declined" && p.about ? "Not suggested again." : SAID[p.state];
+  const said = el("small", "pagesaid", done + (p.by === "standing" ? " without asking (you allow it)" : "") + (p.outcome?.text ? `: ${p.outcome.text}` : ""));
   if (p.state !== "pending") {
     card.appendChild(said);
     if (p.state === "running") watch(key, p.id);
+    // Archived promotions: Put back, for a week, once; its own card follows this one, as it is made.
+    if (p.state === "done" && p.by === "tap" && p.action.tool === "mail_archive_many" && !p.undone && Date.now() - (p.decidedAt ?? 0) < UNDO_MS) {
+      const back = button("Put back", async () => {
+        back.disabled = true;
+        try {
+          const { proposal } = (await api(key, "POST", "/api/hub/proposals/answer", { id: p.id, answer: "undo" })) as { proposal: ProposalView };
+          back.replaceWith(el("small", "pagesaid", "Putting them back…"));
+          card.after(proposalCard(key, proposal));
+        } catch (e) {
+          back.disabled = false;
+          said.textContent = e instanceof Error ? e.message : String(e);
+        }
+      }, "docopen");
+      const row = el("div", "mdbtns");
+      row.appendChild(back);
+      card.appendChild(row);
+    }
     // Approved and done, and of a kind that can be put back: jobs may do it without asking from now on.
     if (p.state === "done" && p.by === "tap" && p.risk === "reversible" && p.category) {
       const allow = button("Let jobs do this without asking", async () => {
@@ -92,7 +123,7 @@ function draw(key: string, card: HTMLElement, p: ProposalView): void {
       void refresh(key, [p.id]);
     }
   };
-  btns.append(button("Approve", answer("approve"), "docopen primary"), button("Not now", answer("decline"), "docopen"));
+  btns.append(button(p.verb ?? "Approve", answer("approve"), "docopen primary"), button(p.about ? "Don't suggest this again" : "Not now", answer("decline"), "docopen"));
   card.appendChild(btns);
 }
 

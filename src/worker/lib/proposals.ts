@@ -21,8 +21,12 @@ import type { Tool, ToolContext, ToolOutput } from "../tools/registry.ts";
  * record is the audit: who, when, by a tap or a standing permission, and what
  * came of it.
  *
- * Only jobs propose: routines act as they always have, and nothing here
- * stands in front of what is asked for directly.
+ * Jobs propose, and so does a brief (lib/brief.ts), whose cards code
+ * chooses: an invitation to answer, old promotions to archive. A brief's
+ * card has a subject (`about`), and its X is remembered (propgone), so the
+ * next brief does not offer it again; a job's "Not now" is not. Routines
+ * otherwise act as they always have, and nothing here stands in front of
+ * what is asked for directly.
  */
 
 /** Undone with another call (lock after unlock is not one: an unlocked car has been open); or not. */
@@ -34,6 +38,10 @@ export interface Weighed {
   says: string;
   /** Only for a reversible call: one narrow kind ("car_command:lock"), which a standing permission names. */
   category?: string;
+  /** The card's button, one word or two ("Lock", "Send"); absent, "Approve". */
+  verb?: string;
+  /** What a brief's card is about ("rsvp:<event>", "inbox:promotions"): offered once, and not again once dismissed. */
+  about?: string;
 }
 
 export type ProposalState = "pending" | "running" | "done" | "failed" | "declined" | "expired" | "withdrawn";
@@ -43,8 +51,8 @@ export interface Proposal {
   /** Who started the job, as stored (lib/context.ts), and whose proposal it is. */
   who: string;
   person: string;
-  /** What proposed it. Copied, since only the newest jobs are kept. */
-  from: { kind: "job"; id: string; title: string };
+  /** What proposed it: a job, or one run of a brief (its routine's name). Copied, since only the newest jobs are kept. */
+  from: { kind: "job"; id: string; title: string } | { kind: "brief"; id: string; title: string; routine: string };
   /** The call in words, as code renders it, and why it is asked for, written by code too. */
   says: string;
   why: string;
@@ -53,6 +61,11 @@ export interface Proposal {
   action: { tool: string; args: Record<string, unknown> };
   risk: Risk;
   category?: string;
+  verb?: string;
+  about?: string;
+  /** Put back (undo): the record this one undoes, and on that one, this one's id. */
+  undoes?: string;
+  undone?: string;
   /** What the job could reach when it proposed this: an approval never runs with more. Never sent to a screen. */
   grants: Grant[];
   createdAt: number;
@@ -104,6 +117,15 @@ const key = (person: string, id: string) => `prop:${person}:${id}`;
 const prefix = (person: string) => `prop:${person}:`;
 /** The kinds of reversible call a person lets their jobs make without asking ("car_command:lock"). Not under prop:, so never listed with them. */
 const allowKey = (person: string) => `propallow:${person}`;
+/** What a brief is not to offer again: subject to when that lapses. Not under prop: either. */
+const goneKey = (person: string) => `propgone:${person}`;
+/** How long an X on a brief's card is remembered; the most remembered, the soonest to lapse going first. */
+export const GONE_MS = 30 * 86_400_000;
+const MAX_GONE = 200;
+/** A subject a brief tried lately (approved, whatever came of it) is not offered again for a week. */
+export const TRIED_MS = 7 * 86_400_000;
+/** How long Put back is offered once something is done. */
+export const UNDO_MS = 7 * 86_400_000;
 /** Approved by a tap and not yet run by the alarm (tick), with what the run may use. Not under prop: either. */
 const RUN = "proprun:";
 const runKey = (person: string, id: string) => `${RUN}${person}:${id}`;
@@ -133,6 +155,9 @@ function settled(p: Proposal, now: number): Proposal {
 
 export const viewOf = ({ grants: _g, who: _w, ...v }: Proposal): ProposalView => v;
 
+/** A proposal as an alert carries it, for its card (lib/alerts.ts). */
+export const cardOf = (p: Proposal): NonNullable<Alert["proposals"]>[number] => ({ id: p.id, risk: p.risk, says: p.says, ...(p.verb ? { verb: p.verb } : {}) });
+
 export interface ProposalInput {
   who: string;
   person: string;
@@ -141,6 +166,8 @@ export interface ProposalInput {
   weighed: Weighed;
   grants: readonly Grant[];
   body?: string;
+  /** What the card shows, fetched only when it is filed anew (a brief's sample of the mail it would archive). */
+  detail?: () => Promise<string | null>;
 }
 
 export class Proposals {
@@ -176,7 +203,8 @@ export class Proposals {
 
   private async addNow(input: ProposalInput, now: number): Promise<Proposal | string> {
     if (JSON.stringify(input.action.args).length > MAX_ARGS) return "That is too long to propose.";
-    if (input.weighed.says.length > MAX_SAYS || (input.body?.length ?? 0) > MAX_BODY) return "That is too long to show the user whole, so it was not filed: say in your answer what you would do.";
+    const tooLong = "That is too long to show the user whole, so it was not filed: say in your answer what you would do.";
+    if (input.weighed.says.length > MAX_SAYS || (input.body?.length ?? 0) > MAX_BODY) return tooLong;
     const mine = await this.list(input.person, now);
     const same = canonical(input.action.args);
     const again = mine.find((p) => p.from.id === input.from.id && p.action.tool === input.action.tool && canonical(p.action.args) === same);
@@ -188,21 +216,33 @@ export class Proposals {
       return `Tried without asking earlier, and it did not work: ${again.says}${again.outcome?.text ? ` (${again.outcome.text})` : ""}. It is not tried again from this job: do not file it again, and say in your answer that it was not done.`;
     }
     if (mine.filter((p) => p.from.id === input.from.id).length >= PER_JOB) return `At most ${PER_JOB} proposals from one job: say the rest in the answer.`;
+    // A brief's subject: dismissed, not offered again for a while; waiting already, that card again; tried lately, not again yet.
+    const about = input.weighed.about;
+    if (about) {
+      if (((await this.gone(input.person))[about] ?? 0) > now) return "Dismissed: not offered again for now.";
+      const waiting = mine.find((p) => p.about === about && p.state === "pending");
+      if (waiting) return waiting;
+      if (mine.some((p) => p.about === about && (p.state === "running" || p.state === "done" || p.state === "failed") && now - (p.decidedAt ?? p.createdAt) < TRIED_MS)) return "Tried lately: not offered again yet.";
+    }
     // Allowed without asking: a reversible call of a kind the person said their jobs may make, and only that.
     const standing = input.weighed.risk === "reversible" && !!input.weighed.category && (await this.allowed(input.person)).includes(input.weighed.category);
     if (!standing && mine.filter((p) => p.state === "pending").length >= PENDING_MAX) return `${PENDING_MAX} proposals are already waiting for the user: say this one in the answer.`;
+    const body = input.body ?? ((await input.detail?.().catch(() => null)) || undefined);
+    if ((body?.length ?? 0) > MAX_BODY) return tooLong;
     const bytes = crypto.getRandomValues(new Uint8Array(20));
     const p: Proposal = {
       id: "a" + [...bytes].map((b) => ALPHABET[b % 32]).join(""),
       who: input.who,
       person: input.person,
-      from: { kind: "job", id: input.from.id, title: input.from.title.slice(0, 120) },
+      from: { ...input.from, title: input.from.title.slice(0, 120) },
       says: input.weighed.says,
-      ...(input.body ? { body: input.body } : {}),
-      why: `From your job “${input.from.title.slice(0, 120)}”`,
+      ...(body ? { body } : {}),
+      why: `From your ${input.from.kind} “${input.from.title.slice(0, 120)}”`,
       action: input.action,
       risk: input.weighed.risk,
       ...(input.weighed.risk === "reversible" && input.weighed.category ? { category: input.weighed.category } : {}),
+      ...(input.weighed.verb ? { verb: input.weighed.verb } : {}),
+      ...(about ? { about } : {}),
       grants: [...input.grants],
       createdAt: now,
       expires: now + DECIDE_MS,
@@ -259,13 +299,70 @@ export class Proposals {
     await this.finish(q.person, q.id, outcome, now);
   }
 
+  /** Not now; on a brief's card, not again either (its subject is remembered, from the record, never the request). */
   async decline(person: string, id: string, now: number): Promise<Proposal | string> {
     const p = await this.get(person, id, now);
     if (!p) return "No such proposal.";
     if (p.state !== "pending") return p.state === "declined" ? "It was declined already." : "It is not waiting any more.";
     const declined: Proposal = { ...p, state: "declined", by: "tap", decidedAt: now };
     await this.storage.put(key(person, id), declined);
+    if (p.about) {
+      const kept = Object.entries({ ...(await this.gone(person)), [p.about]: now + GONE_MS }).filter(([, until]) => until > now);
+      await this.storage.put(goneKey(person), Object.fromEntries(kept.sort((a, b) => b[1] - a[1]).slice(0, MAX_GONE)));
+    }
     return declined;
+  }
+
+  /** What a brief is not to offer again, and until when. */
+  private async gone(person: string): Promise<Record<string, number>> {
+    return (await this.storage.get<Record<string, number>>(goneKey(person))) ?? {};
+  }
+
+  /**
+   * Put back: the call that undoes one done by a tap within UNDO_MS, built
+   * by code from the stored record (`inverse`: its tool's own undo, or null
+   * for one there is none for), claimed as tapped and queued as an approval
+   * is (claim). Once only.
+   */
+  async undo(
+    person: string,
+    id: string,
+    inverse: (p: Proposal) => { action: Proposal["action"]; weighed: Weighed } | null,
+    scopesNow: readonly Grant[] | null | undefined,
+    approver: readonly Grant[],
+    now: number,
+  ): Promise<Proposal | string> {
+    const p = await this.get(person, id, now);
+    if (!p) return "No such proposal.";
+    const back = p.state === "done" && p.by === "tap" && now - (p.decidedAt ?? p.createdAt) < UNDO_MS ? inverse(p) : null;
+    if (!back || p.undone) return p.undone ? "It was put back already." : "That cannot be put back.";
+    const grants = runGrants(p.grants, scopesNow, approver);
+    if (!grants) return "Whoever it was for is no longer in the family.";
+    const bytes = crypto.getRandomValues(new Uint8Array(20));
+    const u: Proposal = {
+      ...p,
+      id: "a" + [...bytes].map((b) => ALPHABET[b % 32]).join(""),
+      says: back.weighed.says,
+      action: back.action,
+      risk: back.weighed.risk,
+      ...(back.weighed.verb ? { verb: back.weighed.verb } : {}),
+      undoes: p.id,
+      createdAt: now,
+      expires: now + DECIDE_MS,
+      state: "running",
+      by: "tap",
+      decidedAt: now,
+    };
+    delete u.body;
+    delete u.category;
+    delete u.about;
+    delete u.outcome;
+    delete u.undone;
+    // Queued, then marked: cut short between, a second tap queues it again, which puts back what is back already.
+    await this.storage.put(key(person, u.id), u);
+    await this.storage.put(runKey(person, u.id), { person, id: u.id, grants, at: now } satisfies Queued);
+    await this.storage.put(key(person, id), { ...p, undone: u.id });
+    return u;
   }
 
   /** What came of a run: the audit. */
@@ -316,7 +413,7 @@ export class Proposals {
           ? `${p.state === "done" ? "Done without asking (you allow it)" : "Tried without asking (you allow it), and it did not work"}: ${p.says}${p.outcome?.text ? ` (${p.outcome.text})` : ""}`
           : `${p.says}: ${p.state}`,
     );
-    return { ...alert, text: `${alert.text}\n\n${lines.join("\n")}`, proposals: theirs.map((p) => ({ id: p.id, risk: p.risk, says: p.says })) };
+    return { ...alert, text: `${alert.text}\n\n${lines.join("\n")}`, proposals: theirs.map(cardOf) };
   }
 
   /** A job cancelled or removed: what it proposed and is still waiting is not to be done. */
@@ -332,6 +429,7 @@ export class Proposals {
       for (const k of (await this.storage.list({ prefix: pre })).keys()) await this.storage.delete(k);
     }
     await this.storage.delete(allowKey(person));
+    await this.storage.delete(goneKey(person));
   }
 
   /** The decided are kept a month, the newest hundred; the pending until decided. */

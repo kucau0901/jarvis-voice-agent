@@ -59,7 +59,7 @@ export const mailDraftSend: Tool = {
   },
   propose: (args) =>
     typeof args.draft === "string" && DRAFT_ID.test(args.draft)
-      ? { risk: "irreversible", says: `Send the email to ${String(args.to ?? "")}` }
+      ? { risk: "irreversible", says: `Send the email to ${String(args.to ?? "")}`, verb: "Send" }
       : null,
   async run(args, ctx) {
     const cfg = googleConfig(ctx.env, "https://jarvis.invalid");

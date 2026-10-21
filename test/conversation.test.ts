@@ -77,6 +77,9 @@ console.log("\nwhat a routine said");
   check("is kept as Jarvis's, under the routine's name, by the alert's id",
     JSON.stringify(s) === JSON.stringify({ id: "a_m1x2", at: 50, role: "assistant", text: "Two new emails from the school.", routine: { id: "rt_mail", name: "Mail check" } }), s);
   check("any other alert is not", routineSaid({ id: "a_n1", at: 50, title: "Jarvis", text: "a note" }) === null);
+  const brief = routineSaid({ id: "a_b1", at: 60, title: "Morning brief", text: "# Wednesday", routine: "rb", proposals: [{ id: "a1", risk: "reversible", says: "Mail: archive 30 promotions", verb: "Archive" }] });
+  check("a brief's cards kept with it, by id, as a job's are", JSON.stringify(brief?.proposals) === '["a1"]' && brief?.routine?.id === "rb", brief);
+  check("one with none keeps none", !("proposals" in (s ?? {})));
 }
 
 console.log("\nwhat a background job came back with");

@@ -31,8 +31,8 @@ import { Images, type StoredImage } from "./lib/images.ts";
 import { Specialties } from "./lib/specialties.ts";
 import { Pages, type StoredPage } from "./lib/pages.ts";
 import { Episodes, episodeOfJob, type Episode } from "./lib/episodes.ts";
-import { Proposals, type Proposal, type ProposalInput } from "./lib/proposals.ts";
-import { carryOut } from "./lib/approval.ts";
+import { cardOf, Proposals, type Proposal, type ProposalInput } from "./lib/proposals.ts";
+import { carryOut, inverseOf } from "./lib/approval.ts";
 import { OWNER, personOfWho, withPerson } from "./lib/context.ts";
 import { lookAtPage } from "./lib/page-look.ts";
 import { runBrief } from "./lib/brief.ts";
@@ -365,15 +365,24 @@ export class JarvisState extends DurableObject<Env> {
             },
           }
         : {}),
-      // A brief (lib/brief.ts): as far as its maker may reach now, its opening counted in their usage.
+      // A brief (lib/brief.ts): as far as its maker may reach now, its opening counted in their usage,
+      // what it puts to them filed as a job's calls are, with no more than it may reach.
       brief: async (r, now) => {
         const person = personOfWho(r.createdBy);
         const grants = reachNow(r.grants, await this.people.personView(person).catch(() => null));
         if (!grants) return { ok: false, text: "whoever made it is no longer in the family" };
         const jobs = (await this.jobs.list()).filter((j) => personOfWho(j.createdBy) === person);
-        const waiting = (await this.proposals.list(person, now)).filter((p) => p.state === "pending");
         const timeZone = localeOf(env).timeZone;
-        const b = await runBrief(r, now, { env: await this.personEnv(env, r.createdBy), grants, timeZone, house: ha, jobs, waiting });
+        const from = { kind: "brief" as const, id: `${r.id}@${now}`, title: r.name, routine: r.id };
+        const b = await runBrief(r, now, {
+          env: await this.personEnv(env, r.createdBy),
+          grants,
+          timeZone,
+          house: ha,
+          jobs,
+          waiting: async () => (await this.proposals.list(person, now)).filter((p) => p.state === "pending"),
+          file: (action, weighed, detail) => this.proposals.add({ who: r.createdBy, person, from, action, weighed, grants, ...(detail ? { detail } : {}) }, now),
+        });
         if (b.usage) {
           const u = b.usage;
           await this.recordUsage(
@@ -381,7 +390,7 @@ export class JarvisState extends DurableObject<Env> {
             dayOf(now, timeZone),
           ).catch((e) => console.warn("brief not counted:", e instanceof Error ? e.message : String(e)));
         }
-        return { ok: true, text: b.text };
+        return { ok: true, text: b.text, proposals: b.proposals.map(cardOf) };
       },
       // A chore, a check-in or medicine: passed on to whoever's turn it is.
       relay: async (r, to) => {
@@ -699,6 +708,14 @@ export class JarvisState extends DurableObject<Env> {
 
   proposalDecline(person: string, id: string, now: number) {
     return this.proposals.decline(person, id, now);
+  }
+
+  // Put back (lib/proposals.ts undo): its inverse made by code, and made by the alarm as an approval is.
+  async proposalUndo(person: string, id: string, scopesNow: readonly Grant[] | null | undefined, approver: readonly Grant[], now: number) {
+    const env = await this.localEnv();
+    const r = await this.proposals.undo(person, id, (p) => inverseOf(env, p), scopesNow, approver, now);
+    await this.rearm();
+    return r;
   }
 
   proposalFinish(person: string, id: string, outcome: { ok: boolean; text: string }, now: number) {

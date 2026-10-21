@@ -1,7 +1,8 @@
 // A brief (lib/brief.ts): someone's day gathered and written out by code,
 // each source only as far as their grants reach and only when it is set up,
 // opened by at most one small answer that sees the day only as quoted data.
-import { cleanSummary, dayCovered, fit, jobsSection, MAX_DOC, MAX_SUMMARY, plain, runBrief, scheduleOf, waitingSection, type BriefDeps } from "../src/worker/lib/brief.ts";
+import { BRIEF_MAX, candidatesOf, cleanSummary, dayCovered, fit, jobsSection, MAX_DOC, MAX_SUMMARY, plain, PROMOTIONS_MIN, runBrief, scheduleOf, waitingSection, type BriefDeps } from "../src/worker/lib/brief.ts";
+import { Proposals } from "../src/worker/lib/proposals.ts";
 import type { AgendaEvent } from "../src/worker/lib/agenda.ts";
 import type { Routine } from "../src/worker/lib/routines.ts";
 import type { Job } from "../src/worker/lib/jobs.ts";
@@ -178,7 +179,9 @@ const deps = (over: Partial<BriefDeps> = {}): BriefDeps => ({
   timeZone: TZ,
   house: HOUSE,
   jobs: [job({})],
-  waiting: [proposal('Send the email "Quote" to sam@example.com')],
+  waiting: async () => [proposal('Send the email "Quote" to sam@example.com')],
+  // Nothing filed unless a check files: a brief's cards have their own checks below.
+  file: async () => "not filed in this check",
   ...over,
 });
 const asked: { input: string; instructions: string }[] = [];
@@ -237,7 +240,7 @@ console.log("\njobs since the last brief");
       job({ id: "b", title: "Find a plumber", status: "failed", finishedAt: NOW - 3_600_000 }),
       job({ id: "c", title: "Before the last brief", status: "done", finishedAt: NOW - 3 * 3_600_000 }),
     ];
-    const b = await runBrief(last, NOW, deps({ jobs, waiting: [] }), model("x"));
+    const b = await runBrief(last, NOW, deps({ jobs, waiting: async () => [] }), model("x"));
     const lines = b.text.split("## Jobs\n")[1]?.split("\n") ?? [];
     check("those that ended since it, each as it ended; none from before", lines.join("|") === "- Compare flights: done|- Find a plumber: failed", lines);
   } finally {
@@ -261,7 +264,7 @@ console.log("\nonly as far as their grants reach");
 {
   const w = world();
   try {
-    const b = await runBrief(ROUTINE, NOW, deps({ grants: ["ask", "calendar"], jobs: [], waiting: [] }), model("A quiet day."));
+    const b = await runBrief(ROUTINE, NOW, deps({ grants: ["ask", "calendar"], jobs: [], waiting: async () => [] }), model("A quiet day."));
     check("a child without mail, car or house: their calendar only", b.text.includes("## Schedule") && !/## (Mail|Car|Weather)/.test(b.text), b.text);
     check("and nothing else is asked for", w.urls.every((u) => u.includes("/calendars/")), w.urls);
     const device = await runBrief(ROUTINE, NOW, deps({ grants: ["routines"] }), model("x"));
@@ -276,9 +279,9 @@ console.log("\nonly what is set up");
   const w = world();
   asked.length = 0;
   try {
-    const none = await runBrief(ROUTINE, NOW, deps({ env: { TIMEZONE: TZ } as never, house: null, jobs: [], waiting: [] }), model("x"));
+    const none = await runBrief(ROUTINE, NOW, deps({ env: { TIMEZONE: TZ } as never, house: null, jobs: [], waiting: async () => [] }), model("x"));
     check("nothing connected: said so, no answer asked for", none.text === "# Wednesday 21 October\n\nNothing to tell: nothing Jarvis can read for you is connected yet." && asked.length === 0 && !none.usage, none);
-    const car = await runBrief(ROUTINE, NOW, deps({ env: { ...TESSIE, TIMEZONE: TZ } as never, house: null, jobs: [], waiting: [] }), model("Charged enough."));
+    const car = await runBrief(ROUTINE, NOW, deps({ env: { ...TESSIE, TIMEZONE: TZ } as never, house: null, jobs: [], waiting: async () => [] }), model("Charged enough."));
     check("a car alone", car.text.includes("## Car") && !car.text.includes("## Schedule") && w.urls.every((u) => u.startsWith("https://api.tessie.com/")), car.text);
   } finally {
     w.restore();
@@ -297,7 +300,7 @@ console.log("\na source that fails is a line, and the brief still goes");
     throw new Error(`nothing else reaches the network: ${u}`);
   }) as typeof fetch;
   try {
-    const b = await runBrief(ROUTINE, NOW, deps({ jobs: [], waiting: [] }), model("A hard day to read."));
+    const b = await runBrief(ROUTINE, NOW, deps({ jobs: [], waiting: async () => [] }), model("A hard day to read."));
     const sections = ["Schedule", "Weather", "Car", "Mail"].map((h) => b.text.split(`## ${h}\n`)[1]?.split("\n")[0] ?? "");
     check("each failing source has its one line", sections.every((l) => l.length > 0) && b.text.includes("The car: Tessie did not answer") && b.text.includes("Home Assistant did not answer"), sections);
     check("and the brief still goes, with its opening", b.text.startsWith("# Wednesday 21 October\nA hard day to read.\n"), b.text.slice(0, 60));
@@ -342,6 +345,89 @@ console.log("\npromotions are listed as ids, at most a call's worth");
     globalThis.fetch = real;
   }
   check("without Google, a sentence", (await listMailIds({} as never, "in:inbox", 5, new AbortController().signal)) === "Gmail is not set up.");
+}
+
+console.log("\nwhat a brief puts to them, chosen by code");
+{
+  const invite = (over: Partial<AgendaEvent>) => ev({ unanswered: true, organizer: "Sam Example", created: NOW - 4 * DAY, ...over });
+  const promos = (n: number) => Array.from({ length: n }, (_, i) => `promo${String(i).padStart(3, "0")}x`);
+  const c = candidatesOf({
+    invites: [
+      { event: invite({ id: "i1", summary: "Offsite", start: at(10, 0, 23), end: at(11, 0, 23) }), clash: true },
+      { event: invite({ id: "s_20261022", series: "s", summary: "Sync", start: at(9, 0, 22), end: at(9, 30, 22) }), clash: false },
+      { event: invite({ id: "d", summary: "Fair", allDay: true, start: at(0, 0, 24), end: at(0, 0, 25) }), clash: false },
+    ],
+    promotions: promos(200),
+  }, TZ);
+  const a = c.map((x) => x.args);
+  check("a clash is declined, otherwise accepted", a[0]!.response === "declined" && a[1]!.response === "accepted", a);
+  check("a repeating one answered whole, by its series", a[1]!.event_id === "s" && a[1]!.recurring === true && a[0]!.recurring === false && a[0]!.event_id === "i1", a);
+  check("a timed one by its instant, an all-day one by its date in their zone", a[0]!.start === new Date(at(10, 0, 23)).toISOString() && a[2]!.start === "2026-10-24", a);
+  check("then the promotions: the oldest 150 (Gmail lists the newest first), of how many", c[3]?.tool.name === "mail_archive_many" && (a[3]!.ids as string[]).length === 150 && (a[3]!.ids as string[])[0] === "promo050x" && a[3]!.total === 200, a[3]);
+  check(`fewer than ${PROMOTIONS_MIN}: no card`, !candidatesOf({ invites: [], promotions: promos(PROMOTIONS_MIN - 1) }, TZ).length && candidatesOf({ invites: [], promotions: promos(PROMOTIONS_MIN) }, TZ).length === 1);
+  const many = candidatesOf({ invites: Array.from({ length: 8 }, (_, i) => ({ event: invite({ id: `e${i}x`, start: at(10, 0, 23) }), clash: false })), promotions: promos(50) }, TZ);
+  check(`at most ${BRIEF_MAX}`, many.length === BRIEF_MAX && many.every((x) => x.tool.name === "calendar_rsvp"));
+}
+
+console.log("\nfiled for their tap, before the model, once");
+{
+  const st = new Map<string, unknown>();
+  const storage = {
+    get: async <T,>(k: string) => (st.has(k) ? (structuredClone(st.get(k)) as T) : undefined),
+    put: async (k: string, v: unknown) => void st.set(k, structuredClone(v)),
+    delete: async (k: string) => st.delete(k),
+    list: async <T,>({ prefix }: { prefix: string }) => new Map([...st].filter(([k]) => k.startsWith(prefix)).map(([k, v]) => [k, structuredClone(v) as T])),
+  };
+  const props = new Proposals(storage as never);
+  const order: string[] = [];
+  const filing = (run: number): Pick<BriefDeps, "waiting" | "file"> => ({
+    waiting: async () => (await props.list("owner", NOW)).filter((p) => p.state === "pending"),
+    file: (action, weighed, detail) => (order.push(`file:${action.tool}`), props.add({ who: "owner", person: "owner", from: { kind: "brief", id: `rbrief@${run}`, title: "Morning brief", routine: "rbrief" }, action, weighed, grants: ["*"], ...(detail ? { detail } : {}) }, NOW + run)),
+  });
+  const real = globalThis.fetch;
+  const read: string[] = [];
+  globalThis.fetch = (async (url: string | URL | Request) => {
+    const u = String(url instanceof Request ? url.url : url);
+    if (u.includes("oauth2")) return Response.json({ access_token: "access", expires_in: 3600 });
+    read.push(u);
+    if (u.includes("/calendars/primary/events")) {
+      return Response.json({ items: [
+        { id: "inv1abc2", summary: "Offsite", start: { dateTime: iso(at(10, 0, 23)) }, end: { dateTime: iso(at(11, 0, 23)) }, created: iso(NOW - 5 * DAY), organizer: { displayName: "Sam Example" }, attendees: [{ self: true, responseStatus: "needsAction" }] },
+        { id: "busy", summary: "Board", start: { dateTime: iso(at(10, 30, 23)) }, end: { dateTime: iso(at(11, 30, 23)) }, organizer: { self: true } },
+      ] });
+    }
+    if (u.includes("/users/me/messages?")) return Response.json({ messages: new URL(u).searchParams.get("q")!.includes("promotions") ? Array.from({ length: 42 }, (_, i) => ({ id: `promo${String(i).padStart(3, "0")}x` })) : [] });
+    if (u.includes("/users/me/messages/promo")) return Response.json({ id: "p", payload: { headers: [{ name: "From", value: "Shop Example <shop@example.com>" }, { name: "Subject", value: "Sale ends today" }] } });
+    throw new Error(`nothing else reaches the network: ${u}`);
+  }) as typeof fetch;
+  const asking = (text: string) => async (input: string, instructions: string) => (order.push("ask"), asked.push({ input, instructions }), { text, input: 1, output: 1 });
+  try {
+    asked.length = 0;
+    const env = { ...GOOGLE, TIMEZONE: TZ } as never;
+    const b = await runBrief(ROUTINE, NOW, { ...deps({ env, house: null, jobs: [] }), ...filing(1) }, asking("Two things to decide."));
+    check("filed first, then the one answer", order.join() === "file:calendar_rsvp,file:mail_archive_many,ask", order);
+    const [rsvp, archive] = [b.proposals.find((p) => p.action.tool === "calendar_rsvp"), b.proposals.find((p) => p.action.tool === "mail_archive_many")];
+    check("an invitation that clashes, to decline; the promotions, to archive", rsvp?.verb === "Decline" && rsvp.about === "rsvp:inv1abc2@" + iso(at(10, 0, 23)) && archive?.verb === "Archive", b.proposals);
+    check("each listed under For your OK, as it says itself", b.text.includes(`## For your OK\n- ${rsvp!.says}`) && b.text.includes(`- ${archive!.says}`), b.text);
+    check("the sample of who sent them is on the card, never told to the model", archive?.body?.includes("Shop Example: Sale ends today") === true && !asked[0]!.input.includes("Sale ends today"), { body: archive?.body, input: asked[0]?.input.slice(0, 200) });
+    order.length = 0;
+    const second = await runBrief(ROUTINE, NOW + 3_600_000, { ...deps({ env, house: null, jobs: [] }), ...filing(2) }, asking("Still two."));
+    check("the next brief: the same two cards again, not two more", second.proposals.length === 2 && (await props.list("owner", NOW)).length === 2 && second.proposals.every((p) => b.proposals.some((q) => q.id === p.id)), second.proposals.map((p) => p.id));
+    await props.decline("owner", rsvp!.id, NOW + 2 * 3_600_000);
+    const third = await runBrief(ROUTINE, NOW + 3 * 3_600_000, { ...deps({ env, house: null, jobs: [] }), ...filing(3) }, asking("One."));
+    check("dismissed: not offered again", third.proposals.length === 1 && third.proposals[0]!.id === archive!.id && !(await props.list("owner", NOW)).some((p) => p.state === "pending" && p.action.tool === "calendar_rsvp"), third.proposals);
+    order.length = 0;
+    const fresh = new Proposals(storage as never);
+    await fresh.forget("owner");
+    const failed = await runBrief(ROUTINE, NOW, { ...deps({ env, house: null, jobs: [] }), ...filing(4) }, async () => {
+      throw new Error("quota");
+    });
+    check("the model failing: the cards are filed and listed all the same", failed.proposals.length === 2 && failed.text.includes("## For your OK"), failed.proposals);
+    const device = await runBrief(ROUTINE, NOW, { ...deps({ env, house: null, jobs: [], grants: ["calendar", "mail", "routines"] }), ...filing(5) }, asking("x"));
+    check("without asking, nothing is put to them", device.proposals.length === 0 && !device.text.includes("## For your OK"), device.text);
+  } finally {
+    globalThis.fetch = real;
+  }
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

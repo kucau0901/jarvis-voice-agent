@@ -3,13 +3,13 @@ import { el } from "./util";
 import { proposalCard, settle, type ProposalView } from "../proposal";
 
 /**
- * Home's Now strip: what background jobs proposed that waits for an OK
+ * Home's Now strip: what background jobs and briefs proposed that waits for an OK
  * (src/app/proposal.ts), above the panels, as Hark's Now card is. Hidden when
  * nothing waits. Its own section, so Home drawing its panels afresh leaves it
  * be; drawn again only when what waits has changed, so a card being answered
  * is not swept away under the finger.
  */
-const MOST = 3;
+const MOST = 5;
 
 export class Now {
   private key: string;

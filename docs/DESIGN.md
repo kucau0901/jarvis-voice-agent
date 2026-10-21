@@ -740,7 +740,14 @@ promised:
   scope, which is not requested. No sequence of misheard words can destroy a
   message for good.
 - **One message per call.** `mail_manage` has no bulk verb, so a misheard
-  sentence costs one message rather than a mailbox.
+  sentence costs one message rather than a mailbox. The one exception is not
+  a model's: a brief's card to archive old promotions (`lib/mail-bulk.ts`).
+  Code chooses the messages, from a search fixed in code (in the Inbox, a
+  promotion, older than two days, neither starred nor important); the count
+  on the card is what runs, and only those still matching when the tap is
+  made; it only takes them out of the Inbox, never trashes; it is made only
+  by a tap, never offered to the router or a job; and Put back returns them,
+  for a week.
 
 **Draft first** (Settings → Google, off by default) takes sending away from
 the model altogether: `mail_send` saves every mail as a draft, the screen
@@ -1105,7 +1112,18 @@ reversible, unlocking is not), and every house or other MCP call that writes is
 irreversible, since Jarvis keeps no list of which of the house's services can
 be undone and Home Assistant decides what each does. A job's email is only ever
 drafted, and its sending proposed (`lib/mail-draft.ts`), so mail has one way
-out, Send. Routines act as they always have: they are what the person set up
+out, Send. A brief proposes too (`lib/brief.ts`), but what it puts to the
+person code chooses, never a model: an answer to an invitation left
+unanswered (Decline when it clashes, else Accept), and archiving old
+promotions. Its cards are filed before its one model call, so they wait
+whatever becomes of the opening. Each has a subject (`about`): one waiting
+already is listed again rather than filed twice, one tried in the last week
+is not offered, and its X ("Don't suggest this again") is remembered for 30
+days, from the stored record, never the request. A job's "Not now" is not
+remembered, so a dismissal never blocks what the person or their job asks
+for. Each card's button says what it does ("Lock", "Send", "Archive"), and an
+approval checks the button against the stored call as it checks its words.
+Routines otherwise act as they always have: they are what the person set up
 to happen, and nothing here stands in front of the house when it is asked
 directly. The decided proposal is the audit: who, when, and what came of it.
 Once someone has approved a reversible call and it ran, they may let their

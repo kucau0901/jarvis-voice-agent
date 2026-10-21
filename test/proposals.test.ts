@@ -1,8 +1,9 @@
 // Approvals (lib/proposals.ts, routes/proposals.ts): what a job proposes, how
 // risky code says it is, and how a tap has the stored call made once, on the
 // object's alarm (tick, lib/approval.ts).
-import { classify, DECIDE_MS, held, PER_JOB, PENDING_MAX, PROPOSE_ONLY, proposable, Proposals, runGrants, START_MS, STUCK_MS, weigh, type Proposal, type ProposalInput } from "../src/worker/lib/proposals.ts";
-import { carryOut } from "../src/worker/lib/approval.ts";
+import { classify, DECIDE_MS, GONE_MS, held, PER_JOB, PENDING_MAX, PROPOSE_ONLY, proposable, Proposals, runGrants, START_MS, STUCK_MS, TRIED_MS, UNDO_MS, weigh, type Proposal, type ProposalInput } from "../src/worker/lib/proposals.ts";
+import { carryOut, inverseOf, notAsShown } from "../src/worker/lib/approval.ts";
+import { mailArchiveMany } from "../src/worker/lib/mail-bulk.ts";
 import { handleProposals } from "../src/worker/routes/proposals.ts";
 import { baseTools, type Tool } from "../src/worker/tools/registry.ts";
 import { carCommand } from "../src/worker/tools/tessie.ts";
@@ -212,7 +213,7 @@ console.log("\nannounced with the job's result");
 console.log("\nhow risky: code says, from the tool and its arguments");
 {
   const car = (command: string, extra: Record<string, unknown> = {}, env = NO_CARS) => weigh(carCommand, { command, value: null, temperature: null, percent: null, car: null, ...extra }, env);
-  check("locking the car: reversible, its own kind", JSON.stringify(car("lock")) === JSON.stringify({ risk: "reversible", says: "Car: lock", category: "car_command:lock" }), car("lock"));
+  check("locking the car: reversible, its own kind, its button Lock", JSON.stringify(car("lock")) === JSON.stringify({ risk: "reversible", says: "Car: lock", category: "car_command:lock", verb: "Lock" }), car("lock"));
   check("a temperature says which", car("set_temperature", { temperature: 21 })?.says === "Car: set temperature to 21°C" && car("set_temperature", { temperature: 21 })?.category === "car_command:set_temperature");
   check("unlocking, the trunks, the horn, a destination on its screen: irreversible, no kind",
     ["unlock", "open_frunk", "open_trunk", "vent_windows", "honk", "navigate_to"].every((c) => car(c)?.risk === "irreversible" && !car(c)?.category));
@@ -357,6 +358,7 @@ console.log("\nanswered by a tap (routes/proposals.ts)");
     proposalAllowed: (person: string) => props.allowed(person),
     proposalAllow: (person: string, id: string, now: number) => props.allow(person, id, now),
     proposalDisallow: (person: string, category: string) => props.disallow(person, category),
+    proposalUndo: (person: string, id: string, scopesNow: Grant[] | null | undefined, approver: Grant[], now: number) => props.undo(person, id, (q) => inverseOf(env, q), scopesNow, approver, now),
   };
   const env = { TESSIE_TOKEN: "t", TESSIE_VIN: "LRWTEST0000000000", STATE: { idFromName: () => "jarvis", get: () => stub } } as never;
   const mia = { kind: "member", id: "u_mia", role: "adult", scopes: ["*"], session: "s" } as never;
@@ -463,6 +465,104 @@ console.log("\nanswered by a tap (routes/proposals.ts)");
   const gone = (await goneRes!.json()) as { error?: string };
   check("a tool no longer set up: not done, it says so, and it still waits", goneRes!.status === 409 && /can no longer be done/.test(gone.error ?? "") && (await props.get("u_mia", r2.id, Date.now()))?.state === "pending", gone);
   check("an answer that is neither: refused", (await handleProposals(req("/api/hub/proposals/answer", { id: r2.id, answer: "maybe" }), env, mia))!.status === 400);
+  const promos = { tool: "mail_archive_many", args: { ids: ["promo001x"], total: 1 } };
+  const archived = (await props.add(input({ person: "u_mia", who: "u_mia", from: { kind: "brief", id: "rb@1", title: "Brief", routine: "rb" }, action: promos, weighed: weigh(mailArchiveMany, promos.args, env)! }), Date.now())) as Proposal;
+  check("Put back on something not done yet: refused", (await handleProposals(req("/api/hub/proposals/answer", { id: archived.id, answer: "undo" }), env, mia))!.status === 409);
+  await props.claim("u_mia", archived.id, ["*"], ["*"], Date.now());
+  await props.finish("u_mia", archived.id, { ok: true, text: "Archived 1 promotion." }, Date.now());
+  const undone = await handleProposals(req("/api/hub/proposals/answer", { id: archived.id, answer: "undo", tool: "mail_manage", args: { action: "trash" } }), env, mia);
+  const ub = (await undone!.json()) as { proposal: Proposal };
+  check("Put back once done: its undo comes back running, made from what was stored, whatever the request says", undone!.status === 200 && ub.proposal.state === "running" && ub.proposal.action.tool === "mail_inbox_many" && ub.proposal.undoes === archived.id && !("grants" in ub.proposal), ub);
+  check("someone else's cannot be put back", (await handleProposals(req("/api/hub/proposals/answer", { id: archived.id, answer: "undo" }), env, { ...mia, id: "u_lee" } as never))!.status !== 200);
+}
+
+console.log("\na brief's cards: one subject, offered once, dismissed for a while");
+{
+  const st = fakeStorage();
+  const props = new Proposals(st as never);
+  const ids = Array.from({ length: 30 }, (_, i) => `promo${String(i).padStart(3, "0")}x`);
+  const archive = { tool: "mail_archive_many", args: { ids, total: 42 } };
+  const brief = (run: string, over: Partial<ProposalInput> = {}) =>
+    input({ from: { kind: "brief", id: `rb1@${run}`, title: "Morning brief", routine: "rb1" }, action: archive, weighed: weigh(mailArchiveMany, archive.args, NO_CARS)!, ...over });
+  const shown = { n: 0 };
+  const first = (await props.add({ ...brief("1"), detail: async () => (shown.n++, "Among them:\nShop Example: Sale") }, T)) as Proposal;
+  check("filed from a brief: its subject, its button, why in words of a brief, never allowed without asking",
+    first.state === "pending" && first.about === "inbox:promotions" && first.verb === "Archive" && first.why === "From your brief “Morning brief”" && first.risk === "reversible" && !first.category && first.from.kind === "brief", first);
+  check("what the card shows is read once, as it is filed anew", first.body === "Among them:\nShop Example: Sale" && shown.n === 1);
+  const again = await props.add({ ...brief("2"), detail: async () => (shown.n++, "x") }, T + 3_600_000);
+  check("the next brief, while it still waits: that card again, not a second, its sample not read again", typeof again !== "string" && again.id === first.id && shown.n === 1 && (await props.list("u_sara", T)).length === 1, again);
+  await props.decline("u_sara", first.id, T + 2 * 3_600_000);
+  const gone = await props.add(brief("3"), T + 86_400_000);
+  check("dismissed: not offered again", gone === "Dismissed: not offered again for now.", gone);
+  const kept = (st._m.get("propgone:u_sara") ?? {}) as Record<string, number>;
+  check("remembered by its subject, beside the proposals, for 30 days", kept["inbox:promotions"] === T + 2 * 3_600_000 + GONE_MS && !(await props.list("u_sara", T)).some((p) => p.about === undefined && p.state === "pending"), kept);
+  const later = await props.add(brief("4"), T + 2 * 3_600_000 + GONE_MS + 1);
+  check("and offered again once that lapses", typeof later !== "string" && later.state === "pending", later);
+
+  const jobs = new Proposals(fakeStorage() as never);
+  const job = (await jobs.add(input(), T)) as Proposal;
+  await jobs.decline("u_sara", job.id, T + 1);
+  check("a job's Not now is not remembered: the same call from another job is filed", typeof (await jobs.add(input({ from: { kind: "job", id: "j2", title: "x" } }), T + 2)) !== "string");
+
+  const tried = new Proposals(fakeStorage() as never);
+  const t1 = (await tried.add(brief("5"), T)) as Proposal;
+  await tried.claim("u_sara", t1.id, ["*"], ["*"], T + 1);
+  await tried.finish("u_sara", t1.id, { ok: true, text: "Archived 30 promotions." }, T + 2);
+  check("tried lately: not offered again within the week", (await tried.add(brief("6"), T + TRIED_MS - 1)) === "Tried lately: not offered again yet.");
+  check("…and offered once the week is out", typeof (await tried.add(brief("7"), T + 2 + TRIED_MS)) !== "string");
+
+  await props.forget("u_sara");
+  check("someone who left: what they dismissed goes too", !st._m.has("propgone:u_sara") && st._m.size === 0, [...st._m.keys()]);
+}
+
+console.log("\nthe button is part of the card");
+{
+  const env = { TESSIE_TOKEN: "t", TESSIE_VIN: "LRWTEST0000000000" } as never;
+  const stored = (verb?: string): Proposal => ({
+    id: "a" + "0".repeat(20), who: "u_sara", person: "u_sara", from: { kind: "job", id: "j1", title: "x" }, why: "x", action: lock, says: "Car: lock", risk: "reversible",
+    ...(verb ? { verb } : {}), state: "pending", createdAt: T, expires: T + DECIDE_MS, grants: ["*"],
+  });
+  check("the same words and the same button: as shown", notAsShown(env, stored("Lock")) === null);
+  check("a card filed before buttons had words still approves", notAsShown(env, stored()) === null);
+  check("a button that would now say something else: not as shown", /changed since it was proposed/.test(notAsShown(env, stored("Unlock")) ?? ""));
+}
+
+console.log("\nPut back: archived promotions, for a week, once");
+{
+  const st = fakeStorage();
+  const props = new Proposals(st as never);
+  const ids = ["promo001x", "promo002x"];
+  const archive = { tool: "mail_archive_many", args: { ids, total: 2 } };
+  const p = (await props.add(input({ from: { kind: "brief", id: "rb@1", title: "Brief", routine: "rb" }, action: archive, weighed: weigh(mailArchiveMany, archive.args, NO_CARS)! }), T)) as Proposal;
+  const inverse = (q: Proposal) => inverseOf(NO_CARS, q);
+  check("not yet done: nothing to put back", (await props.undo("u_sara", p.id, inverse, ["*"], ["*"], T)) === "That cannot be put back.");
+  await props.claim("u_sara", p.id, ["*"], ["*"], T + 1);
+  await props.tick({ carryOut: async () => ({ ok: true, text: "Archived 2 promotions." }) }, T + 2);
+  const back = await props.undo("u_sara", p.id, inverse, ["mail", "ask"], ["mail"], T + 3);
+  check("done by a tap: its undo, made by code from what was stored, claimed and queued as a tap is",
+    typeof back !== "string" && back.state === "running" && back.by === "tap" && back.undoes === p.id && back.action.tool === "mail_inbox_many" && JSON.stringify(back.action.args.ids) === JSON.stringify(ids) && back.verb === "Put back" && !back.about && !back.body, back);
+  const queued = [...st._m.entries()].filter(([k]) => k.startsWith("proprun:"));
+  check("queued for the alarm with no more than the tap and its person allow", queued.length === 1 && JSON.stringify((queued[0]![1] as { grants: string[] }).grants) === JSON.stringify(["mail"]), queued);
+  check("once only", (await props.undo("u_sara", p.id, inverse, ["*"], ["*"], T + 4)) === "It was put back already." && (await props.get("u_sara", p.id, T))?.undone === (back as Proposal).id);
+  const made: string[] = [];
+  await props.tick({ carryOut: async (q) => (made.push(q.action.tool), { ok: true, text: "Put 2 messages back in the Inbox." }) }, T + 5);
+  check("and the alarm makes it", made.join() === "mail_inbox_many" && (await props.get("u_sara", (back as Proposal).id, T + 6))?.state === "done");
+  /** An archive done by a tap, on its own store (one subject a week). */
+  const doneArchive = async () => {
+    const own = new Proposals(fakeStorage() as never);
+    const q = (await own.add(input({ from: { kind: "brief", id: "rb@2", title: "Brief", routine: "rb" }, action: archive, weighed: weigh(mailArchiveMany, archive.args, NO_CARS)! }), T)) as Proposal;
+    await own.claim("u_sara", q.id, ["*"], ["*"], T);
+    await own.finish("u_sara", q.id, { ok: true, text: "x" }, T);
+    return { own, q };
+  };
+  const late = await doneArchive();
+  check("not after the week", (await late.own.undo("u_sara", late.q.id, inverse, ["*"], ["*"], T + UNDO_MS + 1)) === "That cannot be put back.");
+  const car = (await props.add(input(), T)) as Proposal;
+  await props.claim("u_sara", car.id, ["*"], ["*"], T);
+  await props.finish("u_sara", car.id, { ok: true, text: "Locked." }, T);
+  check("nor anything that has no undo", (await props.undo("u_sara", car.id, inverse, ["*"], ["*"], T + 1)) === "That cannot be put back.");
+  const left = await doneArchive();
+  check("nor for someone no longer in the family", (await left.own.undo("u_sara", left.q.id, inverse, null, ["*"], T + 1)) === "Whoever it was for is no longer in the family.");
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

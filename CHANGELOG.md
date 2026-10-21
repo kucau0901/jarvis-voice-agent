@@ -27,6 +27,13 @@ of every release, and in the [README](README.md#updating).
   as a page you can read, opened by a line or two on what matters most. Only
   what you can reach and have set up is in it. One sent after 3 PM covers
   tomorrow. One short answer per brief, so it costs little.
+- **Briefs put things to you.** A brief now comes with cards to tap: answer
+  an invitation you have left unanswered for three days (Decline when it
+  clashes with something, else Accept), and archive the old promotions in your
+  inbox once there are 20 or more, with **Put back** for a week. **Don't
+  suggest this again** on a brief's card stops it being offered for 30 days.
+  Every card's button now says what it does (Lock, Send, Add, Archive), and
+  Now shows up to five.
 - **Jobs ask before they act.** A background job that would do something
   (lock the car, put an event in your calendar, archive or star an email,
   send an email it wrote, a Home Assistant call) now proposes it: its result

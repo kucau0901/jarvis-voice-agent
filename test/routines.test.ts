@@ -890,6 +890,11 @@ console.log("\nbriefs: made at a time, written by lib/brief.ts");
   await late.s.tick(T0 + 30 * MIN + 10 * MIN);
   check("late, it still starts with its heading", late.sent[0]?.text.startsWith("# Friday") === true, late.sent[0]?.text);
 
+  const carded = harness({ brief: async () => ({ ok: true, text: "# Friday", proposals: [{ id: "a1", risk: "irreversible", says: "Calendar: decline “Offsite”", verb: "Decline" }] }) });
+  await carded.s.add({ when: "daily", time: "10:30", brief: true }, OWNER, T0);
+  await carded.s.tick(T0 + 30 * MIN);
+  check("its cards come with the alert", carded.sent[0]?.proposals?.[0]?.id === "a1" && carded.sent[0]?.proposals?.[0]?.verb === "Decline", carded.sent[0]);
+  check("a brief with none carries none", !("proposals" in (h.sent[0] ?? {})));
   const failing = harness({ brief: async () => ({ ok: false, text: "whoever made it is no longer in the family" }) });
   const f = (await failing.s.add({ when: "daily", time: "10:30", brief: true }, OWNER, T0)) as Routine;
   await failing.s.tick(T0 + 30 * MIN);

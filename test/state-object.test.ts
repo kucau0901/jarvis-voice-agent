@@ -193,6 +193,22 @@ console.log("\nproposals, through the object (lib/proposals.ts)");
   check("its job cancelled: withdrawn", typeof waiting !== "string" && (await jarvis.proposalGet("u_ana", waiting.id, now))?.state === "withdrawn", waiting);
   const late = typeof job !== "string" ? await jarvis.proposalAdd({ who: "u_ana", person: "u_ana", from: { kind: "job", id: job.id, title: "x" }, action: { tool: "car_command", args: { command: "unlock" } }, weighed: { risk: "irreversible", says: "Car: unlock" }, grants: ["*"] }, now) : "no job";
   check("a step still running when its job was cancelled files nothing", typeof late === "string" && /cancelled/.test(late) && (await jarvis.proposalsOf("u_ana", now)).every((p) => p.action.args.command !== "unlock"), late);
+  // Put back, through the object: forwarded with its person and id, and the alarm set to make it.
+  const tidy = await jarvis.createJob({ title: "Tidy", task: "Tidy the inbox.", engine: "jarvis" }, { who: "u_ana", grants: ["*"] });
+  const archive = { tool: "mail_archive_many", args: { ids: ["promo001x", "promo002x"], total: 2 } };
+  const archived = typeof tidy !== "string"
+    ? await jarvis.proposalAdd({ who: "u_ana", person: "u_ana", from: { kind: "job", id: tidy.id, title: "x" }, action: archive, weighed: { risk: "reversible", says: "Mail: archive 2 promotions older than 2 days; they stay in All Mail", verb: "Archive" }, grants: ["*"] }, now)
+    : "no job";
+  if (typeof archived !== "string") {
+    await jarvis.proposalApprove("u_ana", archived.id, ["*"], ["*"], now);
+    await jarvis.proposalFinish("u_ana", archived.id, { ok: true, text: "Archived 2 promotions." }, now);
+    alarmAt = null;
+    check("Put back, as someone else: no such proposal", (await jarvis.proposalUndo("u_ben", archived.id, ["*"], ["*"], now)) === "No such proposal.");
+    const back = await jarvis.proposalUndo("u_ana", archived.id, ["*"], ["*"], now);
+    check("Put back through the object: its undo running, and the alarm set to make it", typeof back !== "string" && back.undoes === archived.id && back.action.tool === "mail_inbox_many" && back.state === "running" && alarmAt !== null, { back, alarmAt });
+  } else check("an archive to put back was filed", false, archived);
+  // Not left running: at most three jobs run at once, and those below need theirs.
+  if (typeof tidy !== "string") await jarvis.cancelJob(tidy.id);
   await jarvis.forgetMember("u_ana");
   check("someone who left: none of theirs kept", (await jarvis.proposalsOf("u_ana", now)).length === 0);
 }

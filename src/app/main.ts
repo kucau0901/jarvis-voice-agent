@@ -619,12 +619,13 @@ function showAlert(a: Alert): HTMLElement {
   return card;
 }
 
-/** What a routine said: its name, then its words, in the conversation whichever tab is up (fromRoutine.ts). */
+/** What a routine said: its name, then its words, in the conversation whichever tab is up (fromRoutine.ts); a brief's cards under them, as a job's are. */
 function routineSaid(a: RoutineSaid): boolean {
   const label = fromRoutine(a, openRoutine);
   if (!label) return false;
   els.transcript.appendChild(label);
-  addRow("jarvis", a.text);
+  const row = addRow("jarvis", a.text);
+  if (a.proposals?.length && key) (row.querySelector(":scope > .who + *") ?? row).appendChild(proposalCards(key, a.proposals));
   return true;
 }
 
@@ -642,7 +643,7 @@ function jobSaid(a: JobSaid): boolean {
 function onAlert(a: Alert) {
   const card = showAlert(a);
   // A routine's or a job's words go into the conversation under its name; anything else while typing, as well as on the card.
-  if (a.routine) routineSaid({ ...a, routine: a.routine });
+  if (a.routine) routineSaid({ ...a, routine: a.routine, proposals: a.proposals?.map((p) => p.id) });
   else if (a.job) jobSaid({ ...a, job: a.job, proposals: a.proposals?.map((p) => p.id) });
   else if (mode === "type") addRow("jarvis", a.title !== "Jarvis" ? `${a.title}: ${a.text}` : a.text);
   // Into the conversation either way: "yes, do that" after Hermes asks a

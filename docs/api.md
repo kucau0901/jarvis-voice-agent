@@ -539,11 +539,16 @@ cameras, and the reading tools of MCP servers (judged by name: `get`, `list`,
 unlock or switch anything itself: a call it would make (a car command, a
 calendar event, tidying mail, a Home Assistant call, sending an email it wrote
 as a draft) is proposed instead, and its result alert carries them as
-`proposals: [{id, risk, says}]`. Only the person who started it can approve
+`proposals: [{id, risk, says, verb?}]`, `verb` being the card's button
+("Lock", "Send"; absent, Approve). Only the person who started it can approve
 one, signed in, with `POST /api/hub/proposals/answer {id, answer: "approve" |
-"decline"}`; an approved one comes back `running`, and Jarvis makes the call
+"decline" | "undo"}`; an approved one comes back `running`, and Jarvis makes the call
 in the background. `GET /api/hub/proposals` is `{open, recent, allowed}`, and
-says what came of it. After
+says what came of it; each proposal may carry `verb`, `about` (a brief's card,
+whose decline is remembered: the next brief does not offer it again for 30
+days), `undoes` and `undone` (Put back). `"undo"` is Put back on archived
+promotions, done by a tap within the week: what undoes it comes back
+`running`, once. After
 approving a reversible one, `POST /api/hub/proposals/allow {id}` lets jobs make
 that one kind of call without asking (a car command another undoes, a calendar
 event, one way of tidying mail; never anything irreversible or for the house),
@@ -613,7 +618,10 @@ A `once` or `daily` routine may take `"brief": true` in place of `say` or
 weather, car, mail, jobs and what waits for their OK (as far as their grants
 reach and those are set up), as a document starting `# <day>`, under 1,400
 characters, sent as an alert with `speak` false. Before 15:00 it covers the
-rest of the day; from then, tomorrow. Two each at most.
+rest of the day; from then, tomorrow. Two each at most. What it puts to them
+for a tap (answering an invitation left unanswered three days, archiving 20
+or more promotions older than two days) comes with the alert as `proposals`,
+as a job's does.
 `GET /api/v1/routines` lists them with plain-English `when` and `does`, the
 next run and the last result; `PATCH` takes `{id, enabled?, name?}`; `DELETE
 ?id=` removes one; `POST /api/v1/routines/run {id}` runs one now.

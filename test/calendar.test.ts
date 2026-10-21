@@ -1,4 +1,5 @@
-import { calendarAdd, calendarCheck, calendarTools, rangeWindow, whenSpoken } from "../src/worker/tools/calendar.ts";
+import { calendarAdd, calendarCheck, calendarRsvp, calendarTools, rangeWindow, whenSpoken } from "../src/worker/tools/calendar.ts";
+import { baseTools } from "../src/worker/tools/registry.ts";
 import { SCOPES as GOOGLE_SCOPES, CALENDAR, PEOPLE, GMAIL } from "../src/worker/lib/google.ts";
 import { allows, requiredScope, SCOPES } from "../src/worker/lib/scopes.ts";
 import { readFileSync } from "node:fs";
@@ -204,6 +205,61 @@ console.log("days are the user's, not the server's");
   const late = Date.UTC(2026, 8, 28, 0, 0);
   check("an all-day event today, west of UTC, is today", whenSpoken(ny, { date: "2026-09-27" }, new Date(late)) === "all day today");
   check("and tomorrow's is its own date", whenSpoken(ny, { date: "2026-09-28" }, new Date(late)) === "all day Mon 28 Sept" || whenSpoken(ny, { date: "2026-09-28" }, new Date(late)) === "all day Mon 28 Sep", whenSpoken(ny, { date: "2026-09-28" }, new Date(late)));
+}
+
+console.log("\nanswering an invitation (calendar_rsvp): for a tap only");
+{
+  const env = { GOOGLE_CLIENT_ID: "id.apps.googleusercontent.com", GOOGLE_CLIENT_SECRET: "sec", TIMEZONE: "Asia/Kuala_Lumpur" } as never;
+  const args = { event_id: "evt12345abc", start: "2026-10-23T02:00:00.000Z", title: "Team offsite", organizer: "Sam Example", response: "declined", recurring: false };
+  const w = calendarRsvp.propose!(args, env);
+  check("can't be undone (the organiser is told), no kind to allow, its button, its subject",
+    w?.risk === "irreversible" && !w.category && w.verb === "Decline" && w.about === "rsvp:evt12345abc@2026-10-23T02:00:00.000Z", w);
+  check("says when, in their zone, as a date, and who is told", w?.says === "Calendar: decline “Team offsite”, Fri, 23 Oct 2026, 10:00, from Sam Example (Sam Example is told)", w?.says);
+  const every = calendarRsvp.propose!({ ...args, response: "accepted", recurring: true }, env);
+  check("a repeating one: answered every time, one subject whenever its next time is", every?.verb === "Accept" && every.about === "rsvp:evt12345abc" && /, every time \(next Fri, 23 Oct 2026, 10:00\)/.test(every.says), every);
+  check("an all-day one by its date", /Sat, 24 Oct 2026, all day/.test(calendarRsvp.propose!({ ...args, start: "2026-10-24" }, env)?.says ?? ""));
+  check("not one: a bad id, an answer that is neither, no start", [{ ...args, event_id: "../x" }, { ...args, response: "tentative" }, { ...args, start: "Friday" }].every((a) => calendarRsvp.propose!(a, env) === null));
+  check("never among the tools the router or a job is given", !baseTools(env, ["*"]).some((t) => t.name === "calendar_rsvp") && !calendarTools.includes(calendarRsvp));
+
+  const kv = new Map<string, string>([["google:refresh", "refresh-token"]]);
+  const CONFIG = { get: async (k: string) => kv.get(k) ?? null, put: async (k: string, v: string) => void kv.set(k, v), delete: async (k: string) => void kv.delete(k) };
+  const live = { ...(env as object), CONFIG } as never;
+  const run = async (event: Record<string, unknown> | number, a: Record<string, unknown> = args) => {
+    const calls: { url: string; method: string; body: string }[] = [];
+    const real = globalThis.fetch;
+    globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+      const u = String(url instanceof Request ? url.url : url);
+      if (u.includes("oauth2")) return Response.json({ access_token: "access", expires_in: 3600 });
+      calls.push({ url: u, method: init?.method ?? "GET", body: String(init?.body ?? "") });
+      if ((init?.method ?? "GET") === "GET") return typeof event === "number" ? new Response("{}", { status: event }) : Response.json(event);
+      return Response.json({ id: "evt12345abc" });
+    }) as typeof fetch;
+    let done = false;
+    try {
+      const out = await calendarRsvp.run(a, { env: live, signal: new AbortController().signal, memory: {}, progress: () => {}, display: () => {}, grants: ["*"], done: () => (done = true) } as never);
+      return { out: String(typeof out === "string" ? out : out.text), calls, done };
+    } finally {
+      globalThis.fetch = real;
+    }
+  };
+  const invite = { status: "confirmed", start: { dateTime: "2026-10-23T10:00:00+08:00" }, attendees: [{ email: "lead@example.com", responseStatus: "accepted" }, { email: "me@example.com", self: true, responseStatus: "needsAction" }] };
+  const ok = await run(invite);
+  const patch = ok.calls.find((c) => c.method === "PATCH");
+  const body = JSON.parse(patch?.body ?? "{}") as { attendeesOmitted?: boolean; attendees?: { email: string; responseStatus: string }[] };
+  check("looked at again, then only their own answer is sent, and the organiser told",
+    ok.done && !!patch && patch.url.endsWith("/calendars/primary/events/evt12345abc?sendUpdates=all") && body.attendeesOmitted === true &&
+    JSON.stringify(body.attendees) === JSON.stringify([{ email: "me@example.com", responseStatus: "declined" }]), { ok, body });
+  const refused = [
+    await run({ ...invite, status: "cancelled" }),
+    await run({ ...invite, start: { dateTime: "2026-10-23T11:00:00+08:00" } }),
+    await run({ ...invite, attendees: [{ email: "me@example.com", self: true, responseStatus: "accepted" }] }),
+    await run({ ...invite, attendees: [{ email: "lead@example.com", responseStatus: "accepted" }] }),
+    await run(404),
+  ];
+  check("not sent when it was cancelled, moved, answered already, they are off its list, or it is gone", refused.every((r) => !r.done && !r.calls.some((c) => c.method === "PATCH")), refused.map((r) => r.out));
+  check("…each said so", /cancelled/.test(refused[0]!.out) && /moved/.test(refused[1]!.out) && /answered it already \(accepted\)/.test(refused[2]!.out) && /guest list/.test(refused[3]!.out) && /no longer in the calendar/.test(refused[4]!.out), refused.map((r) => r.out));
+  const series = await run({ ...invite, start: { dateTime: "2026-01-05T09:00:00+08:00" }, recurrence: ["RRULE:FREQ=DAILY"] }, { ...args, recurring: true, response: "accepted" });
+  check("a repeating one is answered whole, whenever its first time was", series.done && series.calls.some((c) => c.method === "PATCH"), series.out);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

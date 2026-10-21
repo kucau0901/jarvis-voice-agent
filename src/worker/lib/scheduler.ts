@@ -67,8 +67,8 @@ export interface SchedulerDeps {
    * Null when it was; else why not.
    */
   relay?(r: Routine, to: { person: string; name: string }): Promise<string | null>;
-  /** A brief of the maker's day (lib/brief.ts): the document to send, or why not. */
-  brief?(r: Routine, now: number): Promise<{ ok: boolean; text: string }>;
+  /** A brief of the maker's day (lib/brief.ts): the document to send, with what waits for their OK, or why not. */
+  brief?(r: Routine, now: number): Promise<{ ok: boolean; text: string; proposals?: Alert["proposals"] }>;
 }
 
 const R = "routine:";
@@ -479,6 +479,7 @@ export class Scheduler {
       return;
     }
     let text: string;
+    let cards: Alert["proposals"];
     if (r.action.kind === "say") {
       text = data ? `${r.action.text}\n\n${data}` : r.action.text;
     } else if (r.action.kind === "ask") {
@@ -508,6 +509,7 @@ export class Scheduler {
         return;
       }
       text = b.text;
+      cards = b.proposals;
     } else {
       return; // leave has its own path
     }
@@ -517,8 +519,9 @@ export class Scheduler {
         .format(new Date(lateFrom));
       text = `(This was due at ${hhmm}.) ${text}`;
     }
-    // A brief is a page to read, not something to say aloud.
-    const alert = { ...makeAlert({ title: r.name, text, ...(r.action.kind === "brief" ? { speak: false } : {}) }, "routine", now, personOfWho(r.createdBy))!, routine: r.id };
+    // A brief is a page to read, not something to say aloud; its cards come with it.
+    const made = makeAlert({ title: r.name, text, ...(r.action.kind === "brief" ? { speak: false } : {}) }, "routine", now, personOfWho(r.createdBy))!;
+    const alert = { ...made, routine: r.id, ...(cards?.length ? { proposals: cards } : {}) };
     const d = await deps.deliver(alert);
     await this.record(r.id, outcome(d, now), text);
   }

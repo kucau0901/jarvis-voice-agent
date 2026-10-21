@@ -2,9 +2,11 @@ import type { Env } from "../types.ts";
 import { allows, type Grant } from "./scopes.ts";
 import { dayBegins, localParts, type Routine } from "./routines.ts";
 import type { Job } from "./jobs.ts";
-import type { Proposal } from "./proposals.ts";
+import type { Proposal, Weighed } from "./proposals.ts";
 import { agendaEvents, freeSlots, overlaps, staleInvites, type AgendaEvent } from "./agenda.ts";
-import { listMailIds, MAX_IDS, PROMOTIONS } from "./mail-bulk.ts";
+import { listMailIds, mailArchiveMany, MAX_BATCH, MAX_IDS, PROMOTIONS, sampleOf } from "./mail-bulk.ts";
+import { calendarRsvp } from "../tools/calendar.ts";
+import type { Tool } from "../tools/registry.ts";
 import { findMail } from "../tools/gmail.ts";
 import { carSnapshot, distanceIn, pickCar } from "../tools/tessie.ts";
 import { WEATHER_TEMPLATE, weatherSaid } from "./sky.ts";
@@ -29,6 +31,13 @@ import { DEFAULT_ROUTER_MODEL } from "./router-model.ts";
  * ChatGPT plan or a key the brief goes out without it.
  *
  * Before TOMORROW_FROM_H it covers the rest of today; from then, tomorrow.
+ *
+ * Code also chooses what to put to them (candidatesOf): an answer to each
+ * invitation left unanswered (Decline when it clashes, else Accept), and
+ * archiving the Inbox's old promotions once there are PROMOTIONS_MIN. Each is
+ * filed for their tap before the model is asked anything (lib/proposals.ts:
+ * one they dismissed, tried lately or still waiting is not filed again), so
+ * the cards wait on Now whatever becomes of the opening.
  */
 
 export const SOURCE_MS = 10_000;
@@ -38,6 +47,10 @@ export const MAX_DOC = 1400;
 export const MAX_SUMMARY = 240;
 const MAX_EVENTS = 12;
 const MAX_LISTED = 5;
+/** At most this many cards from one brief. */
+export const BRIEF_MAX = 5;
+/** Fewer old promotions than this are not worth a card. */
+export const PROMOTIONS_MIN = 20;
 const DAY = 86_400_000;
 
 export const BRIEF_INSTRUCTIONS =
@@ -60,14 +73,30 @@ export interface BriefDeps {
   house: HaConfig | null;
   /** Their jobs. */
   jobs: readonly Job[];
-  /** Their proposals waiting for an answer (lib/proposals.ts). */
-  waiting: readonly Proposal[];
+  /** Their proposals waiting for an answer (lib/proposals.ts), read once this brief's own are filed. */
+  waiting(): Promise<readonly Proposal[]>;
+  /** A call code chose, filed for their tap (lib/proposals.ts add), `detail` read only if it is filed anew; why not, in words. */
+  file(action: Proposal["action"], weighed: Weighed, detail?: () => Promise<string | null>): Promise<Proposal | string>;
 }
 
 export interface Brief {
   text: string;
   /** The opening's model call, for Settings → Usage; absent when none was made. */
   usage?: { model: string; input: number; output: number; ms: number; ok: boolean };
+  /** What waits for their OK, as For your OK lists it: the alert's cards. */
+  proposals: Proposal[];
+}
+
+/** A call code would put to them: the tool, and its arguments as code made them. */
+export interface Candidate {
+  tool: Tool;
+  args: Record<string, unknown>;
+}
+
+/** Their day as code read it, before it is written out: what candidatesOf chooses from. */
+interface Read {
+  invites: { event: AgendaEvent; clash: boolean }[];
+  promotions: readonly string[] | null;
 }
 
 type Ask = (input: string, instructions: string) => Promise<{ text: string; input: number; output: number; model?: string }>;
@@ -152,11 +181,14 @@ export function scheduleOf(events: readonly AgendaEvent[], span: { from: number;
   return lines;
 }
 
-async function calendarSection(d: BriefDeps, span: { from: number; to: number }, now: number): Promise<Section | null> {
+async function calendarSection(d: BriefDeps, span: { from: number; to: number }, now: number, read: Read): Promise<Section | null> {
   if (!allows(d.grants, "calendar") || !googleConfig(d.env, "https://jarvis.invalid")) return null;
   // From now, whatever the day covered: an invitation for later today is still worth answering.
   const events = await agendaEvents(d.env, now, span.from + 7 * DAY, d.timeZone, AbortSignal.timeout(SOURCE_MS)).catch(why);
-  return { head: "Schedule", lines: typeof events === "string" ? [plain(events, 160)] : scheduleOf(events, span, d.timeZone, now) };
+  if (typeof events === "string") return { head: "Schedule", lines: [plain(events, 160)] };
+  const clashing = new Set(overlaps(events).flat().map((e) => e.id));
+  read.invites = staleInvites(events, now).map((event) => ({ event, clash: clashing.has(event.id) }));
+  return { head: "Schedule", lines: scheduleOf(events, span, d.timeZone, now) };
 }
 
 async function weatherSection(d: BriefDeps): Promise<Section | null> {
@@ -192,12 +224,13 @@ async function carSection(d: BriefDeps): Promise<Section | null> {
   }
 }
 
-async function mailSection(d: BriefDeps): Promise<Section | null> {
+async function mailSection(d: BriefDeps, read: Read): Promise<Section | null> {
   if (!allows(d.grants, "mail") || !googleConfig(d.env, "https://jarvis.invalid")) return null;
   const [orders, promos] = await Promise.all([
     findMail(d.env, "category:purchases newer_than:1d", 3, AbortSignal.timeout(SOURCE_MS)).catch(why),
     listMailIds(d.env, PROMOTIONS, MAX_IDS, AbortSignal.timeout(SOURCE_MS)).catch(why),
   ]);
+  if (Array.isArray(promos)) read.promotions = promos;
   const lines: string[] = [];
   if (Array.isArray(orders)) for (const m of orders) lines.push(`- Order: ${plain(m.subject, 70)}, from ${plain(m.from, 40)}`);
   if (Array.isArray(promos) && promos.length) {
@@ -207,6 +240,27 @@ async function mailSection(d: BriefDeps): Promise<Section | null> {
   const failed = [orders, promos].find((x): x is string => typeof x === "string");
   if (failed) lines.push(plain(failed, 120));
   return lines.length ? { head: "Mail", lines } : null;
+}
+
+/**
+ * What code would put to them, most worth it first, at most BRIEF_MAX: an
+ * answer to each invitation left unanswered (Decline when it clashes, else
+ * Accept; a repeating one answered whole), then archiving the Inbox's oldest
+ * promotions once there are PROMOTIONS_MIN.
+ */
+export function candidatesOf(read: Read, timeZone: string): Candidate[] {
+  const out: Candidate[] = read.invites.map(({ event: e, clash }) => {
+    const p = localParts(e.start, timeZone);
+    const day = `${p.y}-${String(p.mo).padStart(2, "0")}-${String(p.d).padStart(2, "0")}`;
+    return {
+      tool: calendarRsvp,
+      args: { event_id: e.series, start: e.allDay ? day : new Date(e.start).toISOString(), title: e.summary, organizer: e.organizer, response: clash ? "declined" : "accepted", recurring: e.series !== e.id },
+    };
+  });
+  const promos = read.promotions ?? [];
+  // Gmail lists the newest first: the oldest are last.
+  if (promos.length >= PROMOTIONS_MIN) out.push({ tool: mailArchiveMany, args: { ids: promos.slice(-MAX_BATCH), total: promos.length } });
+  return out.slice(0, BRIEF_MAX);
 }
 
 /** Their jobs still running, and those that ended since `since`. */
@@ -232,11 +286,23 @@ export function waitingSection(waiting: readonly Proposal[]): Section | null {
 export async function runBrief(r: Routine, now: number, d: BriefDeps, ask?: Ask): Promise<Brief> {
   const span = dayCovered(now, d.timeZone);
   const since = r.lastRun?.at ?? now - DAY;
-  // What waits for their OK first: a long day is cut from the end, and that is the part to act on.
-  const gathered = await Promise.all([calendarSection(d, span, now), weatherSection(d), carSection(d), mailSection(d)]);
+  const read: Read = { invites: [], promotions: null };
+  const gathered = await Promise.all([calendarSection(d, span, now, read), weatherSection(d), carSection(d), mailSection(d, read)]);
   // Their jobs and proposals as far as asking reaches: a device allowed only routines reads neither (lib/scopes.ts).
   const asks = allows(d.grants, "ask");
-  const sections = [asks ? waitingSection(d.waiting) : null, ...gathered, asks ? jobsSection(d.jobs, since) : null].filter((s): s is Section => s !== null);
+  // Filed before the model is asked anything: the cards wait whatever becomes of the opening.
+  if (asks) {
+    for (const c of candidatesOf(read, d.timeZone)) {
+      const weighed = c.tool.propose?.(c.args, d.env);
+      if (!weighed) continue;
+      // Who sent a few of the promotions, for the card: read only for a card filed anew.
+      const detail = c.tool === mailArchiveMany ? () => sampleOf(d.env, c.args.ids as string[], AbortSignal.timeout(SOURCE_MS)) : undefined;
+      await d.file({ tool: c.tool.name, args: c.args }, weighed, detail).catch((e) => console.warn("brief: not filed:", why(e)));
+    }
+  }
+  const waiting = asks ? await d.waiting() : [];
+  // What waits for their OK first: a long day is cut from the end, and that is the part to act on.
+  const sections = [waitingSection(waiting), ...gathered, asks ? jobsSection(d.jobs, since) : null].filter((s): s is Section => s !== null);
 
   const title = `# ${span.tomorrow ? "Tomorrow, " : ""}${dateSaid(span.tomorrow ? span.from : now, d.timeZone, "long")}`;
   const body = sections.length
@@ -263,5 +329,5 @@ export async function runBrief(r: Routine, now: number, d: BriefDeps, ask?: Ask)
       usage = { model: DEFAULT_ROUTER_MODEL, input: 0, output: 0, ms: Date.now() - started, ok: false };
     }
   }
-  return { text: fit([title, ...(summary ? [summary] : []), ...body]), ...(usage ? { usage } : {}) };
+  return { text: fit([title, ...(summary ? [summary] : []), ...body]), ...(usage ? { usage } : {}), proposals: waiting.slice(0, MAX_LISTED) };
 }

@@ -73,7 +73,7 @@ export function restore(all: Said[], rows: Rows, history: History): void {
   const shown = new Map<string, { row: HTMLElement; text: string }>();
   for (const s of all) {
     if (s.routine) {
-      if (rows.routine({ id: s.id, at: s.at, title: s.routine.name, text: s.text, routine: s.routine.id })) history.add("assistant", `${s.routine.name}: ${s.text}`, s.at);
+      if (rows.routine({ id: s.id, at: s.at, title: s.routine.name, text: s.text, routine: s.routine.id, ...(s.proposals ? { proposals: s.proposals } : {}) })) history.add("assistant", `${s.routine.name}: ${s.text}`, s.at);
       continue;
     }
     if (s.job) {

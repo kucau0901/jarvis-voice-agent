@@ -111,8 +111,11 @@ export function trimmed(log: readonly Said[], now: number): Said[] {
 }
 
 /** What a routine said (lib/scheduler.ts), as kept in its maker's conversation; null for any other alert. */
-export function routineSaid(a: Pick<Alert, "id" | "at" | "title" | "text" | "routine">): Said | null {
-  return a.routine ? { id: a.id, at: a.at, role: "assistant", text: a.text.slice(0, MAX_TEXT), routine: { id: a.routine, name: a.title } } : null;
+export function routineSaid(a: Pick<Alert, "id" | "at" | "title" | "text" | "routine" | "proposals">): Said | null {
+  if (!a.routine) return null;
+  // A brief's cards, by id, as a job's are (jobSaid).
+  const proposals = (a.proposals ?? []).map((p) => p.id);
+  return { id: a.id, at: a.at, role: "assistant", text: a.text.slice(0, MAX_TEXT), routine: { id: a.routine, name: a.title }, ...(proposals.length ? { proposals } : {}) };
 }
 
 /** What a background job came back with (lib/jobs.ts), as kept in its starter's conversation; null for any other alert. */
