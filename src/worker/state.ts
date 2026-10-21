@@ -34,6 +34,7 @@ import { Episodes, episodeOfJob, type Episode } from "./lib/episodes.ts";
 import { Proposals, type ProposalInput } from "./lib/proposals.ts";
 import { OWNER, personOfWho, withPerson } from "./lib/context.ts";
 import { lookAtPage } from "./lib/page-look.ts";
+import { runBrief } from "./lib/brief.ts";
 import { budgetOf, budgetSays, costOf, dayOf } from "./lib/usage.ts";
 import { nextAllowed } from "./lib/access.ts";
 import { ChatGptPlan, type PlanFailure } from "./lib/chatgpt-plan.ts";
@@ -362,6 +363,24 @@ export class JarvisState extends DurableObject<Env> {
             },
           }
         : {}),
+      // A brief (lib/brief.ts): as far as its maker may reach now, its opening counted in their usage.
+      brief: async (r, now) => {
+        const person = personOfWho(r.createdBy);
+        const grants = reachNow(r.grants, await this.people.personView(person).catch(() => null));
+        if (!grants) return { ok: false, text: "whoever made it is no longer in the family" };
+        const jobs = (await this.jobs.list()).filter((j) => personOfWho(j.createdBy) === person);
+        const waiting = (await this.proposals.list(person, now)).filter((p) => p.state === "pending");
+        const timeZone = localeOf(env).timeZone;
+        const b = await runBrief(r, now, { env: await this.personEnv(env, r.createdBy), grants, timeZone, jobs, waiting });
+        if (b.usage) {
+          const u = b.usage;
+          await this.recordUsage(
+            { at: now, surface: "routine", by: u.model, ok: u.ok, ms: u.ms, input: u.input, cached: 0, written: 0, output: u.output, searches: 0, tools: [], ask: `brief: ${r.name}`.slice(0, 80), who: person },
+            dayOf(now, timeZone),
+          ).catch((e) => console.warn("brief not counted:", e instanceof Error ? e.message : String(e)));
+        }
+        return { ok: true, text: b.text };
+      },
       // A chore, a check-in or medicine: passed on to whoever's turn it is.
       relay: async (r, to) => {
         if (r.action.kind !== "relay") return "not a routine that passes things on";

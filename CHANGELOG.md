@@ -19,6 +19,14 @@ of every release, and in the [README](README.md#updating).
 
 ### Added
 
+- **Briefs.** A routine can now brief you on your day: "every weekday at
+  seven, brief me on my day", or Routines → Brief me on my day. Jarvis puts
+  together your calendar (what clashes, your free time, invitations you have
+  not answered), the weather, the car, the day's orders and how many old
+  promotions sit in your inbox, your jobs, and anything waiting for your OK,
+  as a page you can read, opened by a line or two on what matters most. Only
+  what you can reach and have set up is in it. One sent after 3 PM covers
+  tomorrow. One short answer per brief, so it costs little.
 - **Jobs ask before they act.** A background job that would do something
   (lock the car, put an event in your calendar, archive or star an email,
   send an email it wrote, a Home Assistant call) now proposes it: its result

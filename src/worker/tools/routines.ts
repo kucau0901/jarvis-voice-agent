@@ -52,6 +52,9 @@ const routineAdd: Tool = {
     "When the user wants to hear only if something turns up ('every morning, tell me only if there is " +
     "urgent email', 'check the news and only tell me if there is a storm warning'), use ask with " +
     "notify=if-important: a run with nothing worth saying sends nothing, and Routines shows it ran. " +
+    "A brief of their day ('every weekday at seven, brief me on my day', 'at six tonight, brief me on tomorrow'): " +
+    "when=daily or once with brief=true and neither say nor ask. Jarvis gathers the calendar, the weather, the car, " +
+    "mail and what waits for their OK itself; before 3 PM it covers the rest of the day, after it, tomorrow. At most two each. " +
     "Afterwards read back what was set and when it will next happen.",
   parameters: {
     type: "object",
@@ -80,11 +83,12 @@ const routineAdd: Tool = {
         description: "watch: a Home Assistant template, true while the thing is happening, with real entity ids.",
       },
       for_minutes: { type: ["integer", "null"], description: "watch: how long it must stay true first. Null or 0 for at once." },
-      say: { type: ["string", "null"], description: "A fixed message to send. Exactly one of say or ask." },
+      say: { type: ["string", "null"], description: "A fixed message to send. Exactly one of say or ask, unless brief." },
       ask: {
         type: ["string", "null"],
         description: "A request for Jarvis to carry out at the time, with the answer sent to the user.",
       },
+      brief: { type: ["boolean", "null"], description: "true for a brief of their day in place of say or ask; daily or once only. Null otherwise." },
       notify: {
         type: ["string", "null"],
         description: "With ask: \"if-important\" to send the answer only when something deserves attention; null or \"always\" to send it every time.",
@@ -102,7 +106,7 @@ const routineAdd: Tool = {
         description: "With pass_to: how long they have to answer before the user (or family) is told; nudged halfway. Null for the family's usual (an hour). Medicine might be 20.",
       },
     },
-    required: ["name", "when", "local_time", "in_minutes", "time", "days", "cron", "event", "buffer_min", "condition", "for_minutes", "say", "ask", "notify", "pass_to", "pass_kind", "points", "escalate", "answer_within_minutes"],
+    required: ["name", "when", "local_time", "in_minutes", "time", "days", "cron", "event", "buffer_min", "condition", "for_minutes", "say", "ask", "brief", "notify", "pass_to", "pass_kind", "points", "escalate", "answer_within_minutes"],
     additionalProperties: false,
   },
   async run(args, ctx) {
@@ -123,6 +127,7 @@ const routineAdd: Tool = {
         forMinutes: args.for_minutes,
         say: args.say,
         ask: args.ask,
+        brief: args.brief,
         notify: args.notify,
         ...(Array.isArray(args.pass_to) && args.pass_to.length
           ? { passTo: args.pass_to, passKind: args.pass_kind, points: args.points, escalate: args.escalate, answerMin: args.answer_within_minutes }

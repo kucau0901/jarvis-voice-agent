@@ -2,6 +2,7 @@ import {
   buildRoutine,
   describeAction,
   describeTrigger,
+  MAX_BRIEFS,
   MAX_PAGES,
   localParts,
   nextCron,
@@ -164,7 +165,7 @@ function fakeStorage() {
   };
 }
 
-function harness(opts: { events?: LeaveEvent[] | string; travel?: number | null; delivered?: boolean; noHa?: boolean; page?: SchedulerDeps["readPage"] } = {}) {
+function harness(opts: { events?: LeaveEvent[] | string; travel?: number | null; delivered?: boolean; noHa?: boolean; page?: SchedulerDeps["readPage"]; brief?: SchedulerDeps["brief"] } = {}) {
   const sent: Alert[] = [];
   const asked: { prompt: string; grants: readonly string[] }[] = [];
   const travels: string[] = [];
@@ -203,6 +204,7 @@ function harness(opts: { events?: LeaveEvent[] | string; travel?: number | null;
           return v;
         },
     ...(opts.page ? { readPage: opts.page } : {}),
+    ...(opts.brief ? { brief: opts.brief } : {}),
   };
   const storage = fakeStorage();
   const s = new Scheduler(storage, async () => deps);
@@ -820,6 +822,68 @@ console.log("\npage watches: one look");
   await lookAtPage(env, "https://air.example.gov/springfield", "the air in Springfield", "200", page(html), model("NO\nAPI 158"));
   check("a number alone, kept so before, is read as a level to go above", told[0]!.instructions.includes("does not say: above 200.") && pageCondition(" 7.5 ") === "above 7.5" && pageCondition("the API is above 150") === "the API is above 150", told[0]?.instructions);
   check("…and described so", describeTrigger({ kind: "page", url: "https://air.example.gov/springfield", question: "q", condition: "200", everyMin: 60 }, "Asia/Kuala_Lumpur").startsWith("when air.example.gov says above 200 "));
+}
+
+console.log("\nbriefs: made at a time, written by lib/brief.ts");
+{
+  const daily = buildRoutine({ when: "daily", time: "07:00", brief: true }, tz, T0);
+  check("a daily brief, named for what it is", daily.ok && daily.action.kind === "brief" && daily.name === "Your brief", daily);
+  const once = buildRoutine({ when: "once", localTime: "2026-09-25T18:00", brief: true, name: "Tomorrow" }, tz, T0);
+  check("a one-off brief", once.ok && once.action.kind === "brief" && once.name === "Tomorrow", once);
+  const refused = [
+    buildRoutine({ when: "cron", cron: "0 8 * * *", brief: true }, tz, T0),
+    buildRoutine({ when: "event", event: "arrived_home", brief: true }, tz, T0),
+    buildRoutine({ when: "leave", brief: true }, tz, T0),
+    buildRoutine({ when: "watch", condition: "{{ is_state('cover.main_gate', 'open') }}", brief: true }, tz, T0),
+  ];
+  check("not on a cron, an event, a departure or a watch", refused.every((b) => !b.ok && b.error === "a brief goes out at a time: make it daily or once"), refused);
+  const both = buildRoutine({ when: "daily", time: "07:00", brief: true, say: "Hi" }, tz, T0);
+  check("nothing of its own to say", !both.ok && /writes itself/.test(both.error), both);
+  check("a brief: false is no brief", !buildRoutine({ when: "daily", time: "07:00", brief: false }, tz, T0).ok);
+  check("described", describeAction({ kind: "brief" }) === "brief you on your day, with anything waiting for your OK");
+
+  const runs: { id: string; now: number }[] = [];
+  const h = harness({
+    brief: async (r, now) => {
+      runs.push({ id: r.id, now });
+      return { ok: true, text: "# Friday 25 September\n\n## Schedule\n- 11:00–12:00 Standup" };
+    },
+  });
+  const a = (await h.s.add({ when: "daily", time: "10:30", brief: true, name: "Morning" }, OWNER, T0)) as Routine;
+  const b = (await h.s.add({ when: "daily", time: "10:30", brief: true, name: "Second" }, OWNER, T0)) as Routine;
+  const third = await h.s.add({ when: "daily", time: "18:00", brief: true }, OWNER, T0);
+  check(`at most ${MAX_BRIEFS} each`, third === `there are already ${MAX_BRIEFS} briefs for you; remove one first`, third);
+  const hers = await h.s.add({ when: "daily", time: "18:00", brief: true }, { who: "u_b", grants: ["*"] as const }, T0);
+  check("someone else's are their own", typeof hers !== "string");
+
+  const due = T0 + 30 * MIN;
+  const wake = await h.s.tick(due);
+  check("one brief an alarm: the first runs", runs.length === 1 && runs[0]!.id === a.id && runs[0]!.now === due, runs);
+  check("the second waits for an alarm straight after", wake === due && (await h.s.list()).find((r) => r.id === b.id)!.nextAt === zonedToUtc(2026, 9, 25, 10, 30, tz), wake);
+  await h.s.tick(due + 2000);
+  check("and then runs", runs.length === 2 && runs[1]!.id === b.id, runs);
+  const sent = h.sent[0]!;
+  check("sent as its routine's alert, the document as it came, not spoken", sent.routine === a.id && sent.title === "Morning" && sent.text.startsWith("# Friday 25 September") && sent.speak === false, sent);
+  check("recorded as sent", (await h.s.runs(a.id))[0]?.ok === true);
+
+  const late = harness({ brief: async () => ({ ok: true, text: "# Friday 25 September\n\n## Weather\nNow: Rainy" }) });
+  await late.s.add({ when: "daily", time: "10:30", brief: true }, OWNER, T0);
+  await late.s.tick(T0 + 30 * MIN + 10 * MIN);
+  check("late, it still starts with its heading", late.sent[0]?.text.startsWith("# Friday") === true, late.sent[0]?.text);
+
+  const failing = harness({ brief: async () => ({ ok: false, text: "whoever made it is no longer in the family" }) });
+  const f = (await failing.s.add({ when: "daily", time: "10:30", brief: true }, OWNER, T0)) as Routine;
+  await failing.s.tick(T0 + 30 * MIN);
+  check("one that cannot be made sends nothing and says why", failing.sent.length === 0 && (await failing.s.runs(f.id))[0]?.detail === "no brief: whoever made it is no longer in the family");
+  const none = harness();
+  const n = (await none.s.add({ when: "daily", time: "10:30", brief: true }, OWNER, T0)) as Routine;
+  await none.s.tick(T0 + 30 * MIN);
+  check("without the hook, recorded as failed", none.sent.length === 0 && (await none.s.runs(n.id))[0]?.detail === "briefs cannot run here");
+  const asks = harness();
+  await asks.s.add({ when: "daily", time: "10:30", ask: "What's my day?" }, OWNER, T0);
+  await asks.s.add({ when: "daily", time: "10:30", ask: "And the traffic?" }, OWNER, T0);
+  await asks.s.tick(T0 + 30 * MIN);
+  check("asks are not held to one an alarm", asks.asked.length === 2 && asks.sent.every((x) => x.speak === true));
 }
 
 console.log("\nhaUrl: one way to join a Home Assistant address");

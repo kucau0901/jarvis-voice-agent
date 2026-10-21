@@ -606,6 +606,12 @@ Every kind but `leave` takes exactly one of `say` (a fixed message) or `ask`
 An `ask` may also take `notify: "if-important"`: Jarvis answers NOTHING when
 nothing deserves attention, nothing is sent, and the last result says
 "nothing to report".
+A `once` or `daily` routine may take `"brief": true` in place of `say` or
+`ask`: a brief of its creator's day, written by Jarvis from their calendar,
+weather, car, mail, jobs and what waits for their OK (as far as their grants
+reach and those are set up), as a document starting `# <day>`, under 1,400
+characters, sent as an alert with `speak` false. Before 15:00 it covers the
+rest of the day; from then, tomorrow. Two each at most.
 `GET /api/v1/routines` lists them with plain-English `when` and `does`, the
 next run and the last result; `PATCH` takes `{id, enabled?, name?}`; `DELETE
 ?id=` removes one; `POST /api/v1/routines/run {id}` runs one now.

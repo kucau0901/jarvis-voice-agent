@@ -1236,6 +1236,21 @@ a page's message carries the reading it rests on. Each is tried once before it
 is kept, and a page watch's try is its first look, so one already true is said
 at once. Ten of each at most.
 
+**A brief is written by code, opened by one answer.** A routine's `brief`
+action (lib/brief.ts) reads what its maker may reach and has set up: one read
+of the calendar for its clashes, free time and invitations left unanswered
+(lib/agenda.ts), the weather from Home Assistant, the car from Tessie's last
+state without waking it, the day's orders and a count of old promotions (ids
+only: their words are never read, lib/mail-bulk.ts), their jobs, and what
+waits for their OK. Each source has ten seconds, and one that fails is a line
+saying so. The document is built from those in code, so what it says of the
+day is what the sources said; a model writes only its opening, at most 240
+characters, from the whole day fenced as data, with links taken out. That is
+the one model call, made only with a plan or a key; without one the brief goes
+without an opening. Daily or once only, two each, and one an alarm: a brief is
+a dozen requests of the alarm's fifty, so a second due at the same minute goes
+in an alarm of its own straight after.
+
 **"Leave now" uses what is there.** The car's position if Tessie is set up,
 else the saved home; live traffic if Google Maps is set up; otherwise a plain
 reminder a fixed time ahead. Routes are billed per call, so drive times are

@@ -239,7 +239,7 @@ function line(m: Message, i: number, tz: string): string {
  * model output, and the model read them out of a listing that also contained
  * text a stranger wrote.
  */
-const MESSAGE_ID = /^[A-Za-z0-9_-]{5,64}$/;
+export const MESSAGE_ID = /^[A-Za-z0-9_-]{5,64}$/;
 
 /** Fetch message details in bounded parallel — the list call returns only ids. */
 async function hydrate(

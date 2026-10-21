@@ -197,7 +197,7 @@ export class Routines {
     const bufferRow = el("label", "on");
     bufferRow.appendChild(buffer);
     bufferRow.appendChild(document.createTextNode(" minutes to spare on top of the drive"));
-    const doKind = select([["say", "Send this message"], ["ask", "Ask Jarvis this, and send the answer"]]);
+    const doKind = select([["say", "Send this message"], ["ask", "Ask Jarvis this, and send the answer"], ["brief", "Brief me on my day"]]);
     const text = document.createElement("textarea");
     text.rows = 2;
     text.placeholder = "Call Mum";
@@ -216,7 +216,8 @@ export class Routines {
       for (const x of shown[kind.value] ?? []) x.style.display = "";
       const leave = kind.value === "leave";
       doKind.style.display = leave ? "none" : "";
-      text.style.display = leave ? "none" : "";
+      // A brief writes itself (lib/brief.ts): nothing to type.
+      text.style.display = leave || doKind.value === "brief" ? "none" : "";
       quietRow.style.display = !leave && doKind.value === "ask" ? "" : "none";
       text.placeholder = doKind.value === "ask" ? "What's on my calendar today, and the traffic to work?" : "Call Mum";
     };
@@ -235,6 +236,7 @@ export class Routines {
         if (kind.value === "cron") body.cron = cron.value;
         if (kind.value === "event") body.event = event.value;
         if (kind.value === "leave") body.bufferMin = Number(buffer.value);
+        else if (doKind.value === "brief") body.brief = true;
         else body[doKind.value] = text.value;
         if (kind.value !== "leave" && doKind.value === "ask" && quiet.checked) body.notify = "if-important";
         await api(this.key, "POST", "/api/v1/routines", body);
