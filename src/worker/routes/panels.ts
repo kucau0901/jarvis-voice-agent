@@ -1,4 +1,6 @@
 import type { Env } from "../types.ts";
+import { hazeOf, SKY_TEMPLATE, skyOf } from "../lib/sky.ts";
+import { renderTemplate } from "../lib/ha.ts";
 import { err, json, readObject } from "../lib/http.ts";
 import { grantsOf, isAdmin, personOf, whoOf, type Principal } from "../lib/auth.ts";
 import { allows } from "../lib/scopes.ts";
@@ -25,6 +27,8 @@ import type { PanelsReply } from "../../shared/panels.ts";
  * guest does not have; never a device.
  *
  *   GET  /api/hub/panels       your panels, each thing read now, with the buttons its state offers
+ *   GET  /api/hub/panels/sky   {lat?, lng?, cloud, rain, haze}: what the sky behind the app is drawn
+ *        from (lib/sky.ts): home's place and the weather with `home`, the air from a kept reading
  *   GET  /api/hub/panels/read?panel=&key=[&cached=1]   a tile's reading: one of your tools, run now, or
  *        its question's kept answer, looked up again when stale (cached=1: what was kept, at once)
  *   GET  /api/hub/panels/history?panel=&key=   a number's last day from Home Assistant, for its chart
@@ -42,7 +46,7 @@ import type { PanelsReply } from "../../shared/panels.ts";
  */
 export async function handlePanels(req: Request, env: Env, principal: Principal): Promise<Response | null> {
   const p = new URL(req.url).pathname;
-  if (!["/api/hub/panels", "/api/hub/panels/read", "/api/hub/panels/history", "/api/hub/panels/act", "/api/hub/panels/alert", "/api/hub/panels/remove", "/api/hub/panels/order", "/api/hub/panels/note"].includes(p)) return null;
+  if (!["/api/hub/panels", "/api/hub/panels/sky", "/api/hub/panels/read", "/api/hub/panels/history", "/api/hub/panels/act", "/api/hub/panels/alert", "/api/hub/panels/remove", "/api/hub/panels/order", "/api/hub/panels/note"].includes(p)) return null;
   if (principal.kind === "device") return err(403, "that is for a person, not a device");
   const grants = grantsOf(principal);
   if (!allows(grants, "screen")) return err(403, 'panels need "screen"', { need: "screen" });
@@ -107,6 +111,13 @@ export async function handlePanels(req: Request, env: Env, principal: Principal)
       can: { home: !!src.house && allows(grants, "home"), car: allows(grants, "car.read") && typeof pickCar(env) !== "string" },
     };
     return json(reply);
+  }
+  if (p === "/api/hub/panels/sky" && req.method === "GET") {
+    const [weather, haze] = await Promise.all([
+      src.house && allows(grants, "home") ? renderTemplate(src.house, SKY_TEMPLATE).then(skyOf, () => ({ cloud: 0, rain: 0 })) : { cloud: 0, rain: 0 },
+      state.panelsOf(me).then((all) => hazeOf(all, (key) => state.panelReading(me, key))),
+    ]);
+    return json({ ...weather, haze, at: Date.now() });
   }
   if (p === "/api/hub/panels/read" && req.method === "GET") {
     const q = new URL(req.url).searchParams;

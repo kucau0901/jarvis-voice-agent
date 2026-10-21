@@ -14,6 +14,8 @@ import { Orb } from "./orb/Orb";
 import { VoiceLevels } from "./audio";
 import { closeIn, QUIET_MS, WORKING_MS } from "./quiet";
 import { watchTheme } from "./theme";
+import { Sky } from "./orb/Sky";
+import { watchSky } from "./sky";
 import { runDelegation } from "./delegate";
 import { LiveLink, releasePush, speakAlert, speakHere, speakText, syncPush, type Alert } from "./alerts";
 import { askTyped } from "./chat";
@@ -179,7 +181,18 @@ try {
   console.warn("orb unavailable:", e);
 }
 addEventListener("resize", () => orb?.resize());
-watchTheme((t) => orb?.setTheme(t === "light"));
+// The sky behind it all (orb/Sky.ts, sky.ts): as with the orb, the app works without it.
+let sky: Sky | null = null;
+try {
+  sky = new Sky($<HTMLCanvasElement>("skyCanvas"));
+  watchSky(key, sky);
+} catch (e) {
+  console.warn("sky unavailable:", e);
+}
+watchTheme((t) => {
+  orb?.setTheme(t === "light");
+  sky?.setTheme(t === "light");
+});
 
 let thinking = false;
 /** When the Live session was last spoken in, for armIdle below (performance.now(): a clock change must not move it). */

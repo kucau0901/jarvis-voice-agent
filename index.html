@@ -147,6 +147,10 @@
   body { height: 100dvh; display: flex; flex-direction: column; align-items: center;
     justify-content: center; gap: 22px; padding: calc(var(--barTop) + 56px) 20px 20px;
     background: var(--backdrop); }
+  /* The live sky (orb/Sky.ts), behind everything once it has drawn; the backdrop above until then, or without WebGL. */
+  #skyCanvas { position: fixed; inset: 0; width: 100vw; height: 100dvh; z-index: -1; pointer-events: none; display: none; }
+  html.sky #skyCanvas { display: block; }
+  html.sky body { background: transparent; }
 
   h1 { position: fixed; top: calc(var(--barTop) + 14px); left: 22px; margin: 0; font-size: 15px;
     font-weight: 400; letter-spacing: 6px; color: var(--dim);
@@ -1285,6 +1289,7 @@
 </style>
 </head>
 <body>
+  <canvas id="skyCanvas" aria-hidden="true"></canvas>
   <h1 id="title">JARVIS</h1>
   <button id="menuBtn" type="button" aria-label="Menu" aria-haspopup="dialog" aria-expanded="false"></button>
   <div id="hub" role="dialog" aria-modal="true" aria-label="Menu">

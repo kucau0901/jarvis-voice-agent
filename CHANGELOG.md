@@ -83,6 +83,11 @@ of every release, and in the [README](README.md#updating).
 - **Export your data.** Settings → Export your data downloads one JSON file
   of your memory, routines, panels, conversation and jobs, and the household's
   settings without any key or token. For the owner and admins.
+- **A live sky.** Behind the app, a sky in the theme's colours follows the
+  sun where your home is, and the clouds and rain from your Home
+  Assistant weather, hazy when a panel's air-quality reading is poor. It
+  holds still in the car's driving view, and steps down or stops on a
+  screen that struggles.
 - **Ask Jarvis on Telegram.** Switch on Settings → Alerts → Ask Jarvis on
   Telegram, and the family's bot answers as well as alerts: a message from
   the private chat someone gave in Family → You → Telegram is answered as

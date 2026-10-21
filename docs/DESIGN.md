@@ -148,6 +148,19 @@ Device pixel ratio is deliberately capped at 1: honouring the car's 1.53 would
 cost about 2.3x the fragment work for no visible gain on a dashboard at arm's
 length.
 
+**The sky behind it** (`src/app/orb/Sky.ts`) is one full-screen quad in the
+theme's palette (night #000 to #171A20, day #DDE3EA to #F4F4F4, so what is over
+it stays as readable as before), with the sun where it is now (where home is,
+from Home Assistant's `zone.home`, else by the clock), the clouds and rain of
+the first weather entity, and haze from a panel's kept air-quality reading
+(`GET /api/hub/panels/sky`: one template, no model). Everything over it is
+blurred glass that is redrawn with it, so it draws at half the screen's
+resolution or less, ten frames a second, governed as the orb is (the same
+`Governor`, fed the time between frames too, since the blur costs the GPU
+rather than the script), and goes still when even its lowest step is too
+much. It holds still in the car's driving view and where less motion is
+asked for, and without WebGL the old backdrop stays.
+
 ## Where an answer can come from
 
 | | route | typical |
