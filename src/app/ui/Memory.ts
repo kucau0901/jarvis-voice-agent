@@ -484,8 +484,14 @@ export class Memory {
       : `<p class="note">Nothing forgotten lately.</p>`;
 
     groups.push(["Add and check", ["add", "find", "reads", "specialties", "past", "trash"]]);
-    void showSpecialties(this.key, this.$(".speclist")).then((n) => (this.$(".setbody [data-section=specialties]").dataset.aside = String(n)));
-    void showPast(this.key, this.$(".pastlist")).then((n) => (this.$(".setbody [data-section=past]").dataset.aside = String(n)));
+    // Their counts arrive after the menu is drawn: put in its buttons as they do.
+    const count = (id: string) => (n: number) => {
+      this.$(`.setbody [data-section=${id}]`).dataset.aside = String(n);
+      const b = this.el.querySelector(`.setnav button[data-for="${id}"]`);
+      if (b) (b.querySelector(".st.aside") ?? b.appendChild(Object.assign(document.createElement("span"), { className: "st aside" }))).textContent = String(n);
+    };
+    void showSpecialties(this.key, this.$(".speclist")).then(count("specialties"));
+    void showPast(this.key, this.$(".pastlist")).then(count("past"));
     this.menu.build(groups, groups[0]?.[1][0] ?? "add");
   }
 

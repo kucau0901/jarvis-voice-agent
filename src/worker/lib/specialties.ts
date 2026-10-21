@@ -1,5 +1,5 @@
 import type { Storage } from "./state-host.ts";
-import { sanitise, slugify, tokenise } from "./memory.ts";
+import { sanitise, tokenise } from "./memory.ts";
 
 /**
  * Specialties, as Hark calls them: a way of doing something the user
@@ -35,6 +35,8 @@ export interface Specialty {
 }
 
 const key = (person: string) => `specialties:${person}`;
+/** A name as compared: its letters and digits, in any script. */
+const nameOf = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
 const ALPHABET = "0123456789abcdefghjkmnpqrstvwxyz";
 
 /** A list of short texts, each checked as memory checks a fact; why not when one is not. */
@@ -72,7 +74,8 @@ export class Specialties {
     if (why && !why.ok) return `why: ${why.why}`;
     const all = await this.of(person);
     const named = name.text.slice(0, MAX_NAME);
-    const same = all.find((s) => slugify(s.name) === slugify(named));
+    if (!nameOf(named)) return "its name needs a letter or a digit";
+    const same = all.find((s) => nameOf(s.name) === nameOf(named));
     if (!same && all.length >= MAX_SPECIALTIES) return `that is ${MAX_SPECIALTIES} already: forget one first`;
     const bytes = crypto.getRandomValues(new Uint8Array(8));
     const s: Specialty = {
@@ -92,7 +95,8 @@ export class Specialties {
   /** Forgotten, by its id or its name: whether there was one. */
   async forget(person: string, which: string): Promise<boolean> {
     const all = await this.of(person);
-    const keep = all.filter((s) => s.id !== which && slugify(s.name) !== slugify(which));
+    const name = nameOf(which);
+    const keep = all.filter((s) => s.id !== which && (!name || nameOf(s.name) !== name));
     if (keep.length === all.length) return false;
     await this.storage.put(key(person), keep);
     return true;
@@ -106,11 +110,12 @@ export class Specialties {
   async match(person: string, ask: string): Promise<Specialty | null> {
     const all = await this.of(person);
     if (!all.length) return null;
-    const slug = ` ${slugify(ask)} `;
+    const asked = ` ${nameOf(ask)} `;
     const words = new Set(tokenise(ask));
     let best: { s: Specialty; n: number } | null = null;
     for (const s of all) {
-      const named = slug.includes(` ${slugify(s.name)} `);
+      const name = nameOf(s.name);
+      const named = !!name && asked.includes(` ${name} `);
       const n = (named ? 100 : 0) + s.keys.filter((k) => words.has(k)).length;
       if ((named || n >= 2) && (!best || n > best.n)) best = { s, n };
     }

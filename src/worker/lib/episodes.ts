@@ -44,11 +44,13 @@ const cut = (s: string) => {
   const t = tidy(s);
   return t.length > TEXT ? `${t.slice(0, TEXT - 1)}…` : t;
 };
+/** How much two attempts' words are the same: what they share of all they have between them. */
 const overlap = (a: readonly string[], b: readonly string[]) => {
   const x = new Set(a);
   const y = new Set(b);
+  if (x.size < 2 || y.size < 2) return 0;
   const both = [...x].filter((k) => y.has(k)).length;
-  return both / Math.max(1, Math.min(x.size, y.size));
+  return both / (x.size + y.size - both);
 };
 
 /** What a finished job comes to (lib/jobs.ts): done is ok; failed is failed, its error the lesson. */
@@ -89,7 +91,7 @@ export class Episodes {
   async add(person: string, e: Omit<Episode, "at" | "keys" | "seen">, now: number): Promise<void> {
     const keys = [...new Set(tokenise(e.goal))];
     const all = await this.of(person, now);
-    const same = all.find((x) => x.id === e.id || (keys.length >= 2 && overlap(x.keys, keys) >= SAME));
+    const same = all.find((x) => x.id === e.id || overlap(x.keys, keys) >= SAME);
     const kept: Episode = { ...e, id: same?.id ?? e.id, at: now, keys, seen: (same?.seen ?? 0) + (same?.id === e.id ? 0 : 1) };
     await this.storage.put(key(person), [kept, ...all.filter((x) => x !== same)].slice(0, MAX_EPISODES));
   }

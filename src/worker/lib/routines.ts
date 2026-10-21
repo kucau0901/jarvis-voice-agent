@@ -258,18 +258,21 @@ export function parseCron(expr: string): Cron | string {
   return { min: sets[0]!, hour: sets[1]!, dom: sets[2]!, mon: sets[3]!, dow: sets[4]!, anyDom: fields[2]!.startsWith("*"), anyDow: fields[4]!.startsWith("*") };
 }
 
-/** The next time a cron schedule comes round in the zone after `after`, looking a year ahead; as nextDaily does it. */
+/** How far ahead a schedule is looked for: four years and a day, so a 29 February comes round. */
+const CRON_DAYS = 4 * 366 + 1;
+
+/** The next time a cron schedule comes round in the zone after `after`; as nextDaily does it. */
 export function nextCron(expr: string, timeZone: string, after: number): number | undefined {
   const c = parseCron(expr);
   if (typeof c === "string") return undefined;
   const p = localParts(after, timeZone);
-  for (let i = 0; i <= 366; i++) {
+  for (let i = 0; i <= CRON_DAYS; i++) {
     const day = new Date(Date.UTC(p.y, p.mo - 1, p.d + i));
     if (!c.mon.includes(day.getUTCMonth() + 1)) continue;
     const onDom = c.dom.includes(day.getUTCDate());
     const onDow = c.dow.includes(day.getUTCDay());
-    // As cron has it: with both day fields given, either one will do.
-    if (!(c.anyDom ? c.anyDow || onDow : c.anyDow ? onDom : onDom || onDow)) continue;
+    // As cron has it: with both day fields restricted, either will do; with one starred ("*" or "*/2"), both must.
+    if (!(c.anyDom || c.anyDow ? onDom && onDow : onDom || onDow)) continue;
     for (const h of c.hour) {
       for (const mi of c.min) {
         if (i === 0 && (h < p.h || (h === p.h && mi <= p.mi))) continue;
@@ -439,7 +442,7 @@ export function buildRoutine(input: RoutineInput, timeZone: string, now: number)
     if (typeof c === "string") return { ok: false, error: c };
     // An ask is a paid answer each time: no more than once an hour.
     if (c.min.length !== 1) return { ok: false, error: "a cron schedule runs at most once an hour: one number for the minute, like 0 8,12 * * *" };
-    if (nextCron(expr, timeZone, now) === undefined) return { ok: false, error: "that schedule does not come round in the next year" };
+    if (nextCron(expr, timeZone, now) === undefined) return { ok: false, error: "that schedule never comes round" };
     trigger = { kind: "cron", expr };
   } else if (when === "event") {
     const event = str(input.event).toLowerCase();

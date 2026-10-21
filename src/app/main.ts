@@ -1041,15 +1041,16 @@ function openJob(id?: string) {
 $("openJobs").addEventListener("click", () => openJob());
 
 let search: Search | null = null;
-/** A message found by Search, shown where it is in the chat. */
-function showSaid(id: string) {
-  showTab("chat");
+/** A message found by Search, shown where it is in the chat; false when this screen does not have it. */
+function showSaid(id: string): boolean {
   const row = els.transcript.querySelector<HTMLElement>(`[data-said="${CSS.escape(id)}"]`);
-  if (!row) return;
+  if (!row) return false;
+  showTab("chat");
   row.scrollIntoView({ block: "center" });
   row.classList.remove("flash");
   void row.offsetWidth;
   row.classList.add("flash");
+  return true;
 }
 $("openSearch").addEventListener("click", () => {
   if (!key) return requireKey();

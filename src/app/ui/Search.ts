@@ -18,8 +18,8 @@ type Hit = { kind: "message"; hit: MessageHit } | { kind: "fact"; hit: FactHit }
 interface Found { top: Hit | null; messages: MessageHit[]; memory: FactHit[] | null; mail: MailHit[] | null; mailNote?: string }
 
 export interface SearchOpen {
-  /** A message of the conversation, by its id: shown in the chat. */
-  message(id: string): void;
+  /** A message of the conversation, by its id: shown in the chat; false when this screen does not have it. */
+  message(id: string): boolean;
   routine(id: string): void;
   job(id: string): void;
 }
@@ -104,7 +104,15 @@ export class Search {
       const m = h.hit;
       top.append(el("b", "", m.role === "user" ? "You" : "Jarvis"), el("small", "", when(m.at)));
       row.append(top, el("div", "rwhen", m.text));
-      go = () => (m.routine ? this.open.routine(m.routine) : m.job ? this.open.job(m.job) : this.open.message(m.id));
+      go = () => {
+        if (m.routine) this.open.routine(m.routine);
+        else if (m.job) this.open.job(m.job);
+        // Said on another screen since this one opened: it is in the chat once it is opened again.
+        else if (!this.open.message(m.id)) {
+          this.show();
+          row.appendChild(el("p", "note", "Said on another screen since this one opened: open Jarvis again to see it here."));
+        }
+      };
     } else if (h.kind === "fact") {
       top.append(el("b", "", h.hit.kind), el("small", "", h.hit.family ? "the family's" : "yours"));
       row.append(top, el("div", "rwhen", h.hit.text));
@@ -119,8 +127,9 @@ export class Search {
       row.classList.add("go");
       row.tabIndex = 0;
       row.setAttribute("role", "button");
+      // Search steps aside for whatever it opens: the chat, Routines or Jobs.
       row.addEventListener("click", () => {
-        if (h.kind === "message") this.hide();
+        if (h.kind !== "mail") this.hide();
         act();
       });
       row.addEventListener("keydown", (e) => {

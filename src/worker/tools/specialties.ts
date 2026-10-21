@@ -15,6 +15,8 @@ import { OWNER } from "../lib/context.ts";
  */
 
 const said = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim();
+/** Asking to save, in their words: "save this as…", "remember how to…", or in Malay. */
+const SAVE = /\b(save|remember|keep|store|simpan|ingat)\b/i;
 
 export const specialtySave: Tool = {
   name: "specialty_save",
@@ -41,7 +43,7 @@ export const specialtySave: Tool = {
     const state = stateStub(ctx.env);
     if (!state) return "Specialties cannot be kept on this deployment: it has no state object.";
     const words = typeof args.user_words === "string" ? said(args.user_words) : "";
-    if (words.length < 4 || !ctx.asked || !said(ctx.asked).includes(words)) {
+    if (words.length < 4 || !SAVE.test(words) || !ctx.asked || !said(ctx.asked).includes(words)) {
       return "Not saved: only the user can ask for a specialty, in their own latest message. Ask them whether to save it.";
     }
     const s = await state.specialtySave(ctx.env.JARVIS_PERSON || OWNER, { name: args.name, when: args.when, steps: args.steps, why: args.why }, Date.now());

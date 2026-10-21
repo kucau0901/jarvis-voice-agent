@@ -86,6 +86,17 @@ console.log("\nthe next cron time");
   // Both day fields given: either will do, as cron has it.
   check("the 1st, or a Monday", iso(nextCron("0 9 1 * mon", tz, fri0700)) === at(28, 9) && iso(nextCron("0 9 1 * mon", tz, zonedToUtc(2026, 9, 28, 10, 0, tz))) === iso(zonedToUtc(2026, 10, 1, 9, 0, tz)));
   check("the 31st skips months without one", iso(nextCron("0 9 31 * *", tz, fri0700)) === iso(zonedToUtc(2026, 10, 31, 9, 0, tz)));
+  // A step in a day field is a restriction, not "every day": "*/2" is every other day of the month, or every other weekday.
+  let d = fri0700;
+  const odd: number[] = [];
+  for (let k = 0; k < 3; k++) odd.push(localParts((d = nextCron("0 9 */2 * *", tz, d)!), tz).d);
+  check("every other day of the month", odd.join() === "25,27,29", odd);
+  const days: number[] = [];
+  d = fri0700;
+  for (let k = 0; k < 3; k++) days.push(localParts((d = nextCron("0 9 * * */2", tz, d)!), tz).dow);
+  check("every other weekday (Sunday, Tuesday, Thursday, Saturday)", days.join() === "6,0,2", days);
+  const leap = nextCron("0 9 29 2 *", tz, fri0700);
+  check("29 February comes round, and comes round again", iso(leap) === iso(zonedToUtc(2028, 2, 29, 9, 0, tz)) && iso(nextCron("0 9 29 2 *", tz, leap!)) === iso(zonedToUtc(2032, 2, 29, 9, 0, tz)));
   check("exactly now is not 'next'", nextCron("0 7 * * *", tz, fri0700)! > fri0700);
   check("never: nothing", nextCron("0 9 30 2 *", tz, fri0700) === undefined && nextCron("bad", tz, fri0700) === undefined);
   const lon = "Europe/London";
@@ -135,7 +146,7 @@ console.log("\nbuilding one from what was said");
   check("…and described", c.ok && describeTrigger(c.trigger, tz) === 'on the schedule "0 8,12 * * mon-fri" (minute hour day month weekday)');
   check("at most hourly: one minute only", !buildRoutine({ when: "cron", cron: "* * * * *", say: "x" }, tz, now).ok && !buildRoutine({ when: "cron", cron: "*/5 * * * *", say: "x" }, tz, now).ok);
   const never = buildRoutine({ when: "cron", cron: "0 9 30 2 *", say: "x" }, tz, now);
-  check("one that never comes round is refused, saying so", !never.ok && /next year/.test(never.error), never);
+  check("one that never comes round is refused, saying so", !never.ok && /never comes round/.test(never.error), never);
   check("one cron cannot read is refused", !buildRoutine({ when: "cron", cron: "0 9 * *", say: "x" }, tz, now).ok && !buildRoutine({ when: "cron", cron: "", say: "x" }, tz, now).ok);
 }
 

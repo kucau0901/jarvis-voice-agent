@@ -297,6 +297,20 @@ export async function prepareRouter(
   return { client, model, instructions, input, tools, byName, memory };
 }
 
+/**
+ * What the person themselves said in their latest message, for what only they
+ * may ask for (tools/specialties.ts): none in a routine, whose question its
+ * maker set long ago and whose event carries others' words; in the family
+ * room their own message, not the room around it (assistAsk); and never an
+ * earlier answer quoted in a reply (src/app/reply.ts).
+ */
+export function ownWords(turns: Turn[], opts: Pick<RunOptions, "surface" | "assistAsk">): string | undefined {
+  if (opts.surface === "routine") return undefined;
+  const said = opts.assistAsk ?? lastAsk(turns) ?? "";
+  const reply = /^\(Replying to this answer of yours: "[\s\S]*?"\)\n/.exec(said);
+  return (reply ? said.slice(reply[0].length) : said).trim() || undefined;
+}
+
 /** What the router is told of photos and files that came with the latest message. */
 function attachedSaid(opts: RunOptions): string {
   const n = (opts.images?.length ?? 0) + (opts.files?.length ?? 0);
@@ -417,7 +431,7 @@ export async function run(
       return res;
     },
     runCalls: async (calls) => {
-      const out = await runCalls(calls as OpenAI.Responses.ResponseFunctionToolCall[], p!.byName, { env, signal, memory: p!.memory, grants, offered: [...p!.byName.keys()], asked: lastAsk(turns) ?? undefined }, sse);
+      const out = await runCalls(calls as OpenAI.Responses.ResponseFunctionToolCall[], p!.byName, { env, signal, memory: p!.memory, grants, offered: [...p!.byName.keys()], asked: ownWords(turns, opts) }, sse);
       // Tools that failed, for a past attempt (lib/episodes.ts): what callTool says when one throws.
       out.forEach((o, i) => {
         const said = "output" in o && typeof o.output === "string" ? o.output : "";

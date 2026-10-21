@@ -50,6 +50,11 @@ console.log("\nkept, tidied as they come");
   const one = await e.of("u_sara", T + 2);
   check("the same attempt again is counted, not kept twice", one.length === 1 && one[0]!.seen === 2, one);
   check("each person's own", (await e.of("u_adam", T)).length === 0);
+  // A short goal inside a longer, different one is not the same attempt (Jaccard, as memory's near-duplicates).
+  const f = new Episodes(fakeStorage());
+  await f.add("u_sara", episodeOfJob(job({ id: "t1", title: "Flights to Tokyo in December", status: "done", summary: "A flight at RM2,100." })), T);
+  await f.add("u_sara", episodeOfJob(job({ id: "t2", title: "Book a hotel near Tokyo station for the December flights, and email the itinerary" })), T + 1);
+  check("…kept apart, the first one's outcome kept", (await f.of("u_sara", T + 1)).length === 2 && (await f.of("u_sara", T + 1)).some((x) => x.id === "t1" && x.outcome === "ok"));
   check(`gone after ${KEEP_MS / 86_400_000} days`, (await e.of("u_sara", T + KEEP_MS + 10)).length === 0);
   for (let i = 0; i < MAX_EPISODES + 5; i++) await e.add("u_many", { id: `x${i}`, source: "chain", goal: `task number ${i} alpha${i} beta${i}`, outcome: "ok", lesson: "" }, T + i);
   const many = await e.of("u_many", T + MAX_EPISODES + 5);

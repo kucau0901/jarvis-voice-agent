@@ -43,41 +43,57 @@ export class Profile {
     if (this.may("memory.write")) void this.places();
   }
 
+  /** What is saved now, read again after each change, so each change is to what is there. */
+  private facts: Fact[] = [];
+
+  private async refresh(): Promise<void> {
+    this.facts = ((await api(this.key, "GET", "/api/memory")) as { facts: Fact[] }).facts;
+  }
+
+  private placeNamed(slug: string): Fact | undefined {
+    return this.facts.find((f) => f.kind === "place" && f.slug === slug);
+  }
+
   /** Home, work and the people in your life: from your own memory, changed one fact at a time. */
   private async places(): Promise<void> {
-    let facts: Fact[];
     try {
-      facts = ((await api(this.key, "GET", "/api/memory")) as { facts: Fact[] }).facts;
+      await this.refresh();
     } catch {
       return; // A locked profile, or memory unreachable: the rest of the section still works.
     }
-    const place = (slug: string) => facts.find((f) => f.kind === "place" && f.slug === slug);
     const where = el("div", "m-places");
     for (const [slug, label] of [["home", "Home"], ["work", "Work"]] as const) {
-      const input = Object.assign(document.createElement("input"), { type: "text", maxLength: 300, placeholder: `${label}: an address`, value: place(slug)?.address ?? "" });
+      const input = Object.assign(document.createElement("input"), { type: "text", maxLength: 300, placeholder: `${label}: an address`, value: this.placeNamed(slug)?.address ?? "" });
       input.setAttribute("aria-label", `${label} address`);
       const btns = el("div", "rowbtns");
-      btns.appendChild(button(`Save ${label.toLowerCase()}`, () => void this.place(slug, label, input.value.trim(), place(slug)?.id)));
+      btns.appendChild(button(`Save ${label.toLowerCase()}`, () => void this.place(slug, label, input.value.trim())));
       where.append(el("h4", "", label), input, btns);
     }
     const people = el("div", "m-people");
     this.box.append(where, el("h4", "", "People in your life"), people, this.addPerson());
-    this.people(people, facts);
-    if (!place("work") && this.may("calendar")) void this.suggestWork(where);
+    this.people(people);
+    if (!this.placeNamed("work") && this.may("calendar")) void this.suggestWork(where);
   }
 
-  private async place(slug: string, label: string, address: string, id: string | undefined): Promise<void> {
+  /** Home or work saved at an address, or removed: what was written of it before is kept. Whether it was. */
+  private async place(slug: string, label: string, address: string): Promise<boolean> {
+    const was = this.placeNamed(slug);
     try {
-      if (address) await api(this.key, "POST", "/api/memory", { kind: "place", name: slug, text: label, address });
-      else if (id) await api(this.key, "DELETE", "/api/memory", { id });
+      if (address && was) await api(this.key, "PATCH", "/api/memory", { id: was.id, text: was.text, name: slug, address });
+      else if (address) await api(this.key, "POST", "/api/memory", { kind: "place", name: slug, text: label, address });
+      else if (was) await api(this.key, "DELETE", "/api/memory", { id: was.id });
+      else return true;
+      await this.refresh();
       this.say(address ? `Saved: ${label.toLowerCase()} is ${address}.` : `Removed ${label.toLowerCase()}.`);
+      return true;
     } catch (e) {
       this.say(e instanceof Error ? e.message : String(e), true);
+      return false;
     }
   }
 
-  private people(box: HTMLElement, facts: Fact[]): void {
-    const mine = facts.filter((f) => f.kind === "person");
+  private people(box: HTMLElement): void {
+    const mine = this.facts.filter((f) => f.kind === "person");
     box.replaceChildren(...(mine.length ? mine.map((f) => {
       const r = el("div", "routine");
       const top = el("div", "rtop");
@@ -86,6 +102,7 @@ export class Profile {
       btns.appendChild(button("Remove", async () => {
         try {
           await api(this.key, "DELETE", "/api/memory", { id: f.id });
+          await this.refresh();
           r.remove();
         } catch (e) {
           this.say(e instanceof Error ? e.message : String(e), true);
@@ -108,12 +125,17 @@ export class Profile {
     const add = button("Add", async () => {
       const who = name.value.trim();
       if (!who) return this.say("Say their name.", true);
+      // Someone saved already, by voice or before: who they are to you added, what was saved of them kept.
+      const slug = who.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+      const was = this.facts.find((x) => x.kind === "person" && !!slug && x.slug === slug);
+      const text = note.value.trim() ? `${who}: ${note.value.trim()}` : was?.text ?? who;
       try {
-        await api(this.key, "POST", "/api/memory", { kind: "person", name: who, text: note.value.trim() ? `${who}: ${note.value.trim()}` : who, relation: relation.value.trim() });
+        if (was) await api(this.key, "PATCH", "/api/memory", { id: was.id, text, name: who, relation: relation.value.trim() });
+        else await api(this.key, "POST", "/api/memory", { kind: "person", name: who, text, relation: relation.value.trim() });
         name.value = relation.value = note.value = "";
-        const facts = ((await api(this.key, "GET", "/api/memory")) as { facts: Fact[] }).facts;
-        this.people(this.box.querySelector<HTMLElement>(".m-people")!, facts);
-        this.say(`Saved: Jarvis knows ${who}.`);
+        await this.refresh();
+        this.people(this.box.querySelector<HTMLElement>(".m-people")!);
+        this.say(was ? `Updated: ${who}.` : `Saved: Jarvis knows ${who}.`);
       } catch (e) {
         this.say(e instanceof Error ? e.message : String(e), true);
       }
@@ -132,7 +154,7 @@ export class Profile {
     const btns = el("div", "rowbtns");
     btns.append(
       button("Use as work", async () => {
-        await this.place("work", "Work", s.address, undefined);
+        if (!(await this.place("work", "Work", s.address))) return;
         const input = where.querySelector<HTMLInputElement>('input[aria-label="Work address"]');
         if (input) input.value = s.address;
         offer.remove();
