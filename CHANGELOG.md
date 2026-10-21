@@ -81,6 +81,11 @@ of every release, and in the [README](README.md#updating).
 - **Export your data.** Settings → Export your data downloads one JSON file
   of your memory, routines, panels, conversation and jobs, and the household's
   settings without any key or token. For the owner and admins.
+- **A first run.** The first time a chat is empty on a screen, Jarvis asks
+  you to connect Google if your mail and calendar are not linked yet, then
+  offers a first thing to take off you (the car, the house, your mail), each
+  only if you may use it. An example goes into the message box, not sent.
+  Shown once on each screen.
 
 ### Changed
 

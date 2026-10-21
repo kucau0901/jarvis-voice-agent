@@ -18,6 +18,7 @@ import { runDelegation } from "./delegate";
 import { LiveLink, releasePush, speakAlert, speakHere, speakText, syncPush, type Alert } from "./alerts";
 import { askTyped } from "./chat";
 import { pin, working } from "./working";
+import { firstRun } from "./firstRun";
 import { keyboardSpace, watchKeyboard } from "./keyboard";
 import { Attachments, type Attached } from "./attach";
 import { Reply } from "./reply";
@@ -636,7 +637,11 @@ if (key) {
   live.start();
   void syncPush(key);
   // The conversation kept from before, routines' words and all (conversation.ts).
-  void kept(key).then((all) => restore(all, { row: (who, text) => addRow(who, text), routine: routineSaid, job: jobSaid }, history)).catch(() => {});
+  void kept(key).then((all) => {
+    restore(all, { row: (who, text) => addRow(who, text), routine: routineSaid, job: jobSaid }, history);
+    // Nothing said yet: the first run, once on this screen (firstRun.ts).
+    if (!all.length) void firstRun(key, els.transcript, chatWith);
+  }).catch(() => {});
 }
 
 /** A tapped notification: it carries only an id, so the text is fetched. */
