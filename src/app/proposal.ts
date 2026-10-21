@@ -43,7 +43,7 @@ const SAID: Record<ProposalView["state"], string> = {
   done: "✓ Done",
   failed: "Didn't work",
   declined: "Not done: you said not now.",
-  expired: "Not done: it waited a day.",
+  expired: "Not done: its time ran out.",
   withdrawn: "Not done: its job was cancelled.",
 };
 

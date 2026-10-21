@@ -97,7 +97,6 @@ export const mailArchiveMany: Tool = {
     const of = total >= MAX_IDS ? ` (of ${MAX_IDS} or more in your Inbox)` : total > ids.length ? ` (the oldest, of ${total} in your Inbox)` : "";
     return { risk: "reversible", says: `Mail: archive ${many(ids.length, "promotion")} older than 2 days${of}; they stay in All Mail`, verb: "Archive", about: PROMOTIONS_ABOUT };
   },
-  detail: (args, ctx) => sampleOf(ctx.env, idsOf(args.ids) ?? [], ctx.signal),
   async run(args, ctx) {
     return (await guardTool(async () => {
       const ids = idsOf(args.ids);

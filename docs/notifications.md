@@ -96,7 +96,8 @@ house, always asks. Tap the
 notification to open Jarvis on that alert; the same card is under the job's
 answer in the chat. Nothing on a notification approves anything, so a phone
 that is locked, or a notification someone else sees, cannot. Telegram, ntfy
-and Home Assistant only say that something is waiting. A card waits a day.
+and Home Assistant only say that something is waiting. A card waits a day
+(an invitation's, until the meeting starts).
 
 A brief's cards (answering an invitation, archiving old promotions) come the
 same way, with **Don't suggest this again** in place of Not now: tapped, the

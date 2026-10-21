@@ -553,7 +553,8 @@ approving a reversible one, `POST /api/hub/proposals/allow {id}` lets jobs make
 that one kind of call without asking (a car command another undoes, a calendar
 event, one way of tidying mail; never anything irreversible or for the house),
 and `DELETE /api/hub/proposals/allow?category=` asks again. A device never can:
-everything under `/api/hub/` is a person's. A proposal waits a day. At most 3 run at once and 30 are started a
+everything under `/api/hub/` is a person's. A proposal waits a day (an
+invitation's, no later than its start). At most 3 run at once and 30 are started a
 day; one is stopped after 25 steps or 20 minutes.
 
 ### Handing research to Hermes

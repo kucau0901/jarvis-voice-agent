@@ -230,12 +230,14 @@ export class Proposals {
     if (mine.filter((p) => p.from.id === input.from.id).length >= PER_JOB) return `At most ${PER_JOB} proposals from one job: say the rest in the answer.`;
     // A brief's subject: dismissed, not offered again for a while; waiting already, that card again; tried lately, not again yet.
     const about = input.weighed.about;
+    const expires = Math.min(now + DECIDE_MS, input.weighed.until ?? Infinity);
     let lapsing: Proposal | undefined;
     if (about) {
       if (((await this.gone(input.person))[about] ?? 0) > now) return "Dismissed: not offered again for now.";
-      // Waiting: that card again, unless it is all but out of time (LAPSING_MS), when a fresh one takes its place.
+      // Waiting: that card again, unless it is all but out of time (LAPSING_MS) and a fresh one would outlast it
+      // (an invitation's ends at its start whichever card it is).
       const waiting = mine.find((p) => p.about === about && p.state === "pending");
-      if (waiting && waiting.expires - now > LAPSING_MS) return waiting;
+      if (waiting && (waiting.expires - now > LAPSING_MS || waiting.expires >= expires)) return waiting;
       lapsing = waiting;
       if (mine.some((p) => p.about === about && (p.state === "running" || p.state === "done" || p.state === "failed") && now - (p.decidedAt ?? p.createdAt) < TRIED_MS)) return "Tried lately: not offered again yet.";
     }
@@ -260,7 +262,7 @@ export class Proposals {
       ...(about ? { about } : {}),
       grants: [...input.grants],
       createdAt: now,
-      expires: Math.min(now + DECIDE_MS, input.weighed.until ?? Infinity),
+      expires,
       ...(standing ? { state: "running", by: "standing", decidedAt: now } : { state: "pending" }),
     };
     // The one it replaces let go only now (refused above, it would still be waiting), as it is now:
@@ -389,14 +391,12 @@ export class Proposals {
     return u;
   }
 
-  /** What came of a run: the audit. A Put back that did not work can be tapped again. */
+  /** What came of a run: the audit. */
   async finish(person: string, id: string, outcome: { ok: boolean; text: string }, now: number): Promise<Proposal | null> {
     const p = await this.storage.get<Proposal>(key(person, id));
     if (!p || p.state !== "running") return null;
     const done: Proposal = { ...p, state: outcome.ok ? "done" : "failed", outcome: { ok: outcome.ok, text: outcome.text.slice(0, MAX_SAYS) }, decidedAt: p.decidedAt ?? now };
     await this.storage.put(key(person, id), done);
-    const of = p.undoes && !outcome.ok ? await this.storage.get<Proposal>(key(person, p.undoes)) : undefined;
-    if (of?.undone === id) await this.storage.put(key(person, of.id), notUndone(of));
     return done;
   }
 

@@ -383,6 +383,11 @@ export class JarvisState extends DurableObject<Env> {
           waiting: async () => (await this.proposals.list(person, now)).filter((p) => p.state === "pending"),
           file: (action, weighed, detail) => this.proposals.add({ who: r.createdBy, person, from, action, weighed, grants, ...(detail ? { detail } : {}) }, now),
         });
+        // Left the family while it was gathered: nothing it filed for them is kept, as forgetMember would have it.
+        if (!reachNow(r.grants, await this.people.personView(person).catch(() => null))) {
+          await this.proposals.forget(person);
+          return { ok: false, text: "whoever made it is no longer in the family" };
+        }
         if (b.usage) {
           const u = b.usage;
           await this.recordUsage(

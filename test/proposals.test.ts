@@ -549,6 +549,9 @@ console.log("\na brief's cards: one subject, offered once, dismissed for a while
   const soonAt = T + 3 * 3_600_000;
   const invite = await meeting.add(input({ from: { kind: "brief", id: "rb@i", title: "Brief", routine: "rb" }, weighed: { risk: "irreversible", says: "Calendar: accept “Offsite”", verb: "Accept", about: "rsvp:x@y", until: soonAt } }), T);
   check("a card that stops making sense at a time waits no longer than that", typeof invite !== "string" && invite.expires === soonAt && (await meeting.get("u_sara", invite.id, soonAt))?.state === "expired", invite);
+  // Filed again within two hours of its end: a fresh card would end at the same start, so it is that card again.
+  const refiled = await meeting.add(input({ from: { kind: "brief", id: "rb@j", title: "Brief", routine: "rb" }, weighed: { risk: "irreversible", says: "Calendar: accept “Offsite”", verb: "Accept", about: "rsvp:x@y", until: soonAt } }), soonAt - 90 * 60_000);
+  check("an invitation's card near its start, filed again: the same card, still to be answered", typeof refiled !== "string" && typeof invite !== "string" && refiled.id === invite.id && typeof (await meeting.claim("u_sara", invite.id, ["*"], ["*"], soonAt - 80 * 60_000)) !== "string", refiled);
   const kept = (st._m.get("propgone:u_sara") ?? {}) as Record<string, number>;
   check("remembered by its subject, beside the proposals, for 30 days", kept["inbox:promotions"] === T + 2 * 3_600_000 + GONE_MS && !(await props.list("u_sara", T)).some((p) => p.about === undefined && p.state === "pending"), kept);
   const later = await props.add(brief("4"), T + 2 * 3_600_000 + GONE_MS + 1);
