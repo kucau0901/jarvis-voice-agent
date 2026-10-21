@@ -1,6 +1,7 @@
 import type { Storage } from "./state-host.ts";
 import type { Grant } from "./scopes.ts";
 import { sourcesOf } from "./links.ts";
+import { parseTablePlan, tableOf, tableResult } from "./research-table.ts";
 import { makeAlert, type Alert, type Delivery } from "./alerts.ts";
 import { personOfWho } from "./context.ts";
 import { tidy } from "./quote.ts";
@@ -89,6 +90,12 @@ export interface Job {
   team?: TeamRun;
   /** hermes: the creator's own finished research job it hands over, read when Hermes is asked. */
   from?: string;
+  /**
+   * research into a table (lib/research-table.ts): a team that fills rows. Its
+   * columns once planned, and how many rows it came back with; the rows are
+   * kept apart (jobtable:<id>), to download.
+   */
+  table?: { columns?: string[]; rows?: number };
 }
 
 /** A page the web search cited: what a report's Sources list is made of. */
@@ -209,6 +216,8 @@ export interface JobDeps {
 }
 
 const J = "job:";
+/** A table job's rows (Job.table), beside the job: not under "job:", which list() reads. */
+const T = "jobtable:";
 const DAY = "jobs:day";
 
 export const MAX_RUNNING = 3;
@@ -518,7 +527,7 @@ export class Jobs {
   }
 
   async create(
-    input: { title?: unknown; task?: unknown; engine?: unknown; team?: unknown; from?: unknown },
+    input: { title?: unknown; task?: unknown; engine?: unknown; team?: unknown; from?: unknown; table?: unknown },
     by: { who: string; grants: readonly Grant[] },
     now = Date.now(),
   ): Promise<Job | string> {
@@ -535,7 +544,9 @@ export class Jobs {
       from = src.id;
     }
     // Research as a team: a way of doing research, and one at a time. It takes one of the month's research jobs, the owner's choice.
-    const team = engine === "research" && input.team === true;
+    // Into a table: a research team that fills rows, so one too.
+    const table = engine === "research" && input.table === true;
+    const team = engine === "research" && (input.team === true || table);
     const all = await this.list();
     if (all.filter((j) => j.status === "running").length >= MAX_RUNNING) {
       return `${MAX_RUNNING} jobs are already running; wait for one to finish`;
@@ -572,6 +583,7 @@ export class Jobs {
       steps: 0,
       attempts: 0,
       ...(team ? { team: newTeam(now) } : {}),
+      ...(table ? { table: {} } : {}),
       ...(from ? { from } : {}),
     };
     await this.save(job);
@@ -612,7 +624,13 @@ export class Jobs {
     const j = await this.get(id);
     if (!j) return false;
     if (j.status === "running") await this.cancel(id);
+    await this.storage.delete(T + id);
     return this.storage.delete(J + id);
+  }
+
+  /** A table job's rows, with its columns; null for any other job, or one that came back as prose. */
+  async table(id: string): Promise<{ columns: string[]; rows: string[][] } | null> {
+    return (await this.storage.get<{ columns: string[]; rows: string[][] }>(T + id)) ?? null;
   }
 
   async nextWake(now = Date.now()): Promise<number | null> {
@@ -721,6 +739,13 @@ export class Jobs {
     }
     if (step.kind === "done") {
       if (j.engine !== "research") return this.finish(j, deps, now, { text: step.text });
+      if (planning && j.table) {
+        // A plan that gives no columns makes it ordinary team research: a report, not a table.
+        const plan = parseTablePlan(step.text, TEAMS);
+        if (plan) return this.planned({ ...j, table: { columns: plan.columns } }, plan.angles, now);
+        const { table: _, ...prose } = j;
+        return this.planned(prose, TEAM_ANGLES, now);
+      }
       if (planning) return this.planned(j, parseAngles(step.text) ?? TEAM_ANGLES, now);
       if (!j.draft) {
         // Written (a team's, merged): checked against its sources before anyone is told. The next tick starts the check.
@@ -832,6 +857,16 @@ export class Jobs {
     }
     delete done.draft;
     if (done.team) done.team = slimTeam(done.team);
+    // Into a table: its rows kept to download, the result their summary and the first of them.
+    if (done.table?.columns && "text" in out) {
+      const t = tableOf(out.text, done.table.columns);
+      if (t) {
+        await this.storage.put(T + done.id, { columns: done.table.columns, rows: t.rows });
+        done.table = { ...done.table, rows: t.rows.length };
+        const at = out.text.lastIndexOf("\n\nSources:");
+        out = { text: tableResult(t, done.table.columns!, at >= 0 ? out.text.slice(at) : "") };
+      }
+    }
     let alert: Alert;
     if ("text" in out && out.text.trim()) {
       const { summary, result, whole } = splitResult(out.text);
@@ -869,6 +904,9 @@ export class Jobs {
   /** Keep the newest KEEP_JOBS finished ones. */
   private async prune(): Promise<void> {
     const finished = (await this.list()).filter((j) => j.status !== "running");
-    for (const j of finished.slice(KEEP_JOBS)) await this.storage.delete(J + j.id);
+    for (const j of finished.slice(KEEP_JOBS)) {
+      await this.storage.delete(T + j.id);
+      await this.storage.delete(J + j.id);
+    }
   }
 }

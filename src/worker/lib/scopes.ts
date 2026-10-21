@@ -195,6 +195,7 @@ export function requiredScope(pathname: string, method: string): RouteRequiremen
     // `hermes`, checked in the route. Each runs with its creator's grants.
     case "/api/v1/jobs":
     case "/api/v1/jobs/cancel":
+    case "/api/v1/jobs/csv":
       return "ask";
     case "/api/camera":
       return "home";

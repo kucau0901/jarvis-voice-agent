@@ -83,6 +83,11 @@ of every release, and in the [README](README.md#updating).
 - **Export your data.** Settings → Export your data downloads one JSON file
   of your memory, routines, panels, conversation and jobs, and the household's
   settings without any key or token. For the owner and admins.
+- **Research into a table.** Ask for a list of many things found and
+  compared ("the 10 cheapest genuine Xiaomi speakers in Malaysia, with seller
+  and rating"), or tick As a table in Jobs: a research team fills the rows,
+  each from a page it read, checked against its sources. The first rows come
+  as a message, and Jobs → Download CSV has them all. It costs as a team does.
 - **Formatted answers in Chat.** Lists, headings, code and tables are drawn
   as they are meant, a table with Copy and Download CSV. Something asked for
   to keep or read at length (a plan, a guide, a letter) comes as a document

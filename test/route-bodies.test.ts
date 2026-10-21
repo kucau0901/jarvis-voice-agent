@@ -177,8 +177,9 @@ console.log("\nstart_job: research as a team, by voice");
   const no = await start("no", ["*"]);
   check("'no': an ordinary job", no.made?.engine === "jarvis" && !("team" in no.made), no);
   const schema = jobTools[0]!.parameters as { properties: { research: { type: string; enum: string[] } }; required: string[]; additionalProperties: boolean };
-  check("the schema stays strict: research is one of three words, and required",
-    schema.properties.research.type === "string" && JSON.stringify(schema.properties.research.enum) === JSON.stringify(["no", "yes", "team"]) && schema.required.includes("research") && schema.additionalProperties === false, schema.properties.research);
+  // "table": research into a table (lib/research-table.ts), 21 Oct 2026.
+  check("the schema stays strict: research is one of four words, and required",
+    schema.properties.research.type === "string" && JSON.stringify(schema.properties.research.enum) === JSON.stringify(["no", "yes", "team", "table"]) && schema.required.includes("research") && schema.additionalProperties === false, schema.properties.research);
 }
 
 console.log("\nfamily: anything that is not an object is taken as {}");

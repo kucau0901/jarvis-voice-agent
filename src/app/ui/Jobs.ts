@@ -1,4 +1,4 @@
-import { api } from "../key";
+import { api, authHeaders } from "../key";
 import { button, el } from "./util";
 import { markdown } from "./rich";
 
@@ -30,6 +30,8 @@ interface JobView {
   cost?: number | null;
   /** Research as a team: how many teams reported and, while it runs, which part it is in. */
   team?: { of: number; reported: number; phase?: "planning" | "teams" | "merging" | "checking" };
+  /** Research into a table: its columns, and how many rows it came back with, to download. */
+  table?: { columns?: string[]; rows?: number };
 }
 
 /** What a running research team is doing, after "min so far". */
@@ -102,11 +104,23 @@ export class Jobs {
     asTeam.appendChild(teamBox);
     asTeam.appendChild(document.createTextNode(" As a team: three teams, each from an angle chosen for the question, sharing what they find; 20–55 minutes, roughly $4–7, one at a time"));
     form.appendChild(asTeam);
+    const asTable = el("label", "on");
+    const tableBox = document.createElement("input");
+    tableBox.type = "checkbox";
+    asTable.appendChild(tableBox);
+    asTable.appendChild(document.createTextNode(" As a table: the team fills rows of many items instead of writing a report, to download as CSV"));
+    form.appendChild(asTable);
+    tableBox.addEventListener("change", () => {
+      if (tableBox.checked) deepBox.checked = teamBox.checked = true;
+    });
     teamBox.addEventListener("change", () => {
       if (teamBox.checked) deepBox.checked = true;
     });
     deepBox.addEventListener("change", () => {
-      if (!deepBox.checked) teamBox.checked = false;
+      if (!deepBox.checked) teamBox.checked = tableBox.checked = false;
+    });
+    teamBox.addEventListener("change", () => {
+      if (!teamBox.checked) tableBox.checked = false;
     });
     form.appendChild(
       button("Start", () =>
@@ -115,9 +129,10 @@ export class Jobs {
             task: task.value,
             ...(deepBox.checked ? { engine: "research" } : {}),
             ...(teamBox.checked ? { team: true } : {}),
+            ...(tableBox.checked ? { table: true } : {}),
           });
           task.value = "";
-          deepBox.checked = teamBox.checked = false;
+          deepBox.checked = teamBox.checked = tableBox.checked = false;
         }, "Started — it arrives as an alert when done."), "primary"),
     );
     sheet.appendChild(form);
@@ -224,6 +239,7 @@ export class Jobs {
         }),
       );
     }
+    if (j.table?.rows) btns.appendChild(button(`Download CSV (${j.table.rows} rows)`, () => void this.act(() => this.csv(j))));
     if (j.engine === "research" && j.status === "done" && this.hermes) {
       btns.appendChild(
         button(this.handing.has(j.id) ? "Don't send" : "Send to Hermes", () => {
@@ -238,6 +254,15 @@ export class Jobs {
     row.appendChild(btns);
     if (this.handing.has(j.id)) row.appendChild(this.handOver(j));
     return row;
+  }
+
+  /** A research table's rows, saved as a spreadsheet file (GET /api/v1/jobs/csv). */
+  private async csv(j: JobView): Promise<void> {
+    const r = await fetch(`/api/v1/jobs/csv?id=${encodeURIComponent(j.id)}`, { headers: authHeaders(this.key) });
+    if (!r.ok) throw new Error(`Could not download it: the server said ${r.status}`);
+    const url = URL.createObjectURL(await r.blob());
+    Object.assign(document.createElement("a"), { href: url, download: `${j.title.replace(/[\\/:*?"<>|]/g, "").slice(0, 60) || "table"}.csv` }).click();
+    setTimeout(() => URL.revokeObjectURL(url), 10_000);
   }
 
   /** What Hermes should do with a finished report: sent with the whole report, which it gets as reference, not instructions. */

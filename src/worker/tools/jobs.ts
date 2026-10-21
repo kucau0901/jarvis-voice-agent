@@ -28,7 +28,10 @@ const startJob: Tool = {
     "10 to 40 minutes and costs roughly one to two dollars, and comes back as a report with its sources. " +
     "Set it to 'team' only when they ask for research as a team, or a research team, in so many words: " +
     "three teams research it from different angles and share what they find, 20 to 55 minutes, roughly " +
-    "four to seven dollars. Otherwise 'no'. Say the time and cost when you start either.",
+    "four to seven dollars. Set it to 'table' when they want a list or table of many items found and " +
+    "compared ('the 10 cheapest…', 'every dentist near…', 'a spreadsheet of…'): the same team fills rows " +
+    "instead of writing a report, and the whole table can be downloaded from Jobs as CSV; it costs and " +
+    "takes the same as a team. Otherwise 'no'. Say the time and cost when you start any of them.",
   parameters: {
     type: "object",
     properties: {
@@ -36,8 +39,8 @@ const startJob: Tool = {
       task: { type: "string", description: "The complete brief, as if to a capable assistant who knows nothing of this conversation." },
       research: {
         type: "string",
-        enum: ["no", "yes", "team"],
-        description: "'yes' or 'team' only as described above, when the user asked for it; 'no' for an ordinary job.",
+        enum: ["no", "yes", "team", "table"],
+        description: "'yes', 'team' or 'table' only as described above, when the user asked for it; 'no' for an ordinary job.",
       },
     },
     required: ["title", "task", "research"],
@@ -46,18 +49,24 @@ const startJob: Tool = {
   async run(args, ctx) {
     const state = stateStub(ctx.env);
     if (!state) return "Background jobs cannot run on this deployment: it has no state object.";
-    const research = args.research === "yes" || args.research === "team";
-    const team = args.research === "team";
+    const research = args.research === "yes" || args.research === "team" || args.research === "table";
+    const table = args.research === "table";
+    const team = args.research === "team" || table;
     // Research spends the family's monthly allowance: for the family, not a guest.
     if (research && !allows(ctx.grants, "routines")) {
       return "Not started: research in depth is for the family, and this person may not start it. Offer an ordinary job, or to answer now.";
     }
     const j = await state.createJob(
-      { title: args.title, task: args.task, engine: research ? "research" : "jarvis", ...(team ? { team: true } : {}) },
+      { title: args.title, task: args.task, engine: research ? "research" : "jarvis", ...(team ? { team: true } : {}), ...(table ? { table: true } : {}) },
       { who: voiceWho(ctx.env), grants: ctx.grants },
     );
     if (typeof j === "string") return `Not started: ${j}.`;
     ctx.started?.({ id: j.id, title: j.title, engine: j.engine });
+    if (table) {
+      return `Started a research table on "${j.title}": three teams each find their share of the list, then the rows are merged and ` +
+        "checked against their sources. It takes 20 to 55 minutes and roughly four to seven dollars; the first rows will reach the " +
+        "user as a message, and the whole table waits in Jobs to download as CSV. Tell them so.";
+    }
     if (team) {
       return `Started a research team on "${j.title}": three teams look into it from different angles and share what they find as they go, ` +
         "then one report is checked against its sources. It takes 20 to 55 minutes and roughly four to seven dollars; the report " +

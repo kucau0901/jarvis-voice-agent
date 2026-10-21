@@ -1075,6 +1075,16 @@ answers with notes rather than the report, the report goes out as it was
 written. It makes a report cost more, by how much is to be measured: the Jobs
 panel shows each one's real cost.
 
+**Research into a table, as Hark's wide research.** "The 10 cheapest genuine
+Xiaomi speakers, with seller and rating" is a research team that fills rows
+(`lib/research-table.ts`): the plan fixes the columns and splits the list
+between the teams (by brand, region or shop), each team gives one line per
+item it found, and the merge and the check give the rows back as JSON, which
+the job keeps apart (`jobtable:<id>`, at most 100 rows and 256 kB) to download
+as CSV. The cells come from strangers' pages, so a cell a spreadsheet would
+run as a formula is made text. A plan that gives no columns, or a merge that
+gives prose, makes it the ordinary team's report, so nothing is lost.
+
 **Research as a team, in one job.** Asked for in so many words, three teams
 research the brief at once, each a chain of background responses of its own on
 the one job record (`team`, beside `engine: "research"`). One record means a

@@ -912,6 +912,32 @@ console.log("\nresearch as a team, from start to finish");
   check("nothing the teams wrote is left on the record", !("draft" in done) && done.team!.board.length === 0 && done.team!.chains.every((c) => c.report === undefined && c.cited === undefined && c.responseId === undefined), done.team);
 }
 
+console.log("\nresearch into a table");
+{
+  const columns = ["Speaker", "Price", "Seller", "Source"];
+  const plan: Step = { kind: "done", text: JSON.stringify({ columns, angles: ANGLES }), usage: spent(50) };
+  const rows = [["Mi Smart Speaker", "RM199", "Example Store", "https://shop.example/a"], ["Mi Portable", "=1+1", "Other Shop", "https://shop.example/b"]];
+  const table = (summary: string): Step => ({ kind: "done", text: JSON.stringify({ summary, rows }), usage: spent(1000) });
+  const h = harness([plan, table("Two speakers, the cheapest first."), { ...table("Two speakers, the cheapest first."), cited: [{ url: "https://shop.example/a", title: "Shop" }] }], { teams: EVERY_TEAM() });
+  const j = (await h.jobs.create({ title: "Cheapest speakers", task: "The cheapest genuine Xiaomi speakers in Malaysia.", engine: "research", table: true }, BY, T0)) as Job;
+  check("a research team that fills a table", j.engine === "research" && !!j.team && !!j.table && !j.table.columns);
+  await h.jobs.tick(T0);
+  await h.jobs.tick(T0 + 5_000);
+  check("its columns are planned with the teams' shares", JSON.stringify((await h.jobs.get(j.id))!.table?.columns) === JSON.stringify(columns));
+  const done = await drive(h, j.id, T0 + 5_000);
+  const kept = await h.jobs.table(j.id);
+  check("its rows are kept to download, as many as came back", done.status === "done" && done.table?.rows === 2 && kept?.rows.length === 2 && kept.columns.join() === columns.join(), { done: done.table, kept });
+  check("the merge is told the columns", (h.merged[0] ?? "").includes("for a table with the columns: Speaker | Price | Seller | Source"));
+  check("the result: the summary, the first rows as a table, where the rest is, the sources",
+    (done.result ?? "").startsWith("| Speaker | Price | Seller | Source |") && done.summary === "Two speakers, the cheapest first." && /The whole table is in Jobs/.test(done.result ?? "") && /Sources:\n- Shop: https:\/\/shop\.example\/a/.test(done.result ?? ""), done.result);
+  await h.jobs.remove(j.id);
+  check("removed with its job", (await h.jobs.table(j.id)) === null);
+  const prose = harness([{ kind: "done", text: JSON.stringify({ angles: ANGLES }), usage: spent(50) }, MERGED, CHECKED], { teams: EVERY_TEAM() });
+  const pj = (await prose.jobs.create({ title: "Speakers", task: "x", engine: "research", table: true }, BY, T0)) as Job;
+  const pd = await drive(prose, pj.id);
+  check("a plan with no columns: ordinary team research, a report", pd.status === "done" && !pd.table && (await prose.jobs.table(pj.id)) === null && (pd.result ?? "").includes("A checked finding"), pd.table);
+}
+
 console.log("\nplanning that does not work: the fixed angles, and the run goes on");
 {
   const fixed = JSON.stringify(TEAM_ANGLES);

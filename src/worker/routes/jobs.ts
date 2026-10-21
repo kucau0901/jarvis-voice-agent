@@ -13,7 +13,8 @@ import { toToolSchema } from "../tools/registry.ts";
 import * as hermes from "../tools/hermes.ts";
 import { RESEARCH_MONTHLY_DEFAULT, jobTool, sharesLeft, usageEntry, type Job, type JobDeps, type Step } from "../lib/jobs.ts";
 import { citationsOf } from "../lib/links.ts";
-import { MERGE_INSTRUCTIONS, PLAN_INSTRUCTIONS, RESEARCH_CHECK, TEAM_INSTRUCTIONS } from "../lib/router-prompt.ts";
+import { toCsv } from "../lib/research-table.ts";
+import { MERGE_INSTRUCTIONS, PLAN_INSTRUCTIONS, RESEARCH_CHECK, TABLE_CHECK, TABLE_MERGE_INSTRUCTIONS, TABLE_PLAN_INSTRUCTIONS, TABLE_TEAM_INSTRUCTIONS, TEAM_INSTRUCTIONS } from "../lib/router-prompt.ts";
 import { SHARE, angleMessage, mergeMaterial, shareReply, shareTool, teamView } from "../lib/research-team.ts";
 import { prepareRouter, runCalls } from "../lib/router.ts";
 import { recordUsage } from "./usage.ts";
@@ -186,7 +187,12 @@ export function jobEngine(env: Env, deliver: JobDeps["deliver"], envFor: (job: J
         const input: OpenAI.Responses.ResponseInput =
           t === undefined
             ? r.p.input
-            : [...r.p.input, { role: "developer", content: TEAM_INSTRUCTIONS }, { role: "user", content: angleMessage(job.team!.angles![t]!) }];
+            : [
+                ...r.p.input,
+                // Into a table: the same team, filling its share of the rows (lib/research-table.ts).
+                { role: "developer", content: TEAM_INSTRUCTIONS + (job.table?.columns ? TABLE_TEAM_INSTRUCTIONS : "") },
+                { role: "user", content: angleMessage(job.team!.angles![t]!, job.table?.columns) },
+              ];
         return await send(r, input);
       } catch (e) {
         return { error: `it could not start: ${e instanceof Error ? e.message : String(e)}`.slice(0, 300) };
@@ -198,7 +204,7 @@ export function jobEngine(env: Env, deliver: JobDeps["deliver"], envFor: (job: J
       try {
         // One answer, no searching: the angles, as JSON (lib/jobs.ts parseAngles).
         const r = await request(job, [{ role: "user", text: job.task }]);
-        return await send(r, [...r.p.input, { role: "developer", content: PLAN_INSTRUCTIONS }], "none");
+        return await send(r, [...r.p.input, { role: "developer", content: job.table ? TABLE_PLAN_INSTRUCTIONS : PLAN_INSTRUCTIONS }], "none");
       } catch (e) {
         return { error: `the teams could not be planned: ${e instanceof Error ? e.message : String(e)}`.slice(0, 300) };
       }
@@ -208,7 +214,7 @@ export function jobEngine(env: Env, deliver: JobDeps["deliver"], envFor: (job: J
       try {
         // One answer, no searching: what the teams found is all it has, quoted (lib/research-team.ts).
         const r = await request(job, [{ role: "user", text: job.task }]);
-        return await send(r, [...r.p.input, { role: "developer", content: MERGE_INSTRUCTIONS }, { role: "user", content: mergeMaterial(job) }], "none");
+        return await send(r, [...r.p.input, { role: "developer", content: job.table?.columns ? TABLE_MERGE_INSTRUCTIONS : MERGE_INSTRUCTIONS }, { role: "user", content: mergeMaterial(job) }], "none");
       } catch (e) {
         return { error: `the teams' reports could not be merged: ${e instanceof Error ? e.message : String(e)}`.slice(0, 300) };
       }
@@ -218,7 +224,7 @@ export function jobEngine(env: Env, deliver: JobDeps["deliver"], envFor: (job: J
       try {
         // The next turn of the chain that wrote the report, with web search still on.
         const r = await request(job, []);
-        const check: OpenAI.Responses.ResponseInput = [{ role: "developer", content: RESEARCH_CHECK }];
+        const check: OpenAI.Responses.ResponseInput = [{ role: "developer", content: job.table?.columns ? TABLE_CHECK : RESEARCH_CHECK }];
         // Written on the plan: its whole exchange, then the check.
         const kept = isPlanStep(after) ? await planStep(after) : null;
         if (isPlanStep(after) && !kept) return { error: "the report's step is no longer kept" };
@@ -309,7 +315,7 @@ export function jobView(j: Job, whole = false) {
 
 export async function handleJobs(req: Request, env: Env, url: URL, principal: Principal): Promise<Response | null> {
   const p = url.pathname;
-  if (p !== "/api/v1/jobs" && p !== "/api/v1/jobs/cancel") return null;
+  if (p !== "/api/v1/jobs" && p !== "/api/v1/jobs/cancel" && p !== "/api/v1/jobs/csv") return null;
   const state = stateStub(env);
   if (!state) return err(503, "jobs need the STATE Durable Object");
   const grants: Grant[] = grantsOf(principal);
@@ -317,6 +323,19 @@ export async function handleJobs(req: Request, env: Env, url: URL, principal: Pr
   // A device sees its own jobs; a person theirs, including those they started by
   // voice (lib/context.ts). Another person's are theirs, admin or not.
   const mine = (j: Job) => (principal.kind === "device" ? j.createdBy === who : isTheirs(j.createdBy, personOf(principal)));
+
+  // A research table's rows, as a spreadsheet opens them (lib/research-table.ts).
+  if (p === "/api/v1/jobs/csv") {
+    if (req.method !== "GET") return err(405, "GET only");
+    const j = await state.getJob(url.searchParams.get("id") ?? "");
+    const t = j && mine(j) ? await state.jobTable(j.id) : null;
+    if (!j || !t) return err(404, "no such table");
+    // A header carries plain letters only.
+    const name = j.title.replace(/[^A-Za-z0-9 -]/g, "").trim().slice(0, 60) || "table";
+    return new Response(toCsv(t.columns, t.rows), {
+      headers: { "content-type": "text/csv; charset=utf-8", "content-disposition": `attachment; filename="${name}.csv"`, "cache-control": "no-store" },
+    });
+  }
 
   if (p === "/api/v1/jobs/cancel") {
     if (req.method !== "POST") return err(405, "method not allowed");

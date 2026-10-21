@@ -518,6 +518,14 @@ times as much (roughly $4–7); one runs at a time; the teams have 35 minutes,
 and the whole run takes 20–55 minutes. Its view carries
 `team: {of, reported, phase}`, where `phase` is `planning`, `teams`, `merging`
 or `checking` while it runs. Without `engine: "research"`, `team` is ignored.
+With `"table": true` as well (or instead of `team`), the same team fills a
+table rather than writing a report: the plan fixes two to seven columns, the
+last `Source`, and splits the list between the teams, and the merge and the
+check give rows. Its view then carries `table: {columns, rows}`, its result
+is the summary and the first 20 rows as a markdown table, and
+`GET /api/v1/jobs/csv?id=` (needs `ask`) is all of them as CSV, at most 100
+rows, a cell a spreadsheet would run as a formula made text. A plan that gives
+no columns makes it ordinary team research.
 Each job's `cost` so far, at OpenAI's prices, comes with it. `task` must
 be complete on its own: a job never sees a conversation. `GET /api/v1/jobs`
 lists them (a device sees its own); `GET ?id=` returns one with its whole

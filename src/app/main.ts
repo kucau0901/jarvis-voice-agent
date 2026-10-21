@@ -28,7 +28,7 @@ import { fromJob, fromRoutine, jobStarted, jobsSeen, type JobSaid, type RoutineS
 import { asked, clearKept, keep, kept, restore, saidId } from "./conversation";
 import { inCar } from "./client";
 import { arm } from "./ui/util";
-import { answerBody, linkCards } from "./ui/rich";
+import { answerBody, linkCards, markdown } from "./ui/rich";
 import { Reader } from "./ui/Reader";
 import { PushToTalk } from "./ptt";
 import { LiveVoice, wakeVoice } from "./loud";
@@ -558,9 +558,10 @@ function showAlert(a: Alert): HTMLElement {
   close.setAttribute("aria-label", "Dismiss");
   close.addEventListener("click", () => card.remove());
   for (const n of [title, when, hear, close]) head.appendChild(n);
+  // A job's result can be a table or a list (ui/rich.ts): drawn as it is meant, from text nodes.
   const body = document.createElement("div");
   body.className = "atext";
-  body.textContent = a.text;
+  body.appendChild(markdown(a.text, ""));
   card.appendChild(head);
   card.appendChild(body);
   // Passed on from someone in the family: answer it right here (relay.ts).
