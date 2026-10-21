@@ -737,6 +737,41 @@
   body.typing #transcript .row { font-size: 16px; }
   body.typing #transcript .row .txt { white-space: pre-wrap; overflow-wrap: anywhere; }
   body.typing #transcript .row .txt a { color: var(--accent-ink); }
+  /* An answer's markdown (ui/rich.ts): blocks spaced as a page, not pre-wrapped lines. */
+  .md { white-space: normal !important; }
+  .md > :first-child { margin-top: 0; }
+  .md > :last-child { margin-bottom: 0; }
+  .md p, .md ul, .md ol, .md pre, .md blockquote, .md .mdtable { margin: 0 0 10px; }
+  .md p { white-space: pre-wrap; }
+  .md h3, .md h4, .md h5 { margin: 14px 0 6px; font-weight: 600; line-height: 1.3; }
+  .md h3 { font-size: 1.15em; } .md h4 { font-size: 1.05em; } .md h5 { font-size: 1em; color: var(--dim); }
+  .md ul, .md ol { padding-left: 1.3em; }
+  .md li + li { margin-top: 3px; }
+  .md code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.9em; padding: 1px 5px; border-radius: 6px; background: color-mix(in srgb, var(--fg) 8%, transparent); }
+  .md pre { overflow-x: auto; padding: 10px 12px; border-radius: 12px; background: color-mix(in srgb, var(--fg) 7%, transparent); }
+  .md pre code { padding: 0; background: none; }
+  .md blockquote { padding-left: 12px; border-left: 3px solid var(--hair); color: var(--dim); white-space: pre-wrap; }
+  .md hr { border: 0; border-top: 1px solid var(--hair); margin: 12px 0; }
+  .mdscroll { overflow-x: auto; max-width: 100%; }
+  .mdtable table { border-collapse: collapse; font-size: 0.92em; min-width: 100%; }
+  .mdtable th, .mdtable td { padding: 6px 10px; border-bottom: 1px solid var(--hair); text-align: left; vertical-align: top; }
+  .mdtable th { font-weight: 600; white-space: nowrap; }
+  .mdbtns { display: flex; gap: 8px; margin-top: 6px; }
+  .mdbtns button, .doc .docopen { min-height: 34px; padding: 0 14px; border: 1px solid var(--hair); border-radius: 999px; background: var(--glass); color: var(--fg); font: inherit; font-size: 13px; cursor: pointer; }
+  /* A document Jarvis wrote, as a card that opens in the reader (ui/Reader.ts). */
+  .doc { display: grid !important; gap: 6px; white-space: normal !important; }
+  .doc .doctag { font-size: 12px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--dim); }
+  .doc .doctitle { font-size: 1.1em; line-height: 1.3; }
+  .doc .docfirst { color: var(--dim); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .doc .docopen { justify-self: start; }
+  #reader .sheet { max-width: 760px; }
+  #reader .reading { font-size: 16px; line-height: 1.6; color: var(--fg); }
+  #reader .reading .md h3 { font-size: 1.3em; } #reader .reading .md h4 { font-size: 1.12em; }
+  /* The pages an answer cited (ui/rich.ts linkCards), under it. */
+  .links { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; white-space: normal; }
+  .links .lcard { display: grid; gap: 2px; max-width: 240px; padding: 8px 12px; border: 1px solid var(--hair); border-radius: 14px; background: var(--glass); color: var(--fg) !important; text-decoration: none; }
+  .links .lcard b { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .links .lcard small { font-size: 12px; color: var(--dim); }
   #transcript .row.bad .txt { color: var(--danger); }
   /* A limit met (chat.ts): a notice in amber, as Hark's inline banner, after .bad so it wins for "bad limit". */
   #transcript .row.limit .txt { color: var(--fg); background: color-mix(in srgb, var(--warn) 16%, transparent);

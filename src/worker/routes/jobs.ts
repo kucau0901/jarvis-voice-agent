@@ -11,7 +11,8 @@ import { allows, withoutScreen, type Grant } from "../lib/scopes.ts";
 import { builtinTools, explicitCache, researchModel } from "../lib/router-model.ts";
 import { toToolSchema } from "../tools/registry.ts";
 import * as hermes from "../tools/hermes.ts";
-import { RESEARCH_MONTHLY_DEFAULT, jobTool, sharesLeft, usageEntry, type Cited, type Job, type JobDeps, type Step } from "../lib/jobs.ts";
+import { RESEARCH_MONTHLY_DEFAULT, jobTool, sharesLeft, usageEntry, type Job, type JobDeps, type Step } from "../lib/jobs.ts";
+import { citationsOf } from "../lib/links.ts";
 import { MERGE_INSTRUCTIONS, PLAN_INSTRUCTIONS, RESEARCH_CHECK, TEAM_INSTRUCTIONS } from "../lib/router-prompt.ts";
 import { SHARE, angleMessage, mergeMaterial, shareReply, shareTool, teamView } from "../lib/research-team.ts";
 import { prepareRouter, runCalls } from "../lib/router.ts";
@@ -65,21 +66,6 @@ function usageOf(r: OpenAI.Responses.Response): Usage {
     searches: r.output.filter((o) => o.type === "web_search_call").length,
     model: r.model,
   };
-}
-
-/** The pages a response cited, from its web search's url_citation annotations. */
-function citationsOf(r: OpenAI.Responses.Response): Cited[] {
-  const out: Cited[] = [];
-  for (const item of r.output) {
-    if (item.type !== "message") continue;
-    for (const part of item.content) {
-      if (part.type !== "output_text") continue;
-      for (const a of part.annotations ?? []) {
-        if (a.type === "url_citation") out.push({ url: a.url, title: a.title });
-      }
-    }
-  }
-  return out;
 }
 
 /** RESEARCH_MONTHLY_LIMIT, or the default; 0 switches research off. */
@@ -260,7 +246,7 @@ export function jobEngine(env: Env, deliver: JobDeps["deliver"], envFor: (job: J
         const text = r.output_text?.trim() ?? "";
         if (!text) return { kind: "failed", error: "it finished without an answer" };
         // Research lists them (lib/jobs.ts withSources), after its check.
-        return { kind: "done", text, cited: citationsOf(r), usage };
+        return { kind: "done", text, cited: citationsOf(r.output), usage };
       }
       // The tools it asked for run here, between steps; then the next step starts.
       const req = await request(job, [], t !== undefined);

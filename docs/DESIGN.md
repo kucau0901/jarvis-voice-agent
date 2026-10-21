@@ -937,8 +937,17 @@ quiet one. The conversation goes to the router as text and the answer comes back
 (`src/app/chat.ts`), so there is no speech either way and it is the cheapest of
 the three — about $0.0005 a question on Luna. The router is told the answer is
 read, not heard (`CHAT_INSTRUCTIONS`), so it can carry what a voice cannot:
-exact figures, a number to copy, a link, a short list, in light markdown that
-the app renders as text and elements, never HTML. All three modes share one
+exact figures, a number to copy, a link, a list or a table, in markdown that
+the app draws as text and elements, never HTML (`src/app/markdown.ts`,
+`ui/rich.ts`): a table with Copy and Download CSV (a cell a spreadsheet would
+run as a formula made text first), and, only when something is asked for to
+keep or read at length, a document, "# " and a title then "## " sections,
+shown as a card that opens full-screen with Copy and Reply. The pages an
+answer cited come with it from the web search's own citations, on the key and
+the plan alike, and are drawn as cards under it, each its title and site:
+nothing is fetched from those pages to draw them, so no third party sees the
+screen and nothing is spent. Only typed chat is asked for any of this; voice,
+the glasses, routines and jobs are not, and read only the words. All three modes share one
 history, so a typed question can be followed by a spoken one; in Chat the
 orb, small in the corner, still takes a single spoken question. Coming back to
 the Jarvis tab returns to the way it last talked on that screen, so a

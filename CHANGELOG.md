@@ -83,6 +83,11 @@ of every release, and in the [README](README.md#updating).
 - **Export your data.** Settings → Export your data downloads one JSON file
   of your memory, routines, panels, conversation and jobs, and the household's
   settings without any key or token. For the owner and admins.
+- **Formatted answers in Chat.** Lists, headings, code and tables are drawn
+  as they are meant, a table with Copy and Download CSV. Something asked for
+  to keep or read at length (a plan, a guide, a letter) comes as a document
+  card that opens full-screen, with Copy and Reply. The pages an answer cited
+  are cards under it. Read aloud, a table is read as its rows.
 - **Past attempts.** Jarvis notes how each background job, question for
   Hermes and research run went, and each question whose tools failed, and
   when you ask for something like one of them, it is told what happened

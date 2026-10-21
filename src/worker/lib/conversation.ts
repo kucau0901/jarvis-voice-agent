@@ -1,5 +1,6 @@
 import type { Storage } from "./state-host.ts";
 import type { Alert } from "./alerts.ts";
+import { tidy } from "./quote.ts";
 
 /**
  * Each person's conversation with Jarvis, kept so it is still there when the
@@ -33,6 +34,8 @@ export interface Said {
   routine?: { id: string; name: string };
   /** The background job it is the result of: its id, to open it in Jobs, and its alert's title. Only the server says this. */
   job?: { id: string; name: string };
+  /** An answer's cited pages, drawn as cards under it (src/app/ui/rich.ts). */
+  links?: { url: string; title: string }[];
 }
 
 export const KEEP = 200;
@@ -45,7 +48,25 @@ export const MAX_CHARS = 400_000;
 export const MAX_POSTED = 10;
 const MAX_FILES = 4;
 const MAX_NAME = 120;
+const MAX_LINKS = 6;
+const MAX_URL = 500;
 const ID = /^[A-Za-z0-9_-]{6,64}$/;
+
+/** An answer's links as a screen sent them: web pages over https only, each title tidied. */
+function linksOf(raw: unknown): { url: string; title: string }[] {
+  if (!Array.isArray(raw)) return [];
+  const out: { url: string; title: string }[] = [];
+  for (const l of raw.slice(0, MAX_LINKS)) {
+    const { url, title } = (l && typeof l === "object" ? l : {}) as { url?: unknown; title?: unknown };
+    if (typeof url !== "string" || url.length > MAX_URL) continue;
+    try {
+      if (new URL(url).protocol === "https:") out.push({ url, title: typeof title === "string" ? tidy(title).slice(0, MAX_NAME) : "" });
+    } catch {
+      // not an address: left out
+    }
+  }
+  return out;
+}
 
 const key = (person: string) => `conversation:${person}`;
 
@@ -58,6 +79,7 @@ export function asSaid(raw: unknown, at: number): Said | null {
   const text = r.text.trim().slice(0, MAX_TEXT);
   // A question may be only what was attached to it.
   if (!text && !files.length) return null;
+  const links = r.role === "assistant" ? linksOf(r.links) : [];
   return {
     id: r.id,
     at,
@@ -65,14 +87,18 @@ export function asSaid(raw: unknown, at: number): Said | null {
     text,
     ...(files.length && r.role === "user" ? { files } : {}),
     ...(typeof r.replyTo === "string" && ID.test(r.replyTo) && r.role === "user" ? { replyTo: r.replyTo } : {}),
+    ...(links.length ? { links } : {}),
   };
 }
+
+/** What one message takes of the person's MAX_CHARS: its words, and its links. */
+const size = (s: Said) => s.text.length + (s.links ?? []).reduce((n, l) => n + l.url.length + l.title.length, 0);
 
 /** The log as kept: the newest KEEP of the past KEEP_MS, within MAX_CHARS. */
 export function trimmed(log: readonly Said[], now: number): Said[] {
   const kept = log.filter((s) => now - s.at <= KEEP_MS).slice(-KEEP);
-  let chars = kept.reduce((n, s) => n + s.text.length, 0);
-  while (chars > MAX_CHARS) chars -= kept.shift()!.text.length;
+  let chars = kept.reduce((n, s) => n + size(s), 0);
+  while (chars > MAX_CHARS) chars -= size(kept.shift()!);
   return kept;
 }
 

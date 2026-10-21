@@ -63,20 +63,27 @@ export function arm(btn: HTMLButtonElement, ask: string, go: () => Promise<void>
  * Text with its links and bold made real — for answers that are read rather
  * than heard (typed chat, job results). Built from text nodes and elements,
  * never HTML, and only https links: the words may have come from web pages.
- * `[label](https://…)`, a bare https address and `**bold**` are recognised;
- * everything else stays as written, line breaks included.
+ * `[label](https://…)`, a bare https address, `**bold**`, `*italics*` and
+ * `` `code` `` are recognised; everything else stays as written, line breaks
+ * included. A whole answer's blocks (headings, lists, tables) are ui/rich.ts's.
  */
 export function richText(text: string, cls = "txt"): HTMLElement {
   const box = document.createElement("span");
   box.className = cls;
-  const re = /\(?\[([^\]\n]{1,160})\]\((https:\/\/[^\s)]{1,2000})\)\)?|(https:\/\/[^\s<>()]{3,2000})|\*\*([^*\n]{1,200})\*\*/g;
+  inline(box, text);
+  return box;
+}
+
+/** One stretch of text, its links, bold, italics and code made real, added to `parent`. */
+export function inline(parent: HTMLElement, text: string): void {
+  const re = /\(?\[([^\]\n]{1,160})\]\((https:\/\/[^\s)]{1,2000})\)\)?|(https:\/\/[^\s<>()]{3,2000})|\*\*([^*\n]{1,200})\*\*|`([^`\n]{1,200})`|(?<![*\w])\*([^*\s][^*\n]{0,198}[^*\s]|[^*\s])\*(?![*\w])/g;
   let last = 0;
   for (const m of text.matchAll(re)) {
-    box.appendChild(document.createTextNode(text.slice(last, m.index)));
-    if (m[4] !== undefined) {
-      const b = document.createElement("strong");
-      b.textContent = m[4];
-      box.appendChild(b);
+    parent.appendChild(document.createTextNode(text.slice(last, m.index)));
+    if (m[4] !== undefined || m[5] !== undefined || m[6] !== undefined) {
+      const b = document.createElement(m[4] !== undefined ? "strong" : m[5] !== undefined ? "code" : "em");
+      b.textContent = m[4] ?? m[5] ?? m[6]!;
+      parent.appendChild(b);
     } else {
       const a = document.createElement("a");
       const href = m[2] ?? m[3]!;
@@ -91,12 +98,11 @@ export function richText(text: string, cls = "txt"): HTMLElement {
       a.target = "_blank";
       a.rel = "noopener noreferrer";
       const bracketed = m[0].startsWith("(") && m[1] !== undefined;
-      if (bracketed) box.appendChild(document.createTextNode("("));
-      box.appendChild(a);
-      if (bracketed) box.appendChild(document.createTextNode(")"));
+      if (bracketed) parent.appendChild(document.createTextNode("("));
+      parent.appendChild(a);
+      if (bracketed) parent.appendChild(document.createTextNode(")"));
     }
     last = m.index! + m[0].length;
   }
-  box.appendChild(document.createTextNode(text.slice(last)));
-  return box;
+  parent.appendChild(document.createTextNode(text.slice(last)));
 }

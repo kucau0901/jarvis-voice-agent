@@ -64,7 +64,8 @@ export class Reply {
     question.appendChild(h);
   }
 
-  private quote(row: HTMLElement, text: string): void {
+  /** Replying to that answer: quoted above the box (its reply button, or a document's Reply in ui/Reader.ts). */
+  quote(row: HTMLElement, text: string): void {
     this.to = { row, text };
     this.chip?.remove();
     const chip = el("span", "tchip quote");

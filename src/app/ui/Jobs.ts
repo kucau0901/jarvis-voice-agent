@@ -1,5 +1,6 @@
 import { api } from "../key";
-import { button, el, richText } from "./util";
+import { button, el } from "./util";
+import { markdown } from "./rich";
 
 /**
  * Background jobs (src/worker/lib/jobs.ts): what is running, what came back,
@@ -261,7 +262,7 @@ export class Jobs {
     try {
       const j = ((await api(this.key, "GET", `/api/v1/jobs?id=${encodeURIComponent(id)}`)) as { job: JobView }).job;
       box.replaceChildren();
-      if (j.result) box.appendChild(richText(j.result, "jobtext"));
+      if (j.result) box.appendChild(markdown(j.result, "jobtext"));
       const asked = el("details", "");
       asked.appendChild(el("summary", "", "What was asked"));
       asked.appendChild(el("div", "jobtext", j.task));

@@ -111,6 +111,9 @@ console.log("\nlooking back");
   const most = lookBack(big, "budget", null, dayOf);
   check("at most FOUND or so, each shortened", most.length <= FOUND + 1 && most.every((s) => s.text.length <= 601), [most.length, most[0]?.text.length]);
   const m = matching(log, "car insurance");
+  const linked = asSaid({ id: "c_abcdef1", role: "assistant", text: "Sunny", links: [{ url: "https://weather.example/kl", title: "Weather\u0007 in KL" }, { url: "javascript:alert(1)", title: "x" }, { url: "https://" + "x".repeat(600) + ".example", title: "long" }, { url: "http://old.example/", title: "old" }] }, 5);
+  check("an answer's cited pages are kept: https only, short, their titles tidied", linked?.links?.length === 1 && linked.links[0]!.title === "Weather in KL", linked);
+  check("…never on a question", !asSaid({ id: "c_abcdef2", role: "user", text: "hi", links: [{ url: "https://a.example", title: "a" }] }, 5)?.links);
   check("matching, as Chat's search ranks: most words first, then the newest, no answers paired in", m.map((x) => `${x.s.id}:${x.n}`).join() === "c_a1:2,c_q1:2", m.map((x) => `${x.s.id}:${x.n}`));
   check("…a word where a word starts, as look_back finds it", matching(log, "insur").length === 2 && !matching(log, "ouse").length && !matching(log, "a ?").length);
 }

@@ -651,6 +651,8 @@ meantime. Most devices should not bother.
   `error`. Skip a type you do not know: more may be added.
 - `job` is a background job the question started (`{"type":"job","id","title","engine"}`);
   its result comes later as an alert, not in this stream.
+- `result` may carry `links: [{url, title}]`, the https pages the answer cited
+  (up to six), for showing beside it. The answer's words are complete without them.
 - Exactly one of `result` or `error` is terminal — **except when the turn is
   aborted**, where the stream can close having sent neither. Treat end-of-stream
   without either as a failure, as `/api/v1/ask` does internally.

@@ -1,5 +1,6 @@
 import type { Storage } from "./state-host.ts";
 import type { Grant } from "./scopes.ts";
+import { sourcesOf } from "./links.ts";
 import { makeAlert, type Alert, type Delivery } from "./alerts.ts";
 import { personOfWho } from "./context.ts";
 import { tidy } from "./quote.ts";
@@ -310,24 +311,7 @@ export function limitsOf(engine: JobEngine): { maxMs: number; maxSteps: number }
  * being what is cut.
  */
 export function withSources(text: string, cited: readonly Cited[]): string {
-  const seen = new Set<string>();
-  const lines: string[] = [];
-  for (const c of cited) {
-    let url: string;
-    try {
-      const u = new URL(c.url);
-      if (u.protocol !== "https:" && u.protocol !== "http:") continue;
-      // Tracking tags make one page look like several.
-      for (const k of [...u.searchParams.keys()]) if (k.startsWith("utm_")) u.searchParams.delete(k);
-      url = u.toString();
-    } catch {
-      continue;
-    }
-    if (seen.has(url)) continue;
-    seen.add(url);
-    lines.push(`- ${c.title?.trim() ? `${c.title.trim()}: ` : ""}${url}`);
-    if (lines.length === 15) break;
-  }
+  const lines = sourcesOf(cited, 15).map((c) => `- ${c.title ? `${c.title}: ` : ""}${c.url}`);
   if (!lines.length) return text;
   const list = `\n\nSources:\n${lines.join("\n")}`;
   const body = text.trimEnd();

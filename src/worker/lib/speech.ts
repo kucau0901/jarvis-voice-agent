@@ -246,6 +246,8 @@ export async function synthesize(env: Env, text: string, format: AudioFormat = "
  */
 export function speakable(text: string): string {
   return text
+    .replace(/^[ \t]*\|?[ \t:|-]*-[ \t:|-]*\|?[ \t]*$/gm, "") // a table's line under its heading
+    .replace(/^[ \t]*\|(.*)\|[ \t]*$/gm, (_, row: string) => `${row.split("|").map((c) => c.trim()).filter(Boolean).join(", ")}.`) // a table's row, as a list
     .replace(/\(\s*\[[^\]]*\]\([^)]*\)\s*\)/g, "") // a citation in brackets
     .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1") // a link: keep its words
     .replace(/https?:\/\/\S+/g, "") // a bare address

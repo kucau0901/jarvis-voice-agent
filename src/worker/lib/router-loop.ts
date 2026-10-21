@@ -1,4 +1,5 @@
 import type { EventSink } from "./sse.ts";
+import { citationsOf, sourcesOf } from "./links.ts";
 import type { AssistOutcome } from "./assist.ts";
 import { DEFAULT_ROUTER_MODEL, shouldFallBack } from "./router-model.ts";
 
@@ -26,6 +27,9 @@ interface Usage {
   /** Web searches OpenAI ran for it, which it charges for by the call. */
   searches: number;
 }
+
+/** As many cited pages as an answer shows as cards. */
+const MAX_LINKS = 6;
 
 /** A tool call the model asked for. */
 interface FunctionCall {
@@ -177,7 +181,9 @@ export async function routerLoop(deps: LoopDeps): Promise<void> {
         const text = res.output_text?.trim();
         if (used.length) sink.send({ type: "used", tools: used });
         if (text) {
-          sink.send({ type: "result", text, model, usage });
+          // The pages it cited, for typed chat's link cards (src/app/ui/rich.ts); everything else reads only the text.
+          const links = sourcesOf(citationsOf(res.output).filter((c) => /^https:/i.test(c.url)), MAX_LINKS);
+          sink.send({ type: "result", text, model, usage, ...(links.length ? { links } : {}) });
           settle(model, true, text);
         } else {
           const said = "I could not work out an answer to that.";

@@ -353,8 +353,12 @@ export const CHAT_INSTRUCTIONS =
   "\n\nTHIS CAME FROM A TEXT BOX: THE ANSWER IS READ, NOT HEARD\n" +
   "The user typed this and will read your answer. Lead with the answer and keep it " +
   "short. Exact figures, addresses, phone numbers and links are useful here — include " +
-  "them when they help. A short list is fine for several items. Light markdown only: " +
-  "**bold**, [label](https://…) links, and \"- \" lists; no headings or tables.";
+  "them when they help. Markdown is shown as it is meant: **bold**, [label](https://…) " +
+  "links, \"- \" and \"1. \" lists, and a table (| a | b |) when several things are compared " +
+  "on several points. No headings in an ordinary answer. Only when they ask for something " +
+  "to keep or read at length (a plan, a brief, a guide, a letter, a report), make it a " +
+  "document: the first line \"# \" and a short title, then \"## \" sections, all of it under " +
+  "3,500 characters.";
 
 /**
  * For a background job (routes/jobs.ts): nobody is waiting, the result is

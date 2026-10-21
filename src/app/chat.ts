@@ -21,7 +21,7 @@ interface ChatHooks {
   progress(text: string, call?: string): void;
   display(payload: Record<string, unknown>): void;
   /** The answer; `limit` when a limit stopped it (a device's day, the ChatGPT plan's), shown as a notice rather than a failure. */
-  answer(text: string, ok: boolean, limit?: boolean): void;
+  answer(text: string, ok: boolean, limit?: boolean, links?: { url: string; title: string }[]): void;
   /** A limit met on the way to an answer that was still given (this month's research used up): a notice under it. */
   limit?(text: string): void;
 }
@@ -81,7 +81,9 @@ export async function askTyped(key: string, transcript: Turn[], hooks: ChatHooks
         else if (ev.type === "display") hooks.display(ev);
         else if (ev.type === "result" || ev.type === "error") {
           answered = true;
-          hooks.answer(String(ev.text ?? ""), ev.type === "result", ev.type === "error" && !!ev.limit);
+          // The pages the answer cited, for its link cards (ui/rich.ts).
+          const links = Array.isArray(ev.links) ? ev.links.filter((l): l is { url: string; title: string } => !!l && typeof l.url === "string").map((l) => ({ url: l.url, title: typeof l.title === "string" ? l.title : "" })) : undefined;
+          hooks.answer(String(ev.text ?? ""), ev.type === "result", ev.type === "error" && !!ev.limit, links);
           if (notice) hooks.limit?.(notice);
         }
       }

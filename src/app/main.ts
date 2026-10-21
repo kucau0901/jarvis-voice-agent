@@ -27,7 +27,9 @@ import { Reply } from "./reply";
 import { fromJob, fromRoutine, jobStarted, jobsSeen, type JobSaid, type RoutineSaid } from "./fromRoutine";
 import { asked, clearKept, keep, kept, restore, saidId } from "./conversation";
 import { inCar } from "./client";
-import { arm, richText } from "./ui/util";
+import { arm } from "./ui/util";
+import { answerBody, linkCards } from "./ui/rich";
+import { Reader } from "./ui/Reader";
 import { PushToTalk } from "./ptt";
 import { LiveVoice, wakeVoice } from "./loud";
 import { Family } from "./ui/Family";
@@ -640,7 +642,7 @@ if (key) {
   void syncPush(key);
   // The conversation kept from before, routines' words and all (conversation.ts).
   void kept(key).then((all) => {
-    restore(all, { row: (who, text) => addRow(who, text), routine: routineSaid, job: jobSaid }, history);
+    restore(all, { row: (who, text, links) => addRow(who, text, "", links), routine: routineSaid, job: jobSaid }, history);
     // Nothing said yet: the first run, once on this screen (firstRun.ts).
     if (!all.length) void firstRun(key, els.transcript, chatWith);
   }).catch(() => {});
@@ -1277,8 +1279,9 @@ function forgetChat() {
 arm($<HTMLButtonElement>("clearChat"), "Clear all of it?", () =>
   clearKept(key).then(forgetChat, (e) => status(`not cleared: ${e instanceof Error ? e.message : String(e)}`, true)));
 
-/** A finished row of its own, with links and bold made real. */
-function addRow(who: "you" | "jarvis", text: string, cls = "") {
+let reader: Reader | null = null;
+/** A finished row of its own, its markdown drawn, a document as a card to open (ui/rich.ts), and the pages it cited. */
+function addRow(who: "you" | "jarvis", text: string, cls = "", links?: { url: string; title: string }[]) {
   endRows();
   const el = document.createElement("div");
   el.className = `row ${who}${cls ? ` ${cls}` : ""}`;
@@ -1286,7 +1289,9 @@ function addRow(who: "you" | "jarvis", text: string, cls = "") {
   w.className = "who";
   w.textContent = who === "you" ? "You" : "Jarvis";
   el.appendChild(w);
-  el.appendChild(who === "jarvis" ? richText(text) : Object.assign(document.createElement("span"), { className: "txt", textContent: text }));
+  const body = who === "jarvis" ? answerBody(text, (doc) => (reader ??= new Reader()).show(doc, () => reply.quote(el, text))) : Object.assign(document.createElement("span"), { className: "txt", textContent: text });
+  if (links?.length) body.appendChild(linkCards(links));
+  el.appendChild(body);
   if (who === "jarvis" && !cls) reply.offer(el, text);
   els.transcript.appendChild(el);
   els.transcript.scrollTop = els.transcript.scrollHeight;
@@ -1333,13 +1338,13 @@ async function sendTyped() {
     },
     // A limit, as Hark shows one: a notice in the thread, not a failure in red.
     limit: (text) => void addRow("jarvis", text, "limit"),
-    answer: (reply, ok, limit) => {
+    answer: (reply, ok, limit, links) => {
       work.stop();
-      const said = addRow("jarvis", reply, ok ? "" : limit ? "bad limit" : "bad");
+      const said = addRow("jarvis", reply, ok ? "" : limit ? "bad limit" : "bad", ok ? links : undefined);
       // What went wrong is not kept, nor told to the model again later.
       if (ok) {
         said.dataset.said = saidId();
-        keep(key, { id: said.dataset.said, role: "assistant", text: reply });
+        keep(key, { id: said.dataset.said, role: "assistant", text: reply, ...(links?.length ? { links } : {}) });
       }
       history.add("assistant", reply);
       if (!ok) errorFlash = 1;
