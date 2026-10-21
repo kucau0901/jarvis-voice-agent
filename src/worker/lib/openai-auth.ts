@@ -131,3 +131,29 @@ export async function planRespond(client: OpenAI, params: PlanParams, signal?: A
     .join("");
   return { ...last, output, output_text: text };
 }
+
+/**
+ * One answer with no tools: on the owner's ChatGPT plan first, else the key,
+ * when the plan refuses and the owner allows it (planFailed). A page watch's
+ * look (lib/page-look.ts), a brief's opening (lib/brief.ts). Its words, and
+ * what it cost, for Usage.
+ */
+export async function respondOnce(
+  env: Env,
+  req: { model: string; instructions: string; input: string },
+  signal: AbortSignal,
+): Promise<{ text: string; input: number; output: number; model: string }> {
+  const auth = await modelAuth(env);
+  if (!auth) throw new Error("no ChatGPT plan or OpenAI key is set");
+  if (auth.kind === "plan") {
+    try {
+      const r = await planRespond(clientFor(env, auth), req, signal);
+      return { text: r.output_text ?? "", input: r.usage?.input_tokens ?? 0, output: r.usage?.output_tokens ?? 0, model: `chatgpt:${req.model}` };
+    } catch (e) {
+      const refused = refusalOf(e);
+      if (!refused || !(await planFailed(env, refused))) throw e;
+    }
+  }
+  const r = await clientFor(env, { kind: "key" }).responses.create(req, { signal });
+  return { text: r.output_text ?? "", input: r.usage?.input_tokens ?? 0, output: r.usage?.output_tokens ?? 0, model: req.model };
+}

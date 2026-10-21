@@ -1,6 +1,6 @@
 import type { Env } from "../types.ts";
 import { asQuotedData } from "./quote.ts";
-import { clientFor, modelAuth, planFailed, planRespond, refusalOf } from "./openai-auth.ts";
+import { respondOnce } from "./openai-auth.ts";
 import { DEFAULT_ROUTER_MODEL } from "./router-model.ts";
 
 /**
@@ -120,22 +120,8 @@ export async function lookAtPage(
   try {
     const call =
       ask ??
-      (async (inp: string, ins: string) => {
-        // The owner's ChatGPT plan first, else the key (lib/openai-auth.ts).
-        const auth = await modelAuth(env);
-        if (!auth) throw new Error("no ChatGPT plan or OpenAI key is set");
-        if (auth.kind === "plan") {
-          try {
-            const r = await planRespond(clientFor(env, auth), { model: DEFAULT_ROUTER_MODEL, instructions: ins, input: inp }, AbortSignal.timeout(45_000));
-            return { text: r.output_text ?? "", input: r.usage?.input_tokens ?? 0, output: r.usage?.output_tokens ?? 0, model: `chatgpt:${DEFAULT_ROUTER_MODEL}` };
-          } catch (e) {
-            const refused = refusalOf(e);
-            if (!refused || !(await planFailed(env, refused))) throw e;
-          }
-        }
-        const r = await clientFor(env, { kind: "key" }).responses.create({ model: DEFAULT_ROUTER_MODEL, instructions: ins, input: inp }, { signal: AbortSignal.timeout(45_000) });
-        return { text: r.output_text ?? "", input: r.usage?.input_tokens ?? 0, output: r.usage?.output_tokens ?? 0, model: DEFAULT_ROUTER_MODEL };
-      });
+      // The owner's ChatGPT plan first, else the key (lib/openai-auth.ts).
+      ((inp: string, ins: string) => respondOnce(env, { model: DEFAULT_ROUTER_MODEL, instructions: ins, input: inp }, AbortSignal.timeout(45_000)));
     const got = await call(input, instructions);
     const v = verdictOf(got.text);
     return {
