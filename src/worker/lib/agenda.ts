@@ -1,7 +1,7 @@
 import type { Env } from "../types.ts";
 import { CALENDAR, call, explain, googleConfig, guardTool } from "./google.ts";
 import { tidy } from "./quote.ts";
-import { localParts, zonedToUtc } from "./routines.ts";
+import { dayBegins, localParts, zonedToUtc } from "./routines.ts";
 
 /**
  * A day on the calendar, for a brief (lib/brief.ts): the events, which of
@@ -14,6 +14,8 @@ import { localParts, zonedToUtc } from "./routines.ts";
 
 export interface AgendaEvent {
   id: string;
+  /** The recurring event it is one of, or its own id: one invitation, however many times it happens. */
+  series: string;
   summary: string;
   location: string;
   start: number;
@@ -31,6 +33,7 @@ export interface AgendaEvent {
 
 interface CalItem {
   id?: string;
+  recurringEventId?: string;
   status?: string;
   summary?: string;
   location?: string;
@@ -45,7 +48,7 @@ interface CalItem {
 /** A whole day's "2026-10-21" as the instant it starts in the zone. */
 function dayStart(date: string, timeZone: string): number {
   const [y, mo, d] = date.split("-").map(Number);
-  return zonedToUtc(y!, mo!, d!, 0, 0, timeZone);
+  return dayBegins(y!, mo!, d!, timeZone);
 }
 
 export function agendaFrom(items: CalItem[], timeZone: string): AgendaEvent[] {
@@ -59,6 +62,7 @@ export function agendaFrom(items: CalItem[], timeZone: string): AgendaEvent[] {
     const self = e.attendees?.find((a) => a.self);
     out.push({
       id: e.id,
+      series: e.recurringEventId || e.id,
       summary: tidy(e.summary ?? "").slice(0, 200) || "(no title)",
       location: tidy(e.location ?? "").slice(0, 200),
       start,
@@ -131,7 +135,14 @@ export function freeSlots(events: readonly AgendaEvent[], day: number, timeZone:
 export const STALE_MS = 3 * 86_400_000;
 const AHEAD_MS = 7 * 86_400_000;
 
-/** Invitations from someone else, unanswered three days or more, for something in the next week. */
+/** Invitations from someone else, unanswered three days or more, for something in the next week: a series once, at its next time. */
 export function staleInvites(events: readonly AgendaEvent[], now: number): AgendaEvent[] {
-  return events.filter((e) => e.unanswered && e.created && now - e.created >= STALE_MS && e.start >= now && e.start < now + AHEAD_MS);
+  const seen = new Set<string>();
+  const out: AgendaEvent[] = [];
+  for (const e of [...events].sort((a, b) => a.start - b.start)) {
+    if (!e.unanswered || !e.created || now - e.created < STALE_MS || e.start < now || e.start >= now + AHEAD_MS || seen.has(e.series)) continue;
+    seen.add(e.series);
+    out.push(e);
+  }
+  return out;
 }

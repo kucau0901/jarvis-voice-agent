@@ -196,6 +196,12 @@ export function zonedToUtc(y: number, mo: number, d: number, h: number, mi: numb
   return wall - offsetAt(first, timeZone);
 }
 
+/** When a local date begins: midnight, or 01:00 where the clocks go forward at midnight (Santiago, Havana). */
+export function dayBegins(y: number, mo: number, d: number, timeZone: string): number {
+  const t = zonedToUtc(y, mo, d, 0, 0, timeZone);
+  return localParts(t, timeZone).d === d ? t : zonedToUtc(y, mo, d, 1, 0, timeZone);
+}
+
 /** The next time `HH:MM` comes round in the zone after `after`, on one of `days` (all when empty). */
 export function nextDaily(time: string, days: readonly number[], timeZone: string, after: number): number | undefined {
   const m = HHMM.exec(time);

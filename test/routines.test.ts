@@ -855,6 +855,13 @@ console.log("\nbriefs: made at a time, written by lib/brief.ts");
   check(`at most ${MAX_BRIEFS} each`, third === `there are already ${MAX_BRIEFS} briefs for you; remove one first`, third);
   const hers = await h.s.add({ when: "daily", time: "18:00", brief: true }, { who: "u_b", grants: ["*"] as const }, T0);
   check("someone else's are their own", typeof hers !== "string");
+  const spent = harness({ brief: async () => ({ ok: true, text: "# Friday" }) });
+  for (const [i, when] of [[0, T0 + 5 * MIN], [1, T0 + 86_400_000 + 5 * MIN]] as const) {
+    await spent.s.add({ when: "once", at: T0 + i * 86_400_000 + 2 * MIN, brief: true }, OWNER, T0 + i * 86_400_000);
+    await spent.s.tick(when);
+  }
+  const fresh = await spent.s.add({ when: "once", at: T0 + 2 * 86_400_000 + 2 * MIN, brief: true }, OWNER, T0 + 2 * 86_400_000);
+  check("one-offs that have gone do not count", typeof fresh !== "string" && spent.sent.length === 2, fresh);
 
   const due = T0 + 30 * MIN;
   const wake = await h.s.tick(due);

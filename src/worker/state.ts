@@ -371,7 +371,7 @@ export class JarvisState extends DurableObject<Env> {
         const jobs = (await this.jobs.list()).filter((j) => personOfWho(j.createdBy) === person);
         const waiting = (await this.proposals.list(person, now)).filter((p) => p.state === "pending");
         const timeZone = localeOf(env).timeZone;
-        const b = await runBrief(r, now, { env: await this.personEnv(env, r.createdBy), grants, timeZone, jobs, waiting });
+        const b = await runBrief(r, now, { env: await this.personEnv(env, r.createdBy), grants, timeZone, house: ha, jobs, waiting });
         if (b.usage) {
           const u = b.usage;
           await this.recordUsage(

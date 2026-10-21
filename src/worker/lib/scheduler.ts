@@ -171,7 +171,9 @@ export class Scheduler {
     }
     if (built.action.kind === "brief") {
       const mine = personOfWho(by.who);
-      if (all.filter((r) => r.action.kind === "brief" && personOfWho(r.createdBy) === mine).length >= MAX_BRIEFS) {
+      // A one-off that has gone is kept a week to show it ran, and cannot be switched back on: it does not count.
+      const theirs = all.filter((r) => r.action.kind === "brief" && personOfWho(r.createdBy) === mine && (r.trigger.kind !== "once" || r.enabled));
+      if (theirs.length >= MAX_BRIEFS) {
         return `there are already ${MAX_BRIEFS} briefs for you; remove one first`;
       }
     }

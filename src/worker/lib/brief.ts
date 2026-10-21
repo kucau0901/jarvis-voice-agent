@@ -1,6 +1,6 @@
 import type { Env } from "../types.ts";
 import { allows, type Grant } from "./scopes.ts";
-import { localParts, zonedToUtc, type Routine } from "./routines.ts";
+import { dayBegins, localParts, type Routine } from "./routines.ts";
 import type { Job } from "./jobs.ts";
 import type { Proposal } from "./proposals.ts";
 import { agendaEvents, freeSlots, overlaps, staleInvites, type AgendaEvent } from "./agenda.ts";
@@ -9,7 +9,7 @@ import { findMail } from "../tools/gmail.ts";
 import { carSnapshot, distanceIn, pickCar } from "../tools/tessie.ts";
 import { WEATHER_TEMPLATE, weatherSaid } from "./sky.ts";
 import { googleConfig } from "./google.ts";
-import { haConfig, renderTemplate } from "./ha.ts";
+import { renderTemplate, type HaConfig } from "./ha.ts";
 import { asQuotedData, tidy } from "./quote.ts";
 import { localeOf } from "./locale.ts";
 import { canAsk, respondOnce } from "./openai-auth.ts";
@@ -52,6 +52,12 @@ export interface BriefDeps {
   /** What they may reach now (reachNow, lib/scopes.ts). */
   grants: readonly Grant[];
   timeZone: string;
+  /**
+   * The household's Home Assistant, as watches read it: the weather is
+   * everyone's, and a person's own token may not be an admin's, which
+   * Home Assistant's template API needs.
+   */
+  house: HaConfig | null;
   /** Their jobs. */
   jobs: readonly Job[];
   /** Their proposals waiting for an answer (lib/proposals.ts). */
@@ -71,14 +77,18 @@ export function dayCovered(now: number, timeZone: string): { from: number; to: n
   const p = localParts(now, timeZone);
   const midnight = (plus: number) => {
     const d = new Date(Date.UTC(p.y, p.mo - 1, p.d + plus));
-    return zonedToUtc(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate(), 0, 0, timeZone);
+    return dayBegins(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate(), timeZone);
   };
   return p.h < TOMORROW_FROM_H ? { from: now, to: midnight(1), tomorrow: false } : { from: midnight(1), to: midnight(2), tomorrow: true };
 }
 
-/** Someone else's words on one line, fit for the document: no links, no markdown, at most `max` characters. */
+/**
+ * Someone else's words on one line, fit for the document: no links, no
+ * markdown, at most `max` characters. Links go last, wherever they start:
+ * taking out markdown could otherwise make one ("htt*ps://").
+ */
 export function plain(s: string, max = 80): string {
-  const t = tidy(s.replace(/\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/\b(?:https?:\/\/|www\.)\S+/gi, "").replace(/[*`#<>[\]|]/g, ""));
+  const t = tidy(tidy(s.replace(/\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/[*`#<>[\]|]/g, "")).replace(/https?:\/\/\S*|\bwww\.\S+/gi, ""));
   return t.length > max ? `${t.slice(0, max - 1).trimEnd()}…` : t;
 }
 
@@ -115,16 +125,22 @@ const why = (e: unknown) => (e instanceof Error ? e.message : String(e));
 /** The schedule for the day covered, its clashes and free time, and invitations still unanswered. */
 export function scheduleOf(events: readonly AgendaEvent[], span: { from: number; to: number }, timeZone: string, now: number): string[] {
   const inDay = events.filter((e) => !e.declined && e.start < span.to && (e.end > span.from || (e.end === e.start && e.start >= span.from)));
+  // A time on another day says its day: a three-day conference is not 09:00–17:00 today.
+  const day = localParts(span.from, timeZone);
+  const at = (ts: number) => {
+    const p = localParts(ts, timeZone);
+    return p.y === day.y && p.mo === day.mo && p.d === day.d ? hhmm(ts, timeZone) : `${dateSaid(ts, timeZone, "short")} ${hhmm(ts, timeZone)}`;
+  };
   const lines = inDay.slice(0, MAX_EVENTS).map((e) => {
     const title = plain(e.summary);
     const where = plain(e.location, 60);
     const place = where ? ` (${where})` : "";
-    return e.allDay ? `- All day: ${title}` : `- ${hhmm(e.start, timeZone)}–${hhmm(e.end, timeZone)} ${title}${place}`;
+    return e.allDay ? `- All day: ${title}` : `- ${at(e.start)}–${at(e.end)} ${title}${place}`;
   });
   if (inDay.length > MAX_EVENTS) lines.push(`- and ${inDay.length - MAX_EVENTS} more`);
   if (!inDay.length) lines.push("Nothing on the calendar.");
   for (const [a, b] of overlaps(inDay).slice(0, 3)) {
-    lines.push(`Clash: ${plain(a.summary, 40)} (${hhmm(a.start, timeZone)}) and ${plain(b.summary, 40)} (${hhmm(b.start, timeZone)})`);
+    lines.push(`Clash: ${plain(a.summary, 40)} (${at(a.start)}) and ${plain(b.summary, 40)} (${at(b.start)})`);
   }
   const slots = freeSlots(inDay, span.from, timeZone, Math.max(now, span.from)).slice(0, 4);
   if (inDay.length && slots.length) lines.push(`Free: ${slots.map((s) => `${hhmm(s.start, timeZone)}–${hhmm(s.end, timeZone)}`).join(", ")}`);
@@ -138,11 +154,11 @@ async function calendarSection(d: BriefDeps, span: { from: number; to: number },
   if (!allows(d.grants, "calendar") || !googleConfig(d.env, "https://jarvis.invalid")) return null;
   // From now, whatever the day covered: an invitation for later today is still worth answering.
   const events = await agendaEvents(d.env, now, span.from + 7 * DAY, d.timeZone, AbortSignal.timeout(SOURCE_MS)).catch(why);
-  return { head: "Schedule", lines: typeof events === "string" ? [events] : scheduleOf(events, span, d.timeZone, now) };
+  return { head: "Schedule", lines: typeof events === "string" ? [plain(events, 160)] : scheduleOf(events, span, d.timeZone, now) };
 }
 
 async function weatherSection(d: BriefDeps): Promise<Section | null> {
-  const ha = allows(d.grants, "home") ? haConfig(d.env) : null;
+  const ha = allows(d.grants, "home") ? d.house : null;
   if (!ha) return null;
   try {
     const said = weatherSaid(await renderTemplate(ha, WEATHER_TEMPLATE, fetch, SOURCE_MS));
@@ -216,7 +232,9 @@ export async function runBrief(r: Routine, now: number, d: BriefDeps, ask?: Ask)
   const since = r.lastRun?.at ?? now - DAY;
   // What waits for their OK first: a long day is cut from the end, and that is the part to act on.
   const gathered = await Promise.all([calendarSection(d, span, now), weatherSection(d), carSection(d), mailSection(d)]);
-  const sections = [waitingSection(d.waiting), ...gathered, jobsSection(d.jobs, since)].filter((s): s is Section => s !== null);
+  // Their jobs and proposals as far as asking reaches: a device allowed only routines reads neither (lib/scopes.ts).
+  const asks = allows(d.grants, "ask");
+  const sections = [asks ? waitingSection(d.waiting) : null, ...gathered, asks ? jobsSection(d.jobs, since) : null].filter((s): s is Section => s !== null);
 
   const title = `# ${span.tomorrow ? "Tomorrow, " : ""}${dateSaid(span.tomorrow ? span.from : now, d.timeZone, "long")}`;
   const body = sections.length

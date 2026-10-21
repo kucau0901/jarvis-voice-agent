@@ -23,7 +23,7 @@ const DAY = 86_400_000;
 const NOW = at(7);
 
 const ev = (over: Partial<AgendaEvent>): AgendaEvent => ({
-  id: "e1", summary: "Standup", location: "", start: at(9), end: at(10), allDay: false,
+  id: "e1", series: over.id ?? "e1", summary: "Standup", location: "", start: at(9), end: at(10), allDay: false,
   free: false, declined: false, unanswered: false, organizer: "", created: 0, ...over,
 });
 
@@ -96,6 +96,11 @@ console.log("\ninvitations left unanswered");
   ];
   const got = staleInvites(list, NOW).map((e) => e.id);
   check("three days old, for something in the next week, still unanswered", got.join() === "a", got);
+  const daily = [1, 2, 3].map((n) => ev({ id: `s_${n}`, series: "s", unanswered: true, created: old, start: NOW + n * DAY }));
+  const once = staleInvites([...daily, ev({ id: "x", unanswered: true, created: old, start: NOW + 4 * DAY })], NOW).map((e) => e.id);
+  check("a recurring invitation once, at its next time, leaving room for the others", once.join() === "s_1,x", once);
+  const kept = agendaFrom([{ id: "s_1", recurringEventId: "s", start: { dateTime: iso(at(9)) }, end: { dateTime: iso(at(10)) } }, { id: "solo", start: { dateTime: iso(at(9)) } }], TZ);
+  check("which series an event is one of is kept", kept[0]!.series === "s" && kept[1]!.series === "solo", kept);
 }
 
 console.log("\nthe read");
