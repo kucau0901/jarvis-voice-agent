@@ -27,6 +27,8 @@ export const TOKEN_PRICES: Readonly<Record<string, TokenPrice>> = {
   "gpt-5.4": { input: 2.5, cached: 0.25, output: 15 },
   "gpt-5.4-mini": { input: 0.75, cached: 0.075, output: 4.5 },
   "gpt-5-mini": { input: 0.25, cached: 0.025, output: 2 },
+  // A picture (tools/image.ts): the description's text in, the picture's image tokens out. From the same page on 21 Oct 2026.
+  "gpt-image-2": { input: 5, cached: 1.25, output: 30 },
 };
 
 /** GPT-Live, by the minute the session is open. */

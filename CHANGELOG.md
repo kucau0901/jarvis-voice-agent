@@ -77,7 +77,7 @@ of every release, and in the [README](README.md#updating).
   beach") and it appears on the screen with a Download button. It needs the
   OpenAI key (the ChatGPT plan has no images), makes up to 10 a day for each
   person, and keeps each person's newest 20 for 30 days; clearing the chat
-  removes them.
+  removes them. Each counts in Usage, and toward a budget, at OpenAI's price.
 - **Export your data.** Settings → Export your data downloads one JSON file
   of your memory, routines, panels, conversation and jobs, and the household's
   settings without any key or token. For the owner and admins.

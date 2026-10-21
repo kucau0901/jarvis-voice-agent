@@ -5,6 +5,7 @@ import { Images, IMAGE_ID, IMAGE_KEEP_MS, KEEP_IMAGES } from "../src/worker/lib/
 import { IMAGE_MODEL, IMAGES_A_DAY, makeImage } from "../src/worker/tools/image.ts";
 import { handleImage } from "../src/worker/routes/image.ts";
 import { requiredScope } from "../src/worker/lib/scopes.ts";
+import { costOf, type UsageEntry } from "../src/worker/lib/usage.ts";
 
 let pass = 0;
 let fail = 0;
@@ -83,6 +84,9 @@ const realFetch = globalThis.fetch;
     check("put on the screen by its id, never its bytes", shown[0]?.kind === "image" && shown[0].image === "iabcdefghj" && !JSON.stringify(shown).includes("/9j/"), shown);
     const usage = (calls.recordUsage?.[0] as [Record<string, unknown>] | undefined)?.[0];
     check("counted in Usage as a picture, not a question", usage?.surface === "image" && usage.by === IMAGE_MODEL && usage.output === 1000 && usage.who === "u_sara", usage);
+    // 12 text tokens at $5 and 1,000 image tokens at $30 a million: it counts in Usage and toward the budget.
+    const entry = (calls.recordUsage?.[0] as [UsageEntry] | undefined)?.[0];
+    check("…at its price, not as nothing", !!entry && Math.abs((costOf(entry) ?? 0) - 0.03006) < 1e-9, entry && costOf(entry));
     check("the model is told it is shown, not shown it", said.startsWith("The picture is on the screen") && !said.includes("/9j/"), said);
     check(`at most ${IMAGES_A_DAY} a day each`, (calls.consume?.[0] as unknown[])?.[0] === "img:u_sara" && (calls.consume?.[0] as unknown[])?.[1] === IMAGES_A_DAY, calls.consume);
 
@@ -112,6 +116,7 @@ console.log("\nGET /api/image");
   const get = (id: string, person?: string, method = "GET") => handleImage(new Request(`https://j.test/api/image?id=${id}`, { method }), env(person));
   const ok = await get("iabcdefghj", "u_sara");
   check("their picture, as its bytes", ok.status === 200 && ok.headers.get("content-type") === "image/jpeg" && (await ok.text()) === "JPEGBYTES");
+  check("not kept by the browser: a cleared chat takes it off a shared screen", ok.headers.get("cache-control") === "no-store");
   check("looked up as the asker", asked[0]?.[0] === "u_sara", asked);
   check("someone else's: no such picture", (await get("iabcdefghj")).status === 404 && asked.at(-1)?.[0] === "owner");
   check("not an id: refused before looking", (await get("../etc")).status === 400 && asked.length === 2);

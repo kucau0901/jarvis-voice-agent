@@ -21,6 +21,6 @@ export async function handleImage(req: Request, env: Env): Promise<Response> {
   const bin = atob(img.data);
   const bytes = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-  // A made picture never changes, so it may be kept, but only by this browser.
-  return new Response(bytes, { headers: { "content-type": img.mime, "cache-control": "private, max-age=86400" } });
+  // Not kept by the browser, as a camera's frame is not: clearing the chat, or leaving, must take it off a shared screen too.
+  return new Response(bytes, { headers: { "content-type": img.mime, "cache-control": "no-store" } });
 }
