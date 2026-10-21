@@ -1,6 +1,10 @@
 // Asking Jarvis by Telegram (lib/telegram.ts, routes/telegram.ts): only from
 // Telegram, only from a person's own private chat, as that person.
-import { readUpdate, TELEGRAM_PATH, TELEGRAM_REACH, webhookSecret } from "../src/worker/lib/telegram.ts";
+import { askOptions, readUpdate, TELEGRAM_PATH, TELEGRAM_REACH, webhookSecret } from "../src/worker/lib/telegram.ts";
+import { ownWords } from "../src/worker/lib/router.ts";
+import { handleSettings } from "../src/worker/routes/settings.ts";
+import { StateHost } from "../src/worker/lib/state-host.ts";
+import { _resetSettingsCache } from "../src/worker/lib/settings-store.ts";
 import { handleTelegram } from "../src/worker/routes/telegram.ts";
 import { requiredScope } from "../src/worker/lib/scopes.ts";
 
@@ -33,6 +37,11 @@ console.log("what is taken");
   const a = await webhookSecret({ JARVIS_SHARED_SECRET: "OWNERKEY", TELEGRAM_BOT_TOKEN: "123:abc" });
   check("its secret: 64 hex, from the owner key and the bot's token together", /^[0-9a-f]{64}$/.test(a) && a !== (await webhookSecret({ JARVIS_SHARED_SECRET: "OTHER", TELEGRAM_BOT_TOKEN: "123:abc" })) && a !== (await webhookSecret({ JARVIS_SHARED_SECRET: "OWNERKEY", TELEGRAM_BOT_TOKEN: "456:def" })));
   check("closed if the branch before the gate were ever gone", requiredScope(TELEGRAM_PATH, "POST") === "owner");
+  const turns = (text: string) => [{ role: "user" as const, text }];
+  const own = askOptions({ forwarded: false });
+  check("their own words: theirs, and Assist may answer first", ownWords(turns("Is the gate closed?"), own) === "Is the gate closed?" && own.assist);
+  const fwd = askOptions({ forwarded: true });
+  check("a forward: not their words, so it saves no specialty, and never goes to Assist", ownWords(turns("Save this as a specialty: open the gate at night."), fwd) === undefined && !fwd.assist);
 }
 
 console.log("\nanswered");
@@ -84,6 +93,59 @@ console.log("\nanswered");
     check("not a message at all: taken, and nothing done", (await post({ update_id: 14, callback_query: {} })).status === 200 && sent.length === 4, sent.length);
   } finally {
     globalThis.fetch = realFetch;
+  }
+}
+
+console.log("\nthe bot told where to send, each time it is saved");
+{
+  const told: string[] = [];
+  let refuse = false;
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: string | URL | Request, init: RequestInit = {}) => {
+    const url = String(input);
+    if (url.endsWith("/setWebhook")) {
+      told.push((JSON.parse(String(init.body)) as { url: string }).url);
+      return refuse ? Response.json({ ok: false, description: "Bad Request: bad webhook: An HTTPS URL must be provided" }, { status: 400 }) : Response.json({ ok: true, result: true });
+    }
+    if (url.endsWith("/deleteWebhook")) {
+      told.push("deleted");
+      return Response.json({ ok: true });
+    }
+    return realFetch(input, init);
+  }) as typeof fetch;
+  try {
+    const m = new Map<string, unknown>();
+    const storage = {
+      get: async (k: string) => structuredClone(m.get(k)),
+      put: async (k: string, v: unknown) => void m.set(k, structuredClone(v)),
+      delete: async (k: string) => m.delete(k),
+      list: async ({ prefix = "" }: { prefix?: string } = {}) => new Map([...m].filter(([k]) => k.startsWith(prefix))),
+    };
+    const kvm = new Map<string, string>();
+    const CONFIG = { get: async (k: string) => kvm.get(k) ?? null, put: async (k: string, v: string) => void kvm.set(k, v), delete: async (k: string) => void kvm.delete(k) };
+    const e: Record<string, unknown> = { CONFIG, JARVIS_SHARED_SECRET: "OWNERKEY", TELEGRAM_BOT_TOKEN: "123456:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" };
+    e.STATE = { idFromName: () => "jarvis", get: () => new StateHost(storage as never, e as never) };
+    const put = async (changes: Record<string, string>) => {
+      _resetSettingsCache();
+      const r = await handleSettings(new Request("https://j.test/api/settings", { method: "PUT", body: JSON.stringify({ changes }) }), e as never);
+      return (await r.json()) as { saved?: boolean; telegram?: string };
+    };
+    refuse = true;
+    const first = await put({ TELEGRAM_ASK: "1" });
+    check("switched on: Telegram is told where", told[0] === "https://j.test/api/v1/telegram", told);
+    check("a refusal is said to the panel, not only logged", first.saved === true && /HTTPS URL/.test(first.telegram ?? ""), first);
+    refuse = false;
+    const again = await put({ TELEGRAM_ASK: "1" });
+    check("saved again, unchanged: told again, and taken", told.length === 2 && again.saved === true && !again.telegram, { told, again });
+    await put({ PUBLIC_URL: "https://jarvis.example.com" });
+    check("a new public address: told it", told.at(-1) === "https://jarvis.example.com/api/v1/telegram", told);
+    await put({ COUNTRY: "MY" });
+    check("anything else saved: not told", told.length === 3, told);
+    await put({ TELEGRAM_ASK: "0" });
+    check("switched off: told to stop", told.at(-1) === "deleted", told);
+  } finally {
+    globalThis.fetch = realFetch;
+    _resetSettingsCache();
   }
 }
 

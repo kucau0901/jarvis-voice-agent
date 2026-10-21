@@ -64,8 +64,8 @@ export async function handleSettings(req: Request, env: Env, person?: string): P
       return err(503, e instanceof Error ? e.message : String(e));
     }
     const after = effectiveEnv(env, saved);
-    await sideEffects(env, before, after, url.origin);
-    return json({ saved: true, ...(await view(env, saved, asker)) });
+    const telegram = await sideEffects(env, before, after, url.origin, Object.keys(checked.changes));
+    return json({ saved: true, ...(telegram ? { telegram } : {}), ...(await view(env, saved, asker)) });
   }
 
   return err(405, "GET, PUT, or POST /api/settings/test");
@@ -114,16 +114,21 @@ async function view(env: Env, saved: SavedSettings, asker: (e: Env) => Env) {
  * camera list are cleared. A new address needs nothing: each cached
  * list says where it was made, and one made elsewhere is not used
  * (lib/cameras.ts, tools/mcp.ts).
+ *
+ * Asking on Telegram is set again whenever it is saved, changed or not, and
+ * when the public address changes: saving again is how a failed setting is
+ * tried again. Why Telegram would not take it is the answer, for the panel.
  */
-async function sideEffects(env: Env, before: Env, after: Env, origin: string): Promise<void> {
+async function sideEffects(env: Env, before: Env, after: Env, origin: string, saved: readonly string[]): Promise<string | null> {
   const changed = (k: keyof Env) => (before[k] ?? "") !== (after[k] ?? "");
   const jobs: Promise<unknown>[] = [];
+  let telegram: string | null = null;
   // Asking on Telegram (lib/telegram.ts): the bot told to send its messages here, or to stop.
-  if (changed("TELEGRAM_ASK") || changed("TELEGRAM_BOT_TOKEN")) {
-    const on = after.TELEGRAM_ASK === "1" && !!after.TELEGRAM_BOT_TOKEN;
-    const wasOn = before.TELEGRAM_ASK === "1" && !!before.TELEGRAM_BOT_TOKEN;
-    if (wasOn && (!on || changed("TELEGRAM_BOT_TOKEN"))) jobs.push(deleteWebhook(before.TELEGRAM_BOT_TOKEN!));
-    if (on) jobs.push(setWebhook(after, `${publicOrigin(after, origin)}${TELEGRAM_PATH}`).then((why) => why && console.warn("telegram webhook:", why)));
+  const on = after.TELEGRAM_ASK === "1" && !!after.TELEGRAM_BOT_TOKEN;
+  const wasOn = before.TELEGRAM_ASK === "1" && !!before.TELEGRAM_BOT_TOKEN;
+  if (wasOn && (!on || changed("TELEGRAM_BOT_TOKEN"))) jobs.push(deleteWebhook(before.TELEGRAM_BOT_TOKEN!));
+  if (on && (saved.includes("TELEGRAM_ASK") || saved.includes("TELEGRAM_BOT_TOKEN") || changed("PUBLIC_URL"))) {
+    jobs.push(setWebhook(after, `${publicOrigin(after, origin)}${TELEGRAM_PATH}`).then((why) => void (telegram = why)));
   }
   // Everyone's links, not only the first person's: the old client's tokens are no use to the new one.
   if (changed("GOOGLE_CLIENT_ID") || changed("GOOGLE_CLIENT_SECRET")) jobs.push(google.unlinkEveryone(env));
@@ -136,6 +141,7 @@ async function sideEffects(env: Env, before: Env, after: Env, origin: string): P
     jobs.push(forgetCameras(env).catch(() => {}));
   }
   await Promise.allSettled(jobs);
+  return telegram;
 }
 
 /* ---------- testing a section --------------------------------------------- */

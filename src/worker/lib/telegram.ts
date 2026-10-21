@@ -58,6 +58,17 @@ export function readUpdate(body: unknown): Update | null {
   };
 }
 
+/**
+ * How a message is asked. The person's own words may go to Home
+ * Assistant's Assist first, and alone may save a specialty (ownWords() in
+ * lib/router.ts); a forwarded message is someone else's words, so neither.
+ */
+export const askOptions = (u: Pick<Update, "forwarded">) => ({
+  assist: !u.forwarded,
+  ...(u.forwarded ? { assistAsk: "" } : {}),
+  origin: { id: "telegram", label: "Telegram" },
+});
+
 /** A message to a chat, plain text (no markup for an answer to break), cut to what Telegram holds; why not, when it was not sent. */
 export async function sendTelegram(env: Pick<Env, "TELEGRAM_BOT_TOKEN">, chat: string, text: string, signal = AbortSignal.timeout(10_000)): Promise<string | null> {
   if (!env.TELEGRAM_BOT_TOKEN) return "no bot token is set";
@@ -95,6 +106,6 @@ export async function webhookSaid(env: Pick<Env, "TELEGRAM_BOT_TOKEN">, url: str
   const r = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/getWebhookInfo`, { signal: AbortSignal.timeout(10_000) }).catch(() => null);
   const info = ((await r?.json().catch(() => null)) as { result?: { url?: string; last_error_message?: string } } | null)?.result;
   if (!info) return "Asking on Telegram: Telegram could not be asked how it is set up.";
-  if (info.url !== url) return "Asking on Telegram: the bot is not sending its messages here; save the Alerts settings again.";
+  if (info.url !== url) return "Asking on Telegram: the bot is not sending its messages here; choose on for Ask Jarvis on Telegram and save.";
   return info.last_error_message ? `Asking on Telegram: set up, but Telegram last said: ${info.last_error_message.slice(0, 160)}` : "Asking on Telegram: set up.";
 }

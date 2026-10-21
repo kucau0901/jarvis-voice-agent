@@ -41,6 +41,8 @@ interface SettingsResponse {
   settings: SettingView[];
   saved?: boolean;
   errors?: Record<string, string>;
+  /** Saved, but Telegram would not take the address for Ask Jarvis on Telegram: why. */
+  telegram?: string;
 }
 
 const SOURCE: Record<SettingView["source"], string> = {
@@ -233,7 +235,7 @@ export class Services {
       if (!r.ok) return say(res, body.error ?? `server said ${r.status}`, true);
       this.render(body);
       const again = this.root.querySelector(`[data-group="${this.groupOf(Object.keys(changes)[0]!)}"] .res`);
-      if (again) say(again as HTMLElement, "Saved. Takes effect within about 15 seconds.");
+      if (again) say(again as HTMLElement, body.telegram ? `Saved, but Telegram would not send messages here: ${body.telegram}` : "Saved. Takes effect within about 15 seconds.", !!body.telegram);
     } catch (e) {
       say(res, message(e), true);
     }

@@ -10,7 +10,7 @@ import { allows, narrow } from "../lib/scopes.ts";
 import { canAsk } from "../lib/openai-auth.ts";
 import { asQuotedData } from "../lib/quote.ts";
 import * as limits from "../lib/limits.ts";
-import { readUpdate, sendTelegram, TELEGRAM_REACH, webhookSecret, type Update } from "../lib/telegram.ts";
+import { askOptions, readUpdate, sendTelegram, TELEGRAM_REACH, webhookSecret, type Update } from "../lib/telegram.ts";
 import { collectWithDeadline, priorTurns, recordTurns, TIMEOUT_TEXT } from "./v1.ts";
 
 /**
@@ -82,7 +82,7 @@ async function answer(env: Env, ctx: ExecutionContext, u: Update, asPerson: (env
   const text = u.forwarded ? `${asQuotedData("forwarded message", u.text, "SOMEONE ELSE")}\nThe user forwarded this.` : u.text;
   const thread = whoOf(principal);
   const turns = [...(await priorTurns(env2, thread)), { role: "user" as const, text }];
-  const d = await collectWithDeadline(AbortSignal.timeout(STOP_MS), env2, ctx, turns, grants, WAIT_S, "telegram", { assist: true, origin: { id: "telegram", label: "Telegram" } });
+  const d = await collectWithDeadline(AbortSignal.timeout(STOP_MS), env2, ctx, turns, grants, WAIT_S, "telegram", askOptions(u));
   if (d.timedOut) {
     await say(`${TIMEOUT_TEXT} Or ask me to do it as a background job, and the result comes here.`);
     return;
