@@ -1,6 +1,10 @@
 /** A page Jarvis made (tools/page.ts). */
 export type Page = { id: string; title: string };
 
+/** A kept entry that is a page set apart (main.ts pageApart): drawn as its card alone, and not told to the model as words. */
+export const isApart = (s: { role: string; text: string; page?: Page; links?: unknown[] }): boolean =>
+  s.role === "assistant" && !!s.page && s.text === s.page.title && !s.links?.length;
+
 /**
  * The pages a question makes, typed or spoken, for their cards (pageCard.ts):
  * the last goes under its answer and is kept with it. One before it in the

@@ -671,7 +671,7 @@ if (key) {
   void syncPush(key);
   // The conversation kept from before, routines' words and all (conversation.ts).
   void kept(key).then((all) => {
-    restore(all, { row: (who, text, links, page) => addRow(who, text, "", links, page), routine: routineSaid, job: jobSaid }, history);
+    restore(all, { row: (who, text, links, page) => addRow(who, text, "", links, page), routine: routineSaid, job: jobSaid, apart: (p) => showCard(pageCard(key, p)) }, history);
     // Nothing said yet: the first run, once on this screen (firstRun.ts).
     if (!all.length) void firstRun(key, els.transcript, chatWith);
   }).catch(() => {});
@@ -1329,6 +1329,8 @@ function showCard(card: HTMLElement): HTMLElement {
 /** A page no answer took (madePages.ts): its card, kept as an entry of its own, so it can be opened again. */
 function pageApart(p: Page) {
   if (!key) return;
+  // The question that made it is kept first (only the person's row: Jarvis's would take the page).
+  endRow("you");
   const row = showCard(pageCard(key, p));
   row.dataset.said = saidId();
   keep(key, { id: row.dataset.said, role: "assistant", text: p.title, page: p });

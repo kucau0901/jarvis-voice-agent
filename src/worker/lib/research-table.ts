@@ -72,7 +72,7 @@ export function tableOf(text: string, columns: readonly string[]): { summary: st
 export function emptied(text: string): string | null {
   const end = text.lastIndexOf("\n\nSources:");
   const v = jsonIn(end >= 0 ? text.slice(0, end) : text) as { summary?: unknown; rows?: unknown } | null;
-  if (!v || !Array.isArray(v.rows) || v.rows.some(Array.isArray)) return null;
+  if (!v || !Array.isArray(v.rows) || v.rows.length) return null;
   return typeof v.summary === "string" && v.summary.trim() ? tidy(v.summary) : "No row was backed by a source.";
 }
 

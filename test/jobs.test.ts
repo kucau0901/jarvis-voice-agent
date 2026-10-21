@@ -957,6 +957,11 @@ console.log("\nresearch into a table");
   const nh = harness([plan, merged, emptiedCheck], { teams: EVERY_TEAM() });
   const nj = (await nh.jobs.create({ title: "Speakers", task: "x", engine: "research", table: true }, BY, T0)) as Job;
   const nd = await drive(nh, nj.id);
+  const asObjects: Step = { kind: "done", text: JSON.stringify({ summary: "Ten.", rows: many(10).map(([a, b, c, d]) => ({ Speaker: a, Price: b, Seller: c, Source: d })) }), usage: spent(1000) };
+  const oh = harness([plan, merged, asObjects], { teams: EVERY_TEAM() });
+  const oj = (await oh.jobs.create({ title: "Speakers", task: "x", engine: "research", table: true }, BY, T0)) as Job;
+  const od = await drive(oh, oj.id);
+  check("a check whose rows are not rows has not emptied the table: the merge goes out", od.table?.rows === 24 && !/no source for any row/.test(od.result ?? ""), { table: od.table, summary: od.summary });
   check("a check that drops every row: none sent or kept, and it says why", nd.status === "done" && nd.table?.rows === undefined && (await nh.jobs.table(nj.id)) === null && nd.summary === "No source backs any of them." && /no source for any row/.test(nd.result ?? ""), { table: nd.table, summary: nd.summary, result: nd.result });
 }
 

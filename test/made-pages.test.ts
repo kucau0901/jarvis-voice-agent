@@ -1,5 +1,5 @@
 // The pages one question makes, and which card each gets (src/app/madePages.ts).
-import { MadePages, type Page } from "../src/app/madePages.ts";
+import { isApart, MadePages, type Page } from "../src/app/madePages.ts";
 
 let pass = 0;
 let fail = 0;
@@ -35,6 +35,14 @@ console.log("the pages one answer makes");
   check("the chat cleared: forgotten, not left for the next answer", m.take() === undefined && apart.length === 2);
   m.seen({ kind: "page", page: "p6" });
   check("no label: called Page", m.take()?.title === "Page");
+}
+
+console.log("\nkept apart, and told apart again after a reload");
+{
+  const p = { id: "p1", title: "Chargers" };
+  check("a page's own entry: its title, its page, nothing else", isApart({ role: "assistant", text: "Chargers", page: p }));
+  check("an answer with a page is an answer", !isApart({ role: "assistant", text: "Here it is.", page: p }) && !isApart({ role: "assistant", text: "Chargers", page: p, links: [{ url: "https://x.example" }] }));
+  check("the person's words never are", !isApart({ role: "user", text: "Chargers", page: p }) && !isApart({ role: "assistant", text: "Chargers" }));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

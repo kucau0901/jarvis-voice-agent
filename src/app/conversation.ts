@@ -3,6 +3,7 @@ import type { History } from "./history";
 import { Reply } from "./reply";
 import { Attachments } from "./attach";
 import type { JobSaid, RoutineSaid } from "./fromRoutine";
+import { isApart, type Page } from "./madePages";
 
 /**
  * Your conversation with Jarvis, kept on the server (lib/conversation.ts) so
@@ -61,6 +62,8 @@ export interface Rows {
   row(who: "you" | "jarvis", text: string, links?: { url: string; title: string }[], page?: { id: string; title: string }): HTMLElement;
   routine(s: RoutineSaid): boolean;
   job(s: JobSaid): boolean;
+  /** A page set apart from any answer (madePages.ts): its card alone. */
+  apart(page: Page): HTMLElement;
 }
 
 /** The kept conversation, drawn as it was, and told to the model as it would have been. */
@@ -73,6 +76,10 @@ export function restore(all: Said[], rows: Rows, history: History): void {
     }
     if (s.job) {
       if (rows.job({ id: s.id, at: s.at, title: s.job.name, text: s.text, job: s.job.id })) history.add("assistant", `${s.job.name}: ${s.text}`, s.at);
+      continue;
+    }
+    if (s.page && isApart(s)) {
+      rows.apart(s.page).dataset.said = s.id;
       continue;
     }
     const row = rows.row(s.role === "user" ? "you" : "jarvis", s.text, s.links, s.page);
