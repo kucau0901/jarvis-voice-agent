@@ -12,7 +12,10 @@ import { doing, said } from "./steps";
 export function pin(transcript: HTMLElement, row: HTMLElement): void {
   transcript.querySelector(".row.pinned")?.classList.remove("pinned", "whole");
   row.classList.add("pinned");
-  row.addEventListener("click", () => row.classList.contains("pinned") && row.classList.toggle("whole"));
+  // On its words, not the row's reply hook or photos; and not at the end of selecting some of them.
+  row.querySelector(".txt")?.addEventListener("click", () => {
+    if (row.classList.contains("pinned") && !getSelection()?.toString()) row.classList.toggle("whole");
+  });
 }
 
 /** The pills' row, added to the end of the chat. */

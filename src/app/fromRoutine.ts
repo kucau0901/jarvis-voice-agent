@@ -53,18 +53,21 @@ export function jobStarted(j: { id: string; title: string }, open: (id: string) 
   return row;
 }
 
-/** Jobs as Jobs lists them (ui/Jobs.ts): a pill whose job was cancelled or removed, so no result will come to it, stops saying it is working. */
+/**
+ * Jobs as Jobs lists them (ui/Jobs.ts): a pill whose job was cancelled, so no
+ * result will come to it, stops saying it is working. One not listed is left
+ * as it is: a screen on a device token is not shown the jobs its chat starts.
+ */
 export function jobsSeen(jobs: { id: string; title: string; status: string }[]): void {
-  for (const [id, row] of working) {
-    const j = jobs.find((x) => x.id === id);
-    if (j && j.status !== "cancelled") continue;
-    working.delete(id);
+  for (const j of jobs) {
+    const row = working.get(j.id);
+    if (!row || j.status !== "cancelled") continue;
+    working.delete(j.id);
     const pill = row.querySelector<HTMLElement>(".frompill")!;
     pill.classList.remove("working");
-    const label = pill.querySelector("span")!;
-    label.textContent = j?.title ?? (label.textContent ?? "").replace(/^On it — /, "");
-    pill.querySelector("small")!.textContent = j ? "cancelled" : "removed";
-    pill.setAttribute("aria-label", `${label.textContent}, a job ${j ? "cancelled" : "removed"}: open Jobs`);
+    pill.querySelector("span")!.textContent = j.title;
+    pill.querySelector("small")!.textContent = "cancelled";
+    pill.setAttribute("aria-label", `${j.title}, a job cancelled: open it in Jobs`);
   }
 }
 

@@ -1163,11 +1163,15 @@ function showTab(tab: string | undefined) {
 for (const b of document.querySelectorAll<HTMLButtonElement>("#tabs button")) b.addEventListener("click", () => showTab(b.dataset.tab));
 
 /** Chat, with words typed in its box to finish: a panel's Reply (ui/Home.ts). */
+/** What chatWith last put in the box: still there untouched, it gives way to the next rather than piling up. */
+let offered = "";
 function chatWith(text: string) {
   showTab("chat");
   // Anything already being written stays, the new words after it.
-  const draft = typed.value.trimEnd();
+  let draft = typed.value.trimEnd();
+  if (offered && draft.endsWith(offered)) draft = draft.slice(0, -offered.length).trimEnd();
   typed.value = draft && text ? `${draft}\n${text}` : draft || text;
+  offered = text.trimEnd();
   fitTyped();
   typed.focus();
   typed.setSelectionRange(typed.value.length, typed.value.length);
