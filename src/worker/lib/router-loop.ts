@@ -166,6 +166,9 @@ export async function routerLoop(deps: LoopDeps): Promise<void> {
       usage.output += u?.output_tokens ?? 0;
       usage.hops += 1;
       usage.searches += res.output.filter((o) => o.type === "web_search_call").length;
+      // The search ran inside the hop, so nothing could say so while it did;
+      // typed chat shows it afterwards, once a hop however many it made.
+      if (res.output.some((o) => o.type === "web_search_call")) sink.send({ type: "tool", name: "web_search", phase: "done" });
 
       const calls = res.output.filter((o): o is FunctionCall => o.type === "function_call");
 

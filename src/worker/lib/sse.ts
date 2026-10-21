@@ -38,6 +38,10 @@ export class SseStream {
     this.body = new ReadableStream({
       start: (c) => {
         this.controller = c;
+        // A first byte at once: a proxy that holds the headers until the body
+        // starts (Vite's, in development) would otherwise keep typed chat's
+        // "Read" back until the first real event.
+        this.raw(": open\n\n");
         this.heartbeat = setInterval(() => {
           // A comment line: valid SSE, ignored by EventSource, keeps the pipe warm.
           this.raw(": ping\n\n");

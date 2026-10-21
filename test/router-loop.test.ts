@@ -120,6 +120,8 @@ console.log("\na tool, then the answer");
   const h = harness([reply("r1", { output: [{ type: "web_search_call" }, { type: "web_search_call" }, { type: "message" }], output_text: "Sunny, 31°C" })]);
   await routerLoop(h.deps);
   check("web searches are counted, as OpenAI charges for each", (last(h.events).usage as { searches: number }).searches === 2 && h.records[0]?.usage.searches === 2);
+  const searched = h.events.filter((e) => e.type === "tool" && e.name === "web_search");
+  check("typed chat is told the web was searched, once for the hop", searched.length === 1 && searched[0]!.phase === "done" && last(h.events).type === "result", h.events);
 }
 
 console.log("\na model OpenAI refuses");

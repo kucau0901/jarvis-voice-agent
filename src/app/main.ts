@@ -17,6 +17,7 @@ import { watchTheme } from "./theme";
 import { runDelegation } from "./delegate";
 import { LiveLink, releasePush, speakAlert, speakHere, speakText, syncPush, type Alert } from "./alerts";
 import { askTyped } from "./chat";
+import { doing, said as stepSaid } from "./steps";
 import { keyboardSpace, watchKeyboard } from "./keyboard";
 import { Attachments, type Attached } from "./attach";
 import { Reply } from "./reply";
@@ -1202,6 +1203,12 @@ function forgetChat() {
 arm($<HTMLButtonElement>("clearChat"), "Clear all of it?", () =>
   clearKept(key).then(forgetChat, (e) => status(`not cleared: ${e instanceof Error ? e.message : String(e)}`, true)));
 
+/** The question being answered stays at the top of the chat while its answer is read (index.html .pinned). */
+function pin(row: HTMLElement) {
+  els.transcript.querySelector(".row.pinned")?.classList.remove("pinned");
+  row.classList.add("pinned");
+}
+
 /** A finished row of its own, with links and bold made real. */
 function addRow(who: "you" | "jarvis", text: string, cls = "") {
   endRows();
@@ -1218,6 +1225,59 @@ function addRow(who: "you" | "jarvis", text: string, cls = "") {
   return el;
 }
 
+/**
+ * Jarvis at work on a typed question: a row of pills, one per tool call as it
+ * runs (steps.ts), "Thinking" while none is. Never in #status, which
+ * push-to-talk and Live also write. It goes when the answer takes its place.
+ */
+function working() {
+  const el = document.createElement("div");
+  el.className = "row jarvis working";
+  el.appendChild(Object.assign(document.createElement("span"), { className: "who", textContent: "Jarvis" }));
+  const steps = Object.assign(document.createElement("div"), { className: "steps" });
+  steps.setAttribute("role", "status");
+  steps.setAttribute("aria-live", "polite");
+  const think = Object.assign(document.createElement("span"), { className: "step think", textContent: "Thinking" });
+  steps.appendChild(think);
+  el.appendChild(steps);
+  els.transcript.appendChild(el);
+  const pills = new Map<string, HTMLSpanElement>();
+  const settle = (grow: () => void) => {
+    const t = els.transcript;
+    const atEnd = t.scrollHeight - t.scrollTop - t.clientHeight < 40;
+    grow();
+    think.hidden = [...pills.values()].some((p) => p.classList.contains("run"));
+    if (atEnd) t.scrollTop = t.scrollHeight;
+  };
+  settle(() => {});
+  return {
+    tool(ev: { name: string; id?: string; phase: string }) {
+      settle(() => {
+        const key = ev.id ?? ev.name;
+        let pill = pills.get(key);
+        if (!pill) {
+          pill = Object.assign(document.createElement("span"), { className: "step", textContent: doing(ev.name) });
+          pills.set(key, pill);
+          steps.insertBefore(pill, think);
+        }
+        pill.classList.toggle("run", ev.phase === "start");
+        pill.classList.toggle("done", ev.phase !== "start");
+      });
+    },
+    /** A tool's own words for what it is doing ("checking Home"), on its pill; without a call, the newest running one. */
+    note(text: string, call?: string) {
+      const words = stepSaid(text);
+      if (!words) return;
+      settle(() => {
+        const running = [...pills.values()].filter((p) => p.classList.contains("run"));
+        const pill = (call && pills.get(call)) || running.at(-1) || think;
+        pill.textContent = words;
+      });
+    },
+    stop: () => el.remove(),
+  };
+}
+
 let typedAbort: AbortController | null = null;
 async function sendTyped() {
   const text = typed.value.trim();
@@ -1230,6 +1290,7 @@ async function sendTyped() {
   const row = addRow("you", text);
   if (attached.length) row.insertBefore(Attachments.shown(attached), row.querySelector(".txt"));
   if (to) Reply.hook(row, to.row);
+  pin(row);
   const files = attached.map((a) => a.name);
   row.dataset.said = saidId();
   keep(key, { id: row.dataset.said, role: "user", text, files, replyTo: to?.row.dataset.said });
@@ -1237,14 +1298,18 @@ async function sendTyped() {
   typedAbort = new AbortController();
   sendBtn.disabled = true;
   thinking = true;
-  status("thinking…");
+  const work = working();
   await askTyped(key, history.snapshot(), {
-    progress: (t) => status(`${t}…`),
+    // It reached Jarvis (Hark shows the same): said once, under the question.
+    opened: () => row.appendChild(Object.assign(document.createElement("small"), { className: "seen", textContent: "Read" })),
+    tool: (ev) => work.tool(ev),
+    progress: (t, call) => work.note(t, call),
     display: (payload) => {
       stage ??= new Stage(key);
       void stage.show(payload as unknown as DisplayPayload);
     },
     answer: (reply, ok) => {
+      work.stop();
       const said = addRow("jarvis", reply, ok ? "" : "bad");
       // What went wrong is not kept, nor told to the model again later.
       if (ok) {
@@ -1256,6 +1321,8 @@ async function sendTyped() {
       if (ok && readAloud) void speakText(key, reply);
     },
   }, typedAbort.signal, attached);
+  // Stopped with Escape, no answer comes to take its place.
+  work.stop();
   typedAbort = null;
   sendBtn.disabled = false;
   thinking = false;

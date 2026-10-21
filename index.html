@@ -379,6 +379,17 @@
   .row .att { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: flex-end; gap: 6px; margin-bottom: 6px; max-width: min(480px, 88%); }
   .row .attimg { max-width: 180px; max-height: 140px; border-radius: 16px; object-fit: cover; }
   .row .att .tchip { padding-right: 14px; box-shadow: none; }
+  /* A question Jarvis has received (main.ts sendTyped): "Read" under it, as Hark's chat says. */
+  .row .seen { margin-top: 3px; font-size: 12px; color: var(--faint); }
+  .row.you.replies .seen { flex-basis: 100%; text-align: right; }
+  /* Jarvis at work (main.ts working, steps.ts): a pill per tool call, the running ones breathing, the finished ones ticked. */
+  .row.working .steps { display: flex; flex-wrap: wrap; gap: 6px; max-width: min(480px, 88%); }
+  .row .step { display: inline-flex; align-items: center; min-height: 30px; padding: 4px 12px; border-radius: 999px;
+    background: var(--wash); color: var(--dim); font-size: 13px; font-weight: 500; }
+  .row .step[hidden] { display: none; }
+  .row .step.run, .row .step.think { color: var(--fg); animation: pulse 1.3s ease-in-out infinite; }
+  .row .step.done { color: var(--faint); }
+  .row .step.done::before { content: "✓"; margin-right: 6px; color: var(--ok); }
 
   #logWrap { position: fixed; inset: auto 0 0 0; height: 0; overflow: hidden; z-index: 10;
     background: var(--glass-hi); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur);
@@ -711,6 +722,13 @@
   body.typing #transcript .row .txt { white-space: pre-wrap; overflow-wrap: anywhere; }
   body.typing #transcript .row .txt a { color: var(--accent-ink); }
   #transcript .row.bad .txt { color: var(--danger); }
+  /* The question being answered stays at the top while its answer is read (main.ts pin). Its see-through bubble
+     is laid on the page's own colour so nothing shows through, and a long one is cut short. Not over the car's
+     keyboard, whose band is too short to give a row up. */
+  body.typing:not(.kbover) #transcript > .row.you.pinned { position: sticky; top: 0; z-index: 1; padding-bottom: 6px;
+    background: color-mix(in srgb, var(--bg) 70%, transparent); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); }
+  body.typing:not(.kbover) #transcript > .row.you.pinned .txt { background: linear-gradient(var(--bubble-you), var(--bubble-you)), var(--bg);
+    max-height: 7.2em; overflow: hidden; }
   /* Clear chat (conversation.ts): above the conversation, in Chat, once there is one; two taps. */
   #chathead { display: none; }
   body.typing:not(.kbover):has(#transcript > .row) #chathead { display: flex; flex: none; justify-content: flex-end; width: min(720px, 100%); margin-bottom: -6px; }

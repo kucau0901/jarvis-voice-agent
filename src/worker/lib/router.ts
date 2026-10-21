@@ -460,12 +460,14 @@ export async function runCalls(
   return Promise.all(
     calls.map(async (call) => {
       const tool = byName.get(call.name);
-      sse.send({ type: "tool", name: call.name, phase: "start" });
+      // The call's id rides along, and on its progress notes, so typed chat can
+      // keep one status pill per call when two run at once (src/app/steps.ts).
+      sse.send({ type: "tool", name: call.name, id: call.call_id, phase: "start" });
 
       const output = tool
         ? await callTool(tool, call.arguments, {
           ...base,
-          progress: (t) => sse.send({ type: "progress", text: t }),
+          progress: (t) => sse.send({ type: "progress", text: t, name: call.name, id: call.call_id }),
           display: (payload) => sse.send({ type: "display", ...payload }),
         }, sse)
         : `No such tool: ${call.name}`;
@@ -476,6 +478,7 @@ export async function runCalls(
       sse.send({
         type: "tool",
         name: call.name,
+        id: call.call_id,
         phase: "done",
         args: call.arguments.slice(0, 300),
         preview: outputText(output).slice(0, 400),
@@ -522,7 +525,7 @@ async function callTool(
   const ladder = tool.pace === "slow" ? WAITING_SLOW : WAITING_FAST;
   const timers = ladder.map((w) =>
     setTimeout(() => {
-      if (!sse.isClosed) sse.send({ type: "progress", text: w.say });
+      if (!sse.isClosed) ctx.progress(w.say);
     }, w.after),
   );
 

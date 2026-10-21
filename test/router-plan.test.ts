@@ -75,7 +75,7 @@ async function ask(opts: { plan: boolean; plans: Answer[]; keys?: Answer[]; fall
     globalThis.fetch = realFetch;
   }
   const result = said.find((e) => e.type === "result" || e.type === "error");
-  return { sent, failed, recorded, result };
+  return { sent, failed, recorded, result, said };
 }
 
 const call = { type: "function_call", id: "fc_1", call_id: "call_1", name: "recall", namespace: "jarvis", arguments: JSON.stringify({ query: "dentist" }), status: "completed" };
@@ -98,6 +98,9 @@ console.log("a question on the plan");
     second.length === one!.body.input.length + 3 && second.some((i) => i.type === "reasoning") && second.some((i) => i.type === "function_call" && i.namespace === "jarvis") &&
     second.at(-1)!.type === "function_call_output" && second.at(-1)!.call_id === "call_1", second.slice(-3));
   check("counted in Usage as the plan's", r.recorded[0]?.by === "chatgpt:gpt-6-luna", r.recorded);
+  const toolEvents = r.said.filter((e) => e.type === "tool");
+  check("each tool event carries its call, for typed chat's pills (src/app/steps.ts)",
+    toolEvents.length === 2 && toolEvents[0]!.phase === "start" && toolEvents.every((e) => e.name === "recall" && e.id === "call_1") && toolEvents[1]!.phase === "done", toolEvents);
 }
 
 console.log("the plan's limit, part way through");

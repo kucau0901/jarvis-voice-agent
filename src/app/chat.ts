@@ -11,7 +11,12 @@ import type { Attached } from "./attach";
  */
 
 interface ChatHooks {
-  progress(text: string): void;
+  /** The question reached Jarvis: the stream is open. */
+  opened?(): void;
+  /** A tool call started or finished (lib/router.ts runCalls); `id` keeps two calls of one tool apart. */
+  tool?(ev: { name: string; id?: string; phase: string }): void;
+  /** A note from a tool as it works, with the call it belongs to when the server says. */
+  progress(text: string, call?: string): void;
   display(payload: Record<string, unknown>): void;
   answer(text: string, ok: boolean): void;
 }
@@ -34,6 +39,7 @@ export async function askTyped(key: string, transcript: Turn[], hooks: ChatHooks
       hooks.answer(why ? `Could not ask: ${why}.` : `Could not ask (server said ${res.status}).`, false);
       return;
     }
+    hooks.opened?.();
     const reader = res.body.getReader();
     const dec = new TextDecoder();
     let buf = "";
@@ -52,7 +58,8 @@ export async function askTyped(key: string, transcript: Turn[], hooks: ChatHooks
         } catch {
           continue;
         }
-        if (ev.type === "progress" && ev.text) hooks.progress(String(ev.text));
+        if (ev.type === "progress" && ev.text) hooks.progress(String(ev.text), typeof ev.id === "string" ? ev.id : typeof ev.name === "string" ? ev.name : undefined);
+        else if (ev.type === "tool" && typeof ev.name === "string") hooks.tool?.({ name: ev.name, id: typeof ev.id === "string" ? ev.id : undefined, phase: String(ev.phase) });
         else if (ev.type === "display") hooks.display(ev);
         else if (ev.type === "result" || ev.type === "error") {
           answered = true;
