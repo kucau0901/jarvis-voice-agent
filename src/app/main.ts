@@ -1140,6 +1140,8 @@ function pushToTalk(): PushToTalk {
     heard: (text) => {
       endRows();
       append("you", text);
+      // Whole as heard: kept now, before any page its answer makes is kept apart.
+      endRow("you");
       history.add("user", text);
     },
     answered: (text, ok) => {
@@ -1329,8 +1331,6 @@ function showCard(card: HTMLElement): HTMLElement {
 /** A page no answer took (madePages.ts): its card, kept as an entry of its own, so it can be opened again. */
 function pageApart(p: Page) {
   if (!key) return;
-  // The question that made it is kept first (only the person's row: Jarvis's would take the page).
-  endRow("you");
   const row = showCard(pageCard(key, p));
   row.dataset.said = saidId();
   keep(key, { id: row.dataset.said, role: "assistant", text: p.title, page: p });
