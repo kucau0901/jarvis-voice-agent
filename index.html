@@ -742,12 +742,13 @@
   #transcript .row.limit .txt { color: var(--fg); background: color-mix(in srgb, var(--warn) 16%, transparent);
     box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--warn) 45%, transparent); }
   /* The question being answered stays at the top while its answer is read (main.ts pin). Its see-through bubble
-     is laid on the page's own colour so nothing shows through, and a long one is cut short. Not over the car's
+     is laid on the page's own colour so nothing shows through, and a long one is cut short until tapped. Not over the car's
      keyboard, whose band is too short to give a row up. */
   body.typing:not(.kbover) #transcript > .row.you.pinned { position: sticky; top: 0; z-index: 1; padding-bottom: 6px;
     background: color-mix(in srgb, var(--bg) 70%, transparent); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); }
   body.typing:not(.kbover) #transcript > .row.you.pinned .txt { background: linear-gradient(var(--bubble-you), var(--bubble-you)), var(--bg);
     max-height: 7.2em; overflow: hidden; }
+  body.typing:not(.kbover) #transcript > .row.you.pinned.whole .txt { max-height: none; }
   /* Clear chat (conversation.ts): above the conversation, in Chat, once there is one; two taps. */
   #chathead { display: none; }
   body.typing:not(.kbover):has(#transcript > .row) #chathead { display: flex; flex: none; justify-content: flex-end; width: min(720px, 100%); margin-bottom: -6px; }

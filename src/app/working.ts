@@ -8,10 +8,11 @@ import { doing, said } from "./steps";
  * answered, pinned at the top while its answer is read.
  */
 
-/** The question being answered stays at the top of the chat while its answer is read (index.html .pinned). */
+/** The question being answered stays at the top of the chat while its answer is read (index.html .pinned); a long one cut short is tapped to read it all. */
 export function pin(transcript: HTMLElement, row: HTMLElement): void {
-  transcript.querySelector(".row.pinned")?.classList.remove("pinned");
+  transcript.querySelector(".row.pinned")?.classList.remove("pinned", "whole");
   row.classList.add("pinned");
+  row.addEventListener("click", () => row.classList.contains("pinned") && row.classList.toggle("whole"));
 }
 
 /** The pills' row, added to the end of the chat. */

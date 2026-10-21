@@ -1165,10 +1165,12 @@ for (const b of document.querySelectorAll<HTMLButtonElement>("#tabs button")) b.
 /** Chat, with words typed in its box to finish: a panel's Reply (ui/Home.ts). */
 function chatWith(text: string) {
   showTab("chat");
-  typed.value = text;
+  // Anything already being written stays, the new words after it.
+  const draft = typed.value.trimEnd();
+  typed.value = draft && text ? `${draft}\n${text}` : draft || text;
   fitTyped();
   typed.focus();
-  typed.setSelectionRange(text.length, text.length);
+  typed.setSelectionRange(typed.value.length, typed.value.length);
 }
 
 /** panel_set or panel_remove under way for a question asked here, any way: Home shows a card in the making, then reads its panels again (ui/Home.ts). */
@@ -1203,6 +1205,7 @@ if (key) void takeShared().then((shared) => {
   if (!shared) return;
   chatWith(shared.text);
   void attachments.add(shared.files);
+  if (shared.tooBig.length) status(`${shared.tooBig.join(", ")}: too big to share into Jarvis.`, true);
 });
 // The chat makes room for the tray, however many rows it holds (--tray, index.html), the newest message kept in view.
 new ResizeObserver(() => {

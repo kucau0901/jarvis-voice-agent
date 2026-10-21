@@ -12,6 +12,8 @@ const SHELL = `jarvis-shell-${VERSION}`;
 const SHARED = "jarvis-shared";
 /** As many as a question can carry: two photos and two files (src/app/attach.ts). */
 const MAX_SHARED = 4;
+/** A file bigger than this is not kept: more than any photo, and over the 10 MB a PDF may be (src/app/attach.ts). */
+const MAX_SHARED_BYTES = 25 * 1024 * 1024;
 
 self.addEventListener("install", () => {
   // Take over immediately: a stale worker serving a stale bundle is the classic
@@ -154,8 +156,11 @@ async function takeShare(req) {
       // A link is often in the text as well: said once.
       if (typeof v === "string" && v.trim() && !words.some((w) => w.includes(v.trim()))) words.push(v.trim());
     }
-    const files = form.getAll("files").filter((f) => f instanceof File && f.size).slice(0, MAX_SHARED);
-    await cache.put("/shared/words", new Response(JSON.stringify({ words, files: files.length })));
+    const all = form.getAll("files").filter((f) => f instanceof File && f.size);
+    const files = all.filter((f) => f.size <= MAX_SHARED_BYTES).slice(0, MAX_SHARED);
+    // Named, so the page can say why they are not attached.
+    const tooBig = all.filter((f) => f.size > MAX_SHARED_BYTES).map((f) => f.name || "A file");
+    await cache.put("/shared/words", new Response(JSON.stringify({ words, files: files.length, tooBig })));
     for (const [i, f] of files.entries()) {
       await cache.put(`/shared/file/${i}`, new Response(f, {
         headers: { "content-type": f.type || "application/octet-stream", "x-name": encodeURIComponent(f.name || `Shared ${i + 1}`) },

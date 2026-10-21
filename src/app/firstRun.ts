@@ -62,6 +62,7 @@ export async function firstRun(key: string, transcript: HTMLElement, ask: (text:
       may("home") ? ["The house", "Is the gate closed and the front door locked?"] : null,
       may("mail") ? ["My mail", "Anything important in my mail today?"] : null,
     ].filter((x): x is string[] => !!x);
+    if (!examples.length) return; // Nothing here they may ask about: no card of "Not now" alone.
     const row = card(transcript, "What's one thing this week I could take off you? Here are a few I can do now.", [
       ...examples.map(([label, question]) => button(label!, () => {
         row.remove();

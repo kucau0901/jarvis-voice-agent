@@ -12,6 +12,8 @@ const SHARED = "jarvis-shared";
 export interface Shared {
   text: string;
   files: File[];
+  /** Files over the service worker's size limit, by name: not attached, said why. */
+  tooBig: string[];
 }
 
 /** A share waiting for this page, taken off the address bar and out of the cache; null when there is none. */
@@ -25,7 +27,7 @@ export async function takeShared(): Promise<Shared | null> {
     const cache = await caches.open(SHARED);
     const said = await cache.match("/shared/words");
     if (!said) return null;
-    const { words, files: count } = (await said.json()) as { words?: unknown; files?: unknown };
+    const { words, files: count, tooBig } = (await said.json()) as { words?: unknown; files?: unknown; tooBig?: unknown };
     const files: File[] = [];
     for (let i = 0; i < (typeof count === "number" ? count : 0); i++) {
       const r = await cache.match(`/shared/file/${i}`);
@@ -34,8 +36,9 @@ export async function takeShared(): Promise<Shared | null> {
       files.push(new File([await r.blob()], name, { type: r.headers.get("content-type") ?? "" }));
     }
     await caches.delete(SHARED);
-    const text = Array.isArray(words) ? words.filter((w): w is string => typeof w === "string").join("\n") : "";
-    return text || files.length ? { text, files } : null;
+    const strings = (v: unknown) => (Array.isArray(v) ? v.filter((w): w is string => typeof w === "string") : []);
+    const text = strings(words).join("\n");
+    return text || files.length || strings(tooBig).length ? { text, files, tooBig: strings(tooBig) } : null;
   } catch {
     return null; // A share that cannot be read: Jarvis opens as it would.
   }
