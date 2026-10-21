@@ -27,6 +27,8 @@ const routineAdd: Tool = {
     "Something every day or on some weekdays ('every weekday at 7:30 tell me my first " +
     "meeting and the traffic to work'): when=daily with time and days; use ask when the " +
     "answer has to be looked up at the time, say when it is a fixed message. " +
+    "What daily cannot say ('at 8 and at 12', 'every 6 hours', 'on the 1st of every month'): " +
+    "when=cron with cron, five fields in the user's zone (minute hour day month weekday), at most hourly. " +
     "Warnings about when to set off for calendar events ('tell me when to leave for my " +
     "appointments'): when=leave. " +
     "Something to do when another system sends an event ('when I get home, remind me to take " +
@@ -55,7 +57,7 @@ const routineAdd: Tool = {
     type: "object",
     properties: {
       name: { type: ["string", "null"], description: "A few words to title it by. Null to use the message." },
-      when: { type: "string", enum: ["once", "daily", "event", "leave", "watch"] },
+      when: { type: "string", enum: ["once", "daily", "cron", "event", "leave", "watch"] },
       local_time: {
         type: ["string", "null"],
         description: "once: the user's local date and time, YYYY-MM-DDTHH:MM, from RIGHT NOW in the instructions.",
@@ -66,6 +68,10 @@ const routineAdd: Tool = {
         type: ["array", "null"],
         items: { type: "string", enum: DAYS },
         description: "daily: which days. Null for every day.",
+      },
+      cron: {
+        type: ["string", "null"],
+        description: "cron: minute hour day month weekday, e.g. '0 8,12 * * *' or '0 9 1 * *'. One number for the minute. Only when daily cannot say it.",
       },
       event: { type: ["string", "null"], description: "event: its name, lower case, e.g. arrived_home." },
       buffer_min: { type: ["integer", "null"], description: "leave: minutes to spare on top of the drive. Null for 10." },
@@ -96,7 +102,7 @@ const routineAdd: Tool = {
         description: "With pass_to: how long they have to answer before the user (or family) is told; nudged halfway. Null for the family's usual (an hour). Medicine might be 20.",
       },
     },
-    required: ["name", "when", "local_time", "in_minutes", "time", "days", "event", "buffer_min", "condition", "for_minutes", "say", "ask", "notify", "pass_to", "pass_kind", "points", "escalate", "answer_within_minutes"],
+    required: ["name", "when", "local_time", "in_minutes", "time", "days", "cron", "event", "buffer_min", "condition", "for_minutes", "say", "ask", "notify", "pass_to", "pass_kind", "points", "escalate", "answer_within_minutes"],
     additionalProperties: false,
   },
   async run(args, ctx) {
@@ -110,6 +116,7 @@ const routineAdd: Tool = {
         inMinutes: args.in_minutes,
         time: args.time,
         days: args.days,
+        cron: args.cron,
         event: args.event,
         bufferMin: args.buffer_min,
         condition: args.condition,

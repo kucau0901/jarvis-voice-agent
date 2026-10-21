@@ -159,7 +159,7 @@ existence, or argued around.
 | `screen` | `show_place`, `hide_display`, `/api/map`, `make_image` and `/api/image` (pictures Jarvis makes), and a person's panels (`panel_set`, `panel_remove`, `/api/hub/panels`). |
 | `voice` | `/api/session`, `/api/tts`, `/api/voices`, and push-to-talk `/api/v1/voice` (which also needs `ask`). |
 | `ask` (jobs) | `/api/v1/jobs`, `/api/v1/jobs/cancel`, `start_job`. A job for Hermes also needs `hermes`. Each job runs with its creator's grants, and only their reading tools. |
-| `routines` | `/api/v1/routines`, `/api/v1/routines/run`, `/api/v1/trigger`; `routine_add`, `routine_list`, `routine_remove`. A routine's question runs with **its creator's** grants, never more. |
+| `routines` | `/api/v1/routines`, `/api/v1/routines/run`, `/api/v1/routines/runs`, `/api/v1/trigger`; `routine_add`, `routine_list`, `routine_remove`. A routine's question runs with **its creator's** grants, never more. |
 | `alerts` | Receiving alerts (`/api/v1/events`, `/api/v1/push`, `/api/v1/alerts`), raising one (`/api/v1/notify`), and `send_note`. The same scope both ways: a device that may be told things may ask to be told something. |
 
 Ask for something out of reach and you get a normal answer explaining it is not
@@ -577,6 +577,7 @@ POST /api/v1/routines
 |---|---|
 | `once` | `localTime` (`"2026-09-26T17:00"`, in the time zone set in Settings), or `inMinutes`, or `at` (ms since the epoch) |
 | `daily` | `time` (`"HH:MM"`), optional `days` (`"mon"`…`"sun"` or 0–6, Sunday first; absent = every day) |
+| `cron` | `cron`: five fields, minute hour day month weekday, in the time zone set in Settings (`"0 8,12 * * *"`, `"0 */6 * * *"`, `"0 9 1 * *"`). Lists, ranges, steps and names (`mon-fri`, `jan`); no `L`, `W`, `#` or `@daily`. One number for the minute, so at most hourly. With both day fields given, either will do |
 | `event` | `event`: a name like `arrived_home` |
 | `leave` | optional `bufferMin` (default 10). No message: it warns before each calendar event with a place |
 | `watch` | `condition`: a Home Assistant template, true while the thing is happening (`"{{ is_state('cover.main_gate', 'open') }}"`); optional `forMinutes` (how long it must stay true first, default 0) |
@@ -589,8 +590,12 @@ nothing deserves attention, nothing is sent, and the last result says
 `GET /api/v1/routines` lists them with plain-English `when` and `does`, the
 next run and the last result; `PATCH` takes `{id, enabled?, name?}`; `DELETE
 ?id=` removes one; `POST /api/v1/routines/run {id}` runs one now.
+`GET /api/v1/routines/runs?id=` is its last 20 runs, newest first:
+`{id, runs: [{at, ok, detail, said?}]}`, where `said` is the start of what it
+sent (up to 300 characters). A leave routine's calendar reads are not runs; its
+warnings are.
 
-A daily routine more than 30 minutes late (Jarvis was not running) is skipped
+A daily or cron routine more than 30 minutes late (Jarvis was not running) is skipped
 rather than sent at the wrong time; a one-off reminder up to 12 hours late is
 still given, marked with when it was due.
 

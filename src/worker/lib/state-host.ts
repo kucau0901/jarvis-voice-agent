@@ -25,7 +25,7 @@ import { generateVapid, type VapidKeys } from "./webpush.ts";
 import { cosine, fromB64, type Near } from "./embeddings.ts";
 import type { Alert, Delivery, LiveResult, PushTarget } from "./alerts.ts";
 import type { LiveClient } from "./live.ts";
-import type { Routine, RoutineInput } from "./routines.ts";
+import type { Routine, RoutineInput, RunEntry } from "./routines.ts";
 import type { Job } from "./jobs.ts";
 import type { Relay, RelayKind } from "./relays.ts";
 import type { ChatMessage } from "./chat.ts";
@@ -541,6 +541,7 @@ interface RoutineApi {
   updateRoutine(id: string, patch: { enabled?: boolean; name?: string }): Promise<Routine | string>;
   removeRoutine(id: string): Promise<boolean>;
   runRoutine(id: string): Promise<Routine | string>;
+  routineRuns(id: string): Promise<RunEntry[]>;
   fireEvent(event: string, data?: string, only?: string): Promise<string[]>;
 }
 

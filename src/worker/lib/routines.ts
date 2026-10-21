@@ -13,6 +13,8 @@ import { pageCondition, pageUrl } from "./page-look.ts";
  * Triggers:
  *   once    at a moment: "remind me at five to call Mum"
  *   daily   at a time of day, on chosen weekdays: "every weekday at 7:30"
+ *   cron    on a cron schedule, for what daily cannot say: "at 8 and 12",
+ *           "every 6 hours", "on the 1st of the month"; at most hourly
  *   event   when something sends that event to /api/v1/trigger — Home
  *           Assistant, Node-RED, IFTTT, a phone shortcut: "arrived_home"
  *   leave   for each calendar event with a place: when to set off, from the
@@ -29,6 +31,8 @@ import { pageCondition, pageUrl } from "./page-look.ts";
 export type Trigger =
   | { kind: "once"; at: number }
   | { kind: "daily"; time: string; days: number[] }
+  /** Five fields, minute hour day month weekday, in the deployment's zone as daily is; one minute only, so at most hourly. */
+  | { kind: "cron"; expr: string }
   | { kind: "event"; event: string }
   | { kind: "leave"; bufferMin: number }
   /**
@@ -76,6 +80,11 @@ export interface RunRecord {
   at: number;
   ok: boolean;
   detail: string;
+}
+
+/** One of a routine's past runs, as Routines → Past runs shows them (lib/scheduler.ts): with what it said, when it said something. */
+export interface RunEntry extends RunRecord {
+  said?: string;
 }
 
 export interface Routine {
@@ -196,11 +205,88 @@ export function nextDaily(time: string, days: readonly number[], timeZone: strin
   return undefined;
 }
 
+/** A cron schedule, read: the values each field allows, and whether the two day fields were left open. */
+interface Cron {
+  min: number[];
+  hour: number[];
+  dom: number[];
+  mon: number[];
+  dow: number[];
+  anyDom: boolean;
+  anyDow: boolean;
+}
+
+const CRON_FIELDS: { name: string; lo: number; hi: number; names?: string[] }[] = [
+  { name: "minute", lo: 0, hi: 59 },
+  { name: "hour", lo: 0, hi: 23 },
+  { name: "day of the month", lo: 1, hi: 31 },
+  { name: "month", lo: 1, hi: 12, names: ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"] },
+  // 7 is Sunday too, as in most crons.
+  { name: "weekday", lo: 0, hi: 7, names: ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] },
+];
+
+/**
+ * The classic five fields, each a list of `*`, `n`, `a-b` and `/step`, with
+ * month and weekday names; nothing else (no L, W, # or @daily). Why not, in
+ * words, when it is not one.
+ */
+export function parseCron(expr: string): Cron | string {
+  const fields = expr.trim().toLowerCase().split(/\s+/);
+  if (fields.length !== 5) return "a cron schedule is five fields, minute hour day month weekday, like 0 8,12 * * *";
+  const sets: number[][] = [];
+  for (const [i, field] of fields.entries()) {
+    const spec = CRON_FIELDS[i]!;
+    const value = (v: string) => {
+      const named = spec.names?.indexOf(v.slice(0, 3)) ?? -1;
+      if (named >= 0 && /^[a-z]+$/.test(v)) return named + (spec.name === "month" ? 1 : 0);
+      return /^\d{1,2}$/.test(v) ? Number(v) : NaN;
+    };
+    const set = new Set<number>();
+    for (const part of field.split(",")) {
+      const m = /^(\*|[a-z0-9]+)(?:-([a-z0-9]+))?(?:\/(\d{1,2}))?$/.exec(part);
+      if (!m) return `the ${spec.name} cannot be "${part}"`;
+      const step = m[3] ? Number(m[3]) : 1;
+      const lo = m[1] === "*" ? spec.lo : value(m[1]!);
+      let hi = m[1] === "*" ? spec.hi : m[2] ? value(m[2]) : m[3] ? spec.hi : lo;
+      // "sat-sun": a range ends on Sunday as 7.
+      if (spec.name === "weekday" && m[2] && hi === 0) hi = 7;
+      if (!(lo >= spec.lo && hi <= spec.hi && lo <= hi && step >= 1)) return `the ${spec.name} cannot be "${part}" (${spec.lo} to ${spec.hi})`;
+      for (let v = lo; v <= hi; v += step) set.add(spec.name === "weekday" && v === 7 ? 0 : v);
+    }
+    sets.push([...set].sort((a, b) => a - b));
+  }
+  return { min: sets[0]!, hour: sets[1]!, dom: sets[2]!, mon: sets[3]!, dow: sets[4]!, anyDom: fields[2]!.startsWith("*"), anyDow: fields[4]!.startsWith("*") };
+}
+
+/** The next time a cron schedule comes round in the zone after `after`, looking a year ahead; as nextDaily does it. */
+export function nextCron(expr: string, timeZone: string, after: number): number | undefined {
+  const c = parseCron(expr);
+  if (typeof c === "string") return undefined;
+  const p = localParts(after, timeZone);
+  for (let i = 0; i <= 366; i++) {
+    const day = new Date(Date.UTC(p.y, p.mo - 1, p.d + i));
+    if (!c.mon.includes(day.getUTCMonth() + 1)) continue;
+    const onDom = c.dom.includes(day.getUTCDate());
+    const onDow = c.dow.includes(day.getUTCDay());
+    // As cron has it: with both day fields given, either one will do.
+    if (!(c.anyDom ? c.anyDow || onDow : c.anyDow ? onDom : onDom || onDow)) continue;
+    for (const h of c.hour) {
+      for (const mi of c.min) {
+        if (i === 0 && (h < p.h || (h === p.h && mi <= p.mi))) continue;
+        const ts = zonedToUtc(day.getUTCFullYear(), day.getUTCMonth() + 1, day.getUTCDate(), h, mi, timeZone);
+        if (ts > after) return ts;
+      }
+    }
+  }
+  return undefined;
+}
+
 /** When a routine next fires by the clock; undefined for those that wait on something else. */
 export function nextRun(r: Pick<Routine, "trigger">, timeZone: string, now: number): number | undefined {
   const t = r.trigger;
   if (t.kind === "once") return t.at > now ? t.at : undefined;
   if (t.kind === "daily") return nextDaily(t.time, t.days, timeZone, now);
+  if (t.kind === "cron") return nextCron(t.expr, timeZone, now);
   return undefined;
 }
 
@@ -228,6 +314,8 @@ export function describeTrigger(t: Trigger, timeZone: string): string {
       return `once, ${whenSaid(t.at, timeZone)}`;
     case "daily":
       return `${daysSaid(t.days)} at ${t.time}`;
+    case "cron":
+      return `on the schedule "${t.expr}" (minute hour day month weekday)`;
     case "event":
       return `when the event "${t.event}" arrives`;
     case "leave":
@@ -263,7 +351,7 @@ export function describeAction(a: Action): string {
  */
 export interface RoutineInput {
   name?: unknown;
-  when?: unknown; // "once" | "daily" | "event" | "leave"
+  when?: unknown; // "once" | "daily" | "cron" | "event" | "leave" | "watch" | "page"
   /** once: local wall-clock time, "2026-09-26T17:00", in the user's zone. */
   localTime?: unknown;
   /** once: or this many minutes from now. */
@@ -274,6 +362,8 @@ export interface RoutineInput {
   time?: unknown;
   /** daily: 0–6 (Sunday first) or "mon".."sun"; empty or absent is every day. */
   days?: unknown;
+  /** cron: "0 8,12 * * *", minute hour day month weekday. */
+  cron?: unknown;
   /** event: its name. */
   event?: unknown;
   /** leave: minutes to spare on top of the drive. */
@@ -342,6 +432,15 @@ export function buildRoutine(input: RoutineInput, timeZone: string, now: number)
     const days = parseDays(input.days);
     if (typeof days === "string") return { ok: false, error: days };
     trigger = { kind: "daily", time, days };
+  } else if (when === "cron") {
+    const expr = str(input.cron).toLowerCase().split(/\s+/).join(" ");
+    if (expr.length > 100) return { ok: false, error: "keep the cron schedule under 100 characters" };
+    const c = parseCron(expr);
+    if (typeof c === "string") return { ok: false, error: c };
+    // An ask is a paid answer each time: no more than once an hour.
+    if (c.min.length !== 1) return { ok: false, error: "a cron schedule runs at most once an hour: one number for the minute, like 0 8,12 * * *" };
+    if (nextCron(expr, timeZone, now) === undefined) return { ok: false, error: "that schedule does not come round in the next year" };
+    trigger = { kind: "cron", expr };
   } else if (when === "event") {
     const event = str(input.event).toLowerCase();
     if (!EVENT_NAME.test(event)) return { ok: false, error: "an event name is letters, digits and _ . : - (up to 40), like arrived_home" };
@@ -373,7 +472,7 @@ export function buildRoutine(input: RoutineInput, timeZone: string, now: number)
       everyMin: Math.min(PAGE_EVERY_MAX, Math.max(PAGE_EVERY_MIN, Number.isFinite(every) ? every : PAGE_EVERY_MIN)),
     };
   } else {
-    return { ok: false, error: "when must be once, daily, event, leave or watch" };
+    return { ok: false, error: "when must be once, daily, cron, event, leave, watch or page" };
   }
 
   let action: Action;

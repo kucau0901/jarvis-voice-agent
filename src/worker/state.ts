@@ -664,6 +664,10 @@ export class JarvisState extends DurableObject<Env> {
     return r;
   }
 
+  routineRuns(id: string) {
+    return this.scheduler.runs(id);
+  }
+
   async fireEvent(event: string, data?: string, only?: string) {
     const started = await this.scheduler.fireEvent(event, data, Date.now(), only);
     if (started.length) await this.rearm();

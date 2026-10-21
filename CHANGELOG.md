@@ -83,6 +83,11 @@ of every release, and in the [README](README.md#updating).
 - **Export your data.** Settings → Export your data downloads one JSON file
   of your memory, routines, panels, conversation and jobs, and the household's
   settings without any key or token. For the owner and admins.
+- **Routines on a cron schedule, and their past runs.** For what "every day
+  at" cannot say, a routine can run on a cron schedule, such as
+  `0 8,12 * * *` (at 8 and at 12) or `0 9 1 * *` (on the 1st of the month),
+  set by asking or in Routines, at most hourly. Routines → Past runs shows a
+  routine's last 20 runs, with what each said.
 - **A first run.** The first time a chat is empty on a screen, Jarvis asks
   you to connect Google if your mail and calendar are not linked yet, then
   offers a first thing to take off you (the car, the house, your mail), each

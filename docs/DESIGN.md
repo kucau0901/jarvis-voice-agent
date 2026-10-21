@@ -1071,9 +1071,20 @@ now" in `lib/leave.ts`.
 **One alarm, pointed at the earliest thing due.** A Durable Object has a single
 alarm. After every change and every run it is set to the earliest due moment;
 the handler runs what is due and sets it again. Alarms survive restarts and
-redeploys, run on the free plan, and work the same in Docker's workerd. No cron
-is needed: the calendar is re-read every 15 minutes by the same alarm, only
-while a leave routine is on.
+redeploys, run on the free plan, and work the same in Docker's workerd. No
+Cloudflare Cron Trigger is needed: the calendar is re-read every 15 minutes by
+the same alarm, only while a leave routine is on, and a routine on a cron
+schedule ("0 8,12 * * *") is one more next time on it, worked out in the
+deployment's zone as a daily one's is. Its minute is one number, so it runs at
+most hourly: an `ask` is a paid answer each time.
+
+**A log beside the routine.** Routines → Past runs shows a routine's last 20
+runs, with the start of what each said, kept under `runs:<id>` rather than in
+the routine: the routine's stored shape stays as it was, and `lastRun` stays
+too, because `GET /api/v1/routines` returns it and the event cooldown reads it.
+A leave routine's calendar reads ("calendar read 10:15: …") are shown as its
+last run but not kept among its runs, or a read every 15 minutes would push
+the warnings out.
 
 **What a routine says is in the conversation too**, as Hark shows what its
 checks found: under a pill with the routine's name, on the asking side, hooked

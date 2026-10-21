@@ -967,6 +967,9 @@
   .panel .routine .rwhen { font-size: 13px; color: var(--fg); overflow-wrap: anywhere; }
   .panel .routine .rfacts { font-size: 12px; color: var(--dim); overflow-wrap: anywhere; }
   .panel .routine .rfacts.bad { color: var(--danger); }
+  /* Past runs (ui/Routines.ts), under the routine when opened. */
+  .panel .routine .rruns { display: grid; gap: 6px; margin-top: 8px; }
+  .panel .routine .rruns .note { margin: 0 0 4px; }
   .panel .rform { display: grid; gap: 8px; margin-top: 10px; }
   .panel .rform input:not([type=checkbox]), .panel .rform textarea {
     background: var(--field); color: var(--fg); border: 1px solid transparent; border-radius: 14px;

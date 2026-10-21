@@ -21,6 +21,7 @@ import { canAsk } from "../lib/openai-auth.ts";
  *   PATCH  /api/v1/routines          {id, enabled?, name?}
  *   DELETE /api/v1/routines?id=      remove one
  *   POST   /api/v1/routines/run      {id} — run it now
+ *   GET    /api/v1/routines/runs?id= its last 20 runs, newest first
  *   POST   /api/v1/trigger           {event, text?} — sets off event routines
  *
  * The routines live in, and run from, the Durable Object; these only relay.
@@ -38,7 +39,7 @@ function view(r: Routine, timeZone: string) {
 
 export async function handleRoutines(req: Request, env: Env, url: URL, principal: Principal): Promise<Response | null> {
   const p = url.pathname;
-  if (p !== "/api/v1/routines" && p !== "/api/v1/routines/run" && p !== "/api/v1/trigger") return null;
+  if (p !== "/api/v1/routines" && p !== "/api/v1/routines/run" && p !== "/api/v1/routines/runs" && p !== "/api/v1/trigger") return null;
   const state = stateStub(env);
   if (!state) return err(503, "routines need the STATE Durable Object");
   const tz = localeOf(env).timeZone;
@@ -63,6 +64,13 @@ export async function handleRoutines(req: Request, env: Env, url: URL, principal
     const r = (await state.listRoutines()).find((x) => x.id === id);
     return !!r && isTheirs(r.createdBy, person);
   };
+
+  if (p === "/api/v1/routines/runs") {
+    if (req.method !== "GET") return err(405, "GET only");
+    const id = url.searchParams.get("id") ?? "";
+    if (!(await theirs(id))) return err(404, "no such routine");
+    return json({ id, runs: await state.routineRuns(id) });
+  }
 
   if (p === "/api/v1/routines/run") {
     if (req.method !== "POST") return err(405, "method not allowed");

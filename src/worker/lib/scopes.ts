@@ -184,6 +184,7 @@ export function requiredScope(pathname: string, method: string): RouteRequiremen
     // so this does not widen what a device can reach.
     case "/api/v1/routines":
     case "/api/v1/routines/run":
+    case "/api/v1/routines/runs":
     case "/api/v1/trigger":
       return "routines";
 
