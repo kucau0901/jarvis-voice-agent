@@ -374,7 +374,7 @@ export class Home {
       const seen = this.readings.get(`${p.id}\n${r.key}`);
       if (r.every) {
         const got = seen?.got;
-        const parts: (string | HTMLElement)[] = [`updates every ${everyWords(r.every)}`];
+        const parts: (string | HTMLElement)[] = [`updates every ${everyWords(r.every)}${r.refresh ? ", even with Home closed" : ""}`];
         // Where a model's answer said it came from: a link only to an https page, its name only as words.
         if (got?.source?.startsWith("https://")) {
           try {

@@ -13,7 +13,9 @@ import { localeOf } from "./lib/locale.ts";
 import { upcomingEvents } from "./lib/leave.ts";
 import { Scheduler, type SchedulerDeps } from "./lib/scheduler.ts";
 import type { Routine, RoutineInput } from "./lib/routines.ts";
-import { narrow, type Grant } from "./lib/scopes.ts";
+import { allows, narrow, SCOPES, type Grant } from "./lib/scopes.ts";
+import { canAsk } from "./lib/openai-auth.ts";
+import { lookUp } from "./lib/router.ts";
 import { askForRoutine, travelFor } from "./routes/routines.ts";
 import { Jobs, type Job } from "./lib/jobs.ts";
 import { jobEngine } from "./routes/jobs.ts";
@@ -23,7 +25,7 @@ import { haConfig, renderTemplate, truthy } from "./lib/ha.ts";
 import { HUB_METHODS, HubHost, liveSessionIds } from "./lib/hub.ts";
 import { Relays, type Relay, type RelayDeps, type RelayKind } from "./lib/relays.ts";
 import { Chat, dmId, type ChatMessage } from "./lib/chat.ts";
-import { Panels, type PanelItem, type Reading } from "./lib/panels.ts";
+import { Panels, type PanelItem, type PanelRefreshDeps, type Reading } from "./lib/panels.ts";
 import { Conversation, jobSaid, routineSaid, type Said } from "./lib/conversation.ts";
 import { Images, type StoredImage } from "./lib/images.ts";
 import { Specialties } from "./lib/specialties.ts";
@@ -378,7 +380,7 @@ export class JarvisState extends DurableObject<Env> {
   /** Point the one alarm at whatever is due first: a routine, a job, a relay or a held alert. */
   private async rearm(): Promise<void> {
     const held = [...(await this.ctx.storage.list<{ until: number }>({ prefix: HELD })).values()].map((h) => h.until);
-    const wakes = [...(await Promise.all([this.scheduler.nextWake(), this.jobs.nextWake(), this.relays.nextWake()])), ...held].filter(
+    const wakes = [...(await Promise.all([this.scheduler.nextWake(), this.jobs.nextWake(), this.relays.nextWake(), this.panels.nextWake()])), ...held].filter(
       (t): t is number => t !== null,
     );
     const at = wakes.length ? Math.min(...wakes) : null;
@@ -392,8 +394,29 @@ export class JarvisState extends DurableObject<Env> {
     await this.scheduler.tick();
     await this.jobs.tick();
     await this.relays.tick();
+    // Last, and a couple a run: what this alarm has left of its budget is the panels' (lib/panels.ts).
+    await this.panels.refresh(await this.panelDeps());
     await this.releaseHeld();
     await this.rearm();
+  }
+
+  /** What keeping panels fresh with Home closed needs (lib/panels.ts refresh). */
+  private async panelDeps(): Promise<PanelRefreshDeps> {
+    const env = await this.localEnv();
+    const view = (person: string) => this.people.personView(person).catch(() => null);
+    return {
+      paused: async () => !(await canAsk(env)),
+      may: async (person) => {
+        const v = await view(person);
+        return !!v?.scopes && allows(v.scopes, "screen");
+      },
+      // As them, with what they may reach, less the house (no MCP to discover on an alarm) and Hermes.
+      look: async (person, text) => {
+        const v = await view(person);
+        const grants = narrow(v?.scopes ?? [], SCOPES.filter((s) => s !== "home" && s !== "hermes"));
+        return lookUp(await this.personEnv(env, person), text, grants, AbortSignal.timeout(90_000));
+      },
+    };
   }
 
   /* ---------- the family's messages (lib/relays.ts, lib/chat.ts) ------------------- */
@@ -504,12 +527,17 @@ export class JarvisState extends DurableObject<Env> {
     return this.panels.list(person);
   }
 
-  panelSet(person: string, title: string, items: PanelItem[], mode: "add" | "replace") {
-    return this.panels.set(person, title, items, mode);
+  // A tile kept fresh with Home closed wakes the alarm (lib/panels.ts refresh).
+  async panelSet(person: string, title: string, items: PanelItem[], mode: "add" | "replace") {
+    const p = await this.panels.set(person, title, items, mode);
+    await this.rearm();
+    return p;
   }
 
-  panelRemove(person: string, title: string, item: string | null) {
-    return this.panels.remove(person, title, item);
+  async panelRemove(person: string, title: string, item: string | null) {
+    const left = await this.panels.remove(person, title, item);
+    await this.rearm();
+    return left;
   }
 
   panelOrder(person: string, ids: string[]) {

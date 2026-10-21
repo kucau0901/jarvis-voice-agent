@@ -45,6 +45,8 @@ export interface TileButton {
 export interface TileAsk {
   ask: string;
   every: number;
+  /** Kept fresh with Home closed, by the state object's alarm (lib/panels.ts refresh); absent, only when looked at. */
+  refresh?: "hourly" | "daily";
 }
 
 export interface TileSpec {
@@ -66,10 +68,13 @@ const EVERY_MAX = 24 * 60;
 const isObject = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
 const callOf = (v: unknown): TileCall | null =>
   isObject(v) && typeof v.tool === "string" && TOOL_NAME.test(v.tool) && isObject(v.args) ? { tool: v.tool, args: v.args } : null;
-const askOf = (v: unknown): TileAsk | null =>
-  isObject(v) && typeof v.ask === "string" && v.ask.trim()
-    ? { ask: v.ask.trim().slice(0, MAX_ASK), every: Math.min(EVERY_MAX, Math.max(EVERY_MIN, Math.round(Number(v.every) || EVERY_MIN))) }
-    : null;
+const askOf = (v: unknown): TileAsk | null => {
+  if (!isObject(v) || typeof v.ask !== "string" || !v.ask.trim()) return null;
+  const ask = v.ask.trim().slice(0, MAX_ASK);
+  // Kept fresh by the alarm: its pace is the refresh's.
+  if (v.refresh === "hourly" || v.refresh === "daily") return { ask, every: v.refresh === "hourly" ? EVERY_MIN : EVERY_MAX, refresh: v.refresh };
+  return { ask, every: Math.min(EVERY_MAX, Math.max(EVERY_MIN, Math.round(Number(v.every) || EVERY_MIN))) };
+};
 export const isAsk = (r: TileCall | TileAsk): r is TileAsk => "ask" in r;
 
 /** A button's input, checked; null when it has none, a string when it is not one. */

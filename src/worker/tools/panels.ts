@@ -49,9 +49,9 @@ function tileFor(label: string, read: unknown, buttons: unknown, ctx: ToolContex
       return `the arguments for ${tool} are not JSON.`;
     }
   };
-  const r = (read ?? null) as { tool?: unknown; args?: unknown; ask?: unknown; every_minutes?: unknown } | null;
+  const r = (read ?? null) as { tool?: unknown; args?: unknown; ask?: unknown; every_minutes?: unknown; refresh?: unknown } | null;
   // A question for Jarvis when no tool of theirs can read it (the air quality in a town): asked again when stale.
-  const readCall = !r ? undefined : typeof r.ask === "string" && r.ask.trim() ? { ask: r.ask, every: r.every_minutes } : call(r.tool, r.args);
+  const readCall = !r ? undefined : typeof r.ask === "string" && r.ask.trim() ? { ask: r.ask, every: r.every_minutes, refresh: r.refresh } : call(r.tool, r.args);
   if (typeof readCall === "string") return readCall;
   const wired = [];
   for (const b of Array.isArray(buttons) ? buttons : []) {
@@ -127,6 +127,8 @@ export const panelSet: Tool = {
     "music_state with {}); or, for what no tool of yours can read (the air quality or weather in a town, a " +
     "price, the news), a question you will answer with web search (ask), looked up again when Home is open " +
     "and the answer is older than every_minutes (at least 60; e.g. 60 for air quality, 180 for weather), " +
+    "or, only when they ask for it to stay up to date with Home closed (\"keep it updated\"), refresh hourly or daily, " +
+    "at most three such tiles in all, " +
     "shown as a verdict and a few figures; or null. Never refuse a reading because no tool has it: ask. " +
     "buttons, up to 6, each run one of your tools with fixed arguments (tool, " +
     "and args as a JSON object, e.g. music_control with {\"action\":\"pause\"}) or, only when no tool call " +
@@ -172,8 +174,9 @@ export const panelSet: Tool = {
                 args: { type: ["string", "null"], description: "Its arguments, a JSON object as text, e.g. {}; null when asked." },
                 ask: { type: ["string", "null"], description: "The question to look up, e.g. 'Latest air-quality reading (AQI) for Springfield'; null for a tool." },
                 every_minutes: { type: ["integer", "null"], description: "How stale the answer may get before it is looked up again, at least 60; null for a tool." },
+                refresh: { type: ["string", "null"], enum: ["hourly", "daily", null], description: "Kept up to date with Home closed, only when asked for: hourly or daily. Null otherwise." },
               },
-              required: ["tool", "args", "ask", "every_minutes"],
+              required: ["tool", "args", "ask", "every_minutes", "refresh"],
               additionalProperties: false,
             },
             buttons: {
@@ -240,7 +243,8 @@ export const panelSet: Tool = {
     const shown = out.items.map((i) => {
       if (idsOf(i).length > 1) return `${i.label} (${idsOf(i).length} lights in one row)`;
       const read = i.kind === "tile" ? parseTile(i.ref)?.read : undefined;
-      return read && isAsk(read) ? `${i.label} (updates every ${everyWords(read.every)} while Home is open)` : i.label;
+      if (!read || !isAsk(read)) return i.label;
+      return `${i.label} (updates every ${everyWords(read.every)}${read.refresh ? ", even with Home closed" : " while Home is open"})`;
     });
     return `Done: "${out.title}" on their Home tab shows ${shown.join(", ") || "nothing yet"}. Their panels: ${all.map((p) => p.title).join(", ")}.`;
   },

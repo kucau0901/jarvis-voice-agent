@@ -523,7 +523,14 @@ so a question that is not about panels costs no more.
   nobody looks, where Hark checks every hour regardless). A screen shows
   the kept answer at once and asks for a new one only when it is stale; two
   screens open at once do not both pay for it, since the first claims it for
-  two minutes.
+  two minutes. The exception is one asked for: "keep it updated" makes a
+  tile refresh hourly or daily with Home closed (lib/panels.ts refresh),
+  from the state object's one alarm, as Hark's tiles are. At most three a
+  person and two a run, last in the alarm so they take what its budget has
+  left, through the same claim so Home and the alarm never both pay; with
+  reading tools only and without the house (no MCP to discover with nobody
+  waiting); after a look that found nothing, again in a quarter hour, then
+  less often; and nothing at all with no plan and no key.
 - **Alerts from a panel.** "Alert me", in an opened tile, makes a routine of
   its person's (lib/panel-alerts.ts; POST /api/hub/panels/alert), so it
   needs `routines` and is changed or removed in Routines. A thing in the

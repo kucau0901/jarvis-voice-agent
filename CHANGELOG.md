@@ -83,6 +83,11 @@ of every release, and in the [README](README.md#updating).
 - **Export your data.** Settings → Export your data downloads one JSON file
   of your memory, routines, panels, conversation and jobs, and the household's
   settings without any key or token. For the owner and admins.
+- **Panels kept up to date with Home closed.** Ask for a tile to "keep it
+  updated", and Jarvis refreshes its reading hourly or daily on its own, as
+  Hark's tiles do, so it is fresh when you open Home or an alert needs it.
+  At most three such tiles each; More info says so. Each refresh is an
+  answer from the model, so it costs what one does.
 - **A live sky.** Behind the app, a sky in the theme's colours follows the
   sun where your home is, and the clouds and rain from your Home
   Assistant weather, hazy when a panel's air-quality reading is poor. It

@@ -38,6 +38,8 @@ export interface PanelRow {
   tool?: string;
   /** …or, for one Jarvis looks up, how many minutes old it may get before it is looked up again (TileAsk.every). */
   every?: number;
+  /** That one kept fresh with Home closed (lib/panels.ts refresh). */
+  refresh?: boolean;
   /** A to-do ticked off: struck through, at the bottom, until cleared. */
   done?: boolean;
   /** The alerts set on it, a few words each ("above 200", "opens"): routines of theirs that watch it. */

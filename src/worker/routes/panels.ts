@@ -13,12 +13,11 @@ import { actOn, historyOf, LIVE, readTileOf, viewPanels, type PanelSources } fro
 import { setAlert } from "../lib/panel-alerts.ts";
 import { keyOf } from "../lib/panels.ts";
 import { isTheirs } from "../lib/context.ts";
-import { jobTool } from "../lib/jobs.ts";
 import { baseTools, outputText } from "../tools/registry.ts";
 import { mcpSessions, mcpTools } from "../tools/mcp.ts";
 import { memoryFor } from "../lib/memory.ts";
 import { Collector } from "../lib/collector.ts";
-import { run } from "../lib/router.ts";
+import { lookUp, run } from "../lib/router.ts";
 import type { PanelsReply } from "../../shared/panels.ts";
 
 /**
@@ -98,11 +97,7 @@ export async function handlePanels(req: Request, env: Env, principal: Principal)
       return sink.finish().text;
     },
     // A tile's reading: asked with nobody pressing anything, so reading tools only, as a background job has.
-    async look(text) {
-      const sink = new Collector();
-      await run(env, [{ role: "user", text }], sink, AbortSignal.any([req.signal, AbortSignal.timeout(90_000)]), grants, { surface: "chat", assist: true, toolFilter: jobTool });
-      return sink.finish().text;
-    },
+    look: (text) => lookUp(env, text, grants, AbortSignal.any([req.signal, AbortSignal.timeout(90_000)])),
   };
 
   if (p === "/api/hub/panels" && req.method === "GET") {

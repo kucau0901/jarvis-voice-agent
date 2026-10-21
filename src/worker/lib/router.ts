@@ -26,7 +26,8 @@ import { episodeOfChain, pastBlock } from "./episodes.ts";
 import { localeOf } from "./locale.ts";
 import { allows, type Grant } from "./scopes.ts";
 import { DRAWS_ON_SCREEN } from "../tools/place.ts";
-import { isResearchCap } from "./jobs.ts";
+import { isResearchCap, jobTool } from "./jobs.ts";
+import { Collector } from "./collector.ts";
 import { clientFor, forKey, forPlan, modelAuth, planFailed, planRespond, refusalOf } from "./openai-auth.ts";
 import { DEFAULT_CHAR_BUDGET, glassesInstructions } from "./glasses.ts";
 import { spokenReplyInstructions } from "./prompt.ts";
@@ -320,6 +321,17 @@ function attachedSaid(opts: RunOptions): string {
       : "The user took these photos just now, with their phone, and their latest message is about them.";
   }
   return n === 1 ? "The user attached this to their latest message, which is about it." : "The user attached these to their latest message, which is about them.";
+}
+
+/**
+ * A reading for a panel's tile, asked with nobody pressing anything: with
+ * reading tools only, as a background job has (lib/jobs.ts jobTool). Its
+ * words. For Home (routes/panels.ts) and the alarm (lib/panels.ts refresh).
+ */
+export async function lookUp(env: Env, text: string, grants: readonly Grant[], signal: AbortSignal): Promise<string> {
+  const sink = new Collector();
+  await run(env, [{ role: "user", text }], sink, signal, grants, { surface: "chat", assist: true, toolFilter: jobTool });
+  return sink.finish().text;
 }
 
 export async function run(

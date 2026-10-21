@@ -1,4 +1,5 @@
 import type { Storage } from "./state-host.ts";
+import { isAsk, parseTile, readTile, type TileSpec } from "./panel-tiles.ts";
 
 /**
  * Panels on a person's Home tab (src/app/ui/Home.ts), made by asking Jarvis
@@ -88,6 +89,36 @@ const readsKey = (person: string) => `panelreads:${person}`;
 const ASKING_MS = 120_000;
 /** Readings kept per person; the oldest go first, so a removed tile's is not kept for ever. */
 const MAX_READINGS = 40;
+/**
+ * Tiles kept fresh with Home closed (refresh): each an answer from a model,
+ * so a few a person, and a couple a run of the alarm, which other work shares.
+ */
+export const MAX_REFRESHED = 3;
+const MAX_PER_RUN = 2;
+/** After a look that failed, again in a quarter hour, then longer each time, never past the tile's own pace. */
+const RETRY_MS = 15 * 60_000;
+const refreshKey = (person: string) => `panelrefresh:${person}`;
+type Refreshes = Record<string, { next: number; fails: number }>;
+
+/** What the alarm's refresh needs from the object (state.ts). */
+export interface PanelRefreshDeps {
+  /** No plan and no key: nothing is asked. */
+  paused(): Promise<boolean>;
+  /** Whether they may have panels still: someone who left, or lost `screen`, is not asked for. */
+  may(person: string): Promise<boolean>;
+  /** A reading looked up for them, with reading tools only (lib/router.ts lookUp). */
+  look(person: string, text: string): Promise<string>;
+}
+
+/** The tiles a person's panels ask to be kept fresh, by key. */
+function refreshedOf(panels: readonly Panel[]): { key: string; spec: TileSpec; every: number }[] {
+  return panels.flatMap((p) =>
+    p.items.flatMap((i) => {
+      const spec = i.kind === "tile" ? parseTile(i.ref) : null;
+      return spec?.read && isAsk(spec.read) && spec.read.refresh ? [{ key: tileKey(i.ref), spec, every: spec.read.every * 60_000 }] : [];
+    }),
+  );
+}
 type Reads = Record<string, { reading?: Reading; asking?: number }>;
 const clean = (s: string, max: number): string =>
   s.replace(/[\u0000-\u001f\u007f<>]/g, " ").replace(/\s+/g, " ").trim().slice(0, max);
@@ -127,6 +158,9 @@ export class Panels {
     }
     const house = new Set([...all.filter((p) => p !== old).flatMap((p) => p.items), ...kept].flatMap(idsOf));
     if (house.size > MAX_HOUSE) return `Panels can show at most ${MAX_HOUSE} things in the house altogether; remove some first.`;
+    if (refreshedOf([...all.filter((p) => p !== old), { id: "", title: "", items: kept, at: now }]).length > MAX_REFRESHED) {
+      return `At most ${MAX_REFRESHED} tiles can be kept fresh with Home closed; make this one update when Home is open instead.`;
+    }
     const panel: Panel = { id: old?.id ?? newId(), title: old && mode === "add" ? old.title : name, items: kept, at: now };
     await this.storage.put(key(person), old ? all.map((p) => (p.id === old.id ? panel : p)) : [...all, panel]);
     return panel;
@@ -260,5 +294,58 @@ export class Panels {
   async forget(person: string): Promise<void> {
     await this.storage.delete(key(person));
     await this.storage.delete(readsKey(person));
+    await this.storage.delete(refreshKey(person));
+  }
+
+  /** Everyone's tiles kept fresh, with when each is next due. */
+  private async due(now: number): Promise<{ person: string; key: string; spec: TileSpec; every: number; next: number }[]> {
+    const out: { person: string; key: string; spec: TileSpec; every: number; next: number }[] = [];
+    // "panels:" alone: "panelreads:" and "panelrefresh:" are not under it.
+    for (const [k, panels] of await this.storage.list<Panel[]>({ prefix: "panels:" })) {
+      const person = k.slice("panels:".length);
+      const tiles = refreshedOf(panels);
+      if (!tiles.length) continue;
+      const plan = (await this.storage.get<Refreshes>(refreshKey(person))) ?? {};
+      for (const t of tiles) out.push({ person, ...t, next: plan[t.key]?.next ?? now });
+    }
+    return out;
+  }
+
+  /** When a tile kept fresh is next due, for the object's alarm (state.ts rearm); null with none. */
+  async nextWake(now = Date.now()): Promise<number | null> {
+    const all = await this.due(now);
+    return all.length ? Math.max(now, Math.min(...all.map((t) => t.next))) : null;
+  }
+
+  /**
+   * The tiles due, the longest waiting first, a few a run: each looked up as
+   * Home would, through the same claim, so Home and the alarm never both pay
+   * for one. Next due at its pace from the reading it got; after a look that
+   * failed, again sooner, then less often.
+   */
+  async refresh(deps: PanelRefreshDeps, now = Date.now()): Promise<void> {
+    const due = (await this.due(now)).filter((t) => t.next <= now + 1000).sort((a, b) => a.next - b.next).slice(0, MAX_PER_RUN);
+    if (!due.length) return;
+    const paused = await deps.paused();
+    for (const t of due) {
+      if (!paused && (await deps.may(t.person))) {
+        await readTile(t.spec, {
+          tool: async () => null,
+          ask: async () => "",
+          look: (text) => deps.look(t.person, text),
+          kept: (tile) => this.reading(t.person, tile),
+          claim: (tile, every) => this.claimReading(t.person, tile, every, now),
+          keep: (tile, reading) => this.keepReading(t.person, tile, reading),
+        }, t.key).catch(() => null);
+      }
+      const plan = (await this.storage.get<Refreshes>(refreshKey(t.person))) ?? {};
+      const reading = await this.reading(t.person, t.key);
+      const fails = reading && reading.at + t.every > now ? 0 : (plan[t.key]?.fails ?? 0) + 1;
+      plan[t.key] = { next: fails ? now + Math.min(t.every, RETRY_MS * 2 ** (fails - 1)) : reading!.at + t.every, fails };
+      // Only tiles still kept fresh are remembered.
+      const still = new Set(refreshedOf(await this.list(t.person)).map((x) => x.key));
+      for (const k of Object.keys(plan)) if (!still.has(k)) delete plan[k];
+      await this.storage.put(refreshKey(t.person), plan);
+    }
   }
 }

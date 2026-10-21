@@ -1,7 +1,7 @@
 // Panels on a person's Home tab: what is kept (lib/panels.ts), how each thing
 // is read and which buttons its state offers (lib/panel-view.ts), what a press
 // is checked against, and what the tool will put on one (tools/panels.ts).
-import { MAX_HOUSE, MAX_ITEMS, MAX_PANELS, noteKey, Panels, tileKey, type Panel } from "../src/worker/lib/panels.ts";
+import { MAX_HOUSE, MAX_ITEMS, MAX_PANELS, MAX_REFRESHED, noteKey, Panels, tileKey, type Panel, type PanelRefreshDeps } from "../src/worker/lib/panels.ts";
 import { actOn, carActions, houseActions, houseActive, houseIcon, houseValue, viewPanels, type PanelSources } from "../src/worker/lib/panel-view.ts";
 import { panelList, panelRemove, panelSet, panelsText } from "../src/worker/tools/panels.ts";
 import { areasOf, arrange } from "../src/worker/lib/panel-arrange.ts";
@@ -643,6 +643,54 @@ console.log("a tile's car buttons follow the car");
   const fine = await actOn(p, tileKey(ref), "b1", src, signal);
   check("Lock pressed after the car was locked sends nothing; Unlock goes through",
     stale.status === 409 && fine.status === 200 && ran.join() === "car_command unlock", { stale, fine, ran });
+}
+
+console.log("a reading kept fresh with Home closed");
+{
+  const hourly = tileSpec({ read: { ask: "Latest air quality for Springfield", every: 300, refresh: "hourly" }, buttons: [] });
+  check("hourly or daily, its pace the refresh's", typeof hourly === "object" && "ask" in hourly.read! && hourly.read.refresh === "hourly" && hourly.read.every === 60 &&
+    (tileSpec({ read: { ask: "x", refresh: "daily" }, buttons: [] }) as { read: { every: number } }).read.every === 1440 && !("refresh" in (tileSpec({ read: { ask: "x", refresh: "weekly" }, buttons: [] }) as { read: object }).read), hourly);
+  // A reading is stamped with the clock as it is looked up, so the test runs on it.
+  const T = Date.now();
+  const near = (a: number | null, b: number) => a !== null && Math.abs(a - b) < 5_000;
+  const ref = (n: number, refresh?: string) => JSON.stringify({ read: { ask: `Reading ${n}`, every: 60, ...(refresh ? { refresh } : {}) }, buttons: [] });
+  const p = new Panels(fakeStorage());
+  check("nothing to wake for without one", (await p.nextWake(T)) === null);
+  await p.set("u_sara", "Outside", [{ kind: "tile", ref: ref(1, "hourly"), label: "Air" }, { kind: "tile", ref: ref(2), label: "Weather" }], "replace", T);
+  check("one kept fresh: due at once", (await p.nextWake(T)) === T);
+  const many = await p.set("u_sara", "More", [1, 2, 3].map((n) => ({ kind: "tile" as const, ref: ref(10 + n, "daily"), label: `T${n}` })), "replace", T);
+  check(`at most ${MAX_REFRESHED} a person`, typeof many === "string" && /At most 3/.test(many), many);
+  await p.set("u_sara", "More", [1, 2].map((n) => ({ kind: "tile" as const, ref: ref(10 + n, "daily"), label: `T${n}` })), "replace", T);
+  const asked: string[] = [];
+  let answer = "Good: API 40\nAPI: 40";
+  const deps = (over: Partial<PanelRefreshDeps> = {}): PanelRefreshDeps => ({
+    paused: async () => false,
+    may: async () => true,
+    look: async (person, text) => (asked.push(`${person}:${text.split("\n")[0]}`), answer),
+    ...over,
+  });
+  await p.refresh(deps(), T);
+  check("a couple a run, the rest after", asked.length === 2, asked);
+  await p.refresh(deps(), T + 1000);
+  check("…the third next run; the one only shown on Home never", asked.length === 3 && !asked.some((a) => a.endsWith("Reading 2")), asked);
+  const air = tileKey(ref(1, "hourly"));
+  check("kept where Home reads it", (await p.reading("u_sara", air))?.figures[0]?.value === "40");
+  check("next due at its pace from the reading", near(await p.nextWake(T + 2000), T + 60 * 60_000), (await p.nextWake(T + 2000))! - T);
+  await p.refresh(deps(), T + 30 * 60_000);
+  check("not before then", asked.length === 3);
+  answer = "";
+  const late = T + 61 * 60_000;
+  await p.refresh(deps(), late);
+  const failed = asked.length;
+  await p.refresh(deps(), late + 1000);
+  check("a look that found nothing: not again at once", asked.length === failed, asked.length - failed);
+  check("…but again in a quarter of an hour", near(await p.nextWake(late + 2000), late + 15 * 60_000), (await p.nextWake(late + 2000))! - late);
+  const quiet = new Panels(fakeStorage());
+  await quiet.set("u_sara", "Outside", [{ kind: "tile", ref: ref(1, "hourly"), label: "Air" }], "replace", T);
+  const before = asked.length;
+  await quiet.refresh(deps({ paused: async () => true }), T);
+  await quiet.refresh(deps({ may: async () => false }), T + 16 * 60_000);
+  check("no plan or key, or someone who left: nothing asked", asked.length === before);
 }
 
 console.log("a reading Jarvis looks up, as Hark's air quality");
