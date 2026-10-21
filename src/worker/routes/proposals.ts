@@ -9,8 +9,10 @@ import { baseTools, outputText } from "../tools/registry.ts";
 import { mailDraftSend } from "../lib/mail-draft.ts";
 
 /**
- *   GET  /api/hub/proposals            {open, recent}: what the person's jobs proposed (lib/proposals.ts)
- *   POST /api/hub/proposals/answer     {id, answer: "approve" | "decline"}
+ *   GET    /api/hub/proposals            {open, recent, allowed}: what the person's jobs proposed (lib/proposals.ts)
+ *   POST   /api/hub/proposals/answer     {id, answer: "approve" | "decline"}
+ *   POST   /api/hub/proposals/allow      {id}: let jobs make that kind of call without asking
+ *   DELETE /api/hub/proposals/allow?category=   ask again for that kind
  *
  * A person's own, never a device's (the gate refuses devices everything
  * under /api/hub/), and only their own: a proposal is looked up under the
@@ -26,7 +28,7 @@ const APPROVED_ONLY = [mailDraftSend];
 
 export async function handleProposals(req: Request, env: Env, ctx: ExecutionContext, principal: Principal): Promise<Response | null> {
   const url = new URL(req.url);
-  if (url.pathname !== "/api/hub/proposals" && url.pathname !== "/api/hub/proposals/answer") return null;
+  if (url.pathname !== "/api/hub/proposals" && url.pathname !== "/api/hub/proposals/answer" && url.pathname !== "/api/hub/proposals/allow") return null;
   if (principal.kind === "device") return err(403, "proposals are answered by their person, signed in");
   const state = stateStub(env);
   if (!state) return err(503, "proposals need the STATE Durable Object");
@@ -35,11 +37,30 @@ export async function handleProposals(req: Request, env: Env, ctx: ExecutionCont
 
   if (url.pathname === "/api/hub/proposals") {
     if (req.method !== "GET") return err(405, "GET only");
-    const all = await state.proposalsOf(me, now);
+    const [all, allowed] = await Promise.all([state.proposalsOf(me, now), state.proposalAllowed(me)]);
     return json({
       open: all.filter((p) => p.state === "pending").map(viewOf),
       recent: all.filter((p) => p.state !== "pending").slice(0, RECENT).map(viewOf),
+      allowed,
     });
+  }
+
+  if (url.pathname === "/api/hub/proposals/allow") {
+    if (req.method === "DELETE") {
+      const category = url.searchParams.get("category") ?? "";
+      return (await state.proposalDisallow(me, category)) ? json({ ok: true }) : err(404, "That kind is not allowed without asking.");
+    }
+    if (req.method !== "POST") return err(405, "POST or DELETE");
+    const b = await readObjectOrEmpty(req);
+    const id = typeof b.id === "string" && PROPOSAL_ID.test(b.id) ? b.id : "";
+    const p = id ? await state.proposalGet(me, id, now) : null;
+    if (!p) return err(404, "No such proposal.");
+    // Weighed again from what is stored: only a call that still reads as reversible, of the kind it was filed as.
+    const local = baseTools(env).find((t) => t.name === p.action.tool);
+    const w = local ? weigh(local, p.action.args) : null;
+    if (!w || w.risk !== "reversible" || w.category !== p.category) return err(409, "Only a reversible kind of thing can be allowed without asking.");
+    const why = await state.proposalAllow(me, id, now);
+    return why ? err(409, why) : json({ ok: true, allowed: await state.proposalAllowed(me) });
   }
 
   if (req.method !== "POST") return err(405, "POST only");

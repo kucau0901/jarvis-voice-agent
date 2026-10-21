@@ -650,6 +650,9 @@ interface ProposalApi {
   proposalClaim(person: string, id: string, now: number): Promise<Proposal | string>;
   proposalDecline(person: string, id: string, now: number): Promise<Proposal | string>;
   proposalFinish(person: string, id: string, outcome: { ok: boolean; text: string }, now: number): Promise<Proposal | null>;
+  proposalAllowed(person: string): Promise<string[]>;
+  proposalAllow(person: string, id: string, now: number): Promise<string | null>;
+  proposalDisallow(person: string, category: string): Promise<boolean>;
 }
 
 /** The owner's ChatGPT plan, which model calls use first (lib/chatgpt-plan.ts; state.ts). */

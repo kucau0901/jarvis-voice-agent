@@ -17,6 +17,9 @@ export interface ProposalView {
   expires: number;
   action: { tool: string; args: Record<string, unknown> };
   outcome?: { ok: boolean; text: string };
+  by?: "tap" | "standing";
+  /** A reversible kind (car_command:lock), which jobs may then be let do without asking. */
+  category?: string;
 }
 
 const SAID: Record<ProposalView["state"], string> = {
@@ -48,8 +51,27 @@ function draw(key: string, card: HTMLElement, p: ProposalView): void {
     el("b", "doctitle", p.says),
     el("small", "pagesaid", p.state === "pending" ? `${p.why} · ${left(p.expires)}` : p.why),
   );
-  const said = el("small", "pagesaid", SAID[p.state] + (p.outcome?.text ? `: ${p.outcome.text}` : ""));
-  if (p.state !== "pending") return void card.appendChild(said);
+  const said = el("small", "pagesaid", (p.by === "standing" ? "Done without asking (you allow it)" : SAID[p.state]) + (p.outcome?.text ? `: ${p.outcome.text}` : ""));
+  if (p.state !== "pending") {
+    card.appendChild(said);
+    // Approved and done, and of a kind that can be put back: jobs may do it without asking from now on.
+    if (p.state === "done" && p.by === "tap" && p.risk === "reversible" && p.category) {
+      const allow = button("Let jobs do this without asking", async () => {
+        allow.disabled = true;
+        try {
+          await api(key, "POST", "/api/hub/proposals/allow", { id: p.id });
+          allow.replaceWith(el("small", "pagesaid", "Jobs now do this without asking. Stop it in Jobs."));
+        } catch (e) {
+          allow.disabled = false;
+          said.textContent = e instanceof Error ? e.message : String(e);
+        }
+      }, "docopen");
+      const row = el("div", "mdbtns");
+      row.appendChild(allow);
+      card.appendChild(row);
+    }
+    return;
+  }
   const btns = el("div", "mdbtns");
   const answer = (how: "approve" | "decline") => async () => {
     for (const b of btns.querySelectorAll("button")) b.disabled = true;
@@ -90,4 +112,42 @@ async function refresh(key: string, ids: readonly string[], box?: HTMLElement): 
     if (box) box.appendChild(proposalCard(key, p));
     else settle(key, p);
   }
+}
+
+/** A kind of call, as the person reads it. */
+export function labelOf(category: string): string {
+  const [tool, what = ""] = category.split(":");
+  const words = what.replace(/_/g, " ");
+  return tool === "car_command" ? `Car: ${words}` : tool === "mail_manage" ? `Mail: ${words}` : tool === "calendar_add" ? "Calendar: add an event" : category;
+}
+
+/**
+ * The Jobs panel's part (ui/Jobs.ts): what is waiting for an OK, the kinds
+ * of thing allowed without asking (with Stop), and what was decided lately,
+ * each only when there is something to show.
+ */
+export function proposalsBox(key: string): { el: HTMLElement; load(): Promise<void> } {
+  const box = el("div", "proposals");
+  const load = async (): Promise<void> => {
+    const r = (await api(key, "GET", "/api/hub/proposals").catch(() => null)) as { open: ProposalView[]; recent: ProposalView[]; allowed: string[] } | null;
+    box.replaceChildren();
+    if (!r) return;
+    if (r.open.length) box.append(el("h3", "", "Waiting for your OK"), ...r.open.map((p) => proposalCard(key, p)));
+    if (r.allowed.length) {
+      box.appendChild(el("h3", "", "Allowed without asking"));
+      for (const c of r.allowed) {
+        const row = el("div", "pagecard");
+        row.append(el("b", "doctitle", labelOf(c)), el("small", "pagesaid", "Jobs do this without asking you first."));
+        const btns = el("div", "mdbtns");
+        btns.appendChild(button("Stop", async () => {
+          await api(key, "DELETE", `/api/hub/proposals/allow?category=${encodeURIComponent(c)}`).catch(() => {});
+          await load();
+        }, "docopen"));
+        row.appendChild(btns);
+        box.appendChild(row);
+      }
+    }
+    if (r.recent.length) box.append(el("h3", "", "Decided lately"), ...r.recent.slice(0, 5).map((p) => proposalCard(key, p)));
+  };
+  return { el: box, load };
 }

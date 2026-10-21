@@ -75,6 +75,9 @@ export const PROPOSAL_ID = /^a[0-9a-hjkmnp-tv-z]{20}$/;
 const ALPHABET = "0123456789abcdefghjkmnpqrstvwxyz";
 const key = (person: string, id: string) => `prop:${person}:${id}`;
 const prefix = (person: string) => `prop:${person}:`;
+/** The kinds of reversible call a person lets their jobs make without asking ("car_command:lock"). Not under prop:, so never listed with them. */
+const allowKey = (person: string) => `propallow:${person}`;
+const MAX_ALLOWED = 20;
 
 /** Arguments compared whatever order the model wrote them in. */
 const canonical = (v: unknown): string =>
@@ -126,9 +129,12 @@ export class Proposals {
     const mine = await this.list(input.person, now);
     const same = canonical(input.action.args);
     const again = mine.find((p) => p.from.id === input.from.id && p.action.tool === input.action.tool && canonical(p.action.args) === same);
-    if (again) return again;
+    // One already done without asking is never run again: only words come back, never the record held() would run.
+    if (again) return again.by === "standing" ? `Already done without asking earlier: ${again.says} (${again.state}). Do not file it again.` : again;
     if (mine.filter((p) => p.from.id === input.from.id).length >= PER_JOB) return `At most ${PER_JOB} proposals from one job: say the rest in the answer.`;
-    if (mine.filter((p) => p.state === "pending").length >= PENDING_MAX) return `${PENDING_MAX} proposals are already waiting for the user: say this one in the answer.`;
+    // Allowed without asking: a reversible call of a kind the person said their jobs may make, and only that.
+    const standing = input.weighed.risk === "reversible" && !!input.weighed.category && (await this.allowed(input.person)).includes(input.weighed.category);
+    if (!standing && mine.filter((p) => p.state === "pending").length >= PENDING_MAX) return `${PENDING_MAX} proposals are already waiting for the user: say this one in the answer.`;
     const bytes = crypto.getRandomValues(new Uint8Array(20));
     const p: Proposal = {
       id: "a" + [...bytes].map((b) => ALPHABET[b % 32]).join(""),
@@ -143,7 +149,7 @@ export class Proposals {
       grants: [...input.grants],
       createdAt: now,
       expires: now + DECIDE_MS,
-      state: "pending",
+      ...(standing ? { state: "running", by: "standing", decidedAt: now } : { state: "pending" }),
     };
     await this.storage.put(key(p.person, p.id), p);
     await this.prune(input.person, now);
@@ -181,6 +187,33 @@ export class Proposals {
     return done;
   }
 
+  /** The kinds the person lets their jobs make without asking. */
+  async allowed(person: string): Promise<string[]> {
+    return (await this.storage.get<string[]>(allowKey(person))) ?? [];
+  }
+
+  /**
+   * Let jobs make this kind of call without asking: only from one the
+   * person approved with a tap and that ran, and only a reversible kind.
+   * The kind is the record's, never one a request names.
+   */
+  async allow(person: string, id: string, now: number): Promise<string | null> {
+    const p = await this.get(person, id, now);
+    if (!p) return "No such proposal.";
+    if (p.state !== "done" || p.by !== "tap" || p.risk !== "reversible" || !p.category) return "Only a reversible kind of thing, once you have approved it, can be allowed without asking.";
+    const had = await this.allowed(person);
+    if (!had.includes(p.category)) await this.storage.put(allowKey(person), [...had, p.category].slice(-MAX_ALLOWED));
+    return null;
+  }
+
+  /** Asking again for that kind. */
+  async disallow(person: string, category: string): Promise<boolean> {
+    const had = await this.allowed(person);
+    if (!had.includes(category)) return false;
+    await this.storage.put(allowKey(person), had.filter((c) => c !== category));
+    return true;
+  }
+
   /** A job's result, with what it proposed: on the alert, for its cards, and in its words, for every channel. */
   async attach(alert: Alert, person: string, now: number): Promise<Alert> {
     if (!alert.job) return alert;
@@ -201,6 +234,7 @@ export class Proposals {
   async forget(person: string): Promise<void> {
     const all = await this.storage.list({ prefix: prefix(person) });
     for (const k of all.keys()) await this.storage.delete(k);
+    await this.storage.delete(allowKey(person));
   }
 
   /** The decided are kept a month, the newest hundred; the pending until decided. */
@@ -244,8 +278,12 @@ export const proposable = (t: Pick<Tool, "name" | "propose">): boolean => !!t.pr
 
 export const PROPOSE_ONLY = "PROPOSE ONLY: calling this does not do it; it asks the user, who approves with a tap. ";
 
-/** How a held tool's call is filed (routes/jobs.ts): the proposal, or why it was not. */
+/**
+ * How a held tool's call is filed (routes/jobs.ts): the proposal, or why it
+ * was not; and how one allowed without asking is finished once run.
+ */
 export type File = (action: Proposal["action"], weighed: Weighed, ctx: ToolContext) => Promise<Proposal | string>;
+export type Finish = (p: Proposal, outcome: { ok: boolean; text: string }, ctx: ToolContext) => Promise<unknown>;
 
 /** What the job model is told of a call it proposed. */
 export function filed(p: Proposal | string): string {
@@ -260,7 +298,7 @@ export function filed(p: Proposal | string): string {
  * any other, left out. The real run is never among a job's tools, so no step
  * can reach it.
  */
-export function held(tools: readonly Tool[], file: File): Tool[] {
+export function held(tools: readonly Tool[], file: File, finish: Finish): Tool[] {
   return tools.flatMap((t): Tool[] => {
     if (jobTool(t)) return [t];
     if (!proposable(t)) return [];
@@ -275,7 +313,19 @@ export function held(tools: readonly Tool[], file: File): Tool[] {
       async run(args, ctx): Promise<ToolOutput> {
         const w = weigh(t, args);
         if (!w) return "That cannot be proposed from a job: say in your answer what you would do.";
-        return filed(await file({ tool: t.name, args }, w, ctx));
+        const p = await file({ tool: t.name, args }, w, ctx);
+        if (typeof p === "string" || p.state !== "running" || p.by !== "standing") return filed(p);
+        // Allowed without asking: done now, once, and said so.
+        try {
+          const out = await t.run(args, ctx);
+          const text = typeof out === "string" ? out : out.text;
+          await finish(p, { ok: true, text }, ctx);
+          return `Done without asking (the user allows this kind): ${text}`;
+        } catch (e) {
+          const text = `That failed: ${e instanceof Error ? e.message : String(e)}`;
+          await finish(p, { ok: false, text }, ctx);
+          return text;
+        }
       },
     }];
   });

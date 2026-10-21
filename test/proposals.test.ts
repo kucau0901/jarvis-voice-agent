@@ -128,7 +128,7 @@ console.log("\nwhat a job is handed");
   const real: Tool = { ...carCommand, run: async () => ((ranReal = true), "Locked.") };
   const read: Tool = { name: "recall", description: "r", parameters: {}, run: async () => "" };
   const mcp: Tool = { name: "home__ha_call_service", description: "Call a service.", parameters: { type: "object" }, strict: false, run: async () => ((ranReal = true), "ok") };
-  const out = held([read, real, mcp], async (action, w, ctx) => (filedCalls.push({ action, w, grants: ctx.grants }), "filed"));
+  const out = held([read, real, mcp], async (action, w, ctx) => (filedCalls.push({ action, w, grants: ctx.grants }), "filed"), async () => {});
   check("one that reads: the same tool", out[0] === read);
   check("one that acts: the same name and arguments, said to only propose", out[1]!.name === "car_command" && out[1]!.parameters === carCommand.parameters && out[1]!.description.startsWith(PROPOSE_ONLY) && out[2]!.strict === false);
   const said = await out[1]!.run({ ...lock.args }, { grants: ["car.control"] } as never);
@@ -136,6 +136,42 @@ console.log("\nwhat a job is handed");
   check("its run files the call, and never makes it", !ranReal && filedCalls.length === 2 && said === "filed" && JSON.stringify((filedCalls[0] as { action: unknown }).action) === JSON.stringify({ tool: "car_command", args: lock.args }), filedCalls);
   const odd = await out[1]!.run({ ...lock.args, command: "self_destruct" }, {} as never);
   check("arguments that cannot be proposed: not filed", filedCalls.length === 2 && /cannot be proposed/.test(String(odd)));
+}
+
+console.log("\nallowed without asking: a reversible kind, once approved");
+{
+  const st = fakeStorage();
+  const props = new Proposals(st as never);
+  const p = (await props.add(input(), T)) as Proposal;
+  check("not before it is approved and done", typeof (await props.allow("u_sara", p.id, T)) === "string");
+  await props.claim("u_sara", p.id, T);
+  await props.finish("u_sara", p.id, { ok: true, text: "Locked." }, T);
+  check("once approved by a tap and done: that kind is allowed", (await props.allow("u_sara", p.id, T)) === null && (await props.allowed("u_sara")).join() === "car_command:lock");
+  const auto = (await props.add(input({ from: { kind: "job", id: "j2", title: "x" } }), T)) as Proposal;
+  check("a later job's call of that kind: run without asking", auto.state === "running" && auto.by === "standing");
+  const unlock = { tool: "car_command", args: { ...lock.args, command: "unlock" } };
+  const asks = (await props.add(input({ from: { kind: "job", id: "j3", title: "x" }, action: unlock, weighed: weigh(carCommand, unlock.args)! }), T)) as Proposal;
+  check("another kind, or anything irreversible: still asks", asks.state === "pending");
+  const house = (await props.add(input({ from: { kind: "job", id: "j4", title: "x" }, action: { tool: "home__ha_call_service", args: { domain: "lock", service: "lock" } }, weighed: classify("home__ha_call_service", { domain: "lock", service: "lock" })! }), T)) as Proposal;
+  check("a house call, even one that locks: always asks", house.state === "pending" && !house.category);
+  const unlockedLater = (await props.add(input({ from: { kind: "job", id: "j3b", title: "x" }, action: unlock, weighed: weigh(carCommand, unlock.args)! }), T)) as Proposal;
+  await props.decline("u_sara", unlockedLater.id, T);
+  check("a declined or irreversible one cannot be allowed", typeof (await props.allow("u_sara", unlockedLater.id, T)) === "string");
+
+  // A job's held tool under the permission: run once, finished, and never again on a retried step.
+  let runs = 0;
+  const finished: string[] = [];
+  const real: Tool = { ...carCommand, run: async () => (runs++, "Locked.") };
+  const file = (job: string) => async (action: Proposal["action"], w: ReturnType<typeof weigh>) => props.add(input({ from: { kind: "job", id: job, title: "x" }, action, weighed: w! }), T);
+  const [h] = held([real], file("j5"), async (q, o) => void finished.push(`${q.id}:${o.text}`));
+  const said = await h!.run({ ...lock.args }, {} as never);
+  check("held, under the permission: the call made once, and finished", runs === 1 && finished.length === 1 && /^Done without asking/.test(String(said)), { runs, finished, said });
+  const again = await h!.run({ ...lock.args }, {} as never);
+  check("the same call again from that job: not made again", runs === 1 && /Already done without asking/.test(String(again)), again);
+  check("asking again for that kind", (await props.disallow("u_sara", "car_command:lock")) && (await props.allowed("u_sara")).length === 0 && ((await props.add(input({ from: { kind: "job", id: "j6", title: "x" } }), T)) as Proposal).state === "pending");
+  await props.allow("u_sara", p.id, T);
+  await props.forget("u_sara");
+  check("someone who left: what they allowed is gone too", (await props.allowed("u_sara")).length === 0 && st._m.size === 0);
 }
 
 console.log("\nwhat an approval may run with");
@@ -161,6 +197,9 @@ console.log("\nanswered by a tap (routes/proposals.ts)");
     proposalClaim: (person: string, id: string, now: number) => props.claim(person, id, now),
     proposalDecline: (person: string, id: string, now: number) => props.decline(person, id, now),
     proposalFinish: (person: string, id: string, outcome: { ok: boolean; text: string }, now: number) => props.finish(person, id, outcome, now),
+    proposalAllowed: (person: string) => props.allowed(person),
+    proposalAllow: (person: string, id: string, now: number) => props.allow(person, id, now),
+    proposalDisallow: (person: string, category: string) => props.disallow(person, category),
   };
   const env = { TESSIE_TOKEN: "t", TESSIE_VIN: "LRWTEST0000000000", STATE: { idFromName: () => "jarvis", get: () => stub } } as never;
   const mia = { kind: "member", id: "u_mia", role: "adult", scopes: ["*"], session: "s" } as never;
@@ -191,12 +230,18 @@ console.log("\nanswered by a tap (routes/proposals.ts)");
     check("approved: the stored call run, once, and what came of it kept", r!.status === 200 && body.proposal.state === "done" && body.proposal.by === "tap" && sent.some((s) => /\/command\/lock\b/.test(s)) && !sent.some((s) => /unlock/.test(s)), { body, sent });
     const twice = await handleProposals(req("/api/hub/proposals/answer", { id: p.id, answer: "approve" }), env, ctx, mia);
     check("a second tap: already approved, nothing run", twice!.status === 409 && sent.filter((s) => /\/command\/lock\b/.test(s)).length === 1);
+    const allow = await handleProposals(req("/api/hub/proposals/allow", { id: p.id }), env, ctx, mia);
+    const listed = (await (await handleProposals(req("/api/hub/proposals"), env, ctx, mia))!.json()) as { allowed: string[] };
+    check("approved and done: that kind allowed without asking, and listed", allow!.status === 200 && listed.allowed.join() === "car_command:lock", listed);
+    const stop = await handleProposals(new Request("https://j.test/api/hub/proposals/allow?category=car_command%3Alock", { method: "DELETE" }), env, ctx, mia);
+    check("and asked for again", stop!.status === 200 && (await props.allowed("u_mia")).length === 0);
   } finally {
     globalThis.fetch = realFetch;
   }
   const q = (await props.add(input({ person: "u_mia", who: "u_mia", from: { kind: "job", id: "j2", title: "x" } }), Date.now())) as Proposal;
   const no = await handleProposals(req("/api/hub/proposals/answer", { id: q.id, answer: "decline" }), env, ctx, mia);
   check("declined", no!.status === 200 && ((await no!.json()) as { proposal: Proposal }).proposal.state === "declined");
+  check("a declined one cannot be allowed without asking", (await handleProposals(req("/api/hub/proposals/allow", { id: q.id }), env, ctx, mia))!.status === 409);
   const r2 = (await props.add(input({ person: "u_mia", who: "u_mia", from: { kind: "job", id: "j3", title: "x" } }), Date.now())) as Proposal;
   const noCar = { STATE: { idFromName: () => "jarvis", get: () => stub } } as never;
   const gone = (await (await handleProposals(req("/api/hub/proposals/answer", { id: r2.id, answer: "approve" }), noCar, ctx, mia))!.json()) as { proposal: Proposal };

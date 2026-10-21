@@ -17,7 +17,7 @@ import { toCsv } from "../lib/research-table.ts";
 import { MERGE_INSTRUCTIONS, PLAN_INSTRUCTIONS, RESEARCH_CHECK, TABLE_CHECK, TABLE_MERGE_INSTRUCTIONS, TABLE_PLAN_INSTRUCTIONS, TABLE_TEAM_INSTRUCTIONS, TEAM_INSTRUCTIONS } from "../lib/router-prompt.ts";
 import { SHARE, angleMessage, mergeMaterial, shareReply, shareTool, teamView } from "../lib/research-team.ts";
 import { prepareRouter, runCalls, type Prepared } from "../lib/router.ts";
-import { held, proposable, type File } from "../lib/proposals.ts";
+import { held, proposable, type File, type Finish } from "../lib/proposals.ts";
 import { draftThenAsk } from "../lib/mail-draft.ts";
 import { mailSend } from "../tools/gmail.ts";
 import { recordUsage } from "./usage.ts";
@@ -107,8 +107,9 @@ function proposing(p: Prepared, job: Job): Prepared {
     if (!state) return "Nothing can be proposed on this deployment: it has no state object.";
     return state.proposalAdd({ who: job.createdBy, person: personOfWho(job.createdBy), from: { kind: "job", id: job.id, title: job.title }, action, weighed, grants: ctx.grants }, Date.now());
   };
+  const finish: Finish = async (q, outcome, ctx) => stateStub(ctx.env)?.proposalFinish(q.person, q.id, outcome, Date.now());
   const mail = p.byName.get(mailSend.name);
-  const tools = [...held(p.tools, file), ...(mail ? [draftThenAsk(mail, file)] : [])];
+  const tools = [...held(p.tools, file, finish), ...(mail ? [draftThenAsk(mail, file)] : [])];
   return { ...p, tools, byName: new Map(tools.map((t) => [t.name, t])) };
 }
 

@@ -663,6 +663,18 @@ export class JarvisState extends DurableObject<Env> {
     return this.proposals.finish(person, id, outcome, now);
   }
 
+  proposalAllowed(person: string) {
+    return this.proposals.allowed(person);
+  }
+
+  proposalAllow(person: string, id: string, now: number) {
+    return this.proposals.allow(person, id, now);
+  }
+
+  proposalDisallow(person: string, category: string) {
+    return this.proposals.disallow(person, category);
+  }
+
   /** What the router is given beside the question (lib/router.ts): the specialty it asks for, and past attempts like it. One call, so the question waits on one. */
   async recallFor(person: string, ask: string) {
     const [specialty, past] = await Promise.all([this.specialties.match(person, ask), this.episodes.match(person, ask, Date.now())]);

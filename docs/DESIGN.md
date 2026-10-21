@@ -1094,6 +1094,12 @@ drafted, and its sending proposed (`lib/mail-draft.ts`), so mail has one way
 out, Send. Routines act as they always have: they are what the person set up
 to happen, and nothing here stands in front of the house when it is asked
 directly. The decided proposal is the audit: who, when, and what came of it.
+Once someone has approved a reversible call and it ran, they may let their
+jobs make that one kind without asking ("car_command:lock", one mail action,
+a calendar event): the kind is taken from the stored record, never from a
+request, and an irreversible call, or any house or other MCP call, always
+asks. Such a call is still recorded, run once even if a step is tried again,
+and reported with the job's result.
 
 **Hermes, the same way.** A question to Hermes takes one to four minutes, and
 used to hold the car's tab open for the answer; closed, the answer was lost.

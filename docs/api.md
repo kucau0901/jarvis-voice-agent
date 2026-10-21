@@ -541,7 +541,11 @@ calendar event, tidying mail, a Home Assistant call, sending an email it wrote
 as a draft) is proposed instead, and its result alert carries them as
 `proposals: [{id, risk, says}]`. Only the person who started it can approve
 one, signed in, with `POST /api/hub/proposals/answer {id, answer: "approve" |
-"decline"}`; `GET /api/hub/proposals` is `{open, recent}`. A device never can:
+"decline"}`; `GET /api/hub/proposals` is `{open, recent, allowed}`. After
+approving a reversible one, `POST /api/hub/proposals/allow {id}` lets jobs make
+that one kind of call without asking (a car command another undoes, a calendar
+event, one way of tidying mail; never anything irreversible or for the house),
+and `DELETE /api/hub/proposals/allow?category=` asks again. A device never can:
 everything under `/api/hub/` is a person's. A proposal waits a day. At most 3 run at once and 30 are started a
 day; one is stopped after 25 steps or 20 minutes.
 

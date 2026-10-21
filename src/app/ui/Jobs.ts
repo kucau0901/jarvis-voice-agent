@@ -1,6 +1,7 @@
 import { api, authHeaders } from "../key";
 import { button, el } from "./util";
 import { markdown } from "./rich";
+import { proposalsBox } from "../proposal";
 
 /**
  * Background jobs (src/worker/lib/jobs.ts): what is running, what came back,
@@ -64,10 +65,12 @@ export class Jobs {
 
   /** Told what is listed each time, so the chat's job pills keep up (fromRoutine.ts jobsSeen). */
   private seen: (jobs: JobView[]) => void;
+  private asks: { el: HTMLElement; load(): Promise<void> };
 
   constructor(key: string, seen: (jobs: JobView[]) => void) {
     this.key = key;
     this.seen = seen;
+    this.asks = proposalsBox(key);
     this.el = el("div", "panel");
     this.el.id = "jobs";
     const sheet = el("div", "sheet");
@@ -82,6 +85,8 @@ export class Jobs {
         "and stays here. Jobs read, and never act on their own: what one would do, it proposes, and only your tap does it. " +
         "Usually quicker to say: \"look into the best dashcams under RM800 and let me know\"."),
     );
+    // What jobs proposed, and what they may do without asking (proposal.ts).
+    sheet.appendChild(this.asks.el);
     this.list = el("div", "rlist");
     sheet.appendChild(this.list);
     sheet.appendChild(el("h3", "", "New job"));
@@ -180,6 +185,7 @@ export class Jobs {
 
   private async load(): Promise<void> {
     clearTimeout(this.timer);
+    void this.asks.load();
     let jobs: JobView[];
     try {
       jobs = ((await api(this.key, "GET", "/api/v1/jobs")) as { jobs: JobView[] }).jobs;
