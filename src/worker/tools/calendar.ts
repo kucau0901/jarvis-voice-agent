@@ -265,7 +265,7 @@ export const calendarAdd: Tool = {
     typeof args.title === "string" && typeof args.start === "string"
       ? {
           risk: "reversible",
-          says: `Calendar: “${args.title.slice(0, 120)}”, ${args.start}, ${typeof args.duration_minutes === "number" ? args.duration_minutes : 60} min${typeof args.location === "string" && args.location ? `, at ${args.location.slice(0, 120)}` : ""}`,
+          says: `Calendar: “${args.title}”, ${args.start}, ${typeof args.duration_minutes === "number" ? args.duration_minutes : 60} min${typeof args.location === "string" && args.location ? `, at ${args.location}` : ""}`,
           category: "calendar_add",
         }
       : null,

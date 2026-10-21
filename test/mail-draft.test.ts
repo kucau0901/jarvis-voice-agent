@@ -173,7 +173,7 @@ console.log("\na background job's mail: drafted, and its sending proposed (draft
   } finally {
     sendIt.restore();
   }
-  check("a draft id of the wrong shape cannot be proposed", mailDraftSend.propose!({ draft: "../x", to: "a", subject: "b" }) === null);
+  check("a draft id of the wrong shape cannot be proposed", mailDraftSend.propose!({ draft: "../x", to: "a", subject: "b" }, {} as never) === null);
 }
 
 console.log("\nsendDraft — the tap");

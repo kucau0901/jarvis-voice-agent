@@ -27,14 +27,20 @@ export class Now {
     const r = (await api(this.key, "GET", "/api/hub/proposals").catch(() => null)) as { open: ProposalView[] } | null;
     if (n !== this.seq || !r) return;
     const open = r.open;
-    const now = open.map((p) => p.id).join();
+    const ids = new Set(open.map((p) => p.id));
     // Not while a card here is being answered: its outcome is drawn into it first (proposal.ts settle).
-    if (now === this.shown || this.root.querySelector(".proposalcard button:disabled")) return;
+    if (this.root.querySelector(".proposalcard button:disabled")) return;
+    // Answered here since: kept for one more read, so what came of it is seen, then gone.
+    const answered = [...this.root.querySelectorAll<HTMLElement>(".proposalcard")].filter((c) => !ids.has(c.dataset.proposal ?? ""));
+    const now = [...ids].join();
+    if (now === this.shown && !answered.length) return;
     this.shown = now;
-    this.root.hidden = !open.length;
+    const kept = answered.filter((c) => c.dataset.kept !== "1");
+    for (const c of kept) c.dataset.kept = "1";
+    this.root.hidden = !open.length && !kept.length;
     this.root.replaceChildren(
-      ...(open.length
-        ? [el("h3", "", "Now"), ...open.slice(0, MOST).map((p) => proposalCard(this.key, p)), ...(open.length > MOST ? [el("p", "note", `${open.length - MOST} more in Jobs.`)] : [])]
+      ...(open.length || kept.length
+        ? [el("h3", "", "Now"), ...kept, ...open.slice(0, MOST).map((p) => proposalCard(this.key, p)), ...(open.length > MOST ? [el("p", "note", `${open.length - MOST} more in Jobs.`)] : [])]
         : []),
     );
   }

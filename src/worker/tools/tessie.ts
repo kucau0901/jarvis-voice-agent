@@ -477,12 +477,16 @@ export const carCommand: Tool = {
     additionalProperties: false,
   },
   // Proposed by a job (lib/proposals.ts): what another command puts back is reversible; what opens, sounds or shows is not.
-  propose(args) {
+  propose(args, env) {
     const c = typeof args.command === "string" ? args.command : "";
     if (!(c in COMMANDS)) return null;
-    const which = typeof args.car === "string" && args.car.trim() ? ` (${args.car.trim()})` : "";
-    const detail = c === "set_temperature" ? ` to ${args.temperature}°C` : c === "set_charge_limit" ? ` to ${args.percent}%` : c === "navigate_to" ? `: ${String(args.value ?? "").slice(0, 160)}` : "";
-    // The command first: the car's name is the model's words.
+    // The car as it will be commanded (pickCar): one named must be one of theirs by its very name, so the card and the call are the same car.
+    const cars = carsOf(env);
+    const want = typeof args.car === "string" ? args.car.trim().toLowerCase() : "";
+    const car = cars.length ? (want ? cars.find((x) => x.name.toLowerCase() === want) : cars[0]) : null;
+    if (cars.length && !car) return null;
+    const which = car ? ` (${car.name})` : "";
+    const detail = c === "set_temperature" ? ` to ${args.temperature}°C` : c === "set_charge_limit" ? ` to ${args.percent}%` : c === "navigate_to" ? `: ${String(args.value ?? "")}` : "";
     const says = `Car: ${c.replace(/_/g, " ")}${detail}${which}`;
     return UNDONE.has(c) ? { risk: "reversible", says, category: `car_command:${c}` } : { risk: "irreversible", says };
   },

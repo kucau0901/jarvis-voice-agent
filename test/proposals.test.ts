@@ -6,6 +6,7 @@ import { baseTools, type Tool } from "../src/worker/tools/registry.ts";
 import { carCommand } from "../src/worker/tools/tessie.ts";
 import { calendarAdd } from "../src/worker/tools/calendar.ts";
 import { mailManage } from "../src/worker/tools/gmail.ts";
+import { mailDraftSend } from "../src/worker/lib/mail-draft.ts";
 
 let pass = 0;
 let fail = 0;
@@ -31,13 +32,16 @@ function fakeStorage() {
 }
 
 const T = Date.UTC(2026, 9, 21, 9, 0);
+/** No family: the one car in the settings, whatever it is called. A family's: two cars, by name. */
+const NO_CARS = {} as never;
+const CARS = { JARVIS_CARS: JSON.stringify([{ id: "c1", name: "Ioniq 5", level: "own", mine: true, vin: "VIN_A", token: "t" }, { id: "c2", name: "Model Y", level: "own", mine: true, vin: "VIN_B", token: "t" }]) } as never;
 const lock = { tool: "car_command", args: { command: "lock", value: null, temperature: null, percent: null, car: null } };
 const input = (over: Partial<ProposalInput> = {}): ProposalInput => ({
   who: "u_sara~d_tablet",
   person: "u_sara",
   from: { kind: "job", id: "j1", title: "Tidy up after the trip" },
   action: lock,
-  weighed: weigh(carCommand, lock.args)!,
+  weighed: weigh(carCommand, lock.args, NO_CARS)!,
   grants: ["*"],
   ...over,
 });
@@ -88,8 +92,10 @@ console.log("\nshown whole, or not filed");
 {
   const props = new Proposals(fakeStorage() as never);
   const unlock = { command: "unlock", value: null, temperature: null, percent: null, car: "Model Y — the nightly routine lock, nothing else changes " + ".".repeat(250) };
-  const padded = await props.add(input({ action: { tool: "car_command", args: unlock }, weighed: weigh(carCommand, unlock)! }), T);
-  check("a name long enough to push the command off the card: refused, not cut short", typeof padded === "string" && /too long to show/.test(padded), padded);
+  check("a padded name in a family is not one of their cars: not proposed", weigh(carCommand, unlock, CARS) === null);
+  const longTo = mailDraftSend.propose!({ draft: "r-12345", to: "a".repeat(140) + "@example.com", subject: "s".repeat(140), asked: "x" }, NO_CARS)!;
+  const cut = await props.add(input({ action: { tool: "mail_draft_send", args: { draft: "r-12345" } }, weighed: longTo }), T);
+  check("an address and subject too long to show whole: refused, never cut", longTo.says.includes("a".repeat(140)) && typeof cut === "string" && /too long to show/.test(cut));
   const bulk = { note: "x".repeat(300), operations: [{ entity_id: "lock.front_door", action: "unlock" }] };
   const house = await props.add(input({ action: { tool: "home__ha_bulk_control", args: bulk }, weighed: classify("home__ha_bulk_control", bulk)! }), T);
   check("a house call whose last words would be cut: refused", typeof house === "string" && /too long to show/.test(house), house);
@@ -115,19 +121,24 @@ console.log("\nannounced with the job's result");
 
 console.log("\nhow risky: code says, from the tool and its arguments");
 {
-  const car = (command: string, extra: Record<string, unknown> = {}) => weigh(carCommand, { command, value: null, temperature: null, percent: null, car: null, ...extra });
+  const car = (command: string, extra: Record<string, unknown> = {}, env = NO_CARS) => weigh(carCommand, { command, value: null, temperature: null, percent: null, car: null, ...extra }, env);
   check("locking the car: reversible, its own kind", JSON.stringify(car("lock")) === JSON.stringify({ risk: "reversible", says: "Car: lock", category: "car_command:lock" }), car("lock"));
   check("a temperature says which", car("set_temperature", { temperature: 21 })?.says === "Car: set temperature to 21°C" && car("set_temperature", { temperature: 21 })?.category === "car_command:set_temperature");
   check("unlocking, the trunks, the horn, a destination on its screen: irreversible, no kind",
     ["unlock", "open_frunk", "open_trunk", "vent_windows", "honk", "navigate_to"].every((c) => car(c)?.risk === "irreversible" && !car(c)?.category));
   check("an unknown command: cannot be proposed", car("self_destruct") === null);
-  check("the command comes first, the car's name after it", car("unlock", { car: "Model Y" })?.says === "Car: unlock (Model Y)");
-  check("mail tidying: reversible each, trash always asks", weigh(mailManage, { message_id: "199a2b3c4d5e6f70", action: "archive" })?.category === "mail_manage:archive" && weigh(mailManage, { message_id: "199a2b3c4d5e6f70", action: "trash" })?.risk === "irreversible" && weigh(mailManage, { message_id: "../x", action: "archive" }) === null);
-  const ev = weigh(calendarAdd, { title: "Dentist", start: "2026-10-22T09:00:00+08:00", duration_minutes: 30, location: null });
+  check("a family's car: the command first, then the car it will be, by its own name", car("unlock", { car: "model y" }, CARS)?.says === "Car: unlock (Model Y)" && car("lock", {}, CARS)?.says === "Car: lock (Ioniq 5)");
+  check("a name that is not exactly one of theirs: not proposed (it could pick another car)", car("unlock", { car: "Model Y, not the Ioniq 5" }, CARS) === null);
+  check("no family: the one car, with no name to mislead", car("unlock", { car: "the nightly routine lock" })?.says === "Car: unlock");
+  check("mail tidying: reversible each, trash always asks", weigh(mailManage, { message_id: "199a2b3c4d5e6f70", action: "archive" }, NO_CARS)?.category === "mail_manage:archive" && weigh(mailManage, { message_id: "199a2b3c4d5e6f70", action: "trash" }, NO_CARS)?.risk === "irreversible" && weigh(mailManage, { message_id: "../x", action: "archive" }, NO_CARS) === null);
+  const ev = weigh(calendarAdd, { title: "Dentist", start: "2026-10-22T09:00:00+08:00", duration_minutes: 30, location: null }, NO_CARS);
   check("a calendar event: reversible, says when", ev?.risk === "reversible" && ev.category === "calendar_add" && ev.says.includes("2026-10-22T09:00:00+08:00") && ev.says.includes("30 min"), ev);
   const svc = classify("home__ha_call_service", { domain: "lock", service: "unlock", entity_id: "lock.front" });
-  check("a house call: irreversible, never a kind, saying which service on which entity", svc?.risk === "irreversible" && !svc.category && svc.says === "home: lock.unlock lock.front", svc);
-  check("a house call naming its entity in data", classify("home__ha_call_service", { domain: "light", service: "turn_on", data: { entity_id: ["light.porch", "light.hall"] } })?.says === "home: light.turn_on light.porch, light.hall");
+  check("a house call: irreversible, never a kind, saying which service on which entity", svc?.risk === "irreversible" && !svc.category && svc.says === "home (ha_call_service): lock.unlock lock.front", svc);
+  check("a house call naming its entity in data", classify("home__ha_call_service", { domain: "light", service: "turn_on", data: { entity_id: ["light.porch", "light.hall"] } })?.says === "home (ha_call_service): light.turn_on light.porch, light.hall");
+  const more = classify("home__ha_call_service", { domain: "lock", service: "unlock", entity_id: "lock.shed", data: { area_id: "front_porch" } })?.says ?? "";
+  const note = classify("home__ha_call_service", { domain: "notify", service: "mobile_app_phone", data: { message: "Your code is 1234" } })?.says ?? "";
+  check("and everything else it would send: another target, a message", more.includes("front_porch") && note.includes("Your code is 1234"), { more, note });
   check("one that only reads, or no server's: not proposed", classify("home__ha_get_state", { entity_id: "x" }) === null && classify("recall", {}) === null);
 }
 
@@ -165,11 +176,11 @@ console.log("\nallowed without asking: a reversible kind, once approved");
   const auto = (await props.add(input({ from: { kind: "job", id: "j2", title: "x" } }), T)) as Proposal;
   check("a later job's call of that kind: run without asking", auto.state === "running" && auto.by === "standing");
   const unlock = { tool: "car_command", args: { ...lock.args, command: "unlock" } };
-  const asks = (await props.add(input({ from: { kind: "job", id: "j3", title: "x" }, action: unlock, weighed: weigh(carCommand, unlock.args)! }), T)) as Proposal;
+  const asks = (await props.add(input({ from: { kind: "job", id: "j3", title: "x" }, action: unlock, weighed: weigh(carCommand, unlock.args, NO_CARS)! }), T)) as Proposal;
   check("another kind, or anything irreversible: still asks", asks.state === "pending");
   const house = (await props.add(input({ from: { kind: "job", id: "j4", title: "x" }, action: { tool: "home__ha_call_service", args: { domain: "lock", service: "lock" } }, weighed: classify("home__ha_call_service", { domain: "lock", service: "lock" })! }), T)) as Proposal;
   check("a house call, even one that locks: always asks", house.state === "pending" && !house.category);
-  const unlockedLater = (await props.add(input({ from: { kind: "job", id: "j3b", title: "x" }, action: unlock, weighed: weigh(carCommand, unlock.args)! }), T)) as Proposal;
+  const unlockedLater = (await props.add(input({ from: { kind: "job", id: "j3b", title: "x" }, action: unlock, weighed: weigh(carCommand, unlock.args, NO_CARS)! }), T)) as Proposal;
   await props.decline("u_sara", unlockedLater.id, T);
   check("a declined or irreversible one cannot be allowed", typeof (await props.allow("u_sara", unlockedLater.id, T)) === "string");
 
@@ -178,7 +189,10 @@ console.log("\nallowed without asking: a reversible kind, once approved");
   const finished: string[] = [];
   const real: Tool = { ...carCommand, run: async (_a, c) => (runs++, c.done?.(), "Locked.") };
   const file = (job: string) => async (action: Proposal["action"], w: ReturnType<typeof weigh>) => props.add(input({ from: { kind: "job", id: job, title: "x" }, action, weighed: w! }), T);
-  const [h] = held([real], file("j5"), async (q, o) => void finished.push(`${q.id}:${o.text}`));
+  const [h] = held([real], file("j5"), async (q, o) => {
+    finished.push(`${q.id}:${o.text}`);
+    await props.finish("u_sara", q.id, o, T);
+  });
   const said = await h!.run({ ...lock.args }, {} as never);
   check("held, under the permission: the call made once, and finished", runs === 1 && finished.length === 1 && /^Done without asking/.test(String(said)), { runs, finished, said });
   const again = await h!.run({ ...lock.args }, {} as never);
@@ -189,6 +203,8 @@ console.log("\nallowed without asking: a reversible kind, once approved");
   const failedSaid = await hf!.run({ ...lock.args }, {} as never);
   const failedOne = (await props.list("u_sara", T)).find((q) => q.from.id === "j5b");
   const alerted = await props.attach({ id: "x", at: T, title: "t", text: "r", speak: false, urgent: false, source: "job", job: "j5b" }, "u_sara", T);
+  const repeat = await hf!.run({ ...lock.args }, {} as never);
+  check("that same call again: said not to have worked, and not tried again", !/Already done/.test(String(repeat)) && /did not work/.test(String(repeat)), repeat);
   check("allowed, but the tool says it could not: failed, and said so, never 'done'",
     failedOne?.state === "failed" && /did not work/.test(String(failedSaid)) && /did not work/.test(alerted.text) && !/Done without asking/.test(alerted.text) && alerted.text.includes("Could not wake the car"), { failedOne, failedSaid, text: alerted.text });
   check("asking again for that kind", (await props.disallow("u_sara", "car_command:lock")) && (await props.allowed("u_sara")).length === 0 && ((await props.add(input({ from: { kind: "job", id: "j6", title: "x" } }), T)) as Proposal).state === "pending");

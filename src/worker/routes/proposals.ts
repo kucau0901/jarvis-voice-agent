@@ -58,7 +58,7 @@ export async function handleProposals(req: Request, env: Env, ctx: ExecutionCont
     if (!p) return err(404, "No such proposal.");
     // Weighed again from what is stored: only a call that still reads as reversible, of the kind it was filed as.
     const local = baseTools(env).find((t) => t.name === p.action.tool);
-    const w = local ? weigh(local, p.action.args) : null;
+    const w = local ? weigh(local, p.action.args, env) : null;
     if (!w || w.risk !== "reversible" || w.category !== p.category) return err(409, "Only a reversible kind of thing can be allowed without asking.");
     const why = await state.proposalAllow(me, id, now);
     return why ? err(409, why) : json({ ok: true, allowed: await state.proposalAllowed(me) });
@@ -92,7 +92,7 @@ export async function carryOut(env: Env, approver: Principal, p: Proposal, scope
   const local = [...baseTools(env), ...APPROVED_ONLY].find((t) => t.name === p.action.tool);
   const gone = { ok: false, text: `That can no longer be done: ${p.action.tool} is not set up, or not yours to use now.` };
   if (!local && !p.action.tool.includes("__")) return gone;
-  if (!weigh(local ?? { name: p.action.tool }, p.action.args)) return { ok: false, text: "That can no longer be done." };
+  if (!weigh(local ?? { name: p.action.tool }, p.action.args, env)) return { ok: false, text: "That can no longer be done." };
   const grants = runGrants(p.grants, scopesNow, grantsOf(approver));
   if (!grants) return { ok: false, text: "Whoever it was for is no longer in the family." };
   try {

@@ -1,3 +1,4 @@
+import type { Env } from "../types.ts";
 import type { Storage } from "./state-host.ts";
 import type { Alert } from "./alerts.ts";
 import { jobTool } from "./jobs.ts";
@@ -73,7 +74,8 @@ const STUCK_MS = 5 * 60_000;
 const MAX_ARGS = 4096;
 /** A call is shown whole or not filed: cut short, its last words could be the ones that matter ("…unlock"). */
 const MAX_SAYS = 300;
-const MAX_BODY = 4000;
+/** mail_send's longest (4,000), with the household's footer (200) and its line: what a job's email can be, so one drafted is never refused here. */
+const MAX_BODY = 4_300;
 export const PROPOSAL_ID = /^a[0-9a-hjkmnp-tv-z]{20}$/;
 
 const ALPHABET = "0123456789abcdefghjkmnpqrstvwxyz";
@@ -136,7 +138,12 @@ export class Proposals {
     const same = canonical(input.action.args);
     const again = mine.find((p) => p.from.id === input.from.id && p.action.tool === input.action.tool && canonical(p.action.args) === same);
     // One already done without asking is never run again: only words come back, never the record held() would run.
-    if (again) return again.by === "standing" ? `Already done without asking earlier: ${again.says} (${again.state}). Do not file it again.` : again;
+    if (again) {
+      if (again.by !== "standing") return again;
+      return again.state === "done"
+        ? `Already done without asking earlier: ${again.says}. Do not file it again.`
+        : `Tried without asking earlier, and it ${again.state === "running" ? "has not finished" : "did not work"}: ${again.says}${again.outcome?.text ? ` (${again.outcome.text})` : ""}. It is not tried again from this job: do not file it again, and say in your answer that it was not done.`;
+    }
     if (mine.filter((p) => p.from.id === input.from.id).length >= PER_JOB) return `At most ${PER_JOB} proposals from one job: say the rest in the answer.`;
     // Allowed without asking: a reversible call of a kind the person said their jobs may make, and only that.
     const standing = input.weighed.risk === "reversible" && !!input.weighed.category && (await this.allowed(input.person)).includes(input.weighed.category);
@@ -272,18 +279,22 @@ export function classify(name: string, args: Record<string, unknown>): Weighed |
   if (i < 0 || jobTool({ name })) return null;
   const server = name.slice(0, i);
   const svc = calledService(args);
-  const data = args.data && typeof args.data === "object" ? (args.data as Record<string, unknown>) : {};
-  const entity = [args.entity_id, data.entity_id].flat().filter((e): e is string => typeof e === "string").join(", ");
+  const shown = (k: string, v: unknown) => `${k} ${typeof v === "string" ? v : JSON.stringify(v)}`;
+  // Everything it would send is on the card: the service and its entities first, then every other argument.
+  const { entity_id: inData, ...data } = args.data && typeof args.data === "object" ? (args.data as Record<string, unknown>) : {};
+  const entity = [args.entity_id, inData].flat().filter((e): e is string => typeof e === "string").join(", ");
+  const rest = Object.entries(args).filter(([k]) => !svc || !["domain", "service", "entity_id", "data"].includes(k)).map(([k, v]) => shown(k, v));
+  if (svc && Object.keys(data).length) rest.push(shown("data", data));
   const says = svc
-    ? `${server}: ${svc}${entity ? ` ${entity}` : ""}`
-    : `${server}: ${name.slice(i + 2)} ${Object.entries(args).map(([k, v]) => `${k} ${typeof v === "string" ? v : JSON.stringify(v)}`).join(", ")}`;
+    ? `${server} (${name.slice(i + 2)}): ${svc}${entity ? ` ${entity}` : ""}${rest.length ? `, ${rest.join(", ")}` : ""}`
+    : `${server} (${name.slice(i + 2)}): ${rest.join(", ")}`;
   // Whole: one too long to show is refused when filed (Proposals.add), never shown cut short.
   return { risk: "irreversible", says: says.trim() };
 }
 
 /** How risky this call of this tool is; null when it cannot be proposed at all. */
-export function weigh(tool: Pick<Tool, "name" | "propose">, args: Record<string, unknown>): Weighed | null {
-  if (tool.propose) return tool.propose(args);
+export function weigh(tool: Pick<Tool, "name" | "propose">, args: Record<string, unknown>, env: Env): Weighed | null {
+  if (tool.propose) return tool.propose(args, env);
   return classify(tool.name, args);
 }
 
@@ -325,7 +336,7 @@ export function held(tools: readonly Tool[], file: File, finish: Finish): Tool[]
       ...(t.propose ? { propose: t.propose } : {}),
       pace: "fast",
       async run(args, ctx): Promise<ToolOutput> {
-        const w = weigh(t, args);
+        const w = weigh(t, args, ctx.env);
         if (!w) return "That cannot be proposed from a job: say in your answer what you would do.";
         const p = await file({ tool: t.name, args }, w, ctx);
         if (typeof p === "string" || p.state !== "running" || p.by !== "standing") return filed(p);

@@ -780,6 +780,7 @@
   .pagecard .docopen.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); font-weight: 600; }
   .proposals { display: grid; gap: 8px; margin-top: 10px; }
   .proposals:empty { display: none; }
+  .proposalcard .doctitle { overflow-wrap: anywhere; }
   #alerts .proposals { max-height: 40vh; overflow-y: auto; }
   .proposals .pagecard { margin-top: 0; }
   .draftcard .draftbody, .proposalcard .draftbody { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 14em; overflow-y: auto; font-size: 14px; line-height: 1.5; }
@@ -903,7 +904,9 @@
   /* A glass card with a bar of Tesla blue at its edge, red when urgent. */
   #alerts .alert { pointer-events: auto; background: var(--glass-hi); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur);
     border-radius: 20px; padding: 12px 14px 14px 18px; box-shadow: inset 4px 0 0 var(--accent), var(--shadow);
-    animation: alertIn .25s ease-out; }
+    animation: alertIn .25s ease-out;
+    /* A job's cards can make it taller than a phone on its side: it scrolls, so each Approve can be reached. */
+    max-height: calc(100dvh - var(--barTop) - 74px - env(safe-area-inset-bottom)); overflow-y: auto; overscroll-behavior: contain; }
   #alerts .alert.urgent { box-shadow: inset 4px 0 0 var(--danger), var(--shadow); }
   #alerts .ahead { display: flex; align-items: center; gap: 10px; }
   #alerts .ahead b { font-weight: 600; font-size: 14px; flex: 1; min-width: 0;

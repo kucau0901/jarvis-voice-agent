@@ -116,7 +116,7 @@ export interface Tool {
    * what it does in words; null when these arguments cannot be proposed.
    * Without it, a job is never handed the tool. Not sent to the model.
    */
-  propose?(args: Record<string, unknown>): Weighed | null;
+  propose?(args: Record<string, unknown>, env: Env): Weighed | null;
   run(args: Record<string, unknown>, ctx: ToolContext): Promise<ToolOutput>;
 }
 

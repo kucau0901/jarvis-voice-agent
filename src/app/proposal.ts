@@ -114,7 +114,8 @@ async function refresh(key: string, ids: readonly string[], box?: HTMLElement): 
     const p = known.get(id);
     if (!p) continue;
     if (box) box.appendChild(proposalCard(key, p));
-    else settle(key, p);
+    // After an answer that failed: redrawn only if it has moved on, so a "try again" stays to be read.
+    else if (p.state !== "pending") settle(key, p);
   }
 }
 
