@@ -35,7 +35,7 @@ import type { UsageEntry } from "../src/worker/lib/usage.ts";
 import { HERMES_LONG_WORK, jobEngine } from "../src/worker/routes/jobs.ts";
 import { MERGE_INSTRUCTIONS, PLAN_INSTRUCTIONS, RESEARCH_CHECK, TEAM_INSTRUCTIONS } from "../src/worker/lib/router-prompt.ts";
 import { angleMessage, mergeMaterial, shareReply, shareTool, teamView } from "../src/worker/lib/research-team.ts";
-import { allows, requiredScope, withoutScreen } from "../src/worker/lib/scopes.ts";
+import { allows, reachNow, requiredScope, withoutScreen } from "../src/worker/lib/scopes.ts";
 import { baseTools } from "../src/worker/tools/registry.ts";
 
 let pass = 0;
@@ -1528,6 +1528,20 @@ console.log("\njobs on the owner's ChatGPT plan (routes/jobs.ts): streamed here,
       "responseId" in checked && sent[2]!.by === "plan" && JSON.stringify(sent[2]!.body.input.at(-1)) === JSON.stringify({ role: "developer", content: RESEARCH_CHECK }) && sent[2]!.body.input.length > 2, sent[2]?.body.input.length);
     await engine.cancel({ ...job, responseId: id1 });
     check("cancelling forgets a kept step", !(await kept.get(`jobplan:${id1}`)));
+
+    // No further than whoever started it may reach now (lib/scopes.ts reachNow): a job made with every scope, its maker since narrowed to asking.
+    const names = (tools: unknown): string[] => (Array.isArray(tools) ? tools.flatMap((t: { name?: string; tools?: unknown }) => [...(t.name ? [t.name] : []), ...names(t.tools)]) : []);
+    check("reachNow: narrowed to the maker's scopes, nothing once they have left, as given when they could not be looked up",
+      reachNow(["*"], { scopes: ["ask", "home"] }).join() === "ask,home" && reachNow(["ask", "car"], { scopes: ["ask"] }).join() === "ask" && reachNow(["ask"], { scopes: null }) === null && reachNow(["ask"], {}) === null && reachNow(["ask", "car"], null)?.join() === "ask,car");
+    const before = names(first.body.tools);
+    const gone = jobEngine(env, async (a) => ({ alert: a, attempts: [], deliveredBy: null }) as never, async () => env, kept as never, async () => null);
+    const refused = await gone.start(job);
+    check("whoever started it has left: it does not start", "error" in refused && /no longer in the family/.test(refused.error), refused);
+    const narrowed = jobEngine(env, async (a) => ({ alert: a, attempts: [], deliveredBy: null }) as never, async () => env, kept as never, async (j) => reachNow(j.grants, { scopes: ["ask"] }));
+    answers.push([{ type: "message", id: "m3", role: "assistant", status: "completed", content: [{ type: "output_text", text: "Done.", annotations: [] }] }]);
+    await narrowed.start(job);
+    const after = names(sent.at(-1)!.body.tools);
+    check("narrowed since: its steps are offered only what its maker may still reach", before.includes("recall") && !after.includes("recall") && after.length < before.length, { before: before.length, after });
     check("a step no longer kept fails plainly", (await engine.poll({ ...job, responseId: "plan_gone" })).kind === "failed");
 
     answers.push({ status: 429, code: "subscription_sharing_usage_limit_exceeded" });

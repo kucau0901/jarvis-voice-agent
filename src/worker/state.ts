@@ -13,7 +13,7 @@ import { localeOf } from "./lib/locale.ts";
 import { upcomingEvents } from "./lib/leave.ts";
 import { Scheduler, type SchedulerDeps } from "./lib/scheduler.ts";
 import type { Routine, RoutineInput } from "./lib/routines.ts";
-import { allows, narrow, SCOPES, type Grant } from "./lib/scopes.ts";
+import { allows, narrow, reachNow, SCOPES, type Grant } from "./lib/scopes.ts";
 import { canAsk } from "./lib/openai-auth.ts";
 import { lookUp } from "./lib/router.ts";
 import { askForRoutine, travelFor } from "./routes/routines.ts";
@@ -100,7 +100,9 @@ export class JarvisState extends DurableObject<Env> {
       };
       // How it went, for the next question like it (lib/episodes.ts).
       const episode = (job: Job) => this.episodes.add(personOfWho(job.createdBy), episodeOfJob(job), Date.now());
-      return { ...jobEngine(env, deliverJob, (job) => this.personEnv(env, job.createdBy), ctx.storage), episode };
+      // A job reaches no further than whoever started it may now, as a routine (reachNow).
+      const reach = async (job: Job) => reachNow(job.grants, await this.people.personView(personOfWho(job.createdBy)).catch(() => null));
+      return { ...jobEngine(env, deliverJob, (job) => this.personEnv(env, job.createdBy), ctx.storage, reach), episode };
     });
     // Screens ping to keep their socket open through proxies. The runtime
     // answers these itself, so a hibernating object is not woken to say pong.
@@ -330,9 +332,8 @@ export class JarvisState extends DurableObject<Env> {
       // A routine runs as whoever made it: their memory, their calendar (lib/context.ts).
       ask: async (prompt, grants, routine) => {
         // No further than its maker may reach now: something an admin took from them is taken from their routines too.
-        const view = await this.people.personView(personOfWho(routine.createdBy)).catch(() => null);
-        if (view && !view.scopes) return { ok: false, text: "whoever made it is no longer in the family" };
-        const now = view?.scopes ? narrow(grants, view.scopes) : grants;
+        const now = reachNow(grants, await this.people.personView(personOfWho(routine.createdBy)).catch(() => null));
+        if (!now) return { ok: false, text: "whoever made it is no longer in the family" };
         return askForRoutine(await this.personEnv(env, routine.createdBy), prompt, now, routine);
       },
       events: async (now, person) => upcomingEvents(await this.personEnv(env, person), now),

@@ -58,6 +58,17 @@ export function narrow(a: readonly Grant[], b: readonly Grant[]): Grant[] {
   return a.filter((g) => b.includes(g));
 }
 
+/**
+ * What background work someone set going may reach now (a routine's ask, a
+ * job's steps): what it was given, and no more than its maker still may, so
+ * what an admin took from them is taken from their work too. Null when they
+ * have left; as given when who they are could not be looked up.
+ */
+export function reachNow(given: readonly Grant[], view: { scopes?: readonly Grant[] | null } | null): Grant[] | null {
+  if (!view) return [...given];
+  return view.scopes ? narrow(given, view.scopes) : null;
+}
+
 /** Drop anything unrecognised rather than failing — a stored grant may predate a rename. */
 export function saneGrants(raw: unknown): Grant[] {
   if (!Array.isArray(raw)) return [];

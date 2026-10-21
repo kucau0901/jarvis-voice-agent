@@ -169,6 +169,10 @@ of every release, and in the [README](README.md#updating).
 
 ### Fixed
 
+- **A background job keeps to what its maker may do now.** A scope an
+  admin took from someone is taken from the jobs they had already started,
+  as it already was from their routines, and a job whose maker has left the
+  family stops.
 - **Page watches work on the ChatGPT plan.** With the plan connected, every
   page watch (including Alert me on a reading Jarvis looks up) failed with
   "Input must be a list", and setting up a new one failed too.

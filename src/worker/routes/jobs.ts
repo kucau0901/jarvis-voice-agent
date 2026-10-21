@@ -94,7 +94,14 @@ const PLAN_KEEP_MS = 2 * 60 * 60_000;
 const isPlanStep = (id: string | undefined): id is string => !!id && id.startsWith(PLAN_STEP);
 
 /** The engine, bound to an environment: what the Durable Object runs jobs with. `kept`, its storage, for steps on the plan. */
-export function jobEngine(env: Env, deliver: JobDeps["deliver"], envFor: (job: Job) => Promise<Env>, kept?: Storage): JobDeps {
+/** `reachFor`: what a job may reach now, null when whoever started it has left (lib/scopes.ts reachNow); as it was given, without. */
+export function jobEngine(
+  env: Env,
+  deliver: JobDeps["deliver"],
+  envFor: (job: Job) => Promise<Env>,
+  kept?: Storage,
+  reachFor: (job: Job) => Promise<readonly Grant[] | null> = async (job) => job.grants,
+): JobDeps {
   const client = () => new OpenAI({ apiKey: env.OPENAI_API_KEY, baseURL: openaiBase(env) });
   const signal = () => AbortSignal.timeout(60_000);
 
@@ -103,13 +110,17 @@ export function jobEngine(env: Env, deliver: JobDeps["deliver"], envFor: (job: J
     const research = job.engine === "research";
     // As whoever started it (lib/context.ts): their memory, their mail.
     const env = await envFor(job);
-    const p = await prepareRouter(env, turns, signal(), jobGrants(job.grants), { surface: research ? "research" : "job", toolFilter: jobTool });
+    const reach = await reachFor(job);
+    if (!reach) throw new Error("whoever started it is no longer in the family");
+    const grants = jobGrants(reach);
+    const p = await prepareRouter(env, turns, signal(), grants, { surface: research ? "research" : "job", toolFilter: jobTool });
     // Research: the stronger model, thinking hard (lib/jobs.ts "research").
     const model = research ? researchModel(env.RESEARCH_MODEL) : p.model;
     const functions = [...p.tools.map(toToolSchema), ...(team ? [toToolSchema(shareTool("", [], 0))] : [])];
     return {
       p,
       env,
+      grants,
       research,
       functions,
       base: {
@@ -256,11 +267,11 @@ export function jobEngine(env: Env, deliver: JobDeps["deliver"], envFor: (job: J
       }
       // The tools it asked for run here, between steps; then the next step starts.
       const req = await request(job, [], t !== undefined);
-      const { p, env: theirs } = req;
+      const { p, env: theirs, grants } = req;
       // A team's share_findings: posted by lib/jobs.ts teamStep, answered with what the others shared.
       const shared: string[] = [];
       const byName = t === undefined ? p.byName : new Map(p.byName).set(SHARE.name, shareTool(shareReply(job, t), shared, sharesLeft(job, t)));
-      const outputs = await runCalls(calls, byName, { env: theirs, signal: signal(), memory: p.memory, grants: jobGrants(job.grants) }, quiet);
+      const outputs = await runCalls(calls, byName, { env: theirs, signal: signal(), memory: p.memory, grants }, quiet);
       await p.memory.save().catch(() => {});
       // On the plan, the whole exchange goes again; at OpenAI, the chain carries it.
       const next = onPlan ? await send(req, [...onPlan.input, ...outputs]) : await send(req, outputs, "auto", r.id);
