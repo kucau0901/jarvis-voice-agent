@@ -64,6 +64,9 @@ console.log("\nclashes");
   const got = overlaps(list).map(([x, y]) => x.id + y.id);
   check("each overlapping pair once; touching ends do not clash", got.join() === "ab,bc", got);
   check("free, declined and all-day events clash with nothing", !got.some((p) => /[efg]/.test(p)));
+  const moment = [ev({ id: "m", start: at(11), end: at(13) }), ev({ id: "z", start: at(12), end: at(12) })];
+  check("a moment with no length clashes with nothing", overlaps(moment).length === 0 && overlaps([...moment].reverse()).length === 0);
+  check("nor splits free time", JSON.stringify(freeSlots([ev({ id: "z", start: at(12), end: at(12) })], NOW, TZ, NOW)) === JSON.stringify([{ start: at(8), end: at(20) }]));
 }
 
 console.log("\nfree time");

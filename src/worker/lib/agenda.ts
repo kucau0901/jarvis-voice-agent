@@ -97,8 +97,8 @@ export async function agendaEvents(env: Env, from: number, to: number, timeZone:
   }, { notLinked: "Link Google in Family → Accounts to see the calendar here.", relink: "Google needs linking again: Family → Accounts.", prefix: "Calendar" });
 }
 
-/** Takes up time: at a time, not shown as free, not declined. */
-const busy = (e: AgendaEvent) => !e.allDay && !e.free && !e.declined;
+/** Takes up time: at a time, for some time, not shown as free, not declined. */
+const busy = (e: AgendaEvent) => !e.allDay && !e.free && !e.declined && e.end > e.start;
 
 /** Pairs of busy events that overlap, each pair once, in order of the first's start. */
 export function overlaps(events: readonly AgendaEvent[]): [AgendaEvent, AgendaEvent][] {

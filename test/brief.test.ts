@@ -102,6 +102,8 @@ console.log("\nthe schedule");
   check("the free time from now", lines.some((l) => l.startsWith("Free: 08:00–09:00, 10:30–20:00")), lines);
   check("an invitation left unanswered, whenever in the week", lines.includes("Not answered yet: Dinner with Sam (Fri 23 Oct), from Sam Example"), lines);
   check("an empty day says so", scheduleOf([], span, TZ, NOW).join() === "Nothing on the calendar.");
+  const linkOnly = scheduleOf([ev({ id: "l", summary: "https://meet.example.com/abc", start: at(12), end: at(13) }), ev({ id: "s", summary: "Standup", start: at(12, 30), end: at(13) })], span, TZ, NOW);
+  check("a title that was only a link is said as having none", linkOnly[0] === "- 12:00–13:00 (no title)" && linkOnly.includes("Clash: (no title) (12:00) and Standup (12:30)"), linkOnly);
   const later = scheduleOf(events, dayCovered(at(9, 45), TZ), TZ, at(9, 45));
   check("free time from now on, none before it", later.some((l) => l === "Free: 10:30–20:00"), later);
   const evening = dayCovered(at(18), TZ);
@@ -202,6 +204,18 @@ console.log("\na whole brief");
     check("promotions are counted, never read", w.urls.filter((u) => /\/messages\/promo/.test(u)).length === 0 && w.urls.filter((u) => u.includes("/users/me/messages")).length === 3, w.urls);
     check("its cost is counted", b.usage?.model === "chatgpt:gpt-6-luna" && b.usage.input === 500 && b.usage.ok);
     check("the weather is read with the house's Home Assistant, not their own token", w.haTokens.join() === "Bearer house-token", w.haTokens);
+  } finally {
+    w.restore();
+  }
+}
+
+console.log("\nin their language, as they set it");
+{
+  const w = world();
+  asked.length = 0;
+  try {
+    await runBrief(ROUTINE, NOW, deps({ env: { TIMEZONE: TZ, LOCALE: "zh-TW" } as never, house: HOUSE }), model("今天下雨。"));
+    check("the whole tag names it: Traditional Chinese, not just Chinese", asked[0]?.input.startsWith("Language: Chinese (Taiwan)\n") === true, asked[0]?.input.slice(0, 40));
   } finally {
     w.restore();
   }

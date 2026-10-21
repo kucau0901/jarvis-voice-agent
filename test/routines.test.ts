@@ -862,6 +862,18 @@ console.log("\nbriefs: made at a time, written by lib/brief.ts");
   }
   const fresh = await spent.s.add({ when: "once", at: T0 + 2 * 86_400_000 + 2 * MIN, brief: true }, OWNER, T0 + 2 * 86_400_000);
   check("one-offs that have gone do not count", typeof fresh !== "string" && spent.sent.length === 2, fresh);
+  const paused = harness();
+  const later = (await paused.s.add({ when: "once", at: T0 + 3 * 86_400_000, brief: true }, OWNER, T0)) as Routine;
+  await paused.s.update(later.id, { enabled: false }, T0);
+  await paused.s.add({ when: "daily", time: "07:00", brief: true }, OWNER, T0);
+  const over = await paused.s.add({ when: "daily", time: "08:00", brief: true }, OWNER, T0);
+  check("one only switched off, its time still to come, still counts", over === `there are already ${MAX_BRIEFS} briefs for you; remove one first`, over);
+  const at: number[] = [];
+  const early = harness({ brief: async (_r, now) => (at.push(now), { ok: true, text: "# Tomorrow" }) });
+  await early.s.add({ when: "daily", time: "15:00", brief: true }, OWNER, T0);
+  const three = zonedToUtc(2026, 9, 25, 15, 0, tz);
+  await early.s.tick(three - 500);
+  check("a brief woken a moment early runs as at its time, so its day is the right one", at[0] === three, at);
 
   const due = T0 + 30 * MIN;
   const wake = await h.s.tick(due);

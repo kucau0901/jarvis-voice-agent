@@ -171,8 +171,8 @@ export class Scheduler {
     }
     if (built.action.kind === "brief") {
       const mine = personOfWho(by.who);
-      // A one-off that has gone is kept a week to show it ran, and cannot be switched back on: it does not count.
-      const theirs = all.filter((r) => r.action.kind === "brief" && personOfWho(r.createdBy) === mine && (r.trigger.kind !== "once" || r.enabled));
+      // A one-off whose time has passed is kept a week to show it ran, and cannot be switched back on: it does not count.
+      const theirs = all.filter((r) => r.action.kind === "brief" && personOfWho(r.createdBy) === mine && (r.trigger.kind !== "once" || r.enabled || r.trigger.at > now));
       if (theirs.length >= MAX_BRIEFS) {
         return `there are already ${MAX_BRIEFS} briefs for you; remove one first`;
       }
@@ -366,7 +366,8 @@ export class Scheduler {
       return false;
     }
     await this.save(r);
-    await this.execute(r, deps, now, undefined, late > 5 * 60_000 ? dueAt : undefined);
+    // A brief's day turns at 15:00: one run a moment early (above) runs as at its time.
+    await this.execute(r, deps, r.action.kind === "brief" ? Math.max(now, dueAt) : now, undefined, late > 5 * 60_000 ? dueAt : undefined);
     return true;
   }
 

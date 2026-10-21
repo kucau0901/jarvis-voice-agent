@@ -131,8 +131,10 @@ export function scheduleOf(events: readonly AgendaEvent[], span: { from: number;
     const p = localParts(ts, timeZone);
     return p.y === day.y && p.mo === day.mo && p.d === day.d ? hhmm(ts, timeZone) : `${dateSaid(ts, timeZone, "short")} ${hhmm(ts, timeZone)}`;
   };
+  // A title that was only a link has nothing left.
+  const named = (e: AgendaEvent, max: number) => plain(e.summary, max) || "(no title)";
   const lines = inDay.slice(0, MAX_EVENTS).map((e) => {
-    const title = plain(e.summary);
+    const title = named(e, 80);
     const where = plain(e.location, 60);
     const place = where ? ` (${where})` : "";
     return e.allDay ? `- All day: ${title}` : `- ${at(e.start)}–${at(e.end)} ${title}${place}`;
@@ -140,12 +142,12 @@ export function scheduleOf(events: readonly AgendaEvent[], span: { from: number;
   if (inDay.length > MAX_EVENTS) lines.push(`- and ${inDay.length - MAX_EVENTS} more`);
   if (!inDay.length) lines.push("Nothing on the calendar.");
   for (const [a, b] of overlaps(inDay).slice(0, 3)) {
-    lines.push(`Clash: ${plain(a.summary, 40)} (${at(a.start)}) and ${plain(b.summary, 40)} (${at(b.start)})`);
+    lines.push(`Clash: ${named(a, 40)} (${at(a.start)}) and ${named(b, 40)} (${at(b.start)})`);
   }
   const slots = freeSlots(inDay, span.from, timeZone, Math.max(now, span.from)).slice(0, 4);
   if (inDay.length && slots.length) lines.push(`Free: ${slots.map((s) => `${hhmm(s.start, timeZone)}–${hhmm(s.end, timeZone)}`).join(", ")}`);
   for (const e of staleInvites(events, now).slice(0, 3)) {
-    lines.push(`Not answered yet: ${plain(e.summary, 50)} (${dateSaid(e.start, timeZone, "short")})${e.organizer ? `, from ${plain(e.organizer, 40)}` : ""}`);
+    lines.push(`Not answered yet: ${named(e, 50)} (${dateSaid(e.start, timeZone, "short")})${e.organizer ? `, from ${plain(e.organizer, 40)}` : ""}`);
   }
   return lines;
 }
@@ -246,7 +248,8 @@ export async function runBrief(r: Routine, now: number, d: BriefDeps, ask?: Ask)
   if (sections.length && (ask || (await canAsk(d.env)))) {
     const call =
       ask ?? ((inp: string, ins: string) => respondOnce(d.env, { model: DEFAULT_ROUTER_MODEL, instructions: ins, input: inp }, AbortSignal.timeout(45_000)));
-    const language = new Intl.DisplayNames(["en"], { type: "language" }).of(localeOf(d.env).language) ?? "English";
+    // The whole tag: zh-TW is written in Traditional characters, sr-Latn in Latin ones.
+    const language = new Intl.DisplayNames(["en"], { type: "language" }).of(localeOf(d.env).tag) ?? "English";
     // All of it fenced: event titles, places, senders and subjects were written by someone else.
     const input = `Language: ${language}\nThe day covered: ${title.slice(2)}\n\n${asQuotedData("the day", fit(body), "THE PEOPLE WHO SENT THESE EVENTS AND EMAILS")}`;
     const started = Date.now();
