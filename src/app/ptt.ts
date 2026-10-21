@@ -110,6 +110,7 @@ export class PushToTalk {
 
   /** The chat box's mic: listened to as a question would be, but the words go into the box (main.ts), not to Jarvis. */
   async dictate(): Promise<void> {
+    if (this.starting) return;
     if (this.state !== "idle") return this.press();
     this.dictating = true;
     return this.listen();
@@ -181,7 +182,20 @@ export class PushToTalk {
 
   /* ---------- hearing -------------------------------------------------------- */
 
+  /** Between a tap and the mic opening, still idle: a second tap then would open a second mic, its timer left running. */
+  private starting = false;
+
   private async listen(): Promise<void> {
+    if (this.starting) return;
+    this.starting = true;
+    try {
+      await this.open();
+    } finally {
+      this.starting = false;
+    }
+  }
+
+  private async open(): Promise<void> {
     const cfg = await this.loadConfig();
     const Recognition = (window as unknown as { SpeechRecognition?: new () => SpeechRecognitionLike; webkitSpeechRecognition?: new () => SpeechRecognitionLike })
       .SpeechRecognition ?? (window as unknown as { webkitSpeechRecognition?: new () => SpeechRecognitionLike }).webkitSpeechRecognition;
@@ -192,8 +206,8 @@ export class PushToTalk {
         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
       });
     } catch (e) {
-      this.hooks.status(`microphone unavailable: ${e instanceof Error ? e.message : String(e)}`, true);
-      return;
+      // done(): a dictation that never started is not left on for the next question.
+      return this.done(`microphone unavailable: ${e instanceof Error ? e.message : String(e)}`, true);
     }
     const type = ["audio/webm;codecs=opus", "audio/mp4", "audio/ogg;codecs=opus", "audio/webm"].find(
       (t) => typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported(t),
