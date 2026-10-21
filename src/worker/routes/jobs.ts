@@ -2,7 +2,7 @@ import { openaiBase } from "../lib/openai-base.ts";
 import OpenAI from "openai";
 import type { Env } from "../types.ts";
 import { whoOf, grantsOf, personOf, type Principal } from "../lib/auth.ts";
-import { isTheirs } from "../lib/context.ts";
+import { isTheirs, personOfWho } from "../lib/context.ts";
 import type { EventSink } from "../lib/sse.ts";
 import { err, json, readObject } from "../lib/http.ts";
 import { asQuotedData } from "../lib/quote.ts";
@@ -16,7 +16,10 @@ import { citationsOf } from "../lib/links.ts";
 import { toCsv } from "../lib/research-table.ts";
 import { MERGE_INSTRUCTIONS, PLAN_INSTRUCTIONS, RESEARCH_CHECK, TABLE_CHECK, TABLE_MERGE_INSTRUCTIONS, TABLE_PLAN_INSTRUCTIONS, TABLE_TEAM_INSTRUCTIONS, TEAM_INSTRUCTIONS } from "../lib/router-prompt.ts";
 import { SHARE, angleMessage, mergeMaterial, shareReply, shareTool, teamView } from "../lib/research-team.ts";
-import { prepareRouter, runCalls } from "../lib/router.ts";
+import { prepareRouter, runCalls, type Prepared } from "../lib/router.ts";
+import { held, proposable, type File, type Finish } from "../lib/proposals.ts";
+import { draftThenAsk, mailDraftSend } from "../lib/mail-draft.ts";
+import { mailSend } from "../tools/gmail.ts";
 import { recordUsage } from "./usage.ts";
 import { costOf } from "../lib/usage.ts";
 import { canAsk, clientFor, forKey, forPlan, modelAuth, planFailed, planRespond, refusalOf } from "../lib/openai-auth.ts";
@@ -93,8 +96,36 @@ const PLAN_KEY = (id: string) => `jobplan:${id}`;
 const PLAN_KEEP_MS = 2 * 60 * 60_000;
 const isPlanStep = (id: string | undefined): id is string => !!id && id.startsWith(PLAN_STEP);
 
+/**
+ * A job's tools that act, held (lib/proposals.ts): each call files a proposal
+ * for whoever started it to approve with a tap. Mail is drafted, and its
+ * sending proposed (lib/mail-draft.ts draftThenAsk).
+ */
+function proposing(p: Prepared, job: Job): Prepared {
+  const person = personOfWho(job.createdBy);
+  const file: File = async (action, weighed, ctx, body) => {
+    const state = stateStub(ctx.env);
+    if (!state) return "Nothing can be proposed on this deployment: it has no state object.";
+    return state.proposalAdd({ who: job.createdBy, person, from: { kind: "job", id: job.id, title: job.title }, action, weighed, grants: ctx.grants, ...(body ? { body } : {}) }, Date.now());
+  };
+  const finish: Finish = async (q, outcome, ctx) => stateStub(ctx.env)?.proposalFinish(q.person, q.id, outcome, Date.now());
+  // The mail this job already drafted for this same ask (lib/mail-draft.ts draftThenAsk).
+  const earlier = async (asked: string, ctx: { env: Env }) =>
+    (await stateStub(ctx.env)?.proposalsOf(person, Date.now()))?.find((q) => q.from.id === job.id && q.action.tool === mailDraftSend.name && q.action.args.asked === asked) ?? null;
+  const mail = p.byName.get(mailSend.name);
+  const tools = [...held(p.tools, file, finish), ...(mail ? [draftThenAsk(mail, file, earlier)] : [])];
+  return { ...p, tools, byName: new Map(tools.map((t) => [t.name, t])) };
+}
+
 /** The engine, bound to an environment: what the Durable Object runs jobs with. `kept`, its storage, for steps on the plan. */
-export function jobEngine(env: Env, deliver: JobDeps["deliver"], envFor: (job: Job) => Promise<Env>, kept?: Storage): JobDeps {
+/** `reachFor`: what a job may reach now, null when whoever started it has left (lib/scopes.ts reachNow); as it was given, without. */
+export function jobEngine(
+  env: Env,
+  deliver: JobDeps["deliver"],
+  envFor: (job: Job) => Promise<Env>,
+  kept?: Storage,
+  reachFor: (job: Job) => Promise<readonly Grant[] | null> = async (job) => job.grants,
+): JobDeps {
   const client = () => new OpenAI({ apiKey: env.OPENAI_API_KEY, baseURL: openaiBase(env) });
   const signal = () => AbortSignal.timeout(60_000);
 
@@ -103,13 +134,20 @@ export function jobEngine(env: Env, deliver: JobDeps["deliver"], envFor: (job: J
     const research = job.engine === "research";
     // As whoever started it (lib/context.ts): their memory, their mail.
     const env = await envFor(job);
-    const p = await prepareRouter(env, turns, signal(), jobGrants(job.grants), { surface: research ? "research" : "job", toolFilter: jobTool });
+    const reach = await reachFor(job);
+    if (!reach) throw new Error("whoever started it is no longer in the family");
+    const grants = jobGrants(reach);
+    // A job that may act proposes instead (lib/proposals.ts); research only reads.
+    const toolFilter = research ? jobTool : (t: { name: string }) => jobTool(t) || proposable(t) || t.name === mailSend.name;
+    const prepared = await prepareRouter(env, turns, signal(), grants, { surface: research ? "research" : "job", toolFilter });
+    const p = research ? prepared : proposing(prepared, job);
     // Research: the stronger model, thinking hard (lib/jobs.ts "research").
     const model = research ? researchModel(env.RESEARCH_MODEL) : p.model;
     const functions = [...p.tools.map(toToolSchema), ...(team ? [toToolSchema(shareTool("", [], 0))] : [])];
     return {
       p,
       env,
+      grants,
       research,
       functions,
       base: {
@@ -256,11 +294,11 @@ export function jobEngine(env: Env, deliver: JobDeps["deliver"], envFor: (job: J
       }
       // The tools it asked for run here, between steps; then the next step starts.
       const req = await request(job, [], t !== undefined);
-      const { p, env: theirs } = req;
+      const { p, env: theirs, grants } = req;
       // A team's share_findings: posted by lib/jobs.ts teamStep, answered with what the others shared.
       const shared: string[] = [];
       const byName = t === undefined ? p.byName : new Map(p.byName).set(SHARE.name, shareTool(shareReply(job, t), shared, sharesLeft(job, t)));
-      const outputs = await runCalls(calls, byName, { env: theirs, signal: signal(), memory: p.memory, grants: jobGrants(job.grants) }, quiet);
+      const outputs = await runCalls(calls, byName, { env: theirs, signal: signal(), memory: p.memory, grants }, quiet);
       await p.memory.save().catch(() => {});
       // On the plan, the whole exchange goes again; at OpenAI, the chain carries it.
       const next = onPlan ? await send(req, [...onPlan.input, ...outputs]) : await send(req, outputs, "auto", r.id);

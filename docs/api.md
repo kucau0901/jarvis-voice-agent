@@ -158,7 +158,7 @@ existence, or argued around.
 | `calendar` | Google Calendar: `calendar_check`, `calendar_add`. Reads the diary **and creates events**. |
 | `screen` | `show_place`, `hide_display`, `/api/map`, `make_image` and `/api/image` (pictures Jarvis makes), `make_page` and `/api/page` (pages Jarvis makes), and a person's panels (`panel_set`, `panel_remove`, `/api/hub/panels`). |
 | `voice` | `/api/session`, `/api/tts`, `/api/voices`, and push-to-talk `/api/v1/voice` (which also needs `ask`). |
-| `ask` (jobs) | `/api/v1/jobs`, `/api/v1/jobs/cancel`, `start_job`. A job for Hermes also needs `hermes`. Each job runs with its creator's grants, and only their reading tools. |
+| `ask` (jobs) | `/api/v1/jobs`, `/api/v1/jobs/cancel`, `start_job`. A job for Hermes also needs `hermes`. Each job runs with its creator's grants, no more than they hold now; it reads with their reading tools, and what it would do is proposed for their tap (or done at once, for a reversible kind they allowed). |
 | `routines` | `/api/v1/routines`, `/api/v1/routines/run`, `/api/v1/routines/runs`, `/api/v1/trigger`; `routine_add`, `routine_list`, `routine_remove`. A routine's question runs with **its creator's** grants, never more. |
 | `alerts` | Receiving alerts (`/api/v1/events`, `/api/v1/push`, `/api/v1/alerts`), raising one (`/api/v1/notify`), and `send_note`. The same scope both ways: a device that may be told things may ask to be told something. |
 
@@ -535,9 +535,18 @@ result; `POST /api/v1/jobs/cancel {id}` stops one; `DELETE ?id=` removes it.
 
 A job may READ — web search, mail, calendar, memory, contacts, the car,
 cameras, and the reading tools of MCP servers (judged by name: `get`, `list`,
-`search`… in, `set`, `call`, `control`… out) — and nothing else. It cannot
-send, book, delete, unlock or switch anything; when the work leads to an
-action, it says what it would do. At most 3 run at once and 30 are started a
+`search`… in, `set`, `call`, `control`… out). It cannot send, book, delete,
+unlock or switch anything itself: a call it would make (a car command, a
+calendar event, tidying mail, a Home Assistant call, sending an email it wrote
+as a draft) is proposed instead, and its result alert carries them as
+`proposals: [{id, risk, says}]`. Only the person who started it can approve
+one, signed in, with `POST /api/hub/proposals/answer {id, answer: "approve" |
+"decline"}`; `GET /api/hub/proposals` is `{open, recent, allowed}`. After
+approving a reversible one, `POST /api/hub/proposals/allow {id}` lets jobs make
+that one kind of call without asking (a car command another undoes, a calendar
+event, one way of tidying mail; never anything irreversible or for the house),
+and `DELETE /api/hub/proposals/allow?category=` asks again. A device never can:
+everything under `/api/hub/` is a person's. A proposal waits a day. At most 3 run at once and 30 are started a
 day; one is stopped after 25 steps or 20 minutes.
 
 ### Handing research to Hermes

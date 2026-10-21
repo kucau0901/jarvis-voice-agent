@@ -32,6 +32,8 @@ export interface Said {
   links?: { url: string; title: string }[];
   /** A page the answer made, as a card under it (pageCard.ts). */
   page?: { id: string; title: string };
+  /** What the job it is the result of proposed, by id (proposal.ts). */
+  proposals?: string[];
 }
 
 const PATH = "/api/hub/conversation";
@@ -75,7 +77,7 @@ export function restore(all: Said[], rows: Rows, history: History): void {
       continue;
     }
     if (s.job) {
-      if (rows.job({ id: s.id, at: s.at, title: s.job.name, text: s.text, job: s.job.id })) history.add("assistant", `${s.job.name}: ${s.text}`, s.at);
+      if (rows.job({ id: s.id, at: s.at, title: s.job.name, text: s.text, job: s.job.id, ...(s.proposals ? { proposals: s.proposals } : {}) })) history.add("assistant", `${s.job.name}: ${s.text}`, s.at);
       continue;
     }
     if (s.page && isApart(s)) {

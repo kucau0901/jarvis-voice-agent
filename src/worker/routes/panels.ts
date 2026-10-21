@@ -13,11 +13,9 @@ import { actOn, historyOf, LIVE, readTileOf, viewPanels, type PanelSources } fro
 import { setAlert } from "../lib/panel-alerts.ts";
 import { keyOf } from "../lib/panels.ts";
 import { isTheirs } from "../lib/context.ts";
-import { baseTools, outputText } from "../tools/registry.ts";
-import { mcpSessions, mcpTools } from "../tools/mcp.ts";
-import { memoryFor } from "../lib/memory.ts";
+import { outputText } from "../tools/registry.ts";
 import { Collector } from "../lib/collector.ts";
-import { lookUp, run } from "../lib/router.ts";
+import { lookUp, run, runTool } from "../lib/router.ts";
 import type { PanelsReply } from "../../shared/panels.ts";
 
 /**
@@ -71,20 +69,9 @@ export async function handlePanels(req: Request, env: Env, principal: Principal)
     routines: async () => (await state.listRoutines()).filter((r) => isTheirs(r.createdBy, me)),
     // One of this person's tools, as the router would offer it to them now.
     async tool(name, args) {
-      let tool = baseTools(env, grants).find((t) => t.name === name);
-      const sessions = mcpSessions();
-      try {
-        if (!tool && name.includes("__") && allows(grants, "home")) tool = (await mcpTools(env, sessions)).find((t) => t.name === name);
-        if (!tool) return null;
-        // As the router does: a tool that needs no memory still runs when it cannot be loaded.
-        const memory = memoryFor(env, grants);
-        await memory.load().catch((e) => console.warn("panel tile: memory unavailable:", e instanceof Error ? e.message : String(e)));
-        const out = await tool.run(args, { env, signal: req.signal, progress: () => {}, display: () => {}, memory, grants });
-        await memory.save().catch((e) => console.warn("panel tile: memory not saved:", e instanceof Error ? e.message : String(e)));
-        return { text: outputText(out), ...(typeof out !== "string" && out.images[0] ? { image: out.images[0].url } : {}) };
-      } finally {
-        await sessions.close();
-      }
+      const out = await runTool(env, grants, name, args, req.signal);
+      if (out === null) return null;
+      return { text: outputText(out), ...(typeof out !== "string" && out.images[0] ? { image: out.images[0].url } : {}) };
     },
     // A tile's looked-up readings, kept in the state object (lib/panels.ts).
     kept: (tile) => state.panelReading(me, tile),

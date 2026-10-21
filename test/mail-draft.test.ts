@@ -1,8 +1,9 @@
-import { draftFirst, sendDraft, withFooter, type DraftCard } from "../src/worker/lib/mail-draft.ts";
+import { draftFirst, draftThenAsk, mailDraftSend, sendDraft, withFooter, type DraftCard } from "../src/worker/lib/mail-draft.ts";
+import { baseTools } from "../src/worker/tools/registry.ts";
 import { b64urlDecode } from "../src/worker/lib/google.ts";
 import { requiredScope } from "../src/worker/lib/scopes.ts";
 import { SETTINGS } from "../src/worker/lib/settings.ts";
-import { mailSend } from "../src/worker/tools/gmail.ts";
+import { mailManage, mailSend } from "../src/worker/tools/gmail.ts";
 import { runCalls } from "../src/worker/lib/router.ts";
 
 let pass = 0;
@@ -132,6 +133,58 @@ console.log("\nasked for a draft — kept, with its card to send it from");
     check("saved to Drafts", g.calls.length === 1 && g.calls[0]!.url.endsWith("/users/me/drafts"), g.calls);
     check("its card", cards.length === 1, cards);
     check("told as a draft asked for", /^Saved a draft/.test(out), out);
+  } finally {
+    g.restore();
+  }
+}
+
+console.log("\na background job's mail: drafted, and its sending proposed (draftThenAsk)");
+{
+  const g = google(gmail);
+  try {
+    const filedCalls: { action: { tool: string; args: Record<string, unknown> }; risk: string; says: string; body?: string }[] = [];
+    const kept: Record<string, unknown>[] = [];
+    const job = draftThenAsk(
+      mailSend,
+      async (action, w, _ctx, body) => {
+        const p = { id: "a0123456789abcdefghjk", state: "pending", says: w.says, action };
+        kept.push(p);
+        filedCalls.push({ action, risk: w.risk, says: w.says, body });
+        return p as never;
+      },
+      async (asked) => (kept.find((p) => (p.action as { args: { asked?: string } }).args.asked === asked) as never) ?? null,
+    );
+    check("a job's mail_send says it only proposes", job.name === "mail_send" && job.description.startsWith("PROPOSE ONLY") && job.parameters === mailSend.parameters);
+    const out = String(await job.run(ARGS, ctx({}, ["*"])));
+    check("drafted, never sent, whatever Draft first says", g.calls.length === 1 && g.calls[0]!.url.endsWith("/users/me/drafts") && !g.calls.some((c) => c.url.includes("/send")), g.calls);
+    check("its sending filed, by the draft's id, always to be asked", filedCalls.length === 1 && filedCalls[0]!.action.tool === "mail_draft_send" && filedCalls[0]!.action.args.draft === "r-123456789" && filedCalls[0]!.risk === "irreversible" && filedCalls[0]!.says === "Send the email to sam@example.com", filedCalls);
+    check("and the job told both", /draft/i.test(out) && /NOT done: filed/.test(out), out);
+    check("its subject and words go with it, to be read before Send", filedCalls[0]?.body === "Subject: Dinner\n\nSee you at six.", filedCalls[0]);
+    const twice = await Promise.all([job.run({ ...ARGS, subject: "Lunch" }, ctx({}, ["*"])), job.run({ ...ARGS, subject: "Lunch" }, ctx({}, ["*"]))]);
+    check("the same mail twice in one step: drafted and filed once", g.calls.length === 2 && filedCalls.length === 2 && /NOT done: filed/.test(String(twice[1])), { calls: g.calls.length, filed: filedCalls.length });
+    const again = String(await job.run(ARGS, ctx({}, ["*"])));
+    check("the same mail asked for again (a step tried again): not drafted, nor filed, a second time", g.calls.length === 2 && filedCalls.length === 2 && /NOT done: filed/.test(again), { calls: g.calls.length, filed: filedCalls.length, again });
+  } finally {
+    g.restore();
+  }
+  check("sending a draft is never offered to the router", !baseTools({ ...ENV } as never, ["*"]).some((t) => t.name === "mail_draft_send"));
+  const sendIt = google(() => Response.json({ id: "m1" }));
+  try {
+    const said = await mailDraftSend.run({ draft: "r-123456789", to: "sam@example.com", subject: "Dinner" }, ctx({}, ["mail"]));
+    check("approved, it sends that draft, by Gmail's drafts.send", said === "Sent the email to sam@example.com." && sendIt.calls[0]?.url.endsWith("/users/me/drafts/send") === true, { said, calls: sendIt.calls });
+  } finally {
+    sendIt.restore();
+  }
+  check("a draft id of the wrong shape cannot be proposed", mailDraftSend.propose!({ draft: "../x", to: "a", subject: "b" }, {} as never) === null);
+}
+
+console.log("\nmail_manage proposed: which email, for its card");
+{
+  const g = google(() => Response.json({ id: "199a2b3c4d5e6f70", payload: { headers: [{ name: "From", value: "Sam <sam@example.com>" }, { name: "Subject", value: "Dinner" }, { name: "Date", value: "Wed, 21 Oct 2026 09:00" }] } }));
+  try {
+    const shown = await mailManage.detail!({ message_id: "199a2b3c4d5e6f70", action: "archive" }, ctx({}, ["mail"]));
+    check("its sender, subject and date, from Gmail", shown === "From: Sam <sam@example.com>\nSubject: Dinner\nDate: Wed, 21 Oct 2026 09:00" && g.calls[0]?.url.includes("format=metadata") === true, shown);
+    check("an id of the wrong shape: nothing looked up", (await mailManage.detail!({ message_id: "../x", action: "archive" }, ctx({}, ["mail"]))) === null && g.calls.length === 1);
   } finally {
     g.restore();
   }

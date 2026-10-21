@@ -61,6 +61,12 @@ export interface Alert {
    */
   job?: string;
   /**
+   * What that job proposed for the person's tap (lib/proposals.ts): the app
+   * draws each as a card with Approve. Nothing here approves anything: an id
+   * is done only by its person's own tap, signed in.
+   */
+  proposals?: { id: string; risk: "reversible" | "irreversible"; says: string }[];
+  /**
    * Whose it is (lib/context.ts): a member's id, or none for the first
    * person's. A member's alert reaches only their screens, their phones and
    * their own Telegram chat; the household's channels (ntfy, the webhook,

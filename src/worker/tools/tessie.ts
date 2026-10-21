@@ -409,6 +409,9 @@ const COMMANDS: Record<string, { slug: string; param?: "temperature" | "percent"
   navigate_to: { slug: "share", param: "value" },
 };
 
+/** Commands another command undoes, or that change nothing that stays: what a job may propose as reversible. */
+const UNDONE = new Set(["lock", "start_climate", "stop_climate", "set_temperature", "start_charging", "stop_charging", "set_charge_limit", "close_windows", "flash_lights"]);
+
 /**
  * `share` also accepts a video URL, so anything that can write text the user
  * later asks about could otherwise put arbitrary content on the car's screen.
@@ -473,6 +476,21 @@ export const carCommand: Tool = {
     required: ["command", "value", "temperature", "percent", "car"],
     additionalProperties: false,
   },
+  // Proposed by a job (lib/proposals.ts): what another command puts back is reversible; what opens, sounds or shows is not.
+  propose(args, env) {
+    const c = typeof args.command === "string" ? args.command : "";
+    if (!(c in COMMANDS)) return null;
+    // The car as it will be commanded (pickCar): one named must be one of theirs by its very name, so the card and the call are the same car.
+    const cars = carsOf(env);
+    const want = typeof args.car === "string" ? args.car.trim().toLowerCase() : "";
+    const car = cars.length ? (want ? cars.find((x) => x.name.toLowerCase() === want) : cars[0]) : null;
+    if (cars.length && !car) return null;
+    // Its name and the end of its VIN, as Family shows it: two cars may share a name.
+    const which = car ? ` (${car.name}, …${car.vin.slice(-4)})` : "";
+    const detail = c === "set_temperature" ? ` to ${args.temperature}°C` : c === "set_charge_limit" ? ` to ${args.percent}%` : c === "navigate_to" ? `: ${String(args.value ?? "")}` : "";
+    const says = `Car: ${c.replace(/_/g, " ")}${detail}${which}`;
+    return UNDONE.has(c) ? { risk: "reversible", says, category: `car_command:${c}` } : { risk: "irreversible", says };
+  },
   async run(args, ctx) {
     const picked = pickCar(ctx.env, args.car);
     if (typeof picked === "string") return picked;
@@ -520,6 +538,7 @@ export const carCommand: Tool = {
 
     ctx.progress(name === "navigate_to" ? "sending it to the car" : "sending that to the car");
     if (!(await sendCarCommand(cfg, name, extra, ctx.signal))) return `The car did not accept ${name}.`;
+    ctx.done?.();
 
     /*
      * Do NOT read the route back to confirm.

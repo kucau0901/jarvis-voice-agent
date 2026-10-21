@@ -329,6 +329,39 @@ function attachedSaid(opts: RunOptions): string {
  * reading tools only, as a background job has (lib/jobs.ts jobTool). Its
  * words. For Home (routes/panels.ts) and the alarm (lib/panels.ts refresh).
  */
+/**
+ * One of a person's tools, run outside any question, as the router would
+ * offer it to them now: a Home tile's button (routes/panels.ts), an approved
+ * proposal (routes/proposals.ts). Null when it is not theirs to use now.
+ * Errors are the caller's: a tile shows them, a proposal records them.
+ */
+export async function runTool(
+  env: Env,
+  grants: readonly Grant[],
+  name: string,
+  args: Record<string, unknown>,
+  signal: AbortSignal,
+  /** Tools the router is never offered that this call may still run (an approval's: lib/mail-draft.ts mailDraftSend). */
+  also: readonly Tool[] = [],
+  /** Told when the tool says its call did what was asked (ToolContext.done). */
+  done?: () => void,
+): Promise<ToolOutput | null> {
+  let tool = [...baseTools(env, grants), ...also.filter((t) => (!t.available || t.available(env)) && (!t.scope || allows(grants, t.scope)))].find((t) => t.name === name);
+  const sessions = mcpSessions();
+  try {
+    if (!tool && name.includes("__") && allows(grants, "home")) tool = (await mcpTools(env, sessions)).find((t) => t.name === name);
+    if (!tool) return null;
+    // As the router does: a tool that needs no memory still runs when it cannot be loaded.
+    const memory = memoryFor(env, grants);
+    await memory.load().catch((e) => console.warn(`${name}: memory unavailable:`, e instanceof Error ? e.message : String(e)));
+    const out = await tool.run(args, { env, signal, progress: () => {}, display: () => {}, memory, grants, ...(done ? { done } : {}) });
+    await memory.save().catch((e) => console.warn(`${name}: memory not saved:`, e instanceof Error ? e.message : String(e)));
+    return out;
+  } finally {
+    await sessions.close();
+  }
+}
+
 export async function lookUp(env: Env, text: string, grants: readonly Grant[], signal: AbortSignal): Promise<string> {
   const sink = new Collector();
   await run(env, [{ role: "user", text }], sink, signal, grants, { surface: "chat", assist: true, toolFilter: jobTool });

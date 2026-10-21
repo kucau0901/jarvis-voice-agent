@@ -26,6 +26,7 @@ const answers: Record<string, (...args: unknown[]) => unknown> = {
     { id: "j1", title: "Mine", task: "t", engine: "jarvis", status: "done", createdBy: "u_sam", grants: ["*"], responseId: "resp_secretish", draft: { text: "d" }, createdAt: 1, updatedAt: 2 },
     { id: "j2", title: "Theirs", task: "t", engine: "jarvis", status: "done", createdBy: "u_other", grants: ["*"], createdAt: 1, updatedAt: 2 },
   ],
+  proposalsOf: (p) => [{ id: "a0123456789abcdefghjk", who: "u_sam~d_x", person: String(p), from: { kind: "job", id: "j1", title: "Mine" }, says: "Car: lock", why: "From your job “Mine”", action: { tool: "car_command", args: {} }, risk: "reversible", grants: ["*"], createdAt: 1, expires: 2, state: "pending" }],
   getSettings: () => ({ OPENAI_API_KEY: { v: "sk-test-secret-value", at: 1 }, HA_TOKEN: { v: "ha-test-secret-value", at: 1 }, TIMEZONE: { v: "Asia/Kuala_Lumpur", at: 1 }, NOT_A_SETTING: { v: "x", at: 1 } }),
 };
 const stub = new Proxy({}, {
@@ -33,7 +34,7 @@ const stub = new Proxy({}, {
 });
 const STATE = { idFromName: () => "j", get: () => stub };
 type Book = { facts: { text: string }[]; reference: unknown[] };
-type Bundle = { memory: Book; family: Book | null; routines: { id: string }[]; jobs: Record<string, unknown>[]; conversation: { text: string }[]; settings: Record<string, unknown> };
+type Bundle = { memory: Book; family: Book | null; routines: { id: string }[]; jobs: Record<string, unknown>[]; proposals: Record<string, unknown>[]; conversation: { text: string }[]; settings: Record<string, unknown> };
 const get = (env: Record<string, unknown>, principal: unknown, method = "GET") =>
   handleExport(new Request("https://j.test/api/export", { method }), { STATE, TIMEZONE: "Asia/Kuala_Lumpur", ...env } as never, principal as never);
 
@@ -48,6 +49,7 @@ console.log("an export");
   check("their panels and conversation", calls.some((c) => c.m === "panelsOf" && c.args[0] === "u_sam") && b.conversation[0]!.text === "said by u_sam");
   check("their routines and jobs, nobody else's", b.routines.map((x) => x.id).join() === "rt_1" && b.jobs.map((x) => x.id).join() === "j1", { routines: b.routines, jobs: b.jobs });
   check("a job without its grants or internals", !("grants" in b.jobs[0]!) && !("responseId" in b.jobs[0]!) && !("draft" in b.jobs[0]!), b.jobs[0]);
+  check("what their jobs proposed, without the grants each would run with", b.proposals.length === 1 && b.proposals[0]!.says === "Car: lock" && !("grants" in b.proposals[0]!) && !("who" in b.proposals[0]!) && calls.some((c) => c.m === "proposalsOf" && c.args[0] === "u_sam"), b.proposals);
   check("settings without a secret among them", b.settings.TIMEZONE === "Asia/Kuala_Lumpur" && !("OPENAI_API_KEY" in b.settings) && !("HA_TOKEN" in b.settings) && !("NOT_A_SETTING" in b.settings), b.settings);
   check("no secret anywhere in it, saved or in the environment", !/sk-test-secret|ha-test-secret|ha-env-secret|OWNERKEY12345678/.test(text));
   calls.length = 0;

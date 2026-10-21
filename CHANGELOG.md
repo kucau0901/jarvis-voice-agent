@@ -19,6 +19,19 @@ of every release, and in the [README](README.md#updating).
 
 ### Added
 
+- **Jobs ask before they act.** A background job that would do something
+  (lock the car, put an event in your calendar, archive or star an email,
+  send an email it wrote, a Home Assistant call) now proposes it: its result
+  comes with a card for each, with Approve and Not now, on the alert, under
+  its answer in the chat, and on Home under Now until you answer. Only your
+  tap does it, once, with no more
+  than the job could reach; a card says when something can't be undone, and
+  waits a day. An email a job writes is saved to your Drafts, and its card's
+  Approve sends it. Once you approve something that can be undone (locking
+  the car, an event, archiving mail), **Let jobs do this without asking**
+  lets them do that one kind from then on; Jobs lists what is allowed, with
+  Stop. Anything irreversible, and anything for the house, always asks.
+  Routines act as they always have.
 - **Run Jarvis on your ChatGPT plan.** Connect your ChatGPT Plus or Pro in
   Settings → ChatGPT plan, and every question, chat, job, research run and
   routine comes out of the usage your plan already includes, at no cost in
@@ -154,6 +167,8 @@ of every release, and in the [README](README.md#updating).
 
 ### Changed
 
+- **Jobs no longer only say what they would do:** they propose it, for your
+  tap (above).
 - **Coding and your computer go to Hermes by themselves.** Ask to change
   your website, fix or deploy an app, or do something with files or programs
   on the computer Hermes runs on, and Jarvis hands it to Hermes without your
@@ -169,6 +184,10 @@ of every release, and in the [README](README.md#updating).
 
 ### Fixed
 
+- **A background job keeps to what its maker may do now.** A scope an
+  admin took from someone is taken from the jobs they had already started,
+  as it already was from their routines, and a job whose maker has left the
+  family stops.
 - **Page watches work on the ChatGPT plan.** With the plan connected, every
   page watch (including Alert me on a reading Jarvis looks up) failed with
   "Input must be a list", and setting up a new one failed too.

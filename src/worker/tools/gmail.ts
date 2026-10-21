@@ -781,6 +781,20 @@ export const mailManage: Tool = {
     required: ["message_id", "action"],
     additionalProperties: false,
   },
+  // Proposed by a job (lib/proposals.ts): each action is undone by another, but trash always asks.
+  propose(args) {
+    const action = typeof args.action === "string" && ACTIONS[args.action] ? args.action : "";
+    const id = typeof args.message_id === "string" ? args.message_id.trim() : "";
+    if (!action || !MESSAGE_ID.test(id)) return null;
+    const says = `Mail: ${action.replace(/_/g, " ")} message ${id}`;
+    return action === "trash" ? { risk: "irreversible", says } : { risk: "reversible", says, category: `mail_manage:${action}` };
+  },
+  // Which email it is, for the card: the id alone says nothing to the person.
+  async detail(args, ctx) {
+    const id = typeof args.message_id === "string" ? args.message_id.trim() : "";
+    const [m] = MESSAGE_ID.test(id) ? await hydrate(ctx, cfgOf(ctx), [id], "metadata") : [];
+    return m ? ["From", "Subject", "Date"].map((h) => `${h}: ${tidy(headerOf(m, h)).slice(0, 300)}`).join("\n") : null;
+  },
   async run(args, ctx) {
     return (await guard(async () => {
       const cfg = cfgOf(ctx);
@@ -809,6 +823,7 @@ export const mailManage: Tool = {
 
       // Naming the undo at the moment of the action is the whole mitigation for
       // letting a voice command reach the trash at all.
+      ctx.done?.();
       return name === "trash"
         ? "Moved to the trash. Say so within the next few seconds and I can restore it."
         : `Done — ${spec.said}.`;

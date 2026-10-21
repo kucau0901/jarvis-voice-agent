@@ -83,6 +83,19 @@ notifications. Jarvis notices a device that has gone and takes it off the list.
   starts. After that it is of no use, so a phone that was off all along is not
   told late.
 
+## When a job asks for your OK
+
+A background job does not act on its own. What it would do (lock the car,
+add an event, archive an email, send one it wrote, a Home Assistant call)
+comes with its result as a card with **Approve** and **Not now**, unless it is
+a kind that can be undone which you let jobs do without asking: then it is
+done, and the alert says so. Anything irreversible, and anything for the
+house, always asks. Tap the
+notification to open Jarvis on that alert; the same card is under the job's
+answer in the chat. Nothing on a notification approves anything, so a phone
+that is locked, or a notification someone else sees, cannot. Telegram, ntfy
+and Home Assistant only say that something is waiting. A card waits a day.
+
 ## Check that it works
 
 1. On your phone, close Jarvis and lock the screen.

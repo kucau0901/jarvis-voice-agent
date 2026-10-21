@@ -35,7 +35,7 @@ import type { UsageEntry } from "../src/worker/lib/usage.ts";
 import { HERMES_LONG_WORK, jobEngine } from "../src/worker/routes/jobs.ts";
 import { MERGE_INSTRUCTIONS, PLAN_INSTRUCTIONS, RESEARCH_CHECK, TEAM_INSTRUCTIONS } from "../src/worker/lib/router-prompt.ts";
 import { angleMessage, mergeMaterial, shareReply, shareTool, teamView } from "../src/worker/lib/research-team.ts";
-import { allows, requiredScope, withoutScreen } from "../src/worker/lib/scopes.ts";
+import { allows, reachNow, requiredScope, withoutScreen } from "../src/worker/lib/scopes.ts";
 import { baseTools } from "../src/worker/tools/registry.ts";
 
 let pass = 0;
@@ -1528,6 +1528,20 @@ console.log("\njobs on the owner's ChatGPT plan (routes/jobs.ts): streamed here,
       "responseId" in checked && sent[2]!.by === "plan" && JSON.stringify(sent[2]!.body.input.at(-1)) === JSON.stringify({ role: "developer", content: RESEARCH_CHECK }) && sent[2]!.body.input.length > 2, sent[2]?.body.input.length);
     await engine.cancel({ ...job, responseId: id1 });
     check("cancelling forgets a kept step", !(await kept.get(`jobplan:${id1}`)));
+
+    // No further than whoever started it may reach now (lib/scopes.ts reachNow): a job made with every scope, its maker since narrowed to asking.
+    const names = (tools: unknown): string[] => (Array.isArray(tools) ? tools.flatMap((t: { name?: string; tools?: unknown }) => [...(t.name ? [t.name] : []), ...names(t.tools)]) : []);
+    check("reachNow: narrowed to the maker's scopes, nothing once they have left, as given when they could not be looked up",
+      reachNow(["*"], { scopes: ["ask", "home"] }).join() === "ask,home" && reachNow(["ask", "car"], { scopes: ["ask"] }).join() === "ask" && reachNow(["ask"], { scopes: null }) === null && reachNow(["ask"], {}) === null && reachNow(["ask", "car"], null)?.join() === "ask,car");
+    const before = names(first.body.tools);
+    const gone = jobEngine(env, async (a) => ({ alert: a, attempts: [], deliveredBy: null }) as never, async () => env, kept as never, async () => null);
+    const refused = await gone.start(job);
+    check("whoever started it has left: it does not start", "error" in refused && /no longer in the family/.test(refused.error), refused);
+    const narrowed = jobEngine(env, async (a) => ({ alert: a, attempts: [], deliveredBy: null }) as never, async () => env, kept as never, async (j) => reachNow(j.grants, { scopes: ["ask"] }));
+    answers.push([{ type: "message", id: "m3", role: "assistant", status: "completed", content: [{ type: "output_text", text: "Done.", annotations: [] }] }]);
+    await narrowed.start(job);
+    const after = names(sent.at(-1)!.body.tools);
+    check("narrowed since: its steps are offered only what its maker may still reach", before.includes("recall") && !after.includes("recall") && after.length < before.length, { before: before.length, after });
     check("a step no longer kept fails plainly", (await engine.poll({ ...job, responseId: "plan_gone" })).kind === "failed");
 
     answers.push({ status: 429, code: "subscription_sharing_usage_limit_exceeded" });
@@ -1541,6 +1555,63 @@ console.log("\njobs on the owner's ChatGPT plan (routes/jobs.ts): streamed here,
     answers.push([]);
     const keyOnly = await engine.start(job);
     check("no plan: the key, as before", "responseId" in keyOnly && keyOnly.responseId === "resp_key" && sent.at(-1)!.by === "key");
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+}
+
+console.log("\na job that would act proposes instead (lib/proposals.ts)");
+{
+  const filedCalls: Record<string, unknown>[] = [];
+  const stub = new Proxy({}, {
+    get: (_t, m) => (m === "then" ? undefined : async (...a: unknown[]) => {
+      if (m === "chatgptToken") return { token: "at_plan", model: null };
+      if (m === "proposalAdd") {
+        filedCalls.push(a[0] as Record<string, unknown>);
+        return { id: "a0123456789abcdefghjk", state: "pending", says: "Car: lock" };
+      }
+      return undefined;
+    }),
+  });
+  const kv = new Map<string, string>();
+  const CONFIG = { get: async (k: string) => kv.get(k) ?? null, put: async (k: string, v: string) => void kv.set(k, v), delete: async () => {}, list: async () => ({ keys: [] }) };
+  const env = { CONFIG, OPENAI_API_KEY: "sk-test", TIMEZONE: "Asia/Kuala_Lumpur", TESSIE_TOKEN: "t", TESSIE_VIN: "LRWTEST0000000000", STATE: { idFromName: () => "j", get: () => stub } } as never;
+  const kept = fakeStorage();
+  const sent: { body: { tools?: unknown; input: Record<string, unknown>[] } }[] = [];
+  const answers: Record<string, unknown>[][] = [];
+  const toTessie: string[] = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input instanceof Request ? input.url : input);
+    if (url.includes("tessie")) {
+      toTessie.push(url);
+      return Response.json({ result: true });
+    }
+    sent.push({ body: JSON.parse(String(init?.body)) });
+    const usage = { input_tokens: 200, output_tokens: 20, input_tokens_details: { cached_tokens: 0 }, output_tokens_details: { reasoning_tokens: 0 } };
+    const events = [...answers.shift()!.map((item) => ({ type: "response.output_item.done", item })), { type: "response.completed", response: { id: "resp_x", object: "response", status: "completed", model: "gpt-6-luna", output: [], usage } }];
+    return new Response(events.map((e) => `data: ${JSON.stringify(e)}\n\n`).join(""), { headers: { "content-type": "text/event-stream" } });
+  }) as typeof fetch;
+  const offered = (tools: unknown): { name: string; description: string }[] =>
+    Array.isArray(tools) ? tools.flatMap((t: { name?: string; description?: string; tools?: unknown }) => [...(t.name && t.description !== undefined ? [{ name: t.name, description: t.description }] : []), ...offered(t.tools)]) : [];
+  try {
+    const engine = jobEngine(env, async (a) => ({ alert: a, attempts: [], deliveredBy: null }) as never, async () => env, kept as never);
+    const job = { id: "jcar", title: "Tidy up after the trip", task: "Lock the car once it is parked.", engine: "jarvis", status: "running", createdBy: "u_sara~d_tablet", grants: ["*"], createdAt: T0, updatedAt: T0, steps: 0, attempts: 0 } as Job;
+    answers.push([{ type: "function_call", id: "fc_1", call_id: "call_1", name: "car_command", namespace: "jarvis", arguments: JSON.stringify({ command: "lock", value: null, temperature: null, percent: null, car: null }), status: "completed" }]);
+    const started = await engine.start(job);
+    const car = offered(sent[0]!.body.tools).find((t) => t.name === "car_command");
+    check("a job is handed the car's command, said to only propose", !!car && car.description.startsWith("PROPOSE ONLY"), car);
+    answers.push([{ type: "message", id: "m1", role: "assistant", status: "completed", content: [{ type: "output_text", text: "SUMMARY: the lock is waiting for you.", annotations: [] }] }]);
+    await engine.poll({ ...job, responseId: (started as { responseId: string }).responseId });
+    const f = filedCalls[0] as { who?: string; person?: string; from?: { id: string }; action?: { tool: string; args: { command: string } }; weighed?: { risk: string } };
+    check("its call is filed for its maker, as it was asked, and the car is never reached",
+      filedCalls.length === 1 && f.who === "u_sara~d_tablet" && f.person === "u_sara" && f.from?.id === "jcar" && f.action?.tool === "car_command" && f.action.args.command === "lock" && f.weighed?.risk === "reversible" && toTessie.length === 0, { filedCalls, toTessie });
+    const out = sent[1]!.body.input.at(-1) as { type: string; output: string };
+    check("and the job is told it is not done, but waiting", out.type === "function_call_output" && out.output.startsWith("NOT done: filed for the user's OK"), out);
+    const research = { ...job, id: "jres2", engine: "research" } as Job;
+    answers.push([{ type: "message", id: "m2", role: "assistant", status: "completed", content: [{ type: "output_text", text: "x", annotations: [] }] }]);
+    await engine.start(research);
+    check("research only reads: nothing to propose with", !offered(sent.at(-1)!.body.tools).some((t) => t.name === "car_command"));
   } finally {
     globalThis.fetch = realFetch;
   }

@@ -1,5 +1,6 @@
 import type { Env } from "../types.ts";
 import type { DraftCard } from "../lib/mail-draft.ts";
+import type { Weighed } from "../lib/proposals.ts";
 import type { MemoryStore } from "../lib/memory.ts";
 import { allows, type Grant, type Scope } from "../lib/scopes.ts";
 import * as hermes from "./hermes.ts";
@@ -55,6 +56,12 @@ export interface ToolContext {
   offered?: readonly string[];
   /** The user's latest message, as they said it: what only they can ask for must be in it (tools/specialties.ts). */
   asked?: string;
+  /**
+   * Told that the call did what was asked: a tool a job may propose says so
+   * on success, since it says failure in words, not by throwing. Only what
+   * it told counts as done for an approval (lib/proposals.ts).
+   */
+  done?(): void;
 }
 
 /** A picture for the router to look at, as a data: URL. */
@@ -103,6 +110,15 @@ export interface Tool {
    * changing what it means. The MCP server validates its own arguments anyway.
    */
   strict?: boolean;
+  /**
+   * How a background job may propose this call for the user's tap
+   * (lib/proposals.ts): how risky it is, worked out from its arguments, and
+   * what it does in words; null when these arguments cannot be proposed.
+   * Without it, a job is never handed the tool. Not sent to the model.
+   */
+  propose?(args: Record<string, unknown>, env: Env): Weighed | null;
+  /** What the card shows of the thing the call acts on, looked up when it is filed (an email's sender and subject). Shown only. */
+  detail?(args: Record<string, unknown>, ctx: ToolContext): Promise<string | null>;
   run(args: Record<string, unknown>, ctx: ToolContext): Promise<ToolOutput>;
 }
 

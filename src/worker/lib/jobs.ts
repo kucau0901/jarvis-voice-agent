@@ -26,10 +26,13 @@ import type { UsageEntry } from "./usage.ts";
  *           with it, when they ask, one of their finished research reports
  *           (`from`), quoted as reference (routes/jobs.ts). Never on its own.
  *
- * A job READS but does not ACT (routes/jobs.ts picks its tools): nobody is
- * watching it, and it reads things written by others — web pages, mail — so
- * it must not be able to send, delete, unlock or switch anything. It says
- * what it would do instead, and the user can ask for it.
+ * A job READS but does not ACT on its own (routes/jobs.ts picks its tools):
+ * nobody is watching it, and it reads things written by others — web pages,
+ * mail — so nothing it has can send, delete, unlock or switch anything. Its
+ * tools that act are held copies (lib/proposals.ts held()): a call files a
+ * proposal for the person's tap, or runs once for a reversible kind they let
+ * jobs do without asking. Its mail is only drafted, and sending it proposed
+ * (lib/mail-draft.ts).
  *
  * Kept free of runtime imports beyond the alert helpers, so Node tests it.
  */

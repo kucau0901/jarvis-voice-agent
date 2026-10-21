@@ -158,7 +158,7 @@ const FORBIDDEN_SERVICES = [
 ];
 
 /** Best-effort extraction of "domain.service" from an arbitrary tool payload. */
-function calledService(args: Record<string, unknown>): string | null {
+export function calledService(args: Record<string, unknown>): string | null {
   const direct = typeof args.service === "string" ? args.service : null;
   if (direct) {
     return direct.includes(".") && typeof args.domain === "string"
@@ -275,6 +275,7 @@ async function callRemote(
       .join("\n")
       .trim();
     if (result.isError) return `${server.label} reported an error: ${text || "no detail"}`;
+    ctx.done?.();
     return text || "That returned nothing.";
   } catch (e) {
     // Not retried here: the call may already have acted. The next call connects afresh.
