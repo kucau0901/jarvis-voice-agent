@@ -88,6 +88,16 @@ console.log("kept, and decided once");
   check("someone who left: nothing of theirs kept", st._m.size === 0);
 }
 
+console.log("\ntwo identical calls at once");
+{
+  const st = fakeStorage();
+  const props = new Proposals(st as never);
+  const ev = { tool: "calendar_add", args: { title: "Dentist", start: "2026-10-23T15:00:00+08:00", duration_minutes: 30, location: null } };
+  const w = weigh(calendarAdd, ev.args, NO_CARS)!;
+  const both = await Promise.all([props.add(input({ action: ev, weighed: w }), T), props.add(input({ action: ev, weighed: w }), T)]);
+  check("filed once: the second sees the first", [...st._m.keys()].filter((k) => k.startsWith("prop:")).length === 1 && typeof both[0] !== "string" && typeof both[1] !== "string" && both[0].id === both[1].id);
+}
+
 console.log("\nshown whole, or not filed");
 {
   const props = new Proposals(fakeStorage() as never);

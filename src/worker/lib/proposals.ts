@@ -114,6 +114,8 @@ export interface ProposalInput {
 
 export class Proposals {
   private storage: Storage;
+  /** Filings one at a time: two identical calls in one step must see each other (add). */
+  private filing: Promise<unknown> = Promise.resolve();
   constructor(storage: Storage) {
     this.storage = storage;
   }
@@ -135,7 +137,13 @@ export class Proposals {
    * from the same job again is the one already filed, whatever became of
    * it: a step tried again never files, or runs, a second.
    */
-  async add(input: ProposalInput, now: number): Promise<Proposal | string> {
+  add(input: ProposalInput, now: number): Promise<Proposal | string> {
+    const run = this.filing.then(() => this.addNow(input, now));
+    this.filing = run.catch(() => {});
+    return run;
+  }
+
+  private async addNow(input: ProposalInput, now: number): Promise<Proposal | string> {
     if (JSON.stringify(input.action.args).length > MAX_ARGS) return "That is too long to propose.";
     if (input.weighed.says.length > MAX_SAYS || (input.body?.length ?? 0) > MAX_BODY) return "That is too long to show the user whole, so it was not filed: say in your answer what you would do.";
     const mine = await this.list(input.person, now);

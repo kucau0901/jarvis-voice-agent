@@ -1,6 +1,6 @@
 import { api } from "../key";
 import { el } from "./util";
-import { proposalCard, type ProposalView } from "../proposal";
+import { proposalCard, settle, type ProposalView } from "../proposal";
 
 /**
  * Home's Now strip: what background jobs proposed that waits for an OK
@@ -24,7 +24,7 @@ export class Now {
 
   async load(): Promise<void> {
     const n = ++this.seq;
-    const r = (await api(this.key, "GET", "/api/hub/proposals").catch(() => null)) as { open: ProposalView[] } | null;
+    const r = (await api(this.key, "GET", "/api/hub/proposals").catch(() => null)) as { open: ProposalView[]; recent: ProposalView[] } | null;
     if (n !== this.seq || !r) return;
     const open = r.open;
     const ids = new Set(open.map((p) => p.id));
@@ -32,6 +32,12 @@ export class Now {
     if (this.root.querySelector(".proposalcard button:disabled")) return;
     // Answered here since: kept for one more read, so what came of it is seen, then gone.
     const answered = [...this.root.querySelectorAll<HTMLElement>(".proposalcard")].filter((c) => !ids.has(c.dataset.proposal ?? ""));
+    // Decided elsewhere (another screen, expired, its job cancelled): drawn as it now stands before it is kept.
+    const decided = new Map(r.recent.map((p) => [p.id, p]));
+    for (const c of answered) {
+      const p = decided.get(c.dataset.proposal ?? "");
+      if (p && c.querySelector(".mdbtns button.primary")) settle(this.key, p);
+    }
     const now = [...ids].join();
     if (now === this.shown) {
       // The same waiting: those kept from last time go, and the open cards stay as they are (a "try again" on one, say).
