@@ -149,6 +149,12 @@ console.log("\nhow risky: code says, from the tool and its arguments");
   const more = classify("home__ha_call_service", { domain: "lock", service: "unlock", entity_id: "lock.shed", data: { area_id: "front_porch" } })?.says ?? "";
   const note = classify("home__ha_call_service", { domain: "notify", service: "mobile_app_phone", data: { message: "Your code is 1234" } })?.says ?? "";
   check("and everything else it would send: another target, a message", more.includes("front_porch") && note.includes("Your code is 1234"), { more, note });
+  const odd = [
+    classify("home__ha_call_service", { domain: "lock", service: "light.turn_on", entity_id: "light.porch" })?.says ?? "",
+    classify("home__ha_call_service", { domain: "lock", service: "unlock", data: { entity_id: { area_id: "garage" } } })?.says ?? "",
+    classify("home__ha_call_service", { domain: "light", service: "turn_on", entity_id: [["lock.front"]] })?.says ?? "",
+  ];
+  check("a domain the service does not take, and entity ids that are not plain names: shown too", odd[0].includes("domain lock") && odd[1].includes("garage") && odd[2].includes("lock.front"), odd);
   const asText = classify("home__ha_call_service", { domain: "cover", service: "open_cover", data: '{"entity_id":"cover.garage_door"}' })?.says ?? "";
   check("data written as text, which the server reads too, is shown as it is", asText.includes("cover.garage_door"), asText);
   const cal = (a: Record<string, unknown>) => weigh(calendarAdd, { title: "Dentist", start: "2026-10-22T09:00:00+08:00", duration_minutes: 30, location: null, ...a }, NO_CARS);
@@ -307,6 +313,13 @@ console.log("\nanswered by a tap (routes/proposals.ts)");
     check("allowing that kind does not care which car it was then", (await handleProposals(req("/api/hub/proposals/allow", { id: p.id }), reordered, ctx, mia))!.status === 200);
     const stop = await handleProposals(new Request("https://j.test/api/hub/proposals/allow?category=car_command%3Alock", { method: "DELETE" }), env, ctx, mia);
     check("and asked for again", stop!.status === 200 && (await props.allowed("u_mia")).length === 0);
+    // One that named its car, which has since gone: the kind is still allowed.
+    const named = { ...lock.args, car: "Model Y" };
+    const withY = { ...(env as object), JARVIS_CARS: JSON.stringify([{ id: "c2", name: "Model Y", level: "own", mine: true, vin: "VIN_B", token: "t" }]) } as never;
+    const ny = (await props.add(input({ person: "u_mia", who: "u_mia", from: { kind: "job", id: "jny", title: "x" }, action: { tool: "car_command", args: named }, weighed: weigh(carCommand, named, withY)! }), Date.now())) as Proposal;
+    await handleProposals(req("/api/hub/proposals/answer", { id: ny.id, answer: "approve" }), withY, ctx, mia);
+    check("one that named a car since gone: the kind still allowed", (await props.get("u_mia", ny.id, Date.now()))?.state === "done" && (await handleProposals(req("/api/hub/proposals/allow", { id: ny.id }), reordered, ctx, mia))!.status === 200);
+    await props.disallow("u_mia", "car_command:lock");
   } finally {
     globalThis.fetch = realFetch;
   }

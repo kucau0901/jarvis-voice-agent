@@ -286,11 +286,19 @@ export function classify(name: string, args: Record<string, unknown>): Weighed |
   const shown = (k: string, v: unknown) => `${k} ${typeof v === "string" ? v : JSON.stringify(v)}`;
   // Everything it would send is on the card: the service and its entities first, then every other argument.
   const obj = args.data && typeof args.data === "object" && !Array.isArray(args.data) ? (args.data as Record<string, unknown>) : null;
+  // Entity ids shown as names only when they are plain names; anything else stays where it was, shown as it is.
+  const names = (v: unknown): string[] | null => (v == null ? [] : typeof v === "string" ? [v] : Array.isArray(v) && v.every((e) => typeof e === "string") ? v : null);
+  const top = names(args.entity_id);
   const { entity_id: inData, ...data } = obj ?? {};
-  const entity = [args.entity_id, inData].flat().filter((e): e is string => typeof e === "string").join(", ");
-  // `data` as anything but an object (a JSON string, which a server may read) is shown as it is.
-  const rest = Object.entries(args).filter(([k]) => !svc || !["domain", "service", "entity_id", ...(obj ? ["data"] : [])].includes(k)).map(([k, v]) => shown(k, v));
-  if (svc && Object.keys(data).length) rest.push(shown("data", data));
+  const low = names(inData);
+  if (obj && low === null) data.entity_id = inData;
+  const entity = [...(top ?? []), ...(low ?? [])].join(", ");
+  // Left out of the rest only what the service and its entities already say: a domain the service does not take
+  // (a dotted service) and data written as text (which a server may read) are shown as they are.
+  const usesDomain = typeof args.domain === "string" && typeof args.service === "string" && !args.service.includes(".");
+  const said = new Set(svc ? ["service", ...(usesDomain ? ["domain"] : []), ...(top !== null ? ["entity_id"] : []), ...(obj ? ["data"] : [])] : []);
+  const rest = Object.entries(args).filter(([k]) => !said.has(k)).map(([k, v]) => shown(k, v));
+  if (svc && obj && Object.keys(data).length) rest.push(shown("data", data));
   const says = svc
     ? `${server} (${name.slice(i + 2)}): ${svc}${entity ? ` ${entity}` : ""}${rest.length ? `, ${rest.join(", ")}` : ""}`
     : `${server} (${name.slice(i + 2)}): ${rest.join(", ")}`;
