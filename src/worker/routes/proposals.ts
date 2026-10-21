@@ -3,7 +3,7 @@ import { err, json, readObjectOrEmpty } from "../lib/http.ts";
 import { grantsOf, personOf, type Principal } from "../lib/auth.ts";
 import { stateStub } from "../lib/state-client.ts";
 import { personView } from "../lib/hub-client.ts";
-import { PROPOSAL_ID, viewOf, weigh } from "../lib/proposals.ts";
+import { PROPOSAL_ID, UNDO_MS, viewOf, weigh } from "../lib/proposals.ts";
 import { notAsShown } from "../lib/approval.ts";
 import { baseTools } from "../tools/registry.ts";
 
@@ -36,12 +36,12 @@ export async function handleProposals(req: Request, env: Env, principal: Princip
   if (url.pathname === "/api/hub/proposals") {
     if (req.method !== "GET") return err(405, "GET only");
     const [all, allowed] = await Promise.all([state.proposalsOf(me, now), state.proposalAllowed(me)]);
-    return json({
-      open: all.filter((p) => p.state === "pending").map(viewOf),
-      // Newest decided first: one just approved is listed while its call is made, however long it waited (src/app/proposal.ts watch).
-      recent: all.filter((p) => p.state !== "pending").sort((a, b) => (b.decidedAt ?? b.createdAt) - (a.decidedAt ?? a.createdAt)).slice(0, RECENT).map(viewOf),
-      allowed,
-    });
+    // Newest decided first: one just approved is listed while its call is made, however long it waited (src/app/proposal.ts watch).
+    const decided = all.filter((p) => p.state !== "pending").sort((a, b) => (b.decidedAt ?? b.createdAt) - (a.decidedAt ?? a.createdAt));
+    const newest = decided.slice(0, RECENT);
+    // And whatever can still be put back, however far down: its card offers Put back all week.
+    const back = decided.slice(RECENT).filter((p) => p.state === "done" && p.by === "tap" && p.action.tool === "mail_archive_many" && !p.undone && now - (p.decidedAt ?? p.createdAt) < UNDO_MS);
+    return json({ open: all.filter((p) => p.state === "pending").map(viewOf), recent: [...newest, ...back].map(viewOf), allowed });
   }
 
   if (url.pathname === "/api/hub/proposals/allow") {

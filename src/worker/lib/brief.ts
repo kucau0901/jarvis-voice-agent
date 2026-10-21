@@ -36,8 +36,9 @@ import { DEFAULT_ROUTER_MODEL } from "./router-model.ts";
  * invitation left unanswered (Decline when it clashes, else Accept), and
  * archiving the Inbox's old promotions once there are PROMOTIONS_MIN. Each is
  * filed for their tap before the model is asked anything (lib/proposals.ts:
- * one they dismissed, tried lately or still waiting is not filed again), so
- * the cards wait on Now whatever becomes of the opening.
+ * one they dismissed or tried lately is not filed again, and one still
+ * waiting is that card again, unless it has under LAPSING_MS left), so the
+ * cards wait on Now whatever becomes of the opening.
  */
 
 export const SOURCE_MS = 10_000;
@@ -280,7 +281,7 @@ export function waitingSection(waiting: readonly Proposal[]): Section | null {
   if (!waiting.length) return null;
   // Whole, as on its card: cut short, its last words could be the ones that matter (lib/proposals.ts).
   const lines = waiting.slice(0, MAX_LISTED).map((p) => `- ${plain(p.says, Infinity)}`);
-  if (waiting.length > MAX_LISTED) lines.push(`- and ${waiting.length - MAX_LISTED} more on Now`);
+  if (waiting.length > MAX_LISTED) lines.push(`- and ${waiting.length - MAX_LISTED} more in Jobs`);
   return { head: "For your OK", lines };
 }
 

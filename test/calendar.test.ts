@@ -267,7 +267,10 @@ console.log("\nanswering an invitation (calendar_rsvp): for a tap only");
     await run({ ...invite, recurrence: ["RRULE:FREQ=DAILY"], attendees: [{ email: "me@example.com", self: true, responseStatus: "accepted" }] }, { ...args, recurring: true }),
     await run({ ...invite, recurrence: ["RRULE:FREQ=DAILY"], attendees: [{ email: "lead@example.com", responseStatus: "accepted" }] }, { ...args, recurring: true }),
   ];
-  check("asked to only some of its times, or the rest answered: nothing sent, and said so truly", some.every((r) => !r.done && !r.calls.some((c) => c.method === "PATCH") && /Only some of its times/.test(r.out)), some.map((r) => r.out));
+  check("a repeating one answered already, or they are not on the series: nothing sent", some.every((r) => !r.done && !r.calls.some((c) => c.method === "PATCH")), some.map((r) => r.out));
+  check("…and each said truly: answered (any time still waiting is theirs), or not on it / asked to only some times",
+    some[0]!.out === "You have answered it already (accepted); answer any time of it still waiting in Google Calendar. Nothing was sent." &&
+    /not on its guest list, or were asked to only some of its times/.test(some[1]!.out), some.map((r) => r.out));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

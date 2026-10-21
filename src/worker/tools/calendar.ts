@@ -416,10 +416,10 @@ export const calendarRsvp: Tool = {
       const shown = DAY.test(r.start) ? r.start : Date.parse(r.start);
       if (args.recurring !== true && was !== shown) return "It has moved since it was proposed, so nothing was sent.";
       const self = e.attendees?.find((a) => a.self);
-      // A repeating one is answered whole only as a whole: asked to only some of its times, or with the rest answered, those are theirs to answer.
-      if (args.recurring === true && self?.responseStatus !== "needsAction") return "Only some of its times wait for your answer: answer those in Google Calendar. Nothing was sent.";
-      if (!self?.email) return "You are not on its guest list any more, so nothing was sent.";
-      if (self.responseStatus !== "needsAction") return `You have answered it already (${self.responseStatus ?? "unknown"}), so nothing was sent.`;
+      // A repeating one is answered whole only as a whole: any of its times still waiting are theirs to answer in Google Calendar.
+      const every = args.recurring === true;
+      if (!self?.email) return every ? "You are not on its guest list, or were asked to only some of its times: see it in Google Calendar. Nothing was sent." : "You are not on its guest list any more, so nothing was sent.";
+      if (self.responseStatus !== "needsAction") return `You have answered it already (${self.responseStatus ?? "unknown"})${every ? "; answer any time of it still waiting in Google Calendar" : ""}. Nothing was sent.`;
       const res = await call(ctx.env, cfg, `${path}?sendUpdates=all`, {
         base: CALENDAR,
         method: "PATCH",

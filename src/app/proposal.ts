@@ -73,13 +73,16 @@ function draw(key: string, card: HTMLElement, p: ProposalView): void {
   if (p.state !== "pending") {
     card.appendChild(said);
     if (p.state === "running") watch(key, p.id);
+    // Put back tapped: its own card says what came of it, and a Put back that did not work is offered again.
+    if (p.undone) card.appendChild(el("small", "pagesaid", "Put back: tapped."));
     // Archived promotions: Put back, for a week, once; its own card follows this one, as it is made.
-    if (p.state === "done" && p.by === "tap" && p.action.tool === "mail_archive_many" && !p.undone && Date.now() - (p.decidedAt ?? 0) < UNDO_MS) {
+    else if (p.state === "done" && p.by === "tap" && p.action.tool === "mail_archive_many" && Date.now() - (p.decidedAt ?? 0) < UNDO_MS) {
       const back = button("Put back", async () => {
         back.disabled = true;
         try {
           const { proposal } = (await api(key, "POST", "/api/hub/proposals/answer", { id: p.id, answer: "undo" })) as { proposal: ProposalView };
-          back.replaceWith(el("small", "pagesaid", "Putting them back…"));
+          // Every card for it on this screen says so, not only this one.
+          for (const c of document.querySelectorAll<HTMLElement>(`[data-proposal="${CSS.escape(p.id)}"]`)) draw(key, c, { ...p, undone: proposal.id });
           card.after(proposalCard(key, proposal));
         } catch (e) {
           back.disabled = false;
@@ -159,6 +162,8 @@ function watch(key: string, id: string): void {
     }
     watched.delete(id);
     if (p) settle(key, p);
+    // A Put back that did not work: what it would have undone is offered again, where it was tapped.
+    if (p?.undoes && p.state === "failed") void refresh(key, [p.undoes], undefined, true);
   };
   setTimeout(() => void again(), wait);
 }
@@ -170,7 +175,7 @@ export function proposalCards(key: string, ids: readonly string[]): HTMLElement 
   return box;
 }
 
-async function refresh(key: string, ids: readonly string[], box?: HTMLElement): Promise<void> {
+async function refresh(key: string, ids: readonly string[], box?: HTMLElement, again = false): Promise<void> {
   const r = (await api(key, "GET", "/api/hub/proposals").catch(() => null)) as { open: ProposalView[]; recent: ProposalView[] } | null;
   if (!r) return;
   const known = new Map([...r.open, ...r.recent].map((p) => [p.id, p]));
@@ -178,6 +183,8 @@ async function refresh(key: string, ids: readonly string[], box?: HTMLElement): 
     const p = known.get(id);
     if (!p) continue;
     if (box) box.appendChild(proposalCard(key, p));
+    // Drawn again as it stands, whatever its state (`again`: a Put back that did not work).
+    else if (again) for (const c of document.querySelectorAll<HTMLElement>(`[data-proposal="${CSS.escape(id)}"]`)) draw(key, c, p);
     // After an answer that failed: redrawn only if it has moved on, so a "try again" stays to be read.
     else if (p.state !== "pending") settle(key, p);
   }

@@ -126,6 +126,12 @@ const MAX_GONE = 200;
 export const TRIED_MS = 7 * 86_400_000;
 /** How long Put back is offered once something is done. */
 export const UNDO_MS = 7 * 86_400_000;
+/**
+ * A brief's card this near its end is let go for a fresh one on the same
+ * subject: yesterday's, from a daily brief, has moments left. One with more,
+ * from a brief earlier the same day, is that card again.
+ */
+export const LAPSING_MS = 2 * 3_600_000;
 /** Approved by a tap and not yet run by the alarm (tick), with what the run may use. Not under prop: either. */
 const RUN = "proprun:";
 const runKey = (person: string, id: string) => `${RUN}${person}:${id}`;
@@ -155,6 +161,9 @@ function settled(p: Proposal, now: number): Proposal {
 
 export const viewOf = ({ grants: _g, who: _w, ...v }: Proposal): ProposalView => v;
 
+/** As if never put back: its Put back did not work. */
+const notUndone = ({ undone: _u, ...p }: Proposal): Proposal => p;
+
 /** A proposal as an alert carries it, for its card (lib/alerts.ts). */
 export const cardOf = (p: Proposal): NonNullable<Alert["proposals"]>[number] => ({ id: p.id, risk: p.risk, says: p.says, ...(p.verb ? { verb: p.verb } : {}) });
 
@@ -178,10 +187,11 @@ export class Proposals {
     this.storage = storage;
   }
 
-  /** All of one person's, newest first, as they stand now. */
+  /** All of one person's, newest first, as they stand now: one whose Put back did not work can be put back again. */
   async list(person: string, now: number): Promise<Proposal[]> {
-    const all = await this.storage.list<Proposal>({ prefix: prefix(person) });
-    return [...all.values()].map((p) => settled(p, now)).sort((a, b) => b.createdAt - a.createdAt);
+    const all = [...(await this.storage.list<Proposal>({ prefix: prefix(person) })).values()].map((p) => settled(p, now));
+    const failed = new Set(all.filter((p) => p.state === "failed").map((p) => p.id));
+    return all.map((p) => (p.undone && failed.has(p.undone) ? notUndone(p) : p)).sort((a, b) => b.createdAt - a.createdAt);
   }
 
   async get(person: string, id: string, now: number): Promise<Proposal | null> {
@@ -218,17 +228,18 @@ export class Proposals {
     if (mine.filter((p) => p.from.id === input.from.id).length >= PER_JOB) return `At most ${PER_JOB} proposals from one job: say the rest in the answer.`;
     // A brief's subject: dismissed, not offered again for a while; waiting already, that card again; tried lately, not again yet.
     const about = input.weighed.about;
+    let lapsing: Proposal | undefined;
     if (about) {
       if (((await this.gone(input.person))[about] ?? 0) > now) return "Dismissed: not offered again for now.";
-      // Waiting with time left: that card again. Nearly out of it (yesterday's, from a daily brief): let go, and a fresh one filed.
+      // Waiting: that card again, unless it is all but out of time (LAPSING_MS), when a fresh one takes its place.
       const waiting = mine.find((p) => p.about === about && p.state === "pending");
-      if (waiting && waiting.expires - now > DECIDE_MS / 2) return waiting;
-      if (waiting) await this.storage.put(key(input.person, waiting.id), { ...waiting, state: "expired", decidedAt: now });
+      if (waiting && waiting.expires - now > LAPSING_MS) return waiting;
+      lapsing = waiting;
       if (mine.some((p) => p.about === about && (p.state === "running" || p.state === "done" || p.state === "failed") && now - (p.decidedAt ?? p.createdAt) < TRIED_MS)) return "Tried lately: not offered again yet.";
     }
     // Allowed without asking: a reversible call of a kind the person said their jobs may make, and only that.
     const standing = input.weighed.risk === "reversible" && !!input.weighed.category && (await this.allowed(input.person)).includes(input.weighed.category);
-    if (!standing && mine.filter((p) => p.state === "pending").length >= PENDING_MAX) return `${PENDING_MAX} proposals are already waiting for the user: say this one in the answer.`;
+    if (!standing && mine.filter((p) => p.state === "pending" && p !== lapsing).length >= PENDING_MAX) return `${PENDING_MAX} proposals are already waiting for the user: say this one in the answer.`;
     const body = input.body ?? ((await input.detail?.().catch(() => null)) || undefined);
     if ((body?.length ?? 0) > MAX_BODY) return tooLong;
     const bytes = crypto.getRandomValues(new Uint8Array(20));
@@ -250,6 +261,8 @@ export class Proposals {
       expires: now + DECIDE_MS,
       ...(standing ? { state: "running", by: "standing", decidedAt: now } : { state: "pending" }),
     };
+    // The one it replaces let go only now: refused above, that card would still be waiting.
+    if (lapsing) await this.storage.put(key(input.person, lapsing.id), { ...lapsing, state: "expired", decidedAt: now });
     await this.storage.put(key(p.person, p.id), p);
     await this.prune(input.person, now);
     return p;
@@ -337,7 +350,9 @@ export class Proposals {
     const p = await this.get(person, id, now);
     if (!p) return "No such proposal.";
     const back = p.state === "done" && p.by === "tap" && now - (p.decidedAt ?? p.createdAt) < UNDO_MS ? inverse(p) : null;
-    if (!back || p.undone) return p.undone ? "It was put back already." : "That cannot be put back.";
+    // Put back already, unless that did not work (finished failed, or cut short and read as failed).
+    const used = !!p.undone && (await this.get(person, p.undone, now))?.state !== "failed";
+    if (!back || used) return used ? "It was put back already." : "That cannot be put back.";
     const grants = runGrants(p.grants, scopesNow, approver);
     if (!grants) return "Whoever it was for is no longer in the family.";
     const bytes = crypto.getRandomValues(new Uint8Array(20));
@@ -374,10 +389,7 @@ export class Proposals {
     const done: Proposal = { ...p, state: outcome.ok ? "done" : "failed", outcome: { ok: outcome.ok, text: outcome.text.slice(0, MAX_SAYS) }, decidedAt: p.decidedAt ?? now };
     await this.storage.put(key(person, id), done);
     const of = p.undoes && !outcome.ok ? await this.storage.get<Proposal>(key(person, p.undoes)) : undefined;
-    if (of?.undone === id) {
-      const { undone: _u, ...again } = of;
-      await this.storage.put(key(person, of.id), again);
-    }
+    if (of?.undone === id) await this.storage.put(key(person, of.id), notUndone(of));
     return done;
   }
 

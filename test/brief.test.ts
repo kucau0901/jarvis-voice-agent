@@ -121,7 +121,7 @@ console.log("\njobs and what waits");
   check("running, and ended since the last brief", j?.lines.join("|") === "- Find a plumber: still working|- Compare flights: done", j);
   check("no jobs, no section", jobsSection([], 0) === null);
   const w = waitingSection(Array.from({ length: 7 }, (_, i) => proposal(`Send the email "Quote ${i}" to sam@example.com`)));
-  check("each card as it says itself, five then a count", w?.head === "For your OK" && w.lines.length === 6 && w.lines[0] === '- Send the email "Quote 0" to sam@example.com' && w.lines[5] === "- and 2 more on Now", w);
+  check("each card as it says itself, five then a count", w?.head === "For your OK" && w.lines.length === 6 && w.lines[0] === '- Send the email "Quote 0" to sam@example.com' && w.lines[5] === "- and 2 more in Jobs", w);
   const long = 'Send the email "Quote for the kitchen extension, revised with the new tiles and the second sink" to sam@example.com';
   check("a card's words whole, however long: its last ones may be the ones that matter", waitingSection([proposal(long)])?.lines[0] === `- ${long}`);
 }

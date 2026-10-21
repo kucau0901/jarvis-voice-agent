@@ -1,7 +1,7 @@
 // Approvals (lib/proposals.ts, routes/proposals.ts): what a job proposes, how
 // risky code says it is, and how a tap has the stored call made once, on the
 // object's alarm (tick, lib/approval.ts).
-import { classify, DECIDE_MS, GONE_MS, held, PER_JOB, PENDING_MAX, PROPOSE_ONLY, proposable, Proposals, runGrants, START_MS, STUCK_MS, TRIED_MS, UNDO_MS, weigh, type Proposal, type ProposalInput } from "../src/worker/lib/proposals.ts";
+import { classify, DECIDE_MS, GONE_MS, held, LAPSING_MS, PER_JOB, PENDING_MAX, PROPOSE_ONLY, proposable, Proposals, runGrants, START_MS, STUCK_MS, TRIED_MS, UNDO_MS, weigh, type Proposal, type ProposalInput } from "../src/worker/lib/proposals.ts";
 import { carryOut, inverseOf, notAsShown } from "../src/worker/lib/approval.ts";
 import { mailArchiveMany } from "../src/worker/lib/mail-bulk.ts";
 import { handleProposals } from "../src/worker/routes/proposals.ts";
@@ -476,6 +476,19 @@ console.log("\nanswered by a tap (routes/proposals.ts)");
   const undone = await handleProposals(req("/api/hub/proposals/answer", { id: archived.id, answer: "undo", tool: "mail_manage", args: { action: "trash" } }), env, mia);
   const ub = (await undone!.json()) as { proposal: Proposal };
   check("Put back once done: its undo comes back running, made from what was stored, whatever the request says", undone!.status === 200 && ub.proposal.state === "running" && ub.proposal.action.tool === "mail_inbox_many" && ub.proposal.undoes === archived.id && !("grants" in ub.proposal), ub);
+  // Put back all week: an archive that can still be put back stays listed past the newest twenty decided.
+  const one = { tool: "mail_archive_many", args: { ids: ["promo009x"], total: 1 } };
+  const keepable = (await props.add(input({ person: "u_mia", who: "u_mia", from: { kind: "job", id: "jk", title: "x" }, action: one, weighed: { ...weigh(mailArchiveMany, one.args, env)!, about: undefined } }), Date.now() - 5000)) as Proposal;
+  await props.claim("u_mia", keepable.id, ["*"], ["*"], Date.now() - 5000);
+  await props.finish("u_mia", keepable.id, { ok: true, text: "Archived 1 promotion." }, Date.now() - 5000);
+  // Twenty-two decided since (unlocking always asks: lock is allowed without asking by now).
+  const unlock = { tool: "car_command", args: { command: "unlock", value: null, temperature: null, percent: null, car: null } };
+  for (let i = 0; i < 22; i++) {
+    const n = (await props.add(input({ person: "u_mia", who: "u_mia", from: { kind: "job", id: `jd${i}`, title: "x" }, action: unlock, weighed: weigh(carCommand, unlock.args, env)! }), Date.now())) as Proposal;
+    await props.decline("u_mia", n.id, Date.now() + i);
+  }
+  const listed = (await (await handleProposals(req("/api/hub/proposals"), env, mia))!.json()) as { recent: Proposal[] };
+  check("an archive that can still be put back stays listed past the newest twenty", listed.recent.length > 20 && listed.recent.some((x) => x.id === keepable.id), listed.recent.length);
 
 }
 
@@ -503,6 +516,18 @@ console.log("\na brief's cards: one subject, offered once, dismissed for a while
   check("yesterday's card, a moment from expiring, does not stand in for today's: a fresh one, with its day", typeof today !== "string" && today.id !== yesterday.id && today.expires === T + DECIDE_MS + 200 + DECIDE_MS && (await daily.get("u_sara", yesterday.id, T + DECIDE_MS + 200))?.state === "expired", today);
   const soon = await daily.add(brief("s"), T + DECIDE_MS + 200 + 3_600_000);
   check("…while one with most of its day left is that card again", typeof soon !== "string" && typeof today !== "string" && soon.id === today.id);
+  const evening = await daily.add(brief("e"), T + DECIDE_MS + 200 + 14 * 3_600_000);
+  check("an evening brief the same day: the morning's card again, not let go hours early", typeof evening !== "string" && typeof today !== "string" && evening.id === today.id && (await daily.get("u_sara", today.id, T + DECIDE_MS + 200 + 14 * 3_600_000))?.state === "pending");
+  const full = new Proposals(fakeStorage() as never);
+  const old = (await full.add(brief("o"), T)) as Proposal;
+  for (let i = 0; i < PENDING_MAX - 1; i++) await full.add(input({ from: { kind: "job", id: `jf${i}`, title: "x" } }), T);
+  const fresh = await full.add(brief("f"), T + DECIDE_MS - LAPSING_MS + 60_000);
+  check("the one it replaces does not count towards those waiting", typeof fresh !== "string" && fresh.id !== old.id && (await full.get("u_sara", old.id, T + DECIDE_MS - LAPSING_MS + 60_000))?.state === "expired", fresh);
+  const refusing = new Proposals(fakeStorage() as never);
+  const keep = (await refusing.add(brief("k"), T)) as Proposal;
+  // Refused for what it would show (too long to show whole): the card it was to replace still waits.
+  const refused = await refusing.add({ ...brief("r"), detail: async () => "x".repeat(9_000) }, T + DECIDE_MS - 60_000);
+  check("a fresh one refused: the old card is left waiting, not let go", typeof refused === "string" && (await refusing.get("u_sara", keep.id, T + DECIDE_MS - 60_000))?.state === "pending", refused);
   const kept = (st._m.get("propgone:u_sara") ?? {}) as Record<string, number>;
   check("remembered by its subject, beside the proposals, for 30 days", kept["inbox:promotions"] === T + 2 * 3_600_000 + GONE_MS && !(await props.list("u_sara", T)).some((p) => p.about === undefined && p.state === "pending"), kept);
   const later = await props.add(brief("4"), T + 2 * 3_600_000 + GONE_MS + 1);
@@ -563,6 +588,19 @@ console.log("\nPut back: archived promotions, for a week, once");
     return { failed: await own.get("u_sara", first.id, T + 3), again: await own.undo("u_sara", q.id, inverse, ["*"], ["*"], T + 3) };
   })();
   check("a Put back that did not work can be tapped again", retry.failed?.state === "failed" && typeof retry.again !== "string" && retry.again.state === "running", retry);
+  const cut = await (async () => {
+    const own = new Proposals(fakeStorage() as never);
+    const q = (await own.add(input({ from: { kind: "brief", id: "rb@8", title: "Brief", routine: "rb" }, action: archive, weighed: weigh(mailArchiveMany, archive.args, NO_CARS)! }), T)) as Proposal;
+    await own.claim("u_sara", q.id, ["*"], ["*"], T);
+    await own.finish("u_sara", q.id, { ok: true, text: "x" }, T);
+    await own.undo("u_sara", q.id, inverse, ["*"], ["*"], T + 1);
+    // Cut short by a deploy: taken off the queue, its call never coming back.
+    void own.tick({ carryOut: () => new Promise(() => {}) }, T + 2);
+    for (let i = 0; i < 20; i++) await new Promise((r) => setTimeout(r, 0));
+    const later = T + 2 + STUCK_MS + 1;
+    return { shown: (await own.list("u_sara", later)).find((x) => x.id === q.id), again: await own.undo("u_sara", q.id, inverse, ["*"], ["*"], later) };
+  })();
+  check("one cut short (a deploy) reads failed: offered again, and can be tapped again", cut.shown !== undefined && !cut.shown.undone && typeof cut.again !== "string", cut);
   const made: string[] = [];
   await props.tick({ carryOut: async (q) => (made.push(q.action.tool), { ok: true, text: "Put 2 messages back in the Inbox." }) }, T + 5);
   check("and the alarm makes it", made.join() === "mail_inbox_many" && (await props.get("u_sara", (back as Proposal).id, T + 6))?.state === "done");
