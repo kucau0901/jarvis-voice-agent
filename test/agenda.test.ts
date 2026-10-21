@@ -48,6 +48,14 @@ console.log("what is kept of each event");
   check("an all-day event runs from midnight to midnight in the zone", c.allDay && c.start === Date.UTC(2026, 9, 21, 16) && c.end === c.start + DAY, c);
   check("shown as free is kept as free", c.free && c.organizer === "");
   check("their own event is never unanswered", !got[2]!.unanswered);
+  const answered = agendaFrom([
+    { id: "no", start: { dateTime: iso(at(9)) }, end: { dateTime: iso(at(10)) }, attendees: [{ self: false, responseStatus: "accepted" }, { self: true, responseStatus: "declined" }] },
+    { id: "yes", start: { dateTime: iso(at(9)) }, end: { dateTime: iso(at(10)) }, attendees: [{ self: true, responseStatus: "accepted" }] },
+  ], TZ);
+  check("one they turned down is kept as declined, by their own answer", answered[0]!.declined && !answered[1]!.declined && !a.declined, answered);
+  // Santiago's 6 September 2026 has no midnight: its clocks go from 00:00 to 01:00.
+  const santiago = agendaFrom([{ id: "h", summary: "Holiday", start: { date: "2026-09-06" }, end: { date: "2026-09-07" } }], "America/Santiago")[0]!;
+  check("an all-day event on a day with no midnight begins when the day does", santiago.start === Date.UTC(2026, 8, 6, 4) && santiago.end === Date.UTC(2026, 8, 7, 3), santiago);
 }
 
 console.log("\nclashes");

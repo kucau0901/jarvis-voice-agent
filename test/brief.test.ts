@@ -120,7 +120,9 @@ console.log("\njobs and what waits");
   check("running, and ended since the last brief", j?.lines.join("|") === "- Find a plumber: still working|- Compare flights: done", j);
   check("no jobs, no section", jobsSection([], 0) === null);
   const w = waitingSection(Array.from({ length: 7 }, (_, i) => proposal(`Send the email "Quote ${i}" to sam@example.com`)));
-  check("each card as it says itself, five then a count", w?.head === "For your OK" && w.lines.length === 6 && w.lines[5] === "- and 2 more on Now", w);
+  check("each card as it says itself, five then a count", w?.head === "For your OK" && w.lines.length === 6 && w.lines[0] === '- Send the email "Quote 0" to sam@example.com' && w.lines[5] === "- and 2 more on Now", w);
+  const long = 'Send the email "Quote for the kitchen extension, revised with the new tiles and the second sink" to sam@example.com';
+  check("a card's words whole, however long: its last ones may be the ones that matter", waitingSection([proposal(long)])?.lines[0] === `- ${long}`);
 }
 
 console.log("\nthe weather in words");
@@ -220,6 +222,36 @@ console.log("\nin their language, as they set it");
     asked.length = 0;
     const extended = await runBrief(ROUTINE, NOW, deps({ env: { TIMEZONE: TZ, LOCALE: "en-GB-u-hc-h12" } as never, house: HOUSE }), model("Rain."));
     check("a tag with extensions is named without them, and the brief goes", extended.text.startsWith("# Wednesday") && asked[0]?.input.startsWith("Language: British English\n") === true, asked[0]?.input.slice(0, 40));
+  } finally {
+    w.restore();
+  }
+}
+
+console.log("\njobs since the last brief");
+{
+  const w = world();
+  try {
+    const last = { ...ROUTINE, lastRun: { at: NOW - 2 * 3_600_000, ok: true, detail: "sent by push" } };
+    const jobs = [
+      job({ id: "a", title: "Compare flights", status: "done", finishedAt: NOW - 3_600_000 }),
+      job({ id: "b", title: "Find a plumber", status: "failed", finishedAt: NOW - 3_600_000 }),
+      job({ id: "c", title: "Before the last brief", status: "done", finishedAt: NOW - 3 * 3_600_000 }),
+    ];
+    const b = await runBrief(last, NOW, deps({ jobs, waiting: [] }), model("x"));
+    const lines = b.text.split("## Jobs\n")[1]?.split("\n") ?? [];
+    check("those that ended since it, each as it ended; none from before", lines.join("|") === "- Compare flights: done|- Find a plumber: failed", lines);
+  } finally {
+    w.restore();
+  }
+}
+
+console.log("\nthe calendar it reads");
+{
+  const w = world();
+  try {
+    await runBrief(ROUTINE, at(18), deps(), model("x"));
+    const q = new URL(w.urls.find((u) => u.includes("/calendars/primary/events"))!).searchParams;
+    check("from now, for a week past the day covered: tonight's invitations and the week's", q.get("timeMin") === iso(at(18)) && q.get("timeMax") === iso(dayCovered(at(18), TZ).from + 7 * DAY), q.toString());
   } finally {
     w.restore();
   }
