@@ -348,12 +348,14 @@ console.log("\nanswered by a tap (routes/proposals.ts)");
   const moved = (await props.add(input({ person: "u_mia", who: "u_mia", from: { kind: "job", id: "jcar2", title: "x" }, action: { tool: "car_command", args: nameless }, weighed: weigh(carCommand, nameless, CARS)! }), Date.now())) as Proposal;
   const onlyY = { TESSIE_TOKEN: "t", TESSIE_VIN: "LRWTEST0000000000", STATE: { idFromName: () => "jarvis", get: () => stub }, JARVIS_CARS: JSON.stringify([{ id: "c2", name: "Model Y", level: "own", mine: true, vin: "VIN_B", token: "t" }]) } as never;
   const before = sent.length;
-  const changed = (await (await handleProposals(req("/api/hub/proposals/answer", { id: moved.id, answer: "approve" }), onlyY, ctx, mia))!.json()) as { proposal: Proposal };
-  check("the car it named is not the one it would now be: not done, and said so", moved.says === "Car: unlock (Ioniq 5, …IN_A)" && changed.proposal.state === "failed" && /has changed/.test(changed.proposal.outcome!.text) && sent.length === before, changed.proposal);
+  const changedRes = await handleProposals(req("/api/hub/proposals/answer", { id: moved.id, answer: "approve" }), onlyY, ctx, mia);
+  const changed = (await changedRes!.json()) as { error?: string };
+  check("the car it named is not the one it would now be: not done, said so, and still waiting", moved.says === "Car: unlock (Ioniq 5, …IN_A)" && changedRes!.status === 409 && /has changed/.test(changed.error ?? "") && sent.length === before && (await props.get("u_mia", moved.id, Date.now()))?.state === "pending", changed);
   const r2 = (await props.add(input({ person: "u_mia", who: "u_mia", from: { kind: "job", id: "j3", title: "x" } }), Date.now())) as Proposal;
   const noCar = { STATE: { idFromName: () => "jarvis", get: () => stub } } as never;
-  const gone = (await (await handleProposals(req("/api/hub/proposals/answer", { id: r2.id, answer: "approve" }), noCar, ctx, mia))!.json()) as { proposal: Proposal };
-  check("a tool no longer set up: not done, and it says so", gone.proposal.state === "failed" && /can no longer be done/.test(gone.proposal.outcome!.text), gone.proposal);
+  const goneRes = await handleProposals(req("/api/hub/proposals/answer", { id: r2.id, answer: "approve" }), noCar, ctx, mia);
+  const gone = (await goneRes!.json()) as { error?: string };
+  check("a tool no longer set up: not done, it says so, and it still waits", goneRes!.status === 409 && /can no longer be done/.test(gone.error ?? "") && (await props.get("u_mia", r2.id, Date.now()))?.state === "pending", gone);
   check("an answer that is neither: refused", (await handleProposals(req("/api/hub/proposals/answer", { id: r2.id, answer: "maybe" }), env, ctx, mia))!.status === 400);
 }
 

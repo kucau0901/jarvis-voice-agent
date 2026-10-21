@@ -78,20 +78,28 @@ export const mailDraftSend: Tool = {
  * (`earlier`, by what was asked), so it is neither drafted nor filed twice.
  */
 export function draftThenAsk(send: Tool, file: File, earlier: (asked: string, ctx: Parameters<Tool["run"]>[1]) => Promise<Proposal | null>): Tool {
+  /** Drafted and filed, unless this same mail already was. */
+  const drafting = async (args: Record<string, unknown>, ctx: Parameters<Tool["run"]>[1], asked: string): Promise<string> => {
+    const had = await earlier(asked, ctx);
+    if (had) return filed(had);
+    const got: { card?: DraftCard } = {};
+    const out = await send.run({ ...args, draft: true }, { ...ctx, drafted: (d) => void (got.card = d) });
+    const said = typeof out === "string" ? out : out.text;
+    if (!got.card) return said;
+    const action = { tool: mailDraftSend.name, args: { draft: got.card.draft, to: got.card.to, subject: got.card.subject, asked } };
+    // Its subject and words on the card, whole (a reply's subject is the mail it answers, of any length).
+    return `${said}\n${filed(await file(action, weigh(mailDraftSend, action.args, ctx.env)!, ctx, `Subject: ${got.card.subject}\n\n${got.card.body}`))}`;
+  };
+  // The same mail asked for twice in one step: the second waits for the first, then finds it (earlier).
+  const going = new Map<string, Promise<unknown>>();
   return {
     ...send,
     description: `${PROPOSE_ONLY}The email is saved to the user's Gmail Drafts, and sending it waits for their tap. ${send.description}`,
     async run(args, ctx) {
       const asked = await sha256Hex(canonical(args));
-      const had = await earlier(asked, ctx);
-      if (had) return filed(had);
-      const got: { card?: DraftCard } = {};
-      const out = await send.run({ ...args, draft: true }, { ...ctx, drafted: (d) => void (got.card = d) });
-      const said = typeof out === "string" ? out : out.text;
-      if (!got.card) return said;
-      const action = { tool: mailDraftSend.name, args: { draft: got.card.draft, to: got.card.to, subject: got.card.subject, asked } };
-      // Its subject and words on the card, whole (a reply's subject is the mail it answers, of any length).
-      return `${said}\n${filed(await file(action, weigh(mailDraftSend, action.args, ctx.env)!, ctx, `Subject: ${got.card.subject}\n\n${got.card.body}`))}`;
+      const mine = (going.get(asked) ?? Promise.resolve()).then(() => drafting(args, ctx, asked));
+      going.set(asked, mine.catch(() => {}));
+      return mine;
     },
   };
 }

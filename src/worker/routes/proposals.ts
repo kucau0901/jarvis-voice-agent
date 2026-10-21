@@ -78,6 +78,10 @@ export async function handleProposals(req: Request, env: Env, ctx: ExecutionCont
   // Who it is for, before it is claimed: a lookup that failed leaves it waiting, to be tapped again.
   const view = await personView(env, me);
   if (view.scopes === undefined) return err(503, "Who it is for could not be checked just now: try again.");
+  // Not claimed unless it would run as its card says: otherwise it stays waiting (a passing blip can be tapped again).
+  const waiting = await state.proposalGet(me, id, now);
+  const unlike = waiting?.state === "pending" ? notAsShown(env, waiting) : null;
+  if (unlike) return err(409, unlike);
   const claimed = await state.proposalClaim(me, id, now);
   if (typeof claimed === "string") return err(claimed === "No such proposal." ? 404 : 409, claimed);
   // Kept going a while if the screen goes away meanwhile (a Worker's waitUntil: about 30 seconds);
@@ -88,16 +92,27 @@ export async function handleProposals(req: Request, env: Env, ctx: ExecutionCont
   return json({ proposal: done ? viewOf(done) : viewOf(claimed) });
 }
 
+const goneSaid = (tool: string) => `That can no longer be done: ${tool} is not set up, or not yours to use now.`;
+
+/**
+ * Why the stored call would not run as its card says, here and now; null when
+ * it would. Weighed again from what is stored: a call that no longer reads
+ * as it did (another car first in their list, say) is not done.
+ */
+function notAsShown(env: Env, p: Proposal): string | null {
+  const local = [...baseTools(env), ...APPROVED_ONLY].find((t) => t.name === p.action.tool);
+  if (!local && !p.action.tool.includes("__")) return goneSaid(p.action.tool);
+  const w = weigh(local ?? { name: p.action.tool }, p.action.args, env);
+  if (!w) return "That can no longer be done.";
+  return w.says === p.says ? null : `That has changed since it was proposed (it would now be: ${w.says}), so nothing was done.`;
+}
+
 /** The stored call, run once, as it is now allowed to be; what came of it, in words. Done only if the tool says it did it. */
 export async function carryOut(env: Env, approver: Principal, p: Proposal, scopesNow: PersonView["scopes"]): Promise<{ ok: boolean; text: string }> {
-  // Weighed again from what is stored: a call that no longer reads as one that can be proposed is not run.
-  const local = [...baseTools(env), ...APPROVED_ONLY].find((t) => t.name === p.action.tool);
-  const gone = { ok: false, text: `That can no longer be done: ${p.action.tool} is not set up, or not yours to use now.` };
-  if (!local && !p.action.tool.includes("__")) return gone;
-  // Run only as the card said it: a call that reads otherwise now (another car first in their list, say) is not done.
-  const w = weigh(local ?? { name: p.action.tool }, p.action.args, env);
-  if (!w) return { ok: false, text: "That can no longer be done." };
-  if (w.says !== p.says) return { ok: false, text: `That has changed since it was proposed (it would now be: ${w.says}), so nothing was done.` };
+  const gone = { ok: false, text: goneSaid(p.action.tool) };
+  // Checked before it was claimed too; again here, as it is run.
+  const unlike = notAsShown(env, p);
+  if (unlike) return { ok: false, text: unlike };
   const grants = runGrants(p.grants, scopesNow, grantsOf(approver));
   if (!grants) return { ok: false, text: "Whoever it was for is no longer in the family." };
   try {

@@ -1084,7 +1084,10 @@ cannot be talked into sending, deleting or unlocking, because nothing it has
 can. The person approves with a tap, on the card the job's result brings
 (`routes/proposals.ts`, under the ordinary sign-in), and the stored call runs
 once, with no model, with no more than the job had, its maker still may and
-the approver may, and never Hermes or a screen. How risky a call is, code works
+the approver may, and never Hermes or a screen. It runs only as its card says:
+a card shows the whole call or the call is not filed, and one that would now
+read otherwise (another car first in their list, a car renamed) is refused and
+keeps waiting. How risky a call is, code works
 out from the tool and its arguments, when it is filed and again when it is
 approved: a tool says so in its `propose` field (a car command another undoes is
 reversible, unlocking is not), and every house or other MCP call that writes is

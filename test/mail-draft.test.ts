@@ -160,8 +160,10 @@ console.log("\na background job's mail: drafted, and its sending proposed (draft
     check("its sending filed, by the draft's id, always to be asked", filedCalls.length === 1 && filedCalls[0]!.action.tool === "mail_draft_send" && filedCalls[0]!.action.args.draft === "r-123456789" && filedCalls[0]!.risk === "irreversible" && filedCalls[0]!.says === "Send the email to sam@example.com", filedCalls);
     check("and the job told both", /draft/i.test(out) && /NOT done: filed/.test(out), out);
     check("its subject and words go with it, to be read before Send", filedCalls[0]?.body === "Subject: Dinner\n\nSee you at six.", filedCalls[0]);
+    const twice = await Promise.all([job.run({ ...ARGS, subject: "Lunch" }, ctx({}, ["*"])), job.run({ ...ARGS, subject: "Lunch" }, ctx({}, ["*"]))]);
+    check("the same mail twice in one step: drafted and filed once", g.calls.length === 2 && filedCalls.length === 2 && /NOT done: filed/.test(String(twice[1])), { calls: g.calls.length, filed: filedCalls.length });
     const again = String(await job.run(ARGS, ctx({}, ["*"])));
-    check("the same mail asked for again (a step tried again): not drafted, nor filed, a second time", g.calls.length === 1 && filedCalls.length === 1 && /NOT done: filed/.test(again), { calls: g.calls.length, filed: filedCalls.length, again });
+    check("the same mail asked for again (a step tried again): not drafted, nor filed, a second time", g.calls.length === 2 && filedCalls.length === 2 && /NOT done: filed/.test(again), { calls: g.calls.length, filed: filedCalls.length, again });
   } finally {
     g.restore();
   }
