@@ -249,7 +249,11 @@ export class Services {
         body: JSON.stringify({ changes: { [s.name]: null } }),
       });
       if (!r.ok) throw new Error(`server said ${r.status}`);
-      this.render((await r.json()) as SettingsResponse);
+      const body = (await r.json()) as SettingsResponse;
+      this.render(body);
+      // Its row is drawn afresh by render, so a Telegram refusal goes in its section's line.
+      const again = this.root.querySelector(`[data-group="${s.group}"] .res`);
+      if (body.telegram && again) say(again as HTMLElement, `Cleared, but Telegram would not send messages here: ${body.telegram}`, true);
     } catch (e) {
       row.appendChild(el("div", "warn", message(e)));
     }

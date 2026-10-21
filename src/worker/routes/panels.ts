@@ -93,7 +93,8 @@ export async function handlePanels(req: Request, env: Env, principal: Principal)
     // A sentence asked of Jarvis, as if typed in Chat.
     async ask(text) {
       const sink = new Collector();
-      await run(env, [{ role: "user", text }], sink, AbortSignal.any([req.signal, AbortSignal.timeout(90_000)]), grants, { surface: "chat", assist: true });
+      // Its answer is the tile's text: nothing it would draw, nor a draft's card, is shown (screenless).
+      await run(env, [{ role: "user", text }], sink, AbortSignal.any([req.signal, AbortSignal.timeout(90_000)]), grants, { surface: "chat", assist: true, screenless: true });
       return sink.finish().text;
     },
     // A tile's reading: asked with nobody pressing anything, so reading tools only, as a background job has.

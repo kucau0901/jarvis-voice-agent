@@ -79,7 +79,8 @@ console.log("\nDraft first on, no screen (Telegram, a car) — Drafts, no tap to
 {
   const g = google(gmail);
   try {
-    const out = String(await mailSend.run(ARGS, ctx({ MAIL_DRAFT_FIRST: "1" }, ["mail"])));
+    // As a routine or the family room runs: the card hook given, but `screen` taken out of the grants.
+    const out = String(await mailSend.run(ARGS, ctx({ MAIL_DRAFT_FIRST: "1" }, ["mail"], () => {})));
     check("held as a draft", g.calls.length === 1 && g.calls[0]!.url.endsWith("/users/me/drafts"), g.calls);
     check("told it is in Drafts, with no Send to tap", /NOT sent/.test(out) && /Drafts/.test(out) && !/tap/i.test(out), out);
   } finally {
