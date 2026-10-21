@@ -22,8 +22,9 @@ of every release, and in the [README](README.md#updating).
 - **Jobs ask before they act.** A background job that would do something
   (lock the car, put an event in your calendar, archive or star an email,
   send an email it wrote, a Home Assistant call) now proposes it: its result
-  comes with a card for each, with Approve and Not now, on the alert and
-  under its answer in the chat. Only your tap does it, once, with no more
+  comes with a card for each, with Approve and Not now, on the alert, under
+  its answer in the chat, and on Home under Now until you answer. Only your
+  tap does it, once, with no more
   than the job could reach; a card says when something can't be undone, and
   waits a day. An email a job writes is saved to your Drafts, and its card's
   Approve sends it. Once you approve something that can be undone (locking

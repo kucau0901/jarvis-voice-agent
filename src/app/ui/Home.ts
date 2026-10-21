@@ -4,6 +4,7 @@ import { arm, button, el } from "./util";
 import { moreBody, slider, typed, type SetAlert } from "./HomeMore";
 import { lineChart, mapImage } from "./HomeChart";
 import { columnsFor, draggable, layOut, type Moving } from "./HomeWall";
+import { Now } from "./Now";
 
 /**
  * The Home tab: this person's panels (src/worker/lib/panel-view.ts), as
@@ -125,11 +126,14 @@ export class Home {
   private sketched: HTMLElement | null = null;
   /** Chat, with words typed in its box to finish: a panel's Reply (main.ts). */
   private chat: (text: string) => void;
+  /** What jobs proposed, waiting for an OK, above the panels (Now.ts). */
+  private now: Now;
 
   constructor(key: string, chat: (text: string) => void) {
     this.key = key;
     this.chat = chat;
     this.root = document.getElementById("home")!;
+    this.now = new Now(key);
     document.addEventListener("visibilitychange", () => {
       if (!document.hidden && this.timer) void this.load();
     });
@@ -165,9 +169,11 @@ export class Home {
     this.hide();
     this.seq++;
     this.root.replaceChildren();
+    this.now.forget();
   }
 
   private async load(): Promise<void> {
+    void this.now.load();
     const n = ++this.seq;
     try {
       const r = (await api(this.key, "GET", "/api/hub/panels")) as PanelsReply;

@@ -1053,7 +1053,8 @@
      would run on sideways rather than scroll. Each card folds to its title,
      and its … menu reloads or removes it. The orb steps into the corner, as in
      Chat. With no panels yet, Hark's clock. */
-  #home { display: none; }
+  #home, #now { display: none; }
+  body.home #now:not([hidden]) { display: grid; gap: 8px; width: min(1240px, 100%); margin-bottom: 16px; }
   body.home { justify-content: flex-start; --orb: 40px;
     padding: calc(var(--barTop) + 64px) 16px calc(16px + env(safe-area-inset-bottom)); }
   body.home #orbWrap { position: fixed; top: calc(var(--barTop) + 6px); left: 18px; z-index: 3; width: var(--orb); margin: 0; }
@@ -1350,6 +1351,7 @@
   </div>
   <div id="chathead"><button id="openSearch" type="button">Search</button><button id="clearChat" type="button">Clear chat</button></div>
   <div id="transcript"></div>
+  <section id="now" aria-label="Waiting for your OK" hidden></section>
   <section id="home" aria-label="Your panels"></section>
   <form id="typebar" autocomplete="off">
     <!-- What goes with the question: the answer it replies to, its photos and files (reply.ts, attach.ts). -->
