@@ -15,8 +15,11 @@ import type { Tool, ToolContext, ToolOutput } from "../tools/registry.ts";
  * a call is, code works out from the tool and its arguments (weigh()), never
  * the model, when it is filed and again when it is approved. Approving runs
  * the stored call once, with no model, with no more than the job had, its
- * maker still may, and the approver may (runGrants()). The decided record is
- * the audit: who, when, by a tap or a standing permission, and what came of it.
+ * maker still may, and the approver may (runGrants()): the tap claims it, and
+ * the object's alarm makes the call (tick(), lib/approval.ts), so a slow one
+ * finishes whether or not the screen that approved it stays. The decided
+ * record is the audit: who, when, by a tap or a standing permission, and what
+ * came of it.
  *
  * Only jobs propose: routines act as they always have, and nothing here
  * stands in front of what is asked for directly.
@@ -69,8 +72,22 @@ export const PER_JOB = 5;
 export const PENDING_MAX = 20;
 const KEEP = 100;
 const KEEP_MS = 30 * 86_400_000;
-/** A run that never finished (the request died): failed, never run again. */
-const STUCK_MS = 5 * 60_000;
+/** How long an approved call may take: as long as waking the car may (tools/tessie.ts), and then some. */
+export const RUN_MS = 120_000;
+/**
+ * An approved call the alarm has not started this long after the tap is not
+ * made: the world it was approved for has moved on. A tap made while the
+ * alarm is busy (a job's step, a Hermes question) waits for it to finish;
+ * an alarm is stopped after fifteen minutes, and tried again a few seconds
+ * later, so only an alarm that keeps failing comes to this.
+ */
+export const START_MS = 20 * 60_000;
+/**
+ * A run that never finished (cut short by a deploy): failed, never run again.
+ * Started within START_MS of the tap and stopped after RUN_MS, a run still
+ * going never reads so.
+ */
+export const STUCK_MS = START_MS + RUN_MS + 3 * 60_000;
 const MAX_ARGS = 4096;
 /** A call is shown whole or not filed: cut short, its last words could be the ones that matter ("…unlock"). */
 const MAX_SAYS = 300;
@@ -87,6 +104,18 @@ const key = (person: string, id: string) => `prop:${person}:${id}`;
 const prefix = (person: string) => `prop:${person}:`;
 /** The kinds of reversible call a person lets their jobs make without asking ("car_command:lock"). Not under prop:, so never listed with them. */
 const allowKey = (person: string) => `propallow:${person}`;
+/** Approved by a tap and not yet run by the alarm (tick), with what the run may use. Not under prop: either. */
+const RUN = "proprun:";
+const runKey = (person: string, id: string) => `${RUN}${person}:${id}`;
+interface Queued {
+  person: string;
+  id: string;
+  grants: Grant[];
+  /** When it was tapped. */
+  at: number;
+}
+/** How an approved call is made, as its person (state.ts, lib/approval.ts carryOut): what came of it. */
+export type CarryOut = (p: Proposal, grants: readonly Grant[]) => Promise<{ ok: boolean; text: string }>;
 const MAX_ALLOWED = 20;
 
 /** Arguments compared whatever order the model wrote them in. */
@@ -182,17 +211,50 @@ export class Proposals {
     return p;
   }
 
-  /** Approved by a tap: pending to running, once, before anything is done; why not, when it is not pending. */
-  async claim(person: string, id: string, now: number): Promise<Proposal | string> {
+  /**
+   * Approved by a tap: pending to running, once, before anything is done,
+   * and queued for the alarm (tick) with what it may run with (runGrants);
+   * why not, when it is not pending.
+   */
+  async claim(person: string, id: string, scopesNow: readonly Grant[] | null | undefined, approver: readonly Grant[], now: number): Promise<Proposal | string> {
     const p = await this.get(person, id, now);
     if (!p) return "No such proposal.";
     if (p.state !== "pending") {
       if (p.state === "expired") await this.storage.put(key(person, id), p);
       return p.state === "expired" ? "It has expired." : p.state === "declined" ? "It was declined." : p.state === "withdrawn" ? "Its job was cancelled." : "It was approved already.";
     }
+    const grants = runGrants(p.grants, scopesNow, approver);
+    if (!grants) return "Whoever it was for is no longer in the family.";
+    // Queued first: cut short between the two, it is still waiting, and tick lets the entry go.
+    await this.storage.put(runKey(person, id), { person, id, grants, at: now } satisfies Queued);
     const running: Proposal = { ...p, state: "running", by: "tap", decidedAt: now };
     await this.storage.put(key(person, id), running);
     return running;
+  }
+
+  /** At once, while an approved call waits to be made. */
+  async nextWake(now = Date.now()): Promise<number | null> {
+    return (await this.storage.list({ prefix: RUN })).size ? now : null;
+  }
+
+  /** Make every approved call that waits, one at a time, in the order they were tapped: the last tap has the last word. */
+  async tick(carryOut: CarryOut, now = Date.now()): Promise<void> {
+    const queued = [...(await this.storage.list<Queued>({ prefix: RUN })).values()].sort((a, b) => a.at - b.at);
+    const began = Date.now();
+    // Each weighed against the clock as it is when its turn comes, after the calls before it.
+    for (const q of queued) await this.carry(q, carryOut, now + Date.now() - began);
+  }
+
+  private async carry(q: Queued, carryOut: CarryOut, now: number): Promise<void> {
+    // Off the queue before anything is done: a run cut short (a deploy) is never made twice, and reads as failed (settled).
+    await this.storage.delete(runKey(q.person, q.id));
+    const p = await this.storage.get<Proposal>(key(q.person, q.id));
+    if (p?.state !== "running") return;
+    const outcome =
+      now - q.at > START_MS
+        ? { ok: false, text: "It could not be started in time, so nothing was done." }
+        : await carryOut(p, q.grants).catch((e: unknown) => ({ ok: false, text: `That failed: ${e instanceof Error ? e.message : String(e)}` }));
+    await this.finish(q.person, q.id, outcome, now);
   }
 
   async decline(person: string, id: string, now: number): Promise<Proposal | string> {
@@ -264,8 +326,9 @@ export class Proposals {
 
   /** Someone left the family: nothing of theirs waits, and nothing is kept. */
   async forget(person: string): Promise<void> {
-    const all = await this.storage.list({ prefix: prefix(person) });
-    for (const k of all.keys()) await this.storage.delete(k);
+    for (const pre of [prefix(person), runKey(person, "")]) {
+      for (const k of (await this.storage.list({ prefix: pre })).keys()) await this.storage.delete(k);
+    }
     await this.storage.delete(allowKey(person));
   }
 

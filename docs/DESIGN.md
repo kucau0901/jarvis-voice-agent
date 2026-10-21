@@ -1084,7 +1084,18 @@ cannot be talked into sending, deleting or unlocking, because nothing it has
 can. The person approves with a tap, on the card the job's result brings
 (`routes/proposals.ts`, under the ordinary sign-in), and the stored call runs
 once, with no model, with no more than the job had, its maker still may and
-the approver may, and never Hermes or a screen. It runs only as its card says:
+the approver may, and never Hermes or a screen. The tap only claims it: the
+object's alarm makes the call (`Proposals.tick`), as it makes a job's steps,
+so a slow one (waking the car takes up to a minute and a half) finishes
+whether or not the screen that approved it stays, which a Worker's
+`waitUntil` (about 30 seconds) did not. The calls are made one at a time, in
+the order they were tapped, beside the rest of what the alarm does, so a car
+waking holds up nothing already due; what comes due meanwhile waits for it,
+as it does for a job's step. A tap made while the alarm is busy (a job's
+step, a Hermes question) waits for it: one not started within twenty
+minutes, longer than an alarm may run, is not made at all. A call is taken off
+the queue before it is made, so one cut short by a deploy is never made
+twice, and reads as failed. It runs only as its card says:
 a card shows the whole call or the call is not filed, and one that would now
 read otherwise (another car first in their list, a car renamed) is refused and
 keeps waiting. How risky a call is, code works

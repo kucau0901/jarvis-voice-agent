@@ -184,6 +184,11 @@ of every release, and in the [README](README.md#updating).
 
 ### Fixed
 
+- **An approved call finishes even if you close Jarvis.** Approving what a
+  job proposed now hands the call to Jarvis to make in the background, so a
+  slow one (waking the car can take a minute or more) is no longer cut short
+  when you close the app or lock the phone. Its card says Doing it… until it
+  is done, then what came of it.
 - **A background job keeps to what its maker may do now.** A scope an
   admin took from someone is taken from the jobs they had already started,
   as it already was from their routines, and a job whose maker has left the

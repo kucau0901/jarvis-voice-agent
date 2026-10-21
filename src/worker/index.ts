@@ -229,7 +229,7 @@ async function route(
   if (url.pathname === "/api/hub/search") return await handleSearch(req, env, principal);
   if (url.pathname === "/api/page" || url.pathname === "/api/page/share") return await handlePageMeta(req, env, principal);
   if (url.pathname.startsWith("/api/hub/panels")) return (await handlePanels(req, env, principal)) ?? (await handleHub(req, env, principal));
-  if (url.pathname.startsWith("/api/hub/proposals")) return (await handleProposals(req, env, ctx, principal)) ?? (await handleHub(req, env, principal));
+  if (url.pathname.startsWith("/api/hub/proposals")) return (await handleProposals(req, env, principal)) ?? (await handleHub(req, env, principal));
   if (url.pathname.startsWith("/api/hub/")) return await handleHub(req, env, principal);
   if (url.pathname.startsWith("/api/mcp")) return await handleMcp(req, env, principal.kind === "owner");
   if (url.pathname.startsWith("/api/memory")) return await handleMemory(req, env, grantsOf(principal), principal.kind === "device");
