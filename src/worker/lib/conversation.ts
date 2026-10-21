@@ -1,6 +1,7 @@
 import type { Storage } from "./state-host.ts";
 import type { Alert } from "./alerts.ts";
 import { tidy } from "./quote.ts";
+import { PAGE_ID } from "./pages.ts";
 
 /**
  * Each person's conversation with Jarvis, kept so it is still there when the
@@ -36,6 +37,8 @@ export interface Said {
   job?: { id: string; name: string };
   /** An answer's cited pages, drawn as cards under it (src/app/ui/rich.ts). */
   links?: { url: string; title: string }[];
+  /** A page the answer made (lib/pages.ts), drawn as a card under it (src/app/pageCard.ts). */
+  page?: { id: string; title: string };
 }
 
 export const KEEP = 200;
@@ -80,6 +83,8 @@ export function asSaid(raw: unknown, at: number): Said | null {
   // A question may be only what was attached to it.
   if (!text && !files.length) return null;
   const links = r.role === "assistant" ? linksOf(r.links) : [];
+  const p = r.page && typeof r.page === "object" ? (r.page as { id?: unknown; title?: unknown }) : null;
+  const page = r.role === "assistant" && typeof p?.id === "string" && PAGE_ID.test(p.id) && typeof p.title === "string" ? { id: p.id, title: tidy(p.title).slice(0, MAX_NAME) } : null;
   return {
     id: r.id,
     at,
@@ -88,6 +93,7 @@ export function asSaid(raw: unknown, at: number): Said | null {
     ...(files.length && r.role === "user" ? { files } : {}),
     ...(typeof r.replyTo === "string" && ID.test(r.replyTo) && r.role === "user" ? { replyTo: r.replyTo } : {}),
     ...(links.length ? { links } : {}),
+    ...(page ? { page } : {}),
   };
 }
 

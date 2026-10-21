@@ -9,6 +9,7 @@ import {
 } from "./settings.ts";
 import type { StoredImage } from "./images.ts";
 import type { Specialty } from "./specialties.ts";
+import type { StoredPage } from "./pages.ts";
 import type { Episode } from "./episodes.ts";
 import { addToDay, budgetStep, emptyDay, report, spentOf, type DayTotals, type UsageEntry, type UsageReport } from "./usage.ts";
 import { fromOthers, keep, type SharedTurn } from "./shared.ts";
@@ -611,6 +612,16 @@ interface ImageApi {
   imageGet(person: string, id: string, now: number): Promise<StoredImage | null>;
 }
 
+/** Pages Jarvis made (lib/pages.ts): each person's own, opened by a link that carries its proof. */
+interface PageApi {
+  pagePut(person: string, page: Pick<StoredPage, "title" | "subtitle" | "sections">, now: number): Promise<string>;
+  pageMine(person: string, id: string, now: number): Promise<StoredPage | null>;
+  pageView(person: string, id: string, now: number): Promise<string | null>;
+  pageShare(person: string, id: string, now: number): Promise<string | null>;
+  pageUnshare(person: string, id: string, now: number): Promise<boolean>;
+  pageOpen(id: string, token: string, now: number): Promise<StoredPage | null>;
+}
+
 /** Each person's specialties (lib/specialties.ts), and what is recalled with a question (lib/router.ts). */
 interface RecallApi {
   specialtiesOf(person: string): Promise<Specialty[]>;
@@ -681,4 +692,5 @@ export type StateApi = Pick<
   ConversationApi &
   ImageApi &
   RecallApi &
+  PageApi &
   PlanApi;

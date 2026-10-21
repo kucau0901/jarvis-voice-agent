@@ -29,6 +29,8 @@ export interface Said {
   job?: { id: string; name: string };
   /** An answer's cited pages, drawn as cards under it (ui/rich.ts). */
   links?: { url: string; title: string }[];
+  /** A page the answer made, as a card under it (pageCard.ts). */
+  page?: { id: string; title: string };
 }
 
 const PATH = "/api/hub/conversation";
@@ -56,7 +58,7 @@ export const asked = (to: { text: string } | null, text: string, files: string[]
 
 /** How the chat is drawn (main.ts): a finished row; a routine's or a job's words under its name, false when shown already. */
 export interface Rows {
-  row(who: "you" | "jarvis", text: string, links?: { url: string; title: string }[]): HTMLElement;
+  row(who: "you" | "jarvis", text: string, links?: { url: string; title: string }[], page?: { id: string; title: string }): HTMLElement;
   routine(s: RoutineSaid): boolean;
   job(s: JobSaid): boolean;
 }
@@ -73,7 +75,7 @@ export function restore(all: Said[], rows: Rows, history: History): void {
       if (rows.job({ id: s.id, at: s.at, title: s.job.name, text: s.text, job: s.job.id })) history.add("assistant", `${s.job.name}: ${s.text}`, s.at);
       continue;
     }
-    const row = rows.row(s.role === "user" ? "you" : "jarvis", s.text, s.links);
+    const row = rows.row(s.role === "user" ? "you" : "jarvis", s.text, s.links, s.page);
     row.dataset.said = s.id;
     shown.set(s.id, { row, text: s.text });
     if (s.role === "assistant") {

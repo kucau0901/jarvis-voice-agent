@@ -11,6 +11,7 @@ import { placeTools } from "./place.ts";
 import { placesTools } from "./places.ts";
 import { cameraTools } from "./camera.ts";
 import { makeImage } from "./image.ts";
+import { makePage } from "./page.ts";
 import { spotifyTools } from "./spotify.ts";
 import { gmailTools } from "./gmail.ts";
 import { calendarTools } from "./calendar.ts";
@@ -231,6 +232,7 @@ const ALL: Tool[] = [
   ...placesTools,
   ...cameraTools,
   makeImage,
+  makePage,
   ...spotifyTools,
   ...gmailTools,
   ...calendarTools,

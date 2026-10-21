@@ -156,7 +156,7 @@ existence, or argued around.
 | `media` | Spotify. |
 | `mail` | Gmail: `mail_check`, `mail_search`, `mail_send`, `mail_manage`, `contacts_lookup`. Reads, sends, replies, drafts, trashes and archives — there is no read-only half. Also reads Google Contacts to turn a name into an address. |
 | `calendar` | Google Calendar: `calendar_check`, `calendar_add`. Reads the diary **and creates events**. |
-| `screen` | `show_place`, `hide_display`, `/api/map`, `make_image` and `/api/image` (pictures Jarvis makes), and a person's panels (`panel_set`, `panel_remove`, `/api/hub/panels`). |
+| `screen` | `show_place`, `hide_display`, `/api/map`, `make_image` and `/api/image` (pictures Jarvis makes), `make_page` and `/api/page` (pages Jarvis makes), and a person's panels (`panel_set`, `panel_remove`, `/api/hub/panels`). |
 | `voice` | `/api/session`, `/api/tts`, `/api/voices`, and push-to-talk `/api/v1/voice` (which also needs `ask`). |
 | `ask` (jobs) | `/api/v1/jobs`, `/api/v1/jobs/cancel`, `start_job`. A job for Hermes also needs `hermes`. Each job runs with its creator's grants, and only their reading tools. |
 | `routines` | `/api/v1/routines`, `/api/v1/routines/run`, `/api/v1/routines/runs`, `/api/v1/trigger`; `routine_add`, `routine_list`, `routine_remove`. A routine's question runs with **its creator's** grants, never more. |
@@ -659,6 +659,7 @@ meantime. Most devices should not bother.
   `error`. Skip a type you do not know: more may be added.
 - `job` is a background job the question started (`{"type":"job","id","title","engine"}`);
   its result comes later as an alert, not in this stream.
+- `display` may be `{kind: "page", page, label}`: a page Jarvis made (below).
 - `result` may carry `links: [{url, title}]`, the https pages the answer cited
   (up to six), for showing beside it. The answer's words are complete without them.
 - Exactly one of `result` or `error` is terminal — **except when the turn is
@@ -978,3 +979,17 @@ addresses were kept) and must be entered again.
 `/api/delegate` are internal and may change without notice. `/api/delegate` in
 particular is the browser's own route; use `/api/v1/stream`, which is the same
 thing under a name that will not move.
+
+## Pages
+
+`make_page` makes a small web page from sections Jarvis writes as words (a
+heading, paragraphs, lists, links, a table), drawn by one fixed template,
+escaped, with no script. `GET /api/page?id=` (needs `screen`, your own) is
+`{title, at, viewUrl, shared}`; `viewUrl` opens it for an hour.
+`POST /api/page/share {id}` (admins only) is `{shareUrl}`, a link anyone can open
+until `DELETE /api/page/share?id=`; sharing again makes a new one and the old
+dies. `GET /api/v1/p/<id>?k=<token>` is the page itself, served before any
+sign-in, its token its proof, sandboxed (`Content-Security-Policy: sandbox`,
+`default-src 'none'`) and not cached; anything else is the same 404. Each
+person keeps their newest 20 pages for 30 days; clearing the chat, or leaving
+the family, removes them.

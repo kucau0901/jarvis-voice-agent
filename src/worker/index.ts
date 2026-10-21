@@ -35,6 +35,7 @@ import { handleFamily } from "./routes/family.ts";
 import { handlePanels } from "./routes/panels.ts";
 import { handleConversation } from "./routes/conversation.ts";
 import { handleSearch } from "./routes/search.ts";
+import { handlePage, handlePageMeta } from "./routes/page.ts";
 
 // The Durable Object class must be exported from the entry for the runtime to find it.
 export { JarvisState } from "./state.ts";
@@ -98,6 +99,8 @@ export default {
     // and its server's trade of a code each carry no credential, the code
     // standing in for one (routes/oauth.ts).
     if (url.pathname === "/api/v1/oauth/authorize") return handleAuthorize(req);
+    // A page Jarvis made (routes/page.ts): opened by its link, which carries its own proof, so by anyone it was given to.
+    if (url.pathname.startsWith("/api/v1/p/")) return await handlePage(req, env);
     if (url.pathname === "/api/v1/oauth/token") return await handleToken(req, env);
     // A browser cannot put a header on a WebSocket, so an open screen presents
     // a one-time ticket it was issued over an authenticated request instead.
@@ -219,6 +222,7 @@ async function route(
   }
   if (url.pathname === "/api/hub/conversation") return await handleConversation(req, env, principal);
   if (url.pathname === "/api/hub/search") return await handleSearch(req, env, principal);
+  if (url.pathname === "/api/page" || url.pathname === "/api/page/share") return await handlePageMeta(req, env, principal);
   if (url.pathname.startsWith("/api/hub/panels")) return (await handlePanels(req, env, principal)) ?? (await handleHub(req, env, principal));
   if (url.pathname.startsWith("/api/hub/")) return await handleHub(req, env, principal);
   if (url.pathname.startsWith("/api/mcp")) return await handleMcp(req, env, principal.kind === "owner");

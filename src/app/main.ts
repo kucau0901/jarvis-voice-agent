@@ -30,6 +30,7 @@ import { inCar } from "./client";
 import { arm } from "./ui/util";
 import { answerBody, linkCards, markdown } from "./ui/rich";
 import { Reader } from "./ui/Reader";
+import { pageCard } from "./pageCard";
 import { PushToTalk } from "./ptt";
 import { LiveVoice, wakeVoice } from "./loud";
 import { Family } from "./ui/Family";
@@ -643,7 +644,7 @@ if (key) {
   void syncPush(key);
   // The conversation kept from before, routines' words and all (conversation.ts).
   void kept(key).then((all) => {
-    restore(all, { row: (who, text, links) => addRow(who, text, "", links), routine: routineSaid, job: jobSaid }, history);
+    restore(all, { row: (who, text, links, page) => addRow(who, text, "", links, page), routine: routineSaid, job: jobSaid }, history);
     // Nothing said yet: the first run, once on this screen (firstRun.ts).
     if (!all.length) void firstRun(key, els.transcript, chatWith);
   }).catch(() => {});
@@ -1283,7 +1284,7 @@ arm($<HTMLButtonElement>("clearChat"), "Clear all of it?", () =>
 
 let reader: Reader | null = null;
 /** A finished row of its own, its markdown drawn, a document as a card to open (ui/rich.ts), and the pages it cited. */
-function addRow(who: "you" | "jarvis", text: string, cls = "", links?: { url: string; title: string }[]) {
+function addRow(who: "you" | "jarvis", text: string, cls = "", links?: { url: string; title: string }[], page?: { id: string; title: string }) {
   endRows();
   const el = document.createElement("div");
   el.className = `row ${who}${cls ? ` ${cls}` : ""}`;
@@ -1293,6 +1294,7 @@ function addRow(who: "you" | "jarvis", text: string, cls = "", links?: { url: st
   el.appendChild(w);
   const body = who === "jarvis" ? answerBody(text, (doc) => (reader ??= new Reader()).show(doc, () => reply.quote(el, text))) : Object.assign(document.createElement("span"), { className: "txt", textContent: text });
   if (links?.length) body.appendChild(linkCards(links));
+  if (page && key) body.appendChild(pageCard(key, page));
   el.appendChild(body);
   if (who === "jarvis" && !cls) reply.offer(el, text);
   els.transcript.appendChild(el);
@@ -1304,6 +1306,8 @@ let typedAbort: AbortController | null = null;
 async function sendTyped() {
   const text = typed.value.trim();
   if ((!text && !attachments.list.length) || typedAbort) return;
+  /** A page this question made (tools/page.ts), for its answer's card. */
+  let made: { id: string; title: string } | null = null;
   if (!key) return requireKey();
   const to = reply.take();
   const attached: Attached[] = attachments.take();
@@ -1335,6 +1339,8 @@ async function sendTyped() {
       els.transcript.scrollTop = els.transcript.scrollHeight;
     },
     display: (payload) => {
+      // A page Jarvis made goes under the answer, as a card to open (pageCard.ts), not on the stage.
+      if (payload.kind === "page" && typeof payload.page === "string") return void (made = { id: payload.page, title: String(payload.label ?? "Page") });
       stage ??= new Stage(key);
       void stage.show(payload as unknown as DisplayPayload);
     },
@@ -1342,11 +1348,12 @@ async function sendTyped() {
     limit: (text) => void addRow("jarvis", text, "limit"),
     answer: (reply, ok, limit, links) => {
       work.stop();
-      const said = addRow("jarvis", reply, ok ? "" : limit ? "bad limit" : "bad", ok ? links : undefined);
+      const page = ok ? made ?? undefined : undefined;
+      const said = addRow("jarvis", reply, ok ? "" : limit ? "bad limit" : "bad", ok ? links : undefined, page);
       // What went wrong is not kept, nor told to the model again later.
       if (ok) {
         said.dataset.said = saidId();
-        keep(key, { id: said.dataset.said, role: "assistant", text: reply, ...(links?.length ? { links } : {}) });
+        keep(key, { id: said.dataset.said, role: "assistant", text: reply, ...(links?.length ? { links } : {}), ...(page ? { page } : {}) });
       }
       history.add("assistant", reply);
       if (!ok) errorFlash = 1;

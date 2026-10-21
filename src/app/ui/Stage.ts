@@ -2,11 +2,13 @@ import { authHeaders } from "../key";
 import { MAP_STYLE_VERSION } from "../../shared/version";
 
 export interface DisplayPayload {
-  kind: "map" | "streetview" | "camera" | "image" | "close";
+  kind: "map" | "streetview" | "camera" | "image" | "page" | "close";
   /** camera only. */
   entity?: string;
   /** image only: the picture Jarvis made, by id (GET /api/image, tools/image.ts). */
   image?: string;
+  /** page only: the page Jarvis made, by id (GET /api/page, tools/page.ts). */
+  page?: string;
   lat: number;
   lng: number;
   label?: string;
@@ -92,11 +94,29 @@ export class Stage {
       await this.showImage(p, mine);
       return;
     }
+    if (p.kind === "page") {
+      await this.showPage(p, mine);
+      return;
+    }
     if (p.embedUrl) {
       this.showEmbed(p, mine);
       return;
     }
     await this.showStatic(p, mine);
+  }
+
+  /** A page Jarvis made, asked for by voice: in the frame, by a fresh link to it (routes/page.ts). */
+  private async showPage(p: DisplayPayload, mine: number): Promise<void> {
+    this.img.style.display = "none";
+    try {
+      const r = await fetch(`/api/page?id=${encodeURIComponent(p.page ?? "")}`, { headers: authHeaders(this.key) });
+      const { viewUrl } = (await r.json()) as { viewUrl?: string };
+      if (mine !== this.token || !r.ok || !viewUrl) return;
+      this.frame.src = viewUrl;
+      this.frame.style.display = "block";
+    } catch {
+      if (mine === this.token) this.caption.textContent = `${p.label ?? "The page"}: it could not be opened here.`;
+    }
   }
 
   /**

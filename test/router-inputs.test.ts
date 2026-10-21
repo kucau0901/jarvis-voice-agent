@@ -45,6 +45,7 @@ const PROMPT_SHA256 = "4c052dbb87c29e01adabcd5415e9c422214ec78828dafe87cdf2cbb5f
 // job_results (tools/jobs.ts, no scope beyond ask): everyone, as start_job (19 Oct 2026).
 // make_image (tools/image.ts, scope screen, the OpenAI key only): everyone but the guest (21 Oct 2026).
 // specialty_save and specialty_forget (tools/specialties.ts, scope memory.write): everyone but the guest (21 Oct 2026).
+// make_page (tools/page.ts, scope screen): everyone but the guest (21 Oct 2026).
 const EXPECTED: Record<string, { model: string; tools: string[]; input: string }> = {
  "owner key, nothing set up": {
   "model": "gpt-6-luna",
@@ -54,6 +55,7 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
    "job_results",
    "look_back",
    "make_image",
+   "make_page",
    "panel_list",
    "panel_remove",
    "panel_set",
@@ -93,6 +95,7 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
    "mail_search",
    "mail_send",
    "make_image",
+   "make_page",
    "music_control",
    "music_play",
    "music_state",
@@ -137,6 +140,7 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
    "mail_search",
    "mail_send",
    "make_image",
+   "make_page",
    "music_control",
    "music_play",
    "music_state",
@@ -175,6 +179,7 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
    "job_results",
    "look_back",
    "make_image",
+   "make_page",
    "panel_list",
    "panel_remove",
    "panel_set",

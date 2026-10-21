@@ -1247,9 +1247,16 @@ there is live state, and a cached one is a wrong one.
 
 ## Security
 
-Every `/api/*` route is gated by the owner key or a device token. The two
+Every `/api/*` route is gated by the owner key or a device token. The
 exceptions are the Google and Spotify sign-in callbacks, which a third party
-redirects to and which carry a single-use `state` value instead. Enter the owner
+redirects to and which carry a single-use `state` value instead, and a page
+Jarvis made (`/api/v1/p/<id>`, `routes/page.ts`), whose link carries its own
+proof: a view link signed with a key that never leaves the Durable Object,
+good for an hour, or, once an admin taps Share, a random token kept only as
+its hash, until Stop sharing. A page is served on the app's own origin, beside
+the stored owner key, so it is never written by the model as HTML: Jarvis gives
+words in sections and one fixed template escapes them, and its policy
+sandboxes it (an origin of its own) and allows no script at all. Enter the owner
 key once on the unlock screen (or pass `#key=…` once) and it is remembered in
 `localStorage`.
 

@@ -83,6 +83,11 @@ of every release, and in the [README](README.md#updating).
 - **Export your data.** Settings → Export your data downloads one JSON file
   of your memory, routines, panels, conversation and jobs, and the household's
   settings without any key or token. For the owner and admins.
+- **Pages.** "Make me a page comparing these chargers" makes a small web
+  page, in sections and tabs, light or dark, marked as made by an AI. It
+  comes as a card under the answer to open; those who run the house can
+  Share it as a link anyone can open, and Stop sharing. Each person's newest
+  20 are kept for 30 days; clearing the chat removes them.
 - **Research into a table.** Ask for a list of many things found and
   compared ("the 10 cheapest genuine Xiaomi speakers in Malaysia, with seller
   and rating"), or tick As a table in Jobs: a research team fills the rows,

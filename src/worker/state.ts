@@ -27,6 +27,7 @@ import { Panels, type PanelItem, type Reading } from "./lib/panels.ts";
 import { Conversation, jobSaid, routineSaid, type Said } from "./lib/conversation.ts";
 import { Images, type StoredImage } from "./lib/images.ts";
 import { Specialties } from "./lib/specialties.ts";
+import { Pages, type StoredPage } from "./lib/pages.ts";
 import { Episodes, episodeOfJob, type Episode } from "./lib/episodes.ts";
 import { OWNER, personOfWho, withPerson } from "./lib/context.ts";
 import { lookAtPage } from "./lib/page-look.ts";
@@ -64,6 +65,7 @@ export class JarvisState extends DurableObject<Env> {
   private conversation: Conversation;
   private images: Images;
   private specialties: Specialties;
+  private pages: Pages;
   private episodes: Episodes;
   /** The owner's ChatGPT plan, which model calls use first (lib/chatgpt-plan.ts). */
   private plan: ChatGptPlan;
@@ -78,6 +80,7 @@ export class JarvisState extends DurableObject<Env> {
     this.conversation = new Conversation(ctx.storage);
     this.images = new Images(ctx.storage);
     this.specialties = new Specialties(ctx.storage);
+    this.pages = new Pages(ctx.storage);
     this.episodes = new Episodes(ctx.storage);
     this.plan = new ChatGptPlan(ctx.storage, (input, init) => fetch(input, init));
     this.relays = new Relays(ctx.storage, () => this.relayDeps());
@@ -263,6 +266,7 @@ export class JarvisState extends DurableObject<Env> {
     await this.panels.forget(person);
     await this.conversation.clear(person);
     await this.images.clear(person);
+    await this.pages.clear(person);
     await this.specialties.clear(person);
     await this.episodes.clear(person);
     await this.rearm();
@@ -548,6 +552,30 @@ export class JarvisState extends DurableObject<Env> {
     return this.images.get(person, id, now);
   }
 
+  pagePut(person: string, page: Pick<StoredPage, "title" | "subtitle" | "sections">, now: number) {
+    return this.pages.put(person, page, now);
+  }
+
+  pageMine(person: string, id: string, now: number) {
+    return this.pages.mine(person, id, now);
+  }
+
+  pageView(person: string, id: string, now: number) {
+    return this.pages.viewToken(person, id, now);
+  }
+
+  pageShare(person: string, id: string, now: number) {
+    return this.pages.share(person, id, now);
+  }
+
+  pageUnshare(person: string, id: string, now: number) {
+    return this.pages.unshare(person, id, now);
+  }
+
+  pageOpen(id: string, token: string, now: number) {
+    return this.pages.open(id, token, now);
+  }
+
   specialtiesOf(person: string) {
     return this.specialties.of(person);
   }
@@ -619,8 +647,9 @@ export class JarvisState extends DurableObject<Env> {
   /** Cleared on every open screen of theirs too, not only the one it was cleared on. */
   async conversationClear(person: string) {
     await this.conversation.clear(person);
-    // The pictures made in it go with it (lib/images.ts).
+    // The pictures and pages made in it go with it (lib/images.ts, lib/pages.ts).
     await this.images.clear(person);
+    await this.pages.clear(person);
     this.hub.tell(this.sockets(), person, { type: "conversation.cleared" });
   }
 

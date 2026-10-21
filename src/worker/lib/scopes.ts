@@ -171,7 +171,12 @@ export function requiredScope(pathname: string, method: string): RouteRequiremen
 
     case "/api/map":
     case "/api/image":
+    case "/api/page":
       return "screen";
+    // Sharing a page is a person's, and only an admin's (routes/page.ts checks). The page itself,
+    // /api/v1/p/<id>, is served before this gate, opened by the proof its link carries.
+    case "/api/page/share":
+      return "person";
 
     // Receiving alerts, and raising one. The same scope for both: a device
     // that may be told things may also ask to be told something.
