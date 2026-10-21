@@ -191,9 +191,11 @@ try {
 addEventListener("resize", () => orb?.resize());
 // The sky behind it all (orb/Sky.ts, sky.ts): as with the orb, the app works without it.
 let sky: Sky | null = null;
+/** The weather for the sky now: after an unlock that gave this screen a key. */
+let refreshSky: (() => void) | null = null;
 try {
   sky = new Sky($<HTMLCanvasElement>("skyCanvas"));
-  watchSky(key, sky);
+  refreshSky = watchSky(() => key, sky);
 } catch (e) {
   console.warn("sky unavailable:", e);
 }
@@ -718,6 +720,7 @@ async function tryKey(candidate: string) {
       key = saveKey(candidate);
       live.start(key);
       void syncPush(key);
+      refreshSky?.();
       unlock.wrap.classList.remove("show");
       setMode(mode);
       openConnect();

@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { Governor } from "./governor";
+import { frameDue, Governor } from "./governor";
 import { SKY_FRAG, SKY_VERT } from "./shaders";
 
 /**
@@ -23,6 +23,8 @@ export class Sky {
   private governor = new Governor(12, 4);
   private level = 0;
   private still = false;
+  /** Still for good: too costly even at the lowest scale (tick), whatever freeze(false) says later. */
+  private tooCostly = false;
   private raf = 0;
   private last = 0;
   private started = performance.now();
@@ -46,6 +48,7 @@ export class Sky {
       cancelAnimationFrame(this.raf);
       document.documentElement.classList.remove("sky");
     });
+    canvas.addEventListener("webglcontextrestored", () => this.freeze(this.still));
   }
 
   private resize(): void {
@@ -71,13 +74,15 @@ export class Sky {
 
   /** Held still (one frame, drawn again only when something changes), or moving. */
   freeze(still: boolean): void {
-    this.still = still;
+    this.still = still || this.tooCostly;
     cancelAnimationFrame(this.raf);
-    if (!still) this.raf = requestAnimationFrame((t) => this.tick(t));
+    if (!this.still) this.raf = requestAnimationFrame((t) => this.tick(t));
     this.draw();
   }
 
   private draw(): void {
+    // Lost (the GPU reset, or took it back): nothing over a blank canvas until it is restored.
+    if (this.renderer.getContext().isContextLost()) return;
     this.uniforms.uTime!.value = (performance.now() - this.started) / 1000;
     this.renderer.render(this.scene, this.camera);
     document.documentElement.classList.add("sky");
@@ -86,15 +91,18 @@ export class Sky {
   private tick(t: number): void {
     if (this.still) return;
     this.raf = requestAnimationFrame((n) => this.tick(n));
-    if (document.hidden || t - this.last < FPS_MS) return;
+    if (document.hidden) return;
     // The time between frames as well as the drawing: blurred glass over it costs the GPU, not this.
-    const gap = this.last ? t - this.last - FPS_MS : 0;
+    const gap = frameDue(t, this.last, FPS_MS);
+    if (gap === null) return;
     this.last = t;
     const t0 = performance.now();
     this.draw();
     const step = this.governor.push(Math.max(performance.now() - t0, gap));
-    if (step < 0 && this.level === SCALES.length - 1) this.freeze(true);
-    else if (step !== 0) {
+    if (step < 0 && this.level === SCALES.length - 1) {
+      this.tooCostly = true;
+      this.freeze(true);
+    } else if (step !== 0) {
       this.level = Math.min(SCALES.length - 1, Math.max(0, this.level - step));
       this.resize();
     }

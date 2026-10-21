@@ -29,3 +29,15 @@ export class Governor {
     return median > this.high ? -1 : median < this.low ? 1 : 0;
   }
 }
+
+/**
+ * Whether a frame drawn every `every` milliseconds is due at `t` (a
+ * requestAnimationFrame time), and if so how late it is: the time past
+ * `every`, which counts against the screen as drawing does. Half a 60 Hz
+ * frame early is due, so the display rounding to its own frames is not taken
+ * for lateness. Null when not due.
+ */
+export function frameDue(t: number, last: number, every: number): number | null {
+  if (last && t - last < every - 8) return null;
+  return last ? Math.max(0, t - last - every) : 0;
+}

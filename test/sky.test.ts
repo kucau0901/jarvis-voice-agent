@@ -2,8 +2,8 @@
 // the air it is drawn from (lib/sky.ts), and how it holds its cost
 // (src/app/orb/governor.ts, shared with the orb).
 import { clockSun, sunHeight } from "../src/app/sun.ts";
-import { hazeOf, skyOf } from "../src/worker/lib/sky.ts";
-import { Governor } from "../src/app/orb/governor.ts";
+import { hazeOf, SKY_TEMPLATE, skyOf } from "../src/worker/lib/sky.ts";
+import { frameDue, Governor } from "../src/app/orb/governor.ts";
 
 let pass = 0;
 let fail = 0;
@@ -54,6 +54,30 @@ console.log("\nits cost");
   check("fast: may do more", step === 1);
   for (let i = 0; i < 90; i++) step = g.push(12, 30_000);
   check("in between: as it is", step === 0);
+
+  // The sky's ten frames a second, on a screen's own frames (orb/Sky.ts): rounding is not lateness.
+  const run = (hz: number, cost: number, seconds = 120) => {
+    const sky = new Governor(12, 4);
+    let last = 0;
+    let down = 0;
+    for (let i = 1; i < hz * seconds; i++) {
+      const t = (i * 1000) / hz;
+      const gap = frameDue(t, last, 100);
+      if (gap === null) continue;
+      last = t;
+      if (sky.push(Math.max(cost, gap), t) < 0) down++;
+    }
+    return down;
+  };
+  check("an idle screen at 60, 60.05, 120 or 144 Hz never steps down", [60, 60.05, 59.94, 120, 144].every((hz) => run(hz, 1) === 0), [60, 60.05, 59.94, 120, 144].map((hz) => run(hz, 1)));
+  check("one whose frames stall does", run(7.5, 1) > 0 && run(60, 20) > 0);
+  check("a frame half a 60 Hz frame early is due, one earlier is not", frameDue(1092, 1000, 100) === 0 && frameDue(1091, 1000, 100) === null && frameDue(1133, 1000, 100) === 33);
+}
+
+console.log("\nthe template it reads");
+{
+  // A weather entity without cloud_coverage: a missing key, not an Undefined that tojson cannot write.
+  check("cloud coverage read with get(), never by dot", SKY_TEMPLATE.includes("attributes.get('cloud_coverage')") && !/attributes\.cloud_coverage/.test(SKY_TEMPLATE), SKY_TEMPLATE);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

@@ -13,7 +13,7 @@ import { isAsk, parseTile } from "./panel-tiles.ts";
 export const SKY_TEMPLATE =
   "{% set w = states.weather | list | first %}" +
   "{{ {'lat': state_attr('zone.home','latitude'), 'lng': state_attr('zone.home','longitude'), " +
-  "'state': w.state if w else none, 'cloud': (w.attributes.cloud_coverage if w else none)} | tojson }}";
+  "'state': w.state if w else none, 'cloud': (w.attributes.get('cloud_coverage') if w else none)} | tojson }}";
 
 export interface Sky {
   lat?: number;

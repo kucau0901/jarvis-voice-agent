@@ -21,8 +21,12 @@ export interface SkyFeed {
 const PLACE = "jarvis.skyPlace";
 const EVERY_MS = 15 * 60_000;
 
-/** Kept up while the page is shown: the weather every quarter hour, the sun every minute. */
-export function watchSky(key: string, sky: SkyFeed): void {
+/**
+ * Kept up while the page is shown: the weather every quarter hour, the sun
+ * every minute. The key is read each time, since unlocking can change it
+ * without a reload; what it returns fetches the weather now.
+ */
+export function watchSky(keyOf: () => string, sky: SkyFeed): () => void {
   let place: { lat: number; lng: number } | null = null;
   try {
     place = JSON.parse(localStorage.getItem(PLACE) ?? "null");
@@ -35,6 +39,7 @@ export function watchSky(key: string, sky: SkyFeed): void {
     sky.set({ sun: place ? sunHeight(place.lat, place.lng, d) : clockSun(d.getHours() + d.getMinutes() / 60), ...weather });
   };
   const fetchIt = async () => {
+    const key = keyOf();
     if (document.hidden || !key) return;
     try {
       const s = (await api(key, "GET", "/api/hub/panels/sky")) as { lat?: number; lng?: number; cloud: number; rain: number; haze: number };
@@ -59,4 +64,5 @@ export function watchSky(key: string, sky: SkyFeed): void {
   setInterval(now, 60_000);
   addEventListener("resize", () => sky.freeze(stillHere()));
   document.addEventListener("visibilitychange", () => !document.hidden && void fetchIt());
+  return () => void fetchIt();
 }
