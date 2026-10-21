@@ -33,7 +33,17 @@ export class Now {
     // Answered here since: kept for one more read, so what came of it is seen, then gone.
     const answered = [...this.root.querySelectorAll<HTMLElement>(".proposalcard")].filter((c) => !ids.has(c.dataset.proposal ?? ""));
     const now = [...ids].join();
-    if (now === this.shown && !answered.length) return;
+    if (now === this.shown) {
+      // The same waiting: those kept from last time go, and the open cards stay as they are (a "try again" on one, say).
+      for (const c of answered) if (c.dataset.kept === "1") c.remove();
+      const newly = answered.filter((c) => c.dataset.kept !== "1");
+      for (const c of newly) c.dataset.kept = "1";
+      if (!open.length && !newly.length) {
+        this.root.hidden = true;
+        this.root.replaceChildren();
+      }
+      return;
+    }
     this.shown = now;
     const kept = answered.filter((c) => c.dataset.kept !== "1");
     for (const c of kept) c.dataset.kept = "1";

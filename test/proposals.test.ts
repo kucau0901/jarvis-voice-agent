@@ -93,15 +93,17 @@ console.log("\nshown whole, or not filed");
   const props = new Proposals(fakeStorage() as never);
   const unlock = { command: "unlock", value: null, temperature: null, percent: null, car: "Model Y — the nightly routine lock, nothing else changes " + ".".repeat(250) };
   check("a padded name in a family is not one of their cars: not proposed", weigh(carCommand, unlock, CARS) === null);
-  const longTo = mailDraftSend.propose!({ draft: "r-12345", to: "a".repeat(140) + "@example.com", subject: "s".repeat(140), asked: "x" }, NO_CARS)!;
+  const longTo = mailDraftSend.propose!({ draft: "r-12345", to: "a".repeat(300) + "@example.com", subject: "s", asked: "x" }, NO_CARS)!;
   const cut = await props.add(input({ action: { tool: "mail_draft_send", args: { draft: "r-12345" } }, weighed: longTo }), T);
-  check("an address and subject too long to show whole: refused, never cut", longTo.says.includes("a".repeat(140)) && typeof cut === "string" && /too long to show/.test(cut));
+  check("an address too long to show whole: refused, never cut", longTo.says.includes("a".repeat(300)) && typeof cut === "string" && /too long to show/.test(cut));
+  const longSubject = await props.add(input({ from: { kind: "job", id: "jls", title: "x" }, action: { tool: "mail_draft_send", args: { draft: "r-3" } }, weighed: { risk: "irreversible", says: "Send the email to a" }, body: `Subject: ${"Re: ".repeat(200)}x\n\n${"w".repeat(4200)}` }), T);
+  check("a reply's long subject, with its words and a footer: still shown, not refused after it was drafted", typeof longSubject !== "string");
   const bulk = { note: "x".repeat(300), operations: [{ entity_id: "lock.front_door", action: "unlock" }] };
   const house = await props.add(input({ action: { tool: "home__ha_bulk_control", args: bulk }, weighed: classify("home__ha_bulk_control", bulk)! }), T);
   check("a house call whose last words would be cut: refused", typeof house === "string" && /too long to show/.test(house), house);
   const mail = await props.add(input({ action: { tool: "mail_draft_send", args: { draft: "r-1", to: "a", subject: "b" } }, weighed: { risk: "irreversible", says: "Send the email to a: “b”" }, body: "Hello.\n\nSee you at six." }), T);
   check("an email's words kept with it, to show on its card", typeof mail !== "string" && mail.body === "Hello.\n\nSee you at six.");
-  check("words too long to show whole: refused", typeof (await props.add(input({ from: { kind: "job", id: "jm", title: "x" }, action: { tool: "mail_draft_send", args: { draft: "r-2", to: "a", subject: "b" } }, weighed: { risk: "irreversible", says: "Send" }, body: "x".repeat(5000) }), T)) === "string");
+  check("words too long to show whole: refused", typeof (await props.add(input({ from: { kind: "job", id: "jm", title: "x" }, action: { tool: "mail_draft_send", args: { draft: "r-2", to: "a", subject: "b" } }, weighed: { risk: "irreversible", says: "Send" }, body: "x".repeat(9000) }), T)) === "string");
 }
 
 console.log("\nannounced with the job's result");
@@ -139,6 +141,11 @@ console.log("\nhow risky: code says, from the tool and its arguments");
   const more = classify("home__ha_call_service", { domain: "lock", service: "unlock", entity_id: "lock.shed", data: { area_id: "front_porch" } })?.says ?? "";
   const note = classify("home__ha_call_service", { domain: "notify", service: "mobile_app_phone", data: { message: "Your code is 1234" } })?.says ?? "";
   check("and everything else it would send: another target, a message", more.includes("front_porch") && note.includes("Your code is 1234"), { more, note });
+  const asText = classify("home__ha_call_service", { domain: "cover", service: "open_cover", data: '{"entity_id":"cover.garage_door"}' })?.says ?? "";
+  check("data written as text, which the server reads too, is shown as it is", asText.includes("cover.garage_door"), asText);
+  const cal = (a: Record<string, unknown>) => weigh(calendarAdd, { title: "Dentist", start: "2026-10-22T09:00:00+08:00", duration_minutes: 30, location: null, ...a }, NO_CARS);
+  check("a calendar event as it will be made: no length is an hour, a day at most, the title tidied", /, 60 min/.test(cal({ duration_minutes: 0 })?.says ?? "") && /, 1440 min/.test(cal({ duration_minutes: 99999 })?.says ?? "") && cal({ title: "  Dentist   check  " })?.says.startsWith("Calendar: “Dentist check”") === true);
+  check("a title or place it would cut short: not proposed", cal({ title: "x".repeat(201) }) === null && cal({ location: "y".repeat(201) }) === null);
   check("one that only reads, or no server's: not proposed", classify("home__ha_get_state", { entity_id: "x" }) === null && classify("recall", {}) === null);
 }
 
@@ -298,6 +305,13 @@ console.log("\nanswered by a tap (routes/proposals.ts)");
   const no = await handleProposals(req("/api/hub/proposals/answer", { id: q.id, answer: "decline" }), env, ctx, mia);
   check("declined", no!.status === 200 && ((await no!.json()) as { proposal: Proposal }).proposal.state === "declined");
   check("a declined one cannot be allowed without asking", (await handleProposals(req("/api/hub/proposals/allow", { id: q.id }), env, ctx, mia))!.status === 409);
+  // Filed for the first of two cars; by the tap, that car is gone, and the other is first.
+  const nameless = { command: "unlock", value: null, temperature: null, percent: null, car: null };
+  const moved = (await props.add(input({ person: "u_mia", who: "u_mia", from: { kind: "job", id: "jcar2", title: "x" }, action: { tool: "car_command", args: nameless }, weighed: weigh(carCommand, nameless, CARS)! }), Date.now())) as Proposal;
+  const onlyY = { TESSIE_TOKEN: "t", TESSIE_VIN: "LRWTEST0000000000", STATE: { idFromName: () => "jarvis", get: () => stub }, JARVIS_CARS: JSON.stringify([{ id: "c2", name: "Model Y", level: "own", mine: true, vin: "VIN_B", token: "t" }]) } as never;
+  const before = sent.length;
+  const changed = (await (await handleProposals(req("/api/hub/proposals/answer", { id: moved.id, answer: "approve" }), onlyY, ctx, mia))!.json()) as { proposal: Proposal };
+  check("the car it named is not the one it would now be: not done, and said so", moved.says === "Car: unlock (Ioniq 5)" && changed.proposal.state === "failed" && /has changed/.test(changed.proposal.outcome!.text) && sent.length === before, changed.proposal);
   const r2 = (await props.add(input({ person: "u_mia", who: "u_mia", from: { kind: "job", id: "j3", title: "x" } }), Date.now())) as Proposal;
   const noCar = { STATE: { idFromName: () => "jarvis", get: () => stub } } as never;
   const gone = (await (await handleProposals(req("/api/hub/proposals/answer", { id: r2.id, answer: "approve" }), noCar, ctx, mia))!.json()) as { proposal: Proposal };

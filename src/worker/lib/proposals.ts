@@ -74,8 +74,12 @@ const STUCK_MS = 5 * 60_000;
 const MAX_ARGS = 4096;
 /** A call is shown whole or not filed: cut short, its last words could be the ones that matter ("…unlock"). */
 const MAX_SAYS = 300;
-/** mail_send's longest (4,000), with the household's footer (200) and its line: what a job's email can be, so one drafted is never refused here. */
-const MAX_BODY = 4_300;
+/**
+ * What a job's email can be, so one already drafted is never refused here:
+ * mail_send's longest (4,000) with the household's footer (200), and its
+ * subject above it, which a reply takes from the mail it answers.
+ */
+const MAX_BODY = 8_000;
 export const PROPOSAL_ID = /^a[0-9a-hjkmnp-tv-z]{20}$/;
 
 const ALPHABET = "0123456789abcdefghjkmnpqrstvwxyz";
@@ -140,9 +144,9 @@ export class Proposals {
     // One already done without asking is never run again: only words come back, never the record held() would run.
     if (again) {
       if (again.by !== "standing") return again;
-      return again.state === "done"
-        ? `Already done without asking earlier: ${again.says}. Do not file it again.`
-        : `Tried without asking earlier, and it ${again.state === "running" ? "has not finished" : "did not work"}: ${again.says}${again.outcome?.text ? ` (${again.outcome.text})` : ""}. It is not tried again from this job: do not file it again, and say in your answer that it was not done.`;
+      if (again.state === "done") return `Already done without asking earlier: ${again.says}. Do not file it again.`;
+      if (again.state === "running") return `The same call is already being made without asking: ${again.says}. Do not file it again, and do not say it was done unless that call's result says so.`;
+      return `Tried without asking earlier, and it did not work: ${again.says}${again.outcome?.text ? ` (${again.outcome.text})` : ""}. It is not tried again from this job: do not file it again, and say in your answer that it was not done.`;
     }
     if (mine.filter((p) => p.from.id === input.from.id).length >= PER_JOB) return `At most ${PER_JOB} proposals from one job: say the rest in the answer.`;
     // Allowed without asking: a reversible call of a kind the person said their jobs may make, and only that.
@@ -281,9 +285,11 @@ export function classify(name: string, args: Record<string, unknown>): Weighed |
   const svc = calledService(args);
   const shown = (k: string, v: unknown) => `${k} ${typeof v === "string" ? v : JSON.stringify(v)}`;
   // Everything it would send is on the card: the service and its entities first, then every other argument.
-  const { entity_id: inData, ...data } = args.data && typeof args.data === "object" ? (args.data as Record<string, unknown>) : {};
+  const obj = args.data && typeof args.data === "object" && !Array.isArray(args.data) ? (args.data as Record<string, unknown>) : null;
+  const { entity_id: inData, ...data } = obj ?? {};
   const entity = [args.entity_id, inData].flat().filter((e): e is string => typeof e === "string").join(", ");
-  const rest = Object.entries(args).filter(([k]) => !svc || !["domain", "service", "entity_id", "data"].includes(k)).map(([k, v]) => shown(k, v));
+  // `data` as anything but an object (a JSON string, which a server may read) is shown as it is.
+  const rest = Object.entries(args).filter(([k]) => !svc || !["domain", "service", "entity_id", ...(obj ? ["data"] : [])].includes(k)).map(([k, v]) => shown(k, v));
   if (svc && Object.keys(data).length) rest.push(shown("data", data));
   const says = svc
     ? `${server} (${name.slice(i + 2)}): ${svc}${entity ? ` ${entity}` : ""}${rest.length ? `, ${rest.join(", ")}` : ""}`

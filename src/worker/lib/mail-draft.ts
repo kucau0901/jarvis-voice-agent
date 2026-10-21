@@ -59,7 +59,7 @@ export const mailDraftSend: Tool = {
   },
   propose: (args) =>
     typeof args.draft === "string" && DRAFT_ID.test(args.draft)
-      ? { risk: "irreversible", says: `Send the email to ${String(args.to ?? "")}: “${String(args.subject ?? "")}”` }
+      ? { risk: "irreversible", says: `Send the email to ${String(args.to ?? "")}` }
       : null,
   async run(args, ctx) {
     const cfg = googleConfig(ctx.env, "https://jarvis.invalid");
@@ -90,7 +90,8 @@ export function draftThenAsk(send: Tool, file: File, earlier: (asked: string, ct
       const said = typeof out === "string" ? out : out.text;
       if (!got.card) return said;
       const action = { tool: mailDraftSend.name, args: { draft: got.card.draft, to: got.card.to, subject: got.card.subject, asked } };
-      return `${said}\n${filed(await file(action, weigh(mailDraftSend, action.args, ctx.env)!, ctx, got.card.body))}`;
+      // Its subject and words on the card, whole (a reply's subject is the mail it answers, of any length).
+      return `${said}\n${filed(await file(action, weigh(mailDraftSend, action.args, ctx.env)!, ctx, `Subject: ${got.card.subject}\n\n${got.card.body}`))}`;
     },
   };
 }

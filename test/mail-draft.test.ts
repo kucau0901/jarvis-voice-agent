@@ -157,9 +157,9 @@ console.log("\na background job's mail: drafted, and its sending proposed (draft
     check("a job's mail_send says it only proposes", job.name === "mail_send" && job.description.startsWith("PROPOSE ONLY") && job.parameters === mailSend.parameters);
     const out = String(await job.run(ARGS, ctx({}, ["*"])));
     check("drafted, never sent, whatever Draft first says", g.calls.length === 1 && g.calls[0]!.url.endsWith("/users/me/drafts") && !g.calls.some((c) => c.url.includes("/send")), g.calls);
-    check("its sending filed, by the draft's id, always to be asked", filedCalls.length === 1 && filedCalls[0]!.action.tool === "mail_draft_send" && filedCalls[0]!.action.args.draft === "r-123456789" && filedCalls[0]!.risk === "irreversible" && filedCalls[0]!.says === "Send the email to sam@example.com: “Dinner”", filedCalls);
+    check("its sending filed, by the draft's id, always to be asked", filedCalls.length === 1 && filedCalls[0]!.action.tool === "mail_draft_send" && filedCalls[0]!.action.args.draft === "r-123456789" && filedCalls[0]!.risk === "irreversible" && filedCalls[0]!.says === "Send the email to sam@example.com", filedCalls);
     check("and the job told both", /draft/i.test(out) && /NOT done: filed/.test(out), out);
-    check("its words go with it, to be read before Send", filedCalls[0]?.body === "See you at six.", filedCalls[0]);
+    check("its subject and words go with it, to be read before Send", filedCalls[0]?.body === "Subject: Dinner\n\nSee you at six.", filedCalls[0]);
     const again = String(await job.run(ARGS, ctx({}, ["*"])));
     check("the same mail asked for again (a step tried again): not drafted, nor filed, a second time", g.calls.length === 1 && filedCalls.length === 1 && /NOT done: filed/.test(again), { calls: g.calls.length, filed: filedCalls.length, again });
   } finally {

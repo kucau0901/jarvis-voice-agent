@@ -35,6 +35,11 @@ import type { Tool, ToolContext } from "./registry.ts";
 const MAX_EVENTS = 15;
 const DEFAULT_EVENTS = 5;
 const MAX_TEXT = 200;
+/** How long an event is: minutes as given, at most a day; an hour when none is. */
+const durationOf = (v: unknown): number => {
+  const m = Number(v);
+  return Number.isFinite(m) && m > 0 ? Math.min(1440, Math.round(m)) : 60;
+};
 
 const available = (env: Env): boolean => !!(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET);
 
@@ -260,15 +265,15 @@ export const calendarAdd: Tool = {
     required: ["title", "start", "duration_minutes", "location"],
     additionalProperties: false,
   },
-  // Proposed by a job (lib/proposals.ts): an event in the user's own calendar, which they can delete.
-  propose: (args) =>
-    typeof args.title === "string" && typeof args.start === "string"
-      ? {
-          risk: "reversible",
-          says: `Calendar: “${args.title}”, ${args.start}, ${typeof args.duration_minutes === "number" ? args.duration_minutes : 60} min${typeof args.location === "string" && args.location ? `, at ${args.location}` : ""}`,
-          category: "calendar_add",
-        }
-      : null,
+  // Proposed by a job (lib/proposals.ts): an event in the user's own calendar, which they can delete,
+  // said as run() will make it; what it would cut short is not proposed.
+  propose(args) {
+    const title = tidy(String(args.title ?? ""));
+    const where = args.location ? tidy(String(args.location)) : "";
+    const start = typeof args.start === "string" ? args.start.trim() : "";
+    if (!title || !start || title.length > MAX_TEXT || where.length > MAX_TEXT) return null;
+    return { risk: "reversible", says: `Calendar: “${title}”, ${start}, ${durationOf(args.duration_minutes)} min${where ? `, at ${where}` : ""}`, category: "calendar_add" };
+  },
   async run(args, ctx) {
     const tz = localeOf(ctx.env).timeZone;
     return (await guard(async () => {
@@ -300,8 +305,7 @@ export const calendarAdd: Tool = {
         );
       }
 
-      const mins = Number(args.duration_minutes);
-      const duration = Number.isFinite(mins) && mins > 0 ? Math.min(1440, Math.round(mins)) : 60;
+      const duration = durationOf(args.duration_minutes);
       const endAt = new Date(startAt.getTime() + duration * 60_000);
 
       ctx.progress("putting that in the calendar");
