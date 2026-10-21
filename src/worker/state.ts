@@ -403,7 +403,7 @@ export class JarvisState extends DurableObject<Env> {
     // Approved calls beside the rest: someone is waiting on them, and a car waking holds up nothing due now.
     // What comes due while a call is still being made waits for it, as it does for a job's step.
     const done = await Promise.allSettled([
-      this.proposals.tick((p, grants) => this.makeApproved(p, grants)),
+      this.proposals.tick({ carryOut: (p, grants) => this.makeApproved(p, grants) }),
       (async () => {
         await this.scheduler.tick();
         await this.jobs.tick();

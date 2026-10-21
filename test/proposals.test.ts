@@ -115,22 +115,24 @@ console.log("\nmade on the object's alarm (tick)");
   check("for someone no longer in the family: not claimed, still waiting", gone === "Whoever it was for is no longer in the family." && (await props.get("u_sara", p.id, T))?.state === "pending" && (await props.nextWake(T)) === null);
   const claimed = await props.claim("u_sara", p.id, ["ask", "car.control", "calendar"], ["car.control", "ask"], T);
   check("approved: running, nothing made yet, and the alarm wanted at once", typeof claimed !== "string" && claimed.state === "running" && made.length === 0 && (await props.nextWake(T + 10)) === T + 10);
-  await props.tick(make, T + 100);
+  await props.tick({ carryOut: make }, T + 100);
   const done = await props.get("u_sara", p.id, T + 200);
   check("the alarm makes it once, with what its tap allowed, and keeps what came of it", made.length === 1 && made[0]!.grants.join() === "ask,car.control" && done?.state === "done" && done.outcome?.text === "Locked.", { made, done });
-  await props.tick(make, T + 200);
+  await props.tick({ carryOut: make }, T + 200);
   check("never made again, and nothing left to wake for", made.length === 1 && (await props.nextWake(T + 200)) === null);
 
   const failing = (await props.add(input({ from: { kind: "job", id: "jf", title: "x" } }), T)) as Proposal;
   await props.claim("u_sara", failing.id, ["*"], ["*"], T);
-  await props.tick(async () => {
-    throw new Error("Tessie unreachable");
+  await props.tick({
+    carryOut: async () => {
+      throw new Error("Tessie unreachable");
+    },
   }, T + 1);
   check("a run that throws: failed, with why", (await props.get("u_sara", failing.id, T + 2))?.outcome?.text === "That failed: Tessie unreachable");
 
   const late = (await props.add(input({ from: { kind: "job", id: "jl", title: "x" } }), T)) as Proposal;
   await props.claim("u_sara", late.id, ["*"], ["*"], T);
-  await props.tick(make, T + START_MS + 1);
+  await props.tick({ carryOut: make }, T + START_MS + 1);
   const notMade = await props.get("u_sara", late.id, T + START_MS + 1);
   check("not started within twenty minutes of the tap (the alarm kept failing): not made, and said so", made.length === 1 && notMade?.state === "failed" && /in time/.test(notMade.outcome?.text ?? ""), notMade);
 
@@ -138,10 +140,10 @@ console.log("\nmade on the object's alarm (tick)");
   const cut = (await props.add(input({ from: { kind: "job", id: "jc", title: "x" } }), T)) as Proposal;
   await props.claim("u_sara", cut.id, ["*"], ["*"], T);
   let tries = 0;
-  void props.tick(() => (tries++, new Promise<never>(() => {})), T + 1);
+  void props.tick({ carryOut: () => (tries++, new Promise<never>(() => {})) }, T + 1);
   await new Promise((r) => setTimeout(r, 0));
   const fresh = new Proposals(st as never);
-  await fresh.tick(make, T + 2);
+  await fresh.tick({ carryOut: make }, T + 2);
   check("cut short mid-call: never made a second time", tries === 1 && made.length === 1 && (await fresh.nextWake(T + 2)) === null);
   check("…and read as failed once it cannot still be going", (await fresh.get("u_sara", cut.id, T + 60_000))?.state === "running" && (await fresh.get("u_sara", cut.id, T + STUCK_MS + 1))?.state === "failed");
 
@@ -151,24 +153,26 @@ console.log("\nmade on the object's alarm (tick)");
   await props.claim("u_sara", second.id, ["*"], ["*"], T + 2);
   await props.claim("u_sara", first.id, ["*"], ["*"], T + 1);
   const turns: string[] = [];
-  await props.tick(async (q) => {
-    turns.push(`start ${q.id}`);
-    await new Promise((r) => setTimeout(r, 5));
-    turns.push(`end ${q.id}`);
-    return { ok: true, text: "Done." };
+  await props.tick({
+    async carryOut(q) {
+      turns.push(`start ${q.id}`);
+      await new Promise((r) => setTimeout(r, 5));
+      turns.push(`end ${q.id}`);
+      return { ok: true, text: "Done." };
+    },
   }, T + 3);
   check("several waiting: made one at a time, in the order they were tapped", turns.join() === [`start ${first.id}`, `end ${first.id}`, `start ${second.id}`, `end ${second.id}`].join(), turns);
 
   const left = (await props.add(input({ from: { kind: "job", id: "jg", title: "x" } }), T)) as Proposal;
   await props.claim("u_sara", left.id, ["*"], ["*"], T);
   await props.forget("u_sara");
-  await props.tick(make, T + 1);
+  await props.tick({ carryOut: make }, T + 1);
   check("its person left before the alarm came: nothing made, nothing kept", made.length === 1 && st._m.size === 0);
 
   // A claim cut short before its record was written: the entry alone is let go, and it can be tapped again.
   const half = (await props.add(input({ from: { kind: "job", id: "jh", title: "x" } }), T)) as Proposal;
   st._m.set(`proprun:u_sara:${half.id}`, { person: "u_sara", id: half.id, grants: ["*"] });
-  await props.tick(make, T + 1);
+  await props.tick({ carryOut: make }, T + 1);
   check("an entry for one still waiting: nothing made, and it still waits", made.length === 1 && (await props.get("u_sara", half.id, T + 1))?.state === "pending" && (await props.nextWake(T + 1)) === null);
 }
 
@@ -357,7 +361,7 @@ console.log("\nanswered by a tap (routes/proposals.ts)");
   const env = { TESSIE_TOKEN: "t", TESSIE_VIN: "LRWTEST0000000000", STATE: { idFromName: () => "jarvis", get: () => stub } } as never;
   const mia = { kind: "member", id: "u_mia", role: "adult", scopes: ["*"], session: "s" } as never;
   /** The object's alarm, as state.ts runs it: each call made as its person (here, the env given). */
-  const alarm = (e: unknown = env) => props.tick((q, grants) => carryOut(e as never, q, grants));
+  const alarm = (e: unknown = env) => props.tick({ carryOut: (q, grants) => carryOut(e as never, q, grants) });
   const req = (path: string, body?: unknown) => new Request(`https://j.test${path}`, body ? { method: "POST", body: JSON.stringify(body) } : {});
   const p = (await props.add(input({ person: "u_mia", who: "u_mia" }), Date.now())) as Proposal;
   const theirs = (await props.add(input({ person: "u_lee", who: "u_lee", from: { kind: "job", id: "jl", title: "x" } }), Date.now())) as Proposal;

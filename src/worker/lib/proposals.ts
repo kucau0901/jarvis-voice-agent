@@ -114,8 +114,10 @@ interface Queued {
   /** When it was tapped. */
   at: number;
 }
-/** How an approved call is made, as its person (state.ts, lib/approval.ts carryOut): what came of it. */
-export type CarryOut = (p: Proposal, grants: readonly Grant[]) => Promise<{ ok: boolean; text: string }>;
+/** What making approved calls needs (state.ts): the call made as its person (lib/approval.ts carryOut), and what came of it. */
+export interface ProposalDeps {
+  carryOut(p: Proposal, grants: readonly Grant[]): Promise<{ ok: boolean; text: string }>;
+}
 const MAX_ALLOWED = 20;
 
 /** Arguments compared whatever order the model wrote them in. */
@@ -238,14 +240,14 @@ export class Proposals {
   }
 
   /** Make every approved call that waits, one at a time, in the order they were tapped: the last tap has the last word. */
-  async tick(carryOut: CarryOut, now = Date.now()): Promise<void> {
+  async tick(deps: ProposalDeps, now = Date.now()): Promise<void> {
     const queued = [...(await this.storage.list<Queued>({ prefix: RUN })).values()].sort((a, b) => a.at - b.at);
     const began = Date.now();
     // Each weighed against the clock as it is when its turn comes, after the calls before it.
-    for (const q of queued) await this.carry(q, carryOut, now + Date.now() - began);
+    for (const q of queued) await this.carry(q, deps, now + Date.now() - began);
   }
 
-  private async carry(q: Queued, carryOut: CarryOut, now: number): Promise<void> {
+  private async carry(q: Queued, deps: ProposalDeps, now: number): Promise<void> {
     // Off the queue before anything is done: a run cut short (a deploy) is never made twice, and reads as failed (settled).
     await this.storage.delete(runKey(q.person, q.id));
     const p = await this.storage.get<Proposal>(key(q.person, q.id));
@@ -253,7 +255,7 @@ export class Proposals {
     const outcome =
       now - q.at > START_MS
         ? { ok: false, text: "It could not be started in time, so nothing was done." }
-        : await carryOut(p, q.grants).catch((e: unknown) => ({ ok: false, text: `That failed: ${e instanceof Error ? e.message : String(e)}` }));
+        : await deps.carryOut(p, q.grants).catch((e: unknown) => ({ ok: false, text: `That failed: ${e instanceof Error ? e.message : String(e)}` }));
     await this.finish(q.person, q.id, outcome, now);
   }
 
