@@ -248,12 +248,13 @@ export async function runBrief(r: Routine, now: number, d: BriefDeps, ask?: Ask)
   if (sections.length && (ask || (await canAsk(d.env)))) {
     const call =
       ask ?? ((inp: string, ins: string) => respondOnce(d.env, { model: DEFAULT_ROUTER_MODEL, instructions: ins, input: inp }, AbortSignal.timeout(45_000)));
-    // The whole tag: zh-TW is written in Traditional characters, sr-Latn in Latin ones.
-    const language = new Intl.DisplayNames(["en"], { type: "language" }).of(localeOf(d.env).tag) ?? "English";
-    // All of it fenced: event titles, places, senders and subjects were written by someone else.
-    const input = `Language: ${language}\nThe day covered: ${title.slice(2)}\n\n${asQuotedData("the day", fit(body), "THE PEOPLE WHO SENT THESE EVENTS AND EMAILS")}`;
     const started = Date.now();
     try {
+      // The tag without its extensions (-u-, -x-, which name no language): zh-TW is written in
+      // Traditional characters, sr-Latn in Latin ones. Inside the try: naming it never stops a brief.
+      const language = new Intl.DisplayNames(["en"], { type: "language" }).of(new Intl.Locale(localeOf(d.env).tag).baseName) ?? "English";
+      // All of it fenced: event titles, places, senders and subjects were written by someone else.
+      const input = `Language: ${language}\nThe day covered: ${title.slice(2)}\n\n${asQuotedData("the day", fit(body), "THE PEOPLE WHO SENT THESE EVENTS AND EMAILS")}`;
       const got = await call(input, BRIEF_INSTRUCTIONS);
       summary = cleanSummary(got.text);
       usage = { model: got.model ?? DEFAULT_ROUTER_MODEL, input: got.input, output: got.output, ms: Date.now() - started, ok: !!summary };

@@ -7,6 +7,7 @@ import type { Routine } from "../src/worker/lib/routines.ts";
 import type { Job } from "../src/worker/lib/jobs.ts";
 import type { Proposal } from "../src/worker/lib/proposals.ts";
 import { weatherSaid } from "../src/worker/lib/sky.ts";
+import { listMailIds, MAX_IDS } from "../src/worker/lib/mail-bulk.ts";
 
 let pass = 0;
 let fail = 0;
@@ -216,6 +217,9 @@ console.log("\nin their language, as they set it");
   try {
     await runBrief(ROUTINE, NOW, deps({ env: { TIMEZONE: TZ, LOCALE: "zh-TW" } as never, house: HOUSE }), model("今天下雨。"));
     check("the whole tag names it: Traditional Chinese, not just Chinese", asked[0]?.input.startsWith("Language: Chinese (Taiwan)\n") === true, asked[0]?.input.slice(0, 40));
+    asked.length = 0;
+    const extended = await runBrief(ROUTINE, NOW, deps({ env: { TIMEZONE: TZ, LOCALE: "en-GB-u-hc-h12" } as never, house: HOUSE }), model("Rain."));
+    check("a tag with extensions is named without them, and the brief goes", extended.text.startsWith("# Wednesday") && asked[0]?.input.startsWith("Language: British English\n") === true, asked[0]?.input.slice(0, 40));
   } finally {
     w.restore();
   }
@@ -249,6 +253,27 @@ console.log("\nonly what is set up");
   }
 }
 
+console.log("\na source that fails is a line, and the brief still goes");
+{
+  const real = globalThis.fetch;
+  globalThis.fetch = (async (url: string | URL | Request) => {
+    const u = String(url instanceof Request ? url.url : url);
+    if (u.includes("oauth2")) return Response.json({ access_token: "access", expires_in: 3600 });
+    if (u.includes("googleapis.com")) return Response.json({ error: { message: "backend error" } }, { status: 500 });
+    if (u.startsWith("https://api.tessie.com/")) throw new Error("timed out");
+    if (u.startsWith("https://ha.example.com/")) return new Response("TemplateError: no such entity", { status: 400 });
+    throw new Error(`nothing else reaches the network: ${u}`);
+  }) as typeof fetch;
+  try {
+    const b = await runBrief(ROUTINE, NOW, deps({ jobs: [], waiting: [] }), model("A hard day to read."));
+    const sections = ["Schedule", "Weather", "Car", "Mail"].map((h) => b.text.split(`## ${h}\n`)[1]?.split("\n")[0] ?? "");
+    check("each failing source has its one line", sections.every((l) => l.length > 0) && b.text.includes("The car: Tessie did not answer") && b.text.includes("Home Assistant did not answer"), sections);
+    check("and the brief still goes, with its opening", b.text.startsWith("# Wednesday 21 October\nA hard day to read.\n"), b.text.slice(0, 60));
+  } finally {
+    globalThis.fetch = real;
+  }
+}
+
 console.log("\nwithout a plan or a key, and when the answer fails");
 {
   const w = world();
@@ -264,6 +289,27 @@ console.log("\nwithout a plan or a key, and when the answer fails");
   } finally {
     w.restore();
   }
+}
+
+console.log("\npromotions are listed as ids, at most a call's worth");
+{
+  const asked: string[] = [];
+  const real = globalThis.fetch;
+  globalThis.fetch = (async (url: string | URL | Request) => {
+    const u = String(url instanceof Request ? url.url : url);
+    if (u.includes("oauth2")) return Response.json({ access_token: "access", expires_in: 3600 });
+    asked.push(u);
+    return Response.json({ messages: [{ id: "good_id_1" }, { id: "../../bad" }, { id: "good_id_2" }] });
+  }) as typeof fetch;
+  try {
+    const ids = await listMailIds(deps().env, "in:inbox", 10_000, new AbortController().signal);
+    const q = new URL(asked[0]!).searchParams;
+    check("one list call, capped at what Gmail lists at once", asked.length === 1 && q.get("maxResults") === String(MAX_IDS) && q.get("q") === "in:inbox", asked);
+    check("only ids shaped as Gmail's, never fetched one by one", JSON.stringify(ids) === JSON.stringify(["good_id_1", "good_id_2"]), ids);
+  } finally {
+    globalThis.fetch = real;
+  }
+  check("without Google, a sentence", (await listMailIds({} as never, "in:inbox", 5, new AbortController().signal)) === "Gmail is not set up.");
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);
