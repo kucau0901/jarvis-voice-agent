@@ -20,7 +20,7 @@ import { DAILY_GRACE_MS, EVENT_COOLDOWN_MS, isNothing, Scheduler, WATCH_ERRORS_S
 import { haConfig, haUrl, renderTemplate, truthy } from "../src/worker/lib/ha.ts";
 import type { Alert, Delivery } from "../src/worker/lib/alerts.ts";
 import { requiredScope } from "../src/worker/lib/scopes.ts";
-import { lookAtPage, pageText, pageUrl, verdictOf } from "../src/worker/lib/page-look.ts";
+import { lookAtPage, pageCondition, pageText, pageUrl, verdictOf } from "../src/worker/lib/page-look.ts";
 
 let pass = 0;
 let fail = 0;
@@ -721,6 +721,11 @@ console.log("\npage watches: one look");
   check("a page that cannot be read costs nothing", gone.state === null && gone.error === "the page answered 404" && drawn.state === null && /no words/.test(drawn.error ?? "") && told.length === 0, { gone, drawn });
   const unsure = await lookAtPage(env, "https://air.example.gov/springfield", "q", "c", page(html), model("UNKNOWN\nThe page has no reading."));
   check("a page that does not say is said so", unsure.state === null && unsure.error === "the page did not say");
+  // "Alert me" once kept "200" as it was typed, and a model asked whether "200" is true said YES to 158.
+  told.length = 0;
+  await lookAtPage(env, "https://air.example.gov/springfield", "the air in Springfield", "200", page(html), model("NO\nAPI 158"));
+  check("a number alone, kept so before, is read as a level to go above", told[0]!.instructions.includes("does not say: above 200.") && pageCondition(" 7.5 ") === "above 7.5" && pageCondition("the API is above 150") === "the API is above 150", told[0]?.instructions);
+  check("…and described so", describeTrigger({ kind: "page", url: "https://air.example.gov/springfield", question: "q", condition: "200", everyMin: 60 }, "Asia/Kuala_Lumpur").startsWith("when air.example.gov says above 200 "));
 }
 
 console.log("\nhaUrl: one way to join a Home Assistant address");

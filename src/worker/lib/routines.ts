@@ -1,5 +1,5 @@
 import { saneGrants, type Grant } from "./scopes.ts";
-import { pageUrl } from "./page-look.ts";
+import { pageCondition, pageUrl } from "./page-look.ts";
 
 /**
  * Routines: things Jarvis does without being asked.
@@ -236,7 +236,7 @@ export function describeTrigger(t: Trigger, timeZone: string): string {
       return `when ${t.template} is true${t.forMin ? ` for ${t.forMin} minute${t.forMin === 1 ? "" : "s"}` : ""} (checked every minute)`;
     case "page": {
       const every = t.everyMin % 60 ? `${t.everyMin} minutes` : t.everyMin === 60 ? "hour" : `${t.everyMin / 60} hours`;
-      return `when ${new URL(t.url).hostname} says ${t.condition} (read every ${every}, about a tenth of a cent a look)`;
+      return `when ${new URL(t.url).hostname} says ${pageCondition(t.condition)} (read every ${every}, about a tenth of a cent a look)`;
     }
   }
 }

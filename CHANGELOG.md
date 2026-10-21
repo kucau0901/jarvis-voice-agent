@@ -113,6 +113,10 @@ of every release, and in the [README](README.md#updating).
 - **Page watches work on the ChatGPT plan.** With the plan connected, every
   page watch (including Alert me on a reading Jarvis looks up) failed with
   "Input must be a list", and setting up a new one failed too.
+- **A page watch set to a number alone alerts at that level.** One made
+  with Alert me and a number alone ("200") before it said "above 200" could
+  alert whatever the reading. Such a watch is now read, and shown, as above
+  that number.
 - **Answers are in the language you asked in.** An English question about a
   Malay page, or after an earlier Malay answer, could be answered in Malay.
   Jarvis now answers in the language of your latest message, still mixing
