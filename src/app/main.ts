@@ -19,6 +19,7 @@ import { LiveLink, releasePush, speakAlert, speakHere, speakText, syncPush, type
 import { askTyped } from "./chat";
 import { pin, working } from "./working";
 import { firstRun } from "./firstRun";
+import { takeShared } from "./share";
 import { keyboardSpace, watchKeyboard } from "./keyboard";
 import { Attachments, type Attached } from "./attach";
 import { Reply } from "./reply";
@@ -1197,6 +1198,12 @@ const sendBtn = $<HTMLButtonElement>("send");
 const tray = $("tray");
 const attachments = new Attachments(tray, $<HTMLButtonElement>("attach"), $("attachMenu"), $<HTMLInputElement>("attachInput"), (t) => status(t, true));
 const reply = new Reply(tray, typed);
+// Shared from another app (share.ts): into Chat's box and tray, never sent.
+if (key) void takeShared().then((shared) => {
+  if (!shared) return;
+  chatWith(shared.text);
+  void attachments.add(shared.files);
+});
 // The chat makes room for the tray, however many rows it holds (--tray, index.html), the newest message kept in view.
 new ResizeObserver(() => {
   const t = els.transcript;

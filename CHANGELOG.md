@@ -86,6 +86,10 @@ of every release, and in the [README](README.md#updating).
   offers a first thing to take off you (the car, the house, your mail), each
   only if you may use it. An example goes into the message box, not sent.
   Shown once on each screen.
+- **Share into Jarvis.** With Jarvis added to a phone's home screen, it is
+  in the phone's share sheet: a link, words, photos, PDFs or text files
+  shared to it open in Chat, in the message box and attached, to send or not.
+  Up to two photos and two files, as when attaching them yourself.
 
 ### Changed
 
