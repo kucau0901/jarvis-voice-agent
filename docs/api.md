@@ -639,9 +639,13 @@ Use it when a question may run for minutes and you want to say something in the
 meantime. Most devices should not bother.
 
 - Frames are `data: {json}\n\n`. **There are no `event:`, `id:` or `retry:` lines.**
-- `: ping\n\n` arrives every 15 seconds. Skip those; treat a gap as a dead link.
+- `: open\n\n` comes first, the moment the question is taken, and `: ping\n\n`
+  every 15 seconds after. Skip comments; treat a gap as a dead link.
 - **There is no `[DONE]` sentinel.** The stream simply ends.
-- Event `type` is one of `progress`, `tool`, `used`, `display`, `result`, `error`.
+- Event `type` is one of `progress`, `tool`, `used`, `display`, `job`, `result`,
+  `error`. Skip a type you do not know: more may be added.
+- `job` is a background job the question started (`{"type":"job","id","title","engine"}`);
+  its result comes later as an alert, not in this stream.
 - Exactly one of `result` or `error` is terminal — **except when the turn is
   aborted**, where the stream can close having sent neither. Treat end-of-stream
   without either as a failure, as `/api/v1/ask` does internally.

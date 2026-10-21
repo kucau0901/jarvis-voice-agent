@@ -23,7 +23,7 @@ import { takeShared } from "./share";
 import { keyboardSpace, watchKeyboard } from "./keyboard";
 import { Attachments, type Attached } from "./attach";
 import { Reply } from "./reply";
-import { fromJob, fromRoutine, jobStarted, type JobSaid, type RoutineSaid } from "./fromRoutine";
+import { fromJob, fromRoutine, jobStarted, jobsSeen, type JobSaid, type RoutineSaid } from "./fromRoutine";
 import { asked, clearKept, keep, kept, restore, saidId } from "./conversation";
 import { inCar } from "./client";
 import { arm, richText } from "./ui/util";
@@ -1032,7 +1032,7 @@ let jobs: Jobs | null = null;
 /** Jobs, with one of them opened out when a job's pill in the conversation was pressed. */
 function openJob(id?: string) {
   if (!key) { requireKey(); return; }
-  jobs ??= new Jobs(key);
+  jobs ??= new Jobs(key, jobsSeen);
   void jobs.show(id);
 }
 $("openJobs").addEventListener("click", () => openJob());

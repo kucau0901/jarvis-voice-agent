@@ -80,9 +80,11 @@ export class JarvisState extends DurableObject<Env> {
       // Each job runs as whoever started it: their memory, their mail (lib/context.ts).
       // Its storage, for steps run on the owner's ChatGPT plan (routes/jobs.ts).
       // What a job comes back with is in its starter's conversation too, as a routine's words are.
+      // Not for someone who has left meanwhile: their conversation went with them (forgetMember).
       const deliverJob = async (alert: Alert) => {
         const said = jobSaid(alert);
-        if (said) await this.conversation.add(alert.for ?? OWNER, [said], Date.now());
+        const who = alert.for ?? OWNER;
+        if (said && (who === OWNER || (await this.people.personView(who).catch(() => null))?.space)) await this.conversation.add(who, [said], Date.now());
         return deliver(env, this, alert);
       };
       return jobEngine(env, deliverJob, (job) => this.personEnv(env, job.createdBy), ctx.storage);

@@ -59,8 +59,12 @@ export class Jobs {
   /** Research being handed to Hermes: the job, and the instruction as typed so far. */
   private handing = new Map<string, string>();
 
-  constructor(key: string) {
+  /** Told what is listed each time, so the chat's job pills keep up (fromRoutine.ts jobsSeen). */
+  private seen: (jobs: JobView[]) => void;
+
+  constructor(key: string, seen: (jobs: JobView[]) => void) {
     this.key = key;
+    this.seen = seen;
     this.el = el("div", "panel");
     this.el.id = "jobs";
     const sheet = el("div", "sheet");
@@ -167,6 +171,7 @@ export class Jobs {
       this.list.replaceChildren(el("p", "warn", `Could not load jobs: ${e instanceof Error ? e.message : String(e)}`));
       return;
     }
+    this.seen(jobs);
     // A report no longer here (removed, pruned) is no longer being handed over.
     for (const id of this.handing.keys()) {
       if (!jobs.some((j) => j.id === id && j.engine === "research" && j.status === "done")) this.handing.delete(id);

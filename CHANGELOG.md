@@ -55,7 +55,9 @@ of every release, and in the [README](README.md#updating).
 - **"On it" for a background job.** A job or a question for Hermes started
   from the chat shows its pill at once; when the result comes, that pill moves
   down to it and takes its name, and opens the job in Jobs. The result is kept
-  in the conversation, so it is still there after a reload.
+  in the conversation, so it is still there after a reload. A device reading
+  `POST /api/v1/stream` gets a `job` event for it
+  ([docs/api.md](docs/api.md#streaming-if-you-want-progress)).
 - **More info and Reply on a Home panel.** A panel's … menu now has Reply,
   which opens the chat ready to ask for a change, and More info, which says
   how often each thing on it is read, from where, and when it was last and is
