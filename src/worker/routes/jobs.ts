@@ -18,7 +18,7 @@ import { MERGE_INSTRUCTIONS, PLAN_INSTRUCTIONS, RESEARCH_CHECK, TABLE_CHECK, TAB
 import { SHARE, angleMessage, mergeMaterial, shareReply, shareTool, teamView } from "../lib/research-team.ts";
 import { prepareRouter, runCalls, type Prepared } from "../lib/router.ts";
 import { held, proposable, type File, type Finish } from "../lib/proposals.ts";
-import { draftThenAsk } from "../lib/mail-draft.ts";
+import { draftThenAsk, mailDraftSend } from "../lib/mail-draft.ts";
 import { mailSend } from "../tools/gmail.ts";
 import { recordUsage } from "./usage.ts";
 import { costOf } from "../lib/usage.ts";
@@ -102,14 +102,18 @@ const isPlanStep = (id: string | undefined): id is string => !!id && id.startsWi
  * sending proposed (lib/mail-draft.ts draftThenAsk).
  */
 function proposing(p: Prepared, job: Job): Prepared {
-  const file: File = async (action, weighed, ctx) => {
+  const person = personOfWho(job.createdBy);
+  const file: File = async (action, weighed, ctx, body) => {
     const state = stateStub(ctx.env);
     if (!state) return "Nothing can be proposed on this deployment: it has no state object.";
-    return state.proposalAdd({ who: job.createdBy, person: personOfWho(job.createdBy), from: { kind: "job", id: job.id, title: job.title }, action, weighed, grants: ctx.grants }, Date.now());
+    return state.proposalAdd({ who: job.createdBy, person, from: { kind: "job", id: job.id, title: job.title }, action, weighed, grants: ctx.grants, ...(body ? { body } : {}) }, Date.now());
   };
   const finish: Finish = async (q, outcome, ctx) => stateStub(ctx.env)?.proposalFinish(q.person, q.id, outcome, Date.now());
+  // The mail this job already drafted for this same ask (lib/mail-draft.ts draftThenAsk).
+  const earlier = async (asked: string, ctx: { env: Env }) =>
+    (await stateStub(ctx.env)?.proposalsOf(person, Date.now()))?.find((q) => q.from.id === job.id && q.action.tool === mailDraftSend.name && q.action.args.asked === asked) ?? null;
   const mail = p.byName.get(mailSend.name);
-  const tools = [...held(p.tools, file, finish), ...(mail ? [draftThenAsk(mail, file)] : [])];
+  const tools = [...held(p.tools, file, finish), ...(mail ? [draftThenAsk(mail, file, earlier)] : [])];
   return { ...p, tools, byName: new Map(tools.map((t) => [t.name, t])) };
 }
 

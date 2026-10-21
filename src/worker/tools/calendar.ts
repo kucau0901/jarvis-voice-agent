@@ -323,6 +323,7 @@ export const calendarAdd: Tool = {
         return `That was not added to the calendar — Google returned ${res.status}.`;
       }
 
+      ctx.done?.();
       return `Added "${title}" for ${whenSpoken(tz, { dateTime: startAt.toISOString() })}${location ? `, at ${location}` : ""}.`;
     }));
   },

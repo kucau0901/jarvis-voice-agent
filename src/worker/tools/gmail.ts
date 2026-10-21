@@ -817,6 +817,7 @@ export const mailManage: Tool = {
 
       // Naming the undo at the moment of the action is the whole mitigation for
       // letting a voice command reach the trash at all.
+      ctx.done?.();
       return name === "trash"
         ? "Moved to the trash. Say so within the next few seconds and I can restore it."
         : `Done — ${spec.said}.`;

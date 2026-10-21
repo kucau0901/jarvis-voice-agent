@@ -56,6 +56,12 @@ export interface ToolContext {
   offered?: readonly string[];
   /** The user's latest message, as they said it: what only they can ask for must be in it (tools/specialties.ts). */
   asked?: string;
+  /**
+   * Told that the call did what was asked: a tool a job may propose says so
+   * on success, since it says failure in words, not by throwing. Only what
+   * it told counts as done for an approval (lib/proposals.ts).
+   */
+  done?(): void;
 }
 
 /** A picture for the router to look at, as a data: URL. */

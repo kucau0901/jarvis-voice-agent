@@ -275,6 +275,7 @@ async function callRemote(
       .join("\n")
       .trim();
     if (result.isError) return `${server.label} reported an error: ${text || "no detail"}`;
+    ctx.done?.();
     return text || "That returned nothing.";
   } catch (e) {
     // Not retried here: the call may already have acted. The next call connects afresh.

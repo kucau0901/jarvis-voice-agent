@@ -173,7 +173,9 @@ console.log("\nproposals, through the object (lib/proposals.ts)");
   const now = Date.now();
   const filed = (person: string, job: string) =>
     jarvis.proposalAdd({ who: person, person, from: { kind: "job", id: job, title: "x" }, action: { tool: "car_command", args: { command: "lock" } }, weighed: { risk: "reversible", says: "Car: lock", category: "car_command:lock" }, grants: ["*"] }, now);
-  const ana = await filed("u_ana", "j_a1");
+  const first = await jarvis.createJob({ title: "Tidy", task: "Tidy the car up after the trip.", engine: "jarvis" }, { who: "u_ana", grants: ["*"] });
+  const ana = typeof first !== "string" ? await filed("u_ana", first.id) : "no job";
+  check("a job that does not exist files nothing", typeof (await filed("u_ana", "j_none")) === "string");
   check("filed, and listed as its person's only", typeof ana !== "string" && (await jarvis.proposalsOf("u_ana", now)).length === 1 && (await jarvis.proposalsOf("u_ben", now)).length === 0);
   check("approved only as its own person", typeof ana !== "string" && (await jarvis.proposalClaim("u_ben", ana.id, now)) === "No such proposal." && typeof (await jarvis.proposalClaim("u_ana", ana.id, now)) !== "string");
   check("finished as its own person", typeof ana !== "string" && (await jarvis.proposalFinish("u_ana", ana.id, { ok: true, text: "Locked." }, now))?.state === "done");
@@ -181,6 +183,8 @@ console.log("\nproposals, through the object (lib/proposals.ts)");
   const waiting = typeof job !== "string" ? await filed("u_ana", job.id) : "no job";
   if (typeof job !== "string") await jarvis.cancelJob(job.id);
   check("its job cancelled: withdrawn", typeof waiting !== "string" && (await jarvis.proposalGet("u_ana", waiting.id, now))?.state === "withdrawn", waiting);
+  const late = typeof job !== "string" ? await jarvis.proposalAdd({ who: "u_ana", person: "u_ana", from: { kind: "job", id: job.id, title: "x" }, action: { tool: "car_command", args: { command: "unlock" } }, weighed: { risk: "irreversible", says: "Car: unlock" }, grants: ["*"] }, now) : "no job";
+  check("a step still running when its job was cancelled files nothing", typeof late === "string" && /cancelled/.test(late) && (await jarvis.proposalsOf("u_ana", now)).every((p) => p.action.args.command !== "unlock"), late);
   await jarvis.forgetMember("u_ana");
   check("someone who left: none of theirs kept", (await jarvis.proposalsOf("u_ana", now)).length === 0);
 }

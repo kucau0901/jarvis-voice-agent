@@ -142,13 +142,26 @@ console.log("\na background job's mail: drafted, and its sending proposed (draft
 {
   const g = google(gmail);
   try {
-    const filedCalls: { action: { tool: string; args: Record<string, unknown> }; risk: string; says: string }[] = [];
-    const job = draftThenAsk(mailSend, async (action, w) => (filedCalls.push({ action, risk: w.risk, says: w.says }), { id: "a0123456789abcdefghjk", state: "pending", says: w.says } as never));
+    const filedCalls: { action: { tool: string; args: Record<string, unknown> }; risk: string; says: string; body?: string }[] = [];
+    const kept: Record<string, unknown>[] = [];
+    const job = draftThenAsk(
+      mailSend,
+      async (action, w, _ctx, body) => {
+        const p = { id: "a0123456789abcdefghjk", state: "pending", says: w.says, action };
+        kept.push(p);
+        filedCalls.push({ action, risk: w.risk, says: w.says, body });
+        return p as never;
+      },
+      async (asked) => (kept.find((p) => (p.action as { args: { asked?: string } }).args.asked === asked) as never) ?? null,
+    );
     check("a job's mail_send says it only proposes", job.name === "mail_send" && job.description.startsWith("PROPOSE ONLY") && job.parameters === mailSend.parameters);
     const out = String(await job.run(ARGS, ctx({}, ["*"])));
     check("drafted, never sent, whatever Draft first says", g.calls.length === 1 && g.calls[0]!.url.endsWith("/users/me/drafts") && !g.calls.some((c) => c.url.includes("/send")), g.calls);
     check("its sending filed, by the draft's id, always to be asked", filedCalls.length === 1 && filedCalls[0]!.action.tool === "mail_draft_send" && filedCalls[0]!.action.args.draft === "r-123456789" && filedCalls[0]!.risk === "irreversible" && filedCalls[0]!.says === "Send the email to sam@example.com: “Dinner”", filedCalls);
     check("and the job told both", /draft/i.test(out) && /NOT done: filed/.test(out), out);
+    check("its words go with it, to be read before Send", filedCalls[0]?.body === "See you at six.", filedCalls[0]);
+    const again = String(await job.run(ARGS, ctx({}, ["*"])));
+    check("the same mail asked for again (a step tried again): not drafted, nor filed, a second time", g.calls.length === 1 && filedCalls.length === 1 && /NOT done: filed/.test(again), { calls: g.calls.length, filed: filedCalls.length, again });
   } finally {
     g.restore();
   }

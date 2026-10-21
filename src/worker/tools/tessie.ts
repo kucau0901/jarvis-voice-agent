@@ -482,7 +482,8 @@ export const carCommand: Tool = {
     if (!(c in COMMANDS)) return null;
     const which = typeof args.car === "string" && args.car.trim() ? ` (${args.car.trim()})` : "";
     const detail = c === "set_temperature" ? ` to ${args.temperature}°C` : c === "set_charge_limit" ? ` to ${args.percent}%` : c === "navigate_to" ? `: ${String(args.value ?? "").slice(0, 160)}` : "";
-    const says = `Car${which}: ${c.replace(/_/g, " ")}${detail}`;
+    // The command first: the car's name is the model's words.
+    const says = `Car: ${c.replace(/_/g, " ")}${detail}${which}`;
     return UNDONE.has(c) ? { risk: "reversible", says, category: `car_command:${c}` } : { risk: "irreversible", says };
   },
   async run(args, ctx) {
@@ -532,6 +533,7 @@ export const carCommand: Tool = {
 
     ctx.progress(name === "navigate_to" ? "sending it to the car" : "sending that to the car");
     if (!(await sendCarCommand(cfg, name, extra, ctx.signal))) return `The car did not accept ${name}.`;
+    ctx.done?.();
 
     /*
      * Do NOT read the route back to confirm.

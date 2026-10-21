@@ -1,6 +1,7 @@
 import type { Env } from "../types.ts";
 import { call, explain, googleConfig, type GoogleConfig } from "./google.ts";
-import { filed, PROPOSE_ONLY, weigh, type File } from "./proposals.ts";
+import { canonical, filed, PROPOSE_ONLY, weigh, type File, type Proposal } from "./proposals.ts";
+import { sha256Hex } from "./devices.ts";
 import type { Tool } from "../tools/registry.ts";
 
 /**
@@ -51,8 +52,9 @@ export const mailDraftSend: Tool = {
   description: "Send a draft from the user's Gmail Drafts.",
   parameters: {
     type: "object",
-    properties: { draft: { type: "string" }, to: { type: "string" }, subject: { type: "string" } },
-    required: ["draft", "to", "subject"],
+    // `asked`: which mail_send call it came from, so one asked for again is the same (draftThenAsk).
+    properties: { draft: { type: "string" }, to: { type: "string" }, subject: { type: "string" }, asked: { type: "string" } },
+    required: ["draft", "to", "subject", "asked"],
     additionalProperties: false,
   },
   propose: (args) =>
@@ -62,22 +64,33 @@ export const mailDraftSend: Tool = {
   async run(args, ctx) {
     const cfg = googleConfig(ctx.env, "https://jarvis.invalid");
     if (!cfg) return "Gmail is not configured.";
-    return (await sendDraft(ctx.env, cfg, String(args.draft ?? ""), ctx.signal)) ?? `Sent the email to ${String(args.to ?? "")}.`;
+    const why = await sendDraft(ctx.env, cfg, String(args.draft ?? ""), ctx.signal);
+    if (why) return why;
+    ctx.done?.();
+    return `Sent the email to ${String(args.to ?? "")}.`;
   },
 };
 
-/** mail_send as a background job has it: the mail only ever drafted, in the person's Drafts, and sending it proposed. */
-export function draftThenAsk(send: Tool, file: File): Tool {
+/**
+ * mail_send as a background job has it: the mail only ever drafted, in the
+ * person's Drafts, and sending it proposed, its words on the card. The same
+ * mail asked for again (a step tried again) is the one already drafted
+ * (`earlier`, by what was asked), so it is neither drafted nor filed twice.
+ */
+export function draftThenAsk(send: Tool, file: File, earlier: (asked: string, ctx: Parameters<Tool["run"]>[1]) => Promise<Proposal | null>): Tool {
   return {
     ...send,
     description: `${PROPOSE_ONLY}The email is saved to the user's Gmail Drafts, and sending it waits for their tap. ${send.description}`,
     async run(args, ctx) {
+      const asked = await sha256Hex(canonical(args));
+      const had = await earlier(asked, ctx);
+      if (had) return filed(had);
       const got: { card?: DraftCard } = {};
       const out = await send.run({ ...args, draft: true }, { ...ctx, drafted: (d) => void (got.card = d) });
       const said = typeof out === "string" ? out : out.text;
       if (!got.card) return said;
-      const action = { tool: mailDraftSend.name, args: { draft: got.card.draft, to: got.card.to, subject: got.card.subject } };
-      return `${said}\n${filed(await file(action, weigh(mailDraftSend, action.args)!, ctx))}`;
+      const action = { tool: mailDraftSend.name, args: { draft: got.card.draft, to: got.card.to, subject: got.card.subject, asked } };
+      return `${said}\n${filed(await file(action, weigh(mailDraftSend, action.args)!, ctx, got.card.body))}`;
     },
   };
 }

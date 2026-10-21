@@ -12,6 +12,8 @@ export interface ProposalView {
   id: string;
   says: string;
   why: string;
+  /** What it would send, as the job wrote it (an email's words): shown whole, as text. */
+  body?: string;
   risk: "reversible" | "irreversible";
   state: "pending" | "running" | "done" | "failed" | "declined" | "expired" | "withdrawn";
   expires: number;
@@ -49,9 +51,10 @@ function draw(key: string, card: HTMLElement, p: ProposalView): void {
   card.replaceChildren(
     el("span", "doctag", p.state === "pending" ? `Waiting for your OK${p.risk === "irreversible" ? " · can't be undone" : ""}` : "Proposed"),
     el("b", "doctitle", p.says),
+    ...(p.body ? [el("div", "draftbody", p.body)] : []),
     el("small", "pagesaid", p.state === "pending" ? `${p.why} · ${left(p.expires)}` : p.why),
   );
-  const said = el("small", "pagesaid", (p.by === "standing" ? "Done without asking (you allow it)" : SAID[p.state]) + (p.outcome?.text ? `: ${p.outcome.text}` : ""));
+  const said = el("small", "pagesaid", SAID[p.state] + (p.by === "standing" ? " without asking (you allow it)" : "") + (p.outcome?.text ? `: ${p.outcome.text}` : ""));
   if (p.state !== "pending") {
     card.appendChild(said);
     // Approved and done, and of a kind that can be put back: jobs may do it without asking from now on.
@@ -81,8 +84,9 @@ function draw(key: string, card: HTMLElement, p: ProposalView): void {
       const { proposal } = (await api(key, "POST", "/api/hub/proposals/answer", { id: p.id, answer: how })) as { proposal: ProposalView };
       settle(key, proposal);
     } catch (e) {
-      // Answered elsewhere meanwhile, or gone: as it stands now.
+      // Answered elsewhere meanwhile, or gone: as it stands now. Offline, still answerable: a second approve is refused safely.
       said.textContent = e instanceof Error ? e.message : String(e);
+      for (const b of btns.querySelectorAll("button")) b.disabled = false;
       void refresh(key, [p.id]);
     }
   };

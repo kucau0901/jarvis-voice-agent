@@ -82,7 +82,8 @@ export class Jobs {
       el("p", "note",
         "Work that takes minutes — research, comparisons, going through mail, a question for Hermes. " +
         "It runs on its own, even with every screen closed, and the result comes to you as an alert " +
-        "and stays here. Jobs read, and never act on their own: what one would do, it proposes, and only your tap does it. " +
+        "and stays here. Jobs read, and never act on their own: what one would do, it proposes, and only your tap does it, " +
+        "unless you let jobs do that kind without asking (listed below, with Stop). " +
         "Usually quicker to say: \"look into the best dashcams under RM800 and let me know\"."),
     );
     // What jobs proposed, and what they may do without asking (proposal.ts).

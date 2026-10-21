@@ -84,6 +84,20 @@ console.log("kept, and decided once");
   check("someone who left: nothing of theirs kept", st._m.size === 0);
 }
 
+console.log("\nshown whole, or not filed");
+{
+  const props = new Proposals(fakeStorage() as never);
+  const unlock = { command: "unlock", value: null, temperature: null, percent: null, car: "Model Y — the nightly routine lock, nothing else changes " + ".".repeat(250) };
+  const padded = await props.add(input({ action: { tool: "car_command", args: unlock }, weighed: weigh(carCommand, unlock)! }), T);
+  check("a name long enough to push the command off the card: refused, not cut short", typeof padded === "string" && /too long to show/.test(padded), padded);
+  const bulk = { note: "x".repeat(300), operations: [{ entity_id: "lock.front_door", action: "unlock" }] };
+  const house = await props.add(input({ action: { tool: "home__ha_bulk_control", args: bulk }, weighed: classify("home__ha_bulk_control", bulk)! }), T);
+  check("a house call whose last words would be cut: refused", typeof house === "string" && /too long to show/.test(house), house);
+  const mail = await props.add(input({ action: { tool: "mail_draft_send", args: { draft: "r-1", to: "a", subject: "b" } }, weighed: { risk: "irreversible", says: "Send the email to a: “b”" }, body: "Hello.\n\nSee you at six." }), T);
+  check("an email's words kept with it, to show on its card", typeof mail !== "string" && mail.body === "Hello.\n\nSee you at six.");
+  check("words too long to show whole: refused", typeof (await props.add(input({ from: { kind: "job", id: "jm", title: "x" }, action: { tool: "mail_draft_send", args: { draft: "r-2", to: "a", subject: "b" } }, weighed: { risk: "irreversible", says: "Send" }, body: "x".repeat(5000) }), T)) === "string");
+}
+
 console.log("\nannounced with the job's result");
 {
   const props = new Proposals(fakeStorage() as never);
@@ -107,6 +121,7 @@ console.log("\nhow risky: code says, from the tool and its arguments");
   check("unlocking, the trunks, the horn, a destination on its screen: irreversible, no kind",
     ["unlock", "open_frunk", "open_trunk", "vent_windows", "honk", "navigate_to"].every((c) => car(c)?.risk === "irreversible" && !car(c)?.category));
   check("an unknown command: cannot be proposed", car("self_destruct") === null);
+  check("the command comes first, the car's name after it", car("unlock", { car: "Model Y" })?.says === "Car: unlock (Model Y)");
   check("mail tidying: reversible each, trash always asks", weigh(mailManage, { message_id: "199a2b3c4d5e6f70", action: "archive" })?.category === "mail_manage:archive" && weigh(mailManage, { message_id: "199a2b3c4d5e6f70", action: "trash" })?.risk === "irreversible" && weigh(mailManage, { message_id: "../x", action: "archive" }) === null);
   const ev = weigh(calendarAdd, { title: "Dentist", start: "2026-10-22T09:00:00+08:00", duration_minutes: 30, location: null });
   check("a calendar event: reversible, says when", ev?.risk === "reversible" && ev.category === "calendar_add" && ev.says.includes("2026-10-22T09:00:00+08:00") && ev.says.includes("30 min"), ev);
@@ -161,13 +176,21 @@ console.log("\nallowed without asking: a reversible kind, once approved");
   // A job's held tool under the permission: run once, finished, and never again on a retried step.
   let runs = 0;
   const finished: string[] = [];
-  const real: Tool = { ...carCommand, run: async () => (runs++, "Locked.") };
+  const real: Tool = { ...carCommand, run: async (_a, c) => (runs++, c.done?.(), "Locked.") };
   const file = (job: string) => async (action: Proposal["action"], w: ReturnType<typeof weigh>) => props.add(input({ from: { kind: "job", id: job, title: "x" }, action, weighed: w! }), T);
   const [h] = held([real], file("j5"), async (q, o) => void finished.push(`${q.id}:${o.text}`));
   const said = await h!.run({ ...lock.args }, {} as never);
   check("held, under the permission: the call made once, and finished", runs === 1 && finished.length === 1 && /^Done without asking/.test(String(said)), { runs, finished, said });
   const again = await h!.run({ ...lock.args }, {} as never);
   check("the same call again from that job: not made again", runs === 1 && /Already done without asking/.test(String(again)), again);
+  // One that says it could not: recorded so, and said so.
+  const fails: Tool = { ...carCommand, run: async () => "Could not wake the car: asleep." };
+  const [hf] = held([fails], file("j5b"), async (q, o) => void (await props.finish("u_sara", q.id, o, T)));
+  const failedSaid = await hf!.run({ ...lock.args }, {} as never);
+  const failedOne = (await props.list("u_sara", T)).find((q) => q.from.id === "j5b");
+  const alerted = await props.attach({ id: "x", at: T, title: "t", text: "r", speak: false, urgent: false, source: "job", job: "j5b" }, "u_sara", T);
+  check("allowed, but the tool says it could not: failed, and said so, never 'done'",
+    failedOne?.state === "failed" && /did not work/.test(String(failedSaid)) && /did not work/.test(alerted.text) && !/Done without asking/.test(alerted.text) && alerted.text.includes("Could not wake the car"), { failedOne, failedSaid, text: alerted.text });
   check("asking again for that kind", (await props.disallow("u_sara", "car_command:lock")) && (await props.allowed("u_sara")).length === 0 && ((await props.add(input({ from: { kind: "job", id: "j6", title: "x" } }), T)) as Proposal).state === "pending");
   await props.allow("u_sara", p.id, T);
   await props.forget("u_sara");
@@ -189,9 +212,13 @@ console.log("\nanswered by a tap (routes/proposals.ts)");
   const st = fakeStorage();
   const props = new Proposals(st as never);
   const scopes: Record<string, string[] | null> = { u_mia: ["*"], u_lee: null };
+  let hubDown = false;
   // The object, as far as the route asks it: its proposals, and who is in the family (hub-client personView).
   const stub = {
-    hubCall: async (m: string, a: unknown[]) => (m === "personView" ? { space: { id: "s" }, name: "x", prefs: {}, cars: [], scopes: scopes[a[0] as string] } : null),
+    hubCall: async (m: string, a: unknown[]) => {
+      if (hubDown) throw new Error("hub unreachable");
+      return m === "personView" ? { space: { id: "s" }, name: "x", prefs: {}, cars: [], scopes: scopes[a[0] as string] } : null;
+    },
     proposalsOf: (person: string, now: number) => props.list(person, now),
     proposalGet: (person: string, id: string, now: number) => props.get(person, id, now),
     proposalClaim: (person: string, id: string, now: number) => props.claim(person, id, now),
@@ -216,20 +243,27 @@ console.log("\nanswered by a tap (routes/proposals.ts)");
   check("someone else's: no such proposal", (await handleProposals(req("/api/hub/proposals/answer", { id: theirs.id, answer: "approve" }), env, ctx, mia))!.status === 404);
 
   const sent: string[] = [];
+  let refuse = false;
   const realFetch = globalThis.fetch;
   globalThis.fetch = (async (input: string | URL | Request, init: RequestInit = {}) => {
     const url = String(input instanceof Request ? input.url : input);
     sent.push(`${init.method ?? "GET"} ${url}`);
     if (url.includes("/status")) return Response.json({ status: "awake" });
-    return Response.json({ result: true });
+    return Response.json({ result: !refuse });
   }) as typeof fetch;
   try {
     // The request says another call: only what was stored is run.
     const r = await handleProposals(req("/api/hub/proposals/answer", { id: p.id, answer: "approve", tool: "car_command", args: { command: "unlock" } }), env, ctx, mia);
     const body = (await r!.json()) as { proposal: Proposal };
     check("approved: the stored call run, once, and what came of it kept", r!.status === 200 && body.proposal.state === "done" && body.proposal.by === "tap" && sent.some((s) => /\/command\/lock\b/.test(s)) && !sent.some((s) => /unlock/.test(s)), { body, sent });
+    refuse = true;
+    const nope = (await props.add(input({ person: "u_mia", who: "u_mia", from: { kind: "job", id: "jn", title: "x" } }), Date.now())) as Proposal;
+    const refused = (await (await handleProposals(req("/api/hub/proposals/answer", { id: nope.id, answer: "approve" }), env, ctx, mia))!.json()) as { proposal: Proposal };
+    check("the car did not accept it: failed, with its words, so it cannot be allowed without asking", refused.proposal.state === "failed" && /did not accept/.test(refused.proposal.outcome!.text) && (await handleProposals(req("/api/hub/proposals/allow", { id: nope.id }), env, ctx, mia))!.status === 409, refused.proposal);
+    refuse = false;
+    const locks = sent.filter((s) => /\/command\/lock\b/.test(s)).length;
     const twice = await handleProposals(req("/api/hub/proposals/answer", { id: p.id, answer: "approve" }), env, ctx, mia);
-    check("a second tap: already approved, nothing run", twice!.status === 409 && sent.filter((s) => /\/command\/lock\b/.test(s)).length === 1);
+    check("a second tap: already approved, nothing run", twice!.status === 409 && sent.filter((s) => /\/command\/lock\b/.test(s)).length === locks);
     const allow = await handleProposals(req("/api/hub/proposals/allow", { id: p.id }), env, ctx, mia);
     const listed = (await (await handleProposals(req("/api/hub/proposals"), env, ctx, mia))!.json()) as { allowed: string[] };
     check("approved and done: that kind allowed without asking, and listed", allow!.status === 200 && listed.allowed.join() === "car_command:lock", listed);
@@ -238,6 +272,12 @@ console.log("\nanswered by a tap (routes/proposals.ts)");
   } finally {
     globalThis.fetch = realFetch;
   }
+  const kiv = (await props.add(input({ person: "u_kiv", who: "u_kiv", from: { kind: "job", id: "jk", title: "x" } }), Date.now())) as Proposal;
+  hubDown = true;
+  const kivP = { kind: "member", id: "u_kiv", role: "adult", scopes: ["*"], session: "s" } as never;
+  const later = await handleProposals(req("/api/hub/proposals/answer", { id: kiv.id, answer: "approve" }), env, ctx, kivP);
+  check("who it is for could not be looked up: try again, and it is still waiting", later!.status === 503 && (await props.get("u_kiv", kiv.id, Date.now()))?.state === "pending");
+  hubDown = false;
   const q = (await props.add(input({ person: "u_mia", who: "u_mia", from: { kind: "job", id: "j2", title: "x" } }), Date.now())) as Proposal;
   const no = await handleProposals(req("/api/hub/proposals/answer", { id: q.id, answer: "decline" }), env, ctx, mia);
   check("declined", no!.status === 200 && ((await no!.json()) as { proposal: Proposal }).proposal.state === "declined");

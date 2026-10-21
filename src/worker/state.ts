@@ -647,7 +647,9 @@ export class JarvisState extends DurableObject<Env> {
     return this.proposals.get(person, id, now);
   }
 
-  proposalAdd(input: ProposalInput, now: number) {
+  // Not for a job cancelled or removed while its step ran: read and filed in one go, so no cancel comes between.
+  async proposalAdd(input: ProposalInput, now: number) {
+    if ((await this.jobs.get(input.from.id))?.status !== "running") return "Its job was cancelled: nothing was proposed or done.";
     return this.proposals.add(input, now);
   }
 

@@ -343,6 +343,8 @@ export async function runTool(
   signal: AbortSignal,
   /** Tools the router is never offered that this call may still run (an approval's: lib/mail-draft.ts mailDraftSend). */
   also: readonly Tool[] = [],
+  /** Told when the tool says its call did what was asked (ToolContext.done). */
+  done?: () => void,
 ): Promise<ToolOutput | null> {
   let tool = [...baseTools(env, grants), ...also.filter((t) => (!t.available || t.available(env)) && (!t.scope || allows(grants, t.scope)))].find((t) => t.name === name);
   const sessions = mcpSessions();
@@ -352,7 +354,7 @@ export async function runTool(
     // As the router does: a tool that needs no memory still runs when it cannot be loaded.
     const memory = memoryFor(env, grants);
     await memory.load().catch((e) => console.warn(`${name}: memory unavailable:`, e instanceof Error ? e.message : String(e)));
-    const out = await tool.run(args, { env, signal, progress: () => {}, display: () => {}, memory, grants });
+    const out = await tool.run(args, { env, signal, progress: () => {}, display: () => {}, memory, grants, ...(done ? { done } : {}) });
     await memory.save().catch((e) => console.warn(`${name}: memory not saved:`, e instanceof Error ? e.message : String(e)));
     return out;
   } finally {

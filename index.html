@@ -779,8 +779,10 @@
   .pagecard .docopen { min-height: 34px; padding: 0 14px; border: 1px solid var(--hair); border-radius: 999px; background: var(--glass); color: var(--fg); font: inherit; font-size: 13px; cursor: pointer; }
   .pagecard .docopen.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); font-weight: 600; }
   .proposals { display: grid; gap: 8px; margin-top: 10px; }
+  .proposals:empty { display: none; }
+  #alerts .proposals { max-height: 40vh; overflow-y: auto; }
   .proposals .pagecard { margin-top: 0; }
-  .draftcard .draftbody { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 14em; overflow-y: auto; font-size: 14px; line-height: 1.5; }
+  .draftcard .draftbody, .proposalcard .draftbody { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 14em; overflow-y: auto; font-size: 14px; line-height: 1.5; }
   /* The pages an answer cited (ui/rich.ts linkCards), under it. */
   .links { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; white-space: normal; }
   .links .lcard { display: grid; gap: 2px; max-width: 240px; padding: 8px 12px; border: 1px solid var(--hair); border-radius: 14px; background: var(--glass); color: var(--fg) !important; text-decoration: none; }
@@ -1054,7 +1056,8 @@
      and its … menu reloads or removes it. The orb steps into the corner, as in
      Chat. With no panels yet, Hark's clock. */
   #home, #now { display: none; }
-  body.home #now:not([hidden]) { display: grid; gap: 8px; width: min(1240px, 100%); margin-bottom: 16px; }
+  body.home #now:not([hidden]) { display: grid; gap: 8px; width: min(1240px, 100%); margin-bottom: 16px; flex: none;
+    max-height: 40dvh; overflow-y: auto; overscroll-behavior: contain; }
   body.home { justify-content: flex-start; --orb: 40px;
     padding: calc(var(--barTop) + 64px) 16px calc(16px + env(safe-area-inset-bottom)); }
   body.home #orbWrap { position: fixed; top: calc(var(--barTop) + 6px); left: 18px; z-index: 3; width: var(--orb); margin: 0; }

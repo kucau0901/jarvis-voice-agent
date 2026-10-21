@@ -3,6 +3,7 @@ import { err, json, readObjectOrEmpty } from "../lib/http.ts";
 import { grantsOf, personOf, type Principal } from "../lib/auth.ts";
 import { stateStub } from "../lib/state-client.ts";
 import { personView } from "../lib/hub-client.ts";
+import type { PersonView } from "../lib/hub.ts";
 import { runTool } from "../lib/router.ts";
 import { PROPOSAL_ID, runGrants, viewOf, weigh, type Proposal } from "../lib/proposals.ts";
 import { baseTools, outputText } from "../tools/registry.ts";
@@ -72,30 +73,33 @@ export async function handleProposals(req: Request, env: Env, ctx: ExecutionCont
     return typeof p === "string" ? err(p === "No such proposal." ? 404 : 409, p) : json({ proposal: viewOf(p) });
   }
   if (b.answer !== "approve") return err(400, 'answer is "approve" or "decline"');
+  // Who it is for, before it is claimed: a lookup that failed leaves it waiting, to be tapped again.
+  const view = await personView(env, me);
+  if (view.scopes === undefined) return err(503, "Who it is for could not be checked just now: try again.");
   const claimed = await state.proposalClaim(me, id, now);
   if (typeof claimed === "string") return err(claimed === "No such proposal." ? 404 : 409, claimed);
-  // Carried on if the screen goes away meanwhile: a claimed proposal always ends with what came of it.
-  const work = carryOut(env, principal, claimed).then((outcome) => state.proposalFinish(me, id, outcome, Date.now()));
+  // Kept going a while if the screen goes away meanwhile (a Worker's waitUntil: about 30 seconds);
+  // a run cut short then is left running, and after five minutes reads as failed and is never run again.
+  const work = carryOut(env, principal, claimed, view.scopes).then((outcome) => state.proposalFinish(me, id, outcome, Date.now()));
   ctx.waitUntil(work);
   const done = await work;
   return json({ proposal: done ? viewOf(done) : viewOf(claimed) });
 }
 
-/** The stored call, run once, as it is now allowed to be; what came of it, in words. */
-export async function carryOut(env: Env, approver: Principal, p: Proposal): Promise<{ ok: boolean; text: string }> {
+/** The stored call, run once, as it is now allowed to be; what came of it, in words. Done only if the tool says it did it. */
+export async function carryOut(env: Env, approver: Principal, p: Proposal, scopesNow: PersonView["scopes"]): Promise<{ ok: boolean; text: string }> {
   // Weighed again from what is stored: a call that no longer reads as one that can be proposed is not run.
   const local = [...baseTools(env), ...APPROVED_ONLY].find((t) => t.name === p.action.tool);
   const gone = { ok: false, text: `That can no longer be done: ${p.action.tool} is not set up, or not yours to use now.` };
   if (!local && !p.action.tool.includes("__")) return gone;
   if (!weigh(local ?? { name: p.action.tool }, p.action.args)) return { ok: false, text: "That can no longer be done." };
-  const view = await personView(env, p.person);
-  if (view.scopes === null) return { ok: false, text: "Whoever it was for is no longer in the family." };
-  const grants = runGrants(p.grants, view.scopes, grantsOf(approver));
-  if (!grants) return { ok: false, text: "Who it is for could not be checked just now: try again." };
+  const grants = runGrants(p.grants, scopesNow, grantsOf(approver));
+  if (!grants) return { ok: false, text: "Whoever it was for is no longer in the family." };
   try {
-    const out = await runTool(env, grants, p.action.tool, p.action.args, AbortSignal.timeout(RUN_MS), APPROVED_ONLY);
+    let ok = false;
+    const out = await runTool(env, grants, p.action.tool, p.action.args, AbortSignal.timeout(RUN_MS), APPROVED_ONLY, () => void (ok = true));
     if (out === null) return gone;
-    return { ok: true, text: outputText(out) };
+    return { ok, text: outputText(out) };
   } catch (e) {
     return { ok: false, text: `That failed: ${e instanceof Error ? e.message : String(e)}` };
   }

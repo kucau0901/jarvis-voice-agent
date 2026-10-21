@@ -6,7 +6,7 @@ import { calledService } from "../tools/mcp.ts";
 import type { Tool, ToolContext, ToolOutput } from "../tools/registry.ts";
 
 /**
- * Approvals (H1 in docs/HARK-PARITY-PLAN.md): a background job reads but
+ * Approvals (docs/DESIGN.md, "Read; propose, never act"): a background job reads but
  * never acts, so what it would do is PROPOSED instead, exactly that one tool
  * call, and done only by the person's tap (routes/proposals.ts). A job is
  * handed its write tools as held copies (held()): the same name and
@@ -44,6 +44,8 @@ export interface Proposal {
   /** The call in words, as code renders it, and why it is asked for, written by code too. */
   says: string;
   why: string;
+  /** What the call would send, as the job wrote it, shown whole on its card: an email's words. Shown only, never run. */
+  body?: string;
   action: { tool: string; args: Record<string, unknown> };
   risk: Risk;
   category?: string;
@@ -69,7 +71,9 @@ const KEEP_MS = 30 * 86_400_000;
 /** A run that never finished (the request died): failed, never run again. */
 const STUCK_MS = 5 * 60_000;
 const MAX_ARGS = 4096;
+/** A call is shown whole or not filed: cut short, its last words could be the ones that matter ("…unlock"). */
 const MAX_SAYS = 300;
+const MAX_BODY = 4000;
 export const PROPOSAL_ID = /^a[0-9a-hjkmnp-tv-z]{20}$/;
 
 const ALPHABET = "0123456789abcdefghjkmnpqrstvwxyz";
@@ -80,7 +84,7 @@ const allowKey = (person: string) => `propallow:${person}`;
 const MAX_ALLOWED = 20;
 
 /** Arguments compared whatever order the model wrote them in. */
-const canonical = (v: unknown): string =>
+export const canonical = (v: unknown): string =>
   Array.isArray(v) ? `[${v.map(canonical).join(",")}]` : v && typeof v === "object" ? `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${canonical((v as Record<string, unknown>)[k])}`).join(",")}}` : JSON.stringify(v ?? null);
 
 /** Pending past its time is expired; running too long, failed: read so, and saved so when next written. */
@@ -99,6 +103,7 @@ export interface ProposalInput {
   action: Proposal["action"];
   weighed: Weighed;
   grants: readonly Grant[];
+  body?: string;
 }
 
 export class Proposals {
@@ -126,6 +131,7 @@ export class Proposals {
    */
   async add(input: ProposalInput, now: number): Promise<Proposal | string> {
     if (JSON.stringify(input.action.args).length > MAX_ARGS) return "That is too long to propose.";
+    if (input.weighed.says.length > MAX_SAYS || (input.body?.length ?? 0) > MAX_BODY) return "That is too long to show the user whole, so it was not filed: say in your answer what you would do.";
     const mine = await this.list(input.person, now);
     const same = canonical(input.action.args);
     const again = mine.find((p) => p.from.id === input.from.id && p.action.tool === input.action.tool && canonical(p.action.args) === same);
@@ -141,7 +147,8 @@ export class Proposals {
       who: input.who,
       person: input.person,
       from: { kind: "job", id: input.from.id, title: input.from.title.slice(0, 120) },
-      says: input.weighed.says.slice(0, MAX_SAYS),
+      says: input.weighed.says,
+      ...(input.body ? { body: input.body } : {}),
       why: `From your job “${input.from.title.slice(0, 120)}”`,
       action: input.action,
       risk: input.weighed.risk,
@@ -219,7 +226,13 @@ export class Proposals {
     if (!alert.job) return alert;
     const theirs = (await this.list(person, now)).filter((p) => p.from.id === alert.job).reverse();
     if (!theirs.length) return alert;
-    const lines = theirs.map((p) => (p.state === "pending" ? `Waiting for your OK in Jarvis: ${p.says}` : p.by === "standing" ? `Done without asking (you allow it): ${p.says}` : `${p.says}: ${p.state}`));
+    const lines = theirs.map((p) =>
+      p.state === "pending"
+        ? `Waiting for your OK in Jarvis: ${p.says}`
+        : p.by === "standing"
+          ? `${p.state === "done" ? "Done without asking (you allow it)" : "Tried without asking (you allow it), and it did not work"}: ${p.says}${p.outcome?.text ? ` (${p.outcome.text})` : ""}`
+          : `${p.says}: ${p.state}`,
+    );
     return { ...alert, text: `${alert.text}\n\n${lines.join("\n")}`, proposals: theirs.map((p) => ({ id: p.id, risk: p.risk, says: p.says })) };
   }
 
@@ -264,7 +277,8 @@ export function classify(name: string, args: Record<string, unknown>): Weighed |
   const says = svc
     ? `${server}: ${svc}${entity ? ` ${entity}` : ""}`
     : `${server}: ${name.slice(i + 2)} ${Object.entries(args).map(([k, v]) => `${k} ${typeof v === "string" ? v : JSON.stringify(v)}`).join(", ")}`;
-  return { risk: "irreversible", says: says.trim().slice(0, MAX_SAYS) };
+  // Whole: one too long to show is refused when filed (Proposals.add), never shown cut short.
+  return { risk: "irreversible", says: says.trim() };
 }
 
 /** How risky this call of this tool is; null when it cannot be proposed at all. */
@@ -282,7 +296,7 @@ export const PROPOSE_ONLY = "PROPOSE ONLY: calling this does not do it; it asks 
  * How a held tool's call is filed (routes/jobs.ts): the proposal, or why it
  * was not; and how one allowed without asking is finished once run.
  */
-export type File = (action: Proposal["action"], weighed: Weighed, ctx: ToolContext) => Promise<Proposal | string>;
+export type File = (action: Proposal["action"], weighed: Weighed, ctx: ToolContext, body?: string) => Promise<Proposal | string>;
 export type Finish = (p: Proposal, outcome: { ok: boolean; text: string }, ctx: ToolContext) => Promise<unknown>;
 
 /** What the job model is told of a call it proposed. */
@@ -315,12 +329,13 @@ export function held(tools: readonly Tool[], file: File, finish: Finish): Tool[]
         if (!w) return "That cannot be proposed from a job: say in your answer what you would do.";
         const p = await file({ tool: t.name, args }, w, ctx);
         if (typeof p === "string" || p.state !== "running" || p.by !== "standing") return filed(p);
-        // Allowed without asking: done now, once, and said so.
+        // Allowed without asking: done now, once, and said so; done only if the tool says it was.
         try {
-          const out = await t.run(args, ctx);
+          let ok = false;
+          const out = await t.run(args, { ...ctx, done: () => void (ok = true) });
           const text = typeof out === "string" ? out : out.text;
-          await finish(p, { ok: true, text }, ctx);
-          return `Done without asking (the user allows this kind): ${text}`;
+          await finish(p, { ok, text }, ctx);
+          return ok ? `Done without asking (the user allows this kind): ${text}` : `Tried without asking, and it did not work: ${text}`;
         } catch (e) {
           const text = `That failed: ${e instanceof Error ? e.message : String(e)}`;
           await finish(p, { ok: false, text }, ctx);
