@@ -3,6 +3,7 @@ import { b64urlDecode } from "../src/worker/lib/google.ts";
 import { requiredScope } from "../src/worker/lib/scopes.ts";
 import { SETTINGS } from "../src/worker/lib/settings.ts";
 import { mailSend } from "../src/worker/tools/gmail.ts";
+import { runCalls } from "../src/worker/lib/router.ts";
 
 let pass = 0;
 let fail = 0;
@@ -84,6 +85,26 @@ console.log("\nDraft first on, no screen (Telegram, a car) — Drafts, no tap to
   } finally {
     g.restore();
   }
+}
+
+console.log("\nDraft first on, the owner's every scope, but no screen this time (/api/v1/ask)");
+{
+  const g = google(gmail);
+  try {
+    const out = String(await mailSend.run(ARGS, ctx({ MAIL_DRAFT_FIRST: "1" }, ["*"])));
+    check("no card to draw: told it is in Drafts, not to tap", /NOT sent/.test(out) && /Drafts/.test(out) && !/tap/i.test(out), out);
+  } finally {
+    g.restore();
+  }
+  // The router hands a tool the card only where a screen will draw it.
+  const seen: string[] = [];
+  const probe = { name: "probe", description: "", parameters: {}, run: async (_a: unknown, c: { drafted?: unknown }) => (seen.push(typeof c.drafted), "ok") };
+  const call = [{ type: "function_call", call_id: "c1", name: "probe", arguments: "{}" }] as never;
+  const sink = { send: () => {}, isClosed: false } as never;
+  const base = { env: {} as never, signal: new AbortController().signal, memory: {} as never, grants: ["*"] };
+  await runCalls(call, new Map([["probe", probe]]) as never, base, sink);
+  await runCalls(call, new Map([["probe", probe]]) as never, { ...base, screenless: true }, sink);
+  check("a card where there is a screen, none where there is not", seen.join() === "function,undefined", seen);
 }
 
 console.log("\nDraft first off — as before");

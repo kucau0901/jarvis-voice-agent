@@ -13,6 +13,7 @@ import type { AttachedFile } from "./photos.ts";
 import type { EventSink } from "./sse.ts";
 import type { Turn } from "./history.ts";
 import { baseTools, outputText, toToolSchema, type Tool, type ToolContext, type ToolOutput } from "../tools/registry.ts";
+import type { DraftCard } from "./mail-draft.ts";
 import { mcpSessions, mcpTools } from "../tools/mcp.ts";
 import { assistConfig, lastAsk, tryAssist } from "./assist.ts";
 import { routerLoop } from "./router-loop.ts";
@@ -443,7 +444,7 @@ export async function run(
       return res;
     },
     runCalls: async (calls) => {
-      const out = await runCalls(calls as OpenAI.Responses.ResponseFunctionToolCall[], p!.byName, { env, signal, memory: p!.memory, grants, offered: [...p!.byName.keys()], asked: ownWords(turns, opts) }, sse);
+      const out = await runCalls(calls as OpenAI.Responses.ResponseFunctionToolCall[], p!.byName, { env, signal, memory: p!.memory, grants, offered: [...p!.byName.keys()], asked: ownWords(turns, opts), screenless: opts.screenless === true }, sse);
       // Tools that failed, for a past attempt (lib/episodes.ts): what callTool says when one throws.
       out.forEach((o, i) => {
         const said = "output" in o && typeof o.output === "string" ? o.output : "";
@@ -514,7 +515,7 @@ export async function run(
 export async function runCalls(
   calls: OpenAI.Responses.ResponseFunctionToolCall[],
   byName: Map<string, Tool>,
-  base: { env: Env; signal: AbortSignal; memory: MemoryStore; grants: readonly Grant[]; offered?: readonly string[]; asked?: string },
+  { screenless, ...base }: { env: Env; signal: AbortSignal; memory: MemoryStore; grants: readonly Grant[]; offered?: readonly string[]; asked?: string; screenless?: boolean },
   sse: EventSink,
 ): Promise<OpenAI.Responses.ResponseInput> {
   return Promise.all(
@@ -530,7 +531,8 @@ export async function runCalls(
           progress: (t) => sse.send({ type: "progress", text: t, name: call.name, id: call.call_id }),
           display: (payload) => sse.send({ type: "display", ...payload }),
           started: (job) => sse.send({ type: "job", ...job }),
-          drafted: (d) => sse.send({ type: "draft", ...d }),
+          // A draft's card only where a screen will draw it (src/app/draft.ts): otherwise it waits in Drafts.
+          ...(screenless ? {} : { drafted: (d: DraftCard) => sse.send({ type: "draft", ...d }) }),
         }, sse)
         : `No such tool: ${call.name}`;
 

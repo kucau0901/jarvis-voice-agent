@@ -720,7 +720,7 @@ export const mailSend: Tool = {
       const draft = (res.body as { id?: unknown } | null)?.id;
       if (asDraft && typeof draft === "string") ctx.drafted?.({ draft, to: who, subject, body: withFooter(body, ctx.env), reply: !!replyId });
       if (held) {
-        return allows(ctx.grants, "screen")
+        return ctx.drafted && allows(ctx.grants, "screen")
           ? `Saved as a draft to ${who}, NOT sent: a card with Send is on the user's screen, and only they can send it, by tapping Send. If they say send it, tell them to tap Send.`
           : `Saved as a draft to ${who}, NOT sent: it is in Gmail's Drafts for them to send.`;
       }

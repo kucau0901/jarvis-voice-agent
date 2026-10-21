@@ -175,7 +175,9 @@ Everything to do with administration — `/api/v1/devices`, `/api/alerts`, `/api
 `/api/spotify/*`, `/api/google/*`, `/api/chatgpt/*`, `/api/diag`, `/api/probe`, `/api/export`, and adding, editing
 or forgetting through `/api/memory` (`POST`, `PUT`, `DELETE`) —
 is reachable **only with the owner's key**, whatever scopes a device holds. A
-device can never mint its own successor.
+device can never mint its own successor. The one exception is
+`POST /api/google/drafts/send`, a draft card's Send, which `mail` reaches: it
+sends no more than `mail_send` could.
 
 > **`mail` is the widest scope here after `*`.** It can read every message in
 > the account, send as the account holder, and move messages to the trash.
