@@ -1,4 +1,5 @@
 import type { Env } from "../types.ts";
+import { sendTelegram } from "./telegram.ts";
 import { OWNER } from "./context.ts";
 import { MAX_PAYLOAD, sendPush, type Subscription, type VapidKeys } from "./webpush.ts";
 import { haUrl } from "./ha.ts";
@@ -316,19 +317,8 @@ const SEND: Record<Channel, Sender> = {
       ? await state.chatFor?.(alert.for).catch(() => null)
       : ((await state.chatFor?.(OWNER).catch(() => null)) || env.TELEGRAM_CHAT_ID);
     if (!env.TELEGRAM_BOT_TOKEN || !chat) return null;
-    const r = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        chat_id: chat,
-        text: alert.title === "Jarvis" ? alert.text : `${alert.title}\n\n${alert.text}`,
-        disable_notification: false,
-      }),
-      signal: timeout(),
-    });
-    if (r.ok) return { channel: "telegram", ok: true, detail: "sent" };
-    const why = ((await r.json().catch(() => null)) as { description?: string } | null)?.description ?? "";
-    return { channel: "telegram", ok: false, detail: `Telegram answered ${r.status}${why ? `: ${brief(why)}` : ""}` };
+    const why = await sendTelegram(env, chat, alert.title === "Jarvis" ? alert.text : `${alert.title}\n\n${alert.text}`, timeout());
+    return why ? { channel: "telegram", ok: false, detail: brief(why) } : { channel: "telegram", ok: true, detail: "sent" };
   },
 
   async ntfy(env, _state, alert) {

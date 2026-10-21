@@ -173,6 +173,10 @@ export class JarvisState extends DurableObject<Env> {
     return this.host.consume(deviceId, cap, day);
   }
 
+  telegramSeen(updateId: number) {
+    return this.host.telegramSeen(updateId);
+  }
+
   loadThread(key: string) {
     return this.host.loadThread(key);
   }

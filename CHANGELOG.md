@@ -83,6 +83,11 @@ of every release, and in the [README](README.md#updating).
 - **Export your data.** Settings → Export your data downloads one JSON file
   of your memory, routines, panels, conversation and jobs, and the household's
   settings without any key or token. For the owner and admins.
+- **Ask Jarvis on Telegram.** Switch on Settings → Alerts → Ask Jarvis on
+  Telegram, and the family's bot answers as well as alerts: a message from
+  the private chat someone gave in Family → You → Telegram is answered as
+  them, within their hours, without Hermes. A chat nobody gave is told its
+  number. Long work becomes a background job whose result comes there.
 - **Pages.** "Make me a page comparing these chargers" makes a small web
   page, in sections and tabs, light or dark, marked as made by an AI. It
   comes as a card under the answer to open; those who run the house can

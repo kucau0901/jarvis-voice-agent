@@ -36,6 +36,8 @@ import { handlePanels } from "./routes/panels.ts";
 import { handleConversation } from "./routes/conversation.ts";
 import { handleSearch } from "./routes/search.ts";
 import { handlePage, handlePageMeta } from "./routes/page.ts";
+import { handleTelegram } from "./routes/telegram.ts";
+import { TELEGRAM_PATH } from "./lib/telegram.ts";
 
 // The Durable Object class must be exported from the entry for the runtime to find it.
 export { JarvisState } from "./state.ts";
@@ -106,6 +108,8 @@ export default {
     // a one-time ticket it was issued over an authenticated request instead.
     // The Durable Object checks and spends it (routes/alerts.ts).
     if (isTicketedSocket(req, url)) return openTicketedSocket(req, env);
+    // Telegram's webhook (routes/telegram.ts): it cannot send a key, so its secret header is the proof.
+    if (url.pathname === TELEGRAM_PATH) return await handleTelegram(req, await withSettings(env), ctx, forPerson);
     // Signing in, which by its nature comes before a credential (routes/hub.ts).
     if (url.pathname.startsWith("/api/auth/")) {
       try {

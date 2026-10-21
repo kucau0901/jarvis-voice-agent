@@ -595,6 +595,16 @@ export class HubHost {
     return (await this.storedUser(id))?.prefs ?? {};
   }
 
+  /** Whose Telegram chat this is, by the number they gave (Family → You): "owner" for the first person; null for none, or two. */
+  async telegramPerson(chat: string): Promise<string | null> {
+    const meta = await this.meta();
+    if (!meta.space) return null;
+    const first = await this.firstPerson();
+    const mine: string[] = [];
+    for (const m of await this.membersOf(meta.space)) if ((await this.storedUser(m.user))?.prefs?.telegram === chat) mine.push(m.user);
+    return mine.length === 1 ? (mine[0] === first ? "owner" : mine[0]!) : null;
+  }
+
   /* ---------- cars ------------------------------------------------------------- */
 
   private async storedCars(): Promise<StoredCar[]> {
@@ -1217,6 +1227,7 @@ export const HUB_METHODS = [
   "updateCar",
   "removeCar",
   "prefsOf",
+  "telegramPerson",
   "setPin",
   "lockSession",
   "unlockSession",

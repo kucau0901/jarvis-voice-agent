@@ -247,6 +247,14 @@ export class StateHost {
    * biggest spender of the free plan's 1,000 writes. One record per device,
    * reset when the day changes, so nothing accumulates.
    */
+  /** A Telegram update not seen before (routes/telegram.ts): true the first time, false for Telegram's retry of it. The last 100. */
+  async telegramSeen(updateId: number): Promise<boolean> {
+    const ids = (await this.storage.get<number[]>("tg:seen")) ?? [];
+    if (ids.includes(updateId)) return false;
+    await this.storage.put("tg:seen", [...ids, updateId].slice(-100));
+    return true;
+  }
+
   async consume(deviceId: string, cap: number, day: string): Promise<{ ok: boolean; n: number }> {
     const key = `spend:${deviceId}`;
     const rec = await this.storage.get<{ day: string; n: number }>(key);
@@ -663,6 +671,7 @@ export type StateApi = Pick<
   | "loadReference"
   | "applyMemory"
   | "consume"
+  | "telegramSeen"
   | "loadThread"
   | "appendThread"
   | "getSettings"

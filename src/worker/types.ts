@@ -190,6 +190,8 @@ export interface Env {
   TELEGRAM_BOT_TOKEN?: string;
   /** Who the bot writes to: your own chat id, or a group's. */
   TELEGRAM_CHAT_ID?: string;
+  /** "1": messages to the bot are answered (routes/telegram.ts). */
+  TELEGRAM_ASK?: string;
   /** An ntfy topic's full address. On a public server the topic name is the only secret. */
   NTFY_URL?: string;
   /** For a topic that needs one. */

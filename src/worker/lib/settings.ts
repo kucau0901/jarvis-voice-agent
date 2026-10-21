@@ -411,8 +411,13 @@ export const SETTINGS: readonly SettingDef[] = [
   },
   {
     name: "TELEGRAM_CHAT_ID", group: "alerts", kind: "text",
-    label: "Telegram chat ID", help: "Send your bot a message, then open api.telegram.org/bot<token>/getUpdates and copy chat.id.",
+    label: "Telegram chat ID", help: "With Ask Jarvis on Telegram on, send your bot a message and it tells you this number; otherwise open api.telegram.org/bot<token>/getUpdates and copy chat.id.",
     validate: (v) => (/^-?\d{3,20}$/.test(v) ? null : "is a number, negative for a group"),
+  },
+  {
+    name: "TELEGRAM_ASK", group: "alerts", kind: "bool", default: "0",
+    label: "Ask Jarvis on Telegram",
+    help: "Messages to your bot are answered, as Jarvis, for whoever sent them: only from a private chat someone gave in Family → You → Telegram (anyone else is told their number). Not Hermes, nothing on a screen. Saving sets the bot to send its messages here, so getUpdates stops working for it.",
   },
   {
     name: "NTFY_URL", group: "alerts", kind: "secret",

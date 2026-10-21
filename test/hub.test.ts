@@ -215,6 +215,13 @@ console.log("\nthe first person, and what each person chooses");
   check("and ride along with their session", (await lookup(hub, adminToken, T0 + 901))?.place.prefs.language === "ms");
   const cleared = await hub.setPrefs(adminId, { language: "" });
   check("an empty value clears one", !("error" in cleared) && cleared.language === undefined && cleared.voice === "marin");
+  // Asking by Telegram (routes/telegram.ts): whose chat a message came from, by the number they gave.
+  check("a chat is its giver's: the first person's is the owner", (await hub.telegramPerson("12345")) === "owner" && (await hub.telegramPerson("999")) === null);
+  await hub.setPrefs(memberId, { telegram: "777" });
+  check("a member's is theirs", (await hub.telegramPerson("777")) === memberId);
+  await hub.setPrefs(memberId, { telegram: "12345" });
+  check("two who gave the same: nobody's", (await hub.telegramPerson("12345")) === null);
+  await hub.setPrefs(memberId, { telegram: "" });
 }
 
 console.log("\ncars, each with an owner, shared see or drive");

@@ -1,6 +1,7 @@
 import { openaiBase } from "../lib/openai-base.ts";
 import type { Env } from "../types.ts";
-import { err, json, redact } from "../lib/http.ts";
+import { err, json, publicOrigin, redact } from "../lib/http.ts";
+import { deleteWebhook, setWebhook, TELEGRAM_PATH, webhookSaid } from "../lib/telegram.ts";
 import { stateStub } from "../lib/state-client.ts";
 import { saveSettings } from "../lib/settings-store.ts";
 import {
@@ -63,7 +64,7 @@ export async function handleSettings(req: Request, env: Env, person?: string): P
       return err(503, e instanceof Error ? e.message : String(e));
     }
     const after = effectiveEnv(env, saved);
-    await sideEffects(env, before, after);
+    await sideEffects(env, before, after, url.origin);
     return json({ saved: true, ...(await view(env, saved, asker)) });
   }
 
@@ -114,9 +115,16 @@ async function view(env: Env, saved: SavedSettings, asker: (e: Env) => Env) {
  * list says where it was made, and one made elsewhere is not used
  * (lib/cameras.ts, tools/mcp.ts).
  */
-async function sideEffects(env: Env, before: Env, after: Env): Promise<void> {
+async function sideEffects(env: Env, before: Env, after: Env, origin: string): Promise<void> {
   const changed = (k: keyof Env) => (before[k] ?? "") !== (after[k] ?? "");
   const jobs: Promise<unknown>[] = [];
+  // Asking on Telegram (lib/telegram.ts): the bot told to send its messages here, or to stop.
+  if (changed("TELEGRAM_ASK") || changed("TELEGRAM_BOT_TOKEN")) {
+    const on = after.TELEGRAM_ASK === "1" && !!after.TELEGRAM_BOT_TOKEN;
+    const wasOn = before.TELEGRAM_ASK === "1" && !!before.TELEGRAM_BOT_TOKEN;
+    if (wasOn && (!on || changed("TELEGRAM_BOT_TOKEN"))) jobs.push(deleteWebhook(before.TELEGRAM_BOT_TOKEN!));
+    if (on) jobs.push(setWebhook(after, `${publicOrigin(after, origin)}${TELEGRAM_PATH}`).then((why) => why && console.warn("telegram webhook:", why)));
+  }
   // Everyone's links, not only the first person's: the old client's tokens are no use to the new one.
   if (changed("GOOGLE_CLIENT_ID") || changed("GOOGLE_CLIENT_SECRET")) jobs.push(google.unlinkEveryone(env));
   if (changed("SPOTIFY_CLIENT_ID") || changed("SPOTIFY_CLIENT_SECRET")) jobs.push(spotify.unlinkEveryone(env));
@@ -276,7 +284,7 @@ const TESTS: Partial<Record<Group, (eff: Env, origin: string) => Promise<TestRes
       : { ok: false, detail: `Google said ${r.status}${r.error_message ? `: ${r.error_message}` : ""}.` };
   },
 
-  async alerts(eff) {
+  async alerts(eff, origin) {
     const state = stateStub(eff);
     if (!state) return { ok: false, detail: "Alerts need the STATE Durable Object." };
     const alert = makeAlert(
@@ -285,7 +293,8 @@ const TESTS: Partial<Record<Group, (eff: Env, origin: string) => Promise<TestRes
     )!;
     // Every channel, each reported — not the first that works.
     const d = await deliver(eff, state, alert, { every: true });
-    return { ok: !!d.deliveredBy, detail: summarise(d) };
+    const asking = eff.TELEGRAM_ASK === "1" && eff.TELEGRAM_BOT_TOKEN ? ` ${await webhookSaid(eff, `${publicOrigin(eff, origin)}${TELEGRAM_PATH}`)}` : "";
+    return { ok: !!d.deliveredBy, detail: summarise(d) + asking };
   },
 
   async cameras(eff) {

@@ -993,3 +993,19 @@ sign-in, its token its proof, sandboxed (`Content-Security-Policy: sandbox`,
 `default-src 'none'`) and not cached; anything else is the same 404. Each
 person keeps their newest 20 pages for 30 days; clearing the chat, or leaving
 the family, removes them.
+
+## Telegram
+
+With `TELEGRAM_ASK` on, saving the Alerts settings sets the bot's webhook to
+`POST /api/v1/telegram`, with a secret token Telegram sends back on every
+update (`X-Telegram-Bot-Api-Secret-Token`, made from the owner key and the
+bot's token together); anything without it is a 401, and with the setting off
+the path is a 404. Only a text message in a private chat, from the chat's own
+person, is taken; groups, channels, edits and other bots never are, and each
+update is answered once however often Telegram sends it. The chat is matched
+to the person who gave its number in Family → You → Telegram (the first
+person's may be `TELEGRAM_CHAT_ID`); two who gave the same number, or none,
+and it is told its number instead. The answer is as that person's device
+would get it: their scopes less `hermes` and `screen`, their hours, a device's
+limits, and the chat's recent turns. It comes within about 20 seconds, or says
+to ask for a background job.
