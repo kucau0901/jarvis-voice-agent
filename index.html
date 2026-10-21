@@ -743,7 +743,7 @@
     color: var(--dim); font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; }
   #clearChat.armed { background: var(--danger); border-color: var(--danger); color: var(--on-accent); }
   /* The message box, Hark's: one glass pill holding the text and its buttons —
-     ask aloud (what the orb does in Chat), read replies aloud, and send. */
+     dictate into it (asking aloud is the orb's in Chat), read replies aloud, and send. */
   body.typing #typebar { display: flex; position: fixed; left: 50%; transform: translateX(-50%); z-index: 20;
     bottom: calc(var(--kb, 0px) + 12px + env(safe-area-inset-bottom)); width: min(720px, calc(100vw - 28px));
     align-items: flex-end; gap: 2px; padding: 4px; border-radius: 26px; border: 1px solid var(--hair);
@@ -760,6 +760,8 @@
   #typebar > button::before { content: ""; width: 22px; height: 22px; background: currentColor;
     -webkit-mask: var(--icon) center / contain no-repeat; mask: var(--icon) center / contain no-repeat; }
   #typebar #askAloud { --icon: var(--i-mic); }
+  /* Taking down what is said (ptt.ts dictate): the mic in red, as a recorder's is. */
+  #typebar #askAloud[aria-pressed="true"] { color: var(--danger); animation: pulse 1.3s ease-in-out infinite; }
   #typebar #readAloud { --icon: var(--i-speaker); }
   #typebar #readAloud[aria-pressed="true"] { --icon: var(--i-speaking); color: var(--accent-ink); }
   #typebar #send { --icon: var(--i-send); background: var(--solid); color: var(--on-solid); }
@@ -1284,7 +1286,7 @@
       <button type="button" role="menuitem" data-pick="photo">Take photo</button>
     </div>
     <input id="attachInput" type="file" multiple hidden accept="image/*,application/pdf,text/*,.md,.csv,.tsv,.json,.log,.xml,.yaml,.yml">
-    <button id="askAloud" type="button" title="Ask aloud" aria-label="Ask aloud"></button>
+    <button id="askAloud" type="button" title="Dictate" aria-label="Dictate" aria-pressed="false"></button>
     <button id="readAloud" type="button" aria-pressed="false" title="Read replies aloud" aria-label="Read replies aloud"></button>
     <button id="send" type="submit" aria-label="Send"></button>
   </form>

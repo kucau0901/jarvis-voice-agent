@@ -318,6 +318,8 @@ function status(text: string, bad = false) {
   // Every state change of a live session and of push-to-talk passes through
   // here, so this is where focus mode follows whether anyone is talking.
   document.body.classList.toggle("focus", !!(session || userWantsSession || ptt?.busy));
+  // The chat box's mic, marked while it is taking down what is said (ptt.ts dictate).
+  document.getElementById("askAloud")?.setAttribute("aria-pressed", String(!!ptt?.dictatingNow));
 }
 
 /**
@@ -1099,10 +1101,13 @@ function pushToTalk(): PushToTalk {
     thinking: (on) => { thinking = on; },
     history: () => history.snapshot(),
     tool: (name, phase) => panelTool(name, phase),
+    dictated: (text) => insertTyped(text),
   }));
 }
 
 function setMode(m: Mode) {
+  // Out of Chat, dictation would write into a box no one can see: put down.
+  if (m !== "type" && ptt?.dictatingNow) ptt.stop();
   mode = m;
   if (m !== "type") voice = m;
   try {
@@ -1209,7 +1214,13 @@ function showReadAloud() {
 }
 showReadAloud();
 // The orb's spoken question, from the message box: the orb is small here.
-$("askAloud").addEventListener("click", () => els.orb.click());
+// Dictation: the box's mic writes what is said into the box, to read over before sending (ptt.ts). Asking aloud stays the orb's, top left in Chat.
+$("askAloud").addEventListener("click", () => {
+  if (!key) return requireKey();
+  const p = pushToTalk();
+  p.setKey(key);
+  void p.dictate();
+});
 readAloudBtn.addEventListener("click", () => {
   readAloud = !readAloud;
   try {
@@ -1364,6 +1375,15 @@ async function sendTyped() {
   sendBtn.disabled = false;
   thinking = false;
   if (mode === "type") status("");
+}
+
+/** Dictated words (ptt.ts dictate), put where the cursor is, never sent. */
+function insertTyped(text: string) {
+  const at = typed.selectionStart ?? typed.value.length;
+  const before = typed.value.slice(0, at);
+  typed.setRangeText((before && !/\s$/.test(before) ? " " : "") + text, at, typed.selectionEnd ?? at, "end");
+  fitTyped();
+  if (!matchMedia("(pointer: coarse)").matches && !inCar()) typed.focus();
 }
 
 /** The box grows with what is typed, up to a limit. */

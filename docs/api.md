@@ -351,6 +351,10 @@ the speaking. The app sends `multipart/form-data` — an `audio` file and an
 as `audio` events, so it starts talking about a second after the words are
 ready.
 
+`transcribe=1` (or `"transcribe": true` in the app's `options`) only hears
+the recording: `{ok, transcript, heardBy}`, nothing answered or spoken. The
+chat box's mic uses it to dictate. The same `voice` and `ask` grants apply.
+
 How it hears and speaks is set in Settings → Voice, which also sets the voice
 of alerts said aloud: OpenAI (default; any language, mixed ones too; hearing
 about $0.003 a minute, speaking about $0.015), Cloudflare Workers AI (needs

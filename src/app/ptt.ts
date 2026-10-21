@@ -26,6 +26,8 @@ interface PttHooks {
   history(): Turn[];
   /** A tool call started or finished (lib/router.ts runCalls): Home shows a panel in the making (main.ts panelTool). */
   tool?(name: string, phase: string): void;
+  /** Dictation's words, for the chat box: heard, never asked (dictate). */
+  dictated?(text: string): void;
 }
 
 interface VoiceConfig {
@@ -41,6 +43,9 @@ const END_SILENCE_MS = 1300;
 /** Nothing said this long after the tap: give up quietly. */
 const NO_SPEECH_MS = 7000;
 const MAX_MS = 30_000;
+/** Dictating, people pause mid-sentence: a longer silence ends it, and it may run as long as a recording may be (lib/speech.ts). */
+const DICTATE_SILENCE_MS = 2500;
+const DICTATE_MAX_MS = 120_000;
 /** RMS of a 0–1 signal above which someone is talking. Low: car cabins are quiet, phones are held close. */
 const SPEECH_RMS = 0.02;
 
@@ -96,6 +101,20 @@ export class PushToTalk {
     this.key = key;
   }
 
+  /** Dictating into the chat box rather than asking (dictate). */
+  private dictating = false;
+  /** Whether the chat box's mic is listening or writing it down now (main.ts marks the mic). */
+  get dictatingNow(): boolean {
+    return this.dictating && this.state !== "idle";
+  }
+
+  /** The chat box's mic: listened to as a question would be, but the words go into the box (main.ts), not to Jarvis. */
+  async dictate(): Promise<void> {
+    if (this.state !== "idle") return this.press();
+    this.dictating = true;
+    return this.listen();
+  }
+
   /** One control, like the live orb: each tap does the obvious next thing. */
   async press(): Promise<void> {
     switch (this.state) {
@@ -131,6 +150,7 @@ export class PushToTalk {
     this.silence();
     this.release();
     this.state = "idle";
+    this.dictating = false;
   }
 
   /** Stop speaking, and forget anything still queued to say. */
@@ -213,7 +233,7 @@ export class PushToTalk {
         quietSince = 0;
       } else if (spoke) {
         quietSince ||= now;
-        if (now - quietSince > END_SILENCE_MS) return this.finishListening();
+        if (now - quietSince > (this.dictating ? DICTATE_SILENCE_MS : END_SILENCE_MS)) return this.finishListening();
       }
       if (!spoke && now - started > NO_SPEECH_MS) {
         this.chunks = [];
@@ -223,7 +243,7 @@ export class PushToTalk {
         this.done("didn't hear anything — tap to ask");
         return;
       }
-      if (now - started > MAX_MS) this.finishListening();
+      if (now - started > (this.dictating ? DICTATE_MAX_MS : MAX_MS)) this.finishListening();
     }, 100);
   }
 
@@ -253,7 +273,7 @@ export class PushToTalk {
     };
     rec.onend = () => {
       this.recognition = null;
-      if (text.trim()) void this.ask({ text: text.trim() });
+      if (text.trim()) void (this.dictating ? this.give(text.trim()) : this.ask({ text: text.trim() }));
       // Its reason stays said: "didn't hear anything" over a refused microphone sent people looking for the wrong fault.
       else if (failed) this.done(`speech recognition: ${failed} — tap to ask`, true);
       else this.done("didn't hear anything — tap to ask");
@@ -276,7 +296,37 @@ export class PushToTalk {
     const mime = this.recorder?.mimeType || "audio/webm";
     this.release();
     if (!this.chunks.length) return this.done("didn't hear anything — tap to ask");
-    await this.ask({ audio: new Blob(this.chunks, { type: mime.split(";")[0] }) });
+    const audio = new Blob(this.chunks, { type: mime.split(";")[0] });
+    if (this.dictating) return this.transcribeOnly(audio);
+    await this.ask({ audio });
+  }
+
+  /** Dictation's recording, only heard (routes/voice.ts transcribe): its words for the box, nothing asked. */
+  private async transcribeOnly(audio: Blob): Promise<void> {
+    this.state = "thinking";
+    this.hooks.status("writing it down…");
+    this.abort = new AbortController();
+    const form = new FormData();
+    form.append("audio", audio, "dictation");
+    form.append("options", JSON.stringify({ transcribe: true }));
+    const headers = authHeaders(this.key);
+    delete headers["Content-Type"];
+    delete headers["content-type"];
+    try {
+      const res = await fetch("/api/v1/voice", { method: "POST", headers, body: form, signal: this.abort.signal });
+      const b = (await res.json().catch(() => ({}))) as { transcript?: string; error?: string };
+      if (!res.ok) return this.done(`${b.error ?? `server said ${res.status}`} — tap the mic to dictate`, true);
+      this.give((b.transcript ?? "").trim());
+    } catch (e) {
+      if ((e as Error)?.name === "AbortError") return;
+      this.done(`couldn't reach Jarvis: ${e instanceof Error ? e.message : String(e)}`, true);
+    }
+  }
+
+  /** What was dictated, into the box; nothing heard said so. */
+  private give(text: string): void {
+    if (text) this.hooks.dictated?.(text);
+    this.done(text ? "" : "didn't hear anything — tap the mic to dictate");
   }
 
   /* ---------- asking and answering --------------------------------------------- */
@@ -418,6 +468,7 @@ export class PushToTalk {
 
   private done(text: string, bad = false): void {
     this.state = "idle";
+    this.dictating = false;
     this.recognition = null;
     this.hooks.thinking(false);
     this.hooks.status(text, bad);
