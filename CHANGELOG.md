@@ -47,6 +47,32 @@ of every release, and in the [README](README.md#updating).
   "Alert: above 200", whether the alert was set with Alert me or by asking
   Jarvis to watch that thing. Off ones are not shown. In Alert me a number
   alone, such as 200, now means above it.
+- **See what Jarvis is doing.** While a typed question is worked on, the chat
+  shows a pill for each thing Jarvis checks ("Checking the house", "Checking
+  your calendar"), ticked as each is done, where the answer will appear. A
+  question says "Read" once Jarvis has it, and stays at the top while its
+  answer is read.
+- **"On it" for a background job.** A job or a question for Hermes started
+  from the chat shows its pill at once; when the result comes, that pill moves
+  down to it and takes its name, and opens the job in Jobs. The result is kept
+  in the conversation, so it is still there after a reload.
+- **More info and Reply on a Home panel.** A panel's … menu now has Reply,
+  which opens the chat ready to ask for a change, and More info, which says
+  how often each thing on it is read, from where, and when it was last and is
+  next checked. While Jarvis makes a panel asked for on that screen, a card in
+  the making stands in for it.
+- **Routines that only speak up when it matters.** A routine that asks Jarvis
+  something can now be told to send the answer only when there is something
+  worth telling ("every morning, tell me only if there is urgent mail", or the
+  new box in Routines). A run with nothing to tell sends nothing, and Routines
+  shows "nothing to report".
+- **A monthly budget.** Settings → OpenAI → Monthly budget (US dollars): you
+  are told at 80% and at 100% of it, once each a month, and nothing is
+  stopped. For those who run the house, the Home usage tile and Settings →
+  Usage then show how much of it is gone and when it resets.
+- **Dictation.** The mic in the chat's message box now writes what you say
+  into the box, to read over before sending. `POST /api/v1/voice` takes
+  `transcribe=1` to only hear a recording.
 
 ### Changed
 
@@ -56,9 +82,22 @@ of every release, and in the [README](README.md#updating).
   naming it, from the app, the glasses or Grok alike. Only for people and
   devices allowed Hermes; for anything else it stays the last resort. The
   house, the car and Home Assistant never go to Hermes this way.
+- **The chat box's mic dictates instead of asking aloud.** To ask aloud from
+  the chat, press the orb at its top left, as before.
+- **Limits are notices, not failures.** When a limit stops or changes an
+  answer in the chat (a device's daily allowance, the ChatGPT plan's limit,
+  the month's research jobs used up or switched off), it is said in an amber
+  notice instead of a red error.
 
 ### Fixed
 
+- **Page watches work on the ChatGPT plan.** With the plan connected, every
+  page watch (including Alert me on a reading Jarvis looks up) failed with
+  "Input must be a list", and setting up a new one failed too.
+- **Answers are in the language you asked in.** An English question about a
+  Malay page, or after an earlier Malay answer, could be answered in Malay.
+  Jarvis now answers in the language of your latest message, still mixing
+  languages the way you do.
 - **A Home tile's reading can only read.** A tile that Jarvis looks up by
   itself, whenever Home is open, now has only Jarvis's reading tools: it can
   no longer start Hermes or a job, or change anything. Its buttons are
