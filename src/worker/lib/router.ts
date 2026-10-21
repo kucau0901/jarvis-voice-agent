@@ -69,6 +69,8 @@ export interface RunOptions {
   charBudget?: number;
   /** For a routine: its name, so the answer knows what it is answering. */
   routineName?: string;
+  /** For a routine: say NOTHING, and nothing is sent, when nothing deserves attention (lib/scheduler.ts). */
+  routineIfImportant?: boolean;
   /**
    * Photos the user just took and is asking about (data: URLs). They go to the
    * router beside the conversation, so it can look and use tools on what it
@@ -214,7 +216,13 @@ export async function prepareRouter(
         `The user set this up to run by itself${opts.routineName ? ` ("${opts.routineName.replace(/"/g, "'")}")` : ""}. ` +
         "Nobody is listening right now and nobody can answer a question back. Do what it " +
         "asks, then write the result as one short message to the user: it is sent as a " +
-        "notification or read aloud. No greeting, no questions, no offers of more help."
+        "notification or read aloud. No greeting, no questions, no offers of more help." +
+        // In English capitals whatever the language: the answer's language follows the user's, and "Tiada" would be sent.
+        (opts.routineIfImportant
+          ? " Only tell the user if something deserves their attention. If nothing does (nothing new, nothing out of the " +
+            "ordinary), reply with exactly NOTHING, in English capitals whatever language you would otherwise answer in, " +
+            "and nothing else: it is then not sent."
+          : "")
       : "");
   const byName = new Map(tools.map((t) => [t.name, t]));
 

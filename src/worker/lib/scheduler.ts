@@ -456,6 +456,11 @@ export class Scheduler {
         return;
       }
       text = answer.text;
+      // Asked to speak only when it matters, and nothing did: it ran, and Routines says so (Hark's "so I sent nothing").
+      if (r.action.notify === "if-important" && isNothing(text)) {
+        await this.record(r.id, { at: now, ok: true, detail: "nothing to report" });
+        return;
+      }
     } else {
       return; // leave has its own path
     }
@@ -581,3 +586,6 @@ export function outcome(d: Delivery, now: number): RunRecord {
       : "nothing is set up to receive it — turn on notifications in Settings → Alerts",
   };
 }
+
+/** An answer that is only NOTHING, however dressed ("NOTHING.", "**Nothing**"): an if-important routine with nothing to tell. */
+export const isNothing = (text: string): boolean => /^\W*nothing\W*$/i.test(text.trim());

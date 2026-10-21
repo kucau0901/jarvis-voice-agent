@@ -122,6 +122,7 @@ export async function askForRoutine(
   await run(env, [{ role: "user", text: prompt }], sink, AbortSignal.timeout(120_000), screenless, {
     surface: "routine",
     routineName: routine.name,
+    ...(routine.action.kind === "ask" && routine.action.notify === "if-important" ? { routineIfImportant: true } : {}),
   });
   const c = sink.finish();
   return { ok: c.ok, text: c.text };

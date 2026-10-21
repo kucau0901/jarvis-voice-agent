@@ -579,6 +579,9 @@ POST /api/v1/routines
 
 Every kind but `leave` takes exactly one of `say` (a fixed message) or `ask`
 (a request for Jarvis, answered at the time with the creator's grants and sent).
+An `ask` may also take `notify: "if-important"`: Jarvis answers NOTHING when
+nothing deserves attention, nothing is sent, and the last result says
+"nothing to report".
 `GET /api/v1/routines` lists them with plain-English `when` and `does`, the
 next run and the last result; `PATCH` takes `{id, enabled?, name?}`; `DELETE
 ?id=` removes one; `POST /api/v1/routines/run {id}` runs one now.

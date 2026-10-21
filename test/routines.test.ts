@@ -1,5 +1,6 @@
 import {
   buildRoutine,
+  describeAction,
   describeTrigger,
   MAX_PAGES,
   localParts,
@@ -15,7 +16,7 @@ import {
   mergeEvents,
   type LeaveEvent,
 } from "../src/worker/lib/leave.ts";
-import { DAILY_GRACE_MS, EVENT_COOLDOWN_MS, Scheduler, WATCH_ERRORS_SLOW, WATCH_EVERY_MS, WATCH_SLOW_MS, type SchedulerDeps } from "../src/worker/lib/scheduler.ts";
+import { DAILY_GRACE_MS, EVENT_COOLDOWN_MS, isNothing, Scheduler, WATCH_ERRORS_SLOW, WATCH_EVERY_MS, WATCH_SLOW_MS, type SchedulerDeps } from "../src/worker/lib/scheduler.ts";
 import { haConfig, haUrl, renderTemplate, truthy } from "../src/worker/lib/ha.ts";
 import type { Alert, Delivery } from "../src/worker/lib/alerts.ts";
 import { requiredScope } from "../src/worker/lib/scopes.ts";
@@ -88,6 +89,14 @@ console.log("\nbuilding one from what was said");
   const l = buildRoutine({ when: "leave" }, tz, now);
   check("leave needs no message, spares 10 minutes by default", l.ok && l.trigger.kind === "leave" && l.trigger.bufferMin === 10 && l.action.kind === "leave");
   check("unknown kinds are refused", !buildRoutine({ when: "hourly", say: "x" }, tz, now).ok);
+  const q = buildRoutine({ when: "daily", time: "07:30", ask: "Anything urgent in my email?", notify: "if-important" }, tz, now);
+  check("an ask can wait for something worth telling", q.ok && q.action.kind === "ask" && q.action.notify === "if-important", q);
+  check("…and says so", q.ok && describeAction(q.action).endsWith("and send the answer only if something deserves attention"), q.ok && describeAction(q.action));
+  const always = buildRoutine({ when: "daily", time: "07:30", ask: "What's my day?", notify: "always" }, tz, now);
+  check("always, or nothing given, is kept as nothing: it is the default", always.ok && always.action.kind === "ask" && !("notify" in always.action) && d.ok && !("notify" in d.action), always);
+  check("anything else is refused", !buildRoutine({ when: "daily", time: "07:30", ask: "x", notify: "sometimes" }, tz, now).ok);
+  const said = buildRoutine({ when: "daily", time: "07:30", say: "Bins", notify: "if-important" }, tz, now);
+  check("a message to say is always said", said.ok && said.action.kind === "say" && !("notify" in said.action), said);
   check("described", describeTrigger({ kind: "daily", time: "07:30", days: [1, 2, 3, 4, 5] }, tz) === "weekdays at 07:30" && describeTrigger({ kind: "daily", time: "08:00", days: [] }, tz) === "every day at 08:00");
 }
 
@@ -246,6 +255,34 @@ console.log("\na daily briefing asks Jarvis, with its creator's reach");
   check("still on, and set for tomorrow", r.enabled && iso(r.nextAt) === iso(zonedToUtc(2026, 9, 26, 10, 30, tz)));
   await h.s.tick(T0 + 30 * MIN + 5000);
   check("an alarm that fires twice runs it once", h.asked.length === 1);
+}
+
+console.log("\nan ask that speaks only when it matters");
+{
+  const h = harness();
+  let answer = "NOTHING";
+  const deps = await (h.s as unknown as { deps: () => Promise<SchedulerDeps> }).deps();
+  deps.ask = async () => ({ ok: true, text: answer });
+  await h.s.add({ when: "daily", time: "10:30", ask: "Anything urgent in my email?", notify: "if-important" }, OWNER, T0);
+  await h.s.tick(T0 + 30 * MIN);
+  let r = (await h.s.list())[0]!;
+  check("nothing worth telling: nothing sent", h.sent.length === 0, h.sent);
+  check("…but Routines shows it ran", r.lastRun?.ok === true && r.lastRun.detail === "nothing to report", r.lastRun);
+  check("…and it is set for tomorrow", iso(r.nextAt) === iso(zonedToUtc(2026, 9, 26, 10, 30, tz)));
+  answer = "The bank wrote: a payment is due today.";
+  await h.s.tick(T0 + 30 * MIN + 86_400_000);
+  r = (await h.s.list())[0]!;
+  check("something worth telling: sent", h.sent.length === 1 && h.sent[0]!.text === answer && /^sent by /.test(r.lastRun?.detail ?? ""), { sent: h.sent, last: r.lastRun });
+  answer = "**Nothing.**";
+  await h.s.tick(T0 + 30 * MIN + 2 * 86_400_000);
+  check("nothing, however it is dressed, is still nothing", h.sent.length === 1);
+  check("only NOTHING alone: an answer that says more is sent", isNothing(" NOTHING ") && isNothing("\"Nothing.\"") && !isNothing("Nothing urgent, but the bank wrote.") && !isNothing("Tiada"));
+  const h2 = harness();
+  const deps2 = await (h2.s as unknown as { deps: () => Promise<SchedulerDeps> }).deps();
+  deps2.ask = async () => ({ ok: true, text: "NOTHING" });
+  await h2.s.add({ when: "daily", time: "10:30", ask: "Anything new?" }, OWNER, T0);
+  await h2.s.tick(T0 + 30 * MIN);
+  check("an ordinary ask sends whatever it was answered", h2.sent.length === 1 && h2.sent[0]!.text === "NOTHING");
 }
 
 console.log("\na stale daily is skipped, not sent at noon");

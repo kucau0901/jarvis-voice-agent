@@ -15,6 +15,8 @@ interface RoutineView {
   name: string;
   enabled: boolean;
   trigger: { kind: string; event?: string };
+  /** What it does; an ask may wait for something worth telling (notify "if-important"). */
+  action?: { kind: string; notify?: string };
   createdBy: string;
   nextAt?: number;
   lastRun?: { at: number; ok: boolean; detail: string };
@@ -126,7 +128,9 @@ export class Routines {
       if (r.createdBy !== "owner" && r.createdBy !== "voice") facts.push("made by a device");
       if (facts.length) row.appendChild(el("div", `rfacts${r.lastRun && !r.lastRun.ok ? " bad" : ""}`, facts.join(" · ")));
       const btns = el("div", "rowbtns");
-      btns.appendChild(button("Run now", () => void this.act(() => api(this.key, "POST", "/api/v1/routines/run", { id: r.id }), "Running — it arrives as an alert.")));
+      const quietly = r.action?.notify === "if-important";
+      btns.appendChild(button("Run now", () => void this.act(() => api(this.key, "POST", "/api/v1/routines/run", { id: r.id }),
+        quietly ? "Running — it arrives as an alert if there is anything to tell." : "Running — it arrives as an alert.")));
       btns.appendChild(button("Remove", () => void this.act(() => api(this.key, "DELETE", `/api/v1/routines?id=${encodeURIComponent(r.id)}`))));
       row.appendChild(btns);
       return row;
@@ -177,6 +181,12 @@ export class Routines {
     const text = document.createElement("textarea");
     text.rows = 2;
     text.placeholder = "Call Mum";
+    // An answer is sent only when it is worth sending, as Hark's checks say "nothing important, so I sent nothing".
+    const quiet = document.createElement("input");
+    quiet.type = "checkbox";
+    const quietRow = el("label", "on");
+    quietRow.appendChild(quiet);
+    quietRow.appendChild(document.createTextNode(" Only if there is something worth telling me"));
 
     const tzline = el("p", "note tzline");
     const shown: Record<string, HTMLElement[]> = { once: [at], daily: [time, days], event: [event], leave: [bufferRow] };
@@ -187,6 +197,7 @@ export class Routines {
       const leave = kind.value === "leave";
       doKind.style.display = leave ? "none" : "";
       text.style.display = leave ? "none" : "";
+      quietRow.style.display = !leave && doKind.value === "ask" ? "" : "none";
       text.placeholder = doKind.value === "ask" ? "What's on my calendar today, and the traffic to work?" : "Call Mum";
     };
     kind.addEventListener("change", sync);
@@ -204,12 +215,14 @@ export class Routines {
         if (kind.value === "event") body.event = event.value;
         if (kind.value === "leave") body.bufferMin = Number(buffer.value);
         else body[doKind.value] = text.value;
+        if (kind.value !== "leave" && doKind.value === "ask" && quiet.checked) body.notify = "if-important";
         await api(this.key, "POST", "/api/v1/routines", body);
         name.value = "";
         text.value = "";
+        quiet.checked = false;
       }, "Added."), "primary");
 
-    for (const x of [name, kind, at, time, days, event, bufferRow, doKind, text, tzline, add]) f.appendChild(x);
+    for (const x of [name, kind, at, time, days, event, bufferRow, doKind, text, quietRow, tzline, add]) f.appendChild(x);
     return f;
   }
 

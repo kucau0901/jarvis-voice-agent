@@ -50,7 +50,8 @@ export type Trigger =
 
 export type Action =
   | { kind: "say"; text: string }
-  | { kind: "ask"; prompt: string }
+  /** notify "if-important": the answer is sent only when it is not NOTHING (lib/scheduler.ts); absent, always. */
+  | { kind: "ask"; prompt: string; notify?: "if-important" }
   | { kind: "leave" }
   /**
    * Passed on to someone in the family (lib/relays.ts), or to several in
@@ -247,7 +248,10 @@ export function describeAction(a: Action): string {
     return what + (a.points ? `, ${a.points} point${a.points === 1 ? "" : "s"} for doing it` : "") + (a.escalate ? "; the family is told if there is no answer" : "");
   }
   if (a.kind === "say") return `say "${a.text.length > 80 ? a.text.slice(0, 80) + "…" : a.text}"`;
-  if (a.kind === "ask") return `ask Jarvis "${a.prompt.length > 80 ? a.prompt.slice(0, 80) + "…" : a.prompt}" and send the answer`;
+  if (a.kind === "ask") {
+    return `ask Jarvis "${a.prompt.length > 80 ? a.prompt.slice(0, 80) + "…" : a.prompt}" and send the answer` +
+      (a.notify === "if-important" ? " only if something deserves attention" : "");
+  }
   return "say when to set off, with the drive time";
 }
 
@@ -286,6 +290,8 @@ export interface RoutineInput {
   everyMinutes?: unknown;
   say?: unknown;
   ask?: unknown;
+  /** ask: "always" (the default) or "if-important", sent only when something deserves attention, as Hark's checks do. */
+  notify?: unknown;
   /** Pass it on to these family members (already named as people: lib/relays.ts), in turn if several. */
   passTo?: unknown;
   /** remind (Done or Can't) or ask (an answer). */
@@ -399,7 +405,10 @@ export function buildRoutine(input: RoutineInput, timeZone: string, now: number)
     const ask = str(input.ask);
     if (!!say === !!ask) return { ok: false, error: "give exactly one of say (a message) or ask (a question for Jarvis)" };
     if ((say || ask).length > MAX_TEXT) return { ok: false, error: `keep it under ${MAX_TEXT} characters` };
-    action = say ? { kind: "say", text: say } : { kind: "ask", prompt: ask };
+    // Only an answer can be judged worth sending; a message to say is always said.
+    const notify = str(input.notify).toLowerCase();
+    if (notify && notify !== "always" && notify !== "if-important") return { ok: false, error: 'notify is "always" or "if-important"' };
+    action = say ? { kind: "say", text: say } : { kind: "ask", prompt: ask, ...(notify === "if-important" ? { notify: "if-important" as const } : {}) };
   }
 
   const fallback =
