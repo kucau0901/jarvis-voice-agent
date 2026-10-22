@@ -37,8 +37,9 @@ import { DEFAULT_ROUTER_MODEL } from "./router-model.ts";
  * archiving the Inbox's old promotions once there are PROMOTIONS_MIN. Each is
  * filed for their tap before the model is asked anything (lib/proposals.ts:
  * one they dismissed or tried lately is not filed again, and one still
- * waiting is that card again, unless it has under LAPSING_MS left), so the
- * cards wait on Now whatever becomes of the opening.
+ * waiting is that card again, unless it has under LAPSING_MS left and a
+ * fresh one would outlast it), so the cards wait on Now whatever becomes of
+ * the opening.
  */
 
 export const SOURCE_MS = 10_000;

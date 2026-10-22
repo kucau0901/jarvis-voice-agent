@@ -130,8 +130,10 @@ export const TRIED_MS = 7 * 86_400_000;
 export const UNDO_MS = 7 * 86_400_000;
 /**
  * A brief's card this near its end is let go for a fresh one on the same
- * subject: yesterday's, from a daily brief, has moments left. One with more,
- * from a brief earlier the same day, is that card again.
+ * subject, when the fresh one would outlast it: yesterday's, from a daily
+ * brief, has moments left. One with more, from a brief earlier the same day,
+ * is that card again; so is an invitation's, which ends at its start
+ * whichever card it is.
  */
 export const LAPSING_MS = 2 * 3_600_000;
 /** Approved by a tap and not yet run by the alarm (tick), with what the run may use. Not under prop: either. */
@@ -447,6 +449,11 @@ export class Proposals {
     for (const p of await this.list(person, now)) {
       if (p.from.id === jobId && p.state === "pending") await this.storage.put(key(person, p.id), { ...p, state: "withdrawn", decidedAt: now });
     }
+  }
+
+  /** What one run (of a brief) filed, gone: its maker could no longer reach anything by the time it was done. */
+  async forgetRun(person: string, from: string): Promise<void> {
+    for (const p of await this.list(person, Date.now())) if (p.from.id === from) await this.storage.delete(key(person, p.id));
   }
 
   /** Someone left the family: nothing of theirs waits, and nothing is kept. */

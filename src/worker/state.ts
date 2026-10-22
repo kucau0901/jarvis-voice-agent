@@ -383,17 +383,18 @@ export class JarvisState extends DurableObject<Env> {
           waiting: async () => (await this.proposals.list(person, now)).filter((p) => p.state === "pending"),
           file: (action, weighed, detail) => this.proposals.add({ who: r.createdBy, person, from, action, weighed, grants, ...(detail ? { detail } : {}) }, now),
         });
-        // Left the family while it was gathered: nothing it filed for them is kept, as forgetMember would have it.
-        if (!reachNow(r.grants, await this.people.personView(person).catch(() => null))) {
-          await this.proposals.forget(person);
-          return { ok: false, text: "whoever made it is no longer in the family" };
-        }
         if (b.usage) {
           const u = b.usage;
           await this.recordUsage(
             { at: now, surface: "routine", by: u.model, ok: u.ok, ms: u.ms, input: u.input, cached: 0, written: 0, output: u.output, searches: 0, tools: [], ask: `brief: ${r.name}`.slice(0, 80), who: person },
             dayOf(now, timeZone),
           ).catch((e) => console.warn("brief not counted:", e instanceof Error ? e.message : String(e)));
+        }
+        // No longer reaching anything (removed, or their pass ended) while it was gathered: what this run filed goes,
+        // and nothing else of theirs (removing them took the rest; an ended pass keeps it).
+        if (!reachNow(r.grants, await this.people.personView(person).catch(() => null))) {
+          await this.proposals.forgetRun(person, from.id);
+          return { ok: false, text: "whoever made it is no longer in the family" };
         }
         return { ok: true, text: b.text, proposals: b.proposals.map(cardOf) };
       },

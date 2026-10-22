@@ -569,6 +569,13 @@ console.log("\na brief's cards: one subject, offered once, dismissed for a while
   check("tried lately: not offered again within the week", (await tried.add(brief("6"), T + TRIED_MS - 1)) === "Tried lately: not offered again yet.");
   check("…and offered once the week is out", typeof (await tried.add(brief("7"), T + 2 + TRIED_MS)) !== "string");
 
+  const runs = new Proposals(fakeStorage() as never);
+  const earlier = (await runs.add(brief("first"), T)) as Proposal;
+  const other = (await runs.add(input({ from: { kind: "brief", id: "rb1@second", title: "Morning brief", routine: "rb1" }, action: lock, weighed: { ...weigh(carCommand, lock.args, NO_CARS)!, about: "car:lock" } }), T + 1000)) as Proposal;
+  const reused = (await runs.add(brief("second"), T + 1000)) as Proposal;
+  await runs.forgetRun("u_sara", "rb1@second");
+  const left = (await runs.list("u_sara", T + 2000)).map((p) => p.id);
+  check("one run's filings forgotten: only what it filed itself, not a card an earlier run filed that it listed again", reused.id === earlier.id && left.includes(earlier.id) && !left.includes(other.id), { left, earlier: earlier.id, other: other.id });
   await props.forget("u_sara");
   check("someone who left: what they dismissed goes too", !st._m.has("propgone:u_sara") && st._m.size === 0, [...st._m.keys()]);
 }

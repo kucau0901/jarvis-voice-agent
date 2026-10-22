@@ -553,8 +553,9 @@ approving a reversible one, `POST /api/hub/proposals/allow {id}` lets jobs make
 that one kind of call without asking (a car command another undoes, a calendar
 event, one way of tidying mail; never anything irreversible or for the house),
 and `DELETE /api/hub/proposals/allow?category=` asks again. A device never can:
-everything under `/api/hub/` is a person's. A proposal waits a day (an
-invitation's, no later than its start). At most 3 run at once and 30 are started a
+everything under `/api/hub/` is a person's. A proposal waits a day (a
+one-off invitation's, no later than its start; an all-day one's, until its
+day is out). At most 3 run at once and 30 are started a
 day; one is stopped after 25 steps or 20 minutes.
 
 ### Handing research to Hermes
@@ -619,10 +620,11 @@ A `once` or `daily` routine may take `"brief": true` in place of `say` or
 weather, car, mail, jobs and what waits for their OK (as far as their grants
 reach and those are set up), as a document starting `# <day>`, under 1,400
 characters, sent as an alert with `speak` false. Before 15:00 it covers the
-rest of the day; from then, tomorrow. Two each at most. What it puts to them
-for a tap (answering an invitation left unanswered three days, archiving 20
-or more promotions older than two days) comes with the alert as `proposals`,
-as a job's does.
+rest of the day; from then, tomorrow. Two each at most. What waits for their
+OK, the newest five as its For your OK lists them, comes with the alert as
+`proposals`: what it puts to them for a tap (answering an invitation left
+unanswered three days, archiving 20 or more promotions older than two days)
+among them.
 `GET /api/v1/routines` lists them with plain-English `when` and `does`, the
 next run and the last result; `PATCH` takes `{id, enabled?, name?}`; `DELETE
 ?id=` removes one; `POST /api/v1/routines/run {id}` runs one now.
