@@ -41,7 +41,7 @@ export async function handleProposals(req: Request, env: Env, principal: Princip
     if (req.method !== "GET") return err(405, "GET only");
     const [all, allowed, staged] = await Promise.all([state.proposalsOf(me, now), state.proposalAllowed(me), state.proposalsLater(me)]);
     const tz = localeOf(env).timeZone;
-    const later = staged.map(({ id, says, why, verb, risk, body, release }) => ({ id, says, why, risk, when: whenSaid(release, tz), ...(verb ? { verb } : {}), ...(body ? { body } : {}) }));
+    const later = staged.map(({ id, says, why, verb, about, risk, body, release }) => ({ id, says, why, risk, when: whenSaid(release, tz), ...(verb ? { verb } : {}), ...(about ? { about } : {}), ...(body ? { body } : {}) }));
     // Newest decided first: one just approved is listed while its call is made, however long it waited (src/app/proposal.ts watch).
     const decided = all.filter((p) => p.state !== "pending").sort((a, b) => (b.decidedAt ?? b.createdAt) - (a.decidedAt ?? a.createdAt));
     const newest = decided.slice(0, RECENT);

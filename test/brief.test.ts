@@ -528,13 +528,13 @@ console.log("\nthe car's climate, staged before the day's first event with a pla
     }) as typeof fetch;
     return () => void (globalThis.fetch = real);
   };
-  const event = (id: string, h: number, m: number, location: string) => ({ id, summary: "Dentist", location, start: { dateTime: iso(at(h, m)) }, end: { dateTime: iso(at(h + 1, m)) }, organizer: { self: true } });
+  const event = (id: string, h: number, m: number, location: string, day = 21) => ({ id, summary: "Dentist", location, start: { dateTime: iso(at(h, m, day)) }, end: { dateTime: iso(at(h + 1, m, day)) }, organizer: { self: true } });
   const staged: { action: Proposal["action"]; about?: string; release?: unknown }[] = [];
-  const run = async (over: Partial<BriefDeps>, events: Record<string, unknown>[]) => {
+  const run = async (over: Partial<BriefDeps>, events: Record<string, unknown>[], now = NOW) => {
     staged.length = 0;
     const restore = items(events);
     try {
-      return await runBrief(ROUTINE, NOW, {
+      return await runBrief(ROUTINE, now, {
         ...deps({ house: null, jobs: [], ...over }),
         waiting: async () => [],
         file: async (action, weighed, _d, release) => {
@@ -556,6 +556,11 @@ console.log("\nthe car's climate, staged before the day's first event with a pla
   check("not without car control", staged.length === 0);
   await run({}, [event("call1abc", 10, 0, "https://meet.example.com/abc")]);
   check("not for a video call", staged.length === 0);
+  await run({}, [event("call2abc", 10, 0, "Zoom: https://zoom.us/j/1"), event("call3abc", 11, 0, "Google Meet https://meet.google.com/abc-defg-hij")]);
+  check("nor for one whose link has a label before it", staged.length === 0, staged);
+  // An evening's brief covers tomorrow, though its read starts now: tonight's dinner is not tomorrow's first event.
+  await run({}, [event("dinr1abc", 20, 0, "5 Example Lane"), event("dent2abc", 9, 0, "12 Example Road", 22)], at(18));
+  check("an evening's brief: before tomorrow's first event, not tonight's", staged.length === 1 && JSON.stringify(staged[0]!.release) === JSON.stringify({ event: { id: "dent2abc", start: at(9, 0, 22), title: "Dentist", leadMin: 30 } }), staged);
   await run({ env: { ...GOOGLE, ...TESSIE, TIMEZONE: TZ, JARVIS_CARS: JSON.stringify([{ id: "c1", name: "Ioniq 5", level: "see", mine: false, vin: "VIN_A", token: "t" }]) } as never }, [event("dent1abc", 10, 0, "12 Example Road")]);
   check("not with a car shared only to see", staged.length === 0);
 }

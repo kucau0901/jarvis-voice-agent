@@ -8,9 +8,9 @@
 // module hook stands in a bare DurableObject for it. Plain Node, no dependencies.
 import { registerHooks } from "node:module";
 import { StateHost } from "../src/worker/lib/state-host.ts";
-import { deliver, makeAlert } from "../src/worker/lib/alerts.ts";
+import { deliver, makeAlert, type Delivery } from "../src/worker/lib/alerts.ts";
 import { b64u } from "../src/worker/lib/webauthn.ts";
-import { STUCK_MS, weigh } from "../src/worker/lib/proposals.ts";
+import { STUCK_MS, weigh, type LaterDeps } from "../src/worker/lib/proposals.ts";
 import { carCommand } from "../src/worker/tools/tessie.ts";
 
 registerHooks({
@@ -214,6 +214,20 @@ console.log("\nproposals, through the object (lib/proposals.ts)");
     const later = await jarvis.proposalAdd({ who: "u_ana", person: "u_ana", from: { kind: "job", id: tidy.id, title: "x" }, action: { tool: "car_command", args: { command: "lock" } }, weighed: { risk: "reversible", says: "Car: lock", category: "car_command:lock" }, grants: ["*"], release: { at: soon } }, now);
     // Set again (rearm): to the soonest of everything due, here a job's step, which is sooner than the errand.
     check("staged through the object: for later, and the alarm set again", typeof later !== "string" && (await jarvis.proposalsLater("u_ana")).some((s) => s.id === later.id) && alarmAt !== null && alarmAt <= soon, { alarmAt });
+    // Put to them: its Ready now alert lasts as long as its card, so one held for quiet hours past that is dropped (lib/alerts.ts).
+    if (typeof later !== "string") {
+      const deps: { laterDeps(): Promise<LaterDeps> } = jarvis as never;
+      const host: { logDelivery(d: Delivery): Promise<void> } = jarvis as never;
+      const logged: Delivery[] = [];
+      const log = host.logDelivery;
+      host.logDelivery = async (d) => void logged.push(d);
+      try {
+        await (await deps.laterDeps()).announce({ ...later, state: "pending", expires: soon + 1_800_000 });
+      } finally {
+        host.logDelivery = log;
+      }
+      check("its Ready now alert ends with its card", logged[0]?.alert.title === "Ready now" && logged[0].alert.expiresAt === soon + 1_800_000, logged[0]?.alert);
+    }
     const home = await jarvis.proposalAdd({ who: "u_ana", person: "u_ana", from: { kind: "job", id: tidy.id, title: "x" }, action: { tool: "car_command", args: { command: "unlock" } }, weighed: { risk: "irreversible", says: "Car: unlock" }, grants: ["*"], release: { home: "arrive" } }, now);
     check("for when they get home, with no house to say so: refused, with why", typeof home === "string" && /cannot tell when they get home/.test(home), home);
   }

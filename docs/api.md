@@ -545,9 +545,10 @@ one, signed in, with `POST /api/hub/proposals/answer {id, answer: "approve" |
 "decline" | "undo"}`; an approved one comes back `running`, and Jarvis makes the call
 in the background. `GET /api/hub/proposals` is `{open, recent, allowed, later}`, and
 says what came of it. `later` is what waits to be put to them: `[{id, says,
-why, risk, when, verb?, body?}]`, `when` in words ("When you get home", "30
+why, risk, when, verb?, about?, body?}]`, `when` in words ("When you get home", "30
 min before “Dentist”, Thu 23 Oct, 10:00"); it cannot be approved before
-then, and `answer: "decline"` with its id drops it. Each proposal may carry
+then, and `answer: "decline"` with its id drops it (one with `about`, a
+brief's, is remembered as its card's decline is). Each proposal may carry
 `release` (what it waited for, once it was put to them), `verb`, `about` (a brief's card,
 whose decline is remembered: the next brief does not offer it again for 30
 days), `undoes` and `undone` (Put back). `"undo"` is Put back on archived
@@ -559,7 +560,8 @@ event, one way of tidying mail; never anything irreversible or for the house),
 and `DELETE /api/hub/proposals/allow?category=` asks again. A device never can:
 everything under `/api/hub/` is a person's. A proposal waits a day (a
 one-off invitation's, no later than its start; an all-day one's, until its
-day is out). At most 3 run at once and 30 are started a
+day is out; one put to them later, no later than half an hour past its
+time, or its event's start). At most 3 run at once and 30 are started a
 day; one is stopped after 25 steps or 20 minutes.
 
 ### Handing research to Hermes

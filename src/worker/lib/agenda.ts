@@ -105,11 +105,18 @@ export async function agendaEvents(env: Env, from: number, to: number, timeZone:
   }, { notLinked: "Link Google in Family → Accounts to see the calendar here.", relink: "Google needs linking again: Family → Accounts.", prefix: "Calendar" });
 }
 
-/** The event that starts then (within a minute), as a job named it by its start: an errand before it (lib/later.ts); why not, in words. */
+/**
+ * The event that starts then (within a minute), as a job named it by its
+ * start: an errand before it (lib/later.ts); why not, in words. One that
+ * takes time before one shown as free; two that take time, neither.
+ */
 export async function eventNear(env: Env, start: number, timeZone: string, signal: AbortSignal): Promise<AgendaEvent | string> {
   const got = await agendaEvents(env, start - 60_000, start + 60_000, timeZone, signal);
   if (typeof got === "string") return got;
-  return got.events.find((e) => !e.allDay && !e.declined && Math.abs(e.start - start) <= 60_000) ?? "No event in their calendar starts then: give its start as calendar_check gave it.";
+  const then = got.events.filter((e) => !e.allDay && !e.declined && Math.abs(e.start - start) <= 60_000);
+  const taking = then.filter((e) => !e.free);
+  if (new Set(taking.map((e) => e.id)).size > 1) return "More than one event in their calendar starts then: ask at a time instead.";
+  return taking[0] ?? then[0] ?? "No event in their calendar starts then: give its start from calendar_check, in their local time.";
 }
 
 /** One event as their calendar has it now, for an errand before it: its start, "gone", or null when it could not be read. */

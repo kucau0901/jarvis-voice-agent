@@ -1,7 +1,7 @@
 // A day on the calendar, for a brief (lib/agenda.ts): one read of the
 // primary calendar, then which events clash, the free time between them, and
 // invitations left unanswered.
-import { agendaEvents, agendaFrom, freeSlots, overlaps, staleInvites, type AgendaEvent } from "../src/worker/lib/agenda.ts";
+import { agendaEvents, agendaFrom, eventById, eventNear, freeSlots, overlaps, staleInvites, type AgendaEvent } from "../src/worker/lib/agenda.ts";
 
 let pass = 0;
 let fail = 0;
@@ -138,6 +138,52 @@ console.log("\nthe read");
     globalThis.fetch = real;
   }
   check("without Google, a sentence", (await agendaEvents({} as never, NOW, NOW + DAY, TZ, new AbortController().signal)) === "Google is not set up.");
+}
+
+console.log("\nan errand's event (lib/later.ts): found by its start, read again by its id");
+{
+  const kv = new Map<string, string>([["google:refresh", "refresh-token"]]);
+  const CONFIG = { get: async (k: string) => kv.get(k) ?? null, put: async (k: string, v: string) => void kv.set(k, v), delete: async (k: string) => void kv.delete(k) };
+  const env = { GOOGLE_CLIENT_ID: "id.apps.googleusercontent.com", GOOGLE_CLIENT_SECRET: "sec", CONFIG } as never;
+  const signal = new AbortController().signal;
+  const timed = (id: string, start: number, over: Record<string, unknown> = {}) => ({ id, summary: id, start: { dateTime: iso(start) }, end: { dateTime: iso(start + 3_600_000) }, ...over });
+  let items: unknown[] = [];
+  let one: { status: number; body: unknown } = { status: 200, body: {} };
+  const asked: string[] = [];
+  const real = globalThis.fetch;
+  globalThis.fetch = (async (url: string | URL | Request) => {
+    const u = String(url);
+    if (u.includes("oauth2")) return Response.json({ access_token: "access", expires_in: 3600 });
+    asked.push(u);
+    if (u.includes("/calendars/primary/events?")) return Response.json({ items });
+    return Response.json(one.body, { status: one.status });
+  }) as typeof fetch;
+  try {
+    const near = async () => {
+      const e = await eventNear(env, at(10), TZ, signal);
+      return typeof e === "string" ? e : e.id;
+    };
+    items = [timed("focus", at(10), { transparency: "transparent" }), timed("dentist", at(10)), { id: "holiday", start: { date: "2026-10-21" }, end: { date: "2026-10-22" } }];
+    check("the one that starts then, one that takes time before one shown as free", (await near()) === "dentist");
+    items = [timed("focus", at(10), { transparency: "transparent" })];
+    check("only one shown as free: that one", (await near()) === "focus");
+    items = [timed("dentist", at(10)), timed("call", at(10))];
+    check("two that take time at once: neither, and why", /More than one event/.test(await near()));
+    items = [timed("later", at(10, 2)), timed("turned", at(10), { attendees: [{ self: true, responseStatus: "declined" }] })];
+    check("none within a minute but one they declined: why", /No event in their calendar starts then/.test(await near()));
+    const again = (status: number, body: unknown) => {
+      one = { status, body };
+      return eventById(env, "dentist1", TZ, signal);
+    };
+    check("read again by its id: its start now", JSON.stringify(await again(200, timed("dentist1", at(11)))) === JSON.stringify({ start: at(11) }) && asked.at(-1)!.endsWith("/calendars/primary/events/dentist1"));
+    check("deleted: gone", (await again(404, {})) === "gone" && (await again(410, {})) === "gone");
+    check("cancelled, or declined: gone", (await again(200, { ...timed("dentist1", at(10)), status: "cancelled" })) === "gone" && (await again(200, timed("dentist1", at(10), { attendees: [{ self: true, responseStatus: "declined" }] }))) === "gone");
+    check("Google not answering: not known (null)", (await again(500, { error: { message: "backend" } })) === null);
+    const before = asked.length;
+    check("an id that is not one: not known, and nothing asked", (await eventById(env, "a/b", TZ, signal)) === null && asked.length === before);
+  } finally {
+    globalThis.fetch = real;
+  }
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

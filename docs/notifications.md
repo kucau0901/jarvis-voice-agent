@@ -98,7 +98,8 @@ answer in the chat. Nothing on a notification approves anything, so a phone
 that is locked, or a notification someone else sees, cannot. Telegram, ntfy
 and Home Assistant only say that something is waiting. A card waits a day
 (a one-off invitation's, no later than the meeting's start; an all-day
-one's, no later than the end of its day).
+one's, no later than the end of its day; one for later, no later than half
+an hour past its time, or its event's start).
 
 A brief's cards (answering an invitation, archiving old promotions) come the
 same way, with **Don't suggest this again** in place of Not now: tapped, the
@@ -107,9 +108,9 @@ back for a week, from the card.
 
 Some of what a job or a brief proposes is for later: at a time, before a
 calendar event, or when you get home or leave (that needs Home Assistant and
-your Home Assistant person in Family). It waits in Jobs → Later, where X
-drops it, and comes as a **Ready now** alert with its card when its time
-comes.
+your Home Assistant person in Family). It waits in Jobs → Later, where
+**Don't do this** drops it (on a brief's, **Don't suggest this again**), and
+comes as a **Ready now** alert with its card when its time comes.
 
 ## Check that it works
 

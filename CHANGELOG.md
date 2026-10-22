@@ -38,9 +38,9 @@ of every release, and in the [README](README.md#updating).
   you want it: at a time, before a calendar event, or when you get home or
   leave (with Home Assistant and your Home Assistant person in Family). It
   comes as a **Ready now** alert with its card then, checked again first;
-  meanwhile it waits in Jobs → Later, where X drops it. A brief also lines up
-  starting the car's climate half an hour before your first event with a
-  place, if you can drive the car.
+  meanwhile it waits in Jobs → Later, where Don't do this drops it. A brief
+  also lines up starting the car's climate half an hour before your first
+  event with a place, if you can drive the car.
 - **Jobs ask before they act.** A background job that would do something
   (lock the car, put an event in your calendar, archive or star an email,
   send an email it wrote, a Home Assistant call) now proposes it: its result

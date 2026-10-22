@@ -211,7 +211,8 @@ async function calendarSection(d: BriefDeps, span: { from: number; to: number },
   // One that cannot clash (all day, shown as free) needs nothing more read.
   const through = cut ? (events.at(-1)?.start ?? now) : to;
   read.invites = staleInvites(events, now).filter((e) => !busy(e) || e.end <= through).map((event) => ({ event, clash: clashing.has(event.id) }));
-  read.place = events.find((e) => busy(e) && e.start < span.to && e.start - LEAD_MIN * 60_000 >= now + MIN_AHEAD_MS && drivable(plain(e.location, 200)));
+  // The day it covers (an evening's is tomorrow, though the read starts now); the place as written, so a video call's link is seen.
+  read.place = events.find((e) => busy(e) && e.start >= span.from && e.start < span.to && e.start - LEAD_MIN * 60_000 >= now + MIN_AHEAD_MS && drivable(e.location));
   return { head: "Schedule", lines: scheduleOf(events, span, d.timeZone, now, through) };
 }
 

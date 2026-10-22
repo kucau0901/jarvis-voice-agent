@@ -497,7 +497,12 @@ console.log("\nanswered by a tap (routes/proposals.ts)");
   // Errands for later: listed with when, in words, and X'd as a card is.
   const errand = (await props.add(input({ person: "u_mia", who: "u_mia", from: { kind: "job", id: "jl1", title: "Car" }, release: { home: "arrive" } }), Date.now())) as Proposal;
   const withLater = (await (await handleProposals(req("/api/hub/proposals"), env, mia))!.json()) as { later: Record<string, unknown>[] };
-  check("listed for later, with when, and nothing it would run with", withLater.later.length === 1 && withLater.later[0]!.id === errand.id && withLater.later[0]!.when === "When you get home" && !("grants" in withLater.later[0]!) && !("action" in withLater.later[0]!), withLater.later);
+  check("listed for later, with when, and nothing it would run with", withLater.later.length === 1 && withLater.later[0]!.id === errand.id && withLater.later[0]!.when === "When you get home" && !("grants" in withLater.later[0]!) && !("action" in withLater.later[0]!) && !("about" in withLater.later[0]!), withLater.later);
+  // A brief's carries its subject, so its X can say it is not offered again (src/app/proposal.ts).
+  const briefs = (await props.add(input({ person: "u_mia", who: "u_mia", from: { kind: "brief", id: "rb@1", title: "Brief", routine: "rb" }, weighed: { ...weigh(carCommand, lock.args, NO_CARS)!, about: "car:climate" }, release: { home: "arrive" } }), Date.now())) as Proposal;
+  const subject = ((await (await handleProposals(req("/api/hub/proposals"), env, mia))!.json()) as { later: Record<string, unknown>[] }).later.find((s) => s.id === briefs.id);
+  check("a brief's, with its subject", subject?.about === "car:climate", subject);
+  await props.decline("u_mia", briefs.id, Date.now());
   const x = await handleProposals(req("/api/hub/proposals/answer", { id: errand.id, answer: "decline" }), env, mia);
   check("X: declined, and no longer for later", x!.status === 200 && ((await x!.json()) as { proposal: Proposal }).proposal.state === "declined" && (await props.later("u_mia")).length === 0);
   check("approving one for later before its time: no such proposal", (await handleProposals(req("/api/hub/proposals/answer", { id: ((await props.add(input({ person: "u_mia", who: "u_mia", from: { kind: "job", id: "jl2", title: "Car" }, release: { home: "leave" } }), Date.now())) as Proposal).id, answer: "approve" }), env, mia))!.status === 404);

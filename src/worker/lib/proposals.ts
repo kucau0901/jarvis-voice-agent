@@ -361,7 +361,14 @@ export class Proposals {
       const event = "event" in release ? release.event.id : null;
       const forIt = (r?: Release) => !!r && "event" in r && r.event.id === event;
       const staged = mine.find((s) => s.about === about && forIt(s.release));
-      if (staged) return staged;
+      if (staged) {
+        // Read again at another start (it moved since): that read is the one to wait for.
+        if (!("event" in release && "event" in staged.release) || release.event.start === staged.release.event.start) return staged;
+        const until = untilOf(release, now);
+        const moved: Staged = { ...staged, release, until, expires: until };
+        await this.storage.put(stageKey(moved.person, moved.id), moved);
+        return moved;
+      }
       if ((await this.list(input.person, now)).some((p) => p.about === about && forIt(p.release))) return "Already put to them for that event.";
     }
     if (mine.length >= MAX_STAGED) return `${MAX_STAGED} errands already wait for later: say this one in the answer.`;
@@ -446,7 +453,9 @@ export class Proposals {
    */
   private async releaseNow(deps: LaterDeps, now: number): Promise<void> {
     const all = [...(await this.storage.list<Staged>({ prefix: STAGE })).values()];
-    const arrived = await this.lookHome(all.filter((s) => "home" in s.release && now < s.until && (s.check?.next ?? 0) <= now), deps, now);
+    // When one is to be looked at, all are, in the one look: from then on they are looked at together.
+    const homes = all.filter((s) => "home" in s.release && now < s.until);
+    const arrived = await this.lookHome(homes.some((s) => (s.check?.next ?? 0) <= now) ? homes : [], deps, now);
     for (const s of all) {
       if (now >= s.until) {
         await this.settleStaged(s, "expired", lapsedSaid(s.release), now);
@@ -479,7 +488,11 @@ export class Proposals {
           : { next: now + WATCH_EVERY_MS, errors: 0, was: home };
       // Arriving is home now after away; leaving, away after home. The first look only learns which they are.
       const want = "home" in s.release && s.release.home === "arrive";
-      if (home !== undefined && was.was === !want && home === want) seen.add(s.id);
+      // Seen, it is left as it was: put to them, it is no longer staged; cut short, a retried alarm sees the same change.
+      if (home !== undefined && was.was === !want && home === want) {
+        seen.add(s.id);
+        continue;
+      }
       const still = await this.storage.get<Staged>(stageKey(s.person, s.id));
       if (still) await this.storage.put(stageKey(s.person, s.id), { ...still, check });
     }
@@ -514,7 +527,8 @@ export class Proposals {
       await this.storage.delete(stageKey(s.person, s.id));
       return;
     }
-    const card: Proposal = { ...putAway(still), state: "pending", createdAt: now, expires: Math.min(now + DECIDE_MS, still.until) };
+    // A day to decide, as any card; no later than its time allows, except home's, whose three days were the wait to get there.
+    const card: Proposal = { ...putAway(still), state: "pending", createdAt: now, expires: "home" in still.release ? now + DECIDE_MS : Math.min(now + DECIDE_MS, still.until) };
     await this.storage.put(key(card.person, card.id), card);
     await this.storage.delete(stageKey(card.person, card.id));
     await deps.announce(card).catch((e: unknown) => console.warn("errand not announced:", e instanceof Error ? e.message : String(e)));
@@ -675,12 +689,23 @@ export class Proposals {
           : `${p.says}: ${p.state}`,
     );
     // An errand for later has no card yet: it is said, and its card comes when it is put to them.
-    for (const s of later) lines.push(`Later (${whenInline(s.release, timeZone)}), Jarvis will ask: ${s.says}`);
+    // Its event untitled: whoever made it wrote the title, and this is in their conversation for a model to read.
+    for (const s of later) lines.push(`Later (${whenInline(s.release, timeZone, true)}), Jarvis will ask: ${s.says}`);
     return { ...alert, text: `${alert.text}\n\n${lines.join("\n")}`, ...(theirs.length ? { proposals: theirs.map(cardOf) } : {}) };
   }
 
-  /** A job cancelled or removed: what it proposed and is still waiting, or waits for later, is not to be done. */
-  async withdrawJob(person: string, jobId: string, now: number): Promise<void> {
+  /**
+   * A job cancelled or removed: what it proposed and is still waiting, or
+   * waits for later, is not to be done. Through the filing chain, so what a
+   * step filed before the cancel, however long it waited there, goes too.
+   */
+  withdrawJob(person: string, jobId: string, now: number): Promise<void> {
+    const run = this.filing.then(() => this.withdrawNow(person, jobId, now));
+    this.filing = run.catch(() => {});
+    return run;
+  }
+
+  private async withdrawNow(person: string, jobId: string, now: number): Promise<void> {
     for (const p of await this.list(person, now)) {
       if (p.from.id === jobId && p.state === "pending") await this.storage.put(key(person, p.id), { ...p, state: "withdrawn", decidedAt: now });
     }
@@ -773,7 +798,8 @@ export type Finish = (p: Proposal, outcome: { ok: boolean; text: string }, ctx: 
 export function filed(p: Proposal | string, timeZone = "UTC"): string {
   if (typeof p === "string") return p;
   if (isStaged(p)) {
-    return `NOT done: it waits for later (${whenInline(p.release, timeZone)}), when Jarvis asks the user for their OK as "${p.says}". Do not file it again; say in your answer that it will be put to them then.`;
+    // Its event untitled: the title is whoever made the event's words, not to reach the model unquoted.
+    return `NOT done: it waits for later (${whenInline(p.release, timeZone, true)}), when Jarvis asks the user for their OK as "${p.says}". Do not file it again; say in your answer that it will be put to them then.`;
   }
   if (p.state === "pending") return `NOT done: filed for the user's OK as "${p.says}". It waits up to 24 hours for their tap. Do not file it again; say in your answer that it is waiting for them.`;
   return `Already filed earlier as "${p.says}" (${p.state}). Do not file it again.`;

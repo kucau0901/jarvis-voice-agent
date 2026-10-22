@@ -225,10 +225,12 @@ interface LaterView {
   why: string;
   when: string;
   risk: ProposalView["risk"];
+  /** A brief's: its X is remembered, as on its card. */
+  about?: string;
   body?: string;
 }
 
-/** One errand for later: what it is, when it will be asked, and X, not wanted after all. */
+/** One errand for later: what it is, when it will be asked, and X, not wanted after all (a brief's, not offered again for a while). */
 function laterCard(key: string, s: LaterView, reload: () => Promise<void>): HTMLElement {
   const card = el("div", "pagecard proposalcard");
   card.append(
@@ -239,7 +241,7 @@ function laterCard(key: string, s: LaterView, reload: () => Promise<void>): HTML
   );
   const btns = el("div", "mdbtns");
   const said = el("small", "pagesaid", "");
-  btns.appendChild(button("Don't do this", async () => {
+  btns.appendChild(button(s.about ? "Don't suggest this again" : "Don't do this", async () => {
     for (const b of btns.querySelectorAll("button")) b.disabled = true;
     try {
       await api(key, "POST", "/api/hub/proposals/answer", { id: s.id, answer: "decline" });

@@ -51,8 +51,6 @@ export const LEAD_MIN = 30;
 export const MAX_STAGED = 10;
 export const MAX_HOME = 10;
 
-/** Google's ISO with an offset, as calendar_check gives a start. */
-const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
 /** A Home Assistant person or tracker, as Family keeps it (routes/hub.ts). */
 export const PRESENCE = /^(person|device_tracker)\.[a-z0-9_]+$/;
 
@@ -61,7 +59,7 @@ export const LATER_PARAM = {
   type: ["object", "null"],
   description:
     "Null to ask the user now. To ask them only later: exactly one of at (their local time, YYYY-MM-DDTHH:MM), " +
-    "before_event (the event's start exactly as calendar_check gave it, with minutes_before, default 30), " +
+    "before_event (the event's start from calendar_check, in their local time, YYYY-MM-DDTHH:MM, with minutes_before, 1 to 180, default 30), " +
     "or home (\"arrive\": when they next get home; \"leave\": when they next leave it). At most a week ahead.",
   properties: {
     at: { type: ["string", "null"] },
@@ -89,10 +87,13 @@ export function parseLater(raw: unknown, timeZone: string, now: number): Asked |
     return ahead(at) ?? { at };
   }
   if (v.before_event !== null && v.before_event !== undefined) {
-    const start = typeof v.before_event === "string" && ISO.test(v.before_event.trim()) ? Date.parse(v.before_event.trim()) : NaN;
-    if (!Number.isFinite(start)) return "later.before_event is the event's start as calendar_check gave it, with its offset";
+    // Their wall time, as `at` is: calendar_check says "Fri 23 Oct 10:00", and an offset the model worked out is wrong across a clock change.
+    const m = typeof v.before_event === "string" ? LOCAL.exec(v.before_event.trim()) : null;
+    if (!m) return "later.before_event is the event's start in their local time, YYYY-MM-DDTHH:MM";
+    const start = zonedToUtc(+m[1]!, +m[2]!, +m[3]!, +m[4]!, +m[5]!, timeZone);
     const lead = v.minutes_before === null || v.minutes_before === undefined ? LEAD_MIN : Number(v.minutes_before);
-    if (!Number.isInteger(lead) || lead < 0 || lead > 180) return "later.minutes_before is 0 to 180";
+    // At least a minute: one due at the start would be past its time (untilOf) as it came due.
+    if (!Number.isInteger(lead) || lead < 1 || lead > 180) return "later.minutes_before is 1 to 180";
     return ahead(start - lead * 60_000) ?? { event: { start, leadMin: lead } };
   }
   return v.home === "arrive" || v.home === "leave" ? { home: v.home } : 'later.home is "arrive" or "leave"';
@@ -111,18 +112,23 @@ export function dueAt(r: Release): number | null {
 const time = (ts: number, timeZone: string) =>
   new Intl.DateTimeFormat("en-GB", { timeZone, weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(ts));
 
-/** When, in words, from code's own facts: "When you get home", "30 min before “Dentist”, Thu 23 Oct, 10:00". */
-export function whenSaid(r: Release, timeZone: string): string {
+/**
+ * When, in words: "When you get home", "30 min before “Dentist”, Thu 23 Oct,
+ * 10:00". Whoever made an event wrote its title, so what a model reads goes
+ * `untitled`: "30 min before the event at Thu 23 Oct, 10:00".
+ */
+export function whenSaid(r: Release, timeZone: string, untitled = false): string {
   if ("home" in r) return r.home === "arrive" ? "When you get home" : "When you leave home";
   if ("at" in r) return `At ${time(r.at, timeZone)}`;
   const e = r.event;
+  if (untitled) return `${e.leadMin} min before the event at ${time(e.start, timeZone)}`;
   const title = e.title.length > 60 ? `${e.title.slice(0, 59)}…` : e.title;
-  return `${e.leadMin ? `${e.leadMin} min before` : "At the start of"} “${title}”, ${time(e.start, timeZone)}`;
+  return `${e.leadMin} min before “${title}”, ${time(e.start, timeZone)}`;
 }
 
 /** The same within a sentence: "(when you get home)", "(30 min before “Dentist”, …)". */
-export function whenInline(r: Release, timeZone: string): string {
-  const w = whenSaid(r, timeZone);
+export function whenInline(r: Release, timeZone: string, untitled = false): string {
+  const w = whenSaid(r, timeZone, untitled);
   return w.charAt(0).toLowerCase() + w.slice(1);
 }
 
