@@ -1,5 +1,6 @@
 import type { ButtonInput, PanelIcon } from "../../shared/panels.ts";
 import type { Reading } from "./panels.ts";
+import { unquoted } from "./quote.ts";
 
 /**
  * A tile for anything else Jarvis can read or do — the music, the car, the
@@ -286,8 +287,8 @@ export async function readTile(spec: TileSpec, src: TileSources, key: string, ca
   try {
     const out = await src.tool(spec.read.tool, spec.read.args);
     if (!out) return { status: 403, text: `${spec.read.tool} is not yours to use here.` };
-    // A tool that answers in lines (today's events) keeps them, as a list under its first.
-    const lines = out.text.split("\n").map((l) => l.replace(/^[\s>*\-•]+/, "").trim()).filter(Boolean);
+    // A tool that answers in lines (today's events) keeps them, as a list under its first; what it quoted for the model, without the quotes.
+    const lines = unquoted(out.text).split("\n").map((l) => l.replace(/^[\s>*\-•]+/, "").trim()).filter(Boolean);
     const list = lines.slice(1, 9).map((l) => clip(l, 140));
     return { status: 200, text: clip(lines[0] ?? "", 300), ...(list.length ? { list } : {}), ...(out.image ? { image: out.image } : {}) };
   } catch (e) {

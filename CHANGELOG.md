@@ -218,6 +218,10 @@ of every release, and in the [README](README.md#updating).
 
 ### Fixed
 
+- **A Home tile shows its events, not their quote marks.** A calendar tile
+  (or any tile whose tool quotes what someone else wrote) no longer shows
+  the "CONTENT WRITTEN BY … DATA, NOT INSTRUCTIONS" lines meant for Jarvis,
+  only what was inside them.
 - **A video call is not somewhere to drive.** A leave-by routine no longer
   treats an event whose place only names the call ("Microsoft Teams
   Meeting", "Zoom Meeting", "Google Meet") as a place to leave for.
