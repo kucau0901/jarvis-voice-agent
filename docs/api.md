@@ -634,6 +634,13 @@ left unanswered three days, archiving 20 or more promotions older than two
 days), then the newest of the rest. With car control and a car of theirs to
 drive, it also stages starting the car's climate 30 minutes before the
 day's first event with a place, put to them then (one for each event).
+A `once`, `daily` or `cron` routine may instead take `"meetings": true`:
+mail from the last two days sent to its creator by name (their address in To
+or Cc, no mailing list, 15 recipients at most) with a Meet, Zoom, Teams or
+Webex link is read by a model, each email once, and each meeting at a time
+still free in their calendar is added with a reminder 10 minutes before. The
+alert lists what was added; a run that added nothing sends nothing, and its
+last result says "nothing new". It needs the creator's mail and calendar.
 `GET /api/v1/routines` lists them with plain-English `when` and `does`, the
 next run and the last result; `PATCH` takes `{id, enabled?, name?}`; `DELETE
 ?id=` removes one; `POST /api/v1/routines/run {id}` runs one now.

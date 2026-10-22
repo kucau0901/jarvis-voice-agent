@@ -14,7 +14,7 @@ import { upcomingEvents } from "./lib/leave.ts";
 import { Scheduler, type SchedulerDeps } from "./lib/scheduler.ts";
 import type { Routine, RoutineInput } from "./lib/routines.ts";
 import { allows, narrow, reachNow, SCOPES, type Grant } from "./lib/scopes.ts";
-import { canAsk } from "./lib/openai-auth.ts";
+import { canAsk, respondOnce } from "./lib/openai-auth.ts";
 import { lookUp } from "./lib/router.ts";
 import { askForRoutine, travelFor } from "./routes/routines.ts";
 import { Jobs, type Job } from "./lib/jobs.ts";
@@ -38,6 +38,8 @@ import { carryOut, inverseOf, notAsShown } from "./lib/approval.ts";
 import { OWNER, personOfWho, withPerson } from "./lib/context.ts";
 import { lookAtPage } from "./lib/page-look.ts";
 import { runBrief } from "./lib/brief.ts";
+import { MeetingsSeen, meetingsSaid, runMeetings } from "./lib/meetings.ts";
+import { DEFAULT_ROUTER_MODEL } from "./lib/router-model.ts";
 import { budgetOf, budgetSays, costOf, dayOf } from "./lib/usage.ts";
 import { nextAllowed } from "./lib/access.ts";
 import { ChatGptPlan, type PlanFailure } from "./lib/chatgpt-plan.ts";
@@ -76,6 +78,7 @@ export class JarvisState extends DurableObject<Env> {
   private pages: Pages;
   private episodes: Episodes;
   private proposals: Proposals;
+  private meetingsSeen: MeetingsSeen;
   /** The owner's ChatGPT plan, which model calls use first (lib/chatgpt-plan.ts). */
   private plan: ChatGptPlan;
 
@@ -92,6 +95,7 @@ export class JarvisState extends DurableObject<Env> {
     this.pages = new Pages(ctx.storage);
     this.episodes = new Episodes(ctx.storage);
     this.proposals = new Proposals(ctx.storage);
+    this.meetingsSeen = new MeetingsSeen(ctx.storage);
     this.plan = new ChatGptPlan(ctx.storage, (input, init) => fetch(input, init));
     this.relays = new Relays(ctx.storage, () => this.relayDeps());
     this.jobs = new Jobs(ctx.storage, async () => {
@@ -288,6 +292,7 @@ export class JarvisState extends DurableObject<Env> {
     await this.specialties.clear(person);
     await this.episodes.clear(person);
     await this.proposals.forget(person);
+    await this.meetingsSeen.forget(person);
     await this.rearm();
   }
 
@@ -400,6 +405,36 @@ export class JarvisState extends DurableObject<Env> {
           return { ok: false, text: "whoever made it is no longer in the family" };
         }
         return { ok: true, text: b.text, proposals: b.proposals.map(cardOf) };
+      },
+      // Meetings emailed to its maker (lib/meetings.ts): as far as they may reach now, both mail and calendar; its reading counted in their usage.
+      meetings: async (r, now) => {
+        const person = personOfWho(r.createdBy);
+        const grants = reachNow(r.grants, await this.people.personView(person).catch(() => null));
+        if (!grants) return { ok: false, text: "whoever made it is no longer in the family" };
+        if (!allows(grants, "mail") || !allows(grants, "calendar")) return { ok: false, text: "it needs both mail and the calendar, which its maker may no longer use" };
+        const penv = await this.personEnv(env, r.createdBy);
+        if (!(await canAsk(penv))) return { ok: false, text: "it needs a ChatGPT plan or an OpenAI key to read the emails" };
+        const timeZone = localeOf(env).timeZone;
+        const run = await runMeetings(
+          {
+            env: penv,
+            person,
+            timeZone,
+            seen: this.meetingsSeen,
+            ask: (input, instructions) => respondOnce(penv, { model: DEFAULT_ROUTER_MODEL, instructions, input }, AbortSignal.timeout(45_000)),
+            signal: AbortSignal.timeout(60_000),
+          },
+          now,
+        );
+        if (typeof run === "string") return { ok: false, text: run };
+        if (run.usage) {
+          const u = run.usage;
+          await this.recordUsage(
+            { at: now, surface: "routine", by: u.model ?? DEFAULT_ROUTER_MODEL, ok: u.ok, ms: u.ms, input: u.input, cached: 0, written: 0, output: u.output, searches: 0, tools: [], ask: `meetings: ${r.name}`.slice(0, 80), who: person },
+            dayOf(now, timeZone),
+          ).catch((e) => console.warn("meetings not counted:", e instanceof Error ? e.message : String(e)));
+        }
+        return { ok: true, text: meetingsSaid(run, timeZone) };
       },
       // A chore, a check-in or medicine: passed on to whoever's turn it is.
       relay: async (r, to) => {
