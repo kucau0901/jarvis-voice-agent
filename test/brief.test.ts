@@ -3,6 +3,7 @@
 // opened by at most one small answer that sees the day only as quoted data.
 import { BRIEF_MAX, candidatesOf, cleanSummary, dayCovered, fit, jobsSection, MAX_DOC, MAX_SUMMARY, plain, PROMOTIONS_MIN, runBrief, scheduleOf, waitingSection, type BriefDeps } from "../src/worker/lib/brief.ts";
 import { Proposals } from "../src/worker/lib/proposals.ts";
+import { AGENDA_MAX } from "../src/worker/lib/agenda.ts";
 import type { AgendaEvent } from "../src/worker/lib/agenda.ts";
 import type { Routine } from "../src/worker/lib/routines.ts";
 import type { Job } from "../src/worker/lib/jobs.ts";
@@ -433,8 +434,8 @@ console.log("\nfiled for their tap, before the model, once");
 
 console.log("\na clash just past the week is seen, and one not wholly read is not answered");
 {
-  // Google gives only what starts before timeMax, and at most maxResults.
-  const google = (items: Record<string, unknown>[]) => {
+  // Google gives only what starts before timeMax, at most maxResults (or a shorter page), and a token when there is more.
+  const google = (items: Record<string, unknown>[], page = Infinity) => {
     const real = globalThis.fetch;
     globalThis.fetch = (async (url: string | URL | Request) => {
       const u = String(url instanceof Request ? url.url : url);
@@ -442,8 +443,10 @@ console.log("\na clash just past the week is seen, and one not wholly read is no
       if (u.includes("/calendars/primary/events")) {
         const q = new URL(u).searchParams;
         const [from, to, max] = [Date.parse(q.get("timeMin")!), Date.parse(q.get("timeMax")!), Number(q.get("maxResults"))];
-        const within = items.filter((e) => Date.parse((e.end as { dateTime: string }).dateTime) > from && Date.parse((e.start as { dateTime: string }).dateTime) < to);
-        return Response.json({ items: within.slice(0, max) });
+        const t = (x: unknown) => Date.parse((x as { dateTime?: string; date?: string }).dateTime ?? `${(x as { date: string }).date}T00:00:00+08:00`);
+        const within = items.filter((e) => t(e.end) > from && t(e.start) < to);
+        const n = Math.min(max, page);
+        return Response.json({ items: within.slice(0, n), ...(within.length > n ? { nextPageToken: "more" } : {}) });
       }
       if (u.includes("/users/me/messages?")) return Response.json({ messages: [] });
       throw new Error(`nothing else reaches the network: ${u}`);
@@ -462,15 +465,36 @@ console.log("\na clash just past the week is seen, and one not wholly read is no
   } finally {
     restore();
   }
-  // A full read (100 events) stops early: an invitation ending past the last read is not answered at all.
+  // A read Google cut (more than AGENDA_MAX match) stops early: an invitation ending past the last read is not answered at all.
   filed.length = 0;
   // Read, but running past the last event read: what it runs into might not have been.
   const long = { ...invite, id: "inv22abcd", start: { dateTime: iso(at(10, 0, 22)) }, end: { dateTime: iso(at(12, 0, 22)) } };
-  const busy = Array.from({ length: 99 }, (_, i) => ({ id: `busy${String(i).padStart(3, "0")}`, summary: "x", start: { dateTime: iso(at(10, 1, 22) + i * 60_000) }, end: { dateTime: iso(at(10, 1, 22) + i * 60_000 + 30_000) }, organizer: { self: true } }));
+  const busy = Array.from({ length: AGENDA_MAX }, (_, i) => ({ id: `busy${String(i).padStart(3, "0")}`, summary: "x", start: { dateTime: iso(at(10, 1, 22) + i * 60_000) }, end: { dateTime: iso(at(10, 1, 22) + i * 60_000 + 30_000) }, organizer: { self: true } }));
   restore = google([long, ...busy]);
   try {
     await run(at(9));
     check("not wholly read: not put to them", filed.length === 0, filed);
+  } finally {
+    restore();
+  }
+  // A page shorter than asked for, with more to come: the same.
+  filed.length = 0;
+  const board = { id: "brd23abcd", summary: "Board", start: { dateTime: iso(at(16, 30, 23)) }, end: { dateTime: iso(at(17, 30, 23)) }, organizer: { self: true } };
+  const offsite = { ...invite, id: "off23abcd", start: { dateTime: iso(at(16, 0, 23)) }, end: { dateTime: iso(at(17, 0, 23)) } };
+  restore = google([offsite, board], 1);
+  try {
+    await run(at(7));
+    check("a short page with more to come: not wholly read either", filed.length === 0, filed);
+  } finally {
+    restore();
+  }
+  // All day, ten days long: it cannot clash, so nothing more needs reading, and it is put to them.
+  filed.length = 0;
+  const trip = { ...invite, id: "trip25abcd", summary: "Family trip", start: { date: "2026-10-25" }, end: { date: "2026-11-04" } };
+  restore = google([trip]);
+  try {
+    await run(at(7));
+    check("an all-day invitation running past what was read is still answered", filed.length === 1 && filed[0]!.response === "accepted" && filed[0]!.start === "2026-10-25", filed);
   } finally {
     restore();
   }

@@ -81,8 +81,12 @@ export function agendaFrom(items: CalItem[], timeZone: string): AgendaEvent[] {
 /** At most this many events in one read. */
 export const AGENDA_MAX = 100;
 
-/** The primary calendar from `from` to `to`, at most AGENDA_MAX events, or a sentence saying why not. */
-export async function agendaEvents(env: Env, from: number, to: number, timeZone: string, signal: AbortSignal): Promise<AgendaEvent[] | string> {
+/**
+ * The primary calendar from `from` to `to`, at most AGENDA_MAX events, or a
+ * sentence saying why not. `cut`: Google has more (a page may hold fewer
+ * than asked for while more match), so the read ends at its last event.
+ */
+export async function agendaEvents(env: Env, from: number, to: number, timeZone: string, signal: AbortSignal): Promise<{ events: AgendaEvent[]; cut: boolean } | string> {
   return guardTool(async () => {
     const cfg = googleConfig(env, "https://jarvis.invalid");
     if (!cfg) return "Google is not set up.";
@@ -96,12 +100,13 @@ export async function agendaEvents(env: Env, from: number, to: number, timeZone:
     const res = await call(env, cfg, `/calendars/primary/events?${p}`, { base: CALENDAR, signal });
     const problem = explain(res);
     if (problem) return problem;
-    return agendaFrom((res.body as { items?: CalItem[] } | null)?.items ?? [], timeZone);
+    const body = res.body as { items?: CalItem[]; nextPageToken?: string } | null;
+    return { events: agendaFrom(body?.items ?? [], timeZone), cut: !!body?.nextPageToken };
   }, { notLinked: "Link Google in Family → Accounts to see the calendar here.", relink: "Google needs linking again: Family → Accounts.", prefix: "Calendar" });
 }
 
 /** Takes up time: at a time, for some time, not shown as free, not declined. */
-const busy = (e: AgendaEvent) => !e.allDay && !e.free && !e.declined && e.end > e.start;
+export const busy = (e: AgendaEvent) => !e.allDay && !e.free && !e.declined && e.end > e.start;
 
 /** Pairs of busy events that overlap, each pair once, in order of the first's start. */
 export function overlaps(events: readonly AgendaEvent[]): [AgendaEvent, AgendaEvent][] {

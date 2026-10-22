@@ -132,9 +132,10 @@ function draw(key: string, card: HTMLElement, p: ProposalView): void {
 }
 
 /**
- * A Put back refused: put back from another screen meanwhile, or its week
- * out, every card for it is drawn as it now stands. One to try again (a
- * blip, offline) keeps its message and its button.
+ * A Put back refused. Put back from another screen meanwhile: every card for
+ * it is drawn as it now stands. Its week out, or gone: only the button goes,
+ * and the reason stays. One to try again (a blip, offline) keeps its message
+ * and its button.
  */
 async function afterPutBack(key: string, id: string): Promise<void> {
   const r = (await api(key, "GET", "/api/hub/proposals").catch(() => null)) as { recent: ProposalView[] } | null;

@@ -128,7 +128,8 @@ console.log("\nthe read");
     return Response.json({ items: [{ id: "a", summary: "Standup", start: { dateTime: iso(at(9)) }, end: { dateTime: iso(at(10)) } }] });
   }) as typeof fetch;
   try {
-    const got = await agendaEvents(env, at(7), at(7) + 7 * DAY, TZ, new AbortController().signal);
+    const read = await agendaEvents(env, at(7), at(7) + 7 * DAY, TZ, new AbortController().signal);
+    const got = typeof read === "string" ? read : read.events;
     check("one read of the primary calendar", urls.length === 1 && urls[0]!.includes("/calendars/primary/events?"), urls);
     const q = new URL(urls[0]!).searchParams;
     check("single events, in order, at most 100, over the window", q.get("singleEvents") === "true" && q.get("orderBy") === "startTime" && q.get("maxResults") === "100" && q.get("timeMin") === iso(at(7)), q.toString());
