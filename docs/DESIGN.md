@@ -1274,8 +1274,10 @@ at once. Ten of each at most.
 action (lib/brief.ts) reads what its maker may reach and has set up: one read
 of the calendar for its clashes, free time and invitations left unanswered
 (lib/agenda.ts), the weather from Home Assistant, the car from Tessie's last
-state without waking it, the day's orders and a count of old promotions (ids
-only: their words are never read, lib/mail-bulk.ts), their jobs, and what
+state without waking it, the day's orders and a count of old promotions (from
+ids alone; only when an archive card is filed anew are five of them read, for
+sender and subject on the card, never for the model, lib/mail-bulk.ts), their
+jobs, and what
 waits for their OK. Each source has ten seconds, and one that fails is a line
 saying so. The document is built from those in code, so what it says of the
 day is what the sources said; a model writes only its opening, at most 240

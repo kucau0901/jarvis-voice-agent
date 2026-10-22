@@ -133,8 +133,8 @@ export const UNDO_MS = 7 * 86_400_000;
  * subject, when the fresh one would outlast it: yesterday's, from a daily
  * brief, has moments left. One with more, from a brief earlier the same day,
  * is that card again; so is one a fresh one would not outlast, as an
- * invitation's starting within the day, whose card ends at that start
- * whichever card it is.
+ * invitation's filed within a day of its start, whose card then ends at that
+ * start whichever card it is.
  */
 export const LAPSING_MS = 2 * 3_600_000;
 /** Approved by a tap and not yet run by the alarm (tick), with what the run may use. Not under prop: either. */
@@ -238,7 +238,7 @@ export class Proposals {
     if (about) {
       if (((await this.gone(input.person))[about] ?? 0) > now) return "Dismissed: not offered again for now.";
       // Waiting: that card again, unless it is all but out of time (LAPSING_MS) and a fresh one would outlast it
-      // (an invitation starting within the day ends at that start whichever card it is).
+      // (an invitation's card filed within a day of its start ends at that start, whichever card it is).
       const waiting = mine.find((p) => p.about === about && p.state === "pending");
       if (waiting && (waiting.expires - now > LAPSING_MS || waiting.expires >= expires)) return waiting;
       lapsing = waiting;
@@ -457,8 +457,8 @@ export class Proposals {
    * longer reach anything by the time it was done. One tapped meanwhile stays,
    * the audit of that tap (an approval then fails, as its maker cannot reach it).
    */
-  async forgetRun(person: string, from: string): Promise<void> {
-    for (const p of await this.list(person, Date.now())) if (p.from.id === from && p.state === "pending") await this.storage.delete(key(person, p.id));
+  async forgetRun(person: string, from: string, now: number): Promise<void> {
+    for (const p of await this.list(person, now)) if (p.from.id === from && p.state === "pending") await this.storage.delete(key(person, p.id));
   }
 
   /** Someone left the family: nothing of theirs waits, and nothing is kept. */

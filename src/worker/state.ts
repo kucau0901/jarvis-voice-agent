@@ -390,10 +390,11 @@ export class JarvisState extends DurableObject<Env> {
             dayOf(now, timeZone),
           ).catch((e) => console.warn("brief not counted:", e instanceof Error ? e.message : String(e)));
         }
-        // No longer reaching anything (removed, or their pass ended) while it was gathered: what this run filed goes,
-        // and nothing else of theirs (removing them took the rest; an ended pass keeps it).
+        // No longer reaching anything (removed, or their pass ended) while it was gathered: what this run filed and still
+        // waits goes (one tapped meanwhile stays, as its audit), and nothing else of theirs (removing them took the rest;
+        // an ended pass keeps it).
         if (!reachNow(r.grants, await this.people.personView(person).catch(() => null))) {
-          await this.proposals.forgetRun(person, from.id);
+          await this.proposals.forgetRun(person, from.id, now);
           return { ok: false, text: "whoever made it is no longer in the family" };
         }
         return { ok: true, text: b.text, proposals: b.proposals.map(cardOf) };

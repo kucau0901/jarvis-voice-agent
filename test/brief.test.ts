@@ -468,18 +468,18 @@ console.log("\nat most five cards, and one refused takes no place");
     return Response.json({ id: "p", payload: { headers: [] } });
   }) as typeof fetch;
   try {
-    // The first three invitations were dismissed: refused, they take no place, and the archive still comes.
+    // The first two invitations were dismissed: refused, they take no place. Five filed, the cap: nothing after is tried.
     await runBrief(ROUTINE, NOW, {
       ...deps({ env, house: null, jobs: [] }),
       waiting: async () => [],
       file: async (action) => {
         tried.push(String(action.args.event_id ?? action.tool));
-        if (/^inv[012]/.test(String(action.args.event_id ?? ""))) return "Dismissed: not offered again for now.";
+        if (/^inv[01]/.test(String(action.args.event_id ?? ""))) return "Dismissed: not offered again for now.";
         filed++;
-        return proposal("x");
+        return { ...proposal("x"), id: `afiled${filed}` };
       },
     }, model("x"));
-    check(`${BRIEF_MAX} filed past the dismissed ones, the archive among them`, filed === BRIEF_MAX && tried.length === BRIEF_MAX + 3 && tried.at(-1) === "mail_archive_many", tried);
+    check(`${BRIEF_MAX} filed past the dismissed ones, and none tried after the ${BRIEF_MAX}th`, filed === BRIEF_MAX && tried.length === BRIEF_MAX + 2 && !tried.includes("mail_archive_many"), tried);
   } finally {
     globalThis.fetch = real;
   }
