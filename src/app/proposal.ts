@@ -87,6 +87,7 @@ function draw(key: string, card: HTMLElement, p: ProposalView): void {
         } catch (e) {
           back.disabled = false;
           said.textContent = e instanceof Error ? e.message : String(e);
+          void afterPutBack(key, p.id);
         }
       }, "docopen");
       const row = el("div", "mdbtns");
@@ -128,6 +129,22 @@ function draw(key: string, card: HTMLElement, p: ProposalView): void {
   };
   btns.append(button(p.verb ?? "Approve", answer("approve"), "docopen primary"), button(p.about ? "Don't suggest this again" : "Not now", answer("decline"), "docopen"));
   card.appendChild(btns);
+}
+
+/**
+ * A Put back refused: put back from another screen meanwhile, or its week
+ * out, every card for it is drawn as it now stands. One to try again (a
+ * blip, offline) keeps its message and its button.
+ */
+async function afterPutBack(key: string, id: string): Promise<void> {
+  const r = (await api(key, "GET", "/api/hub/proposals").catch(() => null)) as { recent: ProposalView[] } | null;
+  if (!r) return;
+  const q = r.recent.find((x) => x.id === id);
+  if (q && !q.undone && Date.now() - (q.decidedAt ?? 0) < UNDO_MS) return;
+  for (const c of document.querySelectorAll<HTMLElement>(`[data-proposal="${CSS.escape(id)}"]`)) {
+    if (q) draw(key, c, q);
+    else c.querySelector(".mdbtns")?.remove();
+  }
 }
 
 /** A proposal decided: every card for it on this screen says so (one already saying so is left as it is: an Allow being tapped). */
