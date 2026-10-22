@@ -3,7 +3,7 @@ import { allows, type Grant } from "./scopes.ts";
 import { dayBegins, localParts, type Routine } from "./routines.ts";
 import type { Job } from "./jobs.ts";
 import type { Proposal, Weighed } from "./proposals.ts";
-import { agendaEvents, freeSlots, overlaps, staleInvites, type AgendaEvent } from "./agenda.ts";
+import { AGENDA_MAX, agendaEvents, freeSlots, overlaps, staleInvites, type AgendaEvent } from "./agenda.ts";
 import { listMailIds, mailArchiveMany, MAX_BATCH, MAX_IDS, PROMOTIONS, sampleOf } from "./mail-bulk.ts";
 import { calendarRsvp } from "../tools/calendar.ts";
 import type { Tool } from "../tools/registry.ts";
@@ -185,11 +185,15 @@ export function scheduleOf(events: readonly AgendaEvent[], span: { from: number;
 
 async function calendarSection(d: BriefDeps, span: { from: number; to: number }, now: number, read: Read): Promise<Section | null> {
   if (!allows(d.grants, "calendar") || !googleConfig(d.env, "https://jarvis.invalid")) return null;
-  // From now, whatever the day covered: an invitation for later today is still worth answering.
-  const events = await agendaEvents(d.env, now, span.from + 7 * DAY, d.timeZone, AbortSignal.timeout(SOURCE_MS)).catch(why);
+  // From now, whatever the day covered: an invitation for later today is still worth answering. A day past the last
+  // an invitation may start (staleInvites: a week), so what one runs into is read too.
+  const to = span.from + 8 * DAY;
+  const events = await agendaEvents(d.env, now, to, d.timeZone, AbortSignal.timeout(SOURCE_MS)).catch(why);
   if (typeof events === "string") return { head: "Schedule", lines: [plain(events, 160)] };
   const clashing = new Set(overlaps(events).flat().map((e) => e.id));
-  read.invites = staleInvites(events, now).map((event) => ({ event, clash: clashing.has(event.id) }));
+  // Answered only when all of its time was read: a full read stops at its last event's start.
+  const through = events.length >= AGENDA_MAX ? events[events.length - 1]!.start : to;
+  read.invites = staleInvites(events, now).filter((e) => e.end <= through).map((event) => ({ event, clash: clashing.has(event.id) }));
   return { head: "Schedule", lines: scheduleOf(events, span, d.timeZone, now) };
 }
 

@@ -78,7 +78,10 @@ export function agendaFrom(items: CalItem[], timeZone: string): AgendaEvent[] {
   return out;
 }
 
-/** The primary calendar from `from` to `to`, at most 100 events, or a sentence saying why not. */
+/** At most this many events in one read. */
+export const AGENDA_MAX = 100;
+
+/** The primary calendar from `from` to `to`, at most AGENDA_MAX events, or a sentence saying why not. */
 export async function agendaEvents(env: Env, from: number, to: number, timeZone: string, signal: AbortSignal): Promise<AgendaEvent[] | string> {
   return guardTool(async () => {
     const cfg = googleConfig(env, "https://jarvis.invalid");
@@ -88,7 +91,7 @@ export async function agendaEvents(env: Env, from: number, to: number, timeZone:
       timeMax: new Date(to).toISOString(),
       singleEvents: "true",
       orderBy: "startTime",
-      maxResults: "100",
+      maxResults: String(AGENDA_MAX),
     });
     const res = await call(env, cfg, `/calendars/primary/events?${p}`, { base: CALENDAR, signal });
     const problem = explain(res);

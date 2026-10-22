@@ -141,8 +141,9 @@ async function afterPutBack(key: string, id: string): Promise<void> {
   if (!r) return;
   const q = r.recent.find((x) => x.id === id);
   if (q && !q.undone && Date.now() - (q.decidedAt ?? 0) < UNDO_MS) return;
+  // Put back from elsewhere: drawn as it stands. Otherwise (its week out, or gone) only the button goes, and why stays.
   for (const c of document.querySelectorAll<HTMLElement>(`[data-proposal="${CSS.escape(id)}"]`)) {
-    if (q) draw(key, c, q);
+    if (q?.undone) draw(key, c, q);
     else c.querySelector(".mdbtns")?.remove();
   }
 }

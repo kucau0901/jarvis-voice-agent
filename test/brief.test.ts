@@ -254,7 +254,7 @@ console.log("\nthe calendar it reads");
   try {
     await runBrief(ROUTINE, at(18), deps(), model("x"));
     const q = new URL(w.urls.find((u) => u.includes("/calendars/primary/events"))!).searchParams;
-    check("from now, for a week past the day covered: tonight's invitations and the week's", q.get("timeMin") === iso(at(18)) && q.get("timeMax") === iso(dayCovered(at(18), TZ).from + 7 * DAY), q.toString());
+    check("from now, to a day past the week an invitation may start in: tonight's invitations, the week's, and what they run into", q.get("timeMin") === iso(at(18)) && q.get("timeMax") === iso(dayCovered(at(18), TZ).from + 8 * DAY), q.toString());
   } finally {
     w.restore();
   }
@@ -428,6 +428,51 @@ console.log("\nfiled for their tap, before the model, once");
     check("without asking, nothing is put to them: nothing filed at all", !order.some((o) => o.startsWith("file:")) && device.proposals.length === 0 && !device.text.includes("## For your OK"), { order, text: device.text });
   } finally {
     globalThis.fetch = real;
+  }
+}
+
+console.log("\na clash just past the week is seen, and one not wholly read is not answered");
+{
+  // Google gives only what starts before timeMax, and at most maxResults.
+  const google = (items: Record<string, unknown>[]) => {
+    const real = globalThis.fetch;
+    globalThis.fetch = (async (url: string | URL | Request) => {
+      const u = String(url instanceof Request ? url.url : url);
+      if (u.includes("oauth2")) return Response.json({ access_token: "access", expires_in: 3600 });
+      if (u.includes("/calendars/primary/events")) {
+        const q = new URL(u).searchParams;
+        const [from, to, max] = [Date.parse(q.get("timeMin")!), Date.parse(q.get("timeMax")!), Number(q.get("maxResults"))];
+        const within = items.filter((e) => Date.parse((e.end as { dateTime: string }).dateTime) > from && Date.parse((e.start as { dateTime: string }).dateTime) < to);
+        return Response.json({ items: within.slice(0, max) });
+      }
+      if (u.includes("/users/me/messages?")) return Response.json({ messages: [] });
+      throw new Error(`nothing else reaches the network: ${u}`);
+    }) as typeof fetch;
+    return () => void (globalThis.fetch = real);
+  };
+  const filed: Record<string, unknown>[] = [];
+  const run = (now: number) => runBrief(ROUTINE, now, { ...deps({ env: { ...GOOGLE, TIMEZONE: TZ } as never, house: null, jobs: [] }), waiting: async () => [], file: async (action) => (filed.push(action.args), proposal("x")) }, model("x"));
+  // A 09:00 brief on the 21st: an invitation for the 28th, 08:30 to 09:30, and their own standup at 09:00, past the week.
+  const invite = { id: "inv28abcd", summary: "Breakfast", start: { dateTime: iso(at(8, 30, 28)) }, end: { dateTime: iso(at(9, 30, 28)) }, created: iso(at(9) - 5 * DAY), organizer: { displayName: "Sam" }, attendees: [{ self: true, responseStatus: "needsAction" }] };
+  const standup = { id: "std28abcd", summary: "Standup", start: { dateTime: iso(at(9, 0, 28)) }, end: { dateTime: iso(at(9, 15, 28)) }, organizer: { self: true } };
+  let restore = google([invite, standup]);
+  try {
+    await run(at(9));
+    check("the meeting it runs into is read, so it is declined", filed.length === 1 && filed[0]!.response === "declined", filed);
+  } finally {
+    restore();
+  }
+  // A full read (100 events) stops early: an invitation ending past the last read is not answered at all.
+  filed.length = 0;
+  // Read, but running past the last event read: what it runs into might not have been.
+  const long = { ...invite, id: "inv22abcd", start: { dateTime: iso(at(10, 0, 22)) }, end: { dateTime: iso(at(12, 0, 22)) } };
+  const busy = Array.from({ length: 99 }, (_, i) => ({ id: `busy${String(i).padStart(3, "0")}`, summary: "x", start: { dateTime: iso(at(10, 1, 22) + i * 60_000) }, end: { dateTime: iso(at(10, 1, 22) + i * 60_000 + 30_000) }, organizer: { self: true } }));
+  restore = google([long, ...busy]);
+  try {
+    await run(at(9));
+    check("not wholly read: not put to them", filed.length === 0, filed);
+  } finally {
+    restore();
   }
 }
 
