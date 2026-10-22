@@ -198,7 +198,7 @@ of every release, and in the [README](README.md#updating).
 
 ### Changed
 
-- **A cleaner chat.** The chat scrolls with no scrollbar, as Hark's does,
+- **A cleaner chat.** The chat and Home scroll with no scrollbar, as Hark's do,
   and the question pinned at the top while its answer is read is just its
   rounded bubble, with no band behind it.
 - **Jobs no longer only say what they would do:** they propose it, for your

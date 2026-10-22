@@ -1070,8 +1070,10 @@
   body.home #status { position: fixed; z-index: 20; left: 16px; right: 16px; top: auto; max-width: none; min-height: 0;
     bottom: calc(12px + env(safe-area-inset-bottom)); text-align: center; font-size: 13px;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap; pointer-events: none; }
+  /* It scrolls with no bar, as the chat does. */
   body.home #home { --fold: 190px; display: block; width: min(1240px, 100%); flex: 1; min-height: 0;
-    overflow-y: auto; overscroll-behavior: contain; padding-bottom: 8px; }
+    overflow-y: auto; overscroll-behavior: contain; padding-bottom: 8px; scrollbar-width: none; }
+  body.home #home::-webkit-scrollbar { display: none; }
   /* Laid out by ui/HomeWall.ts: columns filled across then down, so a panel dropped on another's place takes it; a big one across. */
   #home .hwall, #home .hcol { display: grid; gap: 16px; align-content: start; min-width: 0; }
   #home .hcols { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 16px; align-items: start; }
