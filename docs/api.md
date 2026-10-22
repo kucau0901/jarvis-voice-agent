@@ -543,8 +543,12 @@ as a draft) is proposed instead, and its result alert carries them as
 ("Lock", "Send"; absent, Approve). Only the person who started it can approve
 one, signed in, with `POST /api/hub/proposals/answer {id, answer: "approve" |
 "decline" | "undo"}`; an approved one comes back `running`, and Jarvis makes the call
-in the background. `GET /api/hub/proposals` is `{open, recent, allowed}`, and
-says what came of it; each proposal may carry `verb`, `about` (a brief's card,
+in the background. `GET /api/hub/proposals` is `{open, recent, allowed, later}`, and
+says what came of it. `later` is what waits to be put to them: `[{id, says,
+why, risk, when, verb?, body?}]`, `when` in words ("When you get home", "30
+min before “Dentist”, Thu 23 Oct, 10:00"); it cannot be approved before
+then, and `answer: "decline"` with its id drops it. Each proposal may carry
+`release` (what it waited for, once it was put to them), `verb`, `about` (a brief's card,
 whose decline is remembered: the next brief does not offer it again for 30
 days), `undoes` and `undone` (Put back). `"undo"` is Put back on archived
 promotions, done by a tap within the week: what undoes it comes back
@@ -624,7 +628,9 @@ rest of the day; from then, tomorrow. Two each at most. What waits for their
 OK, five at most as its For your OK lists them, comes with the alert as
 `proposals`: first what it puts to them for a tap (answering an invitation
 left unanswered three days, archiving 20 or more promotions older than two
-days), then the newest of the rest.
+days), then the newest of the rest. With car control and a car of theirs to
+drive, it also stages starting the car's climate 30 minutes before the
+day's first event with a place, put to them then (one for each event).
 `GET /api/v1/routines` lists them with plain-English `when` and `does`, the
 next run and the last result; `PATCH` takes `{id, enabled?, name?}`; `DELETE
 ?id=` removes one; `POST /api/v1/routines/run {id}` runs one now.

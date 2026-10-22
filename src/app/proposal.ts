@@ -68,8 +68,10 @@ function draw(key: string, card: HTMLElement, p: ProposalView): void {
     ...(p.body ? [el("div", "draftbody", p.body)] : []),
     el("small", "pagesaid", p.state === "pending" ? `${p.why} · ${left(p.expires)}` : p.why),
   );
-  const done = p.state === "declined" && p.about ? "Not suggested again." : SAID[p.state];
-  const said = el("small", "pagesaid", done + (p.by === "standing" ? " without asking (you allow it)" : "") + (p.outcome?.text ? `: ${p.outcome.text}` : ""));
+  // Not done, with why (an errand for later not needed, its event cancelled): the why is the whole line.
+  const why = (p.state === "expired" || p.state === "withdrawn") && p.outcome?.text;
+  const done = why || (p.state === "declined" && p.about ? "Not suggested again." : SAID[p.state]);
+  const said = el("small", "pagesaid", done + (p.by === "standing" ? " without asking (you allow it)" : "") + (!why && p.outcome?.text ? `: ${p.outcome.text}` : ""));
   if (p.state !== "pending") {
     card.appendChild(said);
     if (p.state === "running") watch(key, p.id);
@@ -216,18 +218,55 @@ export function labelOf(category: string): string {
   return tool === "car_command" ? `Car: ${words}` : tool === "mail_manage" ? `Mail: ${words}` : tool === "calendar_add" ? "Calendar: add an event" : category;
 }
 
+/** An errand for later (src/worker/lib/later.ts), as GET /api/hub/proposals lists it: no card yet, put to them then. */
+interface LaterView {
+  id: string;
+  says: string;
+  why: string;
+  when: string;
+  risk: ProposalView["risk"];
+  body?: string;
+}
+
+/** One errand for later: what it is, when it will be asked, and X, not wanted after all. */
+function laterCard(key: string, s: LaterView, reload: () => Promise<void>): HTMLElement {
+  const card = el("div", "pagecard proposalcard");
+  card.append(
+    el("span", "doctag", `Later · ${s.when}${s.risk === "irreversible" ? " · can't be undone" : ""}`),
+    el("b", "doctitle", s.says),
+    ...(s.body ? [el("div", "draftbody", s.body)] : []),
+    el("small", "pagesaid", `${s.why} · Jarvis asks you then`),
+  );
+  const btns = el("div", "mdbtns");
+  const said = el("small", "pagesaid", "");
+  btns.appendChild(button("Don't do this", async () => {
+    for (const b of btns.querySelectorAll("button")) b.disabled = true;
+    try {
+      await api(key, "POST", "/api/hub/proposals/answer", { id: s.id, answer: "decline" });
+      await reload();
+    } catch (e) {
+      for (const b of btns.querySelectorAll("button")) b.disabled = false;
+      said.textContent = e instanceof Error ? e.message : String(e);
+      card.appendChild(said);
+    }
+  }, "docopen"));
+  card.appendChild(btns);
+  return card;
+}
+
 /**
- * The Jobs panel's part (ui/Jobs.ts): what is waiting for an OK, the kinds
- * of thing allowed without asking (with Stop), and what was decided lately,
- * each only when there is something to show.
+ * The Jobs panel's part (ui/Jobs.ts): what is waiting for an OK, what waits
+ * for later (with X), the kinds of thing allowed without asking (with Stop),
+ * and what was decided lately, each only when there is something to show.
  */
 export function proposalsBox(key: string): { el: HTMLElement; load(): Promise<void> } {
   const box = el("div", "proposals");
   const load = async (): Promise<void> => {
-    const r = (await api(key, "GET", "/api/hub/proposals").catch(() => null)) as { open: ProposalView[]; recent: ProposalView[]; allowed: string[] } | null;
+    const r = (await api(key, "GET", "/api/hub/proposals").catch(() => null)) as { open: ProposalView[]; recent: ProposalView[]; allowed: string[]; later?: LaterView[] } | null;
     box.replaceChildren();
     if (!r) return;
     if (r.open.length) box.append(el("h3", "", "Waiting for your OK"), ...r.open.map((p) => proposalCard(key, p)));
+    if (r.later?.length) box.append(el("h3", "", "Later"), ...r.later.map((s) => laterCard(key, s, load)));
     if (r.allowed.length) {
       box.appendChild(el("h3", "", "Allowed without asking"));
       for (const c of r.allowed) {

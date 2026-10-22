@@ -1128,6 +1128,22 @@ days, from the stored record, never the request. A job's "Not now" is not
 remembered, so a dismissal never blocks what the person or their job asks
 for. Each card's button says what it does ("Lock", "Send", "Archive"), and an
 approval checks the button against the stored call as it checks its words.
+A call may also be for later (`lib/later.ts`): a job's held tool takes
+`later` (at a time, before an event it names by its start, or on getting
+home or leaving), which code turns into a release, finding the event in
+their calendar itself, and a brief stages the car's climate before the
+day's first event with a place (one for each event; its X stops any for 30
+days). Until then it is kept apart (`propstage:`), so nothing lists it as
+waiting, nothing approves it, and a standing permission never makes it. The
+object's alarm puts it to them (`Proposals.tick`, after the approved calls):
+an event read again first (moved once, it waits for the new time; cancelled
+or moved again, it is withdrawn), its person still in the family, its call
+still as its card says, its subject not dismissed. One Home Assistant
+template a minute looks at everyone waited on for home, and a look that
+fails is made less often, as a watch's is; arriving is home after away, so
+someone home already is not "arriving". The card is written before its
+"Ready now" alert is sent, so a retried alarm never says it twice, and one
+whose time has passed is kept as not needed, unsaid.
 Routines otherwise act as they always have: they are what the person set up
 to happen, and nothing here stands in front of the house when it is asked
 directly. The decided proposal is the audit: who, when, and what came of it.

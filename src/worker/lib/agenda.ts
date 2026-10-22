@@ -105,6 +105,28 @@ export async function agendaEvents(env: Env, from: number, to: number, timeZone:
   }, { notLinked: "Link Google in Family → Accounts to see the calendar here.", relink: "Google needs linking again: Family → Accounts.", prefix: "Calendar" });
 }
 
+/** The event that starts then (within a minute), as a job named it by its start: an errand before it (lib/later.ts); why not, in words. */
+export async function eventNear(env: Env, start: number, timeZone: string, signal: AbortSignal): Promise<AgendaEvent | string> {
+  const got = await agendaEvents(env, start - 60_000, start + 60_000, timeZone, signal);
+  if (typeof got === "string") return got;
+  return got.events.find((e) => !e.allDay && !e.declined && Math.abs(e.start - start) <= 60_000) ?? "No event in their calendar starts then: give its start as calendar_check gave it.";
+}
+
+/** One event as their calendar has it now, for an errand before it: its start, "gone", or null when it could not be read. */
+export async function eventById(env: Env, id: string, timeZone: string, signal: AbortSignal): Promise<{ start: number } | "gone" | null> {
+  const cfg = googleConfig(env, "https://jarvis.invalid");
+  if (!cfg || !/^[A-Za-z0-9_]{5,1024}$/.test(id)) return null;
+  try {
+    const res = await call(env, cfg, `/calendars/primary/events/${encodeURIComponent(id)}`, { base: CALENDAR, signal });
+    if (res.status === 404 || res.status === 410) return "gone";
+    if (explain(res)) return null;
+    const [e] = agendaFrom([res.body as CalItem], timeZone);
+    return !e || e.declined ? "gone" : { start: e.start };
+  } catch {
+    return null;
+  }
+}
+
 /** Takes up time: at a time, for some time, not shown as free, not declined. */
 export const busy = (e: AgendaEvent) => !e.allDay && !e.free && !e.declined && e.end > e.start;
 

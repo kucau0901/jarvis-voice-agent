@@ -105,6 +105,12 @@ same way, with **Don't suggest this again** in place of Not now: tapped, the
 next brief leaves that one out for 30 days. Archived promotions can be put
 back for a week, from the card.
 
+Some of what a job or a brief proposes is for later: at a time, before a
+calendar event, or when you get home or leave (that needs Home Assistant and
+your Home Assistant person in Family). It waits in Jobs → Later, where X
+drops it, and comes as a **Ready now** alert with its card when its time
+comes.
+
 ## Check that it works
 
 1. On your phone, close Jarvis and lock the screen.

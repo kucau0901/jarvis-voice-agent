@@ -34,6 +34,13 @@ of every release, and in the [README](README.md#updating).
   suggest this again** on a brief's card stops it being offered for 30 days.
   Every card's button now says what it does (Lock, Send, Add, Archive), and
   Now shows up to five.
+- **Errands for later.** What a background job proposes can wait for when
+  you want it: at a time, before a calendar event, or when you get home or
+  leave (with Home Assistant and your Home Assistant person in Family). It
+  comes as a **Ready now** alert with its card then, checked again first;
+  meanwhile it waits in Jobs → Later, where X drops it. A brief also lines up
+  starting the car's climate half an hour before your first event with a
+  place, if you can drive the car.
 - **Jobs ask before they act.** A background job that would do something
   (lock the car, put an event in your calendar, archive or star an email,
   send an email it wrote, a Home Assistant call) now proposes it: its result

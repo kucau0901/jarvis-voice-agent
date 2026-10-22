@@ -8,7 +8,9 @@ import { listMailIds, mailArchiveMany, MAX_BATCH, MAX_IDS, PROMOTIONS, sampleOf 
 import { calendarRsvp } from "../tools/calendar.ts";
 import type { Tool } from "../tools/registry.ts";
 import { findMail } from "../tools/gmail.ts";
-import { carSnapshot, distanceIn, pickCar } from "../tools/tessie.ts";
+import { carCommand, carSnapshot, distanceIn, pickCar } from "../tools/tessie.ts";
+import { drivable } from "./leave.ts";
+import { isStaged, LEAD_MIN, MIN_AHEAD_MS, whenInline, type Release, type Staged } from "./later.ts";
 import { WEATHER_TEMPLATE, weatherSaid } from "./sky.ts";
 import { googleConfig } from "./google.ts";
 import { renderTemplate, type HaConfig } from "./ha.ts";
@@ -39,7 +41,9 @@ import { DEFAULT_ROUTER_MODEL } from "./router-model.ts";
  * one they dismissed or tried lately is not filed again, and one still
  * waiting is that card again, unless it has under LAPSING_MS left and a
  * fresh one would outlast it), so the cards wait on Now whatever becomes of
- * the opening.
+ * the opening. One more is staged for later (lib/later.ts): starting the
+ * car's climate LEAD_MIN before the day's first event with a place, put to
+ * them then, one for each event (CLIMATE).
  */
 
 export const SOURCE_MS = 10_000;
@@ -77,8 +81,8 @@ export interface BriefDeps {
   jobs: readonly Job[];
   /** Their proposals waiting for an answer (lib/proposals.ts), read once this brief's own are filed. */
   waiting(): Promise<readonly Proposal[]>;
-  /** A call code chose, filed for their tap (lib/proposals.ts add), `detail` read only if it is filed anew; why not, in words. */
-  file(action: Proposal["action"], weighed: Weighed, detail?: () => Promise<string | null>): Promise<Proposal | string>;
+  /** A call code chose, filed for their tap (lib/proposals.ts add), `detail` read only if it is filed anew, or staged for `release`; why not, in words. */
+  file(action: Proposal["action"], weighed: Weighed, detail?: () => Promise<string | null>, release?: Release): Promise<Proposal | string>;
 }
 
 export interface Brief {
@@ -99,7 +103,12 @@ export interface Candidate {
 interface Read {
   invites: { event: AgendaEvent; clash: boolean }[];
   promotions: readonly string[] | null;
+  /** The day's first event with a place to drive to, far enough ahead to start the car's climate before it. */
+  place?: AgendaEvent;
 }
+
+/** The climate errand's subject: dismissed, no climate is offered for GONE_MS (lib/proposals.ts); one for each event. */
+export const CLIMATE = "car:climate";
 
 type Ask = (input: string, instructions: string) => Promise<{ text: string; input: number; output: number; model?: string }>;
 
@@ -202,6 +211,7 @@ async function calendarSection(d: BriefDeps, span: { from: number; to: number },
   // One that cannot clash (all day, shown as free) needs nothing more read.
   const through = cut ? (events.at(-1)?.start ?? now) : to;
   read.invites = staleInvites(events, now).filter((e) => !busy(e) || e.end <= through).map((event) => ({ event, clash: clashing.has(event.id) }));
+  read.place = events.find((e) => busy(e) && e.start < span.to && e.start - LEAD_MIN * 60_000 >= now + MIN_AHEAD_MS && drivable(plain(e.location, 200)));
   return { head: "Schedule", lines: scheduleOf(events, span, d.timeZone, now, through) };
 }
 
@@ -290,12 +300,29 @@ export function jobsSection(jobs: readonly Job[], since: number): Section | null
 }
 
 /** What waits for their OK, as each card says it, so a phone's alert shows it too. */
-export function waitingSection(waiting: readonly Proposal[]): Section | null {
-  if (!waiting.length) return null;
+export function waitingSection(waiting: readonly Proposal[], later: readonly Staged[] = [], timeZone = "UTC"): Section | null {
+  if (!waiting.length && !later.length) return null;
   // Whole, as on its card: cut short, its last words could be the ones that matter (lib/proposals.ts).
   const lines = waiting.slice(0, MAX_LISTED).map((p) => `- ${plain(p.says, Infinity)}`);
   if (waiting.length > MAX_LISTED) lines.push(`- and ${waiting.length - MAX_LISTED} more in Jobs`);
+  // Staged by this brief: no card yet, so said, with when it will be asked.
+  for (const s of later) lines.push(`- Later (${whenInline(s.release, timeZone)}): ${plain(s.says, Infinity)}`);
   return { head: "For your OK", lines };
+}
+
+/** The car's climate, started LEAD_MIN before an event with a place: what is staged for it, if they may and the car is theirs to drive. */
+function climateFor(d: BriefDeps, e: AgendaEvent): { action: Proposal["action"]; weighed: Weighed; release: Release } | null {
+  if (!allows(d.grants, "car.control")) return null;
+  const picked = pickCar(d.env);
+  if (typeof picked === "string" || picked.car?.level === "see") return null;
+  const args = { command: "start_climate", value: null, temperature: null, percent: null, car: null };
+  const weighed = carCommand.propose?.(args, d.env);
+  if (!weighed) return null;
+  return {
+    action: { tool: carCommand.name, args },
+    weighed: { ...weighed, about: CLIMATE },
+    release: { event: { id: e.id, start: e.start, title: plain(e.summary, 60) || "(no title)", leadMin: LEAD_MIN } },
+  };
 }
 
 export async function runBrief(r: Routine, now: number, d: BriefDeps, ask?: Ask): Promise<Brief> {
@@ -320,11 +347,19 @@ export async function runBrief(r: Routine, now: number, d: BriefDeps, ask?: Ask)
       else own.add(p.id);
     }
   }
+  // The car's climate before the day's first event with a place, staged for then (lib/later.ts).
+  const later: Staged[] = [];
+  const climate = asks && read.place ? climateFor(d, read.place) : null;
+  if (climate) {
+    const p = await d.file(climate.action, climate.weighed, undefined, climate.release).catch((e) => `not staged: ${why(e)}`);
+    if (typeof p === "string") console.warn(`brief: climate not staged: ${p}`);
+    else if (isStaged(p)) later.push(p);
+  }
   // Its own cards first (one listed again can be older than a job's since), then whatever else waits.
   const all = asks ? await d.waiting() : [];
   const waiting = [...all.filter((p) => own.has(p.id)), ...all.filter((p) => !own.has(p.id))];
   // What waits for their OK first: a long day is cut from the end, and that is the part to act on.
-  const sections = [waitingSection(waiting), ...gathered, asks ? jobsSection(d.jobs, since) : null].filter((s): s is Section => s !== null);
+  const sections = [waitingSection(waiting, later, d.timeZone), ...gathered, asks ? jobsSection(d.jobs, since) : null].filter((s): s is Section => s !== null);
 
   const title = `# ${span.tomorrow ? "Tomorrow, " : ""}${dateSaid(span.tomorrow ? span.from : now, d.timeZone, "long")}`;
   const body = sections.length

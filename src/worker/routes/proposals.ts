@@ -4,11 +4,15 @@ import { grantsOf, personOf, type Principal } from "../lib/auth.ts";
 import { stateStub } from "../lib/state-client.ts";
 import { personView } from "../lib/hub-client.ts";
 import { PROPOSAL_ID, UNDO_MS, viewOf, weigh } from "../lib/proposals.ts";
+import { whenSaid } from "../lib/later.ts";
+import { localeOf } from "../lib/locale.ts";
 import { notAsShown } from "../lib/approval.ts";
 import { baseTools } from "../tools/registry.ts";
 
 /**
- *   GET    /api/hub/proposals            {open, recent, allowed}: what the person's jobs proposed (lib/proposals.ts)
+ *   GET    /api/hub/proposals            {open, recent, allowed, later}: what the person's jobs and briefs proposed
+ *                                         (lib/proposals.ts); `later`, what waits to be put to them (lib/later.ts),
+ *                                         each with when, in words, and declined as a card is
  *   POST   /api/hub/proposals/answer     {id, answer: "approve" | "decline" | "undo"}: approved, it comes back running,
  *                                         and the object's alarm makes the call (Proposals.tick); GET says what came of it.
  *                                         Declined, a brief's card is not offered again for a while. "undo" is Put back on
@@ -35,13 +39,15 @@ export async function handleProposals(req: Request, env: Env, principal: Princip
 
   if (url.pathname === "/api/hub/proposals") {
     if (req.method !== "GET") return err(405, "GET only");
-    const [all, allowed] = await Promise.all([state.proposalsOf(me, now), state.proposalAllowed(me)]);
+    const [all, allowed, staged] = await Promise.all([state.proposalsOf(me, now), state.proposalAllowed(me), state.proposalsLater(me)]);
+    const tz = localeOf(env).timeZone;
+    const later = staged.map(({ id, says, why, verb, risk, body, release }) => ({ id, says, why, risk, when: whenSaid(release, tz), ...(verb ? { verb } : {}), ...(body ? { body } : {}) }));
     // Newest decided first: one just approved is listed while its call is made, however long it waited (src/app/proposal.ts watch).
     const decided = all.filter((p) => p.state !== "pending").sort((a, b) => (b.decidedAt ?? b.createdAt) - (a.decidedAt ?? a.createdAt));
     const newest = decided.slice(0, RECENT);
     // And whatever can still be put back, however far down: its card offers Put back all week.
     const back = decided.slice(RECENT).filter((p) => p.state === "done" && p.by === "tap" && p.action.tool === "mail_archive_many" && !p.undone && now - (p.decidedAt ?? p.createdAt) < UNDO_MS);
-    return json({ open: all.filter((p) => p.state === "pending").map(viewOf), recent: [...newest, ...back].map(viewOf), allowed });
+    return json({ open: all.filter((p) => p.state === "pending").map(viewOf), recent: [...newest, ...back].map(viewOf), allowed, later });
   }
 
   if (url.pathname === "/api/hub/proposals/allow") {

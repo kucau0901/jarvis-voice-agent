@@ -12,6 +12,7 @@ import type { Specialty } from "./specialties.ts";
 import type { StoredPage } from "./pages.ts";
 import type { Episode } from "./episodes.ts";
 import type { Proposal, ProposalInput } from "./proposals.ts";
+import type { Staged } from "./later.ts";
 import { addToDay, budgetStep, emptyDay, report, spentOf, type DayTotals, type UsageEntry, type UsageReport } from "./usage.ts";
 import { fromOthers, keep, type SharedTurn } from "./shared.ts";
 import { personOfWho } from "./context.ts";
@@ -649,6 +650,7 @@ interface ProposalApi {
   proposalAdd(input: ProposalInput, now: number): Promise<Proposal | string>;
   proposalApprove(person: string, id: string, scopesNow: readonly Grant[] | null | undefined, approver: readonly Grant[], now: number): Promise<Proposal | string>;
   proposalDecline(person: string, id: string, now: number): Promise<Proposal | string>;
+  proposalsLater(person: string): Promise<Staged[]>;
   proposalUndo(person: string, id: string, scopesNow: readonly Grant[] | null | undefined, approver: readonly Grant[], now: number): Promise<Proposal | string>;
   proposalFinish(person: string, id: string, outcome: { ok: boolean; text: string }, now: number): Promise<Proposal | null>;
   proposalAllowed(person: string): Promise<string[]>;

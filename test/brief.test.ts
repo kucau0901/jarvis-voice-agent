@@ -514,6 +514,52 @@ console.log("\na clash just past the week is seen, and one not wholly read is no
   }
 }
 
+console.log("\nthe car's climate, staged before the day's first event with a place");
+{
+  const items = (events: Record<string, unknown>[]) => {
+    const real = globalThis.fetch;
+    globalThis.fetch = (async (url: string | URL | Request) => {
+      const u = String(url instanceof Request ? url.url : url);
+      if (u.includes("oauth2")) return Response.json({ access_token: "access", expires_in: 3600 });
+      if (u.includes("/calendars/primary/events")) return Response.json({ items: events });
+      if (u.includes("/users/me/messages?")) return Response.json({ messages: [] });
+      if (u.startsWith("https://api.tessie.com/")) return Response.json({ charge_state: { battery_level: 64 } });
+      throw new Error(`nothing else reaches the network: ${u}`);
+    }) as typeof fetch;
+    return () => void (globalThis.fetch = real);
+  };
+  const event = (id: string, h: number, m: number, location: string) => ({ id, summary: "Dentist", location, start: { dateTime: iso(at(h, m)) }, end: { dateTime: iso(at(h + 1, m)) }, organizer: { self: true } });
+  const staged: { action: Proposal["action"]; about?: string; release?: unknown }[] = [];
+  const run = async (over: Partial<BriefDeps>, events: Record<string, unknown>[]) => {
+    staged.length = 0;
+    const restore = items(events);
+    try {
+      return await runBrief(ROUTINE, NOW, {
+        ...deps({ house: null, jobs: [], ...over }),
+        waiting: async () => [],
+        file: async (action, weighed, _d, release) => {
+          if (release) staged.push({ action, about: weighed.about, release });
+          return release ? { ...proposal(weighed.says), id: "astaged", release, stagedAt: NOW, until: at(10) } as Proposal : "x";
+        },
+      }, model("x"));
+    } finally {
+      restore();
+    }
+  };
+  // Too soon (07:20, less than half an hour and a moment away), then a video call, then the dentist at 10:00.
+  const b = await run({}, [event("soon1abc", 7, 20, "12 Example Road"), event("call1abc", 8, 30, "https://meet.example.com/abc"), event("dent1abc", 10, 0, "12 Example Road")]);
+  const c = staged[0];
+  check("staged for the first event to drive to, half an hour before it", staged.length === 1 && c!.action.tool === "car_command" && c!.action.args.command === "start_climate" && c!.about === "car:climate" &&
+    JSON.stringify(c!.release) === JSON.stringify({ event: { id: "dent1abc", start: at(10), title: "Dentist", leadMin: 30 } }), staged);
+  check("and said under For your OK, with when", b.text.includes("- Later (30 min before “Dentist”, Wed 21 Oct, 10:00): Car: start climate"), b.text);
+  await run({ grants: ["ask", "calendar", "car.read"] }, [event("dent1abc", 10, 0, "12 Example Road")]);
+  check("not without car control", staged.length === 0);
+  await run({}, [event("call1abc", 10, 0, "https://meet.example.com/abc")]);
+  check("not for a video call", staged.length === 0);
+  await run({ env: { ...GOOGLE, ...TESSIE, TIMEZONE: TZ, JARVIS_CARS: JSON.stringify([{ id: "c1", name: "Ioniq 5", level: "see", mine: false, vin: "VIN_A", token: "t" }]) } as never }, [event("dent1abc", 10, 0, "12 Example Road")]);
+  check("not with a car shared only to see", staged.length === 0);
+}
+
 console.log("\nits own cards first on its alert, however old");
 {
   const own = { ...proposal("Calendar: accept “Offsite”"), id: "aown" };

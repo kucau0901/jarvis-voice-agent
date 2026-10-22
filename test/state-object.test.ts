@@ -207,6 +207,16 @@ console.log("\nproposals, through the object (lib/proposals.ts)");
     const back = await jarvis.proposalUndo("u_ana", archived.id, ["*"], ["*"], now);
     check("Put back through the object: its undo running, and the alarm set to make it", typeof back !== "string" && back.undoes === archived.id && back.action.tool === "mail_inbox_many" && back.state === "running" && alarmAt !== null, { back, alarmAt });
   } else check("an archive to put back was filed", false, archived);
+  // For later, through the object: staged, the alarm set for its time; for getting home, refused without the house.
+  if (typeof tidy !== "string") {
+    alarmAt = null;
+    const soon = now + 3 * 3_600_000;
+    const later = await jarvis.proposalAdd({ who: "u_ana", person: "u_ana", from: { kind: "job", id: tidy.id, title: "x" }, action: { tool: "car_command", args: { command: "lock" } }, weighed: { risk: "reversible", says: "Car: lock", category: "car_command:lock" }, grants: ["*"], release: { at: soon } }, now);
+    // Set again (rearm): to the soonest of everything due, here a job's step, which is sooner than the errand.
+    check("staged through the object: for later, and the alarm set again", typeof later !== "string" && (await jarvis.proposalsLater("u_ana")).some((s) => s.id === later.id) && alarmAt !== null && alarmAt <= soon, { alarmAt });
+    const home = await jarvis.proposalAdd({ who: "u_ana", person: "u_ana", from: { kind: "job", id: tidy.id, title: "x" }, action: { tool: "car_command", args: { command: "unlock" } }, weighed: { risk: "irreversible", says: "Car: unlock" }, grants: ["*"], release: { home: "arrive" } }, now);
+    check("for when they get home, with no house to say so: refused, with why", typeof home === "string" && /cannot tell when they get home/.test(home), home);
+  }
   // Not left running: at most three jobs run at once, and those below need theirs.
   if (typeof tidy !== "string") await jarvis.cancelJob(tidy.id);
   await jarvis.forgetMember("u_ana");

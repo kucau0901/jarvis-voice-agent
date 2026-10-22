@@ -266,16 +266,20 @@ console.log("\nwhat a job is handed");
   const mcp: Tool = { name: "home__ha_call_service", description: "Call a service.", parameters: { type: "object" }, strict: false, run: async () => ((ranReal = true), "ok") };
   const out = held([read, real, mcp], async (action, w, ctx) => (filedCalls.push({ action, w, grants: ctx.grants }), "filed"), async () => {});
   check("one that reads: the same tool", out[0] === read);
-  check("one that acts: the same name and arguments, said to only propose", out[1]!.name === "car_command" && out[1]!.parameters === carCommand.parameters && out[1]!.description.startsWith(PROPOSE_ONLY) && out[2]!.strict === false);
-  const said = await out[1]!.run({ ...lock.args }, { grants: ["car.control"] } as never);
-  await out[2]!.run({ domain: "light", service: "turn_on", entity_id: "light.porch" }, { grants: ["home"] } as never);
+  const params = out[1]!.parameters as { properties: Record<string, unknown>; required: string[] };
+  const own = carCommand.parameters as { properties: Record<string, unknown>; required: string[] };
+  check("one that acts: the same name and arguments, and later, said to only propose",
+    out[1]!.name === "car_command" && Object.keys(own.properties).every((k) => params.properties[k] === own.properties[k]) && "later" in params.properties &&
+    JSON.stringify(params.required) === JSON.stringify([...own.required, "later"]) && out[1]!.description.startsWith(PROPOSE_ONLY) && out[2]!.strict === false, params);
+  const said = await out[1]!.run({ ...lock.args, later: null }, { env: NO_CARS, grants: ["car.control"] } as never);
+  await out[2]!.run({ domain: "light", service: "turn_on", entity_id: "light.porch" }, { env: NO_CARS, grants: ["home"] } as never);
   check("its run files the call, and never makes it", !ranReal && filedCalls.length === 2 && said === "filed" && JSON.stringify((filedCalls[0] as { action: unknown }).action) === JSON.stringify({ tool: "car_command", args: lock.args }), filedCalls);
   const bodies: (string | undefined)[] = [];
   const looked: Tool = { ...mailManage, detail: async () => "From: Sam\nSubject: Dinner", run: async () => "x" };
   const [hm] = held([looked], async (_a, _w, _c, body) => (bodies.push(body), "filed"), async () => {});
-  await hm!.run({ message_id: "199a2b3c4d5e6f70", action: "archive" }, { env: NO_CARS } as never);
+  await hm!.run({ message_id: "199a2b3c4d5e6f70", action: "archive", later: null }, { env: NO_CARS } as never);
   check("what a tool looks up of the thing it acts on goes on the card", bodies[0] === "From: Sam\nSubject: Dinner", bodies);
-  const odd = await out[1]!.run({ ...lock.args, command: "self_destruct" }, {} as never);
+  const odd = await out[1]!.run({ ...lock.args, command: "self_destruct", later: null }, { env: NO_CARS } as never);
   check("arguments that cannot be proposed: not filed", filedCalls.length === 2 && /cannot be proposed/.test(String(odd)));
 }
 
@@ -308,17 +312,17 @@ console.log("\nallowed without asking: a reversible kind, once approved");
     finished.push(`${q.id}:${o.text}`);
     await props.finish("u_sara", q.id, o, T);
   });
-  const said = await h!.run({ ...lock.args }, {} as never);
+  const said = await h!.run({ ...lock.args, later: null }, { env: NO_CARS } as never);
   check("held, under the permission: the call made once, and finished", runs === 1 && finished.length === 1 && /^Done without asking/.test(String(said)), { runs, finished, said });
-  const again = await h!.run({ ...lock.args }, {} as never);
+  const again = await h!.run({ ...lock.args, later: null }, { env: NO_CARS } as never);
   check("the same call again from that job: not made again", runs === 1 && /Already done without asking/.test(String(again)), again);
   // One that says it could not: recorded so, and said so.
   const fails: Tool = { ...carCommand, run: async () => "Could not wake the car: asleep." };
   const [hf] = held([fails], file("j5b"), async (q, o) => void (await props.finish("u_sara", q.id, o, T)));
-  const failedSaid = await hf!.run({ ...lock.args }, {} as never);
+  const failedSaid = await hf!.run({ ...lock.args, later: null }, { env: NO_CARS } as never);
   const failedOne = (await props.list("u_sara", T)).find((q) => q.from.id === "j5b");
   const alerted = await props.attach({ id: "x", at: T, title: "t", text: "r", speak: false, urgent: false, source: "job", job: "j5b" }, "u_sara", T);
-  const repeat = await hf!.run({ ...lock.args }, {} as never);
+  const repeat = await hf!.run({ ...lock.args, later: null }, { env: NO_CARS } as never);
   check("that same call again: said not to have worked, and not tried again", !/Already done/.test(String(repeat)) && /did not work/.test(String(repeat)), repeat);
   check("allowed, but the tool says it could not: failed, and said so, never 'done'",
     failedOne?.state === "failed" && /did not work/.test(String(failedSaid)) && /did not work/.test(alerted.text) && !/Done without asking/.test(alerted.text) && alerted.text.includes("Could not wake the car"), { failedOne, failedSaid, text: alerted.text });
@@ -359,6 +363,7 @@ console.log("\nanswered by a tap (routes/proposals.ts)");
     proposalAllow: (person: string, id: string, now: number) => props.allow(person, id, now),
     proposalDisallow: (person: string, category: string) => props.disallow(person, category),
     proposalUndo: (person: string, id: string, scopesNow: Grant[] | null | undefined, approver: Grant[], now: number) => props.undo(person, id, (q) => inverseOf(env, q), scopesNow, approver, now),
+    proposalsLater: (person: string) => props.later(person),
   };
   const env = { TESSIE_TOKEN: "t", TESSIE_VIN: "LRWTEST0000000000", STATE: { idFromName: () => "jarvis", get: () => stub } } as never;
   const mia = { kind: "member", id: "u_mia", role: "adult", scopes: ["*"], session: "s" } as never;
@@ -489,6 +494,13 @@ console.log("\nanswered by a tap (routes/proposals.ts)");
   }
   const listed = (await (await handleProposals(req("/api/hub/proposals"), env, mia))!.json()) as { recent: Proposal[] };
   check("an archive that can still be put back stays listed past the newest twenty", listed.recent.length > 20 && listed.recent.some((x) => x.id === keepable.id), listed.recent.length);
+  // Errands for later: listed with when, in words, and X'd as a card is.
+  const errand = (await props.add(input({ person: "u_mia", who: "u_mia", from: { kind: "job", id: "jl1", title: "Car" }, release: { home: "arrive" } }), Date.now())) as Proposal;
+  const withLater = (await (await handleProposals(req("/api/hub/proposals"), env, mia))!.json()) as { later: Record<string, unknown>[] };
+  check("listed for later, with when, and nothing it would run with", withLater.later.length === 1 && withLater.later[0]!.id === errand.id && withLater.later[0]!.when === "When you get home" && !("grants" in withLater.later[0]!) && !("action" in withLater.later[0]!), withLater.later);
+  const x = await handleProposals(req("/api/hub/proposals/answer", { id: errand.id, answer: "decline" }), env, mia);
+  check("X: declined, and no longer for later", x!.status === 200 && ((await x!.json()) as { proposal: Proposal }).proposal.state === "declined" && (await props.later("u_mia")).length === 0);
+  check("approving one for later before its time: no such proposal", (await handleProposals(req("/api/hub/proposals/answer", { id: ((await props.add(input({ person: "u_mia", who: "u_mia", from: { kind: "job", id: "jl2", title: "Car" }, release: { home: "leave" } }), Date.now())) as Proposal).id, answer: "approve" }), env, mia))!.status === 404);
 
 }
 

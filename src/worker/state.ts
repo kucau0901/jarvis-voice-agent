@@ -31,8 +31,10 @@ import { Images, type StoredImage } from "./lib/images.ts";
 import { Specialties } from "./lib/specialties.ts";
 import { Pages, type StoredPage } from "./lib/pages.ts";
 import { Episodes, episodeOfJob, type Episode } from "./lib/episodes.ts";
-import { cardOf, Proposals, type Proposal, type ProposalInput } from "./lib/proposals.ts";
-import { carryOut, inverseOf } from "./lib/approval.ts";
+import { cardOf, Proposals, type LaterDeps, type Proposal, type ProposalInput } from "./lib/proposals.ts";
+import { PRESENCE, whenSaid } from "./lib/later.ts";
+import { eventById } from "./lib/agenda.ts";
+import { carryOut, inverseOf, notAsShown } from "./lib/approval.ts";
 import { OWNER, personOfWho, withPerson } from "./lib/context.ts";
 import { lookAtPage } from "./lib/page-look.ts";
 import { runBrief } from "./lib/brief.ts";
@@ -101,7 +103,7 @@ export class JarvisState extends DurableObject<Env> {
       const deliverJob = async (given: Alert) => {
         const who = given.for ?? OWNER;
         // What the job proposed goes with its result: one alert, its cards in the conversation (lib/proposals.ts).
-        const alert = await this.proposals.attach(given, who, Date.now());
+        const alert = await this.proposals.attach(given, who, Date.now(), localeOf(env).timeZone);
         const said = jobSaid(alert);
         if (said && (who === OWNER || (await this.people.personView(who).catch(() => null))?.space)) await this.conversation.add(who, [said], Date.now());
         return deliver(env, this, alert);
@@ -381,7 +383,7 @@ export class JarvisState extends DurableObject<Env> {
           house: ha,
           jobs,
           waiting: async () => (await this.proposals.list(person, now)).filter((p) => p.state === "pending"),
-          file: (action, weighed, detail) => this.proposals.add({ who: r.createdBy, person, from, action, weighed, grants, ...(detail ? { detail } : {}) }, now),
+          file: (action, weighed, detail, release) => this.proposals.add({ who: r.createdBy, person, from, action, weighed, grants, ...(detail ? { detail } : {}), ...(release ? { release } : {}) }, now),
         });
         if (b.usage) {
           const u = b.usage;
@@ -438,7 +440,7 @@ export class JarvisState extends DurableObject<Env> {
     // Approved calls beside the rest: someone is waiting on them, and a car waking holds up nothing due now.
     // What comes due while a call is still being made waits for it, as it does for a job's step.
     const done = await Promise.allSettled([
-      this.proposals.tick({ carryOut: (p, grants) => this.makeApproved(p, grants) }),
+      this.laterDeps().then((later) => this.proposals.tick({ carryOut: (p, grants) => this.makeApproved(p, grants), later })),
       (async () => {
         await this.scheduler.tick();
         await this.jobs.tick();
@@ -450,6 +452,27 @@ export class JarvisState extends DurableObject<Env> {
     ]);
     for (const d of done) if (d.status === "rejected") throw d.reason;
     await this.rearm();
+  }
+
+  /** Putting errands for later to their person (lib/later.ts, Proposals.tick), each as that person. */
+  private async laterDeps(): Promise<LaterDeps> {
+    const env = await this.localEnv();
+    const ha = haConfig(env);
+    const timeZone = localeOf(env).timeZone;
+    const view = (person: string) => this.people.personView(person).catch(() => null);
+    return {
+      timeZone,
+      eventOf: async (person, id) => eventById(await this.personEnv(env, person), id, timeZone, AbortSignal.timeout(10_000)),
+      presenceOf: async (person) => (await view(person))?.prefs.presence ?? null,
+      renderTemplate: ha ? (template) => renderTemplate(ha, template) : null,
+      reach: async (p) => reachNow(p.grants, await view(p.person)),
+      check: async (p) => notAsShown(await this.personEnv(env, p.who), p),
+      announce: (p) => {
+        const when = p.release ? `${whenSaid(p.release, timeZone)}: ` : "";
+        const made = makeAlert({ title: "Ready now", text: `${when}${p.says}\n\n${p.why}. It waits for your OK in Jarvis.` }, p.from.kind === "job" ? "job" : "routine", Date.now(), p.person)!;
+        return deliver(env, this, { ...made, proposals: [cardOf(p)] });
+      },
+    };
   }
 
   /** An approved call (lib/proposals.ts tick), made as its person, with no more than its tap allowed and they may reach now. */
@@ -700,9 +723,17 @@ export class JarvisState extends DurableObject<Env> {
   }
 
   // Not for a job cancelled or removed while its step ran: read and filed in one go, so no cancel comes between.
+  // One for when they get home or leave needs the house to say where they are (Family: their Home Assistant person).
+  // Staged, it wakes the alarm when its time comes.
   async proposalAdd(input: ProposalInput, now: number) {
     if ((await this.jobs.get(input.from.id))?.status !== "running") return "Its job was cancelled: nothing was proposed or done.";
-    return this.proposals.add(input, now);
+    if (input.release && "home" in input.release) {
+      const presence = (await this.people.personView(input.person).catch(() => null))?.prefs.presence;
+      if (!haConfig(await this.localEnv()) || !presence || !PRESENCE.test(presence)) return "Not filed: Jarvis cannot tell when they get home or leave (Home Assistant, and their Home Assistant person in Family). Ask now, or at a time.";
+    }
+    const r = await this.proposals.add(input, now);
+    if (input.release) await this.rearm();
+    return r;
   }
 
   // Made by the alarm, not the request that approved it: a slow call finishes whether or not that screen stays.
@@ -713,8 +744,16 @@ export class JarvisState extends DurableObject<Env> {
     return r;
   }
 
-  proposalDecline(person: string, id: string, now: number) {
-    return this.proposals.decline(person, id, now);
+  // An errand for later declined no longer wakes the alarm.
+  async proposalDecline(person: string, id: string, now: number) {
+    const r = await this.proposals.decline(person, id, now);
+    await this.rearm();
+    return r;
+  }
+
+  /** Their errands for later (lib/later.ts), the soonest first. */
+  proposalsLater(person: string) {
+    return this.proposals.later(person);
   }
 
   // Put back (lib/proposals.ts undo): its inverse made by code, and made by the alarm as an approval is.

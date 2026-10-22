@@ -128,7 +128,7 @@ interface CalItem {
 }
 
 /** A place someone can drive to, not a video call. */
-function drivable(location: string): boolean {
+export function drivable(location: string): boolean {
   return !/https?:\/\/|zoom\.us|meet\.google|teams\.microsoft|webex/i.test(location) && location.length >= 3;
 }
 
