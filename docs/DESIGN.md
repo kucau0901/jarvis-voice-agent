@@ -740,7 +740,14 @@ promised:
   scope, which is not requested. No sequence of misheard words can destroy a
   message for good.
 - **One message per call.** `mail_manage` has no bulk verb, so a misheard
-  sentence costs one message rather than a mailbox.
+  sentence costs one message rather than a mailbox. The one exception is not
+  a model's: a brief's card to archive old promotions (`lib/mail-bulk.ts`).
+  Code chooses the messages, from a search fixed in code (in the Inbox, a
+  promotion, older than two days, neither starred nor important); the count
+  on the card is what runs, and only those still matching when the tap is
+  made; it only takes them out of the Inbox, never trashes; it is made only
+  by a tap, never offered to the router or a job; and Put back returns them,
+  for a week.
 
 **Draft first** (Settings → Google, off by default) takes sending away from
 the model altogether: `mail_send` saves every mail as a draft, the screen
@@ -1084,7 +1091,18 @@ cannot be talked into sending, deleting or unlocking, because nothing it has
 can. The person approves with a tap, on the card the job's result brings
 (`routes/proposals.ts`, under the ordinary sign-in), and the stored call runs
 once, with no model, with no more than the job had, its maker still may and
-the approver may, and never Hermes or a screen. It runs only as its card says:
+the approver may, and never Hermes or a screen. The tap only claims it: the
+object's alarm makes the call (`Proposals.tick`), as it makes a job's steps,
+so a slow one (waking the car takes up to a minute and a half) finishes
+whether or not the screen that approved it stays, which a Worker's
+`waitUntil` (about 30 seconds) did not. The calls are made one at a time, in
+the order they were tapped, beside the rest of what the alarm does, so a car
+waking holds up nothing already due; what comes due meanwhile waits for it,
+as it does for a job's step. A tap made while the alarm is busy (a job's
+step, a Hermes question) waits for it: one not started within twenty
+minutes, longer than an alarm may run, is not made at all. A call is taken off
+the queue before it is made, so one cut short by a deploy is never made
+twice, and reads as failed. It runs only as its card says:
 a card shows the whole call or the call is not filed, and one that would now
 read otherwise (another car first in their list, a car renamed) is refused and
 keeps waiting. How risky a call is, code works
@@ -1094,7 +1112,43 @@ reversible, unlocking is not), and every house or other MCP call that writes is
 irreversible, since Jarvis keeps no list of which of the house's services can
 be undone and Home Assistant decides what each does. A job's email is only ever
 drafted, and its sending proposed (`lib/mail-draft.ts`), so mail has one way
-out, Send. Routines act as they always have: they are what the person set up
+out, Send. A brief proposes too (`lib/brief.ts`), but what it puts to the
+person code chooses, never a model: an answer to an invitation left
+unanswered (Decline when it clashes, else Accept; a one-off's card waits no
+longer than the meeting's start, an all-day one's until its day is out, and
+the tap refuses after that; a repeating one's, answered for the series, a
+day), and
+archiving old promotions. Its cards are filed before its one model call, so they wait
+whatever becomes of the opening. Each has a subject (`about`): one waiting
+already is listed again rather than filed twice (unless it has under two
+hours left, as yesterday's from a daily brief has, and a fresh one would
+outlast it, when the fresh one takes its place), one tried in the last week
+is not offered, and its X ("Don't suggest this again") is remembered for 30
+days, from the stored record, never the request. A job's "Not now" is not
+remembered, so a dismissal never blocks what the person or their job asks
+for. Each card's button says what it does ("Lock", "Send", "Archive"), and an
+approval checks the button against the stored call as it checks its words.
+A call may also be for later (`lib/later.ts`): a job's held tool takes
+`later` (at a time, before an event it names by its start in their local
+time, only for a job that may read the calendar, or on getting home or
+leaving), which code turns into a release, finding the event in their
+calendar itself; an event's title, someone else's words, never goes back to
+the job's model. A brief stages the car's climate before the day's first
+event with a place (one for each event; its X stops any for 30 days, and
+drops those waiting). Until then it is kept apart (`propstage:`), so nothing
+lists it as waiting, nothing approves it, and a standing permission never
+makes it. The object's alarm puts it to them (`Proposals.tick`, after the
+approved calls): an event read again first (moved once, it waits for the new
+time; cancelled or moved again, it is withdrawn), its person still in the
+family, its call still as its card says, its subject not dismissed. One Home
+Assistant template a minute looks at everyone waited on for home, and a look
+that fails is made less often, as a watch's is; arriving is home after away,
+so someone home already is not "arriving". The card is written before its
+"Ready now" alert is sent, so a retried alarm never says it twice, and one
+whose time has passed is kept as not needed, unsaid. The card waits a day,
+no later than half an hour past its time or its event's start; the alert
+lasts as long, so quiet hours past that drop it.
+Routines otherwise act as they always have: they are what the person set up
 to happen, and nothing here stands in front of the house when it is asked
 directly. The decided proposal is the audit: who, when, and what came of it.
 Once someone has approved a reversible call and it ran, they may let their
@@ -1235,6 +1289,23 @@ UNKNOWN. Both say their message once each time their condition comes true, and
 a page's message carries the reading it rests on. Each is tried once before it
 is kept, and a page watch's try is its first look, so one already true is said
 at once. Ten of each at most.
+
+**A brief is written by code, opened by one answer.** A routine's `brief`
+action (lib/brief.ts) reads what its maker may reach and has set up: one read
+of the calendar for its clashes, free time and invitations left unanswered
+(lib/agenda.ts), the weather from Home Assistant, the car from Tessie's last
+state without waking it, the day's orders and a count of old promotions (from
+ids alone; only when an archive card is filed anew are five of them read, for
+sender and subject on the card, never for the model, lib/mail-bulk.ts), their
+jobs, and what
+waits for their OK. Each source has ten seconds, and one that fails is a line
+saying so. The document is built from those in code, so what it says of the
+day is what the sources said; a model writes only its opening, at most 240
+characters, from the whole day fenced as data, with links taken out. That is
+the one model call, made only with a plan or a key; without one the brief goes
+without an opening. Daily or once only, two each, and one an alarm: a brief is
+a dozen requests of the alarm's fifty, so a second due at the same minute goes
+in an alarm of its own straight after.
 
 **"Leave now" uses what is there.** The car's position if Tessie is set up,
 else the saved home; live traffic if Google Maps is set up; otherwise a plain

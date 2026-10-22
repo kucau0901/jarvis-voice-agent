@@ -87,14 +87,30 @@ notifications. Jarvis notices a device that has gone and takes it off the list.
 
 A background job does not act on its own. What it would do (lock the car,
 add an event, archive an email, send one it wrote, a Home Assistant call)
-comes with its result as a card with **Approve** and **Not now**, unless it is
+comes with its result as a card whose button says what it does (**Lock**,
+**Add**, **Archive**, **Send**; **Approve** for a house or MCP call) beside
+**Not now**, unless it is
 a kind that can be undone which you let jobs do without asking: then it is
 done, and the alert says so. Anything irreversible, and anything for the
 house, always asks. Tap the
 notification to open Jarvis on that alert; the same card is under the job's
 answer in the chat. Nothing on a notification approves anything, so a phone
 that is locked, or a notification someone else sees, cannot. Telegram, ntfy
-and Home Assistant only say that something is waiting. A card waits a day.
+and Home Assistant only say that something is waiting. A card waits a day
+(a one-off invitation's, no later than the meeting's start; an all-day
+one's, no later than the end of its day; one for later, no later than half
+an hour past its time, or its event's start).
+
+A brief's cards (answering an invitation, archiving old promotions) come the
+same way, with **Don't suggest this again** in place of Not now: tapped, the
+next brief leaves that one out for 30 days. Archived promotions can be put
+back for a week, from the card.
+
+Some of what a job or a brief proposes is for later: at a time, before a
+calendar event, or when you get home or leave (that needs Home Assistant and
+your Home Assistant person in Family). It waits in Jobs → Later, where
+**Don't do this** drops it (on a brief's, **Don't suggest this again**), and
+comes as a **Ready now** alert with its card when its time comes.
 
 ## Check that it works
 

@@ -1,7 +1,7 @@
 import type { Env } from "../types.ts";
 import { localeOf } from "../lib/locale.ts";
 import { CALENDAR, call, explain, googleConfig, guardTool, type GoogleConfig } from "../lib/google.ts";
-import { localParts, zonedToUtc } from "../lib/routines.ts";
+import { dayBegins, localParts, zonedToUtc } from "../lib/routines.ts";
 import { asQuotedData, tidy } from "../lib/quote.ts";
 import { clampLimit } from "./args.ts";
 import type { Tool, ToolContext } from "./registry.ts";
@@ -275,7 +275,7 @@ export const calendarAdd: Tool = {
     if (!title || !at || Number.isNaN(at.getTime()) || title.length > MAX_TEXT || where.length > MAX_TEXT) return null;
     // When it will be, in their time zone, as a date (never "tomorrow": the card is read again when approved).
     const when = fmt(localeOf(env).timeZone, at, { weekday: "short", day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: false });
-    return { risk: "reversible", says: `Calendar: “${title}”, ${when}, ${durationOf(args.duration_minutes)} min${where ? `, at ${where}` : ""}`, category: "calendar_add" };
+    return { risk: "reversible", says: `Calendar: “${title}”, ${when}, ${durationOf(args.duration_minutes)} min${where ? `, at ${where}` : ""}`, category: "calendar_add", verb: "Add" };
   },
   async run(args, ctx) {
     const tz = localeOf(ctx.env).timeZone;
@@ -332,6 +332,110 @@ export const calendarAdd: Tool = {
 
       ctx.done?.();
       return `Added "${title}" for ${whenSpoken(tz, { dateTime: startAt.toISOString() })}${location ? `, at ${location}` : ""}.`;
+    }));
+  },
+};
+
+/* ---------- answering an invitation --------------------------------------- */
+
+/** Google's event ids, and an instance's (<id>_<when>). */
+const EVENT_ID = /^[A-Za-z0-9_]{5,1024}$/;
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
+const RESPONSES: Record<string, string> = { accepted: "Accept", declined: "Decline" };
+
+/** An invitation's answer as the card shows it, from its arguments alone (lib/brief.ts makes them); null when they are not one. */
+function rsvpOf(args: Record<string, unknown>, env: Env): { id: string; start: string; title: string; verb: string; says: string; about: string; until?: number } | null {
+  const id = typeof args.event_id === "string" ? args.event_id : "";
+  const start = typeof args.start === "string" ? args.start.trim() : "";
+  const verb = RESPONSES[String(args.response)];
+  // Short enough that the card is always filed whole (Proposals' MAX_SAYS): 120 and 40, with the rest at most about 110.
+  const cut = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1).trimEnd()}…` : s);
+  const title = cut(tidy(String(args.title ?? "")), 120) || "(no title)";
+  const from = cut(tidy(String(args.organizer ?? "")), 40);
+  const at = ISO.test(start) ? new Date(start) : DAY.test(start) ? new Date(`${start}T00:00:00Z`) : null;
+  if (!EVENT_ID.test(id) || !verb || !at || Number.isNaN(at.getTime())) return null;
+  // As a date, in their zone (an all-day one as its own date): the card is read again when approved.
+  const when = DAY.test(start)
+    ? `${fmt("UTC", at, { weekday: "short", day: "numeric", month: "short", year: "numeric" })}, all day`
+    : fmt(localeOf(env).timeZone, at, { weekday: "short", day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: false });
+  // A repeating one is answered for every time it happens, and is one subject whenever its next time is.
+  const every = args.recurring === true;
+  // A one-off is answered before it begins (an all-day one, before its day is out), not after.
+  const next = new Date(at.getTime() + 86_400_000);
+  const until = every ? undefined : DAY.test(start) ? dayBegins(next.getUTCFullYear(), next.getUTCMonth() + 1, next.getUTCDate(), localeOf(env).timeZone) : at.getTime();
+  return {
+    id,
+    start,
+    title,
+    verb,
+    ...(until !== undefined ? { until } : {}),
+    says: `Calendar: ${verb.toLowerCase()} “${title}”${every ? `, every time (next ${when})` : `, ${when}`}${from ? `, from ${from}, who is told` : " (the organiser is told)"}`,
+    about: every ? `rsvp:${id}` : `rsvp:${id}@${start}`,
+  };
+}
+
+/**
+ * Answering an invitation, for an approval only (lib/approval.ts): never
+ * offered to the router. A brief proposes it for one left unanswered; the
+ * tap sends the answer to whoever sent it, so it cannot be undone. Only the
+ * person's own answer is changed (attendeesOmitted), never the guest list,
+ * and only while it is still the invitation the card showed.
+ */
+export const calendarRsvp: Tool = {
+  name: "calendar_rsvp",
+  scope: "calendar",
+  available,
+  description: "Answer an invitation in the user's Google Calendar: for an approval only.",
+  parameters: {
+    type: "object",
+    properties: {
+      event_id: { type: "string" },
+      start: { type: "string" },
+      title: { type: "string" },
+      organizer: { type: "string" },
+      response: { type: "string", enum: Object.keys(RESPONSES) },
+      recurring: { type: "boolean" },
+    },
+    required: ["event_id", "start", "title", "organizer", "response", "recurring"],
+    additionalProperties: false,
+  },
+  propose(args, env) {
+    const r = rsvpOf(args, env);
+    return r ? { risk: "irreversible", says: r.says, verb: r.verb, about: r.about, ...(r.until !== undefined ? { until: r.until } : {}) } : null;
+  },
+  async run(args, ctx) {
+    const r = rsvpOf(args, ctx.env);
+    if (!r) return "That is not an invitation, so nothing was sent.";
+    return (await guard(async () => {
+      const cfg = cfgOf(ctx);
+      const path = `/calendars/primary/events/${encodeURIComponent(r.id)}`;
+      const got = await call(ctx.env, cfg, path, { base: CALENDAR, signal: ctx.signal });
+      if (got.status === 404 || got.status === 410) return "That invitation is no longer in the calendar, so nothing was sent.";
+      const problem = explain(got);
+      if (problem) return `Nothing was sent. ${problem}`;
+      const e = (got.body ?? {}) as { status?: string; start?: EventTime; attendees?: { email?: string; self?: boolean; responseStatus?: string }[] };
+      if (e.status === "cancelled") return "It was cancelled, so nothing was sent.";
+      // Still the one the card showed: not moved (a repeating one is answered whole, whenever its next time is).
+      const was = e.start?.dateTime ? Date.parse(e.start.dateTime) : e.start?.date ?? null;
+      const shown = DAY.test(r.start) ? r.start : Date.parse(r.start);
+      if (args.recurring !== true && was !== shown) return "It has moved since it was proposed, so nothing was sent.";
+      if (r.until !== undefined && Date.now() >= r.until) return "Its time has come and gone, so nothing was sent.";
+      const self = e.attendees?.find((a) => a.self);
+      // A repeating one is answered whole only as a whole: any of its times still waiting are theirs to answer in Google Calendar.
+      const every = args.recurring === true;
+      if (!self?.email) return every ? "You are not on its guest list, or were asked to only some of its times: see it in Google Calendar. Nothing was sent." : "You are not on its guest list any more, so nothing was sent.";
+      if (self.responseStatus !== "needsAction") return `You have answered it already (${self.responseStatus ?? "unknown"})${every ? "; answer any time of it still waiting in Google Calendar" : ""}. Nothing was sent.`;
+      const res = await call(ctx.env, cfg, `${path}?sendUpdates=all`, {
+        base: CALENDAR,
+        method: "PATCH",
+        body: { attendeesOmitted: true, attendees: [{ email: self.email, responseStatus: args.response }] },
+        signal: ctx.signal,
+      });
+      const failed = explain(res);
+      if (failed) return `Nothing was sent. ${failed}`;
+      if (res.status !== 200) return `Nothing was sent: Google returned ${res.status}.`;
+      ctx.done?.();
+      return `${r.verb === "Accept" ? "Accepted" : "Declined"} “${r.title}”; the organiser is told.`;
     }));
   },
 };

@@ -15,6 +15,34 @@ export const SKY_TEMPLATE =
   "{{ {'lat': state_attr('zone.home','latitude'), 'lng': state_attr('zone.home','longitude'), " +
   "'state': w.state if w else none, 'cloud': (w.attributes.get('cloud_coverage') if w else none)} | tojson }}";
 
+/** The first weather entity's state and temperature, as JSON, for a brief (lib/brief.ts). */
+export const WEATHER_TEMPLATE =
+  "{% set w = states.weather | list | first %}" +
+  "{{ {'state': w.state if w else none, 'temperature': (w.attributes.get('temperature') if w else none), " +
+  "'unit': (w.attributes.get('temperature_unit') if w else none)} | tojson }}";
+
+/** Home Assistant's weather states that do not read as words. */
+const SAID: Record<string, string> = {
+  "clear-night": "clear", partlycloudy: "partly cloudy", lightning: "thunder", "lightning-rainy": "thunderstorms",
+  "snowy-rainy": "sleet", "windy-variant": "windy and cloudy", exceptional: "unusual weather",
+};
+
+/** WEATHER_TEMPLATE's answer in words ("Partly cloudy, 31 °C"); null when there is no weather to say. */
+export function weatherSaid(raw: string): string | null {
+  let v: { state?: unknown; temperature?: unknown; unit?: unknown } = {};
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object") v = parsed;
+  } catch {
+    return null;
+  }
+  if (typeof v.state !== "string" || !(v.state in WEATHER)) return null;
+  const words = SAID[v.state] ?? v.state;
+  const t = typeof v.temperature === "number" && Number.isFinite(v.temperature) ? Math.round(v.temperature) : null;
+  const unit = typeof v.unit === "string" && /^°[CF]$/.test(v.unit) ? ` ${v.unit}` : "°";
+  return words.charAt(0).toUpperCase() + words.slice(1) + (t === null ? "" : `, ${t}${unit}`);
+}
+
 export interface Sky {
   lat?: number;
   lng?: number;

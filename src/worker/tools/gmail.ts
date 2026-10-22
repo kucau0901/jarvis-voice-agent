@@ -126,11 +126,11 @@ interface Message {
   payload?: Part;
 }
 
-const headerOf = (m: Message, name: string): string =>
+export const headerOf = (m: Message, name: string): string =>
   (m.payload?.headers ?? []).find((h) => h.name.toLowerCase() === name.toLowerCase())?.value ?? "";
 
 /** `"Jane Doe" <jane@x.com>` reads better as "Jane Doe" when spoken. */
-function senderName(from: string): string {
+export function senderName(from: string): string {
   const named = from.match(/^\s*"?([^"<]+?)"?\s*<[^>]+>\s*$/);
   if (named?.[1]?.trim()) return named[1].trim();
   return from.replace(/[<>]/g, "").trim() || "unknown sender";
@@ -239,10 +239,10 @@ function line(m: Message, i: number, tz: string): string {
  * model output, and the model read them out of a listing that also contained
  * text a stranger wrote.
  */
-const MESSAGE_ID = /^[A-Za-z0-9_-]{5,64}$/;
+export const MESSAGE_ID = /^[A-Za-z0-9_-]{5,64}$/;
 
 /** Fetch message details in bounded parallel — the list call returns only ids. */
-async function hydrate(
+export async function hydrate(
   ctx: Pick<ToolContext, "env" | "signal">,
   cfg: GoogleConfig,
   ids: string[],
@@ -787,7 +787,8 @@ export const mailManage: Tool = {
     const id = typeof args.message_id === "string" ? args.message_id.trim() : "";
     if (!action || !MESSAGE_ID.test(id)) return null;
     const says = `Mail: ${action.replace(/_/g, " ")} message ${id}`;
-    return action === "trash" ? { risk: "irreversible", says } : { risk: "reversible", says, category: `mail_manage:${action}` };
+    const verb = action.charAt(0).toUpperCase() + action.slice(1).replace(/_/g, " ");
+    return action === "trash" ? { risk: "irreversible", says, verb } : { risk: "reversible", says, category: `mail_manage:${action}`, verb };
   },
   // Which email it is, for the card: the id alone says nothing to the person.
   async detail(args, ctx) {

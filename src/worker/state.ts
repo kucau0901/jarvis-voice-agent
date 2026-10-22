@@ -31,9 +31,13 @@ import { Images, type StoredImage } from "./lib/images.ts";
 import { Specialties } from "./lib/specialties.ts";
 import { Pages, type StoredPage } from "./lib/pages.ts";
 import { Episodes, episodeOfJob, type Episode } from "./lib/episodes.ts";
-import { Proposals, type ProposalInput } from "./lib/proposals.ts";
+import { cardOf, Proposals, type LaterDeps, type Proposal, type ProposalInput } from "./lib/proposals.ts";
+import { PRESENCE, whenSaid } from "./lib/later.ts";
+import { eventById } from "./lib/agenda.ts";
+import { carryOut, inverseOf, notAsShown } from "./lib/approval.ts";
 import { OWNER, personOfWho, withPerson } from "./lib/context.ts";
 import { lookAtPage } from "./lib/page-look.ts";
+import { runBrief } from "./lib/brief.ts";
 import { budgetOf, budgetSays, costOf, dayOf } from "./lib/usage.ts";
 import { nextAllowed } from "./lib/access.ts";
 import { ChatGptPlan, type PlanFailure } from "./lib/chatgpt-plan.ts";
@@ -45,8 +49,9 @@ const HELD = "held:";
 
 /**
  * The Durable Object. Memory, settings and push live in lib/state-host.ts,
- * where Node can test them; this class adds the sockets, the alarm (routines,
- * jobs, relays and held alerts), the family's chat and the hub's RPC.
+ * where Node can test them; this class adds the sockets, the alarm (approved
+ * calls, routines, jobs, relays and held alerts), the family's chat and the
+ * hub's RPC.
  *
  * SQLite-backed (see the `new_sqlite_classes` migration in
  * wrangler.example.jsonc), because that is the only kind the Workers free
@@ -98,7 +103,7 @@ export class JarvisState extends DurableObject<Env> {
       const deliverJob = async (given: Alert) => {
         const who = given.for ?? OWNER;
         // What the job proposed goes with its result: one alert, its cards in the conversation (lib/proposals.ts).
-        const alert = await this.proposals.attach(given, who, Date.now());
+        const alert = await this.proposals.attach(given, who, Date.now(), localeOf(env).timeZone);
         const said = jobSaid(alert);
         if (said && (who === OWNER || (await this.people.personView(who).catch(() => null))?.space)) await this.conversation.add(who, [said], Date.now());
         return deliver(env, this, alert);
@@ -362,6 +367,40 @@ export class JarvisState extends DurableObject<Env> {
             },
           }
         : {}),
+      // A brief (lib/brief.ts): as far as its maker may reach now, its opening counted in their usage,
+      // what it puts to them filed as a job's calls are, with no more than it may reach.
+      brief: async (r, now) => {
+        const person = personOfWho(r.createdBy);
+        const grants = reachNow(r.grants, await this.people.personView(person).catch(() => null));
+        if (!grants) return { ok: false, text: "whoever made it is no longer in the family" };
+        const jobs = (await this.jobs.list()).filter((j) => personOfWho(j.createdBy) === person);
+        const timeZone = localeOf(env).timeZone;
+        const from = { kind: "brief" as const, id: `${r.id}@${now}`, title: r.name, routine: r.id };
+        const b = await runBrief(r, now, {
+          env: await this.personEnv(env, r.createdBy),
+          grants,
+          timeZone,
+          house: ha,
+          jobs,
+          waiting: async () => (await this.proposals.list(person, now)).filter((p) => p.state === "pending"),
+          file: (action, weighed, detail, release) => this.proposals.add({ who: r.createdBy, person, from, action, weighed, grants, ...(detail ? { detail } : {}), ...(release ? { release } : {}) }, now),
+        });
+        if (b.usage) {
+          const u = b.usage;
+          await this.recordUsage(
+            { at: now, surface: "routine", by: u.model, ok: u.ok, ms: u.ms, input: u.input, cached: 0, written: 0, output: u.output, searches: 0, tools: [], ask: `brief: ${r.name}`.slice(0, 80), who: person },
+            dayOf(now, timeZone),
+          ).catch((e) => console.warn("brief not counted:", e instanceof Error ? e.message : String(e)));
+        }
+        // No longer reaching anything (removed, or their pass ended) while it was gathered: what this run filed and still
+        // waits goes (one tapped meanwhile stays, as its audit), and nothing else of theirs (removing them took the rest;
+        // an ended pass keeps it).
+        if (!reachNow(r.grants, await this.people.personView(person).catch(() => null))) {
+          await this.proposals.forgetRun(person, from.id, now);
+          return { ok: false, text: "whoever made it is no longer in the family" };
+        }
+        return { ok: true, text: b.text, proposals: b.proposals.map(cardOf) };
+      },
       // A chore, a check-in or medicine: passed on to whoever's turn it is.
       relay: async (r, to) => {
         if (r.action.kind !== "relay") return "not a routine that passes things on";
@@ -384,10 +423,10 @@ export class JarvisState extends DurableObject<Env> {
     };
   }
 
-  /** Point the one alarm at whatever is due first: a routine, a job, a relay or a held alert. */
+  /** Point the one alarm at whatever is due first: an approved call, a routine, a job, a relay or a held alert. */
   private async rearm(): Promise<void> {
     const held = [...(await this.ctx.storage.list<{ until: number }>({ prefix: HELD })).values()].map((h) => h.until);
-    const wakes = [...(await Promise.all([this.scheduler.nextWake(), this.jobs.nextWake(), this.relays.nextWake(), this.panels.nextWake()])), ...held].filter(
+    const wakes = [...(await Promise.all([this.proposals.nextWake(), this.scheduler.nextWake(), this.jobs.nextWake(), this.relays.nextWake(), this.panels.nextWake()])), ...held].filter(
       (t): t is number => t !== null,
     );
     const at = wakes.length ? Math.min(...wakes) : null;
@@ -398,13 +437,50 @@ export class JarvisState extends DurableObject<Env> {
   async alarm() {
     // Each catches per item, so this only throws on a storage failure — and then
     // the runtime retries, which is what is wanted.
-    await this.scheduler.tick();
-    await this.jobs.tick();
-    await this.relays.tick();
-    await this.releaseHeld();
-    // Last, and a couple a run: what this alarm has left of its budget is the panels' (lib/panels.ts).
-    await this.panels.refresh(await this.panelDeps());
+    // Approved calls beside the rest: someone is waiting on them, and a car waking holds up nothing due now.
+    // What comes due while a call is still being made waits for it, as it does for a job's step.
+    const done = await Promise.allSettled([
+      this.laterDeps().then((later) => this.proposals.tick({ carryOut: (p, grants) => this.makeApproved(p, grants), later })),
+      (async () => {
+        await this.scheduler.tick();
+        await this.jobs.tick();
+        await this.relays.tick();
+        await this.releaseHeld();
+        // Last, and a couple a run: what this alarm has left of its budget is the panels' (lib/panels.ts).
+        await this.panels.refresh(await this.panelDeps());
+      })(),
+    ]);
+    for (const d of done) if (d.status === "rejected") throw d.reason;
     await this.rearm();
+  }
+
+  /** Putting errands for later to their person (lib/later.ts, Proposals.tick), each as that person. */
+  private async laterDeps(): Promise<LaterDeps> {
+    const env = await this.localEnv();
+    const ha = haConfig(env);
+    const timeZone = localeOf(env).timeZone;
+    const view = (person: string) => this.people.personView(person).catch(() => null);
+    return {
+      timeZone,
+      eventOf: async (person, id) => eventById(await this.personEnv(env, person), id, timeZone, AbortSignal.timeout(10_000)),
+      presenceOf: async (person) => (await view(person))?.prefs.presence ?? null,
+      renderTemplate: ha ? (template) => renderTemplate(ha, template) : null,
+      reach: async (p) => reachNow(p.grants, await view(p.person)),
+      check: async (p) => notAsShown(await this.personEnv(env, p.who), p),
+      announce: (p) => {
+        const when = p.release ? `${whenSaid(p.release, timeZone)}: ` : "";
+        // As long as its card: held for quiet hours past that, it is not sent at all (lib/alerts.ts).
+        const made = makeAlert({ title: "Ready now", text: `${when}${p.says}\n\n${p.why}. It waits for your OK in Jarvis.`, expiresAt: p.expires }, p.from.kind === "job" ? "job" : "routine", Date.now(), p.person)!;
+        return deliver(env, this, { ...made, proposals: [cardOf(p)] });
+      },
+    };
+  }
+
+  /** An approved call (lib/proposals.ts tick), made as its person, with no more than its tap allowed and they may reach now. */
+  private async makeApproved(p: Proposal, grants: readonly Grant[]): Promise<{ ok: boolean; text: string }> {
+    const reach = reachNow(grants, await this.people.personView(p.person).catch(() => null));
+    if (!reach) return { ok: false, text: "Whoever it was for is no longer in the family." };
+    return carryOut(await this.personEnv(await this.localEnv(), p.who), p, reach);
   }
 
   /** What keeping panels fresh with Home closed needs (lib/panels.ts refresh). */
@@ -647,18 +723,45 @@ export class JarvisState extends DurableObject<Env> {
     return this.proposals.get(person, id, now);
   }
 
-  // Not for a job cancelled or removed while its step ran: read and filed in one go, so no cancel comes between.
+  // One for when they get home or leave needs the house to say where they are (Family: their Home Assistant person).
+  // Not for a job cancelled or removed while its step ran: asked in its turn to be filed, so no cancel comes between.
+  // Staged, it wakes the alarm when its time comes.
   async proposalAdd(input: ProposalInput, now: number) {
-    if ((await this.jobs.get(input.from.id))?.status !== "running") return "Its job was cancelled: nothing was proposed or done.";
-    return this.proposals.add(input, now);
+    if (input.release && "home" in input.release) {
+      const presence = (await this.people.personView(input.person).catch(() => null))?.prefs.presence;
+      if (!haConfig(await this.localEnv()) || !presence || !PRESENCE.test(presence)) return "Not filed: Jarvis cannot tell when they get home or leave (Home Assistant, and their Home Assistant person in Family). Ask now, or at a time.";
+    }
+    const r = await this.proposals.add(input, now, async () => (await this.jobs.get(input.from.id))?.status === "running");
+    if (input.release) await this.rearm();
+    return r;
   }
 
-  proposalClaim(person: string, id: string, now: number) {
-    return this.proposals.claim(person, id, now);
+  // Made by the alarm, not the request that approved it: a slow call finishes whether or not that screen stays.
+  // A new name (it was proposalClaim, which queued nothing): across a deploy, a Worker and an object on different code fail the call and change nothing.
+  async proposalApprove(person: string, id: string, scopesNow: readonly Grant[] | null | undefined, approver: readonly Grant[], now: number) {
+    const r = await this.proposals.claim(person, id, scopesNow, approver, now);
+    await this.rearm();
+    return r;
   }
 
-  proposalDecline(person: string, id: string, now: number) {
-    return this.proposals.decline(person, id, now);
+  // An errand for later declined no longer wakes the alarm.
+  async proposalDecline(person: string, id: string, now: number) {
+    const r = await this.proposals.decline(person, id, now);
+    await this.rearm();
+    return r;
+  }
+
+  /** Their errands for later (lib/later.ts), the soonest first. */
+  proposalsLater(person: string) {
+    return this.proposals.later(person);
+  }
+
+  // Put back (lib/proposals.ts undo): its inverse made by code, and made by the alarm as an approval is.
+  async proposalUndo(person: string, id: string, scopesNow: readonly Grant[] | null | undefined, approver: readonly Grant[], now: number) {
+    const env = await this.localEnv();
+    const r = await this.proposals.undo(person, id, (p) => inverseOf(env, p), scopesNow, approver, now);
+    await this.rearm();
+    return r;
   }
 
   proposalFinish(person: string, id: string, outcome: { ok: boolean; text: string }, now: number) {

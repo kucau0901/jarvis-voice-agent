@@ -24,6 +24,8 @@ import { pageCondition, pageUrl } from "./page-look.ts";
  *   say     a fixed message
  *   ask     a question for Jarvis, answered then with every tool the
  *           routine's creator may use, and the answer sent: "what's my day?"
+ *   brief   their day, gathered and written out by code with a short
+ *           opening (lib/brief.ts): daily or once only
  *
  * This file is the pure part — shapes, validation, time zones — so Node tests it.
  */
@@ -57,6 +59,8 @@ export type Action =
   /** notify "if-important": the answer is sent only when it is not NOTHING (lib/scheduler.ts); absent, always. */
   | { kind: "ask"; prompt: string; notify?: "if-important" }
   | { kind: "leave" }
+  /** Their day as a document (lib/brief.ts). */
+  | { kind: "brief" }
   /**
    * Passed on to someone in the family (lib/relays.ts), or to several in
    * turn: a chore rota, a daily check-in on a grandparent, a medicine
@@ -131,6 +135,8 @@ const PAGE_EVERY_MAX = 24 * 60;
 const MAX_TEMPLATE = 500;
 
 export const MAX_ROUTINES = 50;
+/** Briefs each person may have: one each way through the day is plenty, and each is a dozen requests. */
+export const MAX_BRIEFS = 2;
 const MAX_TEXT = 1000;
 const MAX_NAME = 60;
 export const EVENT_NAME = /^[a-z0-9][a-z0-9_.:-]{0,39}$/;
@@ -188,6 +194,12 @@ export function zonedToUtc(y: number, mo: number, d: number, h: number, mi: numb
   const wall = Date.UTC(y, mo - 1, d, h, mi);
   const first = wall - offsetAt(wall, timeZone);
   return wall - offsetAt(first, timeZone);
+}
+
+/** When a local date begins: midnight, or 01:00 where the clocks go forward at midnight (Santiago, Havana). */
+export function dayBegins(y: number, mo: number, d: number, timeZone: string): number {
+  const t = zonedToUtc(y, mo, d, 0, 0, timeZone);
+  return localParts(t, timeZone).d === d ? t : zonedToUtc(y, mo, d, 1, 0, timeZone);
 }
 
 /** The next time `HH:MM` comes round in the zone after `after`, on one of `days` (all when empty). */
@@ -338,6 +350,7 @@ export function describeAction(a: Action): string {
     const what = `${a.relay === "ask" ? "ask" : "remind"} ${who}: "${a.text.length > 80 ? a.text.slice(0, 80) + "…" : a.text}"`;
     return what + (a.points ? `, ${a.points} point${a.points === 1 ? "" : "s"} for doing it` : "") + (a.escalate ? "; the family is told if there is no answer" : "");
   }
+  if (a.kind === "brief") return "brief you on your day, with anything waiting for your OK";
   if (a.kind === "say") return `say "${a.text.length > 80 ? a.text.slice(0, 80) + "…" : a.text}"`;
   if (a.kind === "ask") {
     return `ask Jarvis "${a.prompt.length > 80 ? a.prompt.slice(0, 80) + "…" : a.prompt}" and send the answer` +
@@ -383,6 +396,8 @@ export interface RoutineInput {
   everyMinutes?: unknown;
   say?: unknown;
   ask?: unknown;
+  /** true: a brief of their day (lib/brief.ts), in place of say or ask; daily or once only. */
+  brief?: unknown;
   /** ask: "always" (the default) or "if-important", sent only when something deserves attention, as Hark's checks do. */
   notify?: unknown;
   /** Pass it on to these family members (already named as people: lib/relays.ts), in turn if several. */
@@ -482,7 +497,12 @@ export function buildRoutine(input: RoutineInput, timeZone: string, now: number)
   const passTo = Array.isArray(input.passTo)
     ? (input.passTo as { person?: unknown; name?: unknown }[]).filter((p) => typeof p?.person === "string" && typeof p?.name === "string")
     : [];
-  if (trigger.kind === "leave") {
+  if (input.brief === true) {
+    // At a time: a brief on every event or page change would be a dozen requests each time.
+    if (trigger.kind !== "daily" && trigger.kind !== "once") return { ok: false, error: "a brief goes out at a time: make it daily or once" };
+    if (str(input.say) || str(input.ask) || passTo.length) return { ok: false, error: "a brief writes itself: leave say, ask and pass_to out" };
+    action = { kind: "brief" };
+  } else if (trigger.kind === "leave") {
     action = { kind: "leave" };
   } else if (passTo.length) {
     // Passed on to someone: the words are for them.
@@ -514,7 +534,7 @@ export function buildRoutine(input: RoutineInput, timeZone: string, now: number)
   }
 
   const fallback =
-    action.kind === "say" ? action.text : action.kind === "ask" ? action.prompt : action.kind === "relay" ? action.text : "Time to leave";
+    action.kind === "say" ? action.text : action.kind === "ask" ? action.prompt : action.kind === "relay" ? action.text : action.kind === "brief" ? "Your brief" : "Time to leave";
   const name = (str(input.name) || fallback).replace(/[\u0000-\u001f\u007f]/g, " ").slice(0, MAX_NAME);
   return { ok: true, trigger, action, name };
 }

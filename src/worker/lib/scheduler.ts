@@ -3,6 +3,7 @@ import type { Grant } from "./scopes.ts";
 import { makeAlert, summarise, type Alert, type Delivery } from "./alerts.ts";
 import { bookOf, personOfWho } from "./context.ts";
 import {
+  MAX_BRIEFS,
   MAX_PAGES,
   MAX_ROUTINES,
   MAX_WATCHES,
@@ -66,6 +67,8 @@ export interface SchedulerDeps {
    * Null when it was; else why not.
    */
   relay?(r: Routine, to: { person: string; name: string }): Promise<string | null>;
+  /** A brief of the maker's day (lib/brief.ts): the document to send, with what waits for their OK, or why not. */
+  brief?(r: Routine, now: number): Promise<{ ok: boolean; text: string; proposals?: Alert["proposals"] }>;
 }
 
 const R = "routine:";
@@ -164,6 +167,14 @@ export class Scheduler {
         const updated: Routine = { ...had, trigger: built.trigger, enabled: true };
         await this.save(updated);
         return updated;
+      }
+    }
+    if (built.action.kind === "brief") {
+      const mine = personOfWho(by.who);
+      // A one-off whose time has passed is kept a week to show it ran, and cannot be switched back on: it does not count.
+      const theirs = all.filter((r) => r.action.kind === "brief" && personOfWho(r.createdBy) === mine && (r.trigger.kind !== "once" || r.enabled || r.trigger.at > now));
+      if (theirs.length >= MAX_BRIEFS) {
+        return `there are already ${MAX_BRIEFS} briefs for you; remove one first`;
       }
     }
     if (all.length >= MAX_ROUTINES) return `there are already ${MAX_ROUTINES} routines; remove one first`;
@@ -299,9 +310,13 @@ export class Scheduler {
     // 15 s timeout) must not hold up the others, or a reminder due now.
     const due = all.filter((r) => r.enabled && (r.trigger.kind === "watch" || r.trigger.kind === "page") && (r.watch?.nextCheck ?? 0) <= now + 1000);
     const looks = new Map(await Promise.all(due.map(async (r) => [r.id, await this.look(r, deps)] as const)));
+    // One brief an alarm: each is a dozen requests of the alarm's fifty. Another due is
+    // left as it is, so nextWake is now and it goes in an alarm of its own straight after.
+    let briefed = false;
     for (const r of all) {
       try {
-        await this.tickOne(r, deps, now);
+        if (r.action.kind === "brief" && briefed) continue;
+        if ((await this.tickOne(r, deps, now)) && r.action.kind === "brief") briefed = true;
         const look = looks.get(r.id);
         if (look) await this.applyWatch(r.id, look, deps, now);
       } catch (e) {
@@ -320,15 +335,16 @@ export class Scheduler {
     return this.nextWake(now);
   }
 
-  private async tickOne(r: Routine, deps: SchedulerDeps, now: number): Promise<void> {
+  /** True when it ran. */
+  private async tickOne(r: Routine, deps: SchedulerDeps, now: number): Promise<boolean> {
     if (r.pending && r.pending.at <= now) {
       const data = r.pending.data;
       delete r.pending;
       await this.save(r); // handled before it runs: a retried alarm must not run it again
       await this.execute(r, deps, now, data);
-      return;
+      return true;
     }
-    if (!r.enabled || r.nextAt === undefined || r.nextAt > now + 1000) return;
+    if (!r.enabled || r.nextAt === undefined || r.nextAt > now + 1000) return false;
 
     const dueAt = r.nextAt;
     const late = now - dueAt;
@@ -347,10 +363,12 @@ export class Scheduler {
       r.lastRun = { at: now, ok: false, detail: `missed: it was due ${whenSaid(dueAt, deps.timeZone)}` };
       await this.save(r);
       await this.log(r.id, r.lastRun);
-      return;
+      return false;
     }
     await this.save(r);
-    await this.execute(r, deps, now, undefined, late > 5 * 60_000 ? dueAt : undefined);
+    // A brief's day turns at 15:00: one run a moment early (above) runs as at its time.
+    await this.execute(r, deps, r.action.kind === "brief" ? Math.max(now, dueAt) : now, undefined, late > 5 * 60_000 ? dueAt : undefined);
+    return true;
   }
 
   /**
@@ -461,6 +479,7 @@ export class Scheduler {
       return;
     }
     let text: string;
+    let cards: Alert["proposals"];
     if (r.action.kind === "say") {
       text = data ? `${r.action.text}\n\n${data}` : r.action.text;
     } else if (r.action.kind === "ask") {
@@ -479,15 +498,30 @@ export class Scheduler {
         await this.record(r.id, { at: now, ok: true, detail: "nothing to report" });
         return;
       }
+    } else if (r.action.kind === "brief") {
+      if (!deps.brief) {
+        await this.record(r.id, { at: now, ok: false, detail: "briefs cannot run here" });
+        return;
+      }
+      const b = await deps.brief(r, now);
+      if (!b.ok) {
+        await this.record(r.id, { at: now, ok: false, detail: `no brief: ${b.text}` });
+        return;
+      }
+      text = b.text;
+      cards = b.proposals;
     } else {
       return; // leave has its own path
     }
-    if (lateFrom !== undefined) {
+    // A brief starts with its heading, and its day is in it.
+    if (lateFrom !== undefined && r.action.kind !== "brief") {
       const hhmm = new Intl.DateTimeFormat("en-GB", { timeZone: deps.timeZone, hour: "2-digit", minute: "2-digit", hour12: false })
         .format(new Date(lateFrom));
       text = `(This was due at ${hhmm}.) ${text}`;
     }
-    const alert = { ...makeAlert({ title: r.name, text }, "routine", now, personOfWho(r.createdBy))!, routine: r.id };
+    // A brief is a page to read, not something to say aloud; its cards come with it.
+    const made = makeAlert({ title: r.name, text, ...(r.action.kind === "brief" ? { speak: false } : {}) }, "routine", now, personOfWho(r.createdBy))!;
+    const alert = { ...made, routine: r.id, ...(cards?.length ? { proposals: cards } : {}) };
     const d = await deps.deliver(alert);
     await this.record(r.id, outcome(d, now), text);
   }

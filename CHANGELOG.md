@@ -19,15 +19,38 @@ of every release, and in the [README](README.md#updating).
 
 ### Added
 
+- **Briefs.** A routine can now brief you on your day: "every weekday at
+  seven, brief me on my day", or Routines → Brief me on my day. Jarvis puts
+  together your calendar (what clashes, your free time, invitations you have
+  not answered), the weather, the car, the day's orders and how many old
+  promotions sit in your inbox, your jobs, and anything waiting for your OK,
+  as a page you can read, opened by a line or two on what matters most. Only
+  what you can reach and have set up is in it. One sent after 3 PM covers
+  tomorrow. One short answer per brief, so it costs little.
+- **Briefs put things to you.** A brief now comes with cards to tap: answer
+  an invitation you have left unanswered for three days (Decline when it
+  clashes with something, else Accept), and archive the old promotions in your
+  inbox once there are 20 or more, with **Put back** for a week. **Don't
+  suggest this again** on a brief's card stops it being offered for 30 days.
+  Every card's button now says what it does (Lock, Send, Add, Archive), and
+  Now shows up to five.
+- **Errands for later.** What a background job proposes can wait for when
+  you want it: at a time, before a calendar event, or when you get home or
+  leave (with Home Assistant and your Home Assistant person in Family). It
+  comes as a **Ready now** alert with its card then, checked again first;
+  meanwhile it waits in Jobs → Later, where Don't do this drops it. A brief
+  also lines up starting the car's climate half an hour before your first
+  event with a place, if you can drive the car.
 - **Jobs ask before they act.** A background job that would do something
   (lock the car, put an event in your calendar, archive or star an email,
   send an email it wrote, a Home Assistant call) now proposes it: its result
-  comes with a card for each, with Approve and Not now, on the alert, under
+  comes with a card for each, its button saying what it does (Approve for a
+  Home Assistant call) beside Not now, on the alert, under
   its answer in the chat, and on Home under Now until you answer. Only your
   tap does it, once, with no more
   than the job could reach; a card says when something can't be undone, and
   waits a day. An email a job writes is saved to your Drafts, and its card's
-  Approve sends it. Once you approve something that can be undone (locking
+  Send sends it. Once you approve something that can be undone (locking
   the car, an event, archiving mail), **Let jobs do this without asking**
   lets them do that one kind from then on; Jobs lists what is allowed, with
   Stop. Anything irreversible, and anything for the house, always asks.
@@ -184,6 +207,14 @@ of every release, and in the [README](README.md#updating).
 
 ### Fixed
 
+- **A video call is not somewhere to drive.** A leave-by routine no longer
+  treats an event whose place only names the call ("Microsoft Teams
+  Meeting", "Zoom Meeting", "Google Meet") as a place to leave for.
+- **An approved call finishes even if you close Jarvis.** Approving what a
+  job proposed now hands the call to Jarvis to make in the background, so a
+  slow one (waking the car can take a minute or more) is no longer cut short
+  when you close the app or lock the phone. Its card says Doing it… until it
+  is done, then what came of it.
 - **A background job keeps to what its maker may do now.** A scope an
   admin took from someone is taken from the jobs they had already started,
   as it already was from their routines, and a job whose maker has left the

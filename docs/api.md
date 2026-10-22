@@ -539,14 +539,30 @@ cameras, and the reading tools of MCP servers (judged by name: `get`, `list`,
 unlock or switch anything itself: a call it would make (a car command, a
 calendar event, tidying mail, a Home Assistant call, sending an email it wrote
 as a draft) is proposed instead, and its result alert carries them as
-`proposals: [{id, risk, says}]`. Only the person who started it can approve
+`proposals: [{id, risk, says, verb?}]`, `verb` being the card's button
+("Lock", "Send"; absent, Approve). Only the person who started it can approve
 one, signed in, with `POST /api/hub/proposals/answer {id, answer: "approve" |
-"decline"}`; `GET /api/hub/proposals` is `{open, recent, allowed}`. After
+"decline" | "undo"}`; an approved one comes back `running`, and Jarvis makes the call
+in the background. `GET /api/hub/proposals` is `{open, recent, allowed, later}`, and
+says what came of it. `later` is what waits to be put to them: `[{id, says,
+why, risk, when, verb?, about?, body?}]`, `when` in words ("When you get home", "30
+min before “Dentist”, Thu 23 Oct, 10:00"); it cannot be approved before
+then, and `answer: "decline"` with its id drops it (one with `about`, a
+brief's, is remembered as its card's decline is, and drops the others
+waiting with it). Each proposal may carry
+`release` (what it waited for, once it was put to them), `verb`, `about` (a brief's card,
+whose decline is remembered: the next brief does not offer it again for 30
+days), `undoes` and `undone` (Put back). `"undo"` is Put back on archived
+promotions, done by a tap within the week: what undoes it comes back
+`running`, once (again only if that did not work). After
 approving a reversible one, `POST /api/hub/proposals/allow {id}` lets jobs make
 that one kind of call without asking (a car command another undoes, a calendar
 event, one way of tidying mail; never anything irreversible or for the house),
 and `DELETE /api/hub/proposals/allow?category=` asks again. A device never can:
-everything under `/api/hub/` is a person's. A proposal waits a day. At most 3 run at once and 30 are started a
+everything under `/api/hub/` is a person's. A proposal waits a day (a
+one-off invitation's, no later than its start; an all-day one's, until its
+day is out; one put to them later, no later than half an hour past its
+time, or its event's start). At most 3 run at once and 30 are started a
 day; one is stopped after 25 steps or 20 minutes.
 
 ### Handing research to Hermes
@@ -606,6 +622,18 @@ Every kind but `leave` takes exactly one of `say` (a fixed message) or `ask`
 An `ask` may also take `notify: "if-important"`: Jarvis answers NOTHING when
 nothing deserves attention, nothing is sent, and the last result says
 "nothing to report".
+A `once` or `daily` routine may take `"brief": true` in place of `say` or
+`ask`: a brief of its creator's day, written by Jarvis from their calendar,
+weather, car, mail, jobs and what waits for their OK (as far as their grants
+reach and those are set up), as a document starting `# <day>`, under 1,400
+characters, sent as an alert with `speak` false. Before 15:00 it covers the
+rest of the day; from then, tomorrow. Two each at most. What waits for their
+OK, five at most as its For your OK lists them, comes with the alert as
+`proposals`: first what it puts to them for a tap (answering an invitation
+left unanswered three days, archiving 20 or more promotions older than two
+days), then the newest of the rest. With car control and a car of theirs to
+drive, it also stages starting the car's climate 30 minutes before the
+day's first event with a place, put to them then (one for each event).
 `GET /api/v1/routines` lists them with plain-English `when` and `does`, the
 next run and the last result; `PATCH` takes `{id, enabled?, name?}`; `DELETE
 ?id=` removes one; `POST /api/v1/routines/run {id}` runs one now.

@@ -18,6 +18,9 @@ import { MERGE_INSTRUCTIONS, PLAN_INSTRUCTIONS, RESEARCH_CHECK, TABLE_CHECK, TAB
 import { SHARE, angleMessage, mergeMaterial, shareReply, shareTool, teamView } from "../lib/research-team.ts";
 import { prepareRouter, runCalls, type Prepared } from "../lib/router.ts";
 import { held, proposable, type File, type Finish } from "../lib/proposals.ts";
+import { eventNear } from "../lib/agenda.ts";
+import { localeOf } from "../lib/locale.ts";
+import type { Release } from "../lib/later.ts";
 import { draftThenAsk, mailDraftSend } from "../lib/mail-draft.ts";
 import { mailSend } from "../tools/gmail.ts";
 import { recordUsage } from "./usage.ts";
@@ -103,10 +106,17 @@ const isPlanStep = (id: string | undefined): id is string => !!id && id.startsWi
  */
 function proposing(p: Prepared, job: Job): Prepared {
   const person = personOfWho(job.createdBy);
-  const file: File = async (action, weighed, ctx, body) => {
+  const file: File = async (action, weighed, ctx, body, later) => {
     const state = stateStub(ctx.env);
     if (!state) return "Nothing can be proposed on this deployment: it has no state object.";
-    return state.proposalAdd({ who: job.createdBy, person, from: { kind: "job", id: job.id, title: job.title }, action, weighed, grants: ctx.grants, ...(body ? { body } : {}) }, Date.now());
+    // Before an event: the event code finds in their calendar by its start, its id and title Google's, never the job's words.
+    let release: Release | undefined = later && !("event" in later) ? later : undefined;
+    if (later && "event" in later) {
+      const e = await eventNear(ctx.env, later.event.start, localeOf(ctx.env).timeZone, AbortSignal.timeout(10_000));
+      if (typeof e === "string") return `Not filed: ${e}`;
+      release = { event: { id: e.id, start: e.start, title: e.summary, leadMin: later.event.leadMin } };
+    }
+    return state.proposalAdd({ who: job.createdBy, person, from: { kind: "job", id: job.id, title: job.title }, action, weighed, grants: ctx.grants, ...(body ? { body } : {}), ...(release ? { release } : {}) }, Date.now());
   };
   const finish: Finish = async (q, outcome, ctx) => stateStub(ctx.env)?.proposalFinish(q.person, q.id, outcome, Date.now());
   // The mail this job already drafted for this same ask (lib/mail-draft.ts draftThenAsk).
