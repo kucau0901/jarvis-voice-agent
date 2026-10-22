@@ -3,7 +3,7 @@
 // home or leaving), checked again as it is put to them, and never seen,
 // approved or allowed without asking before then.
 import { AT_GRACE_MS, HOME_MS, MAX_HOME, MAX_STAGED, parseLater, presenceRead, presenceTemplate, untilOf, whenSaid, type Release } from "../src/worker/lib/later.ts";
-import { DECIDE_MS, filed, held, Proposals, weigh, type LaterDeps, type Proposal, type ProposalInput } from "../src/worker/lib/proposals.ts";
+import { DECIDE_MS, filed, held, PENDING_MAX, PER_JOB, Proposals, weigh, type LaterDeps, type Proposal, type ProposalInput } from "../src/worker/lib/proposals.ts";
 import type { Alert } from "../src/worker/lib/alerts.ts";
 import { WATCH_ERRORS_SLOW, WATCH_EVERY_MS, WATCH_SLOW_MS } from "../src/worker/lib/scheduler.ts";
 import { carCommand } from "../src/worker/tools/tessie.ts";
@@ -142,6 +142,22 @@ console.log("\nstaged: kept apart until its time");
   check("the alarm wakes when it is due", (await props.nextWake(T)) === at(17));
   await props.decline("u_sara", s.id, T + 2000);
   const refiled = await props.add(input({ release: { at: at(17) } }), T + 3000);
+  // Staged, then the same call from the same job for now: the one staged, not a card beside it.
+  const both = new Proposals(fakeStorage() as never);
+  const staged1 = (await both.add(input({ release: { at: at(17) } }), T)) as Proposal;
+  const now1 = await both.add(input(), T + 1000);
+  const bw = world();
+  await both.tick({ carryOut: async () => ({ ok: true, text: "" }), later: bw.deps }, at(17));
+  check("staged, then the same call for now: the staged one, and one card when its time comes", typeof now1 !== "string" && now1.id === staged1.id && (await both.list("u_sara", at(17))).length === 1 && bw.said.length === 1, now1);
+  // …even of a kind they allow without asking: it is not made now as well.
+  const allowing = new Proposals(fakeStorage() as never);
+  const a0 = (await allowing.add(input({ from: { kind: "job", id: "ja0", title: "x" } }), T)) as Proposal;
+  await allowing.claim("u_sara", a0.id, ["*"], ["*"], T);
+  await allowing.finish("u_sara", a0.id, { ok: true, text: "Locked." }, T);
+  await allowing.allow("u_sara", a0.id, T);
+  const staged2 = (await allowing.add(input({ from: { kind: "job", id: "ja1", title: "x" }, release: { at: at(17) } }), T)) as Proposal;
+  const now2 = await allowing.add(input({ from: { kind: "job", id: "ja1", title: "x" } }), T + 1000);
+  check("…of a kind they allow without asking: still the staged one, not made now", typeof now2 !== "string" && now2.id === staged2.id && now2.by === undefined && !(await allowing.list("u_sara", T)).some((x) => x.from.id === "ja1"), now2);
   check("once declined, the same call again: the declined one, not staged again", typeof refiled !== "string" && refiled.id === s.id && refiled.state === "declined" && (await props.later("u_sara")).length === 0, refiled);
   const allowed = new Proposals(fakeStorage() as never);
   await allowed.add(input(), T);
@@ -154,6 +170,15 @@ console.log("\nstaged: kept apart until its time");
   const many = new Proposals(fakeStorage() as never);
   for (let i = 0; i < MAX_STAGED; i++) await many.add(input({ from: { kind: "job", id: `jm${i}`, title: "x" }, release: { at: at(17) } }), T);
   check(`at most ${MAX_STAGED} each`, typeof (await many.add(input({ from: { kind: "job", id: "jmx", title: "x" }, release: { at: at(17) } }), T)) === "string");
+  // One job's calls, now and for later, count together.
+  const busy = new Proposals(fakeStorage() as never);
+  const nth = (i: number, release?: Release) => input({ from: { kind: "job", id: "jb", title: "x" }, action: { tool: "car_command", args: { ...lock.args, percent: i } }, ...(release ? { release } : {}) });
+  for (let i = 0; i < PER_JOB; i++) await busy.add(nth(i), T);
+  const over = await busy.add(nth(PER_JOB, { at: at(17) }), T);
+  const quiet = new Proposals(fakeStorage() as never);
+  for (let i = 0; i < PER_JOB; i++) await quiet.add(nth(i, { at: at(17) }), T);
+  const overNow = await quiet.add(nth(PER_JOB), T);
+  check(`at most ${PER_JOB} from one job, now and for later together`, typeof over === "string" && /At most/.test(over) && typeof overNow === "string" && /At most/.test(overNow) && (await busy.later("u_sara")).length === 0, { over, overNow });
   const homes = new Proposals(fakeStorage() as never);
   for (let i = 0; i < MAX_HOME; i++) await homes.add(input({ person: `u_p${i}`, who: `u_p${i}`, release: { home: "arrive" } }), T);
   check(`at most ${MAX_HOME} for getting home in the household`, typeof (await homes.add(input({ person: "u_px", who: "u_px", release: { home: "arrive" } }), T)) === "string");
@@ -199,6 +224,14 @@ console.log("\nput to them when its time comes, once");
   await late.tick({ carryOut: async () => ({ ok: true, text: "" }), later: lw.deps }, at(17) + AT_GRACE_MS);
   const gone = await late.get("u_sara", l.id, at(18));
   check("past its time (the alarm was late): not needed, kept so, not said", gone?.state === "expired" && /its time had passed/.test(gone.outcome?.text ?? "") && lw.said.length === 0, gone);
+  // As many waiting as a filing may meet: one more is not put to them.
+  const full = new Proposals(fakeStorage() as never);
+  for (let i = 0; i < PENDING_MAX; i++) await full.add(input({ from: { kind: "job", id: `jf${i}`, title: "x" } }), T);
+  const f1 = (await full.add(input({ from: { kind: "job", id: "jfx", title: "x" }, release: { at: at(17) } }), T)) as Proposal;
+  const fw = world();
+  await full.tick({ carryOut: async () => ({ ok: true, text: "" }), later: fw.deps }, at(17));
+  const fx = await full.get("u_sara", f1.id, at(17));
+  check(`${PENDING_MAX} waiting already: not put to them, said so`, fx?.state === "withdrawn" && /already waiting/.test(fx.outcome?.text ?? "") && fw.said.length === 0, fx);
 }
 
 console.log("\nchecked again as it is put to them");
@@ -313,11 +346,24 @@ console.log("\non getting home, or leaving");
   const nobody = new Proposals(fakeStorage() as never);
   const n = (await nobody.add(input({ person: "u_adam", who: "u_adam", release: { home: "arrive" } }), T)) as Proposal;
   await nobody.tick({ carryOut: async () => ({ ok: true, text: "" }), later: world().deps }, T);
-  check("no Home Assistant person for them: withdrawn, with why", (await nobody.get("u_adam", n.id, T))?.state === "withdrawn");
+  const nb = await nobody.get("u_adam", n.id, T);
+  check("no Home Assistant person for them: withdrawn, with why", nb?.state === "withdrawn" && /Home Assistant cannot say where you are/.test(nb.outcome?.text ?? ""), nb);
   const away = new Proposals(fakeStorage() as never);
   const a = (await away.add(input({ release: { home: "arrive" } }), T)) as Proposal;
-  await away.tick({ carryOut: async () => ({ ok: true, text: "" }), later: world().deps }, T + HOME_MS);
-  check("three days and they did not get home: not needed", (await away.get("u_sara", a.id, T + HOME_MS))?.state === "expired");
+  const awayW = world();
+  await away.tick({ carryOut: async () => ({ ok: true, text: "" }), later: awayW.deps }, T);
+  await away.tick({ carryOut: async () => ({ ok: true, text: "" }), later: awayW.deps }, T + HOME_MS);
+  const aw = await away.get("u_sara", a.id, T + HOME_MS);
+  check("three days and they did not get home: not needed", aw?.state === "expired" && /did not get home within three days/.test(aw.outcome?.text ?? ""), aw);
+  // Home Assistant never once answering, the three days out: said so, not that they did not get home.
+  const dark = new Proposals(fakeStorage() as never);
+  const dw = world();
+  dw.state.renderFails = true;
+  const dk = (await dark.add(input({ release: { home: "arrive" } }), T)) as Proposal;
+  await dark.tick({ carryOut: async () => ({ ok: true, text: "" }), later: dw.deps }, T);
+  await dark.tick({ carryOut: async () => ({ ok: true, text: "" }), later: dw.deps }, T + HOME_MS);
+  const dd = await dark.get("u_sara", dk.id, T + HOME_MS);
+  check("Home Assistant never answering: said so, not that they did not get home", dd?.state === "expired" && /Home Assistant could not say where you were/.test(dd.outcome?.text ?? ""), dd);
 }
 
 console.log("\nX, a job cancelled, someone gone");

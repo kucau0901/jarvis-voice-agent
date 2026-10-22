@@ -239,8 +239,10 @@ function recordOf(input: ProposalInput, body: string | undefined): Omit<Proposal
 /** An errand whose subject they asked not to be offered again. */
 const NOT_AGAIN = "Not put to you: you asked not to be offered this again.";
 
-/** Why an errand for later was not needed after all. */
-function lapsedSaid(r: Release): string {
+/** Why an errand for later was not needed after all: for home, only if Home Assistant ever said where they were. */
+function lapsedSaid(s: Staged): string {
+  const r = s.release;
+  if ("home" in r && s.check?.was === undefined) return "Not put to you: Home Assistant could not say where you were.";
   if ("home" in r) return `Not needed: you did not ${r.home === "arrive" ? "get home" : "leave home"} within three days.`;
   if ("event" in r) return `Not put to you: “${r.event.title}” had begun.`;
   return "Not put to you: its time had passed.";
@@ -311,9 +313,15 @@ export class Proposals {
       if (again.state === "running") return `The same call is already being made without asking: ${again.says}. Do not file it again, and do not say it was done unless that call's result says so.`;
       return `Tried without asking earlier, and it did not work: ${again.says}${again.outcome?.text ? ` (${again.outcome.text})` : ""}. It is not tried again from this job: do not file it again, and say in your answer that it was not done.`;
     }
-    // For later: the same call filed, put to them or declined already is that one (above); only a new one is staged.
-    if (input.release) return this.stageNow(input, input.release, now, tooLong);
-    if (mine.filter((p) => p.from.id === input.from.id).length >= PER_JOB) return `At most ${PER_JOB} proposals from one job: say the rest in the answer.`;
+    // Waiting for later, for later or not, it is that one too: filed() says when it will be put to them.
+    const later = await this.later(input.person);
+    const staged = later.find((s) => s.from.id === input.from.id && s.action.tool === input.action.tool && canonical(s.action.args) === same);
+    if (staged) return staged;
+    // A job's calls, now and for later, count together; a brief's errand is not one of its cards (one for each event).
+    const fromIt = [...mine, ...(input.from.kind === "job" ? later : [])].filter((p) => p.from.id === input.from.id).length;
+    const perJob = `At most ${PER_JOB} proposals from one job: say the rest in the answer.`;
+    if (input.release) return input.from.kind === "job" && fromIt >= PER_JOB ? perJob : this.stageNow(input, input.release, now, tooLong, later);
+    if (fromIt >= PER_JOB) return perJob;
     // A brief's subject: dismissed, not offered again for a while; waiting already, that card again; tried lately, not again yet.
     const about = input.weighed.about;
     const expires = Math.min(now + DECIDE_MS, input.weighed.until ?? Infinity);
@@ -352,15 +360,12 @@ export class Proposals {
 
   /**
    * A call to be put to them later (lib/later.ts): kept apart, never allowed
-   * without asking. The same call from the same job again is the one staged.
-   * A brief's (its subject set) is one for each event: dismissed, refused;
-   * staged for that event already, that one; put to them for it, not again.
+   * without asking. `mine`: their errands waiting, read in addNow, which
+   * finds the same call from the same job there first. A brief's (its
+   * subject set) is one for each event: dismissed, refused; staged for that
+   * event already, that one; put to them for it, not again.
    */
-  private async stageNow(input: ProposalInput, release: Release, now: number, tooLong: string): Promise<Proposal | string> {
-    const mine = await this.later(input.person);
-    const same = canonical(input.action.args);
-    const again = mine.find((s) => s.from.id === input.from.id && s.action.tool === input.action.tool && canonical(s.action.args) === same);
-    if (again) return again;
+  private async stageNow(input: ProposalInput, release: Release, now: number, tooLong: string, mine: readonly Staged[]): Promise<Proposal | string> {
     const about = input.weighed.about;
     if (about) {
       if (((await this.gone(input.person))[about] ?? 0) > now) return "Dismissed: not offered again for now.";
@@ -464,7 +469,7 @@ export class Proposals {
     const arrived = await this.lookHome(homes.some((s) => (s.check?.next ?? 0) <= now) ? homes : [], deps, now);
     for (const s of all) {
       if (now >= s.until) {
-        await this.settleStaged(s, "expired", lapsedSaid(s.release), now);
+        await this.settleStaged(s, "expired", lapsedSaid(s), now);
         continue;
       }
       const due = dueAt(s.release);
@@ -530,6 +535,8 @@ export class Proposals {
       await this.storage.delete(stageKey(s.person, s.id));
       return;
     }
+    // As many waiting as a filing may meet: not one more, as a job's would not be.
+    if ((await this.list(s.person, now)).filter((p) => p.state === "pending").length >= PENDING_MAX) return this.settleStaged(s, "withdrawn", `Not put to you: ${PENDING_MAX} proposals were already waiting for you.`, now);
     // A day to decide, as any card; no later than its time allows, except home's, whose three days were the wait to get there.
     const card: Proposal = { ...putAway(still), state: "pending", createdAt: now, expires: "home" in still.release ? now + DECIDE_MS : Math.min(now + DECIDE_MS, still.until) };
     await this.storage.put(key(card.person, card.id), card);
