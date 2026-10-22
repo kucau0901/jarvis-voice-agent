@@ -41,6 +41,14 @@ of every release, and in the [README](README.md#updating).
   meanwhile it waits in Jobs → Later, where Don't do this drops it. A brief
   also lines up starting the car's climate half an hour before your first
   event with a place, if you can drive the car.
+- **Meetings from your mail go in your calendar.** A routine can now add
+  meetings emailed to you: Routines → Add meetings emailed to me to my
+  calendar, or "every hour on workdays, add meetings sent to me to my
+  calendar". Mail sent to you by name with a Meet, Zoom, Teams or Webex link
+  is read once, and each meeting is added with a reminder 10 minutes before;
+  mailing lists and mail to a crowd are left out, and so is anything at a
+  time already taken in your calendar. You are told what was added; an hour
+  with nothing new sends nothing.
 - **Jobs ask before they act.** A background job that would do something
   (lock the car, put an event in your calendar, archive or star an email,
   send an email it wrote, a Home Assistant call) now proposes it: its result

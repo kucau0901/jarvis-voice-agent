@@ -1148,6 +1148,15 @@ so someone home already is not "arriving". The card is written before its
 whose time has passed is kept as not needed, unsaid. The card waits a day,
 no later than half an hour past its time or its event's start; the alert
 lasts as long, so quiet hours past that drop it.
+A routine may also put meetings emailed to its maker in their calendar
+(`lib/meetings.ts`): asked for by them, it is what they set up to happen, so
+it adds and says rather than proposing. Code chooses what is read (Gmail's
+search for a meeting's link, then sent to them by name: their address in To
+or Cc, no mailing list, not a crowd), so mass mail never reaches a model; one
+model call a run reads the rest, quoted as data, and code checks its dates.
+Each email is read once (`meetseen:`), one Google would not take is tried
+again, and a time already taken in the calendar is left as it is. Real
+invitations are not its business: Google Calendar adds those itself.
 Routines otherwise act as they always have: they are what the person set up
 to happen, and nothing here stands in front of the house when it is asked
 directly. The decided proposal is the audit: who, when, and what came of it.

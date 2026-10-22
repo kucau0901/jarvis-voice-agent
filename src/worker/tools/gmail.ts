@@ -117,7 +117,7 @@ interface Part {
   body?: { size?: number; data?: string; attachmentId?: string };
   parts?: Part[];
 }
-interface Message {
+export interface Message {
   id: string;
   threadId?: string;
   snippet?: string;
@@ -181,7 +181,7 @@ const tidy = (s: string): string =>
  * text is sitting right there. Walks nested multiparts, which is how anything
  * with an attachment or an inline image is structured.
  */
-function extractBody(part: Part | undefined, depth = 0): string {
+export function extractBody(part: Part | undefined, depth = 0): string {
   if (!part || depth > 8) return "";
 
   if (part.mimeType === "text/plain" && part.body?.data) {

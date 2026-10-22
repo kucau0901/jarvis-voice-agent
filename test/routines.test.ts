@@ -141,6 +141,9 @@ console.log("\nbuilding one from what was said");
   check("anything else is refused", !buildRoutine({ when: "daily", time: "07:30", ask: "x", notify: "sometimes" }, tz, now).ok);
   const said = buildRoutine({ when: "daily", time: "07:30", say: "Bins", notify: "if-important" }, tz, now);
   check("a message to say is always said", said.ok && said.action.kind === "say" && !("notify" in said.action), said);
+  const mt = buildRoutine({ when: "cron", cron: "0 8-17 * * 1-5", meetings: true }, tz, now);
+  check("meetings from mail, every hour on workdays, named and described", mt.ok && mt.action.kind === "meetings" && mt.name === "Meetings from my mail" && describeAction(mt.action) === "put meetings emailed to you in your calendar, and tell you", mt);
+  check("…at a time only, and on its own", !buildRoutine({ when: "event", event: "arrived_home", meetings: true }, tz, now).ok && !buildRoutine({ when: "cron", cron: "0 9 * * *", meetings: true, ask: "x" }, tz, now).ok);
   check("described", describeTrigger({ kind: "daily", time: "07:30", days: [1, 2, 3, 4, 5] }, tz) === "weekdays at 07:30" && describeTrigger({ kind: "daily", time: "08:00", days: [] }, tz) === "every day at 08:00");
   const c = buildRoutine({ when: "cron", cron: "  0  8,12 * * MON-fri ", ask: "Anything new in my mail?" }, tz, now);
   check("cron, kept tidy", c.ok && c.trigger.kind === "cron" && c.trigger.expr === "0 8,12 * * mon-fri", c);
@@ -165,7 +168,7 @@ function fakeStorage() {
   };
 }
 
-function harness(opts: { events?: LeaveEvent[] | string; travel?: number | null; delivered?: boolean; noHa?: boolean; page?: SchedulerDeps["readPage"]; brief?: SchedulerDeps["brief"] } = {}) {
+function harness(opts: { events?: LeaveEvent[] | string; travel?: number | null; delivered?: boolean; noHa?: boolean; page?: SchedulerDeps["readPage"]; brief?: SchedulerDeps["brief"]; meetings?: SchedulerDeps["meetings"] } = {}) {
   const sent: Alert[] = [];
   const asked: { prompt: string; grants: readonly string[] }[] = [];
   const travels: string[] = [];
@@ -205,6 +208,7 @@ function harness(opts: { events?: LeaveEvent[] | string; travel?: number | null;
         },
     ...(opts.page ? { readPage: opts.page } : {}),
     ...(opts.brief ? { brief: opts.brief } : {}),
+    ...(opts.meetings ? { meetings: opts.meetings } : {}),
   };
   const storage = fakeStorage();
   const s = new Scheduler(storage, async () => deps);
@@ -307,6 +311,23 @@ console.log("\na daily briefing asks Jarvis, with its creator's reach");
   check("still on, and set for tomorrow", r.enabled && iso(r.nextAt) === iso(zonedToUtc(2026, 9, 26, 10, 30, tz)));
   await h.s.tick(T0 + 30 * MIN + 5000);
   check("an alarm that fires twice runs it once", h.asked.length === 1);
+}
+
+console.log("\nmeetings from mail: said only when one was added");
+{
+  let said: string | null = null;
+  const h = harness({ meetings: async () => ({ ok: true, text: said }) });
+  await h.s.add({ when: "cron", cron: "0 * * * *", meetings: true }, OWNER, T0);
+  await h.s.tick(T0 + 60 * MIN);
+  const r = (await h.s.list())[0]!;
+  check("nothing added: nothing sent, and Routines says it looked", h.sent.length === 0 && r.lastRun?.ok === true && r.lastRun.detail === "nothing new", r.lastRun);
+  said = "Added to your calendar: …";
+  await h.s.tick(T0 + 120 * MIN);
+  check("one added: said, under the routine's name", h.sent.length === 1 && h.sent[0]!.text === "Added to your calendar: …" && h.sent[0]!.title === "Meetings from my mail", h.sent);
+  const none = harness();
+  await none.s.add({ when: "cron", cron: "0 * * * *", meetings: true }, OWNER, T0);
+  await none.s.tick(T0 + 60 * MIN);
+  check("where it cannot run: said so in Routines", (await none.s.list())[0]!.lastRun?.detail === "meetings from mail cannot run here");
 }
 
 console.log("\nan ask that speaks only when it matters");

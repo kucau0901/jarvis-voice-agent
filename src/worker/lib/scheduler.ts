@@ -69,6 +69,8 @@ export interface SchedulerDeps {
   relay?(r: Routine, to: { person: string; name: string }): Promise<string | null>;
   /** A brief of the maker's day (lib/brief.ts): the document to send, with what waits for their OK, or why not. */
   brief?(r: Routine, now: number): Promise<{ ok: boolean; text: string; proposals?: Alert["proposals"] }>;
+  /** Meetings emailed to the maker, put in their calendar (lib/meetings.ts): what to say, null when nothing was added, or why not. */
+  meetings?(r: Routine, now: number): Promise<{ ok: boolean; text: string | null }>;
 }
 
 const R = "routine:";
@@ -510,6 +512,22 @@ export class Scheduler {
       }
       text = b.text;
       cards = b.proposals;
+    } else if (r.action.kind === "meetings") {
+      if (!deps.meetings) {
+        await this.record(r.id, { at: now, ok: false, detail: "meetings from mail cannot run here" });
+        return;
+      }
+      const m = await deps.meetings(r, now);
+      if (!m.ok) {
+        await this.record(r.id, { at: now, ok: false, detail: `no meetings read: ${m.text}` });
+        return;
+      }
+      // Said only when one was added: an hourly look with nothing new sends nothing.
+      if (m.text === null) {
+        await this.record(r.id, { at: now, ok: true, detail: "nothing new" });
+        return;
+      }
+      text = m.text;
     } else {
       return; // leave has its own path
     }
