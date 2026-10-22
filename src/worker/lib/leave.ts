@@ -127,9 +127,9 @@ interface CalItem {
   attendees?: { self?: boolean; responseStatus?: string }[];
 }
 
-/** A place someone can drive to, not a video call. */
+/** A place someone can drive to, not a video call: its link, or the name a calendar gives one without it ("Microsoft Teams Meeting"). */
 export function drivable(location: string): boolean {
-  return !/https?:\/\/|zoom\.us|meet\.google|teams\.microsoft|webex/i.test(location) && location.length >= 3;
+  return !/https?:\/\/|zoom\.us|meet\.google|teams\.microsoft|webex|skype|microsoft teams|teams meeting|google meet|zoom meeting|^(zoom|teams|online)$/i.test(location.trim()) && location.length >= 3;
 }
 
 const tidy = (s: string) => s.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, 200);

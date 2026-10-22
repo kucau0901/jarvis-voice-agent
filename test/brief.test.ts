@@ -558,6 +558,11 @@ console.log("\nthe car's climate, staged before the day's first event with a pla
   check("not for a video call", staged.length === 0);
   await run({}, [event("call2abc", 10, 0, "Zoom: https://zoom.us/j/1"), event("call3abc", 11, 0, "Google Meet https://meet.google.com/abc-defg-hij")]);
   check("nor for one whose link has a label before it", staged.length === 0, staged);
+  // A Teams invitation from Outlook has its link in the description, and its place says only what it is.
+  for (const place of ["Microsoft Teams Meeting", "Zoom Meeting", "Google Meet", "Zoom", "Online"]) {
+    await run({}, [event("call4abc", 10, 0, place)]);
+    check(`nor for a place that only names the call: ${place}`, staged.length === 0, staged);
+  }
   // An evening's brief covers tomorrow, though its read starts now: tonight's dinner is not tomorrow's first event.
   await run({}, [event("dinr1abc", 20, 0, "5 Example Lane"), event("dent2abc", 9, 0, "12 Example Road", 22)], at(18));
   check("an evening's brief: before tomorrow's first event, not tonight's", staged.length === 1 && JSON.stringify(staged[0]!.release) === JSON.stringify({ event: { id: "dent2abc", start: at(9, 0, 22), title: "Dentist", leadMin: 30 } }), staged);

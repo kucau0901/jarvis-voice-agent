@@ -1130,11 +1130,12 @@ for. Each card's button says what it does ("Lock", "Send", "Archive"), and an
 approval checks the button against the stored call as it checks its words.
 A call may also be for later (`lib/later.ts`): a job's held tool takes
 `later` (at a time, before an event it names by its start in their local
-time, or on getting home or leaving), which code turns into a release,
-finding the event in their calendar itself; an event's title, someone else's
-words, never goes back to the job's model. A brief stages the car's climate
-before the day's first event with a place (one for each event; its X stops
-any for 30 days). Until then it is kept apart (`propstage:`), so nothing
+time, only for a job that may read the calendar, or on getting home or
+leaving), which code turns into a release, finding the event in their
+calendar itself; an event's title, someone else's words, never goes back to
+the job's model. A brief stages the car's climate before the day's first
+event with a place (one for each event; its X stops any for 30 days, and
+drops those waiting). Until then it is kept apart (`propstage:`), so nothing
 lists it as waiting, nothing approves it, and a standing permission never
 makes it. The object's alarm puts it to them (`Proposals.tick`, after the
 approved calls): an event read again first (moved once, it waits for the new

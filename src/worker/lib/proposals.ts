@@ -2,7 +2,7 @@ import type { Env } from "../types.ts";
 import type { Storage } from "./state-host.ts";
 import type { Alert } from "./alerts.ts";
 import { jobTool } from "./jobs.ts";
-import { narrow, SCOPES, type Grant } from "./scopes.ts";
+import { allows, narrow, SCOPES, type Grant } from "./scopes.ts";
 import { calledService } from "../tools/mcp.ts";
 import type { Tool, ToolContext, ToolOutput } from "../tools/registry.ts";
 import { localeOf } from "./locale.ts";
@@ -236,6 +236,9 @@ function recordOf(input: ProposalInput, body: string | undefined): Omit<Proposal
   };
 }
 
+/** An errand whose subject they asked not to be offered again. */
+const NOT_AGAIN = "Not put to you: you asked not to be offered this again.";
+
 /** Why an errand for later was not needed after all. */
 function lapsedSaid(r: Release): string {
   if ("home" in r) return `Not needed: you did not ${r.home === "arrive" ? "get home" : "leave home"} within three days.`;
@@ -284,10 +287,12 @@ export class Proposals {
   /**
    * A call filed for the person's tap; why not, in words. The same call
    * from the same job again is the one already filed, whatever became of
-   * it: a step tried again never files, or runs, a second.
+   * it: a step tried again never files, or runs, a second. `live`: whether
+   * its job still runs, asked in its turn, so a cancel while it waited
+   * (behind the alarm's look at the house) files and makes nothing.
    */
-  add(input: ProposalInput, now: number): Promise<Proposal | string> {
-    const run = this.filing.then(() => this.addNow(input, now));
+  add(input: ProposalInput, now: number, live?: () => Promise<boolean>): Promise<Proposal | string> {
+    const run = this.filing.then(async () => (live && !(await live()) ? "Its job was cancelled: nothing was proposed or done." : this.addNow(input, now)));
     this.filing = run.catch(() => {});
     return run;
   }
@@ -296,7 +301,6 @@ export class Proposals {
     if (JSON.stringify(input.action.args).length > MAX_ARGS) return "That is too long to propose.";
     const tooLong = "That is too long to show the user whole, so it was not filed: say in your answer what you would do.";
     if (input.weighed.says.length > MAX_SAYS || (input.body?.length ?? 0) > MAX_BODY) return tooLong;
-    if (input.release) return this.stageNow(input, input.release, now, tooLong);
     const mine = await this.list(input.person, now);
     const same = canonical(input.action.args);
     const again = mine.find((p) => p.from.id === input.from.id && p.action.tool === input.action.tool && canonical(p.action.args) === same);
@@ -307,6 +311,8 @@ export class Proposals {
       if (again.state === "running") return `The same call is already being made without asking: ${again.says}. Do not file it again, and do not say it was done unless that call's result says so.`;
       return `Tried without asking earlier, and it did not work: ${again.says}${again.outcome?.text ? ` (${again.outcome.text})` : ""}. It is not tried again from this job: do not file it again, and say in your answer that it was not done.`;
     }
+    // For later: the same call filed, put to them or declined already is that one (above); only a new one is staged.
+    if (input.release) return this.stageNow(input, input.release, now, tooLong);
     if (mine.filter((p) => p.from.id === input.from.id).length >= PER_JOB) return `At most ${PER_JOB} proposals from one job: say the rest in the answer.`;
     // A brief's subject: dismissed, not offered again for a while; waiting already, that card again; tried lately, not again yet.
     const about = input.weighed.about;
@@ -516,10 +522,7 @@ export class Proposals {
     if (!(await deps.reach(s).catch(() => null))) return this.settleStaged(s, "withdrawn", "Not put to you: whoever it was for is no longer in the family.", now);
     const unlike = await deps.check(s).catch((e: unknown) => (e instanceof Error ? e.message : String(e)));
     if (unlike) return this.settleStaged(s, "withdrawn", `It changed before it was needed: ${unlike}`, now);
-    if (s.about && ((await this.gone(s.person))[s.about] ?? 0) > now) {
-      await this.storage.delete(stageKey(s.person, s.id));
-      return;
-    }
+    if (s.about && ((await this.gone(s.person))[s.about] ?? 0) > now) return this.settleStaged(s, "withdrawn", NOT_AGAIN, now);
     // As it is now (X'd meanwhile, it is gone); and once only: a card already filed from it (a retried alarm) is not filed or said again.
     const still = await this.storage.get<Staged>(stageKey(s.person, s.id));
     if (!still) return;
@@ -578,10 +581,15 @@ export class Proposals {
     return declined;
   }
 
-  /** A subject a brief is not to offer again for GONE_MS; the soonest to lapse going first past MAX_GONE. */
+  /**
+   * A subject a brief is not to offer again for GONE_MS, the soonest to
+   * lapse going first past MAX_GONE; and what waits for later with it is
+   * not put to them, and no longer listed as if it would be.
+   */
   private async remember(person: string, about: string, now: number): Promise<void> {
     const kept = Object.entries({ ...(await this.gone(person)), [about]: now + GONE_MS }).filter(([, until]) => until > now);
     await this.storage.put(goneKey(person), Object.fromEntries(kept.sort((a, b) => b[1] - a[1]).slice(0, MAX_GONE)));
+    for (const s of await this.later(person)) if (s.about === about) await this.settleStaged(s, "withdrawn", NOT_AGAIN, now);
   }
 
   /** What a brief is not to offer again, and until when. */
@@ -696,16 +704,11 @@ export class Proposals {
 
   /**
    * A job cancelled or removed: what it proposed and is still waiting, or
-   * waits for later, is not to be done. Through the filing chain, so what a
-   * step filed before the cancel, however long it waited there, goes too.
+   * waits for later, is not to be done. At once, so nothing of it is
+   * approved or put to them meanwhile; what a step was filing as it was
+   * cancelled is refused in its turn (add's `live`).
    */
-  withdrawJob(person: string, jobId: string, now: number): Promise<void> {
-    const run = this.filing.then(() => this.withdrawNow(person, jobId, now));
-    this.filing = run.catch(() => {});
-    return run;
-  }
-
-  private async withdrawNow(person: string, jobId: string, now: number): Promise<void> {
+  async withdrawJob(person: string, jobId: string, now: number): Promise<void> {
     for (const p of await this.list(person, now)) {
       if (p.from.id === jobId && p.state === "pending") await this.storage.put(key(person, p.id), { ...p, state: "withdrawn", decidedAt: now });
     }
@@ -840,6 +843,8 @@ export function held(tools: readonly Tool[], file: File, finish: Finish): Tool[]
         const tz = localeOf(ctx.env).timeZone;
         const when = later ? parseLater(asked, tz, Date.now()) : null;
         if (typeof when === "string") return `Not filed: ${when}.`;
+        // Before an event, code reads their calendar to find it: only for a job that may read it.
+        if (when && "event" in when && !allows(ctx.grants, "calendar")) return "Not filed: before_event needs their calendar, which this job may not read: ask at a time instead.";
         const w = weigh(t, args, ctx.env);
         if (!w) return "That cannot be proposed from a job: say in your answer what you would do.";
         const shown = t.detail ? await t.detail(args, ctx).catch(() => null) : null;

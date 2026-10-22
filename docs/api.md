@@ -548,7 +548,8 @@ says what came of it. `later` is what waits to be put to them: `[{id, says,
 why, risk, when, verb?, about?, body?}]`, `when` in words ("When you get home", "30
 min before “Dentist”, Thu 23 Oct, 10:00"); it cannot be approved before
 then, and `answer: "decline"` with its id drops it (one with `about`, a
-brief's, is remembered as its card's decline is). Each proposal may carry
+brief's, is remembered as its card's decline is, and drops the others
+waiting with it). Each proposal may carry
 `release` (what it waited for, once it was put to them), `verb`, `about` (a brief's card,
 whose decline is remembered: the next brief does not offer it again for 30
 days), `undoes` and `undone` (Put back). `"undo"` is Put back on archived

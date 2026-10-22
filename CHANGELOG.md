@@ -207,6 +207,9 @@ of every release, and in the [README](README.md#updating).
 
 ### Fixed
 
+- **A video call is not somewhere to drive.** A leave-by routine no longer
+  treats an event whose place only names the call ("Microsoft Teams
+  Meeting", "Zoom Meeting", "Google Meet") as a place to leave for.
 - **An approved call finishes even if you close Jarvis.** Approving what a
   job proposed now hands the call to Jarvis to make in the background, so a
   slow one (waking the car can take a minute or more) is no longer cut short

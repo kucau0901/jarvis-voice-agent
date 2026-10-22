@@ -140,6 +140,9 @@ console.log("\nstaged: kept apart until its time");
   check("but listed as for later", (await props.later("u_sara")).map((x) => x.id).join() === s.id);
   check("the same call from the same job again: the one staged", ((await props.add(input({ release: { at: at(17) } }), T + 1000)) as Proposal).id === s.id && (await props.later("u_sara")).length === 1);
   check("the alarm wakes when it is due", (await props.nextWake(T)) === at(17));
+  await props.decline("u_sara", s.id, T + 2000);
+  const refiled = await props.add(input({ release: { at: at(17) } }), T + 3000);
+  check("once declined, the same call again: the declined one, not staged again", typeof refiled !== "string" && refiled.id === s.id && refiled.state === "declined" && (await props.later("u_sara")).length === 0, refiled);
   const allowed = new Proposals(fakeStorage() as never);
   await allowed.add(input(), T);
   const p0 = (await allowed.list("u_sara", T))[0]!;
@@ -257,6 +260,8 @@ console.log("\non getting home, or leaving");
   w.state.home.set("person.sara", true);
   await tick(T + WATCH_EVERY_MS);
   check("home after away: put to them", (await props.get("u_sara", s.id, T + WATCH_EVERY_MS))?.state === "pending" && w.said.length === 1);
+  const again = await props.add(input({ release: { home: "arrive" } }), T + 2 * WATCH_EVERY_MS);
+  check("the same call from the same job again, once put to them: that card, not another for next time", typeof again !== "string" && again.id === s.id && (await props.later("u_sara")).length === 0, again);
   // Seen arriving, then the alarm cut short before the card was written: tried again, it sees the arrival still.
   const st3 = fakeStorage();
   const cut = new Proposals(st3 as never);
@@ -326,19 +331,34 @@ console.log("\nX, a job cancelled, someone gone");
   await props.withdrawJob("u_sara", "jc", T + MIN);
   const w = await props.get("u_sara", job.id, T + MIN);
   check("its job cancelled: withdrawn, and said so", w?.state === "withdrawn" && w.outcome?.text === "Its job was cancelled." && (await props.later("u_sara")).length === 0, w);
-  // A step's filing waits behind the alarm's look at the house, and its job is cancelled meanwhile.
-  const slow = new Proposals(fakeStorage() as never);
-  await slow.add(input({ release: { home: "arrive" } }), T);
-  let answer = () => {};
-  const sw = world({ renderTemplate: () => new Promise<string>((r) => (answer = () => r("{}"))) });
-  const ticking = slow.tick({ carryOut: async () => ({ ok: true, text: "" }), later: sw.deps }, T);
+  // Cancelled while the alarm looks at the house: what it proposed goes at once, not after the look.
+  const held1 = new Proposals(fakeStorage() as never);
+  await held1.add(input({ from: { kind: "job", id: "j0", title: "x" }, release: { home: "arrive" } }), T);
+  const card1 = (await held1.add(input({ from: { kind: "job", id: "j1", title: "x" } }), T)) as Proposal;
+  await held1.add(input({ from: { kind: "job", id: "j1", title: "x" }, action: climate, weighed: weigh(carCommand, climate.args, NO_CARS)!, release: { at: at(17) } }), T);
+  let answer1 = () => {};
+  const hw = world({ renderTemplate: () => new Promise<string>((r) => (answer1 = () => r("{}"))) });
+  const ticking1 = held1.tick({ carryOut: async () => ({ ok: true, text: "" }), later: hw.deps }, at(17));
   await new Promise((r) => setTimeout(r, 0));
-  const filing = slow.add(input({ from: { kind: "job", id: "jx", title: "x" } }), T);
-  const cancelled = slow.withdrawJob("u_sara", "jx", T);
-  answer();
-  await Promise.all([ticking, filing, cancelled]);
-  const fx = (await slow.list("u_sara", T)).find((x) => x.from.id === "jx");
-  check("filed while the alarm looked at the house, then its job cancelled: withdrawn all the same", fx?.state === "withdrawn", fx);
+  const cancelling = held1.withdrawJob("u_sara", "j1", at(17));
+  await new Promise((r) => setTimeout(r, 0));
+  const tapped = await held1.claim("u_sara", card1.id, ["*"], ["*"], at(17));
+  answer1();
+  await Promise.all([ticking1, cancelling]);
+  check("cancelled while the alarm looks at the house: a tap on its card is refused, and its errand due then is not put to them", tapped === "Its job was cancelled." && hw.said.length === 0, { tapped, said: hw.said.length });
+  // Its step's filing waited there, and the job was cancelled meanwhile: asked in its turn, nothing is filed.
+  const held2 = new Proposals(fakeStorage() as never);
+  await held2.add(input({ from: { kind: "job", id: "j0", title: "x" }, release: { home: "arrive" } }), T);
+  let answer2 = () => {};
+  const hw2 = world({ renderTemplate: () => new Promise<string>((r) => (answer2 = () => r("{}"))) });
+  const ticking2 = held2.tick({ carryOut: async () => ({ ok: true, text: "" }), later: hw2.deps }, T);
+  await new Promise((r) => setTimeout(r, 0));
+  let running = true;
+  const waited = held2.add(input({ from: { kind: "job", id: "j2", title: "x" } }), T, async () => running);
+  running = false;
+  answer2();
+  const [, got2] = await Promise.all([ticking2, waited]);
+  check("its job cancelled while its filing waited: not filed, and said so", got2 === "Its job was cancelled: nothing was proposed or done." && !(await held2.list("u_sara", T)).some((x) => x.from.id === "j2"), got2);
   const run = (await props.add(input({ from: { kind: "brief", id: "rb@1", title: "Brief", routine: "rb" }, release: { at: at(17) } }), T)) as Proposal;
   await props.forgetRun("u_sara", "rb@1", T);
   check("a brief's run forgotten: what it staged goes too", (await props.later("u_sara")).every((x) => x.id !== run.id));
@@ -368,6 +388,9 @@ console.log("\nthe car's climate before an event: one for each event");
   check("done a day ago, another event: staged, with no week to wait as other subjects have", typeof (await props.add(brief("5", "evt3abcd", at(10, 0, 27)), at(9, 0, 23))) !== "string");
   await props.decline("u_sara", other.id, at(9, 0, 23));
   check("X: no climate is offered at all for a while", (await props.add(brief("6", "evt4abcd", at(11, 0, 27)), at(9, 1, 23))) === "Dismissed: not offered again for now.");
+  // The one staged for the 27th waits no longer: not listed as if it would be put to them, and kept with why.
+  const fifth = (await props.list("u_sara", at(9, 1, 23))).find((x) => x.from.id === "rb@5");
+  check("…and the others waiting for later go, said so", (await props.later("u_sara")).length === 0 && fifth?.state === "withdrawn" && /asked not to be offered this again/.test(fifth.outcome?.text ?? ""), fifth);
   // Read again by a later brief at a new start, before its old lead: that start is the one waited for.
   const moving = new Proposals(fakeStorage() as never);
   const m1 = (await moving.add(brief("7", "evt5abcd", at(10, 0, 22)), T)) as Proposal;
@@ -390,6 +413,14 @@ console.log("\na job's held tool: later is when, never the call");
   const own: Tool = { name: "x__later_tool", description: "d", parameters: { type: "object", properties: { later: { type: "string" } }, required: ["later"] }, strict: false, run: async () => "" };
   const [o] = held([own], async () => "filed", async () => {});
   check("a tool with a later of its own keeps it", JSON.stringify(o!.parameters) === JSON.stringify(own.parameters));
+  // Before an event, code reads their calendar to find it: a job that may not read it is not given that way in.
+  const local = (ts: number) => new Intl.DateTimeFormat("sv-SE", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date(ts)).replace(" ", "T");
+  const before = { at: null, before_event: local(HELD + 2 * 86_400_000), minutes_before: null, home: null };
+  const n = filed.length;
+  const noCalendar = await h!.run({ ...lock.args, later: before }, { env, grants: ["car.control"] } as never);
+  check("before an event, for a job that may not read the calendar: not filed, and why", /^Not filed: before_event needs their calendar/.test(String(noCalendar)) && filed.length === n, noCalendar);
+  await h!.run({ ...lock.args, later: before }, { env, grants: ["car.control", "calendar"] } as never);
+  check("…and for one that may, passed on to find it", filed.length === n + 1 && JSON.stringify(filed[n]!.later).includes('"event"'), filed[n]);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

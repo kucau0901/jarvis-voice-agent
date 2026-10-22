@@ -724,15 +724,14 @@ export class JarvisState extends DurableObject<Env> {
   }
 
   // One for when they get home or leave needs the house to say where they are (Family: their Home Assistant person).
-  // Not for a job cancelled or removed while its step ran: read and filed in one go, so no cancel comes between.
+  // Not for a job cancelled or removed while its step ran: asked in its turn to be filed, so no cancel comes between.
   // Staged, it wakes the alarm when its time comes.
   async proposalAdd(input: ProposalInput, now: number) {
     if (input.release && "home" in input.release) {
       const presence = (await this.people.personView(input.person).catch(() => null))?.prefs.presence;
       if (!haConfig(await this.localEnv()) || !presence || !PRESENCE.test(presence)) return "Not filed: Jarvis cannot tell when they get home or leave (Home Assistant, and their Home Assistant person in Family). Ask now, or at a time.";
     }
-    if ((await this.jobs.get(input.from.id))?.status !== "running") return "Its job was cancelled: nothing was proposed or done.";
-    const r = await this.proposals.add(input, now);
+    const r = await this.proposals.add(input, now, async () => (await this.jobs.get(input.from.id))?.status === "running");
     if (input.release) await this.rearm();
     return r;
   }

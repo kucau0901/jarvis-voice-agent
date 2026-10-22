@@ -451,6 +451,9 @@ console.log("\nleave now: the calendar");
   ];
   const ev = eventsFrom(items);
   check("only timed events with a place to drive to, not declined or cancelled", ev.map((e) => e.id).join() === "a", ev);
+  // Outlook's Teams invitations have their link in the description, and their place says only what they are.
+  const calls = eventsFrom(["Microsoft Teams Meeting", "Zoom Meeting", "Google Meet"].map((location, i) => ({ id: `v${i}`, summary: "Call", location, start: { dateTime: "2026-09-25T11:00:00+08:00" } })));
+  check("nor a video call named without its link", calls.length === 0, calls);
 }
 
 const dentist = (start: number): LeaveEvent => ({ id: "ev1", summary: "Dentist", location: "12 High Street, Springfield", start });
