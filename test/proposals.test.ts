@@ -576,6 +576,12 @@ console.log("\na brief's cards: one subject, offered once, dismissed for a while
   await runs.forgetRun("u_sara", "rb1@second");
   const left = (await runs.list("u_sara", T + 2000)).map((p) => p.id);
   check("one run's filings forgotten: only what it filed itself, not a card an earlier run filed that it listed again", reused.id === earlier.id && left.includes(earlier.id) && !left.includes(other.id), { left, earlier: earlier.id, other: other.id });
+  const tappedStore = fakeStorage();
+  const tapped = new Proposals(tappedStore as never);
+  const mid = (await tapped.add(brief("third"), T)) as Proposal;
+  await tapped.claim("u_sara", mid.id, ["*"], ["*"], T + 1);
+  await tapped.forgetRun("u_sara", "rb1@third");
+  check("…and one tapped meanwhile stays, with its queued call, to be refused as an approval is", (await tapped.get("u_sara", mid.id, T + 2))?.state === "running" && tappedStore._m.has(`proprun:u_sara:${mid.id}`));
   await props.forget("u_sara");
   check("someone who left: what they dismissed goes too", !st._m.has("propgone:u_sara") && st._m.size === 0, [...st._m.keys()]);
 }

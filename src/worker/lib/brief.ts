@@ -294,21 +294,23 @@ export async function runBrief(r: Routine, now: number, d: BriefDeps, ask?: Ask)
   // Their jobs and proposals as far as asking reaches: a device allowed only routines reads neither (lib/scopes.ts).
   const asks = allows(d.grants, "ask");
   // Filed before the model is asked anything: the cards wait whatever becomes of the opening.
+  const own = new Set<string>();
   if (asks) {
     // At most BRIEF_MAX cards, counting those filed or still waiting: one refused (dismissed, tried lately) takes no place.
-    let cards = 0;
     for (const c of candidatesOf(read, d.timeZone)) {
-      if (cards >= BRIEF_MAX) break;
+      if (own.size >= BRIEF_MAX) break;
       const weighed = c.tool.propose?.(c.args, d.env);
       if (!weighed) continue;
       // Who sent a few of the promotions, for the card: read only for a card filed anew.
       const detail = c.tool === mailArchiveMany ? () => sampleOf(d.env, c.args.ids as string[], AbortSignal.timeout(SOURCE_MS)) : undefined;
       const p = await d.file({ tool: c.tool.name, args: c.args }, weighed, detail).catch((e) => `not filed: ${why(e)}`);
       if (typeof p === "string") console.warn(`brief: ${c.tool.name} not filed: ${p}`);
-      else cards++;
+      else own.add(p.id);
     }
   }
-  const waiting = asks ? await d.waiting() : [];
+  // Its own cards first (one listed again can be older than a job's since), then whatever else waits.
+  const all = asks ? await d.waiting() : [];
+  const waiting = [...all.filter((p) => own.has(p.id)), ...all.filter((p) => !own.has(p.id))];
   // What waits for their OK first: a long day is cut from the end, and that is the part to act on.
   const sections = [waitingSection(waiting), ...gathered, asks ? jobsSection(d.jobs, since) : null].filter((s): s is Section => s !== null);
 

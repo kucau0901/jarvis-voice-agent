@@ -431,6 +431,27 @@ console.log("\nfiled for their tap, before the model, once");
   }
 }
 
+console.log("\nits own cards first on its alert, however old");
+{
+  const own = { ...proposal("Calendar: accept “Offsite”"), id: "aown" };
+  const newer = Array.from({ length: 6 }, (_, i) => ({ ...proposal(`Car: lock ${i}`), id: `ajob${i}` }));
+  const real = globalThis.fetch;
+  globalThis.fetch = (async (url: string | URL | Request) => {
+    const u = String(url instanceof Request ? url.url : url);
+    if (u.includes("oauth2")) return Response.json({ access_token: "access", expires_in: 3600 });
+    if (u.includes("/calendars/primary/events")) return Response.json({ items: [{ id: "inv0abcd", summary: "Offsite", start: { dateTime: iso(at(10, 0, 23)) }, end: { dateTime: iso(at(11, 0, 23)) }, created: iso(NOW - 5 * DAY), organizer: { displayName: "Sam" }, attendees: [{ self: true, responseStatus: "needsAction" }] }] });
+    if (u.includes("/users/me/messages?")) return Response.json({ messages: [] });
+    throw new Error(`nothing else reaches the network: ${u}`);
+  }) as typeof fetch;
+  try {
+    // The card it files is one an earlier brief filed, older than six a job filed since: newest first, it would not be among the five.
+    const b = await runBrief(ROUTINE, NOW, { ...deps({ env: { ...GOOGLE, TIMEZONE: TZ } as never, house: null, jobs: [] }), waiting: async () => [...newer, own], file: async () => own }, model("x"));
+    check("what it put to them leads its alert's cards and For your OK", b.proposals[0]?.id === "aown" && b.proposals.length === 5 && b.text.includes("## For your OK\n- Calendar: accept “Offsite”\n"), b.proposals.map((p) => p.id));
+  } finally {
+    globalThis.fetch = real;
+  }
+}
+
 console.log("\nat most five cards, and one refused takes no place");
 {
   let filed = 0;

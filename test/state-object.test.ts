@@ -213,6 +213,31 @@ console.log("\nproposals, through the object (lib/proposals.ts)");
   check("someone who left: none of theirs kept", (await jarvis.proposalsOf("u_ana", now)).length === 0);
 }
 
+console.log("\na brief whose maker can no longer reach anything by its end (state.ts brief hook)");
+{
+  const now = Date.now();
+  const hub: { people: { personView(p: string): Promise<unknown> } } = jarvis as never;
+  const realView = hub.people.personView;
+  const job = await jarvis.createJob({ title: "Car", task: "Lock the car tonight.", engine: "jarvis" }, { who: "u_pass", grants: ["*"] });
+  const waiting = typeof job !== "string"
+    ? await jarvis.proposalAdd({ who: "u_pass", person: "u_pass", from: { kind: "job", id: job.id, title: "Car" }, action: { tool: "car_command", args: { command: "lock" } }, weighed: { risk: "reversible", says: "Car: lock", category: "car_command:lock" }, grants: ["*"] }, now)
+    : "no job";
+  // Their pass ends while the brief is gathered: reaching everything at the start, nothing at the end.
+  let looks = 0;
+  hub.people.personView = async () => (looks++ === 0 ? { scopes: ["*"] } : { scopes: null });
+  try {
+    const inside: { schedulerDeps(): Promise<{ brief(r: unknown, now: number): Promise<{ ok: boolean; text: string }> }> } = jarvis as never;
+    const deps = await inside.schedulerDeps();
+    const r = { id: "rpass", name: "Morning brief", enabled: true, trigger: { kind: "daily", time: "07:00", days: [] }, action: { kind: "brief" }, grants: ["*"], createdBy: "u_pass", createdAt: now };
+    const out = await deps.brief(r, now);
+    check("nothing sent, and said why", !out.ok && /no longer in the family/.test(out.text), out);
+    check("what was already theirs is kept: a card a job filed still waits (an ended pass keeps it)", typeof waiting !== "string" && (await jarvis.proposalGet("u_pass", waiting.id, now))?.state === "pending", waiting);
+  } finally {
+    hub.people.personView = realView;
+    if (typeof job !== "string") await jarvis.cancelJob(job.id);
+  }
+}
+
 console.log("\nan approved call, made on the object's alarm");
 {
   const now = Date.now();

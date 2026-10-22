@@ -97,7 +97,8 @@ notification to open Jarvis on that alert; the same card is under the job's
 answer in the chat. Nothing on a notification approves anything, so a phone
 that is locked, or a notification someone else sees, cannot. Telegram, ntfy
 and Home Assistant only say that something is waiting. A card waits a day
-(a one-off invitation's, until the meeting starts).
+(a one-off invitation's, no later than the meeting's start; an all-day
+one's, no later than the end of its day).
 
 A brief's cards (answering an invitation, archiving old promotions) come the
 same way, with **Don't suggest this again** in place of Not now: tapped, the
