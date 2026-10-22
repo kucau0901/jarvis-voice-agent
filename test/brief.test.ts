@@ -488,6 +488,20 @@ console.log("\na clash just past the week is seen, and one not wholly read is no
   } finally {
     restore();
   }
+  // Google cut the read inside the day covered: the day is not said to be empty, nor free where it was not read.
+  const morning = { id: "stdu21abc", summary: "Standup", start: { dateTime: iso(at(9)) }, end: { dateTime: iso(at(10)) }, organizer: { self: true } };
+  const boardDay = { id: "brd21abcd", summary: "Board", start: { dateTime: iso(at(11)) }, end: { dateTime: iso(at(16)) }, organizer: { self: true } };
+  for (const page of [0, 1]) {
+    restore = google([morning, boardDay], page);
+    try {
+      const b = await runBrief(ROUTINE, at(7), { ...deps({ env: { ...GOOGLE, TIMEZONE: TZ } as never, house: null, jobs: [] }), waiting: async () => [], file: async () => "x" }, model("x"));
+      const schedule = b.text.split("## Schedule\n")[1]?.split("\n\n")[0] ?? "";
+      check(`a read cut at ${page} event${page === 1 ? "" : "s"}: not "nothing", no free time, and said so`,
+        !schedule.includes("Nothing on the calendar.") && !schedule.includes("Free:") && schedule.includes("Google sent only part of the day"), schedule);
+    } finally {
+      restore();
+    }
+  }
   // All day, ten days long: it cannot clash, so nothing more needs reading, and it is put to them.
   filed.length = 0;
   const trip = { ...invite, id: "trip25abcd", summary: "Family trip", start: { date: "2026-10-25" }, end: { date: "2026-11-04" } };

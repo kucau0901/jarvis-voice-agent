@@ -153,8 +153,13 @@ const dateSaid = (ts: number, timeZone: string, weekday: "long" | "short") =>
   new Intl.DateTimeFormat("en-GB", { timeZone, weekday, day: "numeric", month: weekday === "long" ? "long" : "short" }).format(new Date(ts));
 const why = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
-/** The schedule for the day covered, its clashes and free time, and invitations still unanswered. */
-export function scheduleOf(events: readonly AgendaEvent[], span: { from: number; to: number }, timeZone: string, now: number): string[] {
+/**
+ * The schedule for the day covered, its clashes and free time, and invitations
+ * still unanswered. `through`: how far the read reached; short of the day's
+ * end (Google cut it), neither "nothing" nor free time is said of it.
+ */
+export function scheduleOf(events: readonly AgendaEvent[], span: { from: number; to: number }, timeZone: string, now: number, through = span.to): string[] {
+  const whole = through >= span.to;
   const inDay = events.filter((e) => !e.declined && e.start < span.to && (e.end > span.from || (e.end === e.start && e.start >= span.from)));
   // A time on another day says its day: a three-day conference is not 09:00–17:00 today.
   const day = localParts(span.from, timeZone);
@@ -171,12 +176,13 @@ export function scheduleOf(events: readonly AgendaEvent[], span: { from: number;
     return e.allDay ? `- All day: ${title}` : `- ${at(e.start)}–${at(e.end)} ${title}${place}`;
   });
   if (inDay.length > MAX_EVENTS) lines.push(`- and ${inDay.length - MAX_EVENTS} more`);
-  if (!inDay.length) lines.push("Nothing on the calendar.");
+  if (!inDay.length && whole) lines.push("Nothing on the calendar.");
   for (const [a, b] of overlaps(inDay).slice(0, 3)) {
     lines.push(`Clash: ${named(a, 40)} (${at(a.start)}) and ${named(b, 40)} (${at(b.start)})`);
   }
   const slots = freeSlots(inDay, span.from, timeZone, Math.max(now, span.from)).slice(0, 4);
-  if (inDay.length && slots.length) lines.push(`Free: ${slots.map((s) => `${hhmm(s.start, timeZone)}–${hhmm(s.end, timeZone)}`).join(", ")}`);
+  if (whole && inDay.length && slots.length) lines.push(`Free: ${slots.map((s) => `${hhmm(s.start, timeZone)}–${hhmm(s.end, timeZone)}`).join(", ")}`);
+  if (!whole) lines.push("Google sent only part of the day: the rest is in Google Calendar.");
   for (const e of staleInvites(events, now).slice(0, 3)) {
     lines.push(`Not answered yet: ${named(e, 50)} (${dateSaid(e.start, timeZone, "short")})${e.organizer ? `, from ${plain(e.organizer, 40)}` : ""}`);
   }
@@ -196,7 +202,7 @@ async function calendarSection(d: BriefDeps, span: { from: number; to: number },
   // One that cannot clash (all day, shown as free) needs nothing more read.
   const through = cut ? (events.at(-1)?.start ?? now) : to;
   read.invites = staleInvites(events, now).filter((e) => !busy(e) || e.end <= through).map((event) => ({ event, clash: clashing.has(event.id) }));
-  return { head: "Schedule", lines: scheduleOf(events, span, d.timeZone, now) };
+  return { head: "Schedule", lines: scheduleOf(events, span, d.timeZone, now, through) };
 }
 
 async function weatherSection(d: BriefDeps): Promise<Section | null> {
