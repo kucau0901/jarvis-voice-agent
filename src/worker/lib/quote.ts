@@ -40,5 +40,13 @@ export const asQuotedData = (label: string, text: string, writer = "THE SENDER")
   );
 };
 
+/**
+ * Text a tool gave the model, as a person reads it (a Home tile): the fence's
+ * two lines taken out, what was inside kept. Only ours match: a stranger's
+ * "---" was made en dashes inside it.
+ */
+export const unquoted = (text: string): string =>
+  text.replace(/^--- (?:end [^\n:]+:[0-9a-f]{8}|[^\n:]+:[0-9a-f]{8} \(CONTENT WRITTEN BY [^\n]*\)) ---$/gm, "");
+
 /** Someone else's text on one line: control characters and runs of whitespace become one space. */
 export const tidy = (s: string): string => s.replace(/[\x00-\x1f\x7f]/g, " ").replace(/\s+/g, " ").trim();
