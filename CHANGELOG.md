@@ -17,6 +17,17 @@ of every release, and in the [README](README.md#updating).
 
 ## [Unreleased]
 
+### Changed
+
+- **Meetings from mail takes invitations, and work mail forwarded to you.**
+  A calendar invitation (.ics) that names you as a guest is now put in your
+  calendar from its own date and time, read by code with no model, however
+  many people were asked. Mail forwarded to Gmail from another address of
+  yours (work mail, say) counts as sent to you. Google Calendar adds an
+  invitation itself only for the address it went to, so one sent to your work
+  address and forwarded was missed before. One already in your calendar is
+  still left as it is.
+
 ### Fixed
 
 - **Run now in Routines answers where you pressed it.** Its button says

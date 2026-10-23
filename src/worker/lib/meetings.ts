@@ -1,6 +1,7 @@
 import type { Env } from "../types.ts";
 import type { Storage } from "./state-host.ts";
 import { CALENDAR, call, explain, googleConfig, guardTool } from "./google.ts";
+import { b64urlDecode } from "./google.ts";
 import { extractBody, headerOf, hydrate, MESSAGE_ID, senderName, type Message } from "../tools/gmail.ts";
 import { asQuotedData, tidy } from "./quote.ts";
 import { agendaEvents } from "./agenda.ts";
@@ -11,18 +12,22 @@ import { zonedToUtc } from "./routines.ts";
  * email sent to them that asks them to a meeting at a time, put in their
  * calendar with a reminder, and said.
  *
- * Google Calendar adds real invitations (an .ics, Google's own) by itself;
- * what it misses is the plain email with a Meet or Zoom link in it. Code
- * finds those (Gmail's search, no model): sent to them by name, not through
- * a list or to a crowd. Only then is a model asked, once a run, to read the
- * title and the time out of them, as data. Each email is looked at once
- * (meetseen:), and one whose time is taken in the calendar already is left.
+ * Their addresses are the account's own and every one the mail was
+ * delivered to (Delivered-To): work mail forwarded to Gmail is still theirs.
+ * A real invitation (an .ics naming one of them as a guest) is read by code,
+ * no model: Google Calendar adds one by itself only for the address it was
+ * sent to, never one forwarded from work. The plain email with a Meet or Zoom
+ * link in it is found by code too (Gmail's search): sent to them by name, not
+ * through a list or to a crowd; only then is a model asked, once a run, to
+ * read the title and the time out of them, as data. Each email is looked at
+ * once (meetseen:), and one whose time is taken in the calendar already
+ * (Google added it, or they did) is left.
  */
 
-/** Recent mail in the inbox that carries a meeting's link; not an invitation Google adds itself, not a promotion. */
+/** Recent mail in the inbox that carries a meeting's link or an invitation; not a promotion. */
 export const MEETINGS_QUERY =
-  "in:inbox newer_than:2d -category:promotions -category:social -filename:ics -from:calendar-notification@google.com " +
-  "(meet.google.com OR zoom.us OR teams.microsoft.com OR webex.com)";
+  "in:inbox newer_than:2d -category:promotions -category:social " +
+  "(meet.google.com OR zoom.us OR teams.microsoft.com OR webex.com OR filename:ics)";
 /** At most this many new emails are read in one run, the rest waiting for the next: a run shares the alarm's fifty requests. */
 export const MAX_READ = 5;
 /** More people than this in To and Cc is a crowd, not them. */
@@ -43,11 +48,67 @@ export function addresses(header: string): string[] {
   return (header.match(/[^\s<>,;:"'()]+@[^\s<>,;:"'()]+\.[a-z]{2,}/gi) ?? []).map((a) => a.toLowerCase());
 }
 
-/** Sent to them by name: their address in To or Cc, no mailing list, and not to a crowd. */
-export function sentToMe(h: { to: string; cc: string; listId: string; precedence: string }, me: string): boolean {
+/** Sent to them by name: one of their addresses in To or Cc, no mailing list, and not to a crowd. */
+export function sentToMe(h: { to: string; cc: string; listId: string; precedence: string }, mine: readonly string[]): boolean {
   const all = [...addresses(h.to), ...addresses(h.cc)];
   if (h.listId.trim() || /\b(bulk|list|junk)\b/i.test(h.precedence)) return false;
-  return all.includes(me.toLowerCase()) && all.length <= MAX_RECIPIENTS;
+  return all.some((a) => mine.includes(a)) && all.length <= MAX_RECIPIENTS;
+}
+
+/** Their addresses for one email: the account's, and each it was delivered to on the way (forwarded from work). */
+export const addressesOf = (m: Message, me: string): string[] =>
+  [me.toLowerCase(), ...(m.payload?.headers ?? []).filter((h) => h.name.toLowerCase() === "delivered-to").flatMap((h) => addresses(h.value))];
+
+/** An email's calendar part, as text: the invitation Google, Outlook and others send beside the words. */
+export function calendarText(part: Message["payload"], depth = 0): string {
+  if (!part || depth > 8) return "";
+  if (part.mimeType === "text/calendar" && part.body?.data) return b64urlDecode(part.body.data);
+  for (const p of part.parts ?? []) {
+    const found = calendarText(p, depth + 1);
+    if (found) return found;
+  }
+  return "";
+}
+
+const ICS_TIME = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})\d{2}(Z?)$/;
+
+/**
+ * The meeting an invitation (.ics) asks them to, read by code: a request
+ * (not a cancellation) naming one of `mine` as a guest, at a time ahead.
+ * Null for anything else, or a time it cannot read (an Outlook zone name):
+ * that email is then read as any other.
+ */
+export function invitationIn(ics: string, mine: readonly string[], timeZone: string, now: number): Omit<Meeting, "id"> | null {
+  const lines = ics.replace(/\r?\n[ \t]/g, "").split(/\r?\n/);
+  if (!lines.some((l) => /^METHOD:REQUEST$/i.test(l.trim()))) return null;
+  const from = lines.findIndex((l) => l.trim() === "BEGIN:VEVENT");
+  const to = lines.findIndex((l, i) => i > from && l.trim() === "END:VEVENT");
+  if (from < 0 || to < 0) return null;
+  const props = lines.slice(from + 1, to).map((l) => /^([A-Z-]+)((?:;[^:]*)?):(.*)$/i.exec(l.trim())).filter((x) => x !== null);
+  const all = (name: string) => props.filter((p) => p[1]!.toUpperCase() === name);
+  const one = (name: string) => all(name)[0];
+  if (/^CANCELLED$/i.test(one("STATUS")?.[3] ?? "")) return null;
+  const guests = all("ATTENDEE").map((p) => p[3]!.replace(/^mailto:/i, "").toLowerCase());
+  if (!guests.some((g) => mine.includes(g))) return null;
+  const time = (p: RegExpExecArray | undefined): number => {
+    const t = p && ICS_TIME.exec(p[3]!);
+    if (!t) return NaN;
+    if (t[6]) return Date.UTC(+t[1]!, +t[2]! - 1, +t[3]!, +t[4]!, +t[5]!);
+    const zone = /;TZID=("?)([^;:"]+)\1/i.exec(p[2]!)?.[2] ?? timeZone;
+    try {
+      new Intl.DateTimeFormat("en", { timeZone: zone });
+    } catch {
+      return NaN;
+    }
+    return zonedToUtc(+t[1]!, +t[2]!, +t[3]!, +t[4]!, +t[5]!, zone);
+  };
+  const start = time(one("DTSTART"));
+  if (!Number.isFinite(start) || start < now || start > now + MAX_AHEAD_MS) return null;
+  const end = time(one("DTEND"));
+  const title = tidy((one("SUMMARY")?.[3] ?? "").replace(/\\([,;\\])/g, "$1").replace(/\\n/gi, " ")).slice(0, 100);
+  if (!title) return null;
+  const link = LINK.exec(props.map((p) => p[3]).join("\n").replace(/\\n/gi, "\n").replace(/\\([,;\\])/g, "$1"))?.[0] ?? null;
+  return { title, start, end: Number.isFinite(end) && end > start ? end : start + 3_600_000, link };
 }
 
 /** An email the model is asked about. */
@@ -183,27 +244,38 @@ export async function runMeetings(d: MeetingsDeps, now: number): Promise<Meeting
     const ids = ((list.body as { messages?: { id: string }[] } | null)?.messages ?? []).map((m) => m.id).filter((id) => MESSAGE_ID.test(id) && !seen.has(id)).slice(0, MAX_READ);
     if (!ids.length) return { added: [], read: 0 };
     const messages: Message[] = await hydrate({ env: d.env, signal: d.signal }, cfg, ids, "full");
-    const found: Candidate[] = messages
-      .filter((m) => sentToMe({ to: headerOf(m, "To"), cc: headerOf(m, "Cc"), listId: headerOf(m, "List-Id"), precedence: headerOf(m, "Precedence") }, me))
-      .map((m) => ({
-        id: m.id,
-        from: senderName(headerOf(m, "From")).slice(0, 80),
-        subject: tidy(headerOf(m, "Subject")).slice(0, 200) || "(no subject)",
-        sent: Number(m.internalDate) || now,
-        text: tidy(extractBody(m.payload)).slice(0, MAX_BODY),
-      }));
+    const sender = new Map(messages.map((m) => [m.id, { from: senderName(headerOf(m, "From")).slice(0, 80), subject: tidy(headerOf(m, "Subject")).slice(0, 200) || "(no subject)" }]));
+    // An invitation to them is read by code; any other email sent to them by name goes to the model.
+    const invited: Meeting[] = [];
+    const found: Candidate[] = [];
+    for (const m of messages) {
+      const mine = addressesOf(m, me);
+      const ics = calendarText(m.payload);
+      const inv = ics ? invitationIn(ics, mine, d.timeZone, now) : null;
+      if (inv) invited.push({ id: m.id, ...inv });
+      else if (sentToMe({ to: headerOf(m, "To"), cc: headerOf(m, "Cc"), listId: headerOf(m, "List-Id"), precedence: headerOf(m, "Precedence") }, mine)) {
+        found.push({ id: m.id, ...sender.get(m.id)!, sent: Number(m.internalDate) || now, text: tidy(extractBody(m.payload)).slice(0, MAX_BODY) });
+      }
+    }
     // Looked at once, whatever comes of it, but for one Google would not take: the next run reads only what is new.
     const failed = new Set<string>();
-    const done = async (run: MeetingsRun) => (await d.seen.mark(d.person, messages.map((m) => m.id).filter((id) => !failed.has(id)), now), run);
-    if (!found.length) return done({ added: [], read: messages.length });
-    const began = Date.now();
-    const answer = await d.ask(meetingsInput(found, d.timeZone), MEETINGS_INSTRUCTIONS).catch(() => null);
-    const usage = answer ? { input: answer.input, output: answer.output, model: answer.model, ms: Date.now() - began, ok: true } : undefined;
-    // The model not answering: these are read again next time.
-    if (!answer) return { added: [], read: 0 };
+    const done = async (run: Omit<MeetingsRun, "read">): Promise<MeetingsRun> => {
+      const looked = messages.map((m) => m.id).filter((id) => !failed.has(id));
+      await d.seen.mark(d.person, looked, now);
+      return { ...run, read: looked.length };
+    };
     const added: MeetingsRun["added"] = [];
-    const meetings = meetingsFrom(answer.text, found, d.timeZone, now);
-    if (!meetings.length) return done({ added, read: messages.length, ...(usage ? { usage } : {}) });
+    let usage: MeetingsRun["usage"];
+    const meetings = [...invited];
+    if (found.length) {
+      const began = Date.now();
+      const answer = await d.ask(meetingsInput(found, d.timeZone), MEETINGS_INSTRUCTIONS).catch(() => null);
+      if (answer) {
+        usage = { input: answer.input, output: answer.output, model: answer.model, ms: Date.now() - began, ok: true };
+        meetings.push(...meetingsFrom(answer.text, found, d.timeZone, now));
+      } else for (const c of found) failed.add(c.id); // the model not answering: these are read again next time
+    }
+    if (!meetings.length) return done({ added, ...(usage ? { usage } : {}) });
     // The calendar read once for them all; unread, nothing is added, and these are read again next time.
     const starts = meetings.map((m) => m.start);
     const there = await agendaEvents(d.env, Math.min(...starts) - 60_000, Math.max(...starts) + 60_000, d.timeZone, d.signal);
@@ -212,7 +284,7 @@ export async function runMeetings(d: MeetingsDeps, now: number): Promise<Meeting
       // Something already at that time (it is in the calendar, or they are busy): left as it is.
       // And one added this run is there too: two emails of one meeting (a forward) add it once.
       if (there.events.some((e) => !e.allDay && !e.declined && Math.abs(e.start - m.start) <= 60_000) || added.some((a) => Math.abs(a.start - m.start) <= 60_000)) continue;
-      const from = found.find((c) => c.id === m.id)!;
+      const from = sender.get(m.id)!;
       const res = await call(d.env, cfg, "/calendars/primary/events", {
         base: CALENDAR,
         method: "POST",
@@ -229,6 +301,6 @@ export async function runMeetings(d: MeetingsDeps, now: number): Promise<Meeting
       if (explain(res)) failed.add(m.id);
       else added.push({ ...m, from: from.from });
     }
-    return done({ added, read: messages.length, ...(usage ? { usage } : {}) });
+    return done({ added, ...(usage ? { usage } : {}) });
   }, { notLinked: "Link Google in Family → Accounts so Jarvis can read your mail and calendar.", relink: "Google needs linking again: Family → Accounts.", prefix: "Mail" });
 }

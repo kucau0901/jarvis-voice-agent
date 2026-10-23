@@ -1,7 +1,7 @@
 // Meetings from mail (lib/meetings.ts): an email sent to them by name with a
 // meeting's link, read by a model once, and put in their calendar with a
 // reminder; mass mail, lists and what is in the calendar already are left.
-import { addresses, MAX_RECIPIENTS, meetingsFrom, meetingsInput, meetingsSaid, MeetingsSeen, MEETINGS_QUERY, REMIND_MIN, runMeetings, sentToMe, type Candidate } from "../src/worker/lib/meetings.ts";
+import { addresses, addressesOf, invitationIn, MAX_RECIPIENTS, meetingsFrom, meetingsInput, meetingsSaid, MeetingsSeen, MEETINGS_QUERY, REMIND_MIN, runMeetings, sentToMe, type Candidate } from "../src/worker/lib/meetings.ts";
 import { zonedToUtc } from "../src/worker/lib/routines.ts";
 
 let pass = 0;
@@ -32,19 +32,53 @@ const TZ = "Asia/Kuala_Lumpur";
 const at = (h: number, m = 0, day = 22) => zonedToUtc(2026, 10, day, h, m, TZ);
 const NOW = at(10);
 const ME = "sara@example.com";
+/** Her work address, whose mail is forwarded to ME. */
+const WORK = "sara@work.example.edu";
+/** An invitation as Google Calendar sends one: its zone's own block first, then the event; a long line folded. */
+const ICS = (over: { method?: string; status?: string; guest?: string; start?: string; end?: string } = {}) =>
+  [
+    "BEGIN:VCALENDAR", `METHOD:${over.method ?? "REQUEST"}`,
+    "BEGIN:VTIMEZONE", "TZID:Asia/Kuala_Lumpur", "BEGIN:STANDARD", "DTSTART:19700101T000000", "END:STANDARD", "END:VTIMEZONE",
+    "BEGIN:VEVENT",
+    over.start ?? "DTSTART;TZID=Asia/Kuala_Lumpur:20261113T090000",
+    over.end ?? "DTEND;TZID=Asia/Kuala_Lumpur:20261113T110000",
+    "SUMMARY:Garden committee meeting No. 3\\, 2026",
+    `ATTENDEE;CUTYPE=INDIVIDUAL;ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;CN=${over.guest ?? WORK};X-NUM-GU\r\n ESTS=0:mailto:${over.guest ?? WORK}`,
+    "ATTENDEE;CN=someone@work.example.edu:mailto:someone@work.example.edu",
+    "DESCRIPTION:Join with Google Meet: https://meet.google.com/abc-defg-hij\\nAgenda: reports",
+    `STATUS:${over.status ?? "CONFIRMED"}`,
+    "END:VEVENT", "END:VCALENDAR",
+  ].join("\r\n");
 
 console.log("sent to them by name");
 {
   check("addresses, lower case, from names and brackets", addresses('"Sara" <Sara@Example.com>, adam@example.com').join() === "sara@example.com,adam@example.com");
   const base = { to: "Sara <sara@example.com>", cc: "", listId: "", precedence: "" };
-  check("their address in To", sentToMe(base, ME));
-  check("or in Cc", sentToMe({ ...base, to: "boss@example.com", cc: "SARA@example.com" }, ME));
-  check("not through a mailing list", !sentToMe({ ...base, listId: "<staff.example.edu>" }, ME));
-  check("not bulk mail", !sentToMe({ ...base, precedence: "bulk" }, ME));
-  check("not when they are only in Bcc (not in To or Cc)", !sentToMe({ ...base, to: "all-staff@example.edu" }, ME));
+  check("their address in To", sentToMe(base, [ME]));
+  check("or in Cc", sentToMe({ ...base, to: "boss@example.com", cc: "SARA@example.com" }, [ME]));
+  check("or another of theirs: work mail forwarded to them", sentToMe({ ...base, to: WORK }, [ME, WORK]) && !sentToMe({ ...base, to: WORK }, [ME]));
+  check("not through a mailing list", !sentToMe({ ...base, listId: "<staff.example.edu>" }, [ME]));
+  check("not bulk mail", !sentToMe({ ...base, precedence: "bulk" }, [ME]));
+  check("not when they are only in Bcc (not in To or Cc)", !sentToMe({ ...base, to: "all-staff@example.edu" }, [ME]));
   const crowd = Array.from({ length: MAX_RECIPIENTS }, (_, i) => `p${i}@example.com`).join(", ");
-  check(`not to a crowd (more than ${MAX_RECIPIENTS})`, !sentToMe({ ...base, cc: crowd }, ME) && sentToMe({ ...base, cc: crowd.split(", ").slice(1).join(", ") }, ME));
-  check("the search: a meeting's link, recent, not invitations Google adds itself", MEETINGS_QUERY.includes("meet.google.com") && MEETINGS_QUERY.includes("-filename:ics") && MEETINGS_QUERY.includes("newer_than:2d"));
+  check(`not to a crowd (more than ${MAX_RECIPIENTS})`, !sentToMe({ ...base, cc: crowd }, [ME]) && sentToMe({ ...base, cc: crowd.split(", ").slice(1).join(", ") }, [ME]));
+  const forwarded = { id: "x", payload: { headers: [{ name: "Delivered-To", value: ME }, { name: "Delivered-To", value: `Sara <${WORK.toUpperCase()}>` }] } };
+  check("their addresses: the account's and each the mail was delivered to", addressesOf(forwarded, ME).join() === `${ME},${ME},${WORK}`, addressesOf(forwarded, ME));
+  check("the search: a meeting's link or an invitation, recent", MEETINGS_QUERY.includes("meet.google.com") && MEETINGS_QUERY.includes("filename:ics") && !MEETINGS_QUERY.includes("-filename:ics") && MEETINGS_QUERY.includes("newer_than:2d"));
+}
+
+console.log("\nan invitation, read by code");
+{
+  const got = invitationIn(ICS(), [ME, WORK], TZ, NOW);
+  check("its title, unescaped", got?.title === "Garden committee meeting No. 3, 2026", got);
+  check("its times in the zone it names, not the zone block's 1970", got?.start === zonedToUtc(2026, 11, 13, 9, 0, TZ) && got?.end === zonedToUtc(2026, 11, 13, 11, 0, TZ), got);
+  check("its meeting link", got?.link === "https://meet.google.com/abc-defg-hij", got);
+  check("not when none of theirs is a guest", invitationIn(ICS(), [ME], TZ, NOW) === null);
+  check("not a cancellation", invitationIn(ICS({ method: "CANCEL" }), [WORK], TZ, NOW) === null && invitationIn(ICS({ status: "CANCELLED" }), [WORK], TZ, NOW) === null);
+  check("UTC times", invitationIn(ICS({ start: "DTSTART:20261113T010000Z", end: "DTEND:20261113T030000Z" }), [WORK], TZ, NOW)?.start === zonedToUtc(2026, 11, 13, 9, 0, TZ));
+  check("a zone it cannot read (Outlook's names): left to be read as any email", invitationIn(ICS({ start: "DTSTART;TZID=Singapore Standard Time:20261113T090000" }), [WORK], TZ, NOW) === null);
+  check("a whole day: not a meeting at a time", invitationIn(ICS({ start: "DTSTART;VALUE=DATE:20261113", end: "DTEND;VALUE=DATE:20261114" }), [WORK], TZ, NOW) === null);
+  check("already past: left", invitationIn(ICS({ start: "DTSTART;TZID=Asia/Kuala_Lumpur:20261021T090000" }), [WORK], TZ, NOW) === null);
 }
 
 console.log("\nwhat the model is given, and what is taken from it");
@@ -169,6 +203,41 @@ console.log("\na run, against Gmail and the calendar");
     messages.fwd2aaaa = mail("fwd2aaaa", ME);
     const twice = await runMeetings(deps, at(11));
     check("one meeting in two emails: added once", typeof twice !== "string" && twice.added.length === 1 && state.inserted.length === 3, twice);
+    // Work mail forwarded to Gmail: an invitation to their work address, to more people than a crowd, read with no model.
+    const crowdTo = [WORK, ...Array.from({ length: MAX_RECIPIENTS + 3 }, (_, i) => `p${i}@work.example.edu`)].join(", ");
+    const invite = (id: string) => ({
+      id,
+      internalDate: String(at(9)),
+      payload: {
+        mimeType: "multipart/mixed",
+        headers: [{ name: "Delivered-To", value: ME }, { name: "Delivered-To", value: WORK }, { name: "From", value: "Committee Secretary <secretary@work.example.edu>" }, { name: "To", value: crowdTo }, { name: "Subject", value: "Updated invitation: Garden committee" }],
+        parts: [
+          { mimeType: "text/plain", body: { data: b64("You have been invited.") } },
+          { mimeType: "text/calendar", body: { data: b64(ICS()) } },
+          { mimeType: "application/ics", filename: "invite.ics", body: { attachmentId: "att1" } },
+        ],
+      },
+    });
+    state.ids = ["invite1a", "invite2a"];
+    messages.invite1a = invite("invite1a");
+    messages.invite2a = invite("invite2a");
+    const asked = asks.length;
+    const inv = await runMeetings(deps, NOW);
+    const ie = state.inserted[3] as { summary?: string; start?: { dateTime?: string } } | undefined;
+    check("a forwarded invitation to a crowd: added, from its own times, once for its two emails, with no model", typeof inv !== "string" && inv.added.length === 1 && asks.length === asked && ie?.summary === "Garden committee meeting No. 3, 2026" && ie.start?.dateTime === new Date(zonedToUtc(2026, 11, 13, 9, 0, TZ)).toISOString(), inv);
+    check("…and said, from whoever sent it", typeof inv !== "string" && (meetingsSaid(inv, TZ) ?? "").includes("(from Committee Secretary)"), typeof inv !== "string" && meetingsSaid(inv, TZ));
+    // In the calendar already (Google added it, or they did): left.
+    state.ids = ["invite3a"];
+    messages.invite3a = invite("invite3a");
+    state.busyAt = zonedToUtc(2026, 11, 13, 9, 0, TZ);
+    const there = await runMeetings(deps, NOW);
+    check("an invitation already in the calendar: not added again", typeof there !== "string" && there.added.length === 0 && state.inserted.length === 4, there);
+    state.busyAt = null;
+    // Not to any of theirs (their work address not among those it was delivered to): neither added nor read by a model.
+    state.ids = ["invite4a"];
+    messages.invite4a = { ...invite("invite4a"), payload: { ...invite("invite4a").payload, headers: invite("invite4a").payload.headers.filter((h) => h.value !== WORK) } };
+    const notMine = await runMeetings(deps, NOW);
+    check("an invitation to an address not theirs: left, and no model asked (a crowd)", typeof notMine !== "string" && notMine.added.length === 0 && asks.length === asked, notMine);
     const none = await runMeetings({ ...deps, env: {} as never }, NOW);
     check("without Google: why, in words", none === "Google is not set up.");
   } finally {
