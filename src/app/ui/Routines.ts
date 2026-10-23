@@ -128,9 +128,8 @@ export class Routines {
       if (r.createdBy !== "owner" && r.createdBy !== "voice") facts.push("made by a device");
       if (facts.length) row.appendChild(el("div", `rfacts${r.lastRun && !r.lastRun.ok ? " bad" : ""}`, facts.join(" · ")));
       const btns = el("div", "rowbtns");
-      const quietly = r.action?.notify === "if-important";
-      btns.appendChild(button("Run now", () => void this.act(() => api(this.key, "POST", "/api/v1/routines/run", { id: r.id }),
-        quietly ? "Running — it arrives as an alert if there is anything to tell." : "Running — it arrives as an alert.")));
+      const run: HTMLButtonElement = button("Run now", () => void this.run(r, run, row));
+      btns.appendChild(run);
       btns.appendChild(button("Remove", () => void this.act(() => api(this.key, "DELETE", `/api/v1/routines?id=${encodeURIComponent(r.id)}`))));
       const past = el("div", "rruns");
       past.hidden = true;
@@ -155,6 +154,36 @@ export class Routines {
     } catch (e) {
       box.replaceChildren(el("p", "note", message(e)));
     }
+  }
+
+  /**
+   * "Run now", shown on the routine's own row: the button off and "Running…"
+   * until the run is recorded (its lastRun from when it was queued), then the
+   * list drawn again with what it did. A run takes up to two minutes
+   * (askForRoutine), so it is watched for a little longer than that.
+   */
+  private async run(r: RoutineView, btn: HTMLButtonElement, row: HTMLElement): Promise<void> {
+    btn.disabled = true;
+    btn.textContent = "Running…";
+    const status = el("div", "rfacts", r.action?.notify === "if-important" ? "Running — an alert comes only if there is anything to tell." : "Running — it arrives as an alert.");
+    btn.parentElement!.before(status);
+    try {
+      const { routine } = (await api(this.key, "POST", "/api/v1/routines/run", { id: r.id })) as { routine: RoutineView & { pending?: { at: number } } };
+      const since = routine.pending?.at;
+      for (let waited = 0; since !== undefined && waited < 150_000 && row.isConnected; waited += 4000) {
+        await new Promise((ok) => setTimeout(ok, 4000));
+        const { routines } = (await api(this.key, "GET", "/api/v1/routines")) as { routines: RoutineView[] };
+        const now = routines.find((x) => x.id === r.id);
+        if (!now || (now.lastRun && now.lastRun.at >= since)) break;
+      }
+    } catch (e) {
+      status.textContent = message(e);
+      status.classList.add("bad");
+      btn.disabled = false;
+      btn.textContent = "Run now";
+      return;
+    }
+    if (row.isConnected) await this.load();
   }
 
   private async act(fn: () => Promise<unknown>, done = ""): Promise<void> {

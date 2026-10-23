@@ -17,6 +17,13 @@ of every release, and in the [README](README.md#updating).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Run now in Routines answers where you pressed it.** Its button says
+  "Running…" and stays off while the routine runs, the row says so, and the
+  row then shows what the run did. Before, the only answer went to the foot
+  of the panel, out of sight, and the row kept its old result.
+
 ## [2.5.0] - 2026-10-22
 
 ### Added
