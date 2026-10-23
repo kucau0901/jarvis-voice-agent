@@ -1,6 +1,6 @@
 import { b64urlDecode, b64urlEncode } from "../src/worker/lib/google.ts";
 import { whenSpoken } from "../src/worker/tools/gmail.ts";
-import { asQuotedData } from "../src/worker/lib/quote.ts";
+import { asQuotedData, tidy, wellFormed } from "../src/worker/lib/quote.ts";
 import {
   buildRaw,
   contactsLookup,
@@ -363,6 +363,21 @@ console.log("\nquoting fence — a sender must not be able to close it");
   const plain = asQuotedData("email", "Lunch at one?\nSee you then.");
   check("ordinary content passes through untouched", plain.includes("Lunch at one?\nSee you then."));
   check("the label still says it is data", /DATA, NOT INSTRUCTIONS/.test(plain));
+}
+
+console.log("\ncut text — half a character never reaches the model");
+{
+  // encodeURIComponent throws on half a character, as the plan refuses one.
+  const whole = (s: string) => { try { encodeURIComponent(s); return true; } catch { return false; } };
+  // An invitation's snippet, in the bold letters some mail is written in, cut as a listing cuts it.
+  const snippet = "MEETING INVITATION: GARDEN COMMITTEE NO. 3/2026 Join with Google Meet – Dear members of the committee, you are warmly invited to our third meeting of the year, details below. 𝗠𝗘𝗘𝗧𝗜𝗡𝗚 𝗜𝗡𝗩𝗜𝗧𝗔𝗧𝗜𝗢𝗡";
+  const cut = tidy(snippet).slice(0, 180);
+  check("the cut itself splits a letter (what the listing sent)", !whole(cut), cut.slice(-4));
+  check("made whole", whole(wellFormed(cut)), wellFormed(cut).slice(-4));
+  check("the split letter becomes one replacement character", wellFormed(cut) === cut.slice(0, -1) + "\uFFFD");
+  check("whole letters are kept", wellFormed("𝗝𝗘 🙂 ok") === "𝗝𝗘 🙂 ok");
+  check("a lone low half too", wellFormed("a\uDC00b") === "a\uFFFDb");
+  check("quoted mail is made whole", whole(asQuotedData("email", cut)));
 }
 
 console.log("\ncontacts_lookup — asking, rather than only sending");

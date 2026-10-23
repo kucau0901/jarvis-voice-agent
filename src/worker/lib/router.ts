@@ -8,7 +8,7 @@ import { openaiBase } from "./openai-base.ts";
 import OpenAI from "openai";
 import type { Env } from "../types.ts";
 import { redact } from "./http.ts";
-import { asQuotedData } from "./quote.ts";
+import { asQuotedData, wellFormed } from "./quote.ts";
 import type { AttachedFile } from "./photos.ts";
 import type { EventSink } from "./sse.ts";
 import type { Turn } from "./history.ts";
@@ -629,7 +629,9 @@ async function callTool(
   );
 
   try {
-    return await tool.run(args, ctx);
+    // A tool's cut text (a snippet, a page) can end on half a character, which the plan refuses (lib/quote.ts).
+    const out = await tool.run(args, ctx);
+    return typeof out === "string" ? wellFormed(out) : { ...out, text: wellFormed(out.text) };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     console.error(`tool ${tool.name} failed after ${Date.now() - started}ms:`, msg);

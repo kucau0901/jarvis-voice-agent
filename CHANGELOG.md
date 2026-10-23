@@ -23,6 +23,10 @@ of every release, and in the [README](README.md#updating).
   "Running…" and stays off while the routine runs, the row says so, and the
   row then shows what the run did. Before, the only answer went to the foot
   of the panel, out of sight, and the row kept its old result.
+- **Mail written in bold or fancy letters no longer stops Jarvis.** A
+  listing cut such a letter in half (𝗠𝗘𝗘𝗧𝗜𝗡𝗚, or an emoji), and the ChatGPT
+  plan refused the whole question with "Bad Request", so chat and routines
+  that read that mail said only "Something went wrong".
 
 ## [2.5.0] - 2026-10-22
 
