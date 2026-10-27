@@ -24,7 +24,7 @@ import type { SharedTurn } from "./lib/shared.ts";
 import { haConfig, renderTemplate, truthy } from "./lib/ha.ts";
 import { HUB_METHODS, HubHost, liveSessionIds } from "./lib/hub.ts";
 import { Relays, type Relay, type RelayDeps, type RelayKind } from "./lib/relays.ts";
-import { Chat, dmId, type ChatMessage } from "./lib/chat.ts";
+import { Chat, dmId, talksAbout, type ChatMessage } from "./lib/chat.ts";
 import { Panels, type PanelItem, type PanelRefreshDeps, type Reading } from "./lib/panels.ts";
 import { alertSaid, Conversation, type Said } from "./lib/conversation.ts";
 import { Images, type StoredImage } from "./lib/images.ts";
@@ -175,10 +175,11 @@ export class JarvisState extends DurableObject<Env> {
     return this.conversation.addAlert(who, said, Date.now());
   }
 
-  /** Whether Jarvis talks to someone about their alerts (lib/alerts.ts talk): "owner" is the first person; on unless they turned it off. */
-  async alertTalkOf(person: string): Promise<boolean> {
+  /** Whether Jarvis talks to an alert's person about it (lib/alerts.ts talk), as they chose (lib/chat.ts talksAbout); "owner" is the first person. */
+  async talkAbout(alert: Alert): Promise<boolean> {
+    const person = alert.for ?? OWNER;
     const id = person === OWNER ? await this.people.firstPerson() : person;
-    return !id || (await this.people.prefsOf(id)).alertTalk !== "off";
+    return talksAbout(id ? await this.people.prefsOf(id) : {}, alert);
   }
 
   /** The people and their sign-ins: one RPC method for the listed few (lib/hub.ts). */

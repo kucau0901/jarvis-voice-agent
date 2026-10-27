@@ -3,8 +3,7 @@ import { err, json, readObjectOrEmpty } from "../lib/http.ts";
 import { grantsOf, isAdmin, personOf, type Principal } from "../lib/auth.ts";
 import { allows, SCOPES, WILDCARD } from "../lib/scopes.ts";
 import { stateStub } from "../lib/state-client.ts";
-import { deliver, makeAlert } from "../lib/alerts.ts";
-import { AGENT, FAMILY_ROOM, mayRead, namesAgent, type ChatMessage } from "../lib/chat.ts";
+import { AGENT, FAMILY_ROOM, mayRead, namesAgent, tellOthers, type ChatMessage } from "../lib/chat.ts";
 import { Collector } from "../lib/collector.ts";
 import { run } from "../lib/router.ts";
 
@@ -69,19 +68,8 @@ export async function handleFamily(req: Request, env: Env, ctx: ExecutionContext
     const msg = await state.chatPost(convo, { from: me, name: myName, text });
     await state.chatSeen(me, convo, msg.at);
 
-    // Everyone else in it hears of it, on their screens and phones, and in their conversation with Jarvis: said aloud,
-    // to be answered by voice (pass_on), if they have "Talk to me about alerts" on (lib/alerts.ts talk).
-    const others = (between ?? people.map((x) => x.person)).filter((x) => x !== me);
-    ctx.waitUntil(
-      Promise.all(
-        others.map(async (who) => {
-          const a = makeAlert({ title: convo === FAMILY_ROOM ? `${myName}, to the family` : myName, text: msg.text, speak: true }, "chat", msg.at, who);
-          if (!a) return;
-          a.convo = convo;
-          await deliver(env, state, a).catch(() => null);
-        }),
-      ).then(() => {}),
-    );
+    // Everyone else in it hears of it (lib/chat.ts tellOthers).
+    ctx.waitUntil(tellOthers(env, state, convo, msg, (between ?? people.map((x) => x.person)).filter((x) => x !== me)));
 
     // Named in the family room: the assistant answers there, as the person who asked it would be answered.
     if (convo === FAMILY_ROOM && namesAgent(text, env.JARVIS_AGENT_NAME) && allows(grantsOf(principal), "ask")) {

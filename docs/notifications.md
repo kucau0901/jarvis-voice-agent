@@ -32,9 +32,10 @@ even when you ask from the car.
 
 ## Talking about alerts
 
-Every alert is in your **Chat** too, family messages included, as Jarvis's message under its title,
-there when you next open Jarvis on any screen of yours, so you can answer it
-there ("yes, lock it", or for a family message "tell her yes"). Each person's alerts are in their own Chat only. If
+Every alert is in your **Chat** too, family messages included, as Jarvis's
+message under its title, there when you next open Jarvis on any screen of
+yours, so you can answer it there ("yes, lock it", or for a family message
+"tell her yes"). Each person's alerts are in their own Chat only. If
 the house says the same thing twice in a few minutes (a door unlocked, then
 unlocked again) with nothing from you in between, it is in Chat once.
 
@@ -46,6 +47,15 @@ if not. Off, alerts are still in Chat and still a notification, but nothing
 says them. You can also ask Jarvis: "stop talking to me about alerts", "read
 my alerts to me again". **This device** in Settings → Alerts is a second,
 per-screen switch: a desk can stay quiet while the glasses speak.
+
+For the family room, two more choices in **Family → You → Alerts**:
+
+- **Say family-room messages too** (on unless you turn it off): off, the
+  room's messages are in Chat and a notification, but not said; direct
+  messages still are.
+- **Answer a family-room message**: when you answer one aloud ("tell them
+  yes"), it goes **to whoever wrote it** (the default) or **in the family
+  room** for everyone. A direct message is always answered to its sender.
 
 **Asking back on Telegram.** With **Settings → Alerts → Ask Jarvis on
 Telegram** on, the bot answers too: a message from a private chat someone

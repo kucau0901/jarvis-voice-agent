@@ -155,7 +155,7 @@ try {
     (await jarvis.conversationOf("owner", NOW)).filter((s) => s.alert?.title === "Front door").length === 1 && first.alert.talk === true && second.alert.talk === false, [first.alert.talk, second.alert.talk]);
   const test = await deliver(env, jarvis, makeAlert({ title: "Jarvis test", text: "a test" }, "test", NOW)!, { every: true });
   check("Settings → Test is in nobody's conversation", !(await jarvis.conversationOf("owner", NOW)).some((s) => s.id === test.alert.id));
-  check("no family yet: Jarvis talks about the first person's alerts", (await jarvis.alertTalkOf("owner")) === true);
+  check("no family yet: Jarvis talks about the first person's alerts", (await jarvis.talkAbout(makeAlert({ text: "Leave now" }, "routine", NOW)!)) === true);
 } finally {
   globalThis.fetch = realFetch;
 }

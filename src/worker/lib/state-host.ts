@@ -674,8 +674,8 @@ interface LiveApi {
   broadcast(alert: Alert, waitMs: number): Promise<LiveResult>;
   /** An alert into its person's conversation (lib/alerts.ts AlertState). */
   keepAlert(alert: Alert): Promise<boolean>;
-  /** Whether someone has "Talk to me about alerts" on (lib/alerts.ts AlertState). */
-  alertTalkOf(person: string): Promise<boolean>;
+  /** Whether an alert's person wants it talked about (lib/alerts.ts AlertState). */
+  talkAbout(alert: Alert): Promise<boolean>;
   liveClients(): Promise<LiveClient[]>;
   /** Close a device's open screens and drop its notifications, when it is revoked or narrowed. */
   forgetDevice(who: string): Promise<void>;

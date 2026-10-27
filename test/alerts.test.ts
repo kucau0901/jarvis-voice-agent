@@ -267,7 +267,7 @@ console.log("\na notification's payload always fits");
 
 console.log("\nkept in its person's conversation, and whether to talk about it");
 {
-  // A fake that keeps what it is handed, by person, as the object does (state.ts keepAlert, alertTalkOf).
+  // A fake that keeps what it is handed, by person, as the object does (state.ts keepAlert, talkAbout).
   const kept: { person: string; id: string }[] = [];
   let repeat = false;
   const off = new Set<string>();
@@ -284,7 +284,8 @@ console.log("\nkept in its person's conversation, and whether to talk about it")
       kept.push({ person: a.for ?? "owner", id: a.id });
       return !repeat;
     },
-    async alertTalkOf(person) {
+    async talkAbout(a) {
+      const person = a.for ?? "owner";
       return !off.has(person);
     },
     async quietUntil() {

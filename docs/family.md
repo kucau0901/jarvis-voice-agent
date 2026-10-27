@@ -129,8 +129,10 @@ appears in theirs, with Done or a reply while it waits. In the family room,
 name the assistant, "**Jarvis**, add rice to the shopping list", and it
 answers there, as you, with what you may reach. Each message reaches the
 others as a notification, and in their Chat with Jarvis; with **Talk to me
-about alerts** on, a screen that can speak (their glasses) says it, and they
-can answer aloud ("tell her yes").
+about alerts** and **Say family-room messages too** on, a screen that can
+speak (their glasses) says it, and they can answer aloud ("tell them yes"):
+to whoever wrote it, or into the room, as each chose in **Family → You →
+Alerts** (whoever wrote it, unless they change it).
 
 Talking with the family needs the `chat` permission: adults and children
 have it; guests do not.

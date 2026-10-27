@@ -94,6 +94,10 @@ export interface Prefs {
   birthday?: string;
   /** Whether a screen that can speak says their alerts and listens for a reply (lib/alerts.ts talk): on unless "off". */
   alertTalk?: "on" | "off";
+  /** Whether family-room messages are said too (lib/chat.ts talksAbout): on unless "off". */
+  roomTalk?: "on" | "off";
+  /** Where answering a family-room message by voice sends it (tools/family.ts reply_family_room): its sender unless "room". */
+  roomReply?: "sender" | "room";
 }
 
 /** A user as stored: the PIN never leaves this file. */
@@ -548,11 +552,16 @@ export class HubHost {
       if (clean) next[k] = clean;
       else delete next[k];
     }
-    // On or off, as it is checked (routes/hub.ts prefsProblem); anything else clears it, which is on.
-    if (patch.alertTalk !== undefined) {
-      if (patch.alertTalk === "on" || patch.alertTalk === "off") next.alertTalk = patch.alertTalk;
-      else delete next.alertTalk;
-    }
+    // One of its choices, as it is checked (routes/hub.ts prefsProblem); anything else clears it, which is the default.
+    const choose = <K extends "alertTalk" | "roomTalk" | "roomReply">(k: K, ok: readonly Prefs[K][]) => {
+      const v = patch[k];
+      if (v === undefined) return;
+      if (ok.includes(v)) next[k] = v;
+      else delete next[k];
+    };
+    choose("alertTalk", ["on", "off"]);
+    choose("roomTalk", ["on", "off"]);
+    choose("roomReply", ["sender", "room"]);
     await this.storage.put(K.user(id), { ...u, prefs: next });
     return next;
   }

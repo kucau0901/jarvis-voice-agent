@@ -1,11 +1,17 @@
 // "Talk to me about alerts", by voice (tools/alerts.ts): only the person
 // signed in, only asked in their own latest message, and offered wherever they
 // speak to Jarvis (push-to-talk and Live's delegations) but never to a job.
+// Then the family room's choices: whether its messages are said
+// (lib/chat.ts talksAbout), and where answering one by voice sends it
+// (tools/family.ts reply_family_room).
 import { alertTalk } from "../src/worker/tools/alerts.ts";
 import { baseTools } from "../src/worker/tools/registry.ts";
 import { DRAWS_ON_SCREEN } from "../src/worker/tools/place.ts";
 import { jobTool } from "../src/worker/lib/jobs.ts";
 import { ROLE_SCOPES, type Prefs } from "../src/worker/lib/hub.ts";
+import { FAMILY_ROOM, talksAbout, type ChatMessage } from "../src/worker/lib/chat.ts";
+import { familyTools } from "../src/worker/tools/family.ts";
+import type { Alert } from "../src/worker/lib/alerts.ts";
 
 let pass = 0, fail = 0;
 function check(name: string, cond: boolean, got?: unknown) {
@@ -62,6 +68,68 @@ console.log("\nwhere it is offered");
   check("to an admin", names(["*"]).includes("alert_talk"));
   check("on a screen or none: push-to-talk and Live's delegations are screenless", !DRAWS_ON_SCREEN.includes("alert_talk"));
   check("never to a background job", !jobTool(alertTalk));
+}
+
+console.log("\nfamily-room messages, said or not");
+{
+  const room = { convo: FAMILY_ROOM };
+  const direct = { convo: "dm:owner|u_sara" };
+  check("by default, the room's are said, as anything is", talksAbout({}, room) && talksAbout({}, direct) && talksAbout({}, {}));
+  check("the room's turned off: the room's are not, a direct message and any other alert still are",
+    !talksAbout({ roomTalk: "off" }, room) && talksAbout({ roomTalk: "off" }, direct) && talksAbout({ roomTalk: "off" }, {}));
+  check("alerts turned off: none is, the room's turned on or not", !talksAbout({ alertTalk: "off", roomTalk: "on" }, room) && !talksAbout({ alertTalk: "off" }, direct));
+}
+
+console.log("\nanswering a family-room message by voice");
+{
+  // The object as the tool reaches it: the room, the family, messages passed on, and alerts to the others.
+  const posted: { convo: string; msg: Omit<ChatMessage, "id" | "at"> }[] = [];
+  const relays: { kind: string; from: string; to: string; text: string }[] = [];
+  const told: Alert[] = [];
+  const family = {
+    ...stub,
+    async chatPost(convo: string, msg: Omit<ChatMessage, "id" | "at">) {
+      posted.push({ convo, msg });
+      return { ...msg, id: `m${posted.length}`, at: 1 };
+    },
+    async chatSeen() {},
+    async familyPeople() {
+      return [
+        { person: "u_ana", name: "Ana", role: "adult", chat: true },
+        { person: "u_ben", name: "Ben", role: "adult", chat: true },
+        { person: "u_kid", name: "Kid", role: "guest", chat: false },
+      ];
+    },
+    async relayCreate(input: { kind: string; from: string; to: string; text: string }) {
+      relays.push(input);
+      return { relays: [{ toName: input.to, status: "sent" }], noHome: [] };
+    },
+    async broadcast(a: Alert) {
+      told.push(a);
+      return { open: 1, visible: 1, acked: "phone" };
+    },
+    async pushTargets() {
+      return { vapid: {}, subs: [] };
+    },
+    async pushResults() {},
+    async logDelivery() {},
+  };
+  const env = { JARVIS_PERSON: "u_ana", JARVIS_USER: "u_ana", JARVIS_PERSON_NAME: "Ana", JARVIS_FAMILY: "fam:x", ALERT_ORDER: "live", STATE: { idFromName: () => "j", get: () => family } };
+  const reply = familyTools.find((t) => t.name === "reply_family_room")!;
+  const answer = async (e: object) => String(await reply.run({ sender: "Ben", text: "Yes, eight is fine" }, ctx(e, "tell them yes")));
+
+  const toSender = await answer(env);
+  check("by default, to whoever wrote it, passed on: not the room", /Told Ben, directly, not the room/.test(toSender) && relays.length === 1 && relays[0]!.kind === "tell" && relays[0]!.to === "Ben" && relays[0]!.from === "u_ana" && !posted.length, toSender);
+
+  prefs.set("u_ana", { roomReply: "room" });
+  const toRoom = await answer(env);
+  check("chosen: into the family room, as them", /Said in the family room/.test(toRoom) && posted.length === 1 && posted[0]!.convo === FAMILY_ROOM && posted[0]!.msg.from === "u_ana" && posted[0]!.msg.name === "Ana" && relays.length === 1, toRoom);
+  check("…and the others in it told, not them, nor a guest with no chat",
+    told.map((a) => a.for).sort().join() === "u_ben" && told[0]!.convo === FAMILY_ROOM && told[0]!.title === "Ana, to the family" && told[0]!.source === "chat", told);
+
+  const device = await answer({ ...env, JARVIS_USER: undefined });
+  check("from a device or the owner key: nothing sent", /only a person signed in/.test(device) && posted.length === 1 && relays.length === 1);
+  check("offered with the chat scope, as pass_on is", reply.scope === "chat" && !jobTool(reply));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

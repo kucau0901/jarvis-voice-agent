@@ -89,8 +89,12 @@ function prefsProblem(p: Record<string, unknown>): string | null {
   const nickname = s("nickname");
   const birthday = s("birthday");
   const alertTalk = s("alertTalk");
-  if (voice === null || language === null || telegram === null || style === null || presence === null || nickname === null || birthday === null || alertTalk === null) return "each choice is text";
+  const roomTalk = s("roomTalk");
+  const roomReply = s("roomReply");
+  if (voice === null || language === null || telegram === null || style === null || presence === null || nickname === null || birthday === null || alertTalk === null || roomTalk === null || roomReply === null) return "each choice is text";
   if (alertTalk && alertTalk !== "on" && alertTalk !== "off") return "alertTalk is on or off";
+  if (roomTalk && roomTalk !== "on" && roomTalk !== "off") return "roomTalk is on or off";
+  if (roomReply && roomReply !== "sender" && roomReply !== "room") return "roomReply is sender or room";
   // Both go into what the router is told (lib/router-prompt.ts): letters only, and a real date.
   if (nickname && !/^[\p{L}\p{M}' .-]{1,40}$/u.test(nickname)) return "a nickname is a name: letters, spaces, ' . or -";
   if (birthday && !(/^\d{4}-\d{2}-\d{2}$/.test(birthday) && new Date(`${birthday}T00:00:00Z`).toISOString().slice(0, 10) === birthday && Date.parse(birthday) <= Date.now())) {
@@ -305,8 +309,10 @@ export async function handleHub(req: Request, env: Env, principal: Principal): P
       space: s ? { name: s.name, agentName: s.agentName } : null,
       user: me ? { id: me.id, name: me.name } : null,
       role: me ? me.role : "admin",
-      // "Talk to me about alerts" said either way, on when they never chose (lib/alerts.ts talk).
-      prefs: locked || !me ? {} : { ...me.place?.prefs, alertTalk: me.place?.prefs.alertTalk ?? "on" },
+      // How Jarvis talks to them about alerts, said either way, as it is when they never chose (lib/alerts.ts talk, lib/chat.ts).
+      prefs: locked || !me
+        ? {}
+        : { ...me.place?.prefs, alertTalk: me.place?.prefs.alertTalk ?? "on", roomTalk: me.place?.prefs.roomTalk ?? "on", roomReply: me.place?.prefs.roomReply ?? "sender" },
       // A guest's limits: until when, which hours, and the pass's things with what each can do.
       access: !locked && me?.place?.access
         ? { ...me.place.access, allow: me.place.access.allow?.map((a) => ({ ...a, actions: passActions(a.entity) })) }

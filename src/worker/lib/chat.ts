@@ -1,4 +1,7 @@
+import type { Env } from "../types.ts";
 import type { Storage } from "./state-host.ts";
+import type { Prefs } from "./hub.ts";
+import { deliver, makeAlert, type Alert, type AlertState } from "./alerts.ts";
 
 /**
  * The family's conversations: one room everyone in the family shares, and a
@@ -35,6 +38,31 @@ export function namesAgent(text: string, agentName = "Jarvis"): boolean {
   const name = agentName.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return !!name && new RegExp(`(^|[^\\p{L}])@?${name}([^\\p{L}]|$)`, "iu").test(text);
 }
+
+/**
+ * A message just said in a conversation, to the others in it: an alert each,
+ * on their screens and phones and in their conversation with Jarvis, said
+ * aloud to be answered by voice as each chose (talksAbout). From the app
+ * (routes/family.ts) and from a reply by voice (tools/family.ts).
+ */
+export async function tellOthers(env: Env, state: AlertState, convo: string, msg: ChatMessage, others: readonly string[]): Promise<void> {
+  await Promise.all(
+    others.map(async (who) => {
+      const a = makeAlert({ title: convo === FAMILY_ROOM ? `${msg.name}, to the family` : msg.name, text: msg.text, speak: true }, "chat", msg.at, who);
+      if (!a) return;
+      a.convo = convo;
+      await deliver(env, state, a).catch(() => null);
+    }),
+  );
+}
+
+/**
+ * Whether Jarvis talks to someone about an alert, by their choices (Family →
+ * You → Alerts): "Talk to me about alerts", and for a family-room message,
+ * "Say family-room messages too". Both on unless turned off.
+ */
+export const talksAbout = (prefs: Prefs, alert: Pick<Alert, "convo">): boolean =>
+  prefs.alertTalk !== "off" && !(alert.convo === FAMILY_ROOM && prefs.roomTalk === "off");
 
 /** The direct conversation between two people: the same whichever of them asks. */
 export const dmId = (a: string, b: string): string => `dm:${[a, b].sort().join("|")}`;
