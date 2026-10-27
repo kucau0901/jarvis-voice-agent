@@ -127,11 +127,11 @@ export class Mine {
           your reply. Off, they are still in Chat and still a notification, but not said. You can also ask Jarvis to change it.</p>
         <div class="m-room">
           <label class="on"><input type="checkbox" class="m-roomtalk"${this.prefs.roomTalk === "off" ? "" : " checked"}> Say family-room messages too</label>
-          <label class="on">Answer a family-room message
-            <select class="m-roomreply">
-              <option value="sender"${this.prefs.roomReply === "room" ? "" : " selected"}>to whoever wrote it</option>
-              <option value="room"${this.prefs.roomReply === "room" ? " selected" : ""}>in the family room</option>
-            </select></label>
+          <label class="on" for="m-roomreply">Answer a family-room message</label>
+          <select class="m-roomreply" id="m-roomreply">
+            <option value="sender"${this.prefs.roomReply === "room" ? "" : " selected"}>to whoever wrote it</option>
+            <option value="room"${this.prefs.roomReply === "room" ? " selected" : ""}>in the family room</option>
+          </select>
           <p class="note">Messages in the family room are in your Chat either way. When you answer one aloud ("tell them
             yes"), Jarvis sends it to whoever wrote it, or into the family room for everyone, as chosen here.
             Direct messages are always answered to their sender.</p>
