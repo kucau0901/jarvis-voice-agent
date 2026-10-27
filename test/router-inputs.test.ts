@@ -47,6 +47,7 @@ const PROMPT_SHA256 = "4c052dbb87c29e01adabcd5415e9c422214ec78828dafe87cdf2cbb5f
 // specialty_save and specialty_forget (tools/specialties.ts, scope memory.write): everyone but the guest (21 Oct 2026).
 // make_page (tools/page.ts, scope screen): everyone but the guest (21 Oct 2026).
 // alert_talk (tools/alerts.ts, scope alerts): everyone but the guest, the owner key told it is no person's (27 Oct 2026).
+// reply_family_room (tools/family.ts, scope chat, with a family): as pass_on (27 Oct 2026).
 const EXPECTED: Record<string, { model: string; tools: string[]; input: string }> = {
  "owner key, nothing set up": {
   "model": "gpt-6-luna",
@@ -109,6 +110,7 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
    "place_info",
    "recall",
    "remember",
+   "reply_family_room",
    "routine_add",
    "routine_list",
    "routine_remove",
@@ -155,6 +157,7 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
    "place_info",
    "recall",
    "remember",
+   "reply_family_room",
    "routine_add",
    "routine_list",
    "routine_remove",
@@ -192,6 +195,7 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
    "place_info",
    "recall",
    "remember",
+   "reply_family_room",
    "routine_add",
    "routine_list",
    "routine_remove",

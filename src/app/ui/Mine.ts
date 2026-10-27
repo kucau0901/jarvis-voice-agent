@@ -23,6 +23,10 @@ export interface Prefs {
   birthday?: string;
   /** On unless "off" (lib/alerts.ts talk). */
   alertTalk?: "on" | "off";
+  /** Family-room messages said too: on unless "off" (lib/chat.ts talksAbout). */
+  roomTalk?: "on" | "off";
+  /** Where answering one by voice sends it: its sender unless "room" (tools/family.ts reply_family_room). */
+  roomReply?: "sender" | "room";
 }
 
 /** The voices the server accepts (lib/speech.ts TTS_VOICES). */
@@ -121,6 +125,17 @@ export class Mine {
         <label class="on"><input type="checkbox" class="m-talk"${this.prefs.alertTalk === "off" ? "" : " checked"}> Talk to me about alerts</label>
         <p class="note">Jarvis says each of your alerts in your glasses, or on a screen of yours that can speak, and listens for
           your reply. Off, they are still in Chat and still a notification, but not said. You can also ask Jarvis to change it.</p>
+        <div class="m-room">
+          <label class="on"><input type="checkbox" class="m-roomtalk"${this.prefs.roomTalk === "off" ? "" : " checked"}> Say family-room messages too</label>
+          <label class="on">Answer a family-room message
+            <select class="m-roomreply">
+              <option value="sender"${this.prefs.roomReply === "room" ? "" : " selected"}>to whoever wrote it</option>
+              <option value="room"${this.prefs.roomReply === "room" ? " selected" : ""}>in the family room</option>
+            </select></label>
+          <p class="note">Messages in the family room are in your Chat either way. When you answer one aloud ("tell them
+            yes"), Jarvis sends it to whoever wrote it, or into the family room for everyone, as chosen here.
+            Direct messages are always answered to their sender.</p>
+        </div>
         <div class="m-alerts"></div>
         <h4>Telegram</h4>
         <p class="note">If your family has a Telegram bot, your alerts can reach you there too. Send the bot a message,
@@ -154,6 +169,14 @@ export class Mine {
       const on = (e.target as HTMLInputElement).checked;
       void this.save({ alertTalk: on ? "on" : "off" }, on ? "Saved. Jarvis says your alerts and listens for your reply." : "Saved. Your alerts are in Chat, not said.");
     });
+    this.box.querySelector(".m-roomtalk")!.addEventListener("change", (e) => {
+      const on = (e.target as HTMLInputElement).checked;
+      void this.save({ roomTalk: on ? "on" : "off" }, on ? "Saved. Family-room messages are said too." : "Saved. Family-room messages are in Chat, not said.");
+    });
+    this.box.querySelector(".m-roomreply")!.addEventListener("change", (e) => {
+      const room = (e.target as HTMLSelectElement).value === "room";
+      void this.save({ roomReply: room ? "room" : "sender" }, room ? "Saved. Your spoken answers go into the family room." : "Saved. Your spoken answers go to whoever wrote.");
+    });
     this.box.querySelector(".m-alerts")!.appendChild(new AlertsPanel(this.key).render());
     this.box.querySelector(".m-hasave")!.addEventListener("click", () => void this.setHa(this.box.querySelector<HTMLInputElement>(".m-ha")!.value.trim()));
     this.showHa();
@@ -167,6 +190,8 @@ export class Mine {
       "m-alerts": may("alerts"),
     };
     for (const [id, ok] of Object.entries(shown)) if (!ok) this.box.querySelector(`[data-section="${id}"]`)?.remove();
+    // The family room's choices: for those who take part in it.
+    if (!may("chat")) this.box.querySelector(".m-room")?.remove();
     new Profile(this.key, this.box.querySelector(".m-profile")!, this.prefs, may, (p, ok) => this.save(p, ok), (t, bad) => this.say(t, bad)).render();
     // Their own Home Assistant user is for the house itself; getting home needs only chat.
     if (!may("home")) this.box.querySelectorAll(".m-hauser").forEach((e) => e.remove());

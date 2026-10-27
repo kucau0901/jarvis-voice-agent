@@ -356,6 +356,12 @@ console.log("\neach person's own choices");
   // "Talk to me about alerts" (lib/alerts.ts talk): said either way, on until they turn it off.
   const before = await call("/api/hub/me", undefined, { principal: admin });
   check("talking about alerts is on when never chosen, and says so", before.body.prefs.alertTalk === "on", before.body.prefs);
+  check("…the family room's too: said, and answered to whoever wrote", before.body.prefs.roomTalk === "on" && before.body.prefs.roomReply === "sender", before.body.prefs);
+  const badRoom = await Promise.all([{ roomTalk: "loud" }, { roomReply: "everyone" }].map((prefs) => call("/api/hub/me", { prefs }, { method: "PATCH", principal: admin })));
+  check("the room's choices are only theirs", badRoom.every((r) => r.status === 400), badRoom.map((r) => r.body));
+  const toRoom = await call("/api/hub/me", { prefs: { roomTalk: "off", roomReply: "room" } }, { method: "PATCH", principal: admin });
+  check("kept when they are", toRoom.status === 200 && toRoom.body.prefs.roomTalk === "off" && toRoom.body.prefs.roomReply === "room", toRoom.body);
+  await call("/api/hub/me", { prefs: { roomTalk: "", roomReply: "" } }, { method: "PATCH", principal: admin });
   const wrong = await call("/api/hub/me", { prefs: { alertTalk: "loud" } }, { method: "PATCH", principal: admin });
   check("it is on or off, nothing else", wrong.status === 400 && /on or off/.test(wrong.body.error), wrong.body);
   const quiet = await call("/api/hub/me", { prefs: { alertTalk: "off" } }, { method: "PATCH", principal: admin });

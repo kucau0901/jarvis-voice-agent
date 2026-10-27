@@ -21,11 +21,14 @@ of every release, and in the [README](README.md#updating).
 
 - **Jarvis talks to you about your alerts.** Every alert (a reminder, a
   routine, a finished job, a message from the family, the house) is now in
-  your Chat, so you can answer it there, aloud too ("tell her yes"); each person's in their own only, and the
-  same words twice in a few minutes only once. With **Talk to me about
-  alerts** on (Family → You → Alerts, on unless you turn it off, or ask
-  Jarvis to change it), a screen that can speak says it and listens for your
-  reply; off, it is in Chat and a notification, not said. The device API's
+  your Chat, so you can answer it there, aloud too ("tell her yes"); each
+  person's in their own only, and the same words twice in a few minutes only
+  once. With **Talk to me about alerts** on (Family → You → Alerts, on unless
+  you turn it off, or ask Jarvis to change it), a screen that can speak says
+  it and listens for your reply; off, it is in Chat and a notification, not
+  said. Two more choices there for the family room: whether its messages are
+  said too (yes, unless you turn it off), and whether answering one aloud
+  goes to whoever wrote it (the default) or into the room. The device API's
   alerts carry `talk` for this, and `/api/session` takes an `opening` alert
   for a Live session that starts by saying it (docs/api.md).
 

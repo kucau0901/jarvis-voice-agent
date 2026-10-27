@@ -40,8 +40,9 @@ export interface Alert {
   /**
    * Set as it is delivered: whether a screen that can speak says it and
    * listens for a reply, starting a conversation (the glasses, the web app).
-   * `speak`, when its person has "Talk to me about alerts" on (hub.ts prefs
-   * alertTalk) and it does not repeat what was just said (lib/conversation.ts).
+   * `speak`, when its person wants it talked about (hub.ts prefs alertTalk,
+   * and roomTalk for the family room: lib/chat.ts talksAbout) and it does
+   * not repeat what was just said (lib/conversation.ts).
    */
   talk?: boolean;
   /** Every channel, not the first that works. */
@@ -200,8 +201,8 @@ export interface AlertState {
   chatFor?(person: string): Promise<string | null>;
   /** Into its person's conversation (lib/conversation.ts alertSaid); false when it repeats what was just said there. */
   keepAlert?(alert: Alert): Promise<boolean>;
-  /** Whether this person ("owner" for the first person) has "Talk to me about alerts" on (hub.ts prefs alertTalk). */
-  alertTalkOf?(person: string): Promise<boolean>;
+  /** Whether its person wants it talked about: "Talk to me about alerts", and for a family-room message, the room's (lib/chat.ts talksAbout). */
+  talkAbout?(alert: Alert): Promise<boolean>;
   pushResults(results: { id: string; ok: boolean; gone: boolean }[]): Promise<void>;
   logDelivery(d: Delivery): Promise<void>;
 }
@@ -253,7 +254,7 @@ export async function deliver(
   }
 
   // Said, and a reply listened for, only if its person wants that; not again for a repeat, which is not kept either.
-  const talks = alert.speak && fresh && (await state.alertTalkOf?.(alert.for ?? OWNER).catch(() => true)) !== false;
+  const talks = alert.speak && fresh && (await state.talkAbout?.(alert).catch(() => true)) !== false;
   alert = { ...alert, talk: talks };
 
   for (const channel of parseOrder(env.ALERT_ORDER)) {

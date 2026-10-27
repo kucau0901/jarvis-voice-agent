@@ -3,6 +3,8 @@ import { stateStub } from "../lib/state-client.ts";
 import { localeOf } from "../lib/locale.ts";
 import { LOCAL, whenSaid, zonedToUtc } from "../lib/routines.ts";
 import type { Relay } from "../lib/relays.ts";
+import { FAMILY_ROOM, tellOthers } from "../lib/chat.ts";
+import { hubStub } from "../lib/hub-client.ts";
 
 /**
  * Jarvis as the family's go-between (lib/relays.ts): passing something on
@@ -36,7 +38,8 @@ const passOn: Tool = {
     "for 'when she gets home', when_home true, with local_time too if a time was said (it then goes " +
     "at that time or once they are home, whichever is later). Write text as said TO them, in the " +
     "user's language, complete on its own: 'Please buy ice cream on your way home'. It is also how " +
-    "the user answers a family message they were just told of ('tell her yes'): tell its sender.",
+    "the user answers a direct message they were just told of ('tell her yes'): tell its sender. " +
+    "For a family-room message ('<name>, to the family: …'), use reply_family_room.",
   parameters: {
     type: "object",
     properties: {
@@ -178,4 +181,58 @@ const chorePoints: Tool = {
   },
 };
 
-export const familyTools: Tool[] = [passOn, answerMessage, familyMessages, chorePoints];
+/**
+ * Answering by voice a message someone wrote in the family room, which the
+ * user was told of as an alert (lib/chat.ts tellOthers). Where it goes is
+ * theirs to choose in Family → You → Alerts (hub.ts prefs roomReply): to
+ * whoever wrote it, passed on as pass_on would, or back into the room, as
+ * they would have typed it there. As a person signed in only, as the room
+ * itself is (routes/family.ts): never a device or the owner key.
+ */
+const replyRoom: Tool = {
+  name: "reply_family_room",
+  scope: "chat",
+  pace: "fast",
+  available: (env) => !!env.JARVIS_FAMILY,
+  description:
+    "Answer a message someone wrote in the family room that the user was just told of " +
+    "('Sara, to the family: dinner at eight?'), when they answer it ('tell them yes'). It goes " +
+    "where the user chose: to whoever wrote it, or back into the family room; say which, from " +
+    "what this returns. Write text as the user's answer, complete on its own. For a direct " +
+    "message, use pass_on to its sender.",
+  parameters: {
+    type: "object",
+    properties: {
+      sender: { type: "string", description: "Who wrote the message: a name from THE FAMILY." },
+      text: { type: "string", description: "The user's answer, as said to them: 'Yes, eight is fine'." },
+    },
+    required: ["sender", "text"],
+    additionalProperties: false,
+  },
+  async run(args, ctx) {
+    const user = ctx.env.JARVIS_USER;
+    if (!user) return "Not sent: only a person signed in can answer in the family's messages, not a device or the owner key.";
+    const state = stateStub(ctx.env);
+    const hub = hubStub(ctx.env);
+    if (!state || !hub) return "Messages cannot be sent here: this deployment has no state object.";
+    const text = typeof args.text === "string" ? args.text.trim() : "";
+    if (!text) return "Not sent: the answer was empty.";
+    const me = person(ctx.env);
+    const name = ctx.env.JARVIS_PERSON_NAME || "Someone at home";
+    if ((await hub.prefsOf(user)).roomReply === "room") {
+      const msg = await state.chatPost(FAMILY_ROOM, { from: me, name, text });
+      await state.chatSeen(me, FAMILY_ROOM, msg.at);
+      const others = (await state.familyPeople()).filter((x) => x.chat && x.person !== me).map((x) => x.person);
+      await tellOthers(ctx.env, state, FAMILY_ROOM, msg, others);
+      return "Said in the family room, as the user chose (Family → You → Alerts): everyone in it hears of it.";
+    }
+    const r = await state.relayCreate({ kind: "tell", from: me, fromName: name, to: String(args.sender ?? ""), text });
+    if (typeof r === "string") return `Not sent: ${r}.`;
+    const names = r.relays.map((x) => x.toName).join(", ");
+    // In their quiet time, it waits for it to end (lib/relays.ts): not "told" yet.
+    const said = r.relays.some((x) => x.status === "waiting") ? `Passed on to ${names}, who is in quiet time: it reaches them when that ends` : `Told ${names}`;
+    return `${said}, directly, not the room, as the user chose (Family → You → Alerts).`;
+  },
+};
+
+export const familyTools: Tool[] = [passOn, answerMessage, replyRoom, familyMessages, chorePoints];

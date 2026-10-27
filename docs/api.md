@@ -461,9 +461,10 @@ Every alert Jarvis raises for a person (a routine, a reminder, a finished job,
 a message passed on, the house through `/api/v1/notify`) is also kept in that
 person's conversation with Jarvis (`GET /api/hub/conversation`), and only
 theirs, as it is delivered: one held for their quiet hours or that no channel
-took is there too, and so is a family message (`source: "chat"`), so it can
-be answered aloud ("tell her yes", by `pass_on`). Settings → Test is not. Its row has the alert's `id`, and
-says where it came from: `routine: {id, name}`, `job: {id, name}`, or for any
+took is there too, and so is a family message (`source: "chat"`, with
+`convo`), so it can be answered aloud ("tell her yes": a direct message by
+`pass_on`, a family-room one by `reply_family_room`). Settings → Test is not.
+Its row has the alert's `id`, and says where it came from: `routine: {id, name}`, `job: {id, name}`, or for any
 other `alert: {source, title}`, which a screen shows and tells the model as
 `"Title: text"` (just `text` when the title is "Jarvis"). The same words under
 the same title again within 15 minutes, with nothing from the person in
@@ -471,8 +472,9 @@ between (a door reported unlocked twice), are not kept again.
 
 `talk` on each alert says whether a screen that can speak should **say it and
 listen for a reply**, starting a conversation: true when the alert is meant to
-be heard (`speak`), its person has *Talk to me about alerts* on, and it does
-not repeat what was just kept. False means show it (and notify) but do not say
+be heard (`speak`), its person has *Talk to me about alerts* on (and, for a
+family-room message, *Say family-room messages too*), and it does not repeat
+what was just kept. False means show it (and notify) but do not say
 it. A screen may still choose not to speak at all (the web app's per-screen
 switch). An alert fetched from before `talk` existed has none: use `speak`.
 
@@ -482,6 +484,14 @@ said for a person), `PATCH /api/hub/me {prefs: {alertTalk: "off"}}` changes it,
 and so does asking Jarvis ("stop talking to me about alerts"), by the
 `alert_talk` tool, which only a person signed in can use, only in their own
 words, and never a routine or a job. It is in Family → You → Alerts.
+
+Two more choices there, for people who take part in the family's messages,
+read and changed the same way in `prefs`:
+
+| `prefs` | Values | |
+|---|---|---|
+| `roomTalk` | `"on"` (when never chosen), `"off"` | *Say family-room messages too*: off, a family-room message gets `talk: false`; it is still in Chat and still a notification. Direct messages and other alerts are not affected. |
+| `roomReply` | `"sender"` (when never chosen), `"room"` | *Answer a family-room message*: where answering one aloud sends it, by the `reply_family_room` tool: passed on to whoever wrote it, or said in the family room as the person, every other member told of it. A direct message is always answered to its sender. Only a person signed in can answer this way. |
 
 What a phone does with `talk: true` depends on the person's Live voice choice
 on it: with Live, open a session with the alert as its
@@ -999,9 +1009,10 @@ Changes and removals are felt within 30 seconds everywhere.
 routines, jobs, alerts, the conversation across devices and usage are kept
 per person. The owner key and devices act as the first person (who set up
 the family), whose data is what Jarvis kept before families. `PATCH
-/api/hub/me {prefs: {voice, language, telegram, style, alertTalk}}` sets a person's own
-voice, language, Telegram chat and whether Jarvis talks to them about their
-alerts (`"on"` or `"off"`, [Talking about them](#talking-about-them)); an empty value clears one.
+/api/hub/me {prefs: {voice, language, telegram, style, alertTalk, roomTalk,
+roomReply}}` sets a person's own voice, language, Telegram chat and how Jarvis
+talks to them about their alerts ([Talking about them](#talking-about-them));
+an empty value clears one.
 
 - `GET /api/memory?book=family` (and the same on POST, DELETE,
   `/api/memory/search`): the family's shared memory. Changing it needs
