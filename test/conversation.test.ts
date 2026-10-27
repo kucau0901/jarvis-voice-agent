@@ -1,9 +1,9 @@
 // Each person's conversation with Jarvis, kept (lib/conversation.ts): what a
-// screen may send to it, what is kept and for how long, what a routine adds,
+// screen may send to it, what is kept and for how long, what an alert adds,
 // what look_back finds in it (tools/conversation.ts), the route
 // (routes/conversation.ts), and what the app tells the model of it
 // (src/app/history.ts).
-import { asSaid, Conversation, FOUND, jobSaid, KEEP, KEEP_MS, lookBack, matching, MAX_CHARS, MAX_TEXT, routineSaid, trimmed, type Said } from "../src/worker/lib/conversation.ts";
+import { alertSaid, asSaid, Conversation, FOUND, KEEP, KEEP_MS, lookBack, matching, MAX_CHARS, MAX_TEXT, REPEAT_MS, repeats, trimmed, type Said } from "../src/worker/lib/conversation.ts";
 import { lookBackTool } from "../src/worker/tools/conversation.ts";
 import { handleConversation } from "../src/worker/routes/conversation.ts";
 import { History } from "../src/app/history.ts";
@@ -73,24 +73,57 @@ console.log("\nwhat is kept");
 
 console.log("\nwhat a routine said");
 {
-  const s = routineSaid({ id: "a_m1x2", at: 50, title: "Mail check", text: "Two new emails from the school.", routine: "rt_mail" });
+  const s = alertSaid({ id: "a_m1x2", at: 50, title: "Mail check", text: "Two new emails from the school.", source: "routine", routine: "rt_mail" });
   check("is kept as Jarvis's, under the routine's name, by the alert's id",
     JSON.stringify(s) === JSON.stringify({ id: "a_m1x2", at: 50, role: "assistant", text: "Two new emails from the school.", routine: { id: "rt_mail", name: "Mail check" } }), s);
-  check("any other alert is not", routineSaid({ id: "a_n1", at: 50, title: "Jarvis", text: "a note" }) === null);
-  const brief = routineSaid({ id: "a_b1", at: 60, title: "Morning brief", text: "# Wednesday", routine: "rb", proposals: [{ id: "a1", risk: "reversible", says: "Mail: archive 30 promotions", verb: "Archive" }] });
+  const brief = alertSaid({ id: "a_b1", at: 60, title: "Morning brief", text: "# Wednesday", source: "routine", routine: "rb", proposals: [{ id: "a1", risk: "reversible", says: "Mail: archive 30 promotions", verb: "Archive" }] });
   check("a brief's cards kept with it, by id, as a job's are", JSON.stringify(brief?.proposals) === '["a1"]' && brief?.routine?.id === "rb", brief);
   check("one with none keeps none", !("proposals" in (s ?? {})));
 }
 
 console.log("\nwhat a background job came back with");
 {
-  const s = jobSaid({ id: "a_j1x2", at: 50, title: "Done: Dashcams", text: "The A229.", job: "jabc123def" });
+  const s = alertSaid({ id: "a_j1x2", at: 50, title: "Done: Dashcams", text: "The A229.", source: "job", job: "jabc123def" });
   check("is kept as Jarvis's, under the result's name, with its job, by the alert's id",
     JSON.stringify(s) === JSON.stringify({ id: "a_j1x2", at: 50, role: "assistant", text: "The A229.", job: { id: "jabc123def", name: "Done: Dashcams" } }), s);
-  check("any other alert is not", jobSaid({ id: "a_n1", at: 50, title: "Jarvis", text: "a note" }) === null);
-  const proposed = jobSaid({ id: "a_j2", at: 50, title: "Done: Tidy", text: "SUMMARY: tidied.", job: "jabc123def", proposals: [{ id: "a0123456789abcdefghjk", risk: "reversible", says: "Car: lock" }] });
+  const proposed = alertSaid({ id: "a_j2", at: 50, title: "Done: Tidy", text: "SUMMARY: tidied.", source: "job", job: "jabc123def", proposals: [{ id: "a0123456789abcdefghjk", risk: "reversible", says: "Car: lock" }] });
   check("what the job proposed goes with it, by id, for its cards", JSON.stringify(proposed?.proposals) === JSON.stringify(["a0123456789abcdefghjk"]) && !("proposals" in s!), proposed);
   check("a screen cannot say a message carries proposals", !("proposals" in (asSaid({ id: "x1", at: 1, role: "assistant", text: "hi", proposals: ["a0123456789abcdefghjk"] }, 1) ?? {})));
+}
+
+console.log("\nwhat any other alert said");
+{
+  const s = alertSaid({ id: "a_d1", at: 50, title: "Front door", text: "The front door lock is unlocked.", source: "api" });
+  check("is kept as Jarvis's, under where it came from and its title, by the alert's id",
+    JSON.stringify(s) === JSON.stringify({ id: "a_d1", at: 50, role: "assistant", text: "The front door lock is unlocked.", alert: { source: "api", title: "Front door" } }), s);
+  const ready = alertSaid({ id: "a_r1", at: 50, title: "Ready now", text: "Car: lock", source: "job", proposals: [{ id: "a1", risk: "reversible", says: "Car: lock" }] });
+  check("one a job raised without being its result: an alert, its card with it", ready?.alert?.source === "job" && !ready.job && JSON.stringify(ready.proposals) === '["a1"]', ready);
+  check("Settings → Test is nobody's conversation", alertSaid({ id: "a_t1", at: 50, title: "Jarvis test", text: "a test", source: "test" }) === null);
+  const chat = alertSaid({ id: "a_c1", at: 50, title: "Sara, to the family", text: "Dinner at eight", source: "chat" });
+  check("a family message is kept too, under who sent it, to be answered by voice", chat?.alert?.source === "chat" && chat.alert.title === "Sara, to the family", chat);
+  check("only as long as a message is kept", alertSaid({ id: "a_l1", at: 50, title: "Jarvis", text: "x".repeat(MAX_TEXT + 10), source: "note" })?.text.length === MAX_TEXT);
+  check("a screen cannot say a message is an alert's", !("alert" in (asSaid({ id: "x2", at: 1, role: "assistant", text: "hi", alert: { source: "api", title: "Bank" } }, 1) ?? {})));
+}
+
+console.log("\nthe same alert again, a moment later");
+{
+  const door = (id: string, at: number) => alertSaid({ id, at, title: "Front door", text: "The front door lock is unlocked.", source: "api" })!;
+  const reply = said("r", "user", "Lock it", 0);
+  check("again within a few minutes, nothing from them between: a repeat", repeats([door("a1", 0)], door("a2", REPEAT_MS - 1)));
+  check("with another alert between: still a repeat", repeats([door("a1", 0), alertSaid({ id: "m1", at: 1, title: "Mail", text: "One new email.", source: "routine", routine: "rt" })!], door("a2", 2)));
+  check("after they answered: news again", !repeats([door("a1", 0), { ...reply, at: 1 }], door("a2", 2)));
+  check("longer after: news again", !repeats([door("a1", 0)], door("a2", REPEAT_MS + 1)));
+  check("other words, or another title: not a repeat",
+    !repeats([door("a1", 0)], { ...door("a2", 1), text: "The front door lock is locked." }) && !repeats([door("a1", 0)], { ...door("a2", 1), alert: { source: "api", title: "Back door" } }));
+  check("Jarvis's own answer with the same words is not an alert's", !repeats([said("x", "assistant", "The front door lock is unlocked.", 0)], door("a2", 1)));
+
+  const store = fakeStorage();
+  const c = new Conversation(store as never);
+  const now = 10 * DAY;
+  check("the first is kept", (await c.addAlert("u_sam", door("a1", now), now)) && (await c.list("u_sam", now)).length === 1);
+  check("the same again a minute later is not, and says so", !(await c.addAlert("u_sam", door("a2", now + 60_000), now + 60_000)) && (await c.list("u_sam", now)).length === 1);
+  check("the first delivered again (held, then released) is kept once, and is no repeat", (await c.addAlert("u_sam", door("a1", now), now + 120_000)) && (await c.list("u_sam", now)).length === 1);
+  check("another person's is theirs: not a repeat of Sam's", (await c.addAlert("u_ana", door("a3", now + 60_000), now + 60_000)) && (await c.list("u_ana", now)).length === 1);
 }
 
 console.log("\nlooking back");

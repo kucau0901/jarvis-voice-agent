@@ -128,7 +128,9 @@ conversation with each person. What Jarvis passed on between two people
 appears in theirs, with Done or a reply while it waits. In the family room,
 name the assistant, "**Jarvis**, add rice to the shopping list", and it
 answers there, as you, with what you may reach. Each message reaches the
-others quietly, as a notification, not aloud.
+others as a notification, and in their Chat with Jarvis; with **Talk to me
+about alerts** on, a screen that can speak (their glasses) says it, and they
+can answer aloud ("tell her yes").
 
 Talking with the family needs the `chat` permission: adults and children
 have it; guests do not.
@@ -236,7 +238,10 @@ only the owner key can.
   you (your calendar, your memory), and they tell only you.
 - **Alerts.** They go to your open Jarvis screens, your phones and your own
   Telegram chat (**Family → Alerts**). Never to the family's
-  notification channels, and never to anyone else's.
+  notification channels, and never to anyone else's. Each is in your own
+  Chat too, and with **Talk to me about alerts** on (**Family → You →
+  Alerts**, or ask Jarvis) a screen that can speak, such as your glasses,
+  says it and listens for your reply ([notifications.md](notifications.md#talking-about-alerts)).
 - **Your voice and language**, in **Family → Voice and language**. Empty means the family's.
 - **The conversation across your devices** ("what was that address again?").
 - **What you have used**, in **Family → What you have used**. Admins see everyone's in

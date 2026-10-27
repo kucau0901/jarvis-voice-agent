@@ -14,8 +14,9 @@ needs setting up. After restarting the phone, there is nothing to do.
 Jarvis tries, in order, and stops at the first that reaches you:
 
 1. **A Jarvis screen in front of someone** — the car's screen, a browser tab
-   you are looking at. It shows the alert, and says it aloud unless that
-   screen is set not to (**Settings → Alerts → This device**). It counts only
+   you are looking at, the glasses' phone app. It shows the alert, and says it
+   aloud if you are talked to about alerts (below) and that screen may speak
+   (**Settings → Alerts → This device**). It counts only
    if the screen confirms within four seconds; a tab in the background does
    not.
 2. **Notifications**, on every device of yours where you turned them on, all
@@ -28,6 +29,23 @@ Alerts**.
 
 "Send that to my phone" skips step 1: it goes straight to your notifications,
 even when you ask from the car.
+
+## Talking about alerts
+
+Every alert is in your **Chat** too, family messages included, as Jarvis's message under its title,
+there when you next open Jarvis on any screen of yours, so you can answer it
+there ("yes, lock it", or for a family message "tell her yes"). Each person's alerts are in their own Chat only. If
+the house says the same thing twice in a few minutes (a door unlocked, then
+unlocked again) with nothing from you in between, it is in Chat once.
+
+With **Talk to me about alerts** on (**Family → You → Alerts**, on unless you
+turn it off), a screen that can speak says each alert that is meant to be
+heard and listens for your reply: in Ray-Ban glasses, the phone app says it
+and you answer aloud, in a Live session if Live voice is on, or turn by turn
+if not. Off, alerts are still in Chat and still a notification, but nothing
+says them. You can also ask Jarvis: "stop talking to me about alerts", "read
+my alerts to me again". **This device** in Settings → Alerts is a second,
+per-screen switch: a desk can stay quiet while the glasses speak.
 
 **Asking back on Telegram.** With **Settings → Alerts → Ask Jarvis on
 Telegram** on, the bot answers too: a message from a private chat someone

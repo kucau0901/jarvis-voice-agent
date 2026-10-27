@@ -442,7 +442,7 @@ and connects to `/api/v1/events?ticket=…`. A ticket works once.
 | Direction | Message |
 |---|---|
 | ← | `{"type":"hello","label":…}` on connecting |
-| ← | `{"type":"alert","alert":{id, at, title, text, speak, urgent, source, expiresAt?, routine?}}` |
+| ← | `{"type":"alert","alert":{id, at, title, text, speak, talk, urgent, source, for?, expiresAt?, routine?, job?, relay?, convo?, proposals?}}` |
 | → | `{"type":"presence","visible":true}` whenever the screen is shown or hidden |
 | → | `{"type":"ack","id":…,"visible":true}` on each alert, if someone can see it |
 | → / ← | `ping` / `pong`, every 25 seconds or so, to keep proxies from closing it |
@@ -455,6 +455,42 @@ visible. Close code `4001` means the token was revoked: stop reconnecting.
 The socket costs nothing while quiet. The Durable Object holding it hibernates,
 and the runtime answers the pings itself.
 
+### Talking about them
+
+Every alert Jarvis raises for a person (a routine, a reminder, a finished job,
+a message passed on, the house through `/api/v1/notify`) is also kept in that
+person's conversation with Jarvis (`GET /api/hub/conversation`), and only
+theirs, as it is delivered: one held for their quiet hours or that no channel
+took is there too, and so is a family message (`source: "chat"`), so it can
+be answered aloud ("tell her yes", by `pass_on`). Settings → Test is not. Its row has the alert's `id`, and
+says where it came from: `routine: {id, name}`, `job: {id, name}`, or for any
+other `alert: {source, title}`, which a screen shows and tells the model as
+`"Title: text"` (just `text` when the title is "Jarvis"). The same words under
+the same title again within 15 minutes, with nothing from the person in
+between (a door reported unlocked twice), are not kept again.
+
+`talk` on each alert says whether a screen that can speak should **say it and
+listen for a reply**, starting a conversation: true when the alert is meant to
+be heard (`speak`), its person has *Talk to me about alerts* on, and it does
+not repeat what was just kept. False means show it (and notify) but do not say
+it. A screen may still choose not to speak at all (the web app's per-screen
+switch). An alert fetched from before `talk` existed has none: use `speak`.
+
+*Talk to me about alerts* is the person's `alertTalk` choice: `"on"` or
+`"off"`, on when never chosen. `GET /api/hub/me` returns it in `prefs` (always
+said for a person), `PATCH /api/hub/me {prefs: {alertTalk: "off"}}` changes it,
+and so does asking Jarvis ("stop talking to me about alerts"), by the
+`alert_talk` tool, which only a person signed in can use, only in their own
+words, and never a routine or a job. It is in Family → You → Alerts.
+
+What a phone does with `talk: true` depends on the person's Live voice choice
+on it: with Live, open a session with the alert as its
+[`opening`](#live-voice), so Jarvis says it and hears the answer; without,
+say it (`/api/tts`) and send the reply to `/api/v1/voice` with the alert in
+`context`, as any other turn. With a Live session already open, send the alert
+into it on `oai-events` as `{"type":"session.commentary.append","content":"Title: text","delegation_id":null}`,
+as the web app does: Jarvis says it, and it is in that session's conversation.
+
 ### Notifications
 
 `GET /api/v1/push` returns the VAPID `publicKey` to subscribe with;
@@ -463,7 +499,8 @@ registers the browser, `DELETE` with `{"endpoint"}` removes it. Only the push
 services browsers use (Google, Apple, Mozilla, Microsoft) are accepted as
 endpoints. A tapped notification carries only the alert's id; the text is
 `GET /api/v1/alerts?id=…` for about the last thirty alerts, each only to the
-person it was for (admins included). An alert a routine raised carries
+person it was for (admins included). The notification itself carries
+`{id, title, at, speak, talk, text}`, the text cut to fit. An alert a routine raised carries
 `routine`, the routine's id, wherever it goes. On iPhone and
 iPad, notifications need the app added to the Home Screen first.
 
@@ -477,7 +514,7 @@ using it: [notifications.md](notifications.md).
 ### The webhook
 
 Each alert is POSTed as JSON: `{"event":"alert", id, at, title, text, speak,
-urgent, source, routine?}`. With a signing secret set, `X-Jarvis-Signature` is
+talk, urgent, source, routine?}`. With a signing secret set, `X-Jarvis-Signature` is
 `sha256=` and the hex HMAC-SHA256 of the raw body:
 
 ```js
@@ -851,6 +888,27 @@ The OpenAI key never leaves the Worker. Requires `voice`.
 ← {"sdp":"…","sessionId":"…","voice":"cedar","restoredTurns":0}
 ```
 
+**Opening with an alert.** To start a session that says one of the person's
+alerts and listens for the reply ([Talking about them](#talking-about-them)),
+add `"opening": {"id", "title", "text"}` from the alert:
+
+```json
+→ {"sdp":"…","history":[…],"client":"mobile",
+   "opening":{"id":"k3v…","title":"Front door","text":"The front door lock is unlocked."}}
+← {"sdp":"…","sessionId":"…","voice":"cedar","restoredTurns":5,
+   "first":{"type":"session.commentary.append","content":"Front door: The front door lock is unlocked.",
+            "delegation_id":null,"event_id":"opening_k3v…"}}
+```
+
+The alert goes last in the session's history, as Jarvis's (not twice if
+`history` already ends with it), so "yes, lock it" is understood, and the
+voice's instructions say a session was opened to tell them about it. **Send
+`first` as it is on `oai-events` as soon as the channel opens**: GPT-Live has
+no way to speak first from the server with client delegation
+(`response.create` needs a Responses backend), and a commentary sent before
+the channel is open is dropped. `session.commentary.appended` comes back with
+`client_event_id` set to its `event_id`. A malformed `opening` is a `400`.
+
 The session is created with `delegation: {type:"client"}`, which means **your
 client must close the loop itself**: listen on the `oai-events` data channel, and
 when a `session.delegation.created` arrives, send the conversation to
@@ -941,8 +999,9 @@ Changes and removals are felt within 30 seconds everywhere.
 routines, jobs, alerts, the conversation across devices and usage are kept
 per person. The owner key and devices act as the first person (who set up
 the family), whose data is what Jarvis kept before families. `PATCH
-/api/hub/me {prefs: {voice, language, telegram, style}}` sets a person's own
-voice, language and Telegram chat; an empty value clears one.
+/api/hub/me {prefs: {voice, language, telegram, style, alertTalk}}` sets a person's own
+voice, language, Telegram chat and whether Jarvis talks to them about their
+alerts (`"on"` or `"off"`, [Talking about them](#talking-about-them)); an empty value clears one.
 
 - `GET /api/memory?book=family` (and the same on POST, DELETE,
   `/api/memory/search`): the family's shared memory. Changing it needs

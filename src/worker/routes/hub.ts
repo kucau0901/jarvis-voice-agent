@@ -88,7 +88,9 @@ function prefsProblem(p: Record<string, unknown>): string | null {
   const presence = s("presence");
   const nickname = s("nickname");
   const birthday = s("birthday");
-  if (voice === null || language === null || telegram === null || style === null || presence === null || nickname === null || birthday === null) return "each choice is text";
+  const alertTalk = s("alertTalk");
+  if (voice === null || language === null || telegram === null || style === null || presence === null || nickname === null || birthday === null || alertTalk === null) return "each choice is text";
+  if (alertTalk && alertTalk !== "on" && alertTalk !== "off") return "alertTalk is on or off";
   // Both go into what the router is told (lib/router-prompt.ts): letters only, and a real date.
   if (nickname && !/^[\p{L}\p{M}' .-]{1,40}$/u.test(nickname)) return "a nickname is a name: letters, spaces, ' . or -";
   if (birthday && !(/^\d{4}-\d{2}-\d{2}$/.test(birthday) && new Date(`${birthday}T00:00:00Z`).toISOString().slice(0, 10) === birthday && Date.parse(birthday) <= Date.now())) {
@@ -303,7 +305,8 @@ export async function handleHub(req: Request, env: Env, principal: Principal): P
       space: s ? { name: s.name, agentName: s.agentName } : null,
       user: me ? { id: me.id, name: me.name } : null,
       role: me ? me.role : "admin",
-      prefs: locked ? {} : (me?.place?.prefs ?? {}),
+      // "Talk to me about alerts" said either way, on when they never chose (lib/alerts.ts talk).
+      prefs: locked || !me ? {} : { ...me.place?.prefs, alertTalk: me.place?.prefs.alertTalk ?? "on" },
       // A guest's limits: until when, which hours, and the pass's things with what each can do.
       access: !locked && me?.place?.access
         ? { ...me.place.access, allow: me.place.access.allow?.map((a) => ({ ...a, actions: passActions(a.entity) })) }

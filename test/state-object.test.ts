@@ -142,6 +142,20 @@ try {
   check("a job's result for the first person: kept in their conversation", (await jarvis.conversationOf("owner", NOW)).some((s) => s.job?.id === "jabc123def"));
   await jobDeps.deliver(done("u_gone"));
   check("…not for someone no longer in the family: theirs went when they left", (await jarvis.conversationOf("u_gone", NOW)).length === 0);
+
+  // Every alert, kept as it is delivered (lib/alerts.ts deliver): from the Worker too, as a note is.
+  const note = makeAlert({ title: "Dentist", text: "12 Example Street" }, "note", NOW)!;
+  await deliver(env, jarvis, note, { skipLive: true });
+  check("a note sent to their phone: in the first person's conversation too, under its title",
+    (await jarvis.conversationOf("owner", NOW)).some((s) => s.id === note.id && s.alert?.title === "Dentist" && s.alert.source === "note"));
+  const door = () => makeAlert({ title: "Front door", text: "The front door lock is unlocked." }, "api", NOW)!;
+  const first = await deliver(env, jarvis, door());
+  const second = await deliver(env, jarvis, door());
+  check("the house saying the same twice in a row: kept once, said once",
+    (await jarvis.conversationOf("owner", NOW)).filter((s) => s.alert?.title === "Front door").length === 1 && first.alert.talk === true && second.alert.talk === false, [first.alert.talk, second.alert.talk]);
+  const test = await deliver(env, jarvis, makeAlert({ title: "Jarvis test", text: "a test" }, "test", NOW)!, { every: true });
+  check("Settings → Test is in nobody's conversation", !(await jarvis.conversationOf("owner", NOW)).some((s) => s.id === test.alert.id));
+  check("no family yet: Jarvis talks about the first person's alerts", (await jarvis.alertTalkOf("owner")) === true);
 } finally {
   globalThis.fetch = realFetch;
 }

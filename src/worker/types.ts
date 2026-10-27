@@ -17,6 +17,8 @@ export interface Env {
    * kept before families; a member's own id otherwise.
    */
   JARVIS_PERSON?: string;
+  /** The signed-in person's own id, the first person's too; absent for the owner key and devices (tools/alerts.ts). */
+  JARVIS_USER?: string;
   /** Their name, for the model to address them by. */
   JARVIS_PERSON_NAME?: string;
   /** What they like to be called, and their birthday (YYYY-MM-DD), when they said (ui/Profile.ts). */

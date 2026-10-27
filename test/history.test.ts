@@ -1,4 +1,5 @@
-import { buildHistory } from "../src/worker/lib/history.ts";
+import { buildHistory, openingEvent, openingOf, withOpening } from "../src/worker/lib/history.ts";
+import { jarvisPrompt } from "../src/worker/lib/prompt.ts";
 
 let pass = 0, fail = 0;
 function check(name: string, cond: boolean, got?: unknown) {
@@ -67,6 +68,28 @@ check("over the budget, the newest turn is kept", texts(long).at(-1) === "the ne
 check("and the oldest ones are what is dropped", !texts(long).includes("a".repeat(4000)) && texts(long).includes("f".repeat(4000)), texts(long).map((t) => t[0]));
 check("in the order they were said", texts(long).map((t) => t[0]).join("") === "cdeft", texts(long).map((t) => t[0]));
 check("within the budget", texts(long).join("").length <= 20_000, texts(long).join("").length);
+
+console.log("\na Live session that opens by saying an alert (routes/session.ts opening)");
+{
+  const o = openingOf({ id: "a1b2c3d4e5f6", title: "Front door", text: "  The front door lock is unlocked. " });
+  check("read as the app's history reads an alert: Title: text", o?.id === "a1b2c3d4e5f6" && o.said === "Front door: The front door lock is unlocked.", o);
+  check("a plain one is its words", openingOf({ id: "a1b2c3d4e5f6", title: "Jarvis", text: "Leave now." })?.said === "Leave now.");
+  check("within an alert's limits", openingOf({ id: "a1b2c3d4e5f6", title: "t".repeat(200), text: "x".repeat(5000) })?.said.length === 80 + 2 + 1500);
+  check("no words, or no id fit to name an event: none",
+    openingOf({ id: "a1b2c3d4e5f6", title: "x", text: " " }) === null && openingOf({ id: "a b", text: "hi" }) === null && openingOf("hi") === null && openingOf(null) === null);
+
+  const h = withOpening(buildHistory([{ role: "user", text: "Lock the car" }, { role: "assistant", text: "Locked." }]), o!);
+  check("last in the history, as Jarvis's, never a developer message", texts(h).at(-1) === o!.said && h.at(-1)?.role === "assistant" && h.every((i) => i.role !== "developer"), h);
+  check("with no history, it alone", withOpening(undefined, o!).length === 1);
+  check("not twice when the screen's history ends with it", withOpening(h, o!).length === h.length);
+
+  const first = openingEvent(o!);
+  check("the event the screen sends as oai-events opens: speakable context, for no delegation",
+    JSON.stringify(first) === JSON.stringify({ type: "session.commentary.append", content: o!.said, delegation_id: null, event_id: "opening_a1b2c3d4e5f6" }), first);
+  const told = jarvisPrompt("mobile", { alert: true });
+  check("the voice is told to say it and listen, in words of its own, not the alert's", told.endsWith("delegate as you would any request.") && !told.includes("front door"));
+  check("without one, the instructions are as before", jarvisPrompt("mobile") === jarvisPrompt("mobile", {}) && !jarvisPrompt("mobile").includes("ALERT TO START WITH"));
+}
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

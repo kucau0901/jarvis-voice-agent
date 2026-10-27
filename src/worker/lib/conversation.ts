@@ -7,8 +7,8 @@ import { PAGE_ID } from "./pages.ts";
  * Each person's conversation with Jarvis, kept so it is still there when the
  * app opens again, as Hark's chat is: what they typed or said aloud (Live and
  * push-to-talk) and Jarvis's answers, which the app sends as each is
- * finished (src/app/conversation.ts), and what their routines said, put here
- * as it is delivered (state.ts). The last 200 of the past 30 days; Clear chat
+ * finished (src/app/conversation.ts), and what their alerts said (routines,
+ * jobs, reminders, the house), put here as each is delivered (lib/alerts.ts). The last 200 of the past 30 days; Clear chat
  * empties it on every screen of theirs.
  *
  * Kept is not what the model reads: a question goes with only the last
@@ -35,6 +35,8 @@ export interface Said {
   routine?: { id: string; name: string };
   /** The background job it is the result of: its id, to open it in Jobs, and its alert's title. Only the server says this. */
   job?: { id: string; name: string };
+  /** Any other alert that said it (lib/alerts.ts): where it came from and its title, read as "Title: text". Only the server says this. */
+  alert?: { source: Alert["source"]; title: string };
   /** An answer's cited pages, drawn as cards under it (src/app/ui/rich.ts). */
   links?: { url: string; title: string }[];
   /** A page the answer made (lib/pages.ts), drawn as a card under it (src/app/pageCard.ts). */
@@ -110,19 +112,42 @@ export function trimmed(log: readonly Said[], now: number): Said[] {
   return kept;
 }
 
-/** What a routine said (lib/scheduler.ts), as kept in its maker's conversation; null for any other alert. */
-export function routineSaid(a: Pick<Alert, "id" | "at" | "title" | "text" | "routine" | "proposals">): Said | null {
-  if (!a.routine) return null;
-  // A brief's cards, by id, as a job's are (jobSaid).
+/**
+ * What an alert said (lib/alerts.ts deliver), as kept in its person's
+ * conversation: a routine's under the routine's name, a job's result under
+ * its job, anything else under where it came from and its title. Its id is
+ * the alert's, so one delivered again (held for quiet hours, then released)
+ * is kept once. A family message (lib/chat.ts) is kept too, so it can be
+ * answered by voice (tools/family.ts pass_on). Null for Settings → Test,
+ * which is nobody's conversation.
+ */
+export function alertSaid(a: Pick<Alert, "id" | "at" | "title" | "text" | "source" | "routine" | "job" | "proposals">): Said | null {
+  if (a.source === "test") return null;
+  // What it proposed, by id, drawn as cards under it (lib/proposals.ts).
   const proposals = (a.proposals ?? []).map((p) => p.id);
-  return { id: a.id, at: a.at, role: "assistant", text: a.text.slice(0, MAX_TEXT), routine: { id: a.routine, name: a.title }, ...(proposals.length ? { proposals } : {}) };
+  const from = a.routine ? { routine: { id: a.routine, name: a.title } } : a.job ? { job: { id: a.job, name: a.title } } : { alert: { source: a.source, title: a.title } };
+  return { id: a.id, at: a.at, role: "assistant", text: a.text.slice(0, MAX_TEXT), ...from, ...(proposals.length ? { proposals } : {}) };
 }
 
-/** What a background job came back with (lib/jobs.ts), as kept in its starter's conversation; null for any other alert. */
-export function jobSaid(a: Pick<Alert, "id" | "at" | "title" | "text" | "job" | "proposals">): Said | null {
-  if (!a.job) return null;
-  const proposals = (a.proposals ?? []).map((p) => p.id);
-  return { id: a.id, at: a.at, role: "assistant", text: a.text.slice(0, MAX_TEXT), job: { id: a.job, name: a.title }, ...(proposals.length ? { proposals } : {}) };
+/** How long the same alert again is a repeat, not news: a door unlocked twice in a few minutes. */
+export const REPEAT_MS = 15 * 60_000;
+
+/** The name an alert's row is kept under, or null for a row nobody's alert said. */
+const fromOf = (s: Said): string | null => s.alert?.title ?? s.routine?.name ?? s.job?.name ?? null;
+
+/**
+ * Whether an alert's row says again what one said a moment ago, with nothing
+ * from the person since: the same words under the same name, within
+ * REPEAT_MS. Their reply in between makes it news again.
+ */
+export function repeats(log: readonly Said[], s: Said): boolean {
+  const from = fromOf(s);
+  for (let i = log.length - 1; i >= 0; i--) {
+    const o = log[i]!;
+    if (o.role === "user" || s.at - o.at > REPEAT_MS) return false;
+    if (from !== null && fromOf(o) === from && o.text === s.text) return true;
+  }
+  return false;
 }
 
 const wordsOf = (text: string) => text.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean);
@@ -194,6 +219,17 @@ export class Conversation {
     const have = new Set(log.map((s) => s.id));
     const fresh = said.filter((s) => !have.has(s.id) && !!have.add(s.id));
     if (fresh.length) await this.storage.put(key(person), trimmed([...log, ...fresh], now));
+  }
+
+  /** An alert's row (alertSaid), kept after the rest; false when it repeats what was just said there, and is not kept. */
+  async addAlert(person: string, said: Said, now: number): Promise<boolean> {
+    const log = (await this.storage.get<Said[]>(key(person))) ?? [];
+    // Kept already: delivered again, after quiet hours.
+    if (log.some((s) => s.id === said.id)) return true;
+    const kept = trimmed(log, now);
+    if (repeats(kept, said)) return false;
+    await this.storage.put(key(person), trimmed([...kept, said], now));
+    return true;
   }
 
   /** Cleared, by them (Clear chat), or as they leave the family. */

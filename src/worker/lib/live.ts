@@ -57,7 +57,8 @@ export class LiveHub {
 
   /** Send to every open screen; resolve on the first visible one to confirm, or after `waitMs`. */
   broadcast(sockets: LiveSocket[], alert: Alert, waitMs: number): Promise<LiveResult> {
-    const msg = JSON.stringify({ type: "alert", alert });
+    // `talk` always said, true or false: a screen starts a conversation only on true (lib/alerts.ts).
+    const msg = JSON.stringify({ type: "alert", alert: { ...alert, talk: alert.talk === true } });
     const whose = alert.for ?? OWNER;
     let open = 0;
     let visible = 0;

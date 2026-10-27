@@ -3,7 +3,7 @@ import OpenAI from "openai";
 import type { Env } from "../types.ts";
 import { json, err, redact } from "../lib/http.ts";
 import { isClientKind, jarvisPrompt } from "../lib/prompt.ts";
-import { buildHistory } from "../lib/history.ts";
+import { buildHistory, openingEvent, openingOf, withOpening } from "../lib/history.ts";
 
 /** Confirmed against openai@7 `BuiltInVoice`. Default is `marin`. */
 export const VOICES = [
@@ -19,12 +19,17 @@ const DEFAULT_VOICE = "cedar";
  *
  * GPT-Live has no ephemeral client secret: the server creates the session with
  * the offer inline, so the OpenAI key never reaches the car.
+ *
+ * With `opening` ({id, title, text}, an alert of theirs), the session is one
+ * the phone opened to say that alert and hear the reply: it is last in the
+ * history, and the answer carries `first`, the event to send on oai-events as
+ * soon as it opens, which has Jarvis say it (lib/history.ts openingEvent).
  */
 export async function handleSession(req: Request, env: Env): Promise<Response> {
   if (req.method !== "POST") return err(405, "method not allowed");
   if (!env.OPENAI_API_KEY) return err(503, "OPENAI_API_KEY is not configured");
 
-  let body: { sdp?: unknown; voice?: unknown; history?: unknown; client?: unknown };
+  let body: { sdp?: unknown; voice?: unknown; history?: unknown; client?: unknown; opening?: unknown };
   try {
     body = await req.json();
   } catch {
@@ -45,20 +50,22 @@ export async function handleSession(req: Request, env: Env): Promise<Response> {
   // one place Jarvis is used without a spare hand to correct it.
   const clientKind = isClientKind(body.client) ? body.client : "car";
 
-  const input = buildHistory(body.history);
+  const opening = body.opening == null ? null : openingOf(body.opening);
+  if (body.opening != null && !opening) return err(400, "opening must be {id, title, text}: an alert's");
+  const input = opening ? withOpening(buildHistory(body.history), opening) : buildHistory(body.history);
   const client = new OpenAI({ apiKey: env.OPENAI_API_KEY, baseURL: openaiBase(env) });
 
   try {
     const result = await client.live.create({
       session: {
         model: "gpt-live-1",
-        instructions: jarvisPrompt(clientKind, { agentName: env.JARVIS_AGENT_NAME, personName: env.JARVIS_PERSON_NAME }),
+        instructions: jarvisPrompt(clientKind, { agentName: env.JARVIS_AGENT_NAME, personName: env.JARVIS_PERSON_NAME, alert: !!opening }),
         audio: { output: { voice } },
         // Client delegation: this app handles tool work, which is what lets the
         // Worker run MCP and speak progress during a slow Hermes call.
         delegation: { type: "client" },
-        // Present only on a reconnect. GPT-Live has no resume endpoint, so a
-        // dropped session is replaced by a new one carrying the transcript.
+        // Present on a reconnect, and with an opening. GPT-Live has no resume endpoint,
+        // so a dropped session is replaced by a new one carrying the transcript.
         ...(input ? { input } : {}),
         // The car browser is an untrusted frontend on a public URL, so allow it
         // only the events it actually needs. Server events stay open for now
@@ -85,6 +92,7 @@ export async function handleSession(req: Request, env: Env): Promise<Response> {
       sessionId: result.session.id,
       voice,
       restoredTurns: input?.length ?? 0,
+      ...(opening ? { first: openingEvent(opening) } : {}),
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
