@@ -35,7 +35,8 @@ const passOn: Tool = {
     "<name> …', or 'everyone'. Names are in THE FAMILY. For later, give local_time or in_minutes; " +
     "for 'when she gets home', when_home true, with local_time too if a time was said (it then goes " +
     "at that time or once they are home, whichever is later). Write text as said TO them, in the " +
-    "user's language, complete on its own: 'Please buy ice cream on your way home'.",
+    "user's language, complete on its own: 'Please buy ice cream on your way home'. It is also how " +
+    "the user answers a family message they were just told of ('tell her yes'): tell its sender.",
   parameters: {
     type: "object",
     properties: {

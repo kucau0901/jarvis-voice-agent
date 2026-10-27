@@ -642,19 +642,25 @@ function jobSaid(a: JobSaid): boolean {
 
 function onAlert(a: Alert) {
   const card = showAlert(a);
-  // A routine's or a job's words go into the conversation under its name; anything else while typing, as well as on the card.
+  // Into the conversation as the server keeps it (lib/conversation.ts alertSaid): a routine's or a job's under its name,
+  // anything else as "Title: text"; Settings → Test, which is kept nowhere, only while typing.
   if (a.routine) routineSaid({ ...a, routine: a.routine, proposals: a.proposals?.map((p) => p.id) });
   else if (a.job) jobSaid({ ...a, job: a.job, proposals: a.proposals?.map((p) => p.id) });
-  else if (mode === "type") addRow("jarvis", a.title !== "Jarvis" ? `${a.title}: ${a.text}` : a.text);
+  else if (a.source !== "test" || mode === "type") addRow("jarvis", a.title !== "Jarvis" ? `${a.title}: ${a.text}` : a.text).dataset.said = a.id;
   // Into the conversation either way: "yes, do that" after Hermes asks a
   // question in an alert must have the question to refer to.
   history.add("assistant", a.title !== "Jarvis" ? `${a.title}: ${a.text}` : a.text);
+  // Said only when the server says to talk about it: their "Talk to me about alerts" (Family → You), and not a repeat.
+  // One fetched from an older log has no `talk`: as it was, by `speak`.
+  const talk = a.talk ?? a.speak;
   if (session?.live) {
+    if (!talk) return;
     session.commentary(a.title !== "Jarvis" ? `${a.title}: ${a.text}` : a.text);
     quiet.saidAt = performance.now(); // not closed before Jarvis gets to say it
     return;
   }
-  if (!a.speak || !speakHere()) return;
+  // …and this screen may speak (Settings → Alerts, per screen).
+  if (!talk || !speakHere()) return;
   // The browser may refuse sound before the first tap on this page; the ▶ is then the way.
   void speakAlert(key, a).then((played) => card.classList.toggle("unplayed", !played));
 }

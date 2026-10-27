@@ -101,6 +101,7 @@ console.log("before anyone is here");
 
 console.log("\nclaiming, with the owner key");
 let admin: Principal;
+let adminToken = "";
 let adminFake: Awaited<ReturnType<typeof makeFake>>;
 {
   const notOwner: Principal = { kind: "device", id: "d_1", name: "esp", scopes: ["*"] };
@@ -112,6 +113,7 @@ let adminFake: Awaited<ReturnType<typeof makeFake>>;
   const { fake, done } = await join(claim.body.token, "Adam");
   adminFake = fake;
   check("making a passkey joins, and signs in", done.status === 200 && done.body.token.startsWith("jss1_") && done.body.agentName === "Friday", done.body);
+  adminToken = done.body.token;
   admin = (await who(done.body.token))!;
   check("the session is the admin, bounded by nothing", admin?.kind === "member" && isAdmin(admin) && grantsOf(admin).join() === "*");
   check("an admin's things are the owner's, until they are each person's", whoOf(admin) === "owner");
@@ -350,6 +352,17 @@ console.log("\neach person's own choices");
   check("good ones are kept", ok.status === 200 && ok.body.prefs.voice === "marin" && ok.body.prefs.telegram === "123456");
   const owner = await call("/api/hub/me", { prefs: { voice: "marin" } }, { method: "PATCH", principal: OWNER });
   check("the owner key has no choices of its own", owner.status === 400);
+
+  // "Talk to me about alerts" (lib/alerts.ts talk): said either way, on until they turn it off.
+  const before = await call("/api/hub/me", undefined, { principal: admin });
+  check("talking about alerts is on when never chosen, and says so", before.body.prefs.alertTalk === "on", before.body.prefs);
+  const wrong = await call("/api/hub/me", { prefs: { alertTalk: "loud" } }, { method: "PATCH", principal: admin });
+  check("it is on or off, nothing else", wrong.status === 400 && /on or off/.test(wrong.body.error), wrong.body);
+  const quiet = await call("/api/hub/me", { prefs: { alertTalk: "off" } }, { method: "PATCH", principal: admin });
+  _clearSessionCache();
+  const after = await call("/api/hub/me", undefined, { principal: (await who(adminToken))! });
+  check("turned off, it is kept and said", quiet.status === 200 && quiet.body.prefs.alertTalk === "off" && after.body.prefs.alertTalk === "off", after.body.prefs);
+  await call("/api/hub/me", { prefs: { alertTalk: "" } }, { method: "PATCH", principal: admin });
 
   // Sent together, everything is kept: a Home Assistant token no longer swallows the rest.
   // (What comes back is what was saved: setPrefs and renameUser answer with it.)

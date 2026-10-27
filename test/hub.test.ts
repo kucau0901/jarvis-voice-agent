@@ -215,6 +215,11 @@ console.log("\nthe first person, and what each person chooses");
   check("and ride along with their session", (await lookup(hub, adminToken, T0 + 901))?.place.prefs.language === "ms");
   const cleared = await hub.setPrefs(adminId, { language: "" });
   check("an empty value clears one", !("error" in cleared) && cleared.language === undefined && cleared.voice === "marin");
+  // "Talk to me about alerts" (lib/alerts.ts talk): on or off, nothing else; cleared is on.
+  const quiet = await hub.setPrefs(adminId, { alertTalk: "off" });
+  check("talking about alerts turned off is kept", !("error" in quiet) && quiet.alertTalk === "off" && (await hub.prefsOf(adminId)).alertTalk === "off");
+  const odd = await hub.setPrefs(adminId, { alertTalk: "loud" as never });
+  check("anything but on or off clears it, which is on", !("error" in odd) && odd.alertTalk === undefined && odd.voice === "marin");
   // Asking by Telegram (routes/telegram.ts): whose chat a message came from, by the number they gave.
   check("a chat is its giver's: the first person's is the owner", (await hub.telegramPerson("12345")) === "owner" && (await hub.telegramPerson("999")) === null);
   await hub.setPrefs(memberId, { telegram: "777" });

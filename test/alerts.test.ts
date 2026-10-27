@@ -20,6 +20,7 @@ import { StateHost, DELIVERY_LOG_MAX, MAX_PUSH_SUBS, TICKET_MS } from "../src/wo
 import { requiredScope } from "../src/worker/lib/scopes.ts";
 import { handleAlertApi, handleAlertsAdmin } from "../src/worker/routes/alerts.ts";
 import { validateChanges } from "../src/worker/lib/settings.ts";
+import { alertSaid } from "../src/worker/lib/conversation.ts";
 
 let pass = 0;
 let fail = 0;
@@ -264,6 +265,70 @@ console.log("\na notification's payload always fits");
   check("a short one is untouched", JSON.parse(pushPayload(alert())).text === "Leave in ten minutes.");
 }
 
+console.log("\nkept in its person's conversation, and whether to talk about it");
+{
+  // A fake that keeps what it is handed, by person, as the object does (state.ts keepAlert, alertTalkOf).
+  const kept: { person: string; id: string }[] = [];
+  let repeat = false;
+  const off = new Set<string>();
+  const sent: Alert[] = [];
+  const held: Alert[] = [];
+  const talking = (quiet: number | null = null): AlertState => ({
+    ...fakeState({ live: { open: 1, visible: 1, acked: "phone" } }).state,
+    async broadcast(a) {
+      sent.push(a);
+      return { open: 1, visible: 1, acked: "phone" };
+    },
+    async keepAlert(a) {
+      if (!alertSaid(a)) return true;
+      kept.push({ person: a.for ?? "owner", id: a.id });
+      return !repeat;
+    },
+    async alertTalkOf(person) {
+      return !off.has(person);
+    },
+    async quietUntil() {
+      return quiet;
+    },
+    async hold(a) {
+      held.push(a);
+    },
+  });
+
+  const d = await deliver(env(), talking(), makeAlert({ title: "Front door", text: "The front door lock is unlocked." }, "api", 1)!);
+  check("kept in the first person's conversation, by its id", kept.length === 1 && kept[0]!.person === "owner" && kept[0]!.id === d.alert.id, kept);
+  check("meant to be heard, and they have it on: talk", d.alert.talk === true && sent.at(-1)?.talk === true);
+
+  await deliver(env(), talking(), makeAlert({ text: "Pick up milk" }, "relay", 1, "u_sara")!);
+  check("a member's goes to theirs alone", kept.at(-1)?.person === "u_sara");
+
+  const quietOne = await deliver(env(), talking(), makeAlert({ text: "Read me later", speak: false }, "note", 1)!);
+  check("not meant to be heard: no talk, but kept all the same", quietOne.alert.talk === false && kept.at(-1)?.id === quietOne.alert.id);
+
+  off.add("u_sara");
+  const offOne = await deliver(env(), talking(), makeAlert({ text: "Football at five" }, "routine", 1, "u_sara")!);
+  check("their setting off: no talk, still kept, still delivered", offOne.alert.talk === false && kept.at(-1)?.id === offOne.alert.id && offOne.deliveredBy === "live");
+
+  repeat = true;
+  const again = await deliver(env(), talking(), makeAlert({ title: "Front door", text: "The front door lock is unlocked." }, "api", 2)!);
+  check("a repeat of what was just said: delivered, not said again", again.alert.talk === false && again.deliveredBy === "live");
+  repeat = false;
+
+  const before = kept.length;
+  const test = await deliver(env(), talking(), makeAlert({ title: "Jarvis test", text: "a test" }, "test", 1)!, { every: true });
+  check("Settings → Test is not kept, but still says whether to talk", kept.length === before && test.alert.talk === true);
+  const chat = await deliver(env(), talking(), makeAlert({ title: "Sara", text: "Dinner at eight", speak: true }, "chat", 1, "u_adam")!);
+  check("a family message: kept, and talked about, to be answered by voice", kept.at(-1)?.id === chat.alert.id && chat.alert.talk === true);
+
+  const h = await deliver(env(), talking(Date.now() + 3_600_000), makeAlert({ text: "Bedtime" }, "routine", 1, "u_adam")!);
+  check("held for quiet hours: kept now, there when they look", h.heldUntil !== undefined && held.length === 1 && kept.at(-1)?.id === h.alert.id);
+
+  const plain = await deliver(env(), fakeState({ live: { open: 1, visible: 1, acked: "car" } }).state, alert());
+  check("a state with neither hook: talk is speak", plain.alert.talk === true);
+
+  check("the notification says whether to talk", JSON.parse(pushPayload({ ...alert(), talk: true })).talk === true && JSON.parse(pushPayload(alert())).talk === false);
+}
+
 /* ---------- open screens ---------------------------------------------------- */
 
 function sock(c: LiveClient | null, sink: string[] = []) {
@@ -298,6 +363,7 @@ console.log("\nopen screens");
   const a = alert();
   const p = hub.broadcast([car, desk], a, 2000);
   check("every open screen is sent it", car.sent.length === 1 && desk.sent.length === 1 && JSON.parse(car.sent[0]!).alert.id === a.id);
+  check("…saying whether to talk, true or false", JSON.parse(car.sent[0]!).alert.talk === false);
   hub.receive(desk, JSON.stringify({ type: "ack", id: a.id, visible: false }));
   hub.receive(car, JSON.stringify({ type: "ack", id: a.id, visible: true }));
   const r = await p;

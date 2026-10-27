@@ -17,6 +17,18 @@ of every release, and in the [README](README.md#updating).
 
 ## [Unreleased]
 
+### Added
+
+- **Jarvis talks to you about your alerts.** Every alert (a reminder, a
+  routine, a finished job, a message from the family, the house) is now in
+  your Chat, so you can answer it there, aloud too ("tell her yes"); each person's in their own only, and the
+  same words twice in a few minutes only once. With **Talk to me about
+  alerts** on (Family → You → Alerts, on unless you turn it off, or ask
+  Jarvis to change it), a screen that can speak says it and listens for your
+  reply; off, it is in Chat and a notification, not said. The device API's
+  alerts carry `talk` for this, and `/api/session` takes an `opening` alert
+  for a Live session that starts by saying it (docs/api.md).
+
 ### Changed
 
 - **Meetings from mail takes invitations, and work mail forwarded to you.**

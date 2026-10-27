@@ -37,6 +37,13 @@ export interface Alert {
   text: string;
   /** Meant to be heard, not just read: a screen that can speak says it aloud. */
   speak: boolean;
+  /**
+   * Set as it is delivered: whether a screen that can speak says it and
+   * listens for a reply, starting a conversation (the glasses, the web app).
+   * `speak`, when its person has "Talk to me about alerts" on (hub.ts prefs
+   * alertTalk) and it does not repeat what was just said (lib/conversation.ts).
+   */
+  talk?: boolean;
   /** Every channel, not the first that works. */
   urgent: boolean;
   /** What raised it — shown in the panel, and useful in a webhook. */
@@ -191,6 +198,10 @@ export interface AlertState {
   pushTargets(person: string): Promise<{ vapid: VapidKeys; subs: PushTarget[] }>;
   /** A member's own Telegram chat, if they gave one (hub.ts prefs). */
   chatFor?(person: string): Promise<string | null>;
+  /** Into its person's conversation (lib/conversation.ts alertSaid); false when it repeats what was just said there. */
+  keepAlert?(alert: Alert): Promise<boolean>;
+  /** Whether this person ("owner" for the first person) has "Talk to me about alerts" on (hub.ts prefs alertTalk). */
+  alertTalkOf?(person: string): Promise<boolean>;
   pushResults(results: { id: string; ok: boolean; gone: boolean }[]): Promise<void>;
   logDelivery(d: Delivery): Promise<void>;
 }
@@ -217,6 +228,9 @@ export async function deliver(
   const attempts: Attempt[] = [];
   let deliveredBy: Channel | null = null;
 
+  // In its person's conversation first, so one held for quiet hours, or that no channel took, is there too (lib/conversation.ts alertSaid).
+  const fresh = !state.keepAlert ? true : await state.keepAlert(alert).catch(() => true);
+
   /*
    * Someone in their quiet time (a child at night, a helper off duty) gets it
    * when their hours begin, not now. Never for something urgent: a check-in
@@ -237,6 +251,10 @@ export async function deliver(
       return d;
     }
   }
+
+  // Said, and a reply listened for, only if its person wants that; not again for a repeat, which is not kept either.
+  const talks = alert.speak && fresh && (await state.alertTalkOf?.(alert.for ?? OWNER).catch(() => true)) !== false;
+  alert = { ...alert, talk: talks };
 
   for (const channel of parseOrder(env.ALERT_ORDER)) {
     if (channel === "live" && opts.skipLive) continue;
@@ -393,7 +411,7 @@ const SEND: Record<Channel, Sender> = {
 
 /** What the notification carries: enough to show, and the id to fetch the rest. */
 export function pushPayload(alert: Alert): string {
-  const base = { id: alert.id, title: alert.title, at: alert.at, speak: alert.speak };
+  const base = { id: alert.id, title: alert.title, at: alert.at, speak: alert.speak, talk: alert.talk === true };
   let text = alert.text;
   // Multi-byte text counts in bytes, so trim until it fits rather than guessing.
   while (new TextEncoder().encode(JSON.stringify({ ...base, text })).length > MAX_PAYLOAD) {

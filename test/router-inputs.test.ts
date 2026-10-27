@@ -46,10 +46,12 @@ const PROMPT_SHA256 = "4c052dbb87c29e01adabcd5415e9c422214ec78828dafe87cdf2cbb5f
 // make_image (tools/image.ts, scope screen, the OpenAI key only): everyone but the guest (21 Oct 2026).
 // specialty_save and specialty_forget (tools/specialties.ts, scope memory.write): everyone but the guest (21 Oct 2026).
 // make_page (tools/page.ts, scope screen): everyone but the guest (21 Oct 2026).
+// alert_talk (tools/alerts.ts, scope alerts): everyone but the guest, the owner key told it is no person's (27 Oct 2026).
 const EXPECTED: Record<string, { model: string; tools: string[]; input: string }> = {
  "owner key, nothing set up": {
   "model": "gpt-6-luna",
   "tools": [
+   "alert_talk",
    "forget",
    "hide_display",
    "job_results",
@@ -74,6 +76,7 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
  "admin, everything set up": {
   "model": "gpt-6-luna",
   "tools": [
+   "alert_talk",
    "answer_message",
    "ask_hermes",
    "calendar_add",
@@ -121,6 +124,7 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
  "adult": {
   "model": "gpt-6-luna",
   "tools": [
+   "alert_talk",
    "answer_message",
    "calendar_add",
    "calendar_check",
@@ -166,6 +170,7 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
  "child": {
   "model": "gpt-6-luna",
   "tools": [
+   "alert_talk",
    "answer_message",
    "calendar_add",
    "calendar_check",

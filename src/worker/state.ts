@@ -26,7 +26,7 @@ import { HUB_METHODS, HubHost, liveSessionIds } from "./lib/hub.ts";
 import { Relays, type Relay, type RelayDeps, type RelayKind } from "./lib/relays.ts";
 import { Chat, dmId, type ChatMessage } from "./lib/chat.ts";
 import { Panels, type PanelItem, type PanelRefreshDeps, type Reading } from "./lib/panels.ts";
-import { Conversation, jobSaid, routineSaid, type Said } from "./lib/conversation.ts";
+import { alertSaid, Conversation, type Said } from "./lib/conversation.ts";
 import { Images, type StoredImage } from "./lib/images.ts";
 import { Specialties } from "./lib/specialties.ts";
 import { Pages, type StoredPage } from "./lib/pages.ts";
@@ -102,16 +102,8 @@ export class JarvisState extends DurableObject<Env> {
       const env = await this.localEnv();
       // Each job runs as whoever started it: their memory, their mail (lib/context.ts).
       // Its storage, for steps run on the owner's ChatGPT plan (routes/jobs.ts).
-      // What a job comes back with is in its starter's conversation too, as a routine's words are.
-      // Not for someone who has left meanwhile: their conversation went with them (forgetMember).
-      const deliverJob = async (given: Alert) => {
-        const who = given.for ?? OWNER;
-        // What the job proposed goes with its result: one alert, its cards in the conversation (lib/proposals.ts).
-        const alert = await this.proposals.attach(given, who, Date.now(), localeOf(env).timeZone);
-        const said = jobSaid(alert);
-        if (said && (who === OWNER || (await this.people.personView(who).catch(() => null))?.space)) await this.conversation.add(who, [said], Date.now());
-        return deliver(env, this, alert);
-      };
+      // What the job proposed goes with its result: one alert, its cards in the conversation (lib/proposals.ts).
+      const deliverJob = async (given: Alert) => deliver(env, this, await this.proposals.attach(given, given.for ?? OWNER, Date.now(), localeOf(env).timeZone));
       // How it went, for the next question like it (lib/episodes.ts).
       const episode = (job: Job) => this.episodes.add(personOfWho(job.createdBy), episodeOfJob(job), Date.now());
       // A job reaches no further than whoever started it may now, as a routine (reachNow).
@@ -170,6 +162,23 @@ export class JarvisState extends DurableObject<Env> {
   async chatFor(person: string): Promise<string | null> {
     const id = person === "owner" ? await this.people.firstPerson() : person;
     return id ? ((await this.people.prefsOf(id)).telegram ?? null) : null;
+  }
+
+  /**
+   * An alert, into its person's conversation as it is delivered (lib/alerts.ts): false when it repeats what was
+   * just said there. Not for someone who has left meanwhile: their conversation went with them (forgetMember).
+   */
+  async keepAlert(alert: Alert): Promise<boolean> {
+    const said = alertSaid(alert);
+    const who = alert.for ?? OWNER;
+    if (!said || (who !== OWNER && !(await this.people.personView(who).catch(() => null))?.space)) return true;
+    return this.conversation.addAlert(who, said, Date.now());
+  }
+
+  /** Whether Jarvis talks to someone about their alerts (lib/alerts.ts talk): "owner" is the first person; on unless they turned it off. */
+  async alertTalkOf(person: string): Promise<boolean> {
+    const id = person === OWNER ? await this.people.firstPerson() : person;
+    return !id || (await this.people.prefsOf(id)).alertTalk !== "off";
   }
 
   /** The people and their sign-ins: one RPC method for the listed few (lib/hub.ts). */
@@ -339,12 +348,7 @@ export class JarvisState extends DurableObject<Env> {
     const reads = !!env.OPENAI_API_KEY || (await this.plan.status(Date.now())).connected;
     return {
       timeZone: localeOf(env).timeZone,
-      deliver: async (alert) => {
-        // What a routine says is in its maker's conversation too, there when the app next opens.
-        const said = routineSaid(alert);
-        if (said) await this.conversation.add(alert.for ?? OWNER, [said], Date.now());
-        return deliver(env, this, alert);
-      },
+      deliver: (alert) => deliver(env, this, alert),
       // A routine runs as whoever made it: their memory, their calendar (lib/context.ts).
       ask: async (prompt, grants, routine) => {
         // No further than its maker may reach now: something an admin took from them is taken from their routines too.

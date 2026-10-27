@@ -18,6 +18,7 @@ import { spotifyTools } from "./spotify.ts";
 import { gmailTools } from "./gmail.ts";
 import { calendarTools } from "./calendar.ts";
 import { sendNote } from "./notes.ts";
+import { alertTalk } from "./alerts.ts";
 import { routineTools } from "./routines.ts";
 import { jobTools } from "./jobs.ts";
 import { familyTools } from "./family.ts";
@@ -256,6 +257,7 @@ const ALL: Tool[] = [
   ...gmailTools,
   ...calendarTools,
   sendNote,
+  alertTalk,
   ...routineTools,
   ...jobTools,
   ...familyTools,

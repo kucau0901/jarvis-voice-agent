@@ -18,6 +18,8 @@ export interface Alert {
   title: string;
   text: string;
   speak: boolean;
+  /** Whether to say it and listen for a reply: `speak`, if its person has "Talk to me about alerts" on (lib/alerts.ts). */
+  talk?: boolean;
   urgent: boolean;
   source: string;
   /** Passed on from someone in the family (src/worker/lib/relays.ts): Done, or a reply. */

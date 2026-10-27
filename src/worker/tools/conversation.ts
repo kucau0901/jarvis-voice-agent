@@ -54,7 +54,7 @@ export const lookBackTool: Tool = {
     const found = lookBack(log, words, day, (at) => dayOf(at, timeZone));
     if (!found.length) return `Nothing like that in the conversation kept${day ? ` on ${day}` : ""}.`;
     const when = new Intl.DateTimeFormat("en-GB", { timeZone, weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
-    const lines = found.map((s) => `[${when.format(s.at)}] ${s.routine ? `Routine "${s.routine.name}"` : s.role === "user" ? "User" : "Jarvis"}: ${s.text}`);
+    const lines = found.map((s) => `[${when.format(s.at)}] ${s.routine ? `Routine "${s.routine.name}"` : s.alert ? `Alert "${s.alert.title}"` : s.role === "user" ? "User" : "Jarvis"}: ${s.text}`);
     return asQuotedData("earlier conversation", lines.join("\n"), "THE USER AND YOU, EARLIER");
   },
 };

@@ -53,7 +53,8 @@ async function forPerson(env: Env, p: Principal): Promise<Env> {
   // Their cars (and, for the owner key and devices, who the first person is), kept a little while per isolate.
   const v = await personView(env, person).catch(() => null);
   if (p.kind === "member" && p.place) {
-    return withPerson(env, { person, name: p.name, space: p.place.space, prefs: p.place.prefs, cars: v?.space ? v.cars : undefined, haToken: v?.haToken, haTokenFor: v?.haTokenFor, access: p.place.access });
+    // Their own id too, the first person's included: what only a person may change is theirs by it (tools/alerts.ts).
+    return { ...withPerson(env, { person, name: p.name, space: p.place.space, prefs: p.place.prefs, cars: v?.space ? v.cars : undefined, haToken: v?.haToken, haTokenFor: v?.haTokenFor, access: p.place.access }), JARVIS_USER: p.id };
   }
   // The owner key, and devices: the first person's, or for a member's own device, that member's.
   return withPerson(env, { person, name: v?.name, space: v?.space, prefs: v?.prefs, cars: v?.space ? v.cars : undefined, haToken: v?.haToken, haTokenFor: v?.haTokenFor, access: v?.access });

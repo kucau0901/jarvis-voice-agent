@@ -10,7 +10,8 @@ import { isApart, type Page } from "./madePages";
  * it is here again when the app opens, as Hark's chat is: the last 200
  * messages of the past 30 days. Each question and answer is sent as it is
  * finished, typed (main.ts sendTyped) or spoken, Live or push-to-talk (as
- * each row settles); what your routines said the server keeps itself. Clear
+ * each row settles); what your alerts said (routines, jobs, reminders, the
+ * house) the server keeps itself. Clear
  * chat empties it, here and on every other screen of yours.
  *
  * What the model is told with a question is only the recent part of it
@@ -28,6 +29,8 @@ export interface Said {
   replyTo?: string;
   routine?: { id: string; name: string };
   job?: { id: string; name: string };
+  /** Any other alert that said it: where from, and its title, shown as "Title: text" (main.ts onAlert). */
+  alert?: { source: string; title: string };
   /** An answer's cited pages, drawn as cards under it (ui/rich.ts). */
   links?: { url: string; title: string }[];
   /** A page the answer made, as a card under it (pageCard.ts). */
@@ -46,7 +49,7 @@ export const saidId = (): string => `c_${Date.now().toString(36)}${(n++ % 1296).
  * Kept; when it cannot be, the conversation goes on all the same.
  * keepalive, so a row that ends as the page closes still arrives.
  */
-export function keep(key: string, said: Omit<Said, "at" | "routine" | "job">): void {
+export function keep(key: string, said: Omit<Said, "at" | "routine" | "job" | "alert">): void {
   if (!key) return;
   void fetch(PATH, { method: "POST", headers: authHeaders(key), body: JSON.stringify({ said: [said] }), keepalive: true }).catch(() => {});
 }
@@ -84,11 +87,13 @@ export function restore(all: Said[], rows: Rows, history: History): void {
       rows.apart(s.page).dataset.said = s.id;
       continue;
     }
-    const row = rows.row(s.role === "user" ? "you" : "jarvis", s.text, s.links, s.page);
+    // An alert's words under its title, as they came (main.ts onAlert).
+    const text = s.alert && s.alert.title !== "Jarvis" ? `${s.alert.title}: ${s.text}` : s.text;
+    const row = rows.row(s.role === "user" ? "you" : "jarvis", text, s.links, s.page);
     row.dataset.said = s.id;
-    shown.set(s.id, { row, text: s.text });
+    shown.set(s.id, { row, text });
     if (s.role === "assistant") {
-      history.add("assistant", s.text, s.at);
+      history.add("assistant", text, s.at);
       continue;
     }
     const to = (s.replyTo && shown.get(s.replyTo)) || null;

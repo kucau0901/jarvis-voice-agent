@@ -4,7 +4,8 @@ import { el } from "./util";
 
 /**
  * The part of Settings → Alerts that is not a setting: whether THIS device
- * gets notifications and speaks alerts, which screens are open right now,
+ * gets notifications and may speak alerts (only those its person is talked to
+ * about, Family → You: lib/alerts.ts talk), which screens are open right now,
  * which devices get notifications, and where recent alerts went.
  *
  * Built with textContent throughout: labels come from devices and alert text
@@ -89,7 +90,7 @@ export class AlertsPanel {
     box2.type = "checkbox";
     box2.checked = speakHere();
     box2.addEventListener("change", () => setSpeakHere(box2.checked));
-    add(speak, box2, document.createTextNode(" Say alerts aloud on this screen (a short clip, not a live session)"));
+    add(speak, box2, document.createTextNode(" This screen may say alerts aloud (a short clip, not a live session): those you are talked to about, in Family → You"));
     add(box, speak, res);
     return box;
   }

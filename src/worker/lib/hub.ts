@@ -92,6 +92,8 @@ export interface Prefs {
   /** What they like to be called, and their birthday, YYYY-MM-DD (ui/Profile.ts), for the router (lib/router-prompt.ts). */
   nickname?: string;
   birthday?: string;
+  /** Whether a screen that can speak says their alerts and listens for a reply (lib/alerts.ts talk): on unless "off". */
+  alertTalk?: "on" | "off";
 }
 
 /** A user as stored: the PIN never leaves this file. */
@@ -545,6 +547,11 @@ export class HubHost {
       const clean = typeof v === "string" ? v.replace(/[\u0000-\u001f\u007f]/g, " ").trim().slice(0, k === "style" ? 300 : 40) : "";
       if (clean) next[k] = clean;
       else delete next[k];
+    }
+    // On or off, as it is checked (routes/hub.ts prefsProblem); anything else clears it, which is on.
+    if (patch.alertTalk !== undefined) {
+      if (patch.alertTalk === "on" || patch.alertTalk === "off") next.alertTalk = patch.alertTalk;
+      else delete next.alertTalk;
     }
     await this.storage.put(K.user(id), { ...u, prefs: next });
     return next;

@@ -21,6 +21,8 @@ export interface Prefs {
   presence?: string;
   nickname?: string;
   birthday?: string;
+  /** On unless "off" (lib/alerts.ts talk). */
+  alertTalk?: "on" | "off";
 }
 
 /** The voices the server accepts (lib/speech.ts TTS_VOICES). */
@@ -116,6 +118,9 @@ export class Mine {
 
       <section class="svc" data-section="m-alerts" data-title="Alerts">
         <h3>Alerts</h3>
+        <label class="on"><input type="checkbox" class="m-talk"${this.prefs.alertTalk === "off" ? "" : " checked"}> Talk to me about alerts</label>
+        <p class="note">Jarvis says each of your alerts in your glasses, or on a screen of yours that can speak, and listens for
+          your reply. Off, they are still in Chat and still a notification, but not said. You can also ask Jarvis to change it.</p>
         <div class="m-alerts"></div>
         <h4>Telegram</h4>
         <p class="note">If your family has a Telegram bot, your alerts can reach you there too. Send the bot a message,
@@ -145,6 +150,10 @@ export class Mine {
     this.box.querySelector(".m-tgsave")!.addEventListener("click", () =>
       void this.save({ telegram: this.box.querySelector<HTMLInputElement>(".m-tg")!.value.trim() }, "Saved."),
     );
+    this.box.querySelector(".m-talk")!.addEventListener("change", (e) => {
+      const on = (e.target as HTMLInputElement).checked;
+      void this.save({ alertTalk: on ? "on" : "off" }, on ? "Saved. Jarvis says your alerts and listens for your reply." : "Saved. Your alerts are in Chat, not said.");
+    });
     this.box.querySelector(".m-alerts")!.appendChild(new AlertsPanel(this.key).render());
     this.box.querySelector(".m-hasave")!.addEventListener("click", () => void this.setHa(this.box.querySelector<HTMLInputElement>(".m-ha")!.value.trim()));
     this.showHa();
