@@ -35,7 +35,7 @@ interface GroupView {
 }
 
 interface SettingsResponse {
-  owner: { fingerprint: string; howToChange: string };
+  owner: { fingerprint: string; howToChange: string; short: boolean };
   storage: boolean;
   groups: GroupView[];
   settings: SettingView[];
@@ -123,6 +123,9 @@ export class Services {
     line.appendChild(el("span", "", "In force: "));
     line.appendChild(el("b", "", data.owner.fingerprint ? `sha256 ${data.owner.fingerprint}` : "not set"));
     box.appendChild(line);
+    if (data.owner.short) {
+      box.appendChild(el("p", "warn", "This key is short: under 16 letters and digits, it could be guessed, and whoever guesses it is the owner. Make a new one of 16 as the README does, and set it with the command below."));
+    }
     box.appendChild(el("p", "note",
       "The one setting that cannot change here: it is what lets you in, so it is set when Jarvis is deployed. To change it, run the command below, then enter the new key once on each screen that uses Jarvis. Device tokens keep working."));
     box.appendChild(el("code", "cmd", data.owner.howToChange));

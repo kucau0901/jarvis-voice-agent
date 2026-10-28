@@ -26,6 +26,8 @@ import { deliver, makeAlert, summarise } from "../lib/alerts.ts";
 import { recognitionHints, speechConfig, synthesize, transcribe } from "../lib/speech.ts";
 import { forgetCameras, listCameras, snapshot } from "../lib/cameras.ts";
 import { haUrl } from "../lib/ha.ts";
+import { ownerKeyShort } from "../lib/auth.ts";
+import { OWNER } from "../lib/context.ts";
 
 /**
  * The settings panel's API. Owner-only (lib/scopes.ts).
@@ -49,7 +51,7 @@ export async function handleSettings(req: Request, env: Env, person?: string): P
     return test(req, env, url.origin, asker);
   }
 
-  if (req.method === "GET") return json(await view(env, await freshSaved(env), asker));
+  if (req.method === "GET") return json(await view(env, await freshSaved(env), asker, person));
 
   if (req.method === "PUT") {
     const body = (await req.json().catch(() => null)) as { changes?: unknown } | null;
@@ -65,7 +67,7 @@ export async function handleSettings(req: Request, env: Env, person?: string): P
     }
     const after = effectiveEnv(env, saved);
     const telegram = await sideEffects(env, before, after, url.origin, Object.keys(checked.changes));
-    return json({ saved: true, ...(telegram ? { telegram } : {}), ...(await view(env, saved, asker)) });
+    return json({ saved: true, ...(telegram ? { telegram } : {}), ...(await view(env, saved, asker, person)) });
   }
 
   return err(405, "GET, PUT, or POST /api/settings/test");
@@ -77,7 +79,7 @@ async function freshSaved(env: Env): Promise<SavedSettings> {
   return state ? await state.getSettings() : {};
 }
 
-async function view(env: Env, saved: SavedSettings, asker: (e: Env) => Env) {
+async function view(env: Env, saved: SavedSettings, asker: (e: Env) => Env, person: string | undefined) {
   const eff = effectiveEnv(env, saved);
   const [settings, owner, googleLinked, spotifyLinked] = await Promise.all([
     describe(env, saved),
@@ -89,6 +91,8 @@ async function view(env: Env, saved: SavedSettings, asker: (e: Env) => Env) {
     owner: {
       fingerprint: owner,
       howToChange: "npx wrangler secret put JARVIS_SHARED_SECRET",
+      // Said to the owner only: to another admin it would be a hint for guessing it.
+      short: person === OWNER && ownerKeyShort(env),
     },
     storage: !!env.STATE,
     groups: GROUPS.map((g) => ({

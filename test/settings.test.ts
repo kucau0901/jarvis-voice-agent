@@ -21,6 +21,7 @@ import { requiredScope } from "../src/worker/lib/scopes.ts";
 import { publicOrigin, redact } from "../src/worker/lib/http.ts";
 import { googleConfig } from "../src/worker/lib/google.ts";
 import { carState, distanceIn, imperialState } from "../src/worker/tools/tessie.ts";
+import { handleSettings } from "../src/worker/routes/settings.ts";
 
 let pass = 0;
 let fail = 0;
@@ -85,6 +86,16 @@ console.log("\na secret never leaves in plaintext");
   check("GET never contains a deployment secret", !view.includes(HA_TOKEN) && !view.includes("hermes-deployment-key"));
   check("a URL is shown as written", view.includes("https://home.example"));
   check("the owner fingerprint is not the key", (await ownerFingerprint(env())).length === 8 && !(await ownerFingerprint(env())).includes("NOTA"));
+
+  // A short owner key is said, to the owner only, and never refused.
+  const owner = async (key: string, person: string) => {
+    const e = env({ JARVIS_SHARED_SECRET: key, STATE: { idFromName: () => "x", get: () => ({ getSettings: async () => ({}) }) } });
+    const r = await handleSettings(new Request("https://j.test/api/settings"), e, person);
+    return ((await r.json()) as { owner: { short: boolean } }).owner.short;
+  };
+  check("a short owner key is said to the owner", (await owner("12-34", "owner")) === true);
+  check("not to another admin, for whom it would be a hint", (await owner("12-34", "u_bea")) === false);
+  check("and one of 16, as the README makes, is not short", (await owner("NOTAREALKEY12345", "owner")) === false);
 }
 
 console.log("\nprecedence: saved, then the deployment, then the default");

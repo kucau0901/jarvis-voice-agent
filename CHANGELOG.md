@@ -143,6 +143,9 @@ of every release, and in the [README](README.md#updating).
 - **The app's pages can no longer be framed by another site,** so no
   other page can lay Jarvis under its own and trick a tap out of you. Its
   files are also never read as a type they are not.
+- **Settings → Services says when the owner key is short.** One under 16
+  letters and digits could be guessed, and whoever guesses it is the owner.
+  It still works; only the owner is told, with how to make a new one.
 
 ## [2.5.0] - 2026-10-22
 

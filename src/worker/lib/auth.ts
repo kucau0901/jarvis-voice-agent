@@ -103,6 +103,19 @@ const deny = (status: number, error: string): AuthResult => ({
  * Since the shared secret is uppercase base32 it can never contain a lowercase
  * letter or an underscore, so the two shapes cannot collide.
  */
+/** The owner key as it is compared: its letters and digits, in capitals. */
+const keyOf = (s: string) => s.toUpperCase().replace(/[^0-9A-Z]/g, "");
+
+/**
+ * An owner key shorter than the 16 characters the README makes could be
+ * guessed, and whoever guesses it is the owner. Settings says so to the owner;
+ * nothing refuses it, so no screen is locked out on updating.
+ */
+export const ownerKeyShort = (env: Pick<Env, "JARVIS_SHARED_SECRET">): boolean => {
+  const n = keyOf(env.JARVIS_SHARED_SECRET ?? "").length;
+  return n > 0 && n < 16;
+};
+
 /** The credential a request came with, read as authorize() reads it. */
 export const credentialOf = (req: Request): string =>
   (req.headers.get("x-jarvis-key") ?? req.headers.get("authorization")?.match(/^Bearer\s+(.+)$/i)?.[1] ?? "").trim();
@@ -178,10 +191,9 @@ export async function authorize(
     return deny(503, "JARVIS_SHARED_SECRET is not configured on the Worker");
   }
 
-  const norm = (s: string) => s.toUpperCase().replace(/[^0-9A-Z]/g, "");
-  const presented = norm(raw);
+  const presented = keyOf(raw);
 
-  if (!presented || !(await safeEqual(presented, norm(expected)))) {
+  if (!presented || !(await safeEqual(presented, keyOf(expected)))) {
     return deny(401, "unauthorized");
   }
   return { ok: true, principal: { kind: "owner" } };
