@@ -110,6 +110,10 @@ of every release, and in the [README](README.md#updating).
   internet could start 200 passkey sign-ins, or 200 screens waiting to pair,
   and everyone else was told "try again in a few minutes" until they ran
   out. The oldest waiting ones now make room for the newest.
+- **Locking a profile on a shared screen stops its alerts there.** A screen
+  still connected with the locked sign-in (a copy of it, say) went on being
+  sent that person's alerts until it closed. Locking now closes every open
+  connection of that sign-in; unlocking with the PIN opens it again.
 
 ## [2.5.0] - 2026-10-22
 

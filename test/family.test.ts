@@ -36,6 +36,8 @@ const kv = new Map<string, string>();
 const forgotten: string[] = [];
 /** Sign-ins whose open screens the object was told to close (routes/hub.ts). */
 const closed: string[] = [];
+/** And what each was told: "signed out", or "locked" on a shared screen. */
+const closedWhy: string[] = [];
 const peopleStorage = fakeStorage();
 const people = new HubHost(peopleStorage);
 const env = {
@@ -56,7 +58,10 @@ const env = {
     get: () => ({
       hubCall: (m: string, a: unknown[]) => (people as unknown as Record<string, (...x: unknown[]) => unknown>)[m]!(...a),
       forgetDevice: async (who: string) => void forgotten.push(who),
-      closeSession: async (session: string) => void closed.push(session),
+      closeSession: async (session: string, why = "signed out") => {
+        closed.push(session);
+        closedWhy.push(why);
+      },
       forgetMember: async () => {},
     }),
   },
@@ -243,10 +248,14 @@ console.log("\na shared screen, with PINs");
   check("a PIN can be set", (await withToken("/api/hub/pin", { pin: "2468" })).status === 200);
   _clearSessionCache();
   check("and shows as set", (await as() as { hasPin?: boolean }).hasPin === true);
-  const lock = await withToken("/api/hub/lock", {});
-  check("switching away locks her", lock.body.locked === true);
+  // Whatever else a request carries, the lock is of the sign-in the gate checked (x-jarvis-key first).
+  const both = new Request(SITE + "/api/hub/lock", { method: "POST", headers: { origin: SITE, "content-type": "application/json", "x-jarvis-key": token, authorization: "Bearer jss1_someoneelse" }, body: "{}" });
+  const lock = await handleHub(both, env, await as());
+  check("switching away locks her", ((await lock.json()) as { locked?: boolean }).locked === true);
   const locked = await as();
   check("a locked session says so", (locked as { locked?: boolean }).locked === true);
+  const session = (locked as { session: string }).session;
+  check("and her open screens close, told she is locked, not signed out", closed.at(-1) === session && closedWhy.at(-1) === "locked", { closed, closedWhy });
   const me = await call("/api/hub/me", undefined, { principal: locked });
   check("and reaches nothing", me.body.locked === true && me.body.scopes.length === 0);
   // Nor changes anything of hers from the shared screen: where her messages go, her name, her own Home Assistant token.

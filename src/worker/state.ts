@@ -314,10 +314,10 @@ export class JarvisState extends DurableObject<Env> {
   }
 
   /** One sign-in ended (routes/hub.ts): its open screens close; 4001 stops them reconnecting. */
-  async closeSession(session: string) {
+  async closeSession(session: string, why: "signed out" | "locked" = "signed out") {
     for (const ws of this.ctx.getWebSockets(`s:${session}`)) {
       try {
-        ws.close(4001, "signed out");
+        ws.close(4001, why);
       } catch {
         // already gone
       }

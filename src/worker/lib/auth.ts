@@ -103,16 +103,16 @@ const deny = (status: number, error: string): AuthResult => ({
  * Since the shared secret is uppercase base32 it can never contain a lowercase
  * letter or an underscore, so the two shapes cannot collide.
  */
+/** The credential a request came with, read as authorize() reads it. */
+export const credentialOf = (req: Request): string =>
+  (req.headers.get("x-jarvis-key") ?? req.headers.get("authorization")?.match(/^Bearer\s+(.+)$/i)?.[1] ?? "").trim();
+
 export async function authorize(
   req: Request,
   env: Env,
   ctx?: ExecutionContext,
 ): Promise<AuthResult> {
-  const raw = (
-    req.headers.get("x-jarvis-key") ??
-    req.headers.get("authorization")?.match(/^Bearer\s+(.+)$/i)?.[1] ??
-    ""
-  ).trim();
+  const raw = credentialOf(req);
 
   // --- a family member's session: exact bytes, never normalised -------------
   if (looksLikeSession(raw)) {

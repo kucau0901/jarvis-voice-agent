@@ -69,7 +69,7 @@ const env = {
   TESSIE_VIN: "LRWTEST0000000000",
 } as never;
 /** Open screens, by their tags (who, and a member's sign-in), for closeSession below. */
-const sockets: { tags: string[]; closed?: number; close(code: number): void }[] = [];
+const sockets: { tags: string[]; closed?: number; close(code: number, reason?: string): void }[] = [];
 /** The tags each accepted screen was given (JarvisState.fetch). */
 const accepted: string[][] = [];
 const storage = fakeStorage();
@@ -162,7 +162,7 @@ try {
 
 console.log("\nsigning out closes that sign-in's open screens, and no others");
 {
-  const screen = (tags: string[]) => ({ tags, closed: undefined as number | undefined, close(code: number) { this.closed = code; } });
+  const screen = (tags: string[]) => ({ tags, closed: undefined as number | undefined, why: "", close(code: number, reason = "") { this.closed = code; this.why = reason; } });
   const phone = screen(["u_sara", "s:x_phone"]);
   const tablet = screen(["u_sara", "s:x_tablet"]);
   const car = screen(["owner"]);
@@ -170,6 +170,9 @@ console.log("\nsigning out closes that sign-in's open screens, and no others");
   await jarvis.closeSession("x_phone");
   check("that sign-in's screen closes, told not to reconnect (4001)", phone.closed === 4001, phone);
   check("her other sign-in's, and anyone else's, stay open", tablet.closed === undefined && car.closed === undefined);
+  check("told it was signed out, which signs the app out", phone.why === "signed out");
+  await jarvis.closeSession("x_tablet", "locked");
+  check("a locked one is told so, and the app keeps the person", tablet.closed === 4001 && tablet.why === "locked");
   sockets.length = 0;
 
   // A screen opening after its sign-in ended (a Worker may hold the sign-in for 30 s) is refused.

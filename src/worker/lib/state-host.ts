@@ -685,8 +685,11 @@ interface LiveApi {
   liveClients(): Promise<LiveClient[]>;
   /** Close a device's open screens and drop its notifications, when it is revoked or narrowed. */
   forgetDevice(who: string): Promise<void>;
-  /** Close the open screens of one sign-in, when it ends (its notifications end by themselves: listPushSubs). */
-  closeSession(session: string): Promise<void>;
+  /**
+   * Close the open screens of one sign-in, when it ends (its notifications end by themselves: listPushSubs)
+   * or is locked on a shared screen. Told why: the app signs out only on "signed out" (app/alerts.ts).
+   */
+  closeSession(session: string, why?: "signed out" | "locked"): Promise<void>;
   /** Someone left the family: their routines stop, and nothing more is passed on to or from them. */
   forgetMember(person: string): Promise<void>;
 }

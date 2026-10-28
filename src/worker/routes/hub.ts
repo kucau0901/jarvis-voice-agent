@@ -1,6 +1,6 @@
 import type { Env } from "../types.ts";
 import { err, json, publicOrigin, readObjectOrEmpty } from "../lib/http.ts";
-import { grantsOf, isAdmin, personOf, type Principal } from "../lib/auth.ts";
+import { credentialOf, grantsOf, isAdmin, personOf, type Principal } from "../lib/auth.ts";
 import { TTS_VOICES } from "../lib/speech.ts";
 import { tessieVehicles } from "../tools/tessie.ts";
 import { usePass } from "../tools/pass.ts";
@@ -107,11 +107,8 @@ function prefsProblem(p: Record<string, unknown>): string | null {
   return null;
 }
 
-/** The digest of the session this request came with. */
-async function sessionDigest(req: Request): Promise<string> {
-  const raw = (req.headers.get("authorization")?.match(/^Bearer\s+(.+)$/i)?.[1] ?? req.headers.get("x-jarvis-key") ?? "").trim();
-  return sha256Hex(raw);
-}
+/** The digest of the session this request came with: the one the gate checked, whatever else it carries. */
+const sessionDigest = (req: Request): Promise<string> => sha256Hex(credentialOf(req));
 
 
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
@@ -340,6 +337,8 @@ export async function handleHub(req: Request, env: Env, principal: Principal): P
     const d = await sessionDigest(req);
     const locked = await hub.lockSession(d);
     forgetSessions([d]);
+    // Its open screens stop hearing their alerts too: a copy of the sign-in elsewhere as well as this one.
+    if (locked) await stateStub(env)?.closeSession(me.session, "locked").catch(() => {});
     return json({ locked });
   }
 
