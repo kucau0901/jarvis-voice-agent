@@ -1412,8 +1412,13 @@ token, stored only as a SHA-256 digest — which is also its KV key, so a lookup
 one read with no string comparison anywhere. Device tokens are never normalised
 (that would throw away their entropy), they cannot reach the administrative
 routes whatever scopes they hold, and any one of them can be revoked without
-touching the car. The shared secret above remains the owner's credential and is
-the only thing that can mint or revoke.
+touching the car. The shared secret above remains the owner's credential.
+Devices are made and revoked by people, never by a device: the owner key,
+anyone signed in to the family for themselves (a guest makes none, and each
+person has at most 30), or an admin for anyone, though a device for the person
+who set up the family is made only by the owner key or by them. An app that signs in with OAuth (`/api/v1/oauth/*`) becomes a device
+when the person signed in allows it. A device made for someone never reaches
+more than they do: its scopes are narrowed to theirs at every request.
 
 This gate is not decoration. The Hermes API server's own documentation warns that it grants
 *"full access to hermes-agent's toolset, including terminal commands"*, and Jarvis is

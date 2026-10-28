@@ -205,7 +205,10 @@ is the one that protects the bill. The owner's key is never limited.
 
 ## Managing devices
 
-Owner key only.
+The owner key, or a person signed in to the family: each for their own devices
+(a guest makes none), an admin for anyone's, though a device for the person who
+set up the family is made only by the owner key or by them. A device token
+cannot manage devices, and a device never reaches more than its person does.
 
 ```bash
 # Mint. The token is shown ONCE and cannot be recovered.
