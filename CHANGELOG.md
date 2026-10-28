@@ -102,6 +102,10 @@ of every release, and in the [README](README.md#updating).
   none, since a guest's device would outlive their pass. Apps waiting to
   connect (Grok's sign-in) are limited to five per person, so one member
   can no longer block everyone's.
+- **A profile's PIN waits longer after each round of wrong guesses.** Five
+  wrong PINs on a shared screen waited 15 minutes, every time, so a 4-digit
+  PIN could be worked through in days. Each wait in a row is now twice as
+  long, up to a day; the right PIN starts again at 15 minutes.
 
 ## [2.5.0] - 2026-10-22
 

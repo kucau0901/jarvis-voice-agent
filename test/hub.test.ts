@@ -281,7 +281,26 @@ console.log("\nPINs, for a screen several people share");
   const fifth = await hub.unlockSession(d, "1111", T0 + 710);
   check("five wrong in a row wait fifteen minutes", errorOf(fifth).includes("15 minutes"));
   check("even the right PIN, during the wait", errorOf(await hub.unlockSession(d, PIN, T0 + 720)).includes("try again"));
-  check("after it, the right PIN works", (await hub.unlockSession(d, PIN, T0 + 710 + 15 * 60_000 + 1)) === true);
+  // Each wait in a row is longer, so a 4-digit PIN cannot be worked through in days; the right PIN starts again.
+  const lockedAgain = async (at: number) => {
+    await hub.lockSession(d);
+    for (let i = 0; i < 4; i++) await hub.unlockSession(d, "1111", at + i);
+    return errorOf(await hub.unlockSession(d, "1111", at + 10));
+  };
+  const second = await lockedAgain(T0 + 710 + 15 * 60_000 + 1);
+  check("a second wait in a row is twice as long", second.includes("30 minutes"), second);
+  let at = T0 + 710 + 15 * 60_000 + 1 + 30 * 60_000 + 20;
+  for (let k = 0; k < 6; k++) {
+    await lockedAgain(at);
+    at += 25 * 60 * 60_000;
+  }
+  const longest = await lockedAgain(at);
+  check("…and at most a day", longest.includes("24 hours"), longest);
+  check("after it, the right PIN works", (await hub.unlockSession(d, PIN, at + 10 + 24 * 60 * 60_000 + 1)) === true);
+  await hub.lockSession(d);
+  for (let i = 0; i < 4; i++) await hub.unlockSession(d, "1111", at + 25 * 60 * 60_000 + i);
+  check("and the next wait is a quarter of an hour again", errorOf(await hub.unlockSession(d, "1111", at + 25 * 60 * 60_000 + 10)).includes("15 minutes"));
+  await hub.unlockSession(d, PIN, at + 26 * 60 * 60_000);
   await hub.lockSession(d);
   check("removing the PIN leaves nothing locked", (await hub.setPin(dan.user.id, null)) === true && (await hub.lookupSession(d, T0 + 800))?.session.locked === false);
   check("a gone session cannot be unlocked", errorOf(await hub.unlockSession("nope", "1234", T0)).includes("ended"));

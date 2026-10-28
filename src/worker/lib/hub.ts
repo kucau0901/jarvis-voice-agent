@@ -68,13 +68,17 @@ export interface User {
 /**
  * A PIN for screens several people share (the family car): switching into
  * someone's profile there asks for it. Kept as a PBKDF2 hash; wrong guesses
- * are counted, and five in a row wait a quarter of an hour.
+ * are counted, and five in a row wait a quarter of an hour, then twice as
+ * long each time, up to a day, until the right PIN is given: a 4-digit PIN
+ * cannot be worked through on a shared screen in days.
  */
 interface PinRecord {
   salt: string;
   hash: string;
   fails?: number;
   waitUntil?: number;
+  /** Waits in a row so far, without the right PIN between them. */
+  locks?: number;
 }
 
 /**
@@ -192,6 +196,7 @@ export interface Place {
 const PIN_SHAPE = /^\d{4,8}$/;
 const PIN_TRIES = 5;
 const PIN_WAIT_MS = 15 * 60_000;
+const PIN_WAIT_MAX_MS = 24 * 60 * 60_000;
 const PIN_ITERATIONS = 100_000;
 
 export interface Member {
@@ -792,9 +797,14 @@ export class HubHost {
     const good = typeof pin === "string" && PIN_SHAPE.test(pin) && (await pinHash(pin, u.pin.salt)) === u.pin.hash;
     if (!good) {
       const fails = (u.pin.fails ?? 0) + 1;
-      const pinNext = fails >= PIN_TRIES ? { ...u.pin, fails: 0, waitUntil: now + PIN_WAIT_MS } : { ...u.pin, fails };
-      await this.storage.put(K.user(u.id), { ...u, pin: pinNext });
-      return fail(fails >= PIN_TRIES ? "too many wrong PINs; try again in 15 minutes" : "that PIN is not right");
+      if (fails < PIN_TRIES) {
+        await this.storage.put(K.user(u.id), { ...u, pin: { ...u.pin, fails } });
+        return fail("that PIN is not right");
+      }
+      const locks = (u.pin.locks ?? 0) + 1;
+      const wait = Math.min(PIN_WAIT_MAX_MS, PIN_WAIT_MS * 2 ** (locks - 1));
+      await this.storage.put(K.user(u.id), { ...u, pin: { ...u.pin, fails: 0, locks, waitUntil: now + wait } });
+      return fail(`too many wrong PINs; try again in ${wait >= 3_600_000 ? `${Math.round(wait / 3_600_000)} hours` : `${Math.round(wait / 60_000)} minutes`}`);
     }
     await this.storage.put(K.user(u.id), { ...u, pin: { salt: u.pin.salt, hash: u.pin.hash } });
     await this.storage.put(K.session(digest), { ...s, locked: false });
