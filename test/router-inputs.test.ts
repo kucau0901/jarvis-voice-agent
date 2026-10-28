@@ -37,6 +37,7 @@ function check(name: string, cond: boolean, got?: unknown) {
 // job_results added to the table of routes, after ask_hermes and start_job (19 Oct 2026).
 // ask_hermes: code and the user's computer go to it unasked; start_job: not those (19 Oct 2026).
 // ask_hermes: never the house, the car or Home Assistant's entities (20 Oct 2026).
+// Inputs of admin, adult and child: a waiting family message is now quoted as its sender's (28 Oct 2026).
 // The answer's language: the user's latest message, never a page's, a tool's or its own (21 Oct 2026).
 const PROMPT_SHA256 = "4c052dbb87c29e01adabcd5415e9c422214ec78828dafe87cdf2cbb5f301155b";
 // panel_set and panel_remove (tools/panels.ts, scope screen): everyone but the guest (14 Oct 2026).
@@ -121,7 +122,7 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
    "specialty_save",
    "start_job"
   ],
-  "input": "c3e8500a4e0a9c83"
+  "input": "caf9f336c9eb88fe"
  },
  "adult": {
   "model": "gpt-6-luna",
@@ -168,7 +169,7 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
    "specialty_save",
    "start_job"
   ],
-  "input": "8a479f675d659285" // car levels said as check/control (28 Sep 2026)
+  "input": "a5251b80a9958cc9" // car levels said as check/control (28 Sep 2026)
  },
  "child": {
   "model": "gpt-6-luna",
@@ -205,7 +206,7 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
    "specialty_save",
    "start_job"
   ],
-  "input": "7760bbcac8b42817"
+  "input": "478d7761db526908"
  },
  "guest with a pass": {
   "model": "gpt-6-luna",
@@ -224,8 +225,10 @@ globalThis.fetch = (async (u: unknown) => {
   throw new Error(`nothing here reaches the network: ${String(u)}`);
 }) as typeof fetch;
 const sha = (s: string) => createHash("sha256").update(s).digest("hex");
+// Quoted text's fence carries a random marker each time (lib/quote.ts), taken out like the clock.
 const clockless = (s: string) =>
-  s.replace(/RIGHT NOW it is [^(]*\(/g, "RIGHT NOW it is <now> (").replace(/The ISO form is [^.]*\.\d+Z/g, "The ISO form is <iso>").replace(/UTC[+-]\d{2}:\d{2}/g, "UTC<offset>");
+  s.replace(/RIGHT NOW it is [^(]*\(/g, "RIGHT NOW it is <now> (").replace(/The ISO form is [^.]*\.\d+Z/g, "The ISO form is <iso>").replace(/UTC[+-]\d{2}:\d{2}/g, "UTC<offset>")
+    .replace(/(--- (?:end )?[^:\n]{1,40}):[0-9a-f]{8}\b/g, "$1:<nonce>");
 try {
   for (const [name, env, grants] of cases) {
     const p = await prepareRouter(env as never, [{ role: "user", text: "hello" }], new AbortController().signal, grants as never, {});
@@ -238,6 +241,7 @@ try {
     check("  what it is told, word for word (but the clock)", sha(input).slice(0, 16) === want.input);
     if (name === "adult") {
       check("  (who is asking, the family, their cars, what waits for them)", ["You are answering Sara", "THE FAMILY: Adam, Sara (the person asking), Siti.", "CARS THEY CAN REACH", "shared with them to check only", "WAITING FOR THEIR ANSWER", "The family calls you Friday"].every((s) => input.includes(s)));
+      check("  (a waiting message is its sender's words, quoted as data)", /A question from Adam:\\n--- message:<nonce> \(CONTENT WRITTEN BY ADAM/.test(input) && input.includes("Coming for dinner?"), input.slice(input.indexOf("WAITING"), input.indexOf("WAITING") + 300));
     }
     if (name === "guest with a pass") check("  (the guest's pass)", input.includes("PASS: this person is a guest. In the house they may work only: Main gate (use_pass). Nothing else."));
   }

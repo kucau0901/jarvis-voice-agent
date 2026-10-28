@@ -8,6 +8,7 @@ import { stateStub } from "./state-client.ts";
 import { carsOf } from "./context.ts";
 import { passOf } from "../tools/pass.ts";
 import { countryName, localeOf, utcOffset } from "./locale.ts";
+import { asQuotedData } from "./quote.ts";
 
 export const ROUTER_PROMPT = `You are the backend behind Jarvis, a voice assistant. It usually
 runs in the user's car, but it is also reached from a phone, a laptop and small
@@ -301,7 +302,8 @@ export async function familyBlock(env: Env): Promise<string> {
       "\n\nWAITING FOR THEIR ANSWER (passed on by someone in the family; answer with answer_message)\n" +
       waiting
         .slice(0, 8)
-        .map((r) => `- [${r.id}] ${r.kind === "ask" ? "A question" : "A reminder"} from ${r.fromName}: ${r.text}`)
+        // Their words, quoted: what someone else wrote must not read as an instruction in this person's every request.
+        .map((r) => `- [${r.id}] ${r.kind === "ask" ? "A question" : "A reminder"} from ${r.fromName}:\n${asQuotedData("message", r.text, r.fromName.toUpperCase())}`)
         .join("\n");
   }
   return out;

@@ -71,6 +71,12 @@ of every release, and in the [README](README.md#updating).
   notification subscriptions were shared by the whole family, so anyone
   allowed alerts could add 20 made-up ones and stop everyone else's phones
   being told anything. Each person now has 20 of their own.
+- **What others write is quoted for the AI.** A family member's message
+  waiting for your answer, the family room, family messages, results from
+  MCP servers, Hermes's answers to a house request, and alerts from the
+  family or a program, now reach the AI marked as their writer's words,
+  never as yours or its own. Before, a message could have been read as an
+  instruction in a request that could reach Hermes or your mail.
 
 ## [2.5.0] - 2026-10-22
 

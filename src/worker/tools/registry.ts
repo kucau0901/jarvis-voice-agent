@@ -27,6 +27,7 @@ import { panelTools } from "./panels.ts";
 import { stateStub } from "../lib/state-client.ts";
 import { voiceWho } from "../lib/context.ts";
 import { researchFor, type Job } from "../lib/jobs.ts";
+import { asQuotedData } from "../lib/quote.ts";
 
 /**
  * The tools the delegation router may call.
@@ -230,7 +231,8 @@ const controlHome: Tool = {
     const instruction = str(args.instruction);
     if (!instruction) return "No instruction was supplied.";
     ctx.progress("sending that home");
-    return hermes.ask(ctx.env, instruction, {
+    // Hermes's words, quoted: it reads the house and the web, and its answer is data, not an instruction.
+    const answer = await hermes.ask(ctx.env, instruction, {
       signal: ctx.signal,
       system:
         "You are acting on a home automation request from the user's car. Carry it " +
@@ -238,6 +240,7 @@ const controlHome: Tool = {
         "happened. If you could not do it, say so plainly and say why. Never claim " +
         "success you did not verify.",
     });
+    return asQuotedData("Hermes answer", answer, "HERMES");
   },
 };
 

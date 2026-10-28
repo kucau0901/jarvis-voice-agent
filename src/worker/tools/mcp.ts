@@ -4,6 +4,7 @@ import { loadServers, type McpServerConfig } from "../lib/config-store.ts";
 import type { Tool, ToolContext } from "./registry.ts";
 import { McpSessions, openWithin } from "../lib/mcp-sessions.ts";
 import { sha256Hex } from "../lib/devices.ts";
+import { asQuotedData } from "../lib/quote.ts";
 
 /**
  * Third-party MCP servers, exposed to the delegation router as ordinary tools.
@@ -274,9 +275,11 @@ async function callRemote(
       .map((c) => c.text)
       .join("\n")
       .trim();
-    if (result.isError) return `${server.label} reported an error: ${text || "no detail"}`;
+    // What the server returns can carry text written by others (a calendar entry, a media title): quoted as data.
+    const said = (t: string) => asQuotedData(`${server.label} result`, t, `THE ${server.label.toUpperCase()} SERVER`);
+    if (result.isError) return `${server.label} reported an error: ${text ? said(text) : "no detail"}`;
     ctx.done?.();
-    return text || "That returned nothing.";
+    return text ? said(text) : "That returned nothing.";
   } catch (e) {
     // Not retried here: the call may already have acted. The next call connects afresh.
     sessions?.forget(server);

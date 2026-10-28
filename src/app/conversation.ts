@@ -1,5 +1,5 @@
 import { api, authHeaders } from "./key";
-import type { History } from "./history";
+import { alertHistory, type History } from "./history";
 import { Reply } from "./reply";
 import { Attachments } from "./attach";
 import type { JobSaid, RoutineSaid } from "./fromRoutine";
@@ -93,7 +93,7 @@ export function restore(all: Said[], rows: Rows, history: History): void {
     row.dataset.said = s.id;
     shown.set(s.id, { row, text });
     if (s.role === "assistant") {
-      history.add("assistant", text, s.at);
+      history.add("assistant", s.alert ? alertHistory(s.alert.title, s.text, s.alert.source) : text, s.at);
       continue;
     }
     const to = (s.replyTo && shown.get(s.replyTo)) || null;

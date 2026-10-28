@@ -1,6 +1,6 @@
 import { JarvisSession, type ServerEvent, type SessionState } from "./session";
 import { loadKey, saveKey, clearKey, authHeaders, isSession } from "./key";
-import { History } from "./history";
+import { History, alertHistory } from "./history";
 import { Settings } from "./ui/Settings";
 import { Devices } from "./ui/Devices";
 import { Memory } from "./ui/Memory";
@@ -649,7 +649,7 @@ function onAlert(a: Alert) {
   else if (a.source !== "test" || mode === "type") addRow("jarvis", a.title !== "Jarvis" ? `${a.title}: ${a.text}` : a.text).dataset.said = a.id;
   // Into the conversation either way: "yes, do that" after Hermes asks a
   // question in an alert must have the question to refer to.
-  history.add("assistant", a.title !== "Jarvis" ? `${a.title}: ${a.text}` : a.text);
+  history.add("assistant", alertHistory(a.title, a.text, a.source));
   // Said only when the server says to talk about it: their "Talk to me about alerts" (Family → You), and not a repeat.
   // One fetched from an older log has no `talk`: as it was, by `speak`.
   const talk = a.talk ?? a.speak;

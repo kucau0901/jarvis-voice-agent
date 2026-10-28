@@ -5,6 +5,7 @@ import { LOCAL, whenSaid, zonedToUtc } from "../lib/routines.ts";
 import type { Relay } from "../lib/relays.ts";
 import { FAMILY_ROOM, tellOthers } from "../lib/chat.ts";
 import { hubStub } from "../lib/hub-client.ts";
+import { asQuotedData } from "../lib/quote.ts";
 
 /**
  * Jarvis as the family's go-between (lib/relays.ts): passing something on
@@ -162,7 +163,8 @@ const familyMessages: Tool = {
     const parts: string[] = [];
     if (sent.length) parts.push("SENT BY THE USER\n" + sent.slice(0, 15).map((r) => line(r, `to ${r.toName}`)).join("\n"));
     if (received.length) parts.push("SENT TO THE USER\n" + received.slice(0, 15).map((r) => line(r, `from ${r.fromName}`)).join("\n"));
-    return parts.join("\n\n") || "Nothing has been passed on this week.";
+    // What others wrote, and answered, is theirs: quoted as data (lib/quote.ts).
+    return parts.length ? asQuotedData("family messages", parts.join("\n\n"), "THE FAMILY") : "Nothing has been passed on this week.";
   },
 };
 
