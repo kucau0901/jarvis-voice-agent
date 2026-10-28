@@ -106,6 +106,10 @@ of every release, and in the [README](README.md#updating).
   wrong PINs on a shared screen waited 15 minutes, every time, so a 4-digit
   PIN could be worked through in days. Each wait in a row is now twice as
   long, up to a day; the right PIN starts again at 15 minutes.
+- **A flood of sign-ins can no longer shut sign-in off.** Anyone on the
+  internet could start 200 passkey sign-ins, or 200 screens waiting to pair,
+  and everyone else was told "try again in a few minutes" until they ran
+  out. The oldest waiting ones now make room for the newest.
 
 ## [2.5.0] - 2026-10-22
 

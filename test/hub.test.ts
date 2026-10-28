@@ -196,10 +196,18 @@ console.log("\nchallenges");
   check("a challenge is taken once", c?.purpose === "login" && (await hub.takeChallenge("abc", T0 + 1001)) === null);
   ok(await hub.putChallenge({ challenge: "late", purpose: "login" }, T0));
   check("a stale one is refused", (await hub.takeChallenge("late", T0 + 6 * 60_000)) === null);
-  const h2 = new HubHost(fakeStorage());
-  for (let i = 0; i < 200; i++) await h2.putChallenge({ challenge: `c${i}`, purpose: "login" }, T0);
-  check("strangers cannot pile up challenges without end", errorOf(await h2.putChallenge({ challenge: "one-more", purpose: "login" }, T0)).includes("too many"));
-  check("once they expire, there is room again", (await h2.putChallenge({ challenge: "later", purpose: "login" }, T0 + 6 * 60_000)) === true);
+  // Sign-in and pairing are reachable before any credential: a flood keeps them bounded by dropping
+  // the oldest, so a new sign-in or screen always gets a place.
+  const floodStore = fakeStorage();
+  const flood = new HubHost(floodStore);
+  for (let i = 0; i < 205; i++) ok(await flood.putChallenge({ challenge: `c${i}`, purpose: "login" }, T0 + i));
+  check("strangers cannot pile up challenges without end", (await floodStore.list({ prefix: "hub:ch:" })).size <= 200);
+  ok(await flood.putChallenge({ challenge: "mine", purpose: "login" }, T0 + 300));
+  check("a full set of sign-ins makes room, the oldest going", (await flood.takeChallenge("mine", T0 + 301))?.purpose === "login" && (await flood.takeChallenge("c0", T0 + 302)) === null);
+  const first = await flood.startPairing("flood 0", T0);
+  for (let i = 1; i < 205; i++) ok(await flood.startPairing(`flood ${i}`, T0 + i));
+  const mine = await flood.startPairing("my car", T0 + 400);
+  check("…and so does a full set of pairings, its code with it", !("error" in mine) && (await floodStore.list({ prefix: "hub:pair:" })).size <= 200 && (await floodStore.list({ prefix: "hub:paircode:" })).size <= 200 && !("error" in first) && (await flood.pollPairing(first.poll, T0 + 401)).status === "expired");
 }
 
 console.log("\nthe first person, and what each person chooses");

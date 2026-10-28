@@ -1052,12 +1052,13 @@ export class HubHost {
 
   async putChallenge(c: Omit<Challenge, "exp">, now: number): Promise<true | Fail> {
     const pending = await this.storage.list<Challenge>({ prefix: "hub:ch:" });
-    let live = 0;
+    const live: [string, Challenge][] = [];
     for (const [k, ch] of pending) {
       if (ch.exp < now) await this.storage.delete(k);
-      else live++;
+      else live.push([k, ch]);
     }
-    if (live >= MAX_PENDING) return fail("too many sign-ins in progress; try again in a few minutes");
+    // Full, the oldest go: sign-in is reachable before any credential, so a flood must not shut everyone out.
+    for (const [k] of live.sort((a, b) => a[1].exp - b[1].exp).slice(0, Math.max(0, live.length - MAX_PENDING + 1))) await this.storage.delete(k);
     await this.storage.put(K.challenge(c.challenge), { ...c, exp: now + CHALLENGE_MS });
     return true;
   }
@@ -1164,14 +1165,18 @@ export class HubHost {
    * person approving it.
    */
   async startPairing(label: unknown, now: number): Promise<{ code: string; poll: string; expiresAt: number } | Fail> {
-    let live = 0;
+    const live: [string, Pairing][] = [];
     for (const [k, p] of await this.storage.list<Pairing>({ prefix: "hub:pair:" })) {
       if (p.expiresAt < now) {
         await this.storage.delete(k);
         await this.storage.delete(K.pairCode(p.code));
-      } else live++;
+      } else live.push([k, p]);
     }
-    if (live >= MAX_PENDING) return fail("too many screens waiting to pair; try again in a few minutes");
+    // Full, the oldest go, as for sign-ins: a flood delays a screen by a retry, never shuts pairing off.
+    for (const [k, p] of live.sort((a, b) => a[1].createdAt - b[1].createdAt).slice(0, Math.max(0, live.length - MAX_PENDING + 1))) {
+      await this.storage.delete(k);
+      await this.storage.delete(K.pairCode(p.code));
+    }
     let code = random(CODE_ALPHABET, 6);
     while (await this.storage.get(K.pairCode(code))) code = random(CODE_ALPHABET, 6);
     const poll = mintSecret(POLL_TOKEN);
