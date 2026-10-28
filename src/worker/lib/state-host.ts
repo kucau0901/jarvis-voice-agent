@@ -122,7 +122,10 @@ const TICKET = "ticket:";
 /** Long enough to open a socket after asking for one; short enough that a ticket seen in a log is useless. */
 export const TICKET_MS = 60_000;
 export const DELIVERY_LOG_MAX = 30;
-/** Each is one push per alert. Beyond this the least recently working is dropped. */
+/**
+ * Each is one push per alert. A person's beyond this: their own least
+ * recently working is dropped, never another person's.
+ */
 export const MAX_PUSH_SUBS = 20;
 /** In a row. A subscription refused this often is not coming back. */
 const PUSH_GIVE_UP = 10;
@@ -394,8 +397,10 @@ export class StateHost {
     if (!opts.resync) await this.storage.delete(PUSH_REMOVED + id);
     const all = await this.listPushSubs();
     const had = all.find((s) => s.id === id);
-    if (!had && all.length >= MAX_PUSH_SUBS) {
-      const stalest = all.sort((a, b) => (a.okAt ?? a.createdAt) - (b.okAt ?? b.createdAt))[0]!;
+    // Counted per person, their devices included: one member filling theirs must not push out everyone else's.
+    const mine = all.filter((s) => personOfWho(s.who) === personOfWho(input.who));
+    if (!had && mine.length >= MAX_PUSH_SUBS) {
+      const stalest = mine.sort((a, b) => (a.okAt ?? a.createdAt) - (b.okAt ?? b.createdAt))[0]!;
       await this.storage.delete(PUSH + stalest.id);
     }
     // The same browser again keeps when it was added and when it last worked.

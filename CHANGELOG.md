@@ -67,6 +67,10 @@ of every release, and in the [README](README.md#updating).
   made, or what is no stronger than itself. Revoking or deleting a device
   now stops the routines it made, and narrowing it narrows them; before,
   they kept running.
+- **No one can push out the family's phone notifications.** The 20
+  notification subscriptions were shared by the whole family, so anyone
+  allowed alerts could add 20 made-up ones and stop everyone else's phones
+  being told anything. Each person now has 20 of their own.
 
 ## [2.5.0] - 2026-10-22
 

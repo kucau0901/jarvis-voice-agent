@@ -430,6 +430,13 @@ console.log("\nstorage: notifications");
 
   const t = await host.pushTargets("owner");
   check("targets carry what sending needs, and the key", t.subs.length === MAX_PUSH_SUBS && !!t.vapid.privateJwk.d && !("who" in t.subs[0]!));
+  // One member, or a device of theirs, filling their own must not push out anyone else's.
+  for (let i = 0; i < MAX_PUSH_SUBS + 5; i++) {
+    await host.addPushSub({ ...base, who: i % 2 ? "u_kid" : "u_kid~d_tab", endpoint: `https://fcm.googleapis.com/fcm/send/kid${i}` }, 100 + i);
+  }
+  const after = await host.listPushSubs();
+  check("counted per person: theirs capped, the first person's all kept",
+    after.filter((x) => x.who.startsWith("u_kid")).length === MAX_PUSH_SUBS && after.filter((x) => x.who === "owner").length === MAX_PUSH_SUBS, after.length);
 
   // Each person's own, and never anyone else's (state.ts once dropped whose they were).
   const people = fakeStorage();
