@@ -59,6 +59,16 @@ export function narrow(a: readonly Grant[], b: readonly Grant[]): Grant[] {
 }
 
 /**
+ * Whether `have` reaches all that `need` does. A device may only see, run or
+ * change background work (routines, jobs) no stronger than itself, or that
+ * it made (lib/context.ts mayWork).
+ */
+export function covers(have: readonly Grant[], need: readonly Grant[]): boolean {
+  if (have.includes(WILDCARD)) return true;
+  return !need.includes(WILDCARD) && need.every((g) => have.includes(g));
+}
+
+/**
  * What background work someone set going may reach now (a routine's ask, a
  * job's steps): what it was given, and no more than its maker still may, so
  * what an admin took from them is taken from their work too. Null when they

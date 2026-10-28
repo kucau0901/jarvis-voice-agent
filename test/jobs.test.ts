@@ -555,6 +555,13 @@ console.log("\nreading the jobs back");
   check("…and an older one by its summary only", mine.includes('2. "Hermes: Is the garage door shut?"') && !mine.includes("Shut, as of this morning."), mine);
   const sara = await read({}, "u_sara");
   check("a member reads theirs, their devices' included", sara.includes("Hermes: Sara's question") && sara.includes("Sara's tablet research") && !sara.includes("garage"), sara);
+  // A device: what it started, and what is no stronger than itself; never a stronger job of its person's.
+  const asDevice = async (device: string, grants: string[]) =>
+    String(await tool.run({ about: null, engine: "any", limit: null }, { env: { ...(envOf("u_sara") as object), JARVIS_DEVICE: device }, grants, signal: new AbortController().signal, progress() {}, display() {} } as never));
+  const tablet = await asDevice("u_sara~d_tablet", ["ask"]);
+  check("a device given only ask reads what it started, not its person's job made with everything", tablet.includes("Sara's tablet research") && !tablet.includes("Sara's question"), tablet);
+  const glasses = await asDevice("u_sara~d_glasses", ["*"]);
+  check("a device given everything reads all of its person's", glasses.includes("Sara's question") && glasses.includes("Sara's tablet research"), glasses);
   await put(hermesJob("jnow", { status: "running", result: undefined, finishedAt: undefined, createdAt: now - 180_000, title: "Hermes: Has the parcel come?", task: "Has the parcel come?" }));
   const running = await read({ about: "parcel" });
   check("a running job is still working, not finished, and not to be asked again", running.startsWith('1. "Hermes: Has the parcel come?" (Hermes): still working, started 3 min ago.') && running.includes("do not ask again") && !running.includes("garage"), running);

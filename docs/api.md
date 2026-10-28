@@ -159,7 +159,7 @@ existence, or argued around.
 | `screen` | `show_place`, `hide_display`, `/api/map`, `make_image` and `/api/image` (pictures Jarvis makes), `make_page` and `/api/page` (pages Jarvis makes), and a person's panels (`panel_set`, `panel_remove`, `/api/hub/panels`). |
 | `voice` | `/api/session`, `/api/tts`, `/api/voices`, and push-to-talk `/api/v1/voice` (which also needs `ask`). |
 | `ask` (jobs) | `/api/v1/jobs`, `/api/v1/jobs/cancel`, `start_job`. A job for Hermes also needs `hermes`. Each job runs with its creator's grants, no more than they hold now; it reads with their reading tools, and what it would do is proposed for their tap (or done at once, for a reversible kind they allowed). |
-| `routines` | `/api/v1/routines`, `/api/v1/routines/run`, `/api/v1/routines/runs`, `/api/v1/trigger`; `routine_add`, `routine_list`, `routine_remove`. A routine's question runs with **its creator's** grants, never more. |
+| `routines` | `/api/v1/routines`, `/api/v1/routines/run`, `/api/v1/routines/runs`, `/api/v1/trigger`; `routine_add`, `routine_list`, `routine_remove`. A routine's question runs with **its creator's** grants, never more. A device sees, runs and changes only the routines it made, or ones no stronger than itself; revoking or deleting it stops the routines it made, and narrowing it narrows them. |
 | `alerts` | Receiving alerts (`/api/v1/events`, `/api/v1/push`, `/api/v1/alerts`), raising one (`/api/v1/notify`), and `send_note`. The same scope both ways: a device that may be told things may ask to be told something. |
 
 Ask for something out of reach and you get a normal answer explaining it is not

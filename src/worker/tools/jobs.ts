@@ -1,6 +1,6 @@
 import type { Tool } from "./registry.ts";
 import { stateStub } from "../lib/state-client.ts";
-import { isTheirs, voiceWho } from "../lib/context.ts";
+import { callerWho, mayWork } from "../lib/context.ts";
 import { wordsOf, type Job } from "../lib/jobs.ts";
 import { asQuotedData } from "../lib/quote.ts";
 import { allows } from "../lib/scopes.ts";
@@ -58,7 +58,7 @@ const startJob: Tool = {
     }
     const j = await state.createJob(
       { title: args.title, task: args.task, engine: research ? "research" : "jarvis", ...(team ? { team: true } : {}), ...(table ? { table: true } : {}) },
-      { who: voiceWho(ctx.env), grants: ctx.grants },
+      { who: callerWho(ctx.env), grants: ctx.grants },
     );
     if (typeof j === "string") return `Not started: ${j}.`;
     ctx.started?.({ id: j.id, title: j.title, engine: j.engine });
@@ -137,7 +137,7 @@ const jobResults: Tool = {
     const want = wordsOf(typeof args.about === "string" ? args.about : "");
     const engine = args.engine === "hermes" || args.engine === "research" || args.engine === "jarvis" ? args.engine : null;
     const jobs = (await state.listJobs()).filter((j) => {
-      if (!isTheirs(j.createdBy, ctx.env.JARVIS_PERSON) || (engine && j.engine !== engine)) return false;
+      if (!mayWork(j, ctx.env, ctx.grants) || (engine && j.engine !== engine)) return false;
       const has = wordsOf(`${j.title} ${j.task}`);
       return want.every((w) => has.some((h) => h.startsWith(w)));
     }).slice(0, clampLimit(args.limit, 3, 10));

@@ -292,6 +292,13 @@ export class JarvisState extends DurableObject<Env> {
    * Someone left the family (routes/hub.ts): their routines stop, rotas go on
    * without them, and messages to or from them are no longer waited on.
    */
+  /** A device revoked, deleted (`scopes` null) or narrowed: its routines stop, or keep no more than it may now. */
+  async routinesOfDevice(who: string, scopes: Grant[] | null): Promise<number> {
+    const n = await this.scheduler.forDevice(who, scopes);
+    await this.rearm();
+    return n;
+  }
+
   async forgetMember(person: string): Promise<void> {
     await this.scheduler.forget(person);
     await this.relays.forget(person);

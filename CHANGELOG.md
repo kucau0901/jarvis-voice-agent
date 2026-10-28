@@ -60,6 +60,13 @@ of every release, and in the [README](README.md#updating).
   not the house (a child, or a device given only routines) could make a
   watch whose condition read anything in Home Assistant, and see what it
   read in the reply. Watches are now refused without the house permission.
+- **A device reaches only the routines and jobs it may.** A device token
+  given only routines (for a Home Assistant automation, say) could list,
+  run and remove every routine of its person's, including ones made with
+  full reach, and read their job results. A device now works only what it
+  made, or what is no stronger than itself. Revoking or deleting a device
+  now stops the routines it made, and narrowing it narrows them; before,
+  they kept running.
 
 ## [2.5.0] - 2026-10-22
 

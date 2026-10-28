@@ -631,6 +631,15 @@ console.log("\nwatches: tried before they are kept");
   check("ten at most", String(await h.s.add({ when: "watch", condition: GATE, say: "one more" }, OWNER, T0)).includes("already 10 watches"));
 }
 
+console.log("\na device revoked, deleted or narrowed: its routines");
+{
+  const h = harness();
+  const made = (await h.s.add({ when: "daily", time: "09:00", ask: "Mail me the weather" }, { who: "d_grok", grants: ["ask", "mail", "routines"] }, T0)) as Routine;
+  const other = (await h.s.add({ when: "daily", time: "10:00", say: "Stretch" }, OWNER, T0)) as Routine;
+  check("narrowed: it keeps no more than the device now may", (await h.s.forDevice("d_grok", ["ask", "routines"])) === 1 && JSON.stringify((await h.s.list()).find((r) => r.id === made.id)?.grants) === '["ask","routines"]');
+  check("revoked: the routines it made stop, others' stay", (await h.s.forDevice("d_grok", null)) === 1 && !(await h.s.list()).some((r) => r.id === made.id) && (await h.s.list()).some((r) => r.id === other.id));
+}
+
 console.log("\nwatches: the gate left open");
 {
   const h = harness();

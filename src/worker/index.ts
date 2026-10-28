@@ -1,6 +1,6 @@
 import type { Env } from "./types.ts";
 import { err, json } from "./lib/http.ts";
-import { authorize, grantsOf, isAdmin, personOf, type Principal } from "./lib/auth.ts";
+import { authorize, grantsOf, isAdmin, personOf, whoOf, type Principal } from "./lib/auth.ts";
 import { withPerson } from "./lib/context.ts";
 import { allowedNow } from "./lib/access.ts";
 import { localeOf } from "./lib/locale.ts";
@@ -57,7 +57,9 @@ async function forPerson(env: Env, p: Principal): Promise<Env> {
     return { ...withPerson(env, { person, name: p.name, space: p.place.space, prefs: p.place.prefs, cars: v?.space ? v.cars : undefined, haToken: v?.haToken, haTokenFor: v?.haTokenFor, access: p.place.access }), JARVIS_USER: p.id };
   }
   // The owner key, and devices: the first person's, or for a member's own device, that member's.
-  return withPerson(env, { person, name: v?.name, space: v?.space, prefs: v?.prefs, cars: v?.space ? v.cars : undefined, haToken: v?.haToken, haTokenFor: v?.haTokenFor, access: v?.access });
+  const out = withPerson(env, { person, name: v?.name, space: v?.space, prefs: v?.prefs, cars: v?.space ? v.cars : undefined, haToken: v?.haToken, haTokenFor: v?.haTokenFor, access: v?.access });
+  // A device's routines and jobs are recorded as its own, so revoking it stops them (lib/context.ts mayWork).
+  return p.kind === "device" ? { ...out, JARVIS_DEVICE: whoOf(p) } : out;
 }
 
 /** What someone outside their hours may still do (lib/access.ts). */

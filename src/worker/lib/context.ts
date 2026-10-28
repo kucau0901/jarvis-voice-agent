@@ -1,6 +1,7 @@
 import type { Env } from "../types.ts";
 import type { Prefs, Reach, Space } from "./hub.ts";
 import type { Access } from "./access.ts";
+import { covers, type Grant } from "./scopes.ts";
 
 /**
  * Who a request is for, laid over the environment every route already reads.
@@ -29,6 +30,20 @@ export const voiceWho = (env: { JARVIS_PERSON?: string }): string =>
 
 /** Whether a stored creator is this person's (the first person owns "voice", "owner" and the devices'). */
 export const isTheirs = (who: string, person: string | undefined): boolean => personOfWho(who) === (person || OWNER);
+
+/** Who makes something asked for in this request: the device asking, else the person (voiceWho). */
+export const callerWho = (env: { JARVIS_PERSON?: string; JARVIS_DEVICE?: string }): string => env.JARVIS_DEVICE ?? voiceWho(env);
+
+/**
+ * Whether this request may see, run or change a routine or job: its person's,
+ * and from a device, one the device made or one no stronger than the device.
+ * A token given only routines must not run a routine made with everything.
+ */
+export const mayWork = (
+  item: { createdBy: string; grants: readonly Grant[] },
+  env: { JARVIS_PERSON?: string; JARVIS_DEVICE?: string },
+  grants: readonly Grant[],
+): boolean => isTheirs(item.createdBy, env.JARVIS_PERSON) && (!env.JARVIS_DEVICE || item.createdBy === env.JARVIS_DEVICE || covers(grants, item.grants));
 
 /**
  * Whose person a stored creator or subscriber is: a member's id, or one of

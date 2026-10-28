@@ -560,6 +560,7 @@ export const NOT_SETTINGS: Readonly<Record<string, string>> = {
   JARVIS_SHARED_SECRET: "the owner key: deploy-time only, so login never depends on storage",
   JARVIS_PERSON: "per request: whose data (lib/context.ts)",
   JARVIS_USER: "per request: the person signed in, if one is (index.ts)",
+  JARVIS_DEVICE: "per request: the device asking, if one is (index.ts)",
   JARVIS_PERSON_NAME: "per request: who is asking (lib/context.ts)",
   JARVIS_PERSON_NICKNAME: "per request: what they like to be called (lib/context.ts)",
   JARVIS_PERSON_BIRTHDAY: "per request: their birthday (lib/context.ts)",

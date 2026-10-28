@@ -1,6 +1,6 @@
 import type { Env } from "../types.ts";
 import { whoOf, grantsOf, isAdmin, personOf, type Principal } from "../lib/auth.ts";
-import { isTheirs } from "../lib/context.ts";
+import { mayWork } from "../lib/context.ts";
 import { err, json, readObject } from "../lib/http.ts";
 import { stateStub } from "../lib/state-client.ts";
 import { localeOf } from "../lib/locale.ts";
@@ -58,11 +58,13 @@ export async function handleRoutines(req: Request, env: Env, url: URL, principal
     return json({ event, started });
   }
 
-  // Each person's own routines (lib/context.ts); a device's are the first person's.
+  // Each person's own routines (lib/context.ts); a device, only those it made or no stronger than itself.
   const person = personOf(principal);
+  const caller = { JARVIS_PERSON: person, ...(principal.kind === "device" ? { JARVIS_DEVICE: whoOf(principal) } : {}) };
+  const mine = (r: Routine) => mayWork(r, caller, grantsOf(principal));
   const theirs = async (id: string) => {
     const r = (await state.listRoutines()).find((x) => x.id === id);
-    return !!r && isTheirs(r.createdBy, person);
+    return !!r && mine(r);
   };
 
   if (p === "/api/v1/routines/runs") {
@@ -82,7 +84,7 @@ export async function handleRoutines(req: Request, env: Env, url: URL, principal
 
   // /api/v1/routines
   if (req.method === "GET") {
-    const all = (await state.listRoutines()).filter((r) => isTheirs(r.createdBy, person));
+    const all = (await state.listRoutines()).filter(mine);
     return json({ timeZone: tz, routines: all.map((r) => view(r, tz)) });
   }
   if (req.method === "DELETE") {

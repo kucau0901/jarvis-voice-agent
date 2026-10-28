@@ -384,6 +384,10 @@ async function handleDevices(req: Request, env: Env, principal: Principal): Prom
     if (updated && (patch.revoked === true || (patch.scopes && !allows(patch.scopes, "alerts")))) {
       await stateStub(env)?.forgetDevice(deviceWho(id, before.owner)).catch(() => {});
     }
+    // The routines it made: stopped with it, or no stronger than it now is.
+    if (updated && (patch.revoked === true || patch.scopes)) {
+      await stateStub(env)?.routinesOfDevice(deviceWho(id, before.owner), patch.revoked === true ? null : patch.scopes!).catch(() => 0);
+    }
     return updated ? json(updated) : err(404, `no device ${id}`);
   }
 
@@ -394,6 +398,7 @@ async function handleDevices(req: Request, env: Env, principal: Principal): Prom
     if (!before || !theirs(before)) return err(404, `no device ${id}`);
     if (!(await devices.remove(env, id))) return err(404, `no device ${id}`);
     await stateStub(env)?.forgetDevice(deviceWho(id, before.owner)).catch(() => {});
+    await stateStub(env)?.routinesOfDevice(deviceWho(id, before.owner), null).catch(() => 0);
     return json({ ok: true, id });
   }
 

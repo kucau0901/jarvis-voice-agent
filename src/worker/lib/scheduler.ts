@@ -1,5 +1,5 @@
 import type { Storage } from "./state-host.ts";
-import { allows, type Grant } from "./scopes.ts";
+import { allows, narrow, type Grant } from "./scopes.ts";
 import { makeAlert, summarise, type Alert, type Delivery } from "./alerts.ts";
 import { bookOf, personOfWho } from "./context.ts";
 import {
@@ -231,6 +231,21 @@ export class Scheduler {
       await this.storage.delete(scanKey(r.createdBy));
     }
     return true;
+  }
+
+  /**
+   * A device revoked or deleted (`scopes` null): the routines it made stop.
+   * Narrowed: they keep no more than it may reach now. Returns how many changed.
+   */
+  async forDevice(who: string, scopes: readonly Grant[] | null): Promise<number> {
+    let n = 0;
+    for (const r of await this.list()) {
+      if (r.createdBy !== who) continue;
+      n++;
+      if (scopes) await this.save({ ...r, grants: narrow(r.grants, scopes) });
+      else await this.remove(r.id);
+    }
+    return n;
   }
 
   /**

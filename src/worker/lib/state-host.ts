@@ -553,6 +553,7 @@ interface RoutineApi {
   addRoutine(input: RoutineInput, by: { who: string; grants: readonly Grant[] }): Promise<Routine | string>;
   updateRoutine(id: string, patch: { enabled?: boolean; name?: string }): Promise<Routine | string>;
   removeRoutine(id: string): Promise<boolean>;
+  routinesOfDevice(who: string, scopes: Grant[] | null): Promise<number>;
   runRoutine(id: string): Promise<Routine | string>;
   routineRuns(id: string): Promise<RunEntry[]>;
   fireEvent(event: string, data?: string, only?: string): Promise<string[]>;

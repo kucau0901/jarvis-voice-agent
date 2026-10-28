@@ -1,4 +1,5 @@
-import { allows, requiredScope, saneGrants, WILDCARD, type Grant } from "../src/worker/lib/scopes.ts";
+import { allows, covers, requiredScope, saneGrants, WILDCARD, type Grant } from "../src/worker/lib/scopes.ts";
+import { callerWho, mayWork } from "../src/worker/lib/context.ts";
 import {
   create,
   list,
@@ -268,6 +269,21 @@ console.log("\ntouch() cannot undo what the owner just did");
 
   await remove(env, glasses.device.id);
   check("removing a device removes its last-seen record", ![...kv.keys()].some((k) => k === `dev:seen:${glasses.device.id}`));
+}
+
+console.log("\na device and its person's routines and jobs (lib/context.ts mayWork)");
+{
+  check("covers: everything covers anything", covers(["*"], ["*"]) && covers(["*"], ["mail"]));
+  check("covers: named scopes cover their own", covers(["ask", "home"], ["home"]) && !covers(["ask", "home"], ["home", "mail"]) && !covers(["ask", "home", "mail"], ["*"]));
+  const owners = { createdBy: "voice", grants: ["*"] as Grant[] };
+  const hooks = { createdBy: "d_ha", grants: ["routines"] as Grant[] };
+  const ha = { JARVIS_PERSON: "owner", JARVIS_DEVICE: "d_ha" };
+  check("a person works all of theirs", mayWork(owners, { JARVIS_PERSON: "owner" }, ["*"]) && mayWork(hooks, { JARVIS_PERSON: "owner" }, ["*"]));
+  check("a device given only routines works what it made", mayWork(hooks, ha, ["routines"]));
+  check("…but not one its person made with everything", !mayWork(owners, ha, ["routines"]));
+  check("a device given everything works all of its person's", mayWork(owners, { JARVIS_PERSON: "owner", JARVIS_DEVICE: "d_grok" }, ["*"]));
+  check("never another person's, whatever it holds", !mayWork({ createdBy: "u_sara", grants: ["ask"] }, { JARVIS_PERSON: "owner", JARVIS_DEVICE: "d_grok" }, ["*"]));
+  check("what a device asks for is recorded as the device's", callerWho(ha) === "d_ha" && callerWho({ JARVIS_PERSON: "owner" }) === "voice" && callerWho({ JARVIS_PERSON: "u_sara" }) === "u_sara");
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);
