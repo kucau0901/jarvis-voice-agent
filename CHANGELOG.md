@@ -140,6 +140,9 @@ of every release, and in the [README](README.md#updating).
   You: that person's messages then went unanswered, or were answered as
   them, and they were sent the other's alerts. A number someone else
   already uses is now refused.
+- **The app's pages can no longer be framed by another site,** so no
+  other page can lay Jarvis under its own and trick a tap out of you. Its
+  files are also never read as a type they are not.
 
 ## [2.5.0] - 2026-10-22
 

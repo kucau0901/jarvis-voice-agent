@@ -1,0 +1,9 @@
+# Headers for the app and its files, served as static assets (the Worker's own
+# replies, under /api/, set theirs in code: lib/http.ts). Only what cannot break
+# a feature: no other site may frame Jarvis to trick a click out of someone, no
+# file is read as a type it is not, and no <base> or plugin can be slipped in.
+# A script and connect policy would have to list every source the app reaches
+# (OpenAI, Google, Spotify's images, a family's own MCP servers), so it has none.
+/*
+  Content-Security-Policy: frame-ancestors 'self'; base-uri 'self'; object-src 'none'
+  X-Content-Type-Options: nosniff
