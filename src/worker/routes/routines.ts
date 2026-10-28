@@ -115,7 +115,9 @@ export async function handleRoutines(req: Request, env: Env, url: URL, principal
 /**
  * A routine's question, answered by the router with the creator's grants and
  * no screen. Two minutes at most: nobody is waiting, but nothing should run
- * away with an alarm either.
+ * away with an alarm either. Never Hermes: it runs with nobody present, often
+ * over text strangers wrote ("check my email every morning"), and Hermes can
+ * run commands on its machine.
  */
 export async function askForRoutine(
   env: Env,
@@ -125,11 +127,9 @@ export async function askForRoutine(
 ): Promise<{ ok: boolean; text: string }> {
   if (!(await canAsk(env))) return { ok: false, text: "no ChatGPT plan or OpenAI key is set" };
   const sink = new Collector();
-  // Nothing to show a map on: screen tools are left out rather than offered and lost.
-  const screenless = grants.includes(WILDCARD)
-    ? SCOPES.filter((s) => s !== "screen")
-    : grants.filter((g) => g !== "screen");
-  await run(env, [{ role: "user", text: prompt }], sink, AbortSignal.timeout(120_000), screenless, {
+  // Nothing to show a map on: screen tools are left out rather than offered and lost; Hermes too (above).
+  const unattended = (grants.includes(WILDCARD) ? SCOPES : grants).filter((g) => g !== "screen" && g !== "hermes");
+  await run(env, [{ role: "user", text: prompt }], sink, AbortSignal.timeout(120_000), unattended, {
     surface: "routine",
     routineName: routine.name,
     ...(routine.action.kind === "ask" && routine.action.notify === "if-important" ? { routineIfImportant: true } : {}),

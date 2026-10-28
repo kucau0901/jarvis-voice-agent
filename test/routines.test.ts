@@ -957,5 +957,30 @@ console.log("\nhaUrl: one way to join a Home Assistant address");
   check("the same as haConfig's base joins", `${haConfig({ HA_BASE_URL: "https://proxy.example.com/ha/", HA_TOKEN: "t" } as never)!.base}/api/` === haUrl("https://proxy.example.com/ha/", "/api/"));
 }
 
+console.log("\na routine's question never reaches Hermes (routes/routines.ts askForRoutine)");
+{
+  const { askForRoutine } = await import("../src/worker/routes/routines.ts");
+  const kv = new Map<string, string>();
+  const CONFIG = { get: async (k: string) => kv.get(k) ?? null, put: async (k: string, v: string) => void kv.set(k, v), delete: async () => {}, list: async () => ({ keys: [] }) };
+  const stub = new Proxy({}, { get: (_t, m) => (m === "then" ? undefined : async () => undefined) });
+  const env = { CONFIG, OPENAI_API_KEY: "sk-test", TIMEZONE: "Asia/Kuala_Lumpur", HERMES_BASE_URL: "https://hermes.example", HERMES_API_KEY: "k", STATE: { idFromName: () => "j", get: () => stub } };
+  let offered: string[] = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+    if (!String(url instanceof Request ? url.url : url).endsWith("/responses")) throw new Error("nothing else is reached here");
+    offered = (JSON.parse(String(init?.body)).tools as { name?: string; type: string }[]).map((t) => t.name ?? t.type);
+    return Response.json({ id: "resp_1", object: "response", status: "completed", output: [{ type: "message", id: "m1", role: "assistant", status: "completed", content: [{ type: "output_text", text: "Nothing new.", annotations: [] }] }], output_text: "Nothing new.", usage: { input_tokens: 1, output_tokens: 1 } });
+  }) as typeof fetch;
+  try {
+    const routine = { id: "r1", name: "Morning mail", enabled: true, trigger: { kind: "daily", time: "07:00", days: [] }, action: { kind: "ask", prompt: "Check my mail" }, grants: ["*"], createdBy: "voice", createdAt: T0 } as unknown as Routine;
+    const r = await askForRoutine(env as never, "Check my mail", ["*"], routine);
+    check("answered", r.ok && r.text === "Nothing new.", r);
+    check("made with everything, yet offered neither Hermes tool", offered.length > 0 && !offered.includes("ask_hermes") && !offered.includes("control_home"), offered);
+    check("…while what it may otherwise do is still there", offered.includes("send_note") && offered.includes("routine_list"), offered);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

@@ -77,6 +77,11 @@ of every release, and in the [README](README.md#updating).
   family or a program, now reach the AI marked as their writer's words,
   never as yours or its own. Before, a message could have been read as an
   instruction in a request that could reach Hermes or your mail.
+- **Routines no longer reach Hermes.** A routine's question runs with
+  nobody there, often over mail or pages strangers wrote, and Hermes can
+  run commands on its computer. Routines can still do everything else
+  their maker may; ask Hermes yourself, or with a job, for anything that
+  needs it.
 
 ## [2.5.0] - 2026-10-22
 
