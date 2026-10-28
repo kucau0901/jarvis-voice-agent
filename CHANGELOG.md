@@ -119,6 +119,12 @@ of every release, and in the [README](README.md#updating).
   reach, and they could not undo it. Now that needs the owner key, as
   removing them, clearing their PIN or making them a passkey link already
   did; Family no longer offers it to other admins.
+- **Huge requests are refused without being read.** Requests reached before
+  signing in (passkey sign-in, pairing, the Google and Spotify pages, apps
+  connecting) and the family's own were read whole before their size was
+  checked, so a very large one could use up the Worker's memory. Reading now
+  stops at each one's limit, and an app's sign-in code is checked for shape
+  before it is looked up.
 
 ## [2.5.0] - 2026-10-22
 

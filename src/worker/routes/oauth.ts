@@ -1,10 +1,10 @@
 import type { Env } from "../types.ts";
-import { err, json, readObject } from "../lib/http.ts";
+import { err, json, readObject, readText } from "../lib/http.ts";
 import { hubStub } from "../lib/hub-client.ts";
 import { personOf, type Principal } from "../lib/auth.ts";
 import { saneGrants } from "../lib/scopes.ts";
 import * as devices from "../lib/devices.ts";
-import { backTo, readAuthRequest, tradeOk } from "../lib/oauth.ts";
+import { CODE_SHAPE, backTo, readAuthRequest, tradeOk } from "../lib/oauth.ts";
 
 /**
  * OAuth for MCP clients (lib/oauth.ts), in three steps:
@@ -54,11 +54,14 @@ const tokenErr = (error: string) =>
 
 export async function handleToken(req: Request, env: Env): Promise<Response> {
   if (req.method !== "POST") return err(405, "method not allowed");
-  const form = new URLSearchParams(await req.text());
+  // Reached before any credential: a small form, and a code of the shape issued, before the object is asked.
+  const raw = await readText(req, 4096);
+  if (raw === null) return tokenErr("invalid_request");
+  const form = new URLSearchParams(raw);
   if (form.get("grant_type") !== "authorization_code") return tokenErr("unsupported_grant_type");
   const code = form.get("code") ?? "";
   const hub = hubStub(env);
-  if (!code || !hub) return tokenErr("invalid_request");
+  if (!CODE_SHAPE.test(code) || !hub) return tokenErr("invalid_request");
   const g = await hub.takeOAuthCode(code, Date.now());
   const ok = await tradeOk(g, {
     clientId: form.get("client_id") ?? "",

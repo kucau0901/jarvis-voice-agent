@@ -8,6 +8,7 @@ import { handleJobs } from "../src/worker/routes/jobs.ts";
 import { handleFamily } from "../src/worker/routes/family.ts";
 import { jobTools } from "../src/worker/tools/jobs.ts";
 import { Jobs, type Job } from "../src/worker/lib/jobs.ts";
+import { readObjectOrEmpty, readText } from "../src/worker/lib/http.ts";
 
 let pass = 0;
 let fail = 0;
@@ -198,6 +199,25 @@ console.log("\nfamily: anything that is not an object is taken as {}");
   check("an answer that is not JSON: 400, the statuses listed", answered.status === 400 && answered.body.error === "status is done, declined or answered", answered);
   const cancelled = await call("DELETE", "/api/hub/relays", "{");
   check("taking back with a body that is not JSON: no such message", cancelled.status === 400 && cancelled.body.error === "no such message from this person", cancelled);
+}
+
+console.log("\nany body: read no further than its limit");
+{
+  // A body that streams on without saying how long it is: reading stops at the limit.
+  let sent = 0;
+  const endless = () =>
+    new Request("https://j.test/api/auth/login", {
+      method: "POST",
+      duplex: "half",
+      body: new ReadableStream({ pull: (c) => void (sent++ < 1000 ? c.enqueue(new Uint8Array(1024).fill(32)) : c.close()) }),
+    } as RequestInit);
+  check("past the limit is null, the rest left unread", (await readText(endless(), 4096)) === null && sent < 10, sent);
+  const said = new Request("https://j.test/x", { method: "POST", body: "{}", headers: { "content-length": "999999" } });
+  check("so is a length said to be over it", (await readText(said, 4096)) === null);
+  check("within it, the text, whole", (await readText(req("POST", "/x", JSON.stringify({ text: "héllo" })), 4096)) === '{"text":"héllo"}');
+  sent = 0;
+  const over = await readObjectOrEmpty(endless());
+  check("an object over 64 KB is taken as {}, unread past it", Object.keys(over).length === 0 && sent < 70, sent);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

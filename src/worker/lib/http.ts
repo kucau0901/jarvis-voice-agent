@@ -48,13 +48,40 @@ export function redact(s: string): string {
 }
 
 /**
- * A request's body as a JSON object of at most `max` characters, or null for
+ * A request's body as text, or null past `max` bytes: read no further than
+ * that, whatever its content-length says. Some routes are reached before any
+ * credential, and a huge body must not be held in memory only to be refused.
+ */
+export async function readText(req: Request, max: number): Promise<string | null> {
+  if (Number(req.headers.get("content-length")) > max) return null;
+  if (!req.body) return "";
+  const reader = req.body.getReader();
+  const decoder = new TextDecoder();
+  let size = 0;
+  let text = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) return text + decoder.decode();
+    size += value.byteLength;
+    if (size > max) {
+      await reader.cancel().catch(() => {});
+      return null;
+    }
+    text += decoder.decode(value, { stream: true });
+  }
+}
+
+/** The most readObjectOrEmpty() reads: its bodies are a few fields of text. */
+const OBJECT_MAX = 64 * 1024;
+
+/**
+ * A request's body as a JSON object of at most `max` bytes, or null for
  * anything else: not JSON, not an object (an array, a number, null), or too
  * big. An empty body is an empty object.
  */
 export async function readObject(req: Request, max: number): Promise<Record<string, unknown> | null> {
-  const raw = await req.text();
-  if (raw.length > max) return null;
+  const raw = await readText(req, max);
+  if (raw === null) return null;
   try {
     const v = JSON.parse(raw || "{}");
     return v && typeof v === "object" && !Array.isArray(v) ? v : null;
@@ -63,8 +90,7 @@ export async function readObject(req: Request, max: number): Promise<Record<stri
   }
 }
 
-/** A request's body as a JSON object; anything else (not JSON, an array, a number, null) is an empty one. */
+/** A request's body as a JSON object; anything else (not JSON, an array, a number, null, over 64 KB) is an empty one. */
 export async function readObjectOrEmpty(req: Request): Promise<Record<string, unknown>> {
-  const b = (await req.json().catch(() => null)) as unknown;
-  return b && typeof b === "object" && !Array.isArray(b) ? (b as Record<string, unknown>) : {};
+  return (await readObject(req, OBJECT_MAX)) ?? {};
 }

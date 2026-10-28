@@ -20,6 +20,8 @@ export const CODE_MS = 5 * 60_000;
 /** A person's codes waiting to be traded at once: one member's cannot crowd out another's. */
 const MAX_CODES = 5;
 const PREFIX = "oauth:code:";
+/** A code as issue() makes them: 32 random bytes, base64url. */
+export const CODE_SHAPE = /^[A-Za-z0-9_-]{43}$/;
 
 /** What the client asked for, as it came to the authorization endpoint. */
 export interface AuthRequest {

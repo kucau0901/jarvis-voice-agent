@@ -1,5 +1,5 @@
 import type { Env } from "../types.ts";
-import { escapeHtml, HTML_PAGE_HEADERS } from "./http.ts";
+import { escapeHtml, HTML_PAGE_HEADERS, readText } from "./http.ts";
 import { personView } from "./hub-client.ts";
 
 /**
@@ -21,7 +21,7 @@ export async function nameOf(env: Env, person: string): Promise<string> {
 /** The callback's fields: from Google's redirect, or from this page sent back. */
 export async function callbackFields(req: Request): Promise<URLSearchParams> {
   if (req.method !== "POST") return new URL(req.url).searchParams;
-  return new URLSearchParams((await req.text()).slice(0, 4096));
+  return new URLSearchParams((await readText(req, 4096)) ?? "");
 }
 
 /** The question, and the one form that answers it: back to the same address, nowhere else. */

@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
-import { CODE_MS, OAuthCodes, backTo, pkceMatches, readAuthRequest, tradeOk, type AuthRequest } from "../src/worker/lib/oauth.ts";
+import { CODE_MS, CODE_SHAPE, OAuthCodes, backTo, pkceMatches, readAuthRequest, tradeOk, type AuthRequest } from "../src/worker/lib/oauth.ts";
+import { handleToken } from "../src/worker/routes/oauth.ts";
 import { HUB_METHODS } from "../src/worker/lib/hub.ts";
 import { requiredScope } from "../src/worker/lib/scopes.ts";
 
@@ -85,6 +86,7 @@ console.log("codes");
   const grant = { clientId: "grok", redirectUri: REDIRECT, challenge: CHALLENGE, person: "u_adam1", scopes: ["ask" as const, "home" as const] };
   const code = (await codes.issue(grant, T0))!;
   check("a code is made", typeof code === "string" && code.length >= 40, code);
+  check("of the one shape the token endpoint takes", CODE_SHAPE.test(code), code);
   check("only its digest is stored", ![...storage._m.keys()].some((k) => k.includes(code)), [...storage._m.keys()]);
 
   const form = { clientId: "grok", redirectUri: REDIRECT, verifier: VERIFIER };
@@ -111,6 +113,22 @@ console.log("codes");
   check("at most five of a person's wait at once", made === 5, made);
   check("…and they never crowd out another person's", (await full.issue({ ...grant, person: "u_other" }, T0)) !== null);
   check("and room comes back once they are stale", (await full.issue(grant, T0 + CODE_MS + 1)) !== null);
+}
+
+console.log("the token endpoint, reached before any credential");
+{
+  const asked: string[] = [];
+  const env = { STATE: { idFromName: () => "jarvis", get: () => ({ hubCall: async (m: string) => void asked.push(m) }) } } as never;
+  const trade = async (body: string) => {
+    const res = await handleToken(new Request("https://jarvis.example.com/api/v1/oauth/token", { method: "POST", body, headers: { "content-type": "application/x-www-form-urlencoded" } }), env);
+    return { status: res.status, error: ((await res.json()) as { error?: string }).error };
+  };
+  const odd = await trade("grant_type=authorization_code&code=made-up&client_id=grok");
+  check("a code not of the shape issued never reaches the object", odd.status === 400 && odd.error === "invalid_request" && asked.length === 0, { odd, asked });
+  const huge = await trade(`grant_type=authorization_code&code=${"A".repeat(43)}&pad=${"x".repeat(8000)}`);
+  check("nor does a form over 4 KB", huge.status === 400 && huge.error === "invalid_request" && asked.length === 0, { huge, asked });
+  const right = await trade(`grant_type=authorization_code&code=${"A".repeat(43)}&client_id=grok`);
+  check("one of the right shape is looked up, and found wanting", right.status === 400 && right.error === "invalid_grant" && asked.join() === "takeOAuthCode", { right, asked });
 }
 
 console.log("who may reach it");
