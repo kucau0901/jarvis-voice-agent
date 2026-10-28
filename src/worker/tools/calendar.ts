@@ -127,14 +127,16 @@ export function whenSpoken(tz: string, start?: EventTime, now = new Date()): str
 const RANGES = ["next", "today", "tomorrow", "week"] as const;
 
 /**
- * The window a range means, in the user's own days: "today" is until their
- * midnight, "tomorrow" all of the next day — not the next 24 hours, and not
- * days by the server's clock, which is UTC.
+ * The window a range means, in the user's own days: "today" is all of it,
+ * from their midnight, "tomorrow" all of the next day — not the next 24
+ * hours, and not days by the server's clock, which is UTC. Today's earlier
+ * events are in it so that one can still be found to move or remove: from
+ * now, one over by then was missing, and calendar_change had no id for it.
  */
 export function rangeWindow(range: string, now: number, tz: string): { from: number; to: number } {
   const p = localParts(now, tz);
   const midnight = (plus: number) => zonedToUtc(p.y, p.mo, p.d + plus, 0, 0, tz);
-  if (range === "today") return { from: now, to: midnight(1) };
+  if (range === "today") return { from: midnight(0), to: midnight(1) };
   if (range === "tomorrow") return { from: midnight(1), to: midnight(2) };
   if (range === "week") return { from: now, to: now + 7 * 86_400_000 };
   return { from: now, to: now + 14 * 86_400_000 };
@@ -160,8 +162,8 @@ export const calendarCheck: Tool = {
         type: "string",
         enum: [...RANGES],
         description:
-          "next = the next fortnight, for 'what's my next meeting'. today, tomorrow, " +
-          "or week for a rundown.",
+          "next = the next fortnight, for 'what's my next meeting'. today (all of it, " +
+          "what is over too), tomorrow, or week for a rundown.",
       },
       limit: {
         type: ["integer", "null"],

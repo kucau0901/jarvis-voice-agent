@@ -17,6 +17,13 @@ of every release, and in the [README](README.md#updating).
 
 ## [Unreleased]
 
+### Fixed
+
+- **An event earlier today can be moved or removed.** Jarvis looked at today
+  only from the time you asked, so one already over (a 10 am meeting, asked
+  about at 2 pm) was not found, and could not be removed. Today is now the
+  whole day.
+
 ## [2.6.0] - 2026-10-28
 
 ### Added

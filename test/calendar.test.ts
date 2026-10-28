@@ -200,7 +200,9 @@ console.log("days are the user's, not the server's");
   check("tomorrow starts at their midnight", tomorrow.from === Date.UTC(2026, 8, 28, 16, 0), new Date(tomorrow.from).toISOString());
   check("and is one day long", tomorrow.to - tomorrow.from === 86_400_000);
   const today = rangeWindow("today", now, kl);
-  check("today ends at their midnight, not 24 hours on", today.from === now && today.to === Date.UTC(2026, 8, 28, 16, 0));
+  check("today ends at their midnight, not 24 hours on", today.to === Date.UTC(2026, 8, 28, 16, 0));
+  // At 14:31 an event at 10:00 is over; from now, it was left out, and could not be removed (28 Oct 2026).
+  check("today starts at their midnight, so what is over today can still be found", today.from === Date.UTC(2026, 8, 27, 16, 0), new Date(today.from).toISOString());
   // 20:00 on 27 Sep in New York is 00:00 UTC on the 28th.
   const ny = "America/New_York";
   const late = Date.UTC(2026, 8, 28, 0, 0);
