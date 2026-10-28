@@ -125,6 +125,10 @@ of every release, and in the [README](README.md#updating).
   checked, so a very large one could use up the Worker's memory. Reading now
   stops at each one's limit, and an app's sign-in code is checked for shape
   before it is looked up.
+- **Home Assistant tokens are kept out of error messages.** An error that
+  quoted a token in the form Home Assistant's take (a JWT) showed it in
+  Settings and the logs; so could an MCP server's error in Settings → MCP
+  servers. Both are now cut to `eyJ***`, as OpenAI keys already were.
 
 ## [2.5.0] - 2026-10-22
 

@@ -259,6 +259,8 @@ console.log("\nredact: keys never go back in an error");
   const said = redact("401 Incorrect API key provided: sk-proj-AbCdEf0123456789xyz. You can find your API key at https://platform.openai.com");
   check("an OpenAI key is cut to its kind", !/AbCdEf0123456789/.test(said) && /sk-\*\*\*/.test(said), said);
   check("a bearer token too", redact("sent Authorization: Bearer abc.def.ghi") === "sent Authorization: Bearer ***");
+  const jwt = "eyJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJleGFtcGxlIn0.c2lnbmF0dXJlLW1hZGUtdXA";
+  check("a JWT anywhere, as Home Assistant's token is", redact(`401 from https://ha.example.com/api?token=${jwt}, token=${jwt}`) === "401 from https://ha.example.com/api?token=eyJ***, token=eyJ***");
   check("the rest of the message stays, to debug from", /Incorrect API key provided/.test(said) && /platform\.openai\.com/.test(said), said);
 }
 

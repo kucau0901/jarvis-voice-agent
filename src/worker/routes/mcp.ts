@@ -113,7 +113,7 @@ export async function handleMcp(req: Request, env: Env, owner: boolean): Promise
         text: content.filter((c) => c.type === "text").map((c) => c.text).join("\n"),
       });
     } catch (e) {
-      return json({ ok: false, error: e instanceof Error ? e.message : String(e) });
+      return json({ ok: false, error: redact(e instanceof Error ? e.message : String(e)) });
     } finally {
       await client.close().catch(() => {});
     }
@@ -130,7 +130,7 @@ export async function handleMcp(req: Request, env: Env, owner: boolean): Promise
         description: t.description.slice(0, 160),
       }));
     } catch (e) {
-      liveError = e instanceof Error ? e.message : String(e);
+      liveError = redact(e instanceof Error ? e.message : String(e));
     }
     return json({ servers, source, liveTools: live, liveError });
   }
@@ -190,7 +190,7 @@ export async function probe(target: string, headers?: Record<string, string>) {
         return {
           ok: false as const,
           ms: Date.now() - started,
-          error: e instanceof Error ? e.message : String(e),
+          error: redact(e instanceof Error ? e.message : String(e)),
         };
       }
     }
