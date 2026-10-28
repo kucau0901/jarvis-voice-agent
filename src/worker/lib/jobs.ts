@@ -221,8 +221,10 @@ export interface JobDeps {
 const J = "job:";
 /** A table job's rows (Job.table), beside the job: not under "job:", which list() reads. */
 const T = "jobtable:";
-const DAY = "jobs:day";
+/** A person's jobs today, by person (lib/context.ts): one member cannot spend the family's day. */
+const DAY = (person: string) => `jobs:day:${person}`;
 
+/** Each a person's own: one member's jobs neither block nor prune another's. */
 export const MAX_RUNNING = 3;
 export const DAILY_JOBS = 30;
 export const KEEP_JOBS = 30;
@@ -551,12 +553,13 @@ export class Jobs {
     const table = engine === "research" && input.table === true;
     const team = engine === "research" && (input.team === true || table);
     const all = await this.list();
-    if (all.filter((j) => j.status === "running").length >= MAX_RUNNING) {
+    const person = personOfWho(by.who);
+    if (all.filter((j) => j.status === "running" && personOfWho(j.createdBy) === person).length >= MAX_RUNNING) {
       return `${MAX_RUNNING} jobs are already running; wait for one to finish`;
     }
     if (team && all.some((j) => j.status === "running" && j.team)) return "a research team is already working; wait for it to finish";
     const today = new Date(now).toISOString().slice(0, 10);
-    const day = (await this.storage.get<{ day: string; n: number }>(DAY)) ?? { day: today, n: 0 };
+    const day = (await this.storage.get<{ day: string; n: number }>(DAY(person))) ?? { day: today, n: 0 };
     const n = day.day === today ? day.n : 0;
     if (n >= DAILY_JOBS) return `the limit of ${DAILY_JOBS} jobs a day has been reached`;
     if (engine === "research") {
@@ -570,7 +573,7 @@ export class Jobs {
       if (m >= limit) return `the ${limit} research jobs for this month have been used; the limit is in Settings → OpenAI`;
       await this.storage.put(RESEARCH_MONTH, { month, n: m + 1 });
     }
-    await this.storage.put(DAY, { day: today, n: n + 1 });
+    await this.storage.put(DAY(person), { day: today, n: n + 1 });
 
     const job: Job = {
       id: newJobId(),
@@ -912,10 +915,14 @@ export class Jobs {
     if (!("late" in out && out.late)) await deps.episode?.(done).catch(() => {});
   }
 
-  /** Keep the newest KEEP_JOBS finished ones. */
+  /** Keep each person's newest KEEP_JOBS finished ones: one member's many never prune another's. */
   private async prune(): Promise<void> {
-    const finished = (await this.list()).filter((j) => j.status !== "running");
-    for (const j of finished.slice(KEEP_JOBS)) {
+    const kept = new Map<string, number>();
+    for (const j of (await this.list()).filter((x) => x.status !== "running")) {
+      const person = personOfWho(j.createdBy);
+      const n = (kept.get(person) ?? 0) + 1;
+      kept.set(person, n);
+      if (n <= KEEP_JOBS) continue;
       await this.storage.delete(T + j.id);
       await this.storage.delete(J + j.id);
     }

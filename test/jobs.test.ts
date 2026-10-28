@@ -276,6 +276,18 @@ console.log("\nlimits");
   check(`at most ${DAILY_JOBS} a day`, typeof (await d.jobs.create({ task: "late" }, BY, T0)) === "string");
   check("…and tomorrow again", typeof (await d.jobs.create({ task: "tomorrow" }, BY, T0 + 86_400_000)) !== "string");
   check(`only the newest ${KEEP_JOBS} finished jobs are kept`, (await d.jobs.list()).filter((x) => x.status !== "running").length <= KEEP_JOBS);
+
+  // Each person's own: a guest who fills theirs blocks and prunes nobody else's.
+  const f = harness();
+  const kid = { who: "u_kid", grants: ["ask"] as const };
+  for (let i = 0; i < MAX_RUNNING; i++) await f.jobs.create({ task: `kid ${i}` }, kid, T0);
+  check("one person's running jobs do not block another's", typeof (await f.jobs.create({ task: "kid more" }, kid, T0)) === "string" && typeof (await f.jobs.create({ task: "mine" }, BY, T0)) !== "string");
+  const g = harness();
+  for (let i = 0; i < DAILY_JOBS; i++) {
+    const x = (await g.jobs.create({ task: `kid ${i}` }, kid, T0)) as Job;
+    await g.jobs.cancel(x.id, T0);
+  }
+  check("…nor their day another's", typeof (await g.jobs.create({ task: "kid late" }, kid, T0)) === "string" && typeof (await g.jobs.create({ task: "mine" }, BY, T0)) !== "string");
 }
 
 console.log("\ncancelling");
@@ -576,6 +588,16 @@ console.log("\nreading the jobs back");
   const none = await read({ about: "solar" });
   check("none at all: said so, and nothing started", none === "This person has no background jobs matching 'solar'. Nothing is waiting to be read." && !(await h.jobs.list()).some((j) => j.title.includes("solar")), none);
   check("none of an engine", (await read({ engine: "jarvis" })) === "This person has no ordinary background jobs. Nothing is waiting to be read.");
+}
+
+console.log("\nkept per person");
+{
+  const p = harness();
+  await p.storage.put("job:jmine", finished("jmine", { createdBy: "voice", createdAt: T0 - 1000 }));
+  for (let i = 0; i < KEEP_JOBS + 3; i++) await p.storage.put(`job:jkid${i}`, finished(`jkid${i}`, { createdBy: "u_kid", createdAt: T0 + i }));
+  await p.jobs.create({ task: "prunes" }, BY, T0 + 100);
+  const left = await p.jobs.list();
+  check("…nor their many prune another's", !!left.find((j) => j.id === "jmine") && left.filter((j) => j.createdBy === "u_kid").length === KEEP_JOBS, left.length);
 }
 
 console.log("\nwho may");

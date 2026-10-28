@@ -92,6 +92,10 @@ of every release, and in the [README](README.md#updating).
   and links only when you press it. Before, someone could start a link and
   send it to another family member, whose mailbox would then have gone to
   the first person's Jarvis without a word.
+- **Each person's limits are their own.** Background jobs (3 running, 30
+  a day, the 30 newest kept) were counted for the whole family, so one
+  member, a guest included, could stop everyone else starting jobs, or push
+  their finished results out. They are now counted per person.
 
 ## [2.5.0] - 2026-10-22
 
