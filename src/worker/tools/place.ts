@@ -10,7 +10,7 @@ import { localeOf } from "../lib/locale.ts";
  * for imagery, and the Worker asks Google.
  */
 
-const GEOCODE = "https://maps.googleapis.com/maps/api/geocode/json";
+export const GEOCODE = "https://maps.googleapis.com/maps/api/geocode/json";
 const SV_META = "https://maps.googleapis.com/maps/api/streetview/metadata";
 
 interface Located {

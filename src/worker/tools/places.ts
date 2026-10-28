@@ -1,6 +1,7 @@
 import type { Tool, ToolContext } from "./registry.ts";
 import { localeOf } from "../lib/locale.ts";
 import { asQuotedData, tidy } from "../lib/quote.ts";
+import { GEOCODE } from "./place.ts";
 
 /**
  * What a place is actually like.
@@ -27,6 +28,14 @@ import { asQuotedData, tidy } from "../lib/quote.ts";
  * where", and the expensive one only when somebody actually asks what people
  * said. Adding a field to the cheap mask silently changes what every lookup
  * costs, so do not tidy them into one.
+ *
+ * ── Coordinates ────────────────────────────────────────────────────────────
+ *
+ * A position often arrives bare (a phone's, from Home Assistant), and Places
+ * cannot say what is at a point. Geocoding can: the API show_place already
+ * calls with the same key, one cheap call with no field mask. That API takes
+ * the key in the URL only; the call is the Worker's, so it never reaches a
+ * browser.
  */
 
 const SEARCH = "https://places.googleapis.com/v1/places:searchText";
@@ -79,6 +88,42 @@ const PRICE: Record<string, string> = {
   PRICE_LEVEL_VERY_EXPENSIVE: "very expensive",
 };
 
+/** "2.1951, 102.2486": both with decimals, so "7, 11" stays a search. */
+function coordinates(query: string): { lat: number; lng: number } | null {
+  const m = query.match(/^(-?\d{1,2}\.\d+)\s*,\s*(-?\d{1,3}\.\d+)$/);
+  if (!m) return null;
+  const lat = Number(m[1]);
+  const lng = Number(m[2]);
+  return Math.abs(lat) <= 90 && Math.abs(lng) <= 180 ? { lat, lng } : null;
+}
+
+/** The street address at a point (see "Coordinates" above). */
+async function addressAt(at: { lat: number; lng: number }, key: string, ctx: ToolContext): Promise<string> {
+  const point = `${at.lat},${at.lng}`;
+  const language = localeOf(ctx.env).language;
+  let res: Response;
+  try {
+    res = await fetch(`${GEOCODE}?latlng=${point}&language=${encodeURIComponent(language)}&key=${encodeURIComponent(key)}`, {
+      signal: ctx.signal,
+    });
+  } catch (e) {
+    return `Could not reach Google Maps: ${e instanceof Error ? e.message : String(e)}`;
+  }
+  if (!res.ok) return `Google Maps returned ${res.status}.`;
+
+  const j = (await res.json().catch(() => null)) as {
+    status?: string;
+    error_message?: string;
+    results?: { formatted_address?: string }[];
+  } | null;
+  // Google answers 200 when it refuses, too: a key not allowed Geocoding is not an empty field.
+  if (j?.status && j.status !== "OK" && j.status !== "ZERO_RESULTS") {
+    return `Could not look ${point} up: Google Maps said ${j.status}${j.error_message ? ` (${tidy(j.error_message)})` : ""}.`;
+  }
+  const address = j?.results?.[0]?.formatted_address;
+  if (!address) return `Google Maps has no address at ${point}.`;
+  return `At ${point}: ${tidy(address)}`;
+}
 
 export const placeInfo: Tool = {
   name: "place_info",
@@ -90,6 +135,8 @@ export const placeInfo: Tool = {
     "whether it is open right now, price, address and phone. Use for 'is that place any " +
     "good', 'are they open', 'what's their number', 'find a coffee place near here'. Set " +
     "reviews true ONLY when the user asks what people said — it costs materially more. " +
+    "Given coordinates ('2.1951, 102.2486') instead, it says the street address there " +
+    "(Google Maps' reverse lookup): use it whenever you have a position but no address. " +
     "This does not put anything on screen; use show_place for that.",
   parameters: {
     type: "object",
@@ -98,7 +145,7 @@ export const placeInfo: Tool = {
         type: "string",
         description:
           "The place, as the user said it. Include the town if they did — " +
-          "'Pak Putra', 'coffee near the station'.",
+          "'Pak Putra', 'coffee near the station'. Or 'lat, lng' for the address there.",
       },
       reviews: {
         type: ["boolean", "null"],
@@ -115,6 +162,8 @@ export const placeInfo: Tool = {
 
     const query = String(args.query ?? "").trim();
     if (!query) return "No place was named.";
+    const at = coordinates(query);
+    if (at) return addressAt(at, key, ctx);
     const wantReviews = args.reviews === true;
 
     let res: Response;

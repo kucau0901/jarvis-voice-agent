@@ -94,6 +94,7 @@ WHAT EACH ROUTE COVERS, FASTEST FIRST
                             it does not send anything to the car.
   place_info       ~2s      What a place is LIKE: rating, open now, price, phone.
                             Ask for reviews only if the user asked what people say.
+                            Given coordinates, the street address there.
   show_place       ~2s      Puts a map or a street-level photo on the car's screen.
   show_camera      ~2s      Puts a live camera from the house on the car's screen.
   music_state      ~1s      What is playing on Spotify, and on WHICH DEVICE.

@@ -146,7 +146,7 @@ existence, or argued around.
 | Scope | Unlocks |
 |---|---|
 | `*` | Everything, **including capabilities added in future**. |
-| `ask` | The baseline. Needed to call the agent at all. Web search, `place_info` (ratings, opening hours, reviews), `recall`-free questions. |
+| `ask` | The baseline. Needed to call the agent at all. Web search, `place_info` (ratings, opening hours, reviews, the address at coordinates), `recall`-free questions. |
 | `memory.read` | `recall`; `GET /api/memory`, `POST /api/memory/search`. |
 | `memory.write` | `remember`, `forget`. |
 | `car.read` | `car_state`, `directions`. |

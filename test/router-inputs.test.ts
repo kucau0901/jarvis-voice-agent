@@ -40,7 +40,8 @@ function check(name: string, cond: boolean, got?: unknown) {
 // Inputs of admin, adult and child: a waiting family message is now quoted as its sender's (28 Oct 2026).
 // The answer's language: the user's latest message, never a page's, a tool's or its own (21 Oct 2026).
 // calendar_change added to THE DIARY and the table of routes, after calendar_add (28 Oct 2026).
-const PROMPT_SHA256 = "17807f8e27b821bd10e43ffd32e140c4bea9ce6fcaa2a88320c06d970e243706";
+// place_info's row in the table of routes: given coordinates, the street address there (28 Oct 2026).
+const PROMPT_SHA256 = "2b0271b1c6307316106eac6187e6cb5f08b2c657453be287f783c8bb72fe9c4e";
 // panel_set and panel_remove (tools/panels.ts, scope screen): everyone but the guest (14 Oct 2026).
 // look_back (tools/conversation.ts, scope memory.read): everyone but the guest (16 Oct 2026).
 // panel_list (tools/panels.ts, scope screen): everyone but the guest (16 Oct 2026).

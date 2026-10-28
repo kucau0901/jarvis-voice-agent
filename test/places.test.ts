@@ -104,6 +104,40 @@ console.log("\nwhat it says");
   check("says closed when closed", /closed now/.test(await placeInfo.run({ query: "x", reviews: false }, ctx())));
 }
 
+console.log("\ncoordinates are turned into the address there (Geocoding, not Places)");
+{
+  const GEO = { status: "OK", results: [{ formatted_address: "4, Jalan Contoh,\n50450 Kuala Lumpur" }] };
+  let seen = stubFetch({ body: GEO });
+  const out = await placeInfo.run({ query: "2.1951, 102.2486", reviews: null }, ctx());
+  check("one call", seen.length === 1, seen.length);
+  check("to Geocoding's reverse lookup", seen[0]!.url.startsWith("https://maps.googleapis.com/maps/api/geocode/json?latlng=2.1951,102.2486&"), seen[0]!.url);
+  check("not a Places search", !seen[0]!.url.includes("places.googleapis.com") && seen[0]!.body === undefined);
+  check("in the person's language", seen[0]!.url.includes("&language=en"), seen[0]!.url);
+  check("says the address, tidied", out === "At 2.1951,102.2486: 4, Jalan Contoh, 50450 Kuala Lumpur", out);
+
+  seen = stubFetch({ body: GEO });
+  await placeInfo.run({ query: "-33.8688,151.2093", reviews: false }, ctx());
+  check("south and without a space too", seen[0]!.url.includes("latlng=-33.8688,151.2093&"), seen[0]!.url);
+
+  for (const q of ["7, 11", "95.5, 101.6", "2.19, 200.5", "near 2.1951, 102.2486"]) {
+    seen = stubFetch({ body: { places: [PLACE] } });
+    await placeInfo.run({ query: q, reviews: false }, ctx());
+    check(`"${q}" stays a Places search`, seen[0]!.url === "https://places.googleapis.com/v1/places:searchText", seen[0]!.url);
+  }
+
+  stubFetch({ body: { status: "ZERO_RESULTS", results: [] } });
+  const sea = await placeInfo.run({ query: "1.5, 104.5", reviews: false }, ctx());
+  check("nowhere is said plainly", sea === "Google Maps has no address at 1.5,104.5.", sea);
+
+  stubFetch({ body: { status: "REQUEST_DENIED", error_message: "This API key is not authorized to use this service or API." } });
+  const denied = await placeInfo.run({ query: "2.1951, 102.2486", reviews: false }, ctx());
+  check("a key not allowed Geocoding says so", /Google Maps said REQUEST_DENIED \(This API key is not authorized/.test(denied), denied);
+
+  stubFetch({ status: 500 });
+  const down = await placeInfo.run({ query: "2.1951, 102.2486", reviews: false }, ctx());
+  check("an error is reported, not an empty address", down === "Google Maps returned 500.", down);
+}
+
 console.log("\nreviews are stranger-written, so they are fenced");
 {
   const hostile =
