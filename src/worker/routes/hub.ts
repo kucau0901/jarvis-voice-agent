@@ -468,6 +468,10 @@ export async function handleHub(req: Request, env: Env, principal: Principal): P
       return r === true ? json({ ok: true }) : err(400, r.error);
     }
     if (m === "PATCH") {
+      // Their role and reach are what the owner key reaches as them: another admin narrowing them could keep them out of their own Jarvis.
+      if ((b.role !== undefined || b.scopes !== undefined) && (await ownerKeyOnly(user))) {
+        return err(403, "only the owner key can change the role or reach of the person who set up the family");
+      }
       const r = await hub.updateMember(space, user, { role: b.role, scopes: b.scopes as Grant[] | null | undefined, access: b.access });
       // Felt within half a minute: that is how long a sign-in is cached (lib/hub-client.ts).
       return "error" in r ? err(400, r.error) : json({ ok: true });

@@ -114,6 +114,11 @@ of every release, and in the [README](README.md#updating).
   still connected with the locked sign-in (a copy of it, say) went on being
   sent that person's alerts until it closed. Locking now closes every open
   connection of that sign-in; unlocking with the PIN opens it again.
+- **Only the owner key changes the role of the person who set up the
+  family.** Another admin could make them a child, or narrow what they
+  reach, and they could not undo it. Now that needs the owner key, as
+  removing them, clearing their PIN or making them a passkey link already
+  did; Family no longer offers it to other admins.
 
 ## [2.5.0] - 2026-10-22
 

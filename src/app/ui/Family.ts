@@ -365,7 +365,7 @@ export class Family {
       return;
     }
     // An admin: a section for each, with what they can reach and their limits.
-    // The first person's way back in (a passkey link, their PIN) is the owner key's (routes/hub.ts).
+    // The first person's way back in (a passkey link, their PIN) and their role and reach are the owner key's (routes/hub.ts).
     const ownerKey = !!this.me?.owner;
     box.innerHTML = members
       .map(
@@ -373,12 +373,12 @@ export class Family {
         <section class="svc" data-section="member:${esc(m.id)}" data-title="${esc(m.name)}${m.you ? " (you)" : ""}" data-aside="${esc(m.role)}" data-id="${esc(m.id)}" data-name="${esc(m.name)}">
           <div class="svchead">
             <h3>${esc(m.name)}${m.you ? " (you)" : ""}</h3>
-            ${!m.you
+            ${!m.you && (!m.first || ownerKey)
               ? `<select class="m-role" aria-label="Role">${roles.map((r) => `<option value="${esc(r)}"${r === m.role ? " selected" : ""}>${esc(r)}</option>`).join("")}</select>`
               : `<span class="chip">${esc(m.role)}</span>`}
           </div>
           <p class="note">seen ${ago(m.lastSeenAt)} · ${m.passkeys ?? 0} passkey${m.passkeys === 1 ? "" : "s"}${m.access ? ` · <b>${esc(limitsSaid(m.access))}</b>` : ""}</p>
-          ${m.role !== "admin"
+          ${m.role !== "admin" && (!m.first || ownerKey)
             ? `<h4>What they can reach</h4>
                <div class="checks">${scopes
                 .map((s) => `<button class="check${m.scopes?.includes(s) ? " on" : ""}" data-scope="${esc(s)}" title="${esc(s)}">${esc(SCOPE_WORDS[s] ?? s)}</button>`)
@@ -389,7 +389,7 @@ export class Family {
           <h4>Getting home</h4>
           <div class="fieldfoot"><input type="text" class="m-presence" maxlength="60" placeholder="Home Assistant person, for “when home”: person.name" value="${esc(m.presence ?? "")}"><button class="m-psave">Save</button></div>
           ${!m.you
-            ? `${m.first && !ownerKey ? `<p class="note">A new passkey link or PIN for them needs the owner key.</p>` : ""}
+            ? `${m.first && !ownerKey ? `<p class="note">Their role, a new passkey link or PIN needs the owner key.</p>` : ""}
                <div class="rowbtns">${!m.first || ownerKey ? `<button class="m-link">New passkey link</button>${m.hasPin ? `<button class="m-clearpin">Clear their PIN</button>` : ""}` : ""}<button class="m-remove">Remove</button></div>
                <div class="reveal"></div>`
             : ""}

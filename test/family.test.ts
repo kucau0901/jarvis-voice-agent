@@ -294,6 +294,11 @@ console.log("\na second admin, and the person who set up the family");
   check("nor make them a new passkey link", (await call("/api/hub/invites", { user: adamId }, { principal: bea })).status === 403);
   check("but can for anyone else", (await call("/api/hub/invites", { user: nurId }, { principal: bea })).status === 200);
   check("nor clear their PIN", (await call("/api/hub/members", { user: adamId, clearPin: true }, { method: "PATCH", principal: bea })).status === 403 && (await adamsPin()));
+  const adam = async () => (await call("/api/hub/members", undefined, { principal: OWNER })).body.members.find((x: { id: string }) => x.id === adamId) as { role: string; custom: boolean };
+  const demote = await call("/api/hub/members", { user: adamId, role: "child" }, { method: "PATCH", principal: bea });
+  const narrow = await call("/api/hub/members", { user: adamId, scopes: ["ask"] }, { method: "PATCH", principal: bea });
+  check("nor change their role or what they reach", demote.status === 403 && narrow.status === 403 && (await adam()).role === "admin" && !(await adam()).custom, demote.body);
+  check("but can for anyone else", (await call("/api/hub/members", { user: nurId, scopes: ["ask", "family"] }, { method: "PATCH", principal: bea })).status === 200);
 
   check("they may still make one for themselves", (await call("/api/hub/invites", { user: adamId }, { principal: admin })).status === 200);
   const tablet = await call("/api/auth/pair/start", { label: "Tablet" });
