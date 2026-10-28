@@ -1,5 +1,5 @@
 import type { Env } from "../types.ts";
-import { err, json, readObject } from "../lib/http.ts";
+import { err, json, publicOrigin, readObject } from "../lib/http.ts";
 import { safeEqual, whoOf, type Principal } from "../lib/auth.ts";
 import { stateStub } from "../lib/state-client.ts";
 import { hubStub, personView } from "../lib/hub-client.ts";
@@ -10,7 +10,7 @@ import { allows, narrow } from "../lib/scopes.ts";
 import { canAsk } from "../lib/openai-auth.ts";
 import { asQuotedData } from "../lib/quote.ts";
 import * as limits from "../lib/limits.ts";
-import { askOptions, readUpdate, sendTelegram, TELEGRAM_REACH, webhookSecret, type Update } from "../lib/telegram.ts";
+import { askOptions, legacyWebhookSecret, readUpdate, sendTelegram, setWebhook, TELEGRAM_PATH, TELEGRAM_REACH, webhookSecret, type Update } from "../lib/telegram.ts";
 import { collectWithDeadline, priorTurns, recordTurns, TIMEOUT_TEXT } from "./v1.ts";
 
 /**
@@ -28,12 +28,24 @@ import { collectWithDeadline, priorTurns, recordTurns, TIMEOUT_TEXT } from "./v1
 /** How long the answer may take, inside the runtime's half minute: memory is saved before it is cut off. */
 const WAIT_S = 20;
 const STOP_MS = 27_000;
+/** When this isolate last told Telegram the address-bound secret (handleTelegram). */
+let refitAt = 0;
 
 export async function handleTelegram(req: Request, env: Env, ctx: ExecutionContext, asPerson: (env: Env, p: Principal) => Promise<Env>): Promise<Response> {
   if (env.TELEGRAM_ASK !== "1" || !env.TELEGRAM_BOT_TOKEN) return err(404, "no route here");
   if (req.method !== "POST") return err(405, "POST only");
   const given = req.headers.get("x-telegram-bot-api-secret-token") ?? "";
-  if (!given || !(await safeEqual(given, await webhookSecret(env)))) return err(401, "not from Telegram");
+  // Where Telegram was told to post: the public address, as it was registered (routes/settings.ts).
+  const here = `${publicOrigin(env, new URL(req.url).origin)}${TELEGRAM_PATH}`;
+  if (!given || !(await safeEqual(given, await webhookSecret(env, here)))) {
+    // A registration from before the secret was bound to the address: told the new one, and this update
+    // refused, so Telegram sends it again with that. At most once a minute per isolate.
+    if (given && Date.now() - refitAt > 60_000 && (await safeEqual(given, await legacyWebhookSecret(env)))) {
+      refitAt = Date.now();
+      ctx.waitUntil(setWebhook(env, here).catch(() => null));
+    }
+    return err(401, "not from Telegram");
+  }
   const update = readUpdate(await readObject(req, 64 * 1024));
   const state = stateStub(env);
   // Not a person's own message, or Telegram trying one again: taken, and nothing done.

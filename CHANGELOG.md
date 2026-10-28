@@ -82,6 +82,11 @@ of every release, and in the [README](README.md#updating).
   run commands on its computer. Routines can still do everything else
   their maker may; ask Hermes yourself, or with a job, for anything that
   needs it.
+- **Telegram's secret follows Jarvis's address.** An admin who pointed the
+  public address elsewhere could learn the secret Telegram sends and keep
+  using it after the address was put back. It is now tied to the address.
+  A Telegram set up before this is told the new secret by itself the first
+  time a message arrives; that message comes through a moment later.
 
 ## [2.5.0] - 2026-10-22
 

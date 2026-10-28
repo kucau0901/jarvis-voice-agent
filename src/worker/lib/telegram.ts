@@ -24,8 +24,20 @@ const MAX_TEXT = 4000;
  */
 export const TELEGRAM_REACH: readonly Grant[] = SCOPES.filter((s) => s !== "hermes" && s !== "screen");
 
-/** The secret Telegram is told to send with each update, and checked against. 64 hex characters, as Telegram allows. */
-export const webhookSecret = (env: Pick<Env, "JARVIS_SHARED_SECRET" | "TELEGRAM_BOT_TOKEN">): Promise<string> =>
+/**
+ * The secret Telegram is told to send with each update, and checked against.
+ * 64 hex characters, as Telegram allows. Bound to the address the updates go
+ * to: an admin who points the public address elsewhere learns a secret that
+ * stops working when the address is put back.
+ */
+export const webhookSecret = (env: Pick<Env, "JARVIS_SHARED_SECRET" | "TELEGRAM_BOT_TOKEN">, url: string): Promise<string> =>
+  sha256Hex(`telegram-webhook\n${env.JARVIS_SHARED_SECRET ?? ""}\n${env.TELEGRAM_BOT_TOKEN ?? ""}\n${url}`);
+
+/**
+ * The secret before it was bound to the address (2.5.0 and earlier): what an
+ * existing registration still sends, until Telegram is told the new one.
+ */
+export const legacyWebhookSecret = (env: Pick<Env, "JARVIS_SHARED_SECRET" | "TELEGRAM_BOT_TOKEN">): Promise<string> =>
   sha256Hex(`telegram-webhook\n${env.JARVIS_SHARED_SECRET ?? ""}\n${env.TELEGRAM_BOT_TOKEN ?? ""}`);
 
 export interface Update {
@@ -88,7 +100,7 @@ export async function setWebhook(env: Pick<Env, "TELEGRAM_BOT_TOKEN" | "JARVIS_S
   const r = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/setWebhook`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ url, secret_token: await webhookSecret(env), allowed_updates: ["message"], drop_pending_updates: true }),
+    body: JSON.stringify({ url, secret_token: await webhookSecret(env, url), allowed_updates: ["message"], drop_pending_updates: true }),
     signal: AbortSignal.timeout(10_000),
   }).catch((e) => e as Error);
   if (r instanceof Error) return r.message;

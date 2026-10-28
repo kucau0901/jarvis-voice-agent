@@ -1121,8 +1121,8 @@ Saving `TELEGRAM_ASK` on (again, too, which is how a failed one is retried),
 or a new `PUBLIC_URL` while it is on, sets the bot's webhook to
 `POST /api/v1/telegram`; a webhook Telegram refused is said in the save's
 reply as `telegram`. Telegram sends a secret token back on every update
-(`X-Telegram-Bot-Api-Secret-Token`, made from the owner key and the bot's
-token together); anything without it is a 401, and with the setting off the
+(`X-Telegram-Bot-Api-Secret-Token`, made from the owner key, the bot's
+token and the address it posts to); anything without it is a 401, and with the setting off the
 path is a 404. Only a text message in a private chat, from the chat's own
 person, is taken; groups, channels, edits and other bots never are, and each
 update is answered once however often Telegram sends it. The chat is matched

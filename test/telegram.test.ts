@@ -1,6 +1,6 @@
 // Asking Jarvis by Telegram (lib/telegram.ts, routes/telegram.ts): only from
 // Telegram, only from a person's own private chat, as that person.
-import { askOptions, readUpdate, TELEGRAM_PATH, TELEGRAM_REACH, webhookSecret } from "../src/worker/lib/telegram.ts";
+import { askOptions, legacyWebhookSecret, readUpdate, TELEGRAM_PATH, TELEGRAM_REACH, webhookSecret } from "../src/worker/lib/telegram.ts";
 import { ownWords } from "../src/worker/lib/router.ts";
 import { handleSettings } from "../src/worker/routes/settings.ts";
 import { StateHost } from "../src/worker/lib/state-host.ts";
@@ -34,8 +34,10 @@ console.log("what is taken");
   check("a photo with no words: taken, with no text", readUpdate(msg({ text: undefined, photo: [{}] }))?.text === "");
   check("a forward: said to be one", readUpdate(msg({ forward_origin: { type: "user" } }))?.forwarded === true);
   check("not Hermes, not a screen", !TELEGRAM_REACH.includes("hermes") && !TELEGRAM_REACH.includes("screen") && TELEGRAM_REACH.includes("ask") && TELEGRAM_REACH.includes("home"));
-  const a = await webhookSecret({ JARVIS_SHARED_SECRET: "OWNERKEY", TELEGRAM_BOT_TOKEN: "123:abc" });
-  check("its secret: 64 hex, from the owner key and the bot's token together", /^[0-9a-f]{64}$/.test(a) && a !== (await webhookSecret({ JARVIS_SHARED_SECRET: "OTHER", TELEGRAM_BOT_TOKEN: "123:abc" })) && a !== (await webhookSecret({ JARVIS_SHARED_SECRET: "OWNERKEY", TELEGRAM_BOT_TOKEN: "456:def" })));
+  const at = `https://j.test${TELEGRAM_PATH}`;
+  const a = await webhookSecret({ JARVIS_SHARED_SECRET: "OWNERKEY", TELEGRAM_BOT_TOKEN: "123:abc" }, at);
+  check("its secret: 64 hex, from the owner key and the bot's token together", /^[0-9a-f]{64}$/.test(a) && a !== (await webhookSecret({ JARVIS_SHARED_SECRET: "OTHER", TELEGRAM_BOT_TOKEN: "123:abc" }, at)) && a !== (await webhookSecret({ JARVIS_SHARED_SECRET: "OWNERKEY", TELEGRAM_BOT_TOKEN: "456:def" }, at)));
+  check("…and the address it is posted to: pointed elsewhere, a secret learnt there is no use here", a !== (await webhookSecret({ JARVIS_SHARED_SECRET: "OWNERKEY", TELEGRAM_BOT_TOKEN: "123:abc" }, `https://attacker.example${TELEGRAM_PATH}`)));
   check("closed if the branch before the gate were ever gone", requiredScope(TELEGRAM_PATH, "POST") === "owner");
   const turns = (text: string) => [{ role: "user" as const, text }];
   const own = askOptions({ forwarded: false });
@@ -64,7 +66,7 @@ console.log("\nanswered");
     return Response.json({ ok: true });
   }) as typeof fetch;
   const env = { JARVIS_SHARED_SECRET: "OWNERKEY", TELEGRAM_BOT_TOKEN: "123:abc", TELEGRAM_ASK: "1", TIMEZONE: "Asia/Kuala_Lumpur", STATE: { idFromName: () => "j", get: () => stub } } as never;
-  const secret = await webhookSecret({ JARVIS_SHARED_SECRET: "OWNERKEY", TELEGRAM_BOT_TOKEN: "123:abc" });
+  const secret = await webhookSecret({ JARVIS_SHARED_SECRET: "OWNERKEY", TELEGRAM_BOT_TOKEN: "123:abc" }, `https://j.test${TELEGRAM_PATH}`);
   const post = async (body: unknown, header: string | null = secret, e: unknown = env) => {
     const waits: Promise<unknown>[] = [];
     const r = await handleTelegram(new Request(`https://j.test${TELEGRAM_PATH}`, { method: "POST", body: JSON.stringify(body), headers: { "content-type": "application/json", ...(header ? { "x-telegram-bot-api-secret-token": header } : {}) } }), e as never, { waitUntil: (p: Promise<unknown>) => void waits.push(p) } as never, async (x) => x);
@@ -75,6 +77,12 @@ console.log("\nanswered");
     check("off unless switched on", (await post(msg(), secret, { ...(env as object), TELEGRAM_ASK: "0" })).status === 404);
     calls.length = 0;
     check("not from Telegram: refused, before anything is asked", (await post(msg(), "wrong")).status === 401 && (await post(msg(), null)).status === 401 && !calls.length && !sent.length);
+    // A registration from before the address was in the secret: refused, and Telegram told the new secret for here.
+    const legacy = await legacyWebhookSecret({ JARVIS_SHARED_SECRET: "OWNERKEY", TELEGRAM_BOT_TOKEN: "123:abc" });
+    const refused = await post(msg(), legacy);
+    const told = sent.find((x) => (x as { secret_token?: string }).secret_token) as { url?: string; secret_token?: string } | undefined;
+    check("the old secret: refused, Telegram told this address's new one, nothing asked", refused.status === 401 && told?.secret_token === secret && told?.url === `https://j.test${TELEGRAM_PATH}` && !calls.length, told);
+    sent.length = 0;
     const unknown = await post(msg());
     check("a chat nobody gave: told its number, and nothing else", unknown.status === 200 && sent.length === 1 && sent[0]!.text.includes("5551234") && /Family → You → Telegram/.test(sent[0]!.text), sent);
     await post(msg());
