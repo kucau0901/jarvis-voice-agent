@@ -87,6 +87,11 @@ of every release, and in the [README](README.md#updating).
   using it after the address was put back. It is now tied to the address.
   A Telegram set up before this is told the new secret by itself the first
   time a message arrives; that message comes through a moment later.
+- **Linking Google or Spotify asks whose Jarvis it is for.** After you
+  choose an account, a page now asks "Link this Google account to Sara?",
+  and links only when you press it. Before, someone could start a link and
+  send it to another family member, whose mailbox would then have gone to
+  the first person's Jarvis without a word.
 
 ## [2.5.0] - 2026-10-22
 

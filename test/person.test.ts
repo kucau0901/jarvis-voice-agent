@@ -8,6 +8,7 @@ import { handleMemory } from "../src/worker/routes/memory.ts";
 import { beginAuth, consumeState, isLinked, unlinkEveryone } from "../src/worker/lib/google.ts";
 import { unlinkEveryone as unlinkEveryoneSpotify } from "../src/worker/lib/spotify.ts";
 import { handleSettings } from "../src/worker/routes/settings.ts";
+import { handleGoogle } from "../src/worker/routes/google.ts";
 import { effectiveEnv, type SavedSettings } from "../src/worker/lib/settings.ts";
 import { expandHeaderTemplates } from "../src/worker/lib/mcp-config.ts";
 import { StateHost } from "../src/worker/lib/state-host.ts";
@@ -200,6 +201,29 @@ console.log("\nmemory: each their own, and the family's");
   const fam2 = new MemoryStore(sara, familyBook(SPACE));
   await fam2.load();
   check("a reference fact moves too", refMoved.status === 200 && (await fam2.allFacts()).some((f) => /Plumber/.test(f.text) && f.kind === "reference"), await refMoved.text());
+}
+
+console.log("\na Google link names whose Jarvis it goes to, and links only when that is confirmed");
+{
+  const stub = new Proxy({}, { get: (_t, m) => (m === "then" ? undefined : async (...a: unknown[]) => (m === "hubCall" && a[0] === "personView" ? { name: "Sara <b>", space: null, prefs: {}, cars: [] } : m === "getSettings" ? {} : null)) });
+  const env = fakeEnv({ GOOGLE_CLIENT_ID: "id", GOOGLE_CLIENT_SECRET: "secret", STATE: { idFromName: () => "j", get: () => stub } });
+  const url = await beginAuth({ ...env, JARVIS_PERSON: "u_sara" } as never, { clientId: "id", clientSecret: "secret", redirectUri: "https://j.test/api/google/callback" });
+  const state = new URL(url).searchParams.get("state")!;
+  let traded = 0;
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async () => (traded++, Response.json({ access_token: "a", refresh_token: "r", expires_in: 3600 }))) as typeof fetch;
+  try {
+    const back = await handleGoogle(new Request(`https://j.test/api/google/callback?code=c0de&state=${state}`), env as never);
+    const page = await back.text();
+    check("Google's redirect: a question, naming the person, nothing traded yet", page.includes("Link this Google account to <b>Sara &lt;b&gt;</b>?") && traded === 0 && env._kv.has(`google:state:${state}`), page.slice(0, 400));
+    check("…its one form goes back here, and the page still runs no script", page.includes('<form method="post" action="/api/google/callback">') && /form-action 'self'/.test(back.headers.get("content-security-policy") ?? "") && /default-src 'none'/.test(back.headers.get("content-security-policy") ?? ""));
+    const sent = await handleGoogle(new Request("https://j.test/api/google/callback", { method: "POST", body: new URLSearchParams({ state, code: "c0de" }), headers: { "content-type": "application/x-www-form-urlencoded" } }), env as never);
+    check("sent back: traded, and linked to her", sent.status === 200 && traded === 1 && env._kv.get("google:refresh:u_sara") === "r", await sent.text());
+    const again = await handleGoogle(new Request("https://j.test/api/google/callback", { method: "POST", body: new URLSearchParams({ state, code: "c0de" }) }), env as never);
+    check("and only once", again.status === 400 && traded === 1);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
 }
 
 console.log("\neach person's own Google");

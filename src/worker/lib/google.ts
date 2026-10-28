@@ -164,6 +164,14 @@ export async function beginAuth(env: Env, cfg: GoogleConfig): Promise<string> {
   return `${AUTH}?${p}`;
 }
 
+/** Whose link a state value is for, without spending it: to ask before linking (lib/link-confirm.ts). */
+export async function peekState(env: Env, state: string): Promise<string | null> {
+  if (!state) return null;
+  const found = await env.CONFIG.get(STATE_PREFIX + state);
+  if (!found) return null;
+  return /^u_[a-z0-9]+$/.test(found) ? found : "owner";
+}
+
 /**
  * Spend a state value, and say whose link it was for (lib/context.ts): the
  * person who started it. Null if unknown, used or expired.

@@ -1,10 +1,12 @@
 import type { Env } from "../types.ts";
 import { err, escapeHtml, HTML_PAGE_HEADERS } from "../lib/http.ts";
 import { withSettings } from "../lib/settings-store.ts";
+import { callbackFields, confirmLink, nameOf } from "../lib/link-confirm.ts";
 import {
   beginAuth,
   call,
   consumeState,
+  peekState,
   exchangeCode,
   explain,
   isLinked,
@@ -41,17 +43,25 @@ export async function handleSpotify(req: Request, env: Env): Promise<Response> {
   const url = new URL(req.url);
   /* The redirect back from Spotify. Unauthenticated by necessity. */
   if (url.pathname === "/api/spotify/callback") {
-    const denied = url.searchParams.get("error");
+    // Spotify's redirect (GET), then this page's own confirmation sent back (POST: lib/link-confirm.ts).
+    const q = await callbackFields(req);
+    const denied = q.get("error");
     if (denied) {
       // Attacker-controlled: anyone can craft this link. It was once echoed
       // raw, on the app's own origin, next to the stored owner key.
       return page("Not linked", `<p>Spotify said: <code>${escapeHtml(denied)}</code></p>`, false);
     }
 
-    const code = url.searchParams.get("code") ?? "";
-    const state = url.searchParams.get("state") ?? "";
+    const code = q.get("code") ?? "";
+    const state = q.get("state") ?? "";
     if (!code) return page("Not linked", "<p>Spotify sent no authorisation code.</p>", false);
 
+    // First, whose Jarvis it goes to, asked of whoever chose the account; linked only when they say so.
+    if (req.method !== "POST") {
+      const whose = await peekState(env, state);
+      if (!whose) return page("Not linked", "<p>That link has expired or was already used. Start again from the app.</p>", false);
+      return confirmLink({ account: "Spotify account", does: "see and play its music", name: await nameOf(env, whose), path: url.pathname, state, code });
+    }
     const person = await consumeState(env, state);
     if (!person) {
       // Either a replay, an expired link, or someone else's redirect.
