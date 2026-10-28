@@ -54,6 +54,13 @@ of every release, and in the [README](README.md#updating).
   plan refused the whole question with "Bad Request", so chat and routines
   that read that mail said only "Something went wrong".
 
+### Security
+
+- **A watch on the house needs the house.** Someone allowed routines but
+  not the house (a child, or a device given only routines) could make a
+  watch whose condition read anything in Home Assistant, and see what it
+  read in the reply. Watches are now refused without the house permission.
+
 ## [2.5.0] - 2026-10-22
 
 ### Added

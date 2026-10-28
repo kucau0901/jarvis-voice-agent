@@ -1,5 +1,5 @@
 import type { Storage } from "./state-host.ts";
-import type { Grant } from "./scopes.ts";
+import { allows, type Grant } from "./scopes.ts";
 import { makeAlert, summarise, type Alert, type Delivery } from "./alerts.ts";
 import { bookOf, personOfWho } from "./context.ts";
 import {
@@ -140,6 +140,8 @@ export class Scheduler {
     // said now, to the router that can fix it, than found out never to fire.
     if (built.trigger.kind === "watch") {
       if (!deps.renderTemplate) return "watches need Home Assistant, which is not set up";
+      // A watch reads the house with its own token, and says what it read: only for those who may reach the house.
+      if (!allows(by.grants, "home")) return "watches read the house, which this person or device may not reach";
       if (all.filter((r) => r.trigger.kind === "watch").length >= MAX_WATCHES) {
         return `there are already ${MAX_WATCHES} watches; remove one first`;
       }

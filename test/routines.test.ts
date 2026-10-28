@@ -615,6 +615,12 @@ console.log("\nwatches: tried before they are kept");
   check("not without Home Assistant", String(await noHa.s.add({ when: "watch", condition: GATE, say: "x" }, OWNER, T0)).includes("need Home Assistant"));
 
   const h = harness();
+  // A child has routines but not the house; a watch would read any of it and say what it read.
+  const before = h.state.rendered;
+  const child = await h.s.add({ when: "watch", condition: "{{ states.device_tracker | list }}", say: "x" }, { who: "u_kid", grants: ["ask", "routines", "chat"] }, T0);
+  check("not for someone who may not reach the house, and nothing is read", String(child).includes("may not reach") && h.state.rendered === before, child);
+  const adult = await h.s.add({ when: "watch", condition: "{{ states('cover.mian_gate') }}", say: "x" }, { who: "u_b", grants: ["home", "routines"] }, T0);
+  check("…with the house, it is tried as before", !String(adult).includes("may not reach") && h.state.rendered === before + 1, adult);
   h.state.ha = () => "unknown";
   check("a condition that is not True or False is refused, with what it gave",
     String(await h.s.add({ when: "watch", condition: "{{ states('cover.mian_gate') }}", say: "x" }, OWNER, T0)).includes('gave "unknown"'));
