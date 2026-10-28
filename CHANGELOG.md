@@ -135,6 +135,11 @@ of every release, and in the [README](README.md#updating).
   now checked as the first address is, and addresses written as IPv6,
   `0.0.0.0`, a Tailscale `100.x` one, `.lan`, `.home.arpa` or `localhost.`
   are refused too.
+- **A Telegram chat is one person's.** Anyone in the family could put
+  another person's Telegram chat number, or the family's own, in Family →
+  You: that person's messages then went unanswered, or were answered as
+  them, and they were sent the other's alerts. A number someone else
+  already uses is now refused.
 
 ## [2.5.0] - 2026-10-22
 

@@ -12,7 +12,7 @@ import { ROLES, ROLE_SCOPES, type HubApi, type Prefs } from "../lib/hub.ts";
 import { forgetPerson, forgetSessions, hubStub } from "../lib/hub-client.ts";
 import * as devices from "../lib/devices.ts";
 import { sha256Hex } from "../lib/devices.ts";
-import { deviceWho, haTokenFits } from "../lib/context.ts";
+import { OWNER, deviceWho, haTokenFits } from "../lib/context.ts";
 import { originOf } from "../lib/mcp-config.ts";
 import { stateStub } from "../lib/state-client.ts";
 import { hermesConfig } from "../tools/hermes.ts";
@@ -264,6 +264,15 @@ export async function handleHub(req: Request, env: Env, principal: Principal): P
       const rawPrefs = b.prefs === undefined ? undefined : ((b.prefs && typeof b.prefs === "object" ? b.prefs : {}) as Record<string, unknown>);
       const badPrefs = rawPrefs && prefsProblem(rawPrefs);
       if (badPrefs) return err(400, badPrefs);
+      // A Telegram chat is one person's (routes/telegram.ts): another's would stop theirs being answered, and send them your alerts.
+      const telegram = str(rawPrefs?.telegram).trim();
+      if (telegram) {
+        const whose = personOf(principal);
+        const holder = await hub.telegramPerson(telegram);
+        if ((holder !== null && holder !== whose) || (env.TELEGRAM_CHAT_ID === telegram && whose !== OWNER)) {
+          return err(409, "that Telegram chat is someone else's here; message the bot from your own and it tells you yours");
+        }
+      }
       if (b.haToken !== undefined) {
         // Their own Home Assistant user: checked with the house before it is kept, and kept for that address (lib/context.ts).
         const token = str(b.haToken).trim();

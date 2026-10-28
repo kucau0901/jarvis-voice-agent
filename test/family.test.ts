@@ -362,8 +362,19 @@ console.log("\neach person's own choices");
   check("a birthday that is not a day that has been, or a nickname that is not a name, is refused", bad.every((r) => r.status === 400), bad.map((r) => r.body));
   const about = await call("/api/hub/me", { prefs: { nickname: "Kak Sara", birthday: "1990-04-02" } }, { method: "PATCH", principal: admin });
   check("good ones are kept: a nickname and a birthday", about.status === 200 && about.body.prefs.nickname === "Kak Sara" && about.body.prefs.birthday === "1990-04-02", about.body);
-  const ok = await call("/api/hub/me", { prefs: { voice: "marin", language: "ms", telegram: "123456" } }, { method: "PATCH", principal: admin });
-  check("good ones are kept", ok.status === 200 && ok.body.prefs.voice === "marin" && ok.body.prefs.telegram === "123456");
+  // Siti's chat is 123456 (above): one chat is one person's.
+  const taken = await call("/api/hub/me", { prefs: { telegram: "123456" } }, { method: "PATCH", principal: admin });
+  check("another person's Telegram chat is refused", taken.status === 409 && /someone else's/.test(taken.body.error), taken.body);
+  const dina = (await who((await join((await call("/api/hub/invites", { role: "adult", name: "Dina" }, { principal: admin })).body.token, "Dina")).done.body.token))!;
+  const withChat = async (principal: Principal) => {
+    const req = new Request(SITE + "/api/hub/me", { method: "PATCH", headers: { origin: SITE, "content-type": "application/json" }, body: JSON.stringify({ prefs: { telegram: "777777" } }) });
+    return (await handleHub(req, { ...(env as object), TELEGRAM_CHAT_ID: "777777" } as never, principal)).status;
+  };
+  check("and so is the family's own chat, but for the first person", (await withChat(dina)) === 409 && (await withChat(admin)) === 200);
+  const ok = await call("/api/hub/me", { prefs: { voice: "marin", language: "ms", telegram: "654321" } }, { method: "PATCH", principal: admin });
+  check("good ones are kept", ok.status === 200 && ok.body.prefs.voice === "marin" && ok.body.prefs.telegram === "654321");
+  const again = await call("/api/hub/me", { prefs: { telegram: "654321" } }, { method: "PATCH", principal: admin });
+  check("their own again is fine", again.status === 200);
   const owner = await call("/api/hub/me", { prefs: { voice: "marin" } }, { method: "PATCH", principal: OWNER });
   check("the owner key has no choices of its own", owner.status === 400);
 
