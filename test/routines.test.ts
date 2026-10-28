@@ -843,6 +843,10 @@ console.log("\npage watches: one look");
   check("JSON as it is", pageText('{"aqi":175}', "application/json") === '{"aqi":175}');
   check("a public https address only",
     !!pageUrl("https://air.example.gov/x") && !pageUrl("http://air.example.gov/x") && !pageUrl("https://10.0.0.4/") && !pageUrl("https://172.20.1.1/") && !pageUrl("https://nas.local/") && !pageUrl("not a url"));
+  const house = ["https://localhost./", "https://router.lan/", "https://nas.home.arpa/", "https://ha.localhost/", "https://[::1]/", "https://[fd00::4]/", "https://[::ffff:10.0.0.4]/",
+    "https://0.0.0.0/", "https://100.101.102.103/", "https://2130706433/", "https://0x7f.1/", "https://0177.0.0.1/"];
+  check("…written any way: a trailing dot, IPv6, 0.0.0.0, a tailnet's 100.64/10, an address as one number", house.every((u) => !pageUrl(u)), house.filter((u) => pageUrl(u)));
+  check("while a public name near those is fine", !!pageUrl("https://lan.example.com/") && !!pageUrl("https://100.example.com/") && !!pageUrl("https://1.1.1.1/"));
   const yes = verdictOf("**YES**\nAPI 175 at 3 PM.");
   check("the model's two lines", yes.state === true && yes.text === "API 175 at 3 PM." && verdictOf("NO\nAPI 80").state === false && verdictOf("UNKNOWN\n").state === null);
 
@@ -864,6 +868,21 @@ console.log("\npage watches: one look");
   const gone = await lookAtPage(env, "https://air.example.gov/springfield", "q", "c", page("", 404), model("YES"));
   const drawn = await lookAtPage(env, "https://air.example.gov/springfield", "q", "c", page("<div id=app></div><script>render()</script>"), model("YES"));
   check("a page that cannot be read costs nothing", gone.state === null && gone.error === "the page answered 404" && drawn.state === null && /no words/.test(drawn.error ?? "") && told.length === 0, { gone, drawn });
+  // A public page that redirects: followed while each address is one Jarvis looks at, never on into the house.
+  const hops = (to: Record<string, string>) =>
+    (async (u: unknown, init?: RequestInit) => {
+      fetched.push(`${String(u)} ${init?.redirect}`);
+      const next = to[String(u)];
+      return next ? new Response(null, { status: 302, headers: { location: next } }) : new Response(html, { headers: { "content-type": "text/html" } });
+    }) as typeof fetch;
+  fetched.length = 0;
+  const moved = await lookAtPage(env, "https://air.example.gov/old", "q", "c", hops({ "https://air.example.gov/old": "/springfield" }), model("YES\nAPI 175"));
+  check("a redirect to another public page is followed, by hand", moved.state === true && fetched.join() === "https://air.example.gov/old manual,https://air.example.gov/springfield manual", fetched);
+  fetched.length = 0;
+  const inward = await lookAtPage(env, "https://air.example.gov/old", "q", "c", hops({ "https://air.example.gov/old": "http://192.168.1.2/admin" }), model("YES"));
+  check("one into the house is not", inward.state === null && /does not look at/.test(inward.error ?? "") && fetched.length === 1, { inward, fetched });
+  const loop = await lookAtPage(env, "https://air.example.gov/a", "q", "c", hops({ "https://air.example.gov/a": "/b", "https://air.example.gov/b": "/a" }), model("YES"));
+  check("nor one that goes round for ever", loop.state === null && /does not look at/.test(loop.error ?? ""), loop);
   const unsure = await lookAtPage(env, "https://air.example.gov/springfield", "q", "c", page(html), model("UNKNOWN\nThe page has no reading."));
   check("a page that does not say is said so", unsure.state === null && unsure.error === "the page did not say");
   // "Alert me" once kept "200" as it was typed, and a model asked whether "200" is true said YES to 158.

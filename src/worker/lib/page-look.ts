@@ -17,6 +17,8 @@ import { DEFAULT_ROUTER_MODEL } from "./router-model.ts";
 const MAX_TEXT = 12_000;
 /** What is fetched of a page, at most, before it is boiled down. */
 const MAX_FETCH = 600_000;
+/** Redirects followed, at most: each to an address checked as the first was. */
+const MAX_HOPS = 5;
 
 export interface PageLook {
   /** Whether the condition holds now; null when the page does not say, or could not be read. */
@@ -47,7 +49,12 @@ export function pageText(body: string, type: string): string {
     .slice(0, MAX_TEXT);
 }
 
-/** A public https page only: never an address on the house's own network. */
+/**
+ * A public https page only: never an address on the house's own network,
+ * which Jarvis in Docker can reach. By name or by number: an IPv6 address
+ * written out is never a public page's, and the URL parser has already made
+ * any other way of writing an IPv4 one (2130706433, 0x7f.1) the dotted form.
+ */
 export function pageUrl(raw: string): URL | null {
   let url: URL;
   try {
@@ -55,8 +62,14 @@ export function pageUrl(raw: string): URL | null {
   } catch {
     return null;
   }
-  const host = url.hostname;
-  const local = host === "localhost" || /^(127|10|192\.168|169\.254)\./.test(host) || /^172\.(1[6-9]|2\d|3[01])\./.test(host) || host.endsWith(".local") || host.endsWith(".internal");
+  const host = url.hostname.replace(/\.$/, "");
+  const local =
+    host === "localhost" ||
+    host.startsWith("[") ||
+    /^(0|127|10|192\.168|169\.254)\./.test(host) ||
+    /^172\.(1[6-9]|2\d|3[01])\./.test(host) ||
+    /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(host) ||
+    /\.(localhost|local|internal|lan|home\.arpa)$/.test(host);
   return url.protocol === "https:" && !local && !url.username && !url.password ? url : null;
 }
 
@@ -96,11 +109,21 @@ export async function lookAtPage(
   let body: string;
   let type: string;
   try {
-    const res = await fetchImpl(url.toString(), {
-      headers: { accept: "text/html,application/json;q=0.9,*/*;q=0.5", "user-agent": "Jarvis home assistant (alert check)" },
-      redirect: "follow",
-      signal: AbortSignal.timeout(15_000),
-    });
+    // Redirects one at a time, so a public page cannot send the look on to the house's own network.
+    let at = url;
+    let res: Response;
+    for (let hop = 0; ; hop++) {
+      res = await fetchImpl(at.toString(), {
+        headers: { accept: "text/html,application/json;q=0.9,*/*;q=0.5", "user-agent": "Jarvis home assistant (alert check)" },
+        redirect: "manual",
+        signal: AbortSignal.timeout(15_000),
+      });
+      const to = res.status >= 300 && res.status < 400 ? res.headers.get("location") : null;
+      if (!to) break;
+      const next = hop < MAX_HOPS ? pageUrl(new URL(to, at).toString()) : null;
+      if (!next) return { state: null, text: "", error: "the page sent Jarvis on to an address it does not look at" };
+      at = next;
+    }
     if (!res.ok) return { state: null, text: "", error: `the page answered ${res.status}` };
     type = res.headers.get("content-type") ?? "";
     body = (await res.text()).slice(0, MAX_FETCH);

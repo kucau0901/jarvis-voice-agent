@@ -129,6 +129,12 @@ of every release, and in the [README](README.md#updating).
   quoted a token in the form Home Assistant's take (a JWT) showed it in
   Settings and the logs; so could an MCP server's error in Settings → MCP
   servers. Both are now cut to `eyJ***`, as OpenAI keys already were.
+- **A page watch never looks inside your home network.** A watched page
+  could redirect Jarvis to an address on the home network, which Jarvis in
+  Docker can reach, and the alert said what it read there. Each redirect is
+  now checked as the first address is, and addresses written as IPv6,
+  `0.0.0.0`, a Tailscale `100.x` one, `.lan`, `.home.arpa` or `localhost.`
+  are refused too.
 
 ## [2.5.0] - 2026-10-22
 
