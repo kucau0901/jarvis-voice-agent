@@ -55,7 +55,7 @@ function check(name: string, cond: boolean, got?: unknown) {
 console.log("reading, not acting");
 {
   for (const n of ["recall", "car_state", "mail_search", "calendar_check", "look_at_camera", "directions", "job_results"]) check(`${n}: yes`, jobTool({ name: n }));
-  for (const n of ["car_command", "mail_send", "mail_manage", "calendar_add", "control_home", "remember", "forget", "send_note", "routine_add", "ask_hermes", "start_job", "music_play", "show_camera"]) {
+  for (const n of ["car_command", "mail_send", "mail_manage", "calendar_add", "calendar_change", "control_home", "remember", "forget", "send_note", "routine_add", "ask_hermes", "start_job", "music_play", "show_camera"]) {
     check(`${n}: no`, !jobTool({ name: n }));
   }
   const ha = {

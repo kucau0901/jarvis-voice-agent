@@ -7,6 +7,7 @@
 const DOING: Record<string, string> = {
   calendar_check: "Checking your calendar",
   calendar_add: "Adding to your calendar",
+  calendar_change: "Changing your calendar",
   mail_check: "Checking your mail",
   mail_search: "Searching your mail",
   mail_send: "Sending that email",

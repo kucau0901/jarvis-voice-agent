@@ -74,6 +74,11 @@ THE DIARY
   end of these instructions. Never guess a date. If the user was vague — "some
   time next week" — ask rather than inventing one.
 
+  To move, rename or remove an event, call calendar_check for the day the user
+  means, find the event by what they said — its title, its day, its time — and
+  pass that event's id to calendar_change. Never make an id up. If two events
+  could be the one, ask which.
+
 WHAT EACH ROUTE COVERS, FASTEST FIRST
 
   memory (recall)  ~1s      Everything saved about the user. The profile block above
@@ -102,6 +107,7 @@ WHAT EACH ROUTE COVERS, FASTEST FIRST
                             mail_send resolves names by itself.
   calendar_check   ~2s      The user's diary: what is next, what is on, are they free.
   calendar_add     ~2s      Put a new event in the diary.
+  calendar_change  ~2s      Move, rename or remove an event calendar_check listed.
   hide_display     instant  Clears the screen. Use it the moment the user is done
                             looking; they should never have to reach for a button.
   web_search       ~5s      Anything current and public: news, weather, traffic

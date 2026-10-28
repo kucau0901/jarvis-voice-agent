@@ -39,7 +39,8 @@ function check(name: string, cond: boolean, got?: unknown) {
 // ask_hermes: never the house, the car or Home Assistant's entities (20 Oct 2026).
 // Inputs of admin, adult and child: a waiting family message is now quoted as its sender's (28 Oct 2026).
 // The answer's language: the user's latest message, never a page's, a tool's or its own (21 Oct 2026).
-const PROMPT_SHA256 = "4c052dbb87c29e01adabcd5415e9c422214ec78828dafe87cdf2cbb5f301155b";
+// calendar_change added to THE DIARY and the table of routes, after calendar_add (28 Oct 2026).
+const PROMPT_SHA256 = "17807f8e27b821bd10e43ffd32e140c4bea9ce6fcaa2a88320c06d970e243706";
 // panel_set and panel_remove (tools/panels.ts, scope screen): everyone but the guest (14 Oct 2026).
 // look_back (tools/conversation.ts, scope memory.read): everyone but the guest (16 Oct 2026).
 // panel_list (tools/panels.ts, scope screen): everyone but the guest (16 Oct 2026).
@@ -49,6 +50,7 @@ const PROMPT_SHA256 = "4c052dbb87c29e01adabcd5415e9c422214ec78828dafe87cdf2cbb5f
 // make_page (tools/page.ts, scope screen): everyone but the guest (21 Oct 2026).
 // alert_talk (tools/alerts.ts, scope alerts): everyone but the guest, the owner key told it is no person's (27 Oct 2026).
 // reply_family_room (tools/family.ts, scope chat, with a family): as pass_on (27 Oct 2026).
+// calendar_change (tools/calendar.ts, scope calendar): as calendar_add (28 Oct 2026).
 const EXPECTED: Record<string, { model: string; tools: string[]; input: string }> = {
  "owner key, nothing set up": {
   "model": "gpt-6-luna",
@@ -82,6 +84,7 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
    "answer_message",
    "ask_hermes",
    "calendar_add",
+   "calendar_change",
    "calendar_check",
    "car_command",
    "car_state",
@@ -130,6 +133,7 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
    "alert_talk",
    "answer_message",
    "calendar_add",
+   "calendar_change",
    "calendar_check",
    "car_command",
    "car_state",
@@ -177,6 +181,7 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
    "alert_talk",
    "answer_message",
    "calendar_add",
+   "calendar_change",
    "calendar_check",
    "car_command",
    "car_state",

@@ -795,6 +795,17 @@ it is missed. `calendar_add` refuses anything that is not a full ISO 8601
 timestamp with an offset, and refuses a start more than a day in the past, since
 that is a wrong year far more often than it is a real booking.
 
+`calendar_change` moves, renames or removes one event, by the id
+`calendar_check` listed beside it: the router finds the event there from what
+was said (title, day, time) and never makes an id up, and one the calendar
+does not have changes nothing. `calendar.events` already allows this, so no one
+links again. A moved event keeps its length; one time of a repeating event is
+changed alone. Only the person's own events are moved or renamed: someone
+else's meeting can be taken out of their calendar, and goes ahead for its
+other guests. Guests are never emailed (`sendUpdates=none`), and the reply
+says so, since telling them is mail sent in the person's name. The reply names
+the event by its time, not its title, which whoever sent the invitation wrote.
+
 Contacts is read-only and exists to answer exactly one question: which address
 does "Sam" mean. Without it `mail_send` can only refuse a name — which it
 should, because guessing an address is how private mail reaches a stranger. With

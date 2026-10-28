@@ -178,6 +178,7 @@ console.log("\na run, against Gmail and the calendar");
     const ev = state.inserted[0] as { summary?: string; location?: string; start?: { dateTime?: string; timeZone?: string }; reminders?: { useDefault?: boolean; overrides?: { method: string; minutes: number }[] } } | undefined;
     check("put in the calendar, in their zone, with its link and a reminder", state.inserted.length === 1 && ev?.summary === "Meeting direct1" && ev.location === "https://meet.google.com/abc-defg-hij" && ev.start?.dateTime === new Date(at(15, 30)).toISOString() && ev.start.timeZone === TZ && ev.reminders?.useDefault === false && ev.reminders.overrides?.[0]?.minutes === REMIND_MIN, ev);
     check("…and said", typeof run !== "string" && (meetingsSaid(run, TZ) ?? "").includes("“Meeting direct1”, Thu 22 Oct, 15:30 (from Dr Aminah)"), typeof run !== "string" && meetingsSaid(run, TZ));
+    check("…offering to move or remove them, not sending them to Google Calendar", typeof run !== "string" && /Ask me to move or remove any of them\.$/.test(meetingsSaid(run, TZ) ?? "") && !/Google Calendar/.test(meetingsSaid(run, TZ) ?? ""), typeof run !== "string" && meetingsSaid(run, TZ));
     check("its reading counted", typeof run !== "string" && run.usage?.input === 500 && run.usage.output === 60);
     const again = await runMeetings(deps, NOW + 3_600_000);
     check("an hour later: nothing new is read, and no model is asked", typeof again !== "string" && again.read === 0 && asks.length === 1 && state.inserted.length === 1 && meetingsSaid(again, TZ) === null, again);

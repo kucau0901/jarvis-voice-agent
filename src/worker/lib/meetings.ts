@@ -222,7 +222,7 @@ const when = (t: number, timeZone: string) =>
 export function meetingsSaid(run: MeetingsRun, timeZone: string): string | null {
   if (!run.added.length) return null;
   const lines = run.added.map((m) => `- “${m.title}”, ${when(m.start, timeZone)} (from ${m.from})`);
-  return `Added to your calendar, each with a reminder ${REMIND_MIN} minutes before:\n${lines.join("\n")}\n\nChange or remove them in Google Calendar.`;
+  return `Added to your calendar, each with a reminder ${REMIND_MIN} minutes before:\n${lines.join("\n")}\n\nAsk me to move or remove any of them.`;
 }
 
 /**

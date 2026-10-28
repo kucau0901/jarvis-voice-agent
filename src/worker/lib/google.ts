@@ -69,8 +69,9 @@ const accessKey = (env: Env) => (bookOf(env.JARVIS_PERSON) ? `${ACCESS_KEY}:${bo
  * server: another service costs three lines here and a tool file, not another
  * deployment, another credential and another consent.
  *
- * `calendar.events` covers reading and creating events but NOT deleting a whole
- * calendar — the broader `calendar` scope does that, and is not requested.
+ * `calendar.events` covers reading, creating, changing and removing events but
+ * NOT deleting a whole calendar — the broader `calendar` scope does that, and is
+ * not requested.
  * `contacts.readonly` exists to answer one question: what address does "Sam"
  * mean? Without it `mail_send` can only refuse a name, which it should, because
  * guessing an address is how private mail reaches a stranger.

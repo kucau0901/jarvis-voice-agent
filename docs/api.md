@@ -155,7 +155,7 @@ existence, or argued around.
 | `hermes` | `ask_hermes`, `control_home`: Hermes can run commands on its machine, so sharing the house never shares it. A device made before 2.0 with `home` keeps it. |
 | `media` | Spotify. |
 | `mail` | Gmail: `mail_check`, `mail_search`, `mail_send`, `mail_manage`, `contacts_lookup`. Reads, sends, replies, drafts, trashes and archives — there is no read-only half. Also reads Google Contacts to turn a name into an address. |
-| `calendar` | Google Calendar: `calendar_check`, `calendar_add`. Reads the diary **and creates events**. |
+| `calendar` | Google Calendar: `calendar_check`, `calendar_add`, `calendar_change`. Reads the diary **and creates, moves, renames and removes events**. |
 | `screen` | `show_place`, `hide_display`, `/api/map`, `make_image` and `/api/image` (pictures Jarvis makes), `make_page` and `/api/page` (pages Jarvis makes), and a person's panels (`panel_set`, `panel_remove`, `/api/hub/panels`). |
 | `voice` | `/api/session`, `/api/tts`, `/api/voices`, and push-to-talk `/api/v1/voice` (which also needs `ask`). |
 | `ask` (jobs) | `/api/v1/jobs`, `/api/v1/jobs/cancel`, `start_job`. A job for Hermes also needs `hermes`. Each job runs with its creator's grants, no more than they hold now; it reads with their reading tools, and what it would do is proposed for their tap (or done at once, for a reversible kind they allowed). |

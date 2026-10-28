@@ -31,6 +31,13 @@ of every release, and in the [README](README.md#updating).
   goes to whoever wrote it (the default) or into the room. The device API's
   alerts carry `talk` for this, and `/api/session` takes an `opening` alert
   for a Live session that starts by saying it (docs/api.md).
+- **Jarvis moves, renames and removes calendar events.** "Remove the dentist
+  tomorrow" or "move my 10 am to 11": Jarvis finds the event in your
+  calendar by what you said and changes it, keeping its length; one time of a
+  repeating event is changed alone. Someone else's meeting can be taken out
+  of your calendar but not moved, and guests are not emailed. Meetings from
+  mail now ends with "Ask me to move or remove any of them". The Google
+  permission you granted already covers this: nothing to link again.
 
 ### Changed
 
