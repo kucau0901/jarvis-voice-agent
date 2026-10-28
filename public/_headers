@@ -1,9 +1,13 @@
 # Headers for the app and its files, served as static assets (the Worker's own
 # replies, under /api/, set theirs in code: lib/http.ts). Only what cannot break
-# a feature: no other site may frame Jarvis to trick a click out of someone, no
-# file is read as a type it is not, and no <base> or plugin can be slipped in.
+# a feature: browsers keep to https for this address (Jarvis needs a secure page
+# anyway, for the microphone and passkeys), no other site may frame Jarvis to
+# trick a click out of someone, no file is read as a type it is not, and no
+# <base> or plugin can be slipped in. HSTS has no includeSubDomains: other sites
+# may share the domain, and they are not Jarvis's to decide.
 # A script and connect policy would have to list every source the app reaches
 # (OpenAI, Google, Spotify's images, a family's own MCP servers), so it has none.
 /*
+  Strict-Transport-Security: max-age=31536000
   Content-Security-Policy: frame-ancestors 'self'; base-uri 'self'; object-src 'none'
   X-Content-Type-Options: nosniff
