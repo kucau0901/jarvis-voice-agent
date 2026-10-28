@@ -213,6 +213,15 @@ export async function list(env: Env): Promise<Device[]> {
  * Mint one. The returned token is the ONLY time it exists in readable form;
  * everything stored is a digest, so it genuinely cannot be recovered later.
  */
+/** A person's devices at most, revoked ones not counted: each costs KV writes, which the free plan has 1,000 a day of. */
+export const MAX_PER_PERSON = 30;
+
+/** Whether a person may have another device (`owner` as create() takes it: none for the first person). */
+export async function roomFor(env: Env, owner: string | undefined): Promise<boolean> {
+  const whose = owner && owner !== "owner" ? owner : "owner";
+  return (await list(env)).filter((d) => !d.revokedAt && (d.owner ?? "owner") === whose).length < MAX_PER_PERSON;
+}
+
 export async function create(
   env: Env,
   name: string,

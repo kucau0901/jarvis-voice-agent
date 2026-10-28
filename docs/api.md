@@ -223,6 +223,7 @@ curl -X PATCH .../api/v1/devices -H "X-Jarvis-Key: $OWNER" \
 ```
 
 Re-scoping keeps the token, so a device can be reined in without being reflashed.
+A person may have 30 devices that are not revoked; a guest may make none.
 Revoking is permanent — a token nobody should trust is not worth resurrecting.
 
 **Revocation takes up to 60 seconds** to be felt everywhere, because credential

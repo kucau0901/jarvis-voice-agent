@@ -344,6 +344,8 @@ async function handleDevices(req: Request, env: Env, principal: Principal): Prom
   const body = parsed.body ?? {};
 
   if (req.method === "POST") {
+    // A guest's access ends with their pass; a device of theirs would outlive it.
+    if (principal.kind === "member" && principal.role === "guest") return err(403, "a guest cannot make devices");
     const name = typeof body.name === "string" ? body.name.trim() : "";
     if (!name) return err(400, "name is required");
 
@@ -357,6 +359,7 @@ async function handleDevices(req: Request, env: Env, principal: Principal): Prom
     const owner = admin && typeof body.owner === "string" && family.some((p) => p.person === body.owner) ? body.owner : me;
     // A device of the first person's acts as the owner: only the owner key, or they, make one (routes/hub.ts).
     if (owner === OWNER && me !== OWNER) return err(403, "only the owner key can make a device for the person who set up the family");
+    if (!(await devices.roomFor(env, owner))) return err(409, `${devices.MAX_PER_PERSON} devices is the most a person may have; revoke one first`);
 
     const { device, token } = await devices.create(env, name, scopes, expiresAt, owner);
     return json(

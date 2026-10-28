@@ -11,6 +11,7 @@ import {
   update,
   TOKEN_PREFIX,
 } from "../src/worker/lib/devices.ts";
+import { MAX_PER_PERSON, roomFor } from "../src/worker/lib/devices.ts";
 import { originAllowed, corsHeaders } from "../src/worker/lib/cors.ts";
 import { Collector } from "../src/worker/lib/collector.ts";
 import { authorize } from "../src/worker/lib/auth.ts";
@@ -269,6 +270,17 @@ console.log("\ntouch() cannot undo what the owner just did");
 
   await remove(env, glasses.device.id);
   check("removing a device removes its last-seen record", ![...kv.keys()].some((k) => k === `dev:seen:${glasses.device.id}`));
+}
+
+console.log("\neach person's devices are limited, the revoked not counted");
+{
+  const env = fakeEnv() as never;
+  for (let i = 0; i < MAX_PER_PERSON; i++) await create(env, `kid ${i}`, ["ask"], undefined, "u_kid");
+  check("a person at the limit has no room", !(await roomFor(env, "u_kid")));
+  check("…another person still has", await roomFor(env, "u_sara") && (await roomFor(env, undefined)));
+  const first = (await list(env)).find((d) => d.owner === "u_kid")!;
+  await update(env, first.id, { revoked: true });
+  check("revoking one makes room", await roomFor(env, "u_kid"));
 }
 
 console.log("\na device and its person's routines and jobs (lib/context.ts mayWork)");

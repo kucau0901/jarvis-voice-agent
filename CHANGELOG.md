@@ -97,6 +97,11 @@ of every release, and in the [README](README.md#updating).
   member, a guest included, could stop everyone else starting jobs, or push
   their finished results out. They are now counted per person, and so are
   routines (50 each, 10 watches, 10 pages watched).
+- **Devices and app connections have limits.** A person may have 30
+  devices (revoked ones not counted), and a guest may make none or connect
+  none, since a guest's device would outlive their pass. Apps waiting to
+  connect (Grok's sign-in) are limited to five per person, so one member
+  can no longer block everyone's.
 
 ## [2.5.0] - 2026-10-22
 

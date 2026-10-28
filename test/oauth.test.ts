@@ -108,7 +108,8 @@ console.log("codes");
   const full = new OAuthCodes(fakeStorage());
   let made = 0;
   for (let i = 0; i < 25; i++) if (await full.issue(grant, T0)) made++;
-  check("at most twenty wait at once", made === 20, made);
+  check("at most five of a person's wait at once", made === 5, made);
+  check("…and they never crowd out another person's", (await full.issue({ ...grant, person: "u_other" }, T0)) !== null);
   check("and room comes back once they are stale", (await full.issue(grant, T0 + CODE_MS + 1)) !== null);
 }
 

@@ -17,8 +17,8 @@ import type { Storage } from "./state-host.ts";
  */
 
 export const CODE_MS = 5 * 60_000;
-/** Codes waiting to be traded at once: only a signed-in person makes one. */
-const MAX_CODES = 20;
+/** A person's codes waiting to be traded at once: one member's cannot crowd out another's. */
+const MAX_CODES = 5;
 const PREFIX = "oauth:code:";
 
 /** What the client asked for, as it came to the authorization endpoint. */
@@ -98,7 +98,7 @@ export class OAuthCodes {
     let live = 0;
     for (const [k, c] of await this.storage.list<CodeGrant>({ prefix: PREFIX })) {
       if (c.exp < now) await this.storage.delete(k);
-      else live++;
+      else if (c.person === g.person) live++;
     }
     if (live >= MAX_CODES) return null;
     const code = b64u(crypto.getRandomValues(new Uint8Array(32)));

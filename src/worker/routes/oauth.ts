@@ -34,6 +34,9 @@ export async function handleConnect(req: Request, env: Env, principal: Principal
   if (!body) return err(400, "body must be a JSON object");
   const r = readAuthRequest(new URLSearchParams(typeof body.request === "string" ? body.request : ""));
   if (typeof r === "string") return err(400, r);
+  // Allowing makes a device of theirs (handleToken): not for a guest, and not past a person's limit.
+  if (principal.kind === "member" && principal.role === "guest") return err(403, "a guest cannot connect apps");
+  if (!(await devices.roomFor(env, personOf(principal)))) return err(409, `${devices.MAX_PER_PERSON} devices is the most a person may have; revoke one first`);
   const scopes = saneGrants(body.scopes);
   if (!scopes.length) return err(400, "pick at least one thing it may do");
   const hub = hubStub(env);
