@@ -95,7 +95,8 @@ of every release, and in the [README](README.md#updating).
 - **Each person's limits are their own.** Background jobs (3 running, 30
   a day, the 30 newest kept) were counted for the whole family, so one
   member, a guest included, could stop everyone else starting jobs, or push
-  their finished results out. They are now counted per person.
+  their finished results out. They are now counted per person, and so are
+  routines (50 each, 10 watches, 10 pages watched).
 
 ## [2.5.0] - 2026-10-22
 

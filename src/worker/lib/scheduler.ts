@@ -132,7 +132,8 @@ export class Scheduler {
   async add(input: RoutineInput, by: { who: string; grants: readonly Grant[] }, now = Date.now()): Promise<Routine | string> {
     const deps = await this.deps();
     const { timeZone } = deps;
-    const all = await this.list();
+    // The maker's person's own: one member filling theirs blocks nobody else (lib/context.ts).
+    const all = (await this.list()).filter((r) => personOfWho(r.createdBy) === personOfWho(by.who));
     const built = buildRoutine(input, timeZone, now);
     if (!built.ok) return built.error;
 

@@ -631,6 +631,16 @@ console.log("\nwatches: tried before they are kept");
   check("ten at most", String(await h.s.add({ when: "watch", condition: GATE, say: "one more" }, OWNER, T0)).includes("already 10 watches"));
 }
 
+console.log("\nthe routine limits are each person's own");
+{
+  const h = harness();
+  const { MAX_ROUTINES } = await import("../src/worker/lib/routines.ts");
+  const kid = { who: "u_kid", grants: ["ask", "routines"] as const };
+  for (let i = 0; i < MAX_ROUTINES; i++) await h.s.add({ when: "daily", time: "07:00", say: `kid ${i}` }, kid, T0);
+  check("a member who fills theirs is stopped", String(await h.s.add({ when: "daily", time: "07:00", say: "one more" }, kid, T0)).includes(`already ${MAX_ROUTINES} routines`));
+  check("…and blocks nobody else", typeof (await h.s.add({ when: "daily", time: "08:00", say: "Stretch" }, OWNER, T0)) !== "string");
+}
+
 console.log("\na device revoked, deleted or narrowed: its routines");
 {
   const h = harness();
