@@ -28,6 +28,10 @@ of every release, and in the [README](README.md#updating).
   takes `chars`, the most a small display shows: the answer is written for
   it, as it is for G2 glasses through Even AI, plain text and cut to fit. The
   glasses app uses it to show Jarvis on Even Realities G2.
+- **What is asked through Even AI is in Chat.** A question to Jarvis on G2
+  glasses ("Hey Even, …") and its answer are kept in the person's
+  conversation, so Chat shows them, on the phone and the web, and a question
+  there afterwards follows on.
 
 ### Fixed
 

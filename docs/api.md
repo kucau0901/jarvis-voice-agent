@@ -818,7 +818,9 @@ and `car.control` are not needed.
    you expose to it (Settings → Voice assistants → Expose), so set the house's
    limits there. Switch this off with `HA_ASSIST=0` (formerly `G2_FASTPATH`).
 2. **Follow-ups.** The last six turns per device are kept for five minutes in the
-   Durable Object, so "turn it off" knows what "it" is.
+   Durable Object, so "turn it off" knows what "it" is. Each question and its
+   answer is also kept in the conversation of the person the token belongs
+   to (`GET /api/hub/conversation`), so Chat shows it.
 3. **Length.** The router is told the answer is going to the glasses, and the
    reply is cut at a sentence boundary to `G2_CHAR_BUDGET` characters (default
    350) with markdown and emoji removed.

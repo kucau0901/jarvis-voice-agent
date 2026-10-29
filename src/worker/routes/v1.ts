@@ -19,6 +19,7 @@ import * as devices from "../lib/devices.ts";
 import { handleLiveUsage } from "./usage.ts";
 import { originOf } from "../lib/shared.ts";
 import { mcpReply } from "../lib/mcp-server.ts";
+import { exchangeSaid } from "../lib/conversation.ts";
 import { canAsk } from "../lib/openai-auth.ts";
 import { handleConnect } from "./oauth.ts";
 import { JARVIS_VERSION } from "./version.ts";
@@ -238,7 +239,8 @@ async function handleMcp(
  *    "turn on the study light" in well under a second where the router takes
  *    8 to 11, and anything it does not understand reaches the router untouched.
  *  - The app sends only the latest message, so the last few exchanges are kept
- *    in the Durable Object and handed to the router as the conversation.
+ *    in the Durable Object and handed to the router as the conversation. Each
+ *    is in the person's Chat too, as if asked there.
  *  - Every outcome is a 200 with something readable in it. Anything else makes
  *    the glasses show a bare "AI server error", which tells the user nothing.
  *    Only a body that is not a chat request at all is refused.
@@ -281,8 +283,20 @@ async function handleChatCompletions(
   console.log(`g2: ${r.model ?? "-"} ${r.ok ? "ok" : r.error} ${d.ms}ms tools=${r.tools.join(",") || "-"}`);
   const answer = forGlasses(r.text || (r.ok ? "Done." : "Something went wrong."), budget);
   // A failed turn is not context worth carrying: the user will ask again.
-  if (r.ok) ctx.waitUntil(recordTurns(env, thread, text, answer));
+  if (r.ok) ctx.waitUntil(Promise.all([recordTurns(env, thread, text, answer), keepInChat(env, personOf(principal), text, answer)]));
   return reply(answer, r.model);
+}
+
+/** A question asked on glasses, and its answer, in the person's Chat too (lib/conversation.ts). Never throws. */
+async function keepInChat(env: Env, person: string, asked: string, answered: string): Promise<void> {
+  const state = stateStub(env);
+  if (!state) return;
+  const now = Date.now();
+  try {
+    await state.conversationAdd(person, exchangeSaid(`g_${crypto.randomUUID()}`, asked, answered, now), now);
+  } catch (e) {
+    console.warn("not kept in chat:", e instanceof Error ? e.message : String(e));
+  }
 }
 
 /** One thread per device and per member, and one for the owner key. */

@@ -3,7 +3,7 @@
 // what look_back finds in it (tools/conversation.ts), the route
 // (routes/conversation.ts), and what the app tells the model of it
 // (src/app/history.ts).
-import { alertSaid, asSaid, Conversation, FOUND, KEEP, KEEP_MS, lookBack, matching, MAX_CHARS, MAX_TEXT, REPEAT_MS, repeats, trimmed, type Said } from "../src/worker/lib/conversation.ts";
+import { alertSaid, asSaid, Conversation, exchangeSaid, FOUND, KEEP, KEEP_MS, lookBack, matching, MAX_CHARS, MAX_TEXT, REPEAT_MS, repeats, trimmed, type Said } from "../src/worker/lib/conversation.ts";
 import { lookBackTool } from "../src/worker/tools/conversation.ts";
 import { handleConversation } from "../src/worker/routes/conversation.ts";
 import { History, alertHistory } from "../src/app/history.ts";
@@ -103,6 +103,18 @@ console.log("\nwhat any other alert said");
   check("a family message is kept too, under who sent it, to be answered by voice", chat?.alert?.source === "chat" && chat.alert.title === "Sara, to the family", chat);
   check("only as long as a message is kept", alertSaid({ id: "a_l1", at: 50, title: "Jarvis", text: "x".repeat(MAX_TEXT + 10), source: "note" })?.text.length === MAX_TEXT);
   check("a screen cannot say a message is an alert's", !("alert" in (asSaid({ id: "x2", at: 1, role: "assistant", text: "hi", alert: { source: "api", title: "Bank" } }, 1) ?? {})));
+}
+
+console.log("\nwhat was asked on glasses (\"Hey Even\")");
+{
+  const pair = exchangeSaid("g_3f9a2c1d", "  what's the time in London? ", "It's 7:40 in the morning in London.", 70);
+  check("the question and its answer, in order, at the same time, by ids made from the exchange's",
+    JSON.stringify(pair) === JSON.stringify([
+      { id: "g_3f9a2c1d_q", at: 70, role: "user", text: "what's the time in London?" },
+      { id: "g_3f9a2c1d_a", at: 70, role: "assistant", text: "It's 7:40 in the morning in London." },
+    ]), pair);
+  check("only as long as a message is kept", exchangeSaid("g_3f9a2c1d", "x".repeat(MAX_TEXT + 10), "ok", 1)[0]?.text.length === MAX_TEXT);
+  check("an answer with nothing in it is left out", exchangeSaid("g_3f9a2c1d", "hello?", "  ", 1).length === 1);
 }
 
 console.log("\nthe same alert again, a moment later");

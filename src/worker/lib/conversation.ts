@@ -101,6 +101,18 @@ export function asSaid(raw: unknown, at: number): Said | null {
   };
 }
 
+/**
+ * A question asked on glasses through the Even app ("Hey Even",
+ * routes/v1.ts) and its answer, as kept in the person's conversation: Chat
+ * shows them, and what is said next on any screen of theirs follows on. Both
+ * ids grow from `id`, one made for the exchange.
+ */
+export function exchangeSaid(id: string, asked: string, answered: string, at: number): Said[] {
+  return [asSaid({ id: `${id}_q`, role: "user", text: asked }, at), asSaid({ id: `${id}_a`, role: "assistant", text: answered }, at)].filter(
+    (s): s is Said => !!s,
+  );
+}
+
 /** What one message takes of the person's MAX_CHARS: its words, and its links. */
 const size = (s: Said) => s.text.length + (s.links ?? []).reduce((n, l) => n + l.url.length + l.title.length, 0);
 

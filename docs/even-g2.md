@@ -181,6 +181,8 @@ In Jarvis, **Settings → Devices**:
 - **Text only, and short.** Answers are written for the display: the point
   first, about 350 characters, no formatting. Ask a follow-up for more.
 - **Follow-ups work** for five minutes: "turn it off", "and tomorrow?".
+- **It is in Chat.** What you ask and what Jarvis answers is in your
+  conversation with Jarvis, on the phone and the web, as if asked there.
 - **Any language.** The Even app transcribes what you say, Malay included,
   and Jarvis answers in the language you asked in.
 - **How long:** house commands through Assist, about a second. Most other
