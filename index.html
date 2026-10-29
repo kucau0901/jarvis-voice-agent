@@ -771,7 +771,8 @@
   .doc .doctitle { font-size: 1.1em; line-height: 1.3; }
   .doc .docfirst { color: var(--dim); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
   .doc .docopen { justify-self: start; }
-  #reader .sheet { max-width: 760px; }
+  /* Wider than a panel's 680px; as its padding, not a max-width, which that padding (a share of the screen) fills. */
+  #reader .sheet { padding-inline: max(16px, calc((100% - 760px) / 2)); }
   #reader .reading { font-size: 16px; line-height: 1.6; color: var(--fg); }
   #reader .reading .md h3 { font-size: 1.3em; } #reader .reading .md h4 { font-size: 1.12em; }
   /* A page Jarvis made (pageCard.ts), under the answer that made it. */

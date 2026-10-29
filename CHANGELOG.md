@@ -25,6 +25,8 @@ of every release, and in the [README](README.md#updating).
 
 ### Fixed
 
+- **A document opened from Chat is readable on a wide screen.** Wider than
+  about 760 pixels, its title, buttons and words stood one word to a line.
 - **An event earlier today can be moved or removed.** Jarvis looked at today
   only from the time you asked, so one already over (a 10 am meeting, asked
   about at 2 pm) was not found, and could not be removed. Today is now the
