@@ -89,10 +89,11 @@ interface Envelope {
  * over, never something to show the user. Every failure is a hand-over too: a
  * slow or broken Home Assistant must cost the fast path, not the question.
  *
- * A `query_answer` counts only when it is about something in the house, which
- * Assist lists in `data.success`. One about nothing there is its clock or
- * calendar, which matches "what time is it in London?" and answers with the
- * time at home; the router knows the time anywhere.
+ * Either counts only when it is about something in the house, which Assist
+ * lists in `data.success` (or `data.failed`, for what it could not do). One
+ * about nothing there is its clock or calendar, which matches "what time is
+ * it in London?" and answers, as `action_done`, with the time at home; the
+ * router knows the time anywhere.
  */
 export async function tryAssist(
   cfg: AssistConfig,
@@ -129,15 +130,13 @@ export async function tryAssist(
     return { handled: false, reason: "no_match", ms: ms() };
   }
 
-  if (kind === "query_answer" && !env.response?.data?.success?.length) return { handled: false, reason: "not_house", ms: ms() };
+  const done = env.response?.data?.success?.length ?? 0;
+  const failed = env.response?.data?.failed?.length ?? 0;
+  if (!done && !failed) return { handled: false, reason: "not_house", ms: ms() };
 
   let speech = env.response?.speech?.plain?.speech?.trim() ?? "";
   // Some versions finish an action without saying anything.
-  if (!speech && kind === "action_done") {
-    const failed = env.response?.data?.failed?.length ?? 0;
-    const done = env.response?.data?.success?.length ?? 0;
-    speech = failed ? `${done} done, ${failed} failed.` : "Done.";
-  }
+  if (!speech && kind === "action_done") speech = failed ? `${done} done, ${failed} failed.` : "Done.";
   if (!speech) return { handled: false, reason: "no_match", ms: ms() };
 
   return { handled: true, text: speech, kind, ms: ms() };

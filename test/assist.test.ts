@@ -60,7 +60,8 @@ console.log("\nwhat is put to Assist");
 
 console.log("\nasking Assist");
 {
-  const { f, calls } = fakeFetch(envelope("action_done", "Turned on the lights"));
+  const lights = { success: [{ name: "Study", type: "area", id: "study" }, { name: "Study light", type: "entity", id: "light.study" }], failed: [] };
+  const { f, calls } = fakeFetch(envelope("action_done", "Turned on the lights", lights));
   const r = await tryAssist(CFG, "turn on the study light", f);
   check("an action it did is answered", r.handled && r.text === "Turned on the lights" && r.kind === "action_done", r);
 
@@ -76,9 +77,12 @@ console.log("\nasking Assist");
   const sensor = { success: [{ name: "Bedroom temperature", type: "entity", id: "sensor.bedroom_temperature" }], failed: [] };
   const r = await tryAssist(CFG, "what is the temperature", fakeFetch(envelope("query_answer", "26.0 degrees", sensor)).f);
   check("a question it can answer is answered", r.handled && r.text === "26.0 degrees" && r.kind === "query_answer", r);
-  // Its clock: no entity, and the time at home whatever place was asked about.
-  const clock = await tryAssist(CFG, "what time is it in London", fakeFetch(envelope("query_answer", "3:27 PM")).f);
-  check("an answer about nothing in the house (the time, the date) hands over", !clock.handled && clock.reason === "not_house", clock);
+  // Its clock: no entity, and the time at home whatever place was asked about, said as an action
+  // done, as the owner's Home Assistant did (29 Oct 2026).
+  for (const kind of ["action_done", "query_answer"]) {
+    const clock = await tryAssist(CFG, "what time is it in London", fakeFetch(envelope(kind, "3:27 PM")).f);
+    check(`an answer about nothing in the house (the time, the date) hands over: ${kind}`, !clock.handled && clock.reason === "not_house", clock);
+  }
 }
 {
   const miss = envelope("error", "Sorry, I am not aware of any device called capital of France", { code: "no_valid_targets" });
@@ -86,7 +90,8 @@ console.log("\nasking Assist");
   check("an error hands over and is never shown", !r.handled && r.reason === "no_match", r);
 }
 {
-  const r = await tryAssist(CFG, "turn on the fan", fakeFetch(envelope("action_done", "")).f);
+  const fan = { success: [{ name: "Fan", type: "entity", id: "fan.study" }], failed: [] };
+  const r = await tryAssist(CFG, "turn on the fan", fakeFetch(envelope("action_done", "", fan)).f);
   check("an action with no speech still reads as done", r.handled && r.text === "Done.", r);
   const partial = envelope("action_done", "", { success: [{ id: "a" }], failed: [{ id: "b" }] });
   const p = await tryAssist(CFG, "turn on the fans", fakeFetch(partial).f);
@@ -120,12 +125,12 @@ console.log("\nasking Assist");
 }
 {
   // Gates and doors go to Assist like anything else: what it may do is set in Home Assistant.
-  for (const [q, said] of [
-    ["open the main gate", "Opened the gate"],
-    ["close my main gate", "Closed the gate"],
-    ["unlock the front door", "Unlocked"],
+  for (const [q, said, id] of [
+    ["open the main gate", "Opened the gate", "cover.main_gate"],
+    ["close my main gate", "Closed the gate", "cover.main_gate"],
+    ["unlock the front door", "Unlocked", "lock.front_door"],
   ]) {
-    const { f, calls } = fakeFetch(envelope("action_done", said));
+    const { f, calls } = fakeFetch(envelope("action_done", said, { success: [{ name: q, type: "entity", id }], failed: [] }));
     const r = await tryAssist(CFG, q, f);
     check(`"${q}" is done by Assist`, r.handled && r.text === said && calls.length === 1, r);
   }
