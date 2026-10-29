@@ -21,6 +21,7 @@ import {
   type Spoken,
 } from "../lib/speech.ts";
 import { run } from "../lib/router.ts";
+import { charBudget, forGlasses } from "../lib/glasses.ts";
 import { MAX_PHOTOS, MAX_PHOTO_CHARS, photosFrom } from "../lib/photos.ts";
 import { dataUrl } from "../lib/cameras.ts";
 import { originOf, type Origin } from "../lib/shared.ts";
@@ -40,7 +41,9 @@ import { originOf, type Origin } from "../lib/shared.ts";
  *   Options: reply ("audio", default, or "text"), format ("mp3", "wav",
  *   "opus", "pcm"), thread (a short id: follow-ups are understood for five
  *   minutes), context (the conversation so far, instead of a thread), screen
- *   (true if there is somewhere to show a map), transcribe (true: only hear
+ *   (true if there is somewhere to show a map), chars (the most a small
+ *   display, such as glasses, shows: the answer is written to fit it, plain
+ *   text, and cut there), transcribe (true: only hear
  *   it, and send the words back as {ok, transcript, heardBy}, nothing answered
  *   or spoken: the chat box's dictation).
  *
@@ -57,6 +60,8 @@ interface Options {
   thread?: string;
   context?: unknown;
   screen: boolean;
+  /** The most a small display shows (glasses): the answer is written for it, as the G2 route's is. */
+  chars?: number;
   /** Only hear it: the words back, nothing answered or spoken (the chat box's dictation, src/app/ptt.ts). */
   transcribe: boolean;
   /** Which screen asked, for the conversation shared across devices (lib/shared.ts). */
@@ -86,6 +91,7 @@ function options(raw: Record<string, unknown>): Options {
     ...(thread ? { thread } : {}),
     ...(raw.context !== undefined ? { context: raw.context } : {}),
     screen: raw.screen === true || raw.screen === "1" || raw.screen === "true",
+    ...(raw.chars !== undefined && raw.chars !== null ? { chars: charBudget(String(raw.chars)) } : {}),
     transcribe: raw.transcribe === true || raw.transcribe === "1" || raw.transcribe === "true",
     ...(raw.origin !== undefined ? { origin: raw.origin } : {}),
   };
@@ -218,8 +224,10 @@ async function pipeline(
       return collector.isClosed;
     },
   };
+  const chars = input.opts.chars;
   await run(env, [...prior, { role: "user", text: transcript }], tee, signal, grants, {
-    surface: "voice",
+    // Read on a small display rather than heard: written for it (lib/glasses.ts).
+    ...(chars ? { surface: "glasses" as const, charBudget: chars } : { surface: "voice" as const }),
     assist: true,
     // A screen only when the caller has one to show a map on (RunOptions.screenless).
     ...(input.opts.screen ? {} : { screenless: true }),
@@ -227,7 +235,8 @@ async function pipeline(
     ...(input.waitUntil ? { waitUntil: input.waitUntil } : {}),
     ...(input.photos?.length ? { images: input.photos } : {}),
   });
-  const reply = collector.finish();
+  const finished = collector.finish();
+  const reply = chars ? { ...finished, text: forGlasses(finished.text, chars) } : finished;
 
   if (threadKey && state) {
     await state

@@ -351,7 +351,10 @@ Without that `Accept`, the answer is JSON:
 `{ok, transcript, text, tools, heardBy, audio: {format, mime, by, data}}`,
 `data` being base64. `{"text": "…"}` as JSON instead of a recording skips the
 hearing, for a device that recognised the speech itself; `reply=text` skips
-the speaking. The app sends `multipart/form-data` — an `audio` file and an
+the speaking. `chars=350` is for a device that shows the answer on a small
+display, such as glasses: the answer is written for it as for the
+[G2 route](#even-realities-g2-glasses) (the point first, plain text) and cut
+at a sentence to that many characters (80 to 2 000). The app sends `multipart/form-data` — an `audio` file and an
 `options` JSON field — with `Accept: text/event-stream`, and gets `transcript`,
 `progress`, `display`, `result`, then the answer's speech sentence by sentence
 as `audio` events, so it starts talking about a second after the words are

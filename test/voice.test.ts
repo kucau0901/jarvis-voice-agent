@@ -224,5 +224,32 @@ console.log("\ndictation: only heard (the chat box's mic)");
   answer = () => Response.json({ text: "hello" });
 }
 
+console.log("\nan answer for a small display (chars)");
+{
+  const ctx = { waitUntil() {}, passThroughOnException() {} } as never;
+  const owner = { kind: "owner" } as never;
+  const said =
+    "**Tomorrow** in Kuala Lumpur: thunderstorms in the afternoon, 24 to 33 degrees. Take an umbrella if you go out after lunch, because the rain usually comes at about three.";
+  answer = (url) =>
+    url.endsWith("/responses")
+      ? Response.json({ id: "r1", object: "response", status: "completed", output: [{ type: "message", id: "m1", role: "assistant", status: "completed", content: [{ type: "output_text", text: said, annotations: [] }] }], usage: { input_tokens: 1, output_tokens: 1 } })
+      : Response.json({});
+  const ask = async (opts: Record<string, unknown>) => {
+    calls = [];
+    const r = await handleVoice(new Request("https://j.test/api/v1/voice", { method: "POST", body: JSON.stringify({ text: "weather tomorrow?", reply: "text", ...opts }) }), env(), ctx, owner, ["*"] as never);
+    const told = calls.filter((c) => c.url.endsWith("/responses")).map((c) => String(c.init.body)).join("");
+    return { body: (await r.json()) as { text: string }, told };
+  };
+  const small = await ask({ chars: 100 });
+  check("the router is told it is read on glasses, and how much fits", /SHOWN ON SMART GLASSES/.test(small.told) && /under 100 characters/.test(small.told), small.told.slice(0, 200));
+  check("…not that it is spoken", !/word for word/.test(small.told));
+  check("the answer is plain text, cut at a sentence to fit", small.body.text === "Tomorrow in Kuala Lumpur: thunderstorms in the afternoon, 24 to 33 degrees.", small.body.text);
+  const tiny = await ask({ chars: 5 });
+  check("a budget too small to say anything is raised to the least", /under 80 characters/.test(tiny.told));
+  const spoken = await ask({});
+  check("without it, the answer is written to be spoken, whole", /word for word/.test(spoken.told) && !/SHOWN ON SMART GLASSES/.test(spoken.told) && spoken.body.text === said, spoken.body.text);
+  answer = () => Response.json({ text: "hello" });
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

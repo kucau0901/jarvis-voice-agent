@@ -24,6 +24,10 @@ of every release, and in the [README](README.md#updating).
   clinic or a shop, or the street address where nothing named is near, with
   the Maps key it already has. It said it could not. A lookup is Google's
   Nearby Search, a few cents each.
+- **Answers for glasses with a display, from any device.** `/api/v1/voice`
+  takes `chars`, the most a small display shows: the answer is written for
+  it, as it is for G2 glasses through Even AI, plain text and cut to fit. The
+  glasses app uses it to show Jarvis on Even Realities G2.
 
 ### Fixed
 

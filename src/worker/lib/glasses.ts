@@ -146,7 +146,7 @@ export const forGlasses = (text: string, limit: number): string =>
 export function glassesInstructions(limit: number): string {
   return (
     "\n\nTHIS REQUEST IS SHOWN ON SMART GLASSES\n" +
-    "The answer appears as text on the user's Even Realities glasses: a small " +
+    "The answer appears as text on the user's glasses: a small " +
     "monochrome display they read while walking around. Nothing is spoken aloud. " +
     `Keep the whole answer under ${limit} characters; anything longer is cut off. ` +
     "Plain text only: no markdown, no bold, no headings, no tables, no emoji, " +
