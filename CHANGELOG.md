@@ -19,9 +19,11 @@ of every release, and in the [README](README.md#updating).
 
 ### Added
 
-- **Jarvis says the street address at a pair of coordinates.** Given a
-  position with no address (a phone's, from Home Assistant), it asks Google
-  Maps what is there, with the Maps key it already has. It said it could not.
+- **Jarvis says what is at a pair of coordinates.** Given a position with no
+  address (a phone's, from Home Assistant), it names the places nearest it, a
+  clinic or a shop, or the street address where nothing named is near, with
+  the Maps key it already has. It said it could not. A lookup is Google's
+  Nearby Search, a few cents each.
 
 ### Fixed
 

@@ -31,14 +31,20 @@ import { GEOCODE } from "./place.ts";
  *
  * ── Coordinates ────────────────────────────────────────────────────────────
  *
- * A position often arrives bare (a phone's, from Home Assistant), and Places
- * cannot say what is at a point. Geocoding can: the API show_place already
- * calls with the same key, one cheap call with no field mask. That API takes
- * the key in the URL only; the call is the Worker's, so it never reaches a
- * browser.
+ * A position often arrives bare (a phone's, from Home Assistant). What a
+ * person means by "where is that" is the place there, a clinic or a shop, so
+ * Nearby Search names the places closest to the point, nearest first. Its
+ * mask is the Pro tier, a few cents a lookup, asked only for coordinates.
+ * Where nothing named is near (a road), Geocoding gives the street address:
+ * the API show_place already calls with the same key, which takes the key in
+ * the URL only; the call is the Worker's, so it never reaches a browser.
  */
 
 const SEARCH = "https://places.googleapis.com/v1/places:searchText";
+const NEARBY = "https://places.googleapis.com/v1/places:searchNearby";
+const NEARBY_MASK = "places.displayName,places.formattedAddress,places.location";
+/** How far from a point a place may be: a phone's position is good to tens of metres. */
+const NEAR_M = 100;
 
 /** Open, rated, located, reachable. Covers almost every spoken question. */
 const BASIC_MASK = [
@@ -89,7 +95,7 @@ const PRICE: Record<string, string> = {
 };
 
 /** "2.1951, 102.2486": both with decimals, so "7, 11" stays a search. */
-function coordinates(query: string): { lat: number; lng: number } | null {
+function coordinates(query: string): Point | null {
   const m = query.match(/^(-?\d{1,2}\.\d+)\s*,\s*(-?\d{1,3}\.\d+)$/);
   if (!m) return null;
   const lat = Number(m[1]);
@@ -97,8 +103,62 @@ function coordinates(query: string): { lat: number; lng: number } | null {
   return Math.abs(lat) <= 90 && Math.abs(lng) <= 180 ? { lat, lng } : null;
 }
 
-/** The street address at a point (see "Coordinates" above). */
-async function addressAt(at: { lat: number; lng: number }, key: string, ctx: ToolContext): Promise<string> {
+type Point = { lat: number; lng: number };
+
+/** Metres between two points; flat is close enough within a few hundred. */
+function metres(a: Point, b: Point): number {
+  const r = Math.PI / 180;
+  const x = (b.lng - a.lng) * r * Math.cos(((a.lat + b.lat) / 2) * r);
+  return Math.round(Math.hypot(x, (b.lat - a.lat) * r) * 6_371_000);
+}
+
+/** What a failed Places call says. "Places returned 403" sends someone to the wrong console page. */
+async function placesFailed(res: Response): Promise<string> {
+  const detail = await res.text().catch(() => "");
+  if (res.status === 403 && /SERVICE_DISABLED|has not been used/i.test(detail)) {
+    return "The Places API is not enabled for this Google Cloud project.";
+  }
+  if (res.status === 403) {
+    return "The Google Maps key is not allowed to call the Places API.";
+  }
+  return `Google Places returned ${res.status}.`;
+}
+
+/** The named places nearest a point, or its street address where none is near (see "Coordinates" above). */
+async function whatIsAt(at: Point, key: string, ctx: ToolContext): Promise<string> {
+  let res: Response;
+  try {
+    res = await fetch(NEARBY, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Goog-Api-Key": key, "X-Goog-FieldMask": NEARBY_MASK },
+      body: JSON.stringify({
+        locationRestriction: { circle: { center: { latitude: at.lat, longitude: at.lng }, radius: NEAR_M } },
+        rankPreference: "DISTANCE",
+        maxResultCount: 3,
+        languageCode: localeOf(ctx.env).language,
+      }),
+      signal: ctx.signal,
+    });
+  } catch (e) {
+    return `Could not reach Google Places: ${e instanceof Error ? e.message : String(e)}`;
+  }
+  if (!res.ok) return placesFailed(res);
+
+  const places = ((await res.json().catch(() => null)) as { places?: Place[] } | null)?.places ?? [];
+  if (!places.length) return addressAt(at, key, ctx);
+  const lines = places.map((p) => {
+    const { latitude, longitude } = p.location ?? {};
+    const away = typeof latitude === "number" && typeof longitude === "number" ? ` — ${metres(at, { lat: latitude, lng: longitude })} m` : "";
+    return `${tidy(p.displayName?.text ?? "A place")}${away}${p.formattedAddress ? `, ${tidy(p.formattedAddress)}` : ""}`;
+  });
+  return (
+    `The places nearest ${at.lat},${at.lng}, nearest first:\n${lines.join("\n")}\n` +
+    "Say the nearest as where it is; a phone's position can be some tens of metres out."
+  );
+}
+
+/** The street address at a point, where nothing named is near it. */
+async function addressAt(at: Point, key: string, ctx: ToolContext): Promise<string> {
   const point = `${at.lat},${at.lng}`;
   const language = localeOf(ctx.env).language;
   let res: Response;
@@ -135,8 +195,9 @@ export const placeInfo: Tool = {
     "whether it is open right now, price, address and phone. Use for 'is that place any " +
     "good', 'are they open', 'what's their number', 'find a coffee place near here'. Set " +
     "reviews true ONLY when the user asks what people said — it costs materially more. " +
-    "Given coordinates ('2.1951, 102.2486') instead, it says the street address there " +
-    "(Google Maps' reverse lookup): use it whenever you have a position but no address. " +
+    "Given coordinates ('2.1951, 102.2486') instead, it names the places nearest that " +
+    "point, a clinic, a shop, a building, with their address, or the street address where " +
+    "nothing named is near (Google Maps): use it whenever you have a position but no place. " +
     "This does not put anything on screen; use show_place for that.",
   parameters: {
     type: "object",
@@ -145,7 +206,7 @@ export const placeInfo: Tool = {
         type: "string",
         description:
           "The place, as the user said it. Include the town if they did — " +
-          "'Pak Putra', 'coffee near the station'. Or 'lat, lng' for the address there.",
+          "'Pak Putra', 'coffee near the station'. Or 'lat, lng' for what is there.",
       },
       reviews: {
         type: ["boolean", "null"],
@@ -163,7 +224,7 @@ export const placeInfo: Tool = {
     const query = String(args.query ?? "").trim();
     if (!query) return "No place was named.";
     const at = coordinates(query);
-    if (at) return addressAt(at, key, ctx);
+    if (at) return whatIsAt(at, key, ctx);
     const wantReviews = args.reviews === true;
 
     let res: Response;
@@ -188,18 +249,7 @@ export const placeInfo: Tool = {
       return `Could not reach Google Places: ${e instanceof Error ? e.message : String(e)}`;
     }
 
-    if (!res.ok) {
-      const detail = await res.text().catch(() => "");
-      // Say which thing is wrong. "Places returned 403" sends someone to the
-      // wrong console page; the two causes below need different fixes.
-      if (res.status === 403 && /SERVICE_DISABLED|has not been used/i.test(detail)) {
-        return "The Places API is not enabled for this Google Cloud project.";
-      }
-      if (res.status === 403) {
-        return "The Google Maps key is not allowed to call the Places API.";
-      }
-      return `Google Places returned ${res.status}.`;
-    }
+    if (!res.ok) return placesFailed(res);
 
     const body = (await res.json().catch(() => null)) as { places?: Place[] } | null;
     const p = body?.places?.[0];

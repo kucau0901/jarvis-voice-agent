@@ -41,7 +41,8 @@ function check(name: string, cond: boolean, got?: unknown) {
 // The answer's language: the user's latest message, never a page's, a tool's or its own (21 Oct 2026).
 // calendar_change added to THE DIARY and the table of routes, after calendar_add (28 Oct 2026).
 // place_info's row in the table of routes: given coordinates, the street address there (28 Oct 2026).
-const PROMPT_SHA256 = "2b0271b1c6307316106eac6187e6cb5f08b2c657453be287f783c8bb72fe9c4e";
+// …and then the places nearest them, by name (29 Oct 2026).
+const PROMPT_SHA256 = "d89249dc823e68a7fe54e9aa8fa2ec27734d1e8333f0aa45073f5578a1b91dc0";
 // panel_set and panel_remove (tools/panels.ts, scope screen): everyone but the guest (14 Oct 2026).
 // look_back (tools/conversation.ts, scope memory.read): everyone but the guest (16 Oct 2026).
 // panel_list (tools/panels.ts, scope screen): everyone but the guest (16 Oct 2026).
