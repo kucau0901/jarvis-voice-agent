@@ -63,6 +63,23 @@ export function utcOffset(timeZone: string, at = new Date()): string {
   return m ? `${m[1]}:${m[2] ?? "00"}` : "+00:00";
 }
 
+/**
+ * The day and time at `at` in an IANA time zone, with its offset then
+ * ("Thursday 29 October, 07:56 in Europe/London (UTC+00:00)"); null for a
+ * name that is not one. Worked out here, not by the model: another place's
+ * daylight saving is easy to get wrong (tools/clock.ts).
+ */
+export function timeAt(timeZone: string, at = new Date()): string | null {
+  try {
+    const human = new Intl.DateTimeFormat("en-GB", {
+      timeZone, weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit", hour12: false,
+    }).format(at);
+    return `${human.replace(" at ", ", ")} in ${timeZone} (UTC${utcOffset(timeZone, at)})`;
+  } catch {
+    return null;
+  }
+}
+
 /** "Malaysia", "United Kingdom" — or undefined when there is no country. */
 export function countryName(l: Locale): string | undefined {
   if (!l.country) return undefined;

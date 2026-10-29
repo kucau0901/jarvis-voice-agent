@@ -20,6 +20,7 @@ import { calendarTools } from "./calendar.ts";
 import { sendNote } from "./notes.ts";
 import { alertTalk } from "./alerts.ts";
 import { openOnGlasses } from "./glasses.ts";
+import { timeIn } from "./clock.ts";
 import { routineTools } from "./routines.ts";
 import { jobTools } from "./jobs.ts";
 import { familyTools } from "./family.ts";
@@ -263,6 +264,7 @@ const ALL: Tool[] = [
   sendNote,
   alertTalk,
   openOnGlasses,
+  timeIn,
   ...routineTools,
   ...jobTools,
   ...familyTools,

@@ -40,8 +40,10 @@ of every release, and in the [README](README.md#updating).
 ### Fixed
 
 - **"What time is it in London?" says London's time.** Home Assistant's
-  Assist, asked first, read it as the time at home. An answer from Assist
-  about nothing in the house now goes to the router.
+  Assist, asked first, read it as the time at home: an answer from Assist
+  about nothing in the house now goes to the router. The router then worked
+  London's time out itself and got it wrong, so another place's time now
+  comes from a tool, `time_in`, daylight saving included.
 - **A document opened from Chat is readable on a wide screen.** Wider than
   about 760 pixels, its title, buttons and words stood one word to a line.
 - **An event earlier today can be moved or removed.** Jarvis looked at today

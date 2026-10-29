@@ -54,6 +54,7 @@ const PROMPT_SHA256 = "d89249dc823e68a7fe54e9aa8fa2ec27734d1e8333f0aa45073f5578a
 // reply_family_room (tools/family.ts, scope chat, with a family): as pass_on (27 Oct 2026).
 // calendar_change (tools/calendar.ts, scope calendar): as calendar_add (28 Oct 2026).
 // open_on_glasses (tools/glasses.ts, no scope beyond ask): everyone, the guest too (29 Oct 2026).
+// time_in (tools/clock.ts, no scope beyond ask): everyone, the guest too (29 Oct 2026).
 const EXPECTED: Record<string, { model: string; tools: string[]; input: string }> = {
  "owner key, nothing set up": {
   "model": "gpt-6-luna",
@@ -77,7 +78,8 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
    "send_note",
    "specialty_forget",
    "specialty_save",
-   "start_job"
+   "start_job",
+   "time_in"
   ],
   "input": "802a8e76891d234f"
  },
@@ -128,7 +130,8 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
    "show_place",
    "specialty_forget",
    "specialty_save",
-   "start_job"
+   "start_job",
+   "time_in"
   ],
   "input": "caf9f336c9eb88fe"
  },
@@ -177,7 +180,8 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
    "show_place",
    "specialty_forget",
    "specialty_save",
-   "start_job"
+   "start_job",
+   "time_in"
   ],
   "input": "a5251b80a9958cc9" // car levels said as check/control (28 Sep 2026)
  },
@@ -216,7 +220,8 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
    "show_place",
    "specialty_forget",
    "specialty_save",
-   "start_job"
+   "start_job",
+   "time_in"
   ],
   "input": "478d7761db526908"
  },
@@ -227,6 +232,7 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
    "open_on_glasses",
    "place_info",
    "start_job",
+   "time_in",
    "use_pass"
   ],
   "input": "3d132170346de762"

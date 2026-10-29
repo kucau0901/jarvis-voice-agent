@@ -276,7 +276,7 @@ export const FINDING_MAX = 500;
 const READ_TOOLS = new Set([
   "recall", "car_state", "directions", "place_info", "look_at_camera",
   "mail_check", "mail_search", "contacts_lookup", "calendar_check", "routine_list",
-  "job_results",
+  "job_results", "time_in",
 ]);
 
 /**
