@@ -192,7 +192,9 @@ In Jarvis, **Settings → Devices**:
   notifications are on there (**Settings → Alerts**).
 - **Jarvis cannot start a conversation on the glasses.** The Even app only
   asks. Alerts and reminders go to your phone and any open Jarvis screen:
-  [how Jarvis reaches you](notifications.md).
+  [how Jarvis reaches you](notifications.md). The Jarvis glasses app for
+  Android can show them on the G2 itself, and "Hi Even, open Jarvis" then
+  opens its menu there.
 
 ## When it doesn't work
 

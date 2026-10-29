@@ -19,6 +19,7 @@ import { gmailTools } from "./gmail.ts";
 import { calendarTools } from "./calendar.ts";
 import { sendNote } from "./notes.ts";
 import { alertTalk } from "./alerts.ts";
+import { openOnGlasses } from "./glasses.ts";
 import { routineTools } from "./routines.ts";
 import { jobTools } from "./jobs.ts";
 import { familyTools } from "./family.ts";
@@ -261,6 +262,7 @@ const ALL: Tool[] = [
   ...calendarTools,
   sendNote,
   alertTalk,
+  openOnGlasses,
   ...routineTools,
   ...jobTools,
   ...familyTools,

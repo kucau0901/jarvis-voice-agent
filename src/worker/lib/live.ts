@@ -104,6 +104,27 @@ export class LiveHub {
     }
   }
 
+  /**
+   * Jarvis opened on a person's display glasses (tools/glasses.ts): every open
+   * screen and device of theirs is told, since the phone holding the glasses
+   * may be signed in either way. How many were told.
+   */
+  openGlasses(sockets: LiveSocket[], person: string): number {
+    const data = JSON.stringify({ type: "glasses.open" });
+    let told = 0;
+    for (const s of sockets) {
+      const c = s.client();
+      if (!c || personOfWho(c.who) !== person) continue;
+      try {
+        s.send(data);
+        told++;
+      } catch {
+        // closing; the runtime will report it
+      }
+    }
+    return told;
+  }
+
   /** A message from a screen: its visibility changing, or a confirmation. */
   receive(sock: LiveSocket, raw: string | ArrayBuffer): void {
     if (typeof raw !== "string" || raw.length > 1000) return;

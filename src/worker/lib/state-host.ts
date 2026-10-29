@@ -683,6 +683,8 @@ interface LiveApi {
   /** Whether an alert's person wants it talked about (lib/alerts.ts AlertState). */
   talkAbout(alert: Alert): Promise<boolean>;
   liveClients(): Promise<LiveClient[]>;
+  /** Jarvis opened on the person's display glasses, by the glasses app on their phone: how many of their screens were told. */
+  glassesOpen(person: string): Promise<number>;
   /** Close a device's open screens and drop its notifications, when it is revoked or narrowed. */
   forgetDevice(who: string): Promise<void>;
   /**

@@ -53,6 +53,7 @@ const PROMPT_SHA256 = "d89249dc823e68a7fe54e9aa8fa2ec27734d1e8333f0aa45073f5578a
 // alert_talk (tools/alerts.ts, scope alerts): everyone but the guest, the owner key told it is no person's (27 Oct 2026).
 // reply_family_room (tools/family.ts, scope chat, with a family): as pass_on (27 Oct 2026).
 // calendar_change (tools/calendar.ts, scope calendar): as calendar_add (28 Oct 2026).
+// open_on_glasses (tools/glasses.ts, no scope beyond ask): everyone, the guest too (29 Oct 2026).
 const EXPECTED: Record<string, { model: string; tools: string[]; input: string }> = {
  "owner key, nothing set up": {
   "model": "gpt-6-luna",
@@ -64,6 +65,7 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
    "look_back",
    "make_image",
    "make_page",
+   "open_on_glasses",
    "panel_list",
    "panel_remove",
    "panel_set",
@@ -109,6 +111,7 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
    "music_control",
    "music_play",
    "music_state",
+   "open_on_glasses",
    "panel_list",
    "panel_remove",
    "panel_set",
@@ -157,6 +160,7 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
    "music_control",
    "music_play",
    "music_state",
+   "open_on_glasses",
    "panel_list",
    "panel_remove",
    "panel_set",
@@ -196,6 +200,7 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
    "look_back",
    "make_image",
    "make_page",
+   "open_on_glasses",
    "panel_list",
    "panel_remove",
    "panel_set",
@@ -219,6 +224,7 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
   "model": "gpt-6-luna",
   "tools": [
    "job_results",
+   "open_on_glasses",
    "place_info",
    "start_job",
    "use_pass"

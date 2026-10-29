@@ -450,6 +450,7 @@ and connects to `/api/v1/events?ticket=…`. A ticket works once.
 |---|---|
 | ← | `{"type":"hello","label":…}` on connecting |
 | ← | `{"type":"alert","alert":{id, at, title, text, speak, talk, urgent, source, for?, expiresAt?, routine?, job?, relay?, convo?, proposals?}}` |
+| ← | `{"type":"glasses.open"}` when the person asks to open Jarvis on their display glasses (the `open_on_glasses` tool): an app holding G2 glasses shows Jarvis's own screen on them. Sent to each of the person's screens and devices; one with no such glasses ignores it |
 | → | `{"type":"presence","visible":true}` whenever the screen is shown or hidden |
 | → | `{"type":"ack","id":…,"visible":true}` on each alert, if someone can see it |
 | → / ← | `ping` / `pong`, every 25 seconds or so, to keep proxies from closing it |

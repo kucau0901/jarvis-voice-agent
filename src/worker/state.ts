@@ -288,6 +288,10 @@ export class JarvisState extends DurableObject<Env> {
     return this.hub.clients(this.sockets());
   }
 
+  glassesOpen(person: string) {
+    return this.hub.openGlasses(this.sockets(), person);
+  }
+
   /**
    * Someone left the family (routes/hub.ts): their routines stop, rotas go on
    * without them, and messages to or from them are no longer waited on.

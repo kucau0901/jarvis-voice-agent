@@ -32,6 +32,10 @@ of every release, and in the [README](README.md#updating).
   glasses ("Hey Even, …") and its answer are kept in the person's
   conversation, so Chat shows them, on the phone and the web, and a question
   there afterwards follows on.
+- **"Open Jarvis" on display glasses.** Asked to (say "Hi Even, open
+  Jarvis" on G2 glasses), Jarvis tells the person's phone app, on the alert
+  socket (`{"type":"glasses.open"}`), to show its own screen on the glasses.
+  The glasses app for Android does, with G2 glasses.
 
 ### Fixed
 

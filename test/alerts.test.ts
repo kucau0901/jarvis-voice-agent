@@ -21,6 +21,7 @@ import { requiredScope } from "../src/worker/lib/scopes.ts";
 import { handleAlertApi, handleAlertsAdmin } from "../src/worker/routes/alerts.ts";
 import { validateChanges } from "../src/worker/lib/settings.ts";
 import { alertSaid } from "../src/worker/lib/conversation.ts";
+import { openOnGlasses } from "../src/worker/tools/glasses.ts";
 
 let pass = 0;
 let fail = 0;
@@ -354,6 +355,30 @@ console.log("\none person's screens are told something");
   hub.tell([mine, myDevice, owners], "u_sam", { type: "conversation.cleared" });
   check("only that person's screens: not their devices, nobody else's",
     mine.sent.length === 1 && JSON.parse(mine.sent[0]!).type === "conversation.cleared" && !myDevice.sent.length && !owners.sent.length);
+}
+
+console.log("\nJarvis opened on one person's glasses (open_on_glasses)");
+{
+  const hub = new LiveHub();
+  const mine = sock({ who: "u_sam", label: "phone", visible: false, since: 1 });
+  const myDevice = sock({ who: "u_sam~d_glasses", label: "glasses", visible: true, since: 1 });
+  const owners = sock(client("car", true));
+  const told = hub.openGlasses([mine, myDevice, owners], "u_sam");
+  check("their screens and their devices, a phone with a device token too: nobody else's",
+    told === 2 && JSON.parse(mine.sent[0]!).type === "glasses.open" && JSON.parse(myDevice.sent[0]!).type === "glasses.open" && !owners.sent.length);
+  const ownerDevice = sock({ who: "d_glasses", label: "glasses", visible: true, since: 1 });
+  check("the first person's devices are theirs", hub.openGlasses([ownerDevice, mine], "owner") === 1 && ownerDevice.sent.length === 1);
+
+  const asked: unknown[] = [];
+  let screens = 1;
+  const stub = { glassesOpen: async (person: string) => (asked.push(person), screens) };
+  const ctx = (person?: string) => ({ env: { ...(person ? { JARVIS_PERSON: person } : {}), STATE: { idFromName: () => "j", get: () => stub } }, signal: new AbortController().signal, progress() {}, display() {}, grants: ["*"] }) as never;
+  const sent = String(await openOnGlasses.run({}, ctx("u_sam")));
+  check("the tool tells the asker's own screens, and says it was sent", asked[0] === "u_sam" && /^Sent/.test(sent), sent);
+  screens = 0;
+  const none = String(await openOnGlasses.run({}, ctx()));
+  check("…the owner key's are the first person's; with none connected, says so", asked[1] === "owner" && /^Not opened: no Jarvis app/.test(none), none);
+  check("offered to anyone who may ask: it only reaches their own screens", openOnGlasses.scope === undefined);
 }
 
 console.log("\nopen screens");
