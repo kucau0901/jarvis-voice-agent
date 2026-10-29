@@ -39,6 +39,9 @@ of every release, and in the [README](README.md#updating).
 
 ### Fixed
 
+- **"What time is it in London?" says London's time.** Home Assistant's
+  Assist, asked first, read it as the time at home. An answer from Assist
+  about nothing in the house now goes to the router.
 - **A document opened from Chat is readable on a wide screen.** Wider than
   about 760 pixels, its title, buttons and words stood one word to a line.
 - **An event earlier today can be moved or removed.** Jarvis looked at today

@@ -72,8 +72,13 @@ console.log("\nasking Assist");
   check("with the HA token", (call.init.headers as Record<string, string>).Authorization === "Bearer t0k");
 }
 {
-  const r = await tryAssist(CFG, "what is the temperature", fakeFetch(envelope("query_answer", "26.0 degrees")).f);
+  // As Home Assistant answers about a sensor: the entity it read, in `success`.
+  const sensor = { success: [{ name: "Bedroom temperature", type: "entity", id: "sensor.bedroom_temperature" }], failed: [] };
+  const r = await tryAssist(CFG, "what is the temperature", fakeFetch(envelope("query_answer", "26.0 degrees", sensor)).f);
   check("a question it can answer is answered", r.handled && r.text === "26.0 degrees" && r.kind === "query_answer", r);
+  // Its clock: no entity, and the time at home whatever place was asked about.
+  const clock = await tryAssist(CFG, "what time is it in London", fakeFetch(envelope("query_answer", "3:27 PM")).f);
+  check("an answer about nothing in the house (the time, the date) hands over", !clock.handled && clock.reason === "not_house", clock);
 }
 {
   const miss = envelope("error", "Sorry, I am not aware of any device called capital of France", { code: "no_valid_targets" });

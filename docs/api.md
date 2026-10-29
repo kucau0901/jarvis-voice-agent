@@ -814,7 +814,9 @@ and `car.control` are not needed.
    Assistant's own Assist (`conversation.home_assistant`) with a 3s limit. If it
    switches a light or reads a sensor, that answer comes straight back, in well
    under a second where the router takes 8–17. Anything Assist does not
-   understand goes to the router as if this step had not happened. Gates, doors
+   understand goes to the router as if this step had not happened, and so
+   does an answer about nothing in the house: Assist's clock reads "what time
+   is it in London?" as the time at home. Gates, doors
    and locks included: what Assist may do is decided in Home Assistant, by what
    you expose to it (Settings → Voice assistants → Expose), so set the house's
    limits there. Switch this off with `HA_ASSIST=0` (formerly `G2_FASTPATH`).

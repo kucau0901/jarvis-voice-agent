@@ -68,7 +68,7 @@ export type AssistOutcome =
   | { handled: true; text: string; kind: "action_done" | "query_answer"; ms: number }
   | {
       handled: false;
-      reason: "no_match" | "timeout" | "http" | "unreadable" | "unreachable";
+      reason: "no_match" | "not_house" | "timeout" | "http" | "unreadable" | "unreachable";
       ms: number;
       status?: number;
     };
@@ -88,6 +88,11 @@ interface Envelope {
  * matched no intent or found no such device, and that is the signal to hand
  * over, never something to show the user. Every failure is a hand-over too: a
  * slow or broken Home Assistant must cost the fast path, not the question.
+ *
+ * A `query_answer` counts only when it is about something in the house, which
+ * Assist lists in `data.success`. One about nothing there is its clock or
+ * calendar, which matches "what time is it in London?" and answers with the
+ * time at home; the router knows the time anywhere.
  */
 export async function tryAssist(
   cfg: AssistConfig,
@@ -123,6 +128,8 @@ export async function tryAssist(
   if (kind !== "action_done" && kind !== "query_answer") {
     return { handled: false, reason: "no_match", ms: ms() };
   }
+
+  if (kind === "query_answer" && !env.response?.data?.success?.length) return { handled: false, reason: "not_house", ms: ms() };
 
   let speech = env.response?.speech?.plain?.speech?.trim() ?? "";
   // Some versions finish an action without saying anything.
