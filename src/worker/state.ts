@@ -924,6 +924,8 @@ export class JarvisState extends DurableObject<Env> {
 
   async conversationAdd(person: string, said: Said[], now: number) {
     await this.conversation.add(person, said, now);
+    // A bot's exchange with Jarvis (routes/v1.ts), which no screen of theirs sent: shown on those open now.
+    if (said.some((s) => s.skill)) this.hub.tell(this.sockets(), person, { type: "conversation.said", said });
     // A skill's answer held for Jarvis's own reply (lib/skills.ts SETTLE_MS) follows it now: the alarm delivers it.
     // A bot's exchange with Jarvis (lib/conversation.ts skillExchangeSaid) is not a reply to the person.
     if (!said.some((s) => s.role === "assistant" && !s.skill)) return;

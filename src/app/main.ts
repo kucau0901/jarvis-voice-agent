@@ -28,7 +28,7 @@ import { keyboardSpace, watchKeyboard } from "./keyboard";
 import { Attachments, type Attached } from "./attach";
 import { Reply } from "./reply";
 import { fromJob, fromRoutine, fromSkill, jobStarted, jobsSeen, type JobSaid, type RoutineSaid, type SkillSaid } from "./fromRoutine";
-import { asked, clearKept, keep, kept, restore, saidId } from "./conversation";
+import { asked, clearKept, keep, kept, restore, saidId, type Rows } from "./conversation";
 import { inCar } from "./client";
 import { arm } from "./ui/util";
 import { answerBody, linkCards, markdown } from "./ui/rich";
@@ -677,7 +677,16 @@ function onAlert(a: Alert) {
   void speakAlert(key, a).then((played) => card.classList.toggle("unplayed", !played));
 }
 
-const live = new LiveLink(key, onAlert, signedOutElsewhere, forgetChat);
+/** How the kept conversation is drawn: when the app opens, and a bot's exchange with Jarvis as it is kept (conversation.ts). */
+const chatRows: Rows = {
+  row: (who, text, links, page) => addRow(who, text, "", links, page),
+  routine: routineSaid,
+  job: jobSaid,
+  skill: skillSaid,
+  apart: (p) => showCard(pageCard(key, p)),
+};
+
+const live = new LiveLink(key, onAlert, signedOutElsewhere, forgetChat, (said) => restore(said, chatRows, history));
 
 /**
  * This screen's sign-in was ended from another screen (a lost or lent one,
@@ -695,7 +704,7 @@ if (key) {
   void syncPush(key);
   // The conversation kept from before, routines' words and all (conversation.ts).
   void kept(key).then((all) => {
-    restore(all, { row: (who, text, links, page) => addRow(who, text, "", links, page), routine: routineSaid, job: jobSaid, skill: skillSaid, apart: (p) => showCard(pageCard(key, p)) }, history);
+    restore(all, chatRows, history);
     // Nothing said yet: the first run, once on this screen (firstRun.ts).
     if (!all.length) void firstRun(key, els.transcript, chatWith);
   }).catch(() => {});

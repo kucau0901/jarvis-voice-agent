@@ -1392,7 +1392,9 @@ it is not offered the person's Chat, jobs, their glasses, or MCP servers
 added as skills (labelled `skill-…`, another bot perhaps); the router is told
 the question is the bot's, and nothing it says counts as the person's own
 words (`ownWords`), so it cannot add a skill or save a specialty. Its
-exchange is kept in the person's Chat under its name, never as theirs. It
+exchange is kept in the person's Chat under its name, never as theirs, and
+shown at once on their open screens, which never sent it
+(`conversation.said` on the socket). It
 speaks `/api/v1/ask`'s JSON, MCP, or the OpenAI chat API, whichever the bot
 has. Nothing is in KV: removing the skill or pressing Stop it ends it on the
 next request. The same address takes a message of the bot's own (its

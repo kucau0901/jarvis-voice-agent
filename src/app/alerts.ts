@@ -1,4 +1,5 @@
 import { authHeaders } from "./key";
+import type { Said } from "./conversation";
 import { routeElement } from "./loud";
 import { inCar } from "./client";
 
@@ -91,12 +92,15 @@ export class LiveLink {
   private onSignedOut: () => void;
   /** The conversation was cleared on another screen of yours (conversation.ts). */
   private onCleared: () => void;
+  /** Kept in your conversation by no screen of yours: a bot's exchange with Jarvis (conversation.ts restore). */
+  private onSaid: (said: Said[]) => void;
 
-  constructor(key: string, onAlert: (a: Alert) => void, onSignedOut: () => void, onCleared: () => void) {
+  constructor(key: string, onAlert: (a: Alert) => void, onSignedOut: () => void, onCleared: () => void, onSaid: (said: Said[]) => void) {
     this.key = key;
     this.onAlert = onAlert;
     this.onSignedOut = onSignedOut;
     this.onCleared = onCleared;
+    this.onSaid = onSaid;
     addEventListener("visibilitychange", () => this.presence());
     addEventListener("online", () => {
       if (!this.stopped && !this.ws) {
@@ -159,13 +163,14 @@ export class LiveLink {
     };
     ws.onmessage = (e) => {
       if (typeof e.data !== "string" || e.data === "pong") return;
-      let msg: { type?: string; alert?: Alert };
+      let msg: { type?: string; alert?: Alert; said?: Said[] };
       try {
         msg = JSON.parse(e.data);
       } catch {
         return;
       }
       if (msg.type === "conversation.cleared") return this.onCleared();
+      if (msg.type === "conversation.said") return Array.isArray(msg.said) ? this.onSaid(msg.said) : undefined;
       if (msg.type !== "alert" || !msg.alert) return;
       // Confirm only if someone can see it: a hidden tab saying "got it" would
       // stop the alert reaching the phone in your pocket.

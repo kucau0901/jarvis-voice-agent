@@ -69,8 +69,8 @@ const env = {
   TESSIE_TOKEN: "t",
   TESSIE_VIN: "LRWTEST0000000000",
 } as never;
-/** Open screens, by their tags (who, and a member's sign-in), for closeSession below. */
-const sockets: { tags: string[]; closed?: number; close(code: number, reason?: string): void }[] = [];
+/** Open screens, by their tags (who, and a member's sign-in), for closeSession below; those with an attachment, for tell. */
+const sockets: { tags: string[]; closed?: number; close(code: number, reason?: string): void; deserializeAttachment?(): unknown }[] = [];
 /** The tags each accepted screen was given (JarvisState.fetch). */
 const accepted: string[][] = [];
 const storage = fakeStorage();
@@ -78,7 +78,7 @@ const ctx = {
   storage,
   blockConcurrencyWhile: async (fn: () => Promise<unknown>) => fn(),
   setWebSocketAutoResponse() {},
-  getWebSockets: (tag?: string) => (tag ? sockets.filter((s) => s.tags.includes(tag)) : []),
+  getWebSockets: (tag?: string) => (tag ? sockets.filter((s) => s.tags.includes(tag)) : sockets.filter((s) => s.deserializeAttachment)),
   acceptWebSocket: (_ws: unknown, tags: string[]) => void accepted.push(tags),
 } as never;
 const jarvis = new JarvisState(ctx, env);
@@ -478,6 +478,20 @@ console.log("skills, through the object");
   alarmAt = null;
   await jarvis.conversationAdd("owner", [{ id: "b_x_q", at: T + 6_000, role: "assistant", text: "Is it shut?", skill: { id: nid, name: "Nova", asked: true } }, { id: "b_x_a", at: T + 6_000, role: "assistant", text: "Yes.", skill: { id: nid, name: "Nova", answered: true } }], T + 6_000);
   check("  a bot's exchange with Jarvis lets nothing go", alarmAt === null && ((await storage.get("held:h_owner2")) as { until: number }).until === T + 30_000);
+
+  // Shown at once on that person's own open screens: no screen of theirs sent it.
+  const open = (who: string) => ({ tags: [who], sent: [] as string[], close() {}, deserializeAttachment: () => ({ who }), send(d: string) { this.sent.push(d); } });
+  const hers = open("u_sara");
+  const herGlasses = open("u_sara~d_glasses");
+  const mineToo = open("owner");
+  sockets.push(hers, herGlasses, mineToo);
+  const exchange = [{ id: "b_y_q", at: T + 7_000, role: "assistant" as const, text: "Is it shut?", skill: { id: nid, name: "Nova", asked: true as const } }];
+  await jarvis.conversationAdd("u_sara", exchange, T + 7_000);
+  check("  a bot's exchange: told to that person's open screens at once, not their devices', not anyone else's",
+    hers.sent.length === 1 && JSON.parse(hers.sent[0]!).type === "conversation.said" && JSON.parse(hers.sent[0]!).said[0].id === "b_y_q" && !herGlasses.sent.length && !mineToo.sent.length, hers.sent);
+  await jarvis.conversationAdd("u_sara", [{ id: "c_plain", at: T + 8_000, role: "assistant", text: "Hello." }], T + 8_000);
+  check("  what a screen of theirs kept itself: not told again", hers.sent.length === 1);
+  sockets.length = 0;
 
   // Its own address, through the object: whose, what it may reach, and the clock, forwarded.
   const made = await jarvis.skillNewAddress(nid, "u_sara", ["ask", "home"], 7_000);
