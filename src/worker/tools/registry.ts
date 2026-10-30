@@ -142,7 +142,9 @@ const askHermes: Tool = {
     "(2) files, folders, scripts and programs on that computer. Never start a job for those (jobs " +
     "only read). The house, the car and anything in Home Assistant (entity ids like sensor.… or " +
     "lock.…, their states) are NOT that computer: read and work them with the house and car tools, " +
-    "never with Hermes. For anything else it is the last resort: only when no other tool can " +
+    "never with Hermes. Nor is Jarvis itself: a tool, a bot, a webhook or an MCP server for Jarvis " +
+    "to send requests to, and keys for one, are a skill Jarvis adds itself (skill_add), even before " +
+    "the user has given its address. For anything else it is the last resort: only when no other tool can " +
     "answer, or when the user asks for Hermes. The question goes to Hermes as a background job and " +
     "this returns at once: Hermes's answer reaches the user as a message when it is ready, " +
     "even if the screen is closed — tell them that, and do not wait for it or guess it. Asked " +

@@ -26,7 +26,8 @@ of every release, and in the [README](README.md#updating).
   service that answers later sends its answer as an alert, with a token from
   Devices. Only the owner key and admins can add or use skills (the new
   `skills` scope), and the house and the car still go to Jarvis's own tools
-  first.
+  first. Asked for a tool, a bot or a webhook without its address, Jarvis
+  asks for it, rather than having Hermes build one on your computer.
 - **Jarvis says what is at a pair of coordinates.** Given a position with no
   address (a phone's, from Home Assistant), it names the places nearest it, a
   clinic or a shop, or the street address where nothing named is near, with

@@ -191,6 +191,9 @@ console.log("skill_add: only in the person's own words");
   check("  as asked", kept?.url === NOVA.url && kept.keyHeader === "X-Automation-Key" && kept.fields.mode === "async" && kept.later, kept);
   const home = "Add a skill called Box at https://192.168.1.9/hook";
   check("  a home-network address: refused", /^Not added: its address must be https/.test(String(await skillAdd.run({ ...novaArgs, user_words: home, name: "Box", url: "https://192.168.1.9/hook" }, ctx(home)))));
+  // On 30 Oct 2026 one asked without its address went to Hermes, which built it on the home computer.
+  check("  asked without its address: the model asks for it, never Hermes or a job",
+    /without its address/.test(skillAdd.description) && /ask them for each one's https address/.test(skillAdd.description) && /never hand it to Hermes or a job/.test(skillAdd.description), skillAdd.description);
 }
 
 // As it was asked on 30 Oct 2026: the address without https://, a comma after it, no when, and the

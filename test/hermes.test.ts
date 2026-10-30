@@ -77,6 +77,8 @@ console.log("\nwhat goes to Hermes without being named");
   check("and never a job, which only reads", /Never start a job for those/.test(d));
   check("but never the house, the car or Home Assistant's entities, which are not that computer",
     /The house, the car and anything in Home Assistant/.test(d) && /NOT that computer/.test(d) && /never with Hermes/.test(d), d);
+  check("nor a tool for Jarvis itself, which is a skill Jarvis adds, address or not",
+    /Nor is Jarvis itself/.test(d) && /webhook/.test(d) && /skill_add/.test(d) && /before\s+the user has given its address/.test(d), d);
   check("nor pressed to do anything rather than say it cannot", !/never answer that it cannot be done/.test(d));
   check("otherwise still the last resort", /last resort/.test(d));
   const start = baseTools(set, ["*"]).find((t) => t.name === "start_job");

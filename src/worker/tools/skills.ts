@@ -39,7 +39,9 @@ export const skillAdd: Tool = {
     "(a bot, an automation, the user's own code), or an MCP server whose tools Jarvis can use. Only when " +
     "the user asks you to, with its https address in their own words ('add a skill: Nova, my Grok bot, for " +
     "the house and the car, at https://…'). Never ask for or take its key in chat: once it is added, tell " +
-    "them its key goes in Settings → Skills (a service) or Settings → MCP servers (an MCP server, if it needs one).",
+    "them its key goes in Settings → Skills (a service) or Settings → MCP servers (an MCP server, if it needs one). " +
+    "Asked for one without its address, however they put it ('a tool that POSTs to my bot', secrets they will " +
+    "fill in), ask them for each one's https address: never hand it to Hermes or a job instead.",
   parameters: {
     type: "object",
     properties: {
