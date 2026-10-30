@@ -58,6 +58,9 @@ of every release, and in the [README](README.md#updating).
   only from the time you asked, so one already over (a 10 am meeting, asked
   about at 2 pm) was not found, and could not be removed. Today is now the
   whole day.
+- **A long question read whole in Chat no longer covers its answer.** Tapped
+  open while pinned at the top, it took the whole screen; it now scrolls
+  within 40% of it.
 
 ## [2.6.0] - 2026-10-28
 
