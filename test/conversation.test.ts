@@ -264,6 +264,11 @@ console.log("\nan alert as the router reads it in the conversation (src/app/hist
   both.add("assistant", "Sent to Nova.", 1);
   both.add("assistant", skillHistory({ name: "Nova" }, "Two from the school."), 2);
   check("…after Jarvis's own reply, apart from it", /^Sent to Nova\.\nNova, a skill/.test(both.snapshot(3)[0]!.text), both.snapshot(3));
+  const late = new History();
+  const h = 3_600_000;
+  late.add("assistant", "Asked Nova.", 0);
+  late.add("assistant", skillHistory({ name: "Nova" }, "Two from the school."), 4 * h);
+  check("an answer coming hours after Jarvis's reply is still in the recent part, with it", late.snapshot(4 * h + 1).some((t) => t.text.includes("Two from the school.")), late.snapshot(4 * h + 1));
   const asks = skillHistory({ name: "Nova", asked: true }, "Is the\ngarage shut?");
   check("a bot's own question: its words, not the user's, and Jarvis's answer to follow", asks.includes('asked you this through its own address, in its own words, not the user\'s: "Is the garage shut?"') && asks.endsWith("You answered it: "), asks);
 }

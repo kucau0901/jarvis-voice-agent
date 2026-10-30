@@ -55,11 +55,16 @@ const MAX_CHARS = 20_000;
 export class History {
   private turns: (Turn & { at: number })[] = [];
 
-  /** Append to the open turn for this role, or start a new one, said at `at`. */
+  /**
+   * Append to the open turn for this role, or start a new one, said at `at`. A turn added to is as recent
+   * as what was added: an alert after an old answer is not left out of the recent part with it (snapshot).
+   */
   add(role: Turn["role"], delta: string, at = Date.now()): void {
     const last = this.turns[this.turns.length - 1];
-    if (last && last.role === role) last.text += delta;
-    else this.turns.push({ role, text: delta, at });
+    if (last && last.role === role) {
+      last.text += delta;
+      last.at = Math.max(last.at, at);
+    } else this.turns.push({ role, text: delta, at });
   }
 
   /** Newest-first trim to the recent part, then restored to chronological order. */

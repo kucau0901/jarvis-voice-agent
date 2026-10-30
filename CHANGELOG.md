@@ -68,6 +68,10 @@ of every release, and in the [README](README.md#updating).
 - **A long question read whole in Chat no longer covers its answer.** Tapped
   open while pinned at the top, it took the whole screen; it now scrolls
   within 40% of it.
+- **Jarvis knows what an alert said hours after its last answer.** The
+  alert was added to that answer and dated with it, so once the answer was
+  three hours old, both were left out of what Jarvis is told with your next
+  question.
 
 ### Security
 
