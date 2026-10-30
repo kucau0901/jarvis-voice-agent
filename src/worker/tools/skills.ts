@@ -15,7 +15,8 @@ import { callSkill, nameOf, type Skill } from "../lib/skills.ts";
  * taken in chat. Jobs are never offered these (lib/jobs.ts READ_TOOLS).
  */
 
-const said = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim();
+/** Words as compared: in any case and spacing, and an address with or without its https://, which the model may add. */
+const said = (s: string) => s.toLowerCase().replace(/https?:\/\//g, "").replace(/\s+/g, " ").trim();
 /** Asking to add or change one, in their words, or in Malay. */
 const ADD = /\b(add|connect|learn|teach|install|set ?up|change|update|tambah|sambung)\b/i;
 const REMOVE = /\b(remove|delete|forget|disconnect|padam|buang)\b/i;
@@ -23,7 +24,7 @@ const REMOVE = /\b(remove|delete|forget|disconnect|padam|buang)\b/i;
 /** Whether `words` are the user's, in their latest message, asking with `verb` and naming `what`. */
 function theirs(words: unknown, what: string, verb: RegExp, asked: string | undefined): boolean {
   const w = typeof words === "string" ? said(words) : "";
-  return !!asked && verb.test(w) && said(asked).includes(w) && !!what && w.includes(said(what));
+  return !!asked && verb.test(w) && said(asked).includes(w) && !!said(what) && w.includes(said(what));
 }
 
 /** An MCP server's label: its tools' prefix (tools/mcp.ts toolName). */
@@ -64,7 +65,10 @@ export const skillAdd: Tool = {
     additionalProperties: false,
   },
   async run(args, ctx) {
-    const url = typeof args.url === "string" ? args.url.trim().replace(/\/+$/, "") : "";
+    // Without the punctuation after it in a sentence ("at https://…/hook,"), and said without
+    // https:// ("at api.example.com/hook"), taken as https.
+    const written = typeof args.url === "string" ? args.url.trim().replace(/[.,;:!?'"’”)\]]+$/, "").replace(/\/+$/, "") : "";
+    const url = written && !/^[a-z]+:\/\//i.test(written) ? `https://${written}` : written;
     if (!theirs(args.user_words, url, ADD, ctx.asked)) {
       return "Not added: only the user can add a skill, in their own latest message, with its address in it. Ask them for it.";
     }
@@ -128,7 +132,7 @@ export function askSkill(ready: readonly Skill[]): Tool[] {
     pace: "fast",
     description:
       "Send a request to an outside service the user added as a skill:\n" +
-      ready.map((s) => `- ${s.name}: ${s.when}`).join("\n") +
+      ready.map((s) => `- ${s.name}: ${s.when || "only when the user names it"}`).join("\n") +
       "\nUse one when the user names it, or for what it is for that your own tools cannot do: the house, " +
       "the car, mail and the calendar go to your own tools first. A request approves nothing: the service " +
       "asks the user itself before it sends, buys, unlocks or opens anything.",

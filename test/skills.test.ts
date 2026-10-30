@@ -69,7 +69,10 @@ console.log("adding one");
   }
   check("  refused: a header Jarvis sets itself", /set by Jarvis itself/.test(String(await skills.add({ ...NOVA, name: "Other", keyHeader: "Authorization" }, 1_000))));
   check("  refused: not a header name", /header name/.test(String(await skills.add({ ...NOVA, name: "Other", keyHeader: "X Key!" }, 1_000))));
-  check("  refused: a field in place of the request's own", /set by Jarvis in every request/.test(String(await skills.add({ ...NOVA, name: "Other", fields: [{ name: "utterance", value: "x" }] }, 1_000))));
+  const own = await skills.add({ ...NOVA, name: "Own", fields: [{ name: "source", value: "jarvis" }, { name: "utterance", value: "x" }, { name: "mode", value: "async" }] }, 1_000);
+  check("  a field of a name Jarvis sets itself: left out, the rest kept", typeof own !== "string" && JSON.stringify(own.fields) === '{"mode":"async"}', own);
+  const unsaid = await skills.add({ ...NOVA, name: "Unsaid", when: "" }, 1_000);
+  check("  no when to use it: kept, with none", typeof unsaid !== "string" && unsaid.when === "", unsaid);
   check("  refused: a field's name that is not one", /letters, digits/.test(String(await skills.add({ ...NOVA, name: "Other", fields: [{ name: "a b", value: "x" }] }, 1_000))));
   check("  refused: too many fields", /at most 8/.test(String(await skills.add({ ...NOVA, name: "Other", fields: Array.from({ length: 9 }, (_, i) => ({ name: `f${i}`, value: "x" })) }, 1_000))));
   check("  refused: no name", /its name/.test(String(await skills.add({ ...NOVA, name: "  " }, 1_000))));
@@ -190,6 +193,37 @@ console.log("skill_add: only in the person's own words");
   check("  a home-network address: refused", /^Not added: its address must be https/.test(String(await skillAdd.run({ ...novaArgs, user_words: home, name: "Box", url: "https://192.168.1.9/hook" }, ctx(home)))));
 }
 
+// As it was asked on 30 Oct 2026: the address without https://, a comma after it, no when, and the
+// fields copied from an earlier description of the request, source among them.
+console.log("skill_add: as people write it");
+{
+  const plain = "Add a skill: Friday, at bots.example.com/hooks/friday-0123,";
+  const fridayArgs = { ...novaArgs, user_words: plain, name: "Friday", when: "", fields: [{ name: "mode", value: "async" }, { name: "source", value: "jarvis" }] };
+  const added = async (args: Record<string, unknown>, asked: string) => {
+    const out = String(await skillAdd.run(args, ctx(asked)));
+    const kept = (await store.list()).find((s) => s.name === "Friday");
+    await store.remove("Friday");
+    return { out, kept };
+  };
+  const want = "https://bots.example.com/hooks/friday-0123";
+  for (const [how, url, words] of [
+    ["the address as they wrote it, without https://", "bots.example.com/hooks/friday-0123", plain],
+    ["the model adding https:// to it", want, plain],
+    ["and to their words too", want, "Add a skill: Friday, at https://bots.example.com/hooks/friday-0123,"],
+    ["with the comma after it", `${want},`, plain],
+  ] as const) {
+    const { out, kept } = await added({ ...fridayArgs, url, user_words: words }, plain);
+    check(`  ${how}: added, at https, with mode and without source`, out.includes('Saved the skill "Friday"') && kept?.url === want && JSON.stringify(kept.fields) === '{"mode":"async"}' && kept.when === "", { out, kept });
+  }
+  const typed = "Add a skill: Friday, at https://bots.example.com/hooks/friday-0123";
+  check("  written with https://, the model leaving it out: added", (await added({ ...fridayArgs, url: "bots.example.com/hooks/friday-0123", user_words: "Add a skill: Friday, at bots.example.com/hooks/friday-0123" }, typed)).kept?.url === want);
+  check("  plain http as they wrote it: refused", /^Not added: its address must be https/.test((await added({ ...fridayArgs, url: "http://bots.example.com/x", user_words: "Add a skill: Friday, at http://bots.example.com/x" }, "Add a skill: Friday, at http://bots.example.com/x")).out));
+  check("  another address than theirs, with or without https://: refused",
+    /^Not added: only the user/.test((await added({ ...fridayArgs, url: "evil.example.com/x" }, plain)).out) &&
+    /^Not added: only the user/.test((await added({ ...fridayArgs, url: "https://evil.example.com/x" }, plain)).out));
+  check("  no address at all: refused", /^Not added: only the user/.test((await added({ ...fridayArgs, url: "https://", user_words: "Add a skill: Friday" }, "Add a skill: Friday")).out));
+}
+
 console.log("skill_add: an MCP server");
 {
   const said = "Connect the MCP server Weather Tools at https://mcp.example.com/weather, for forecasts";
@@ -219,6 +253,7 @@ console.log("ask_skill: only the skills with a key, by name");
   check("  each one by name, with when to use it", JSON.stringify(params.properties.skill.enum) === '["Nova","Friday"]' && tool!.description.includes("- Nova: the house") && tool!.description.includes("- Friday: everything else"), tool!.description);
   check("  the house and the car to Jarvis's own tools first; a request approves nothing", /the house,\s+the car, mail and the calendar go to your own tools first/.test(tool!.description) && /approves nothing/.test(tool!.description));
   check("  no address the model could name", !JSON.stringify(tool!.parameters).includes("url"));
+  check("  one with no when to use it: only when named", askSkill([{ ...nova, when: "" }])[0]!.description.includes("- Nova: only when the user names it"));
   sent = [];
   reply = () => new Response("", { status: 202 });
   const out = String(await tool!.run({ skill: "Nova", request: "Set the aircon to 24" }, ctx("set the aircon to 24")));

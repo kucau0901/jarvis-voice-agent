@@ -34,7 +34,7 @@ export interface Skill {
   id: string;
   name: string;
   url: string;
-  /** When to use it, in the words of whoever added it: what the router is told. */
+  /** When to use it, in the words of whoever added it: what the router is told. Empty: only when named. */
   when: string;
   /** Its answer comes later, as a message (POST /api/v1/notify), not in the reply. */
   later: boolean;
@@ -50,7 +50,7 @@ export interface Skill {
 /** A skill as the panel sees it: whether it has a key, never the key. */
 export type SkillView = Omit<Skill, "key"> & { hasKey: boolean };
 
-/** Every request's body has these; a fixed field cannot take their place. */
+/** Every request's body has these; a fixed field of one of these names is left out, as Jarvis sets it. */
 const ENVELOPE = new Set(["id", "utterance", "source"]);
 /** Headers the request sets itself. */
 const OWN_HEADERS = new Set(["authorization", "content-type", "content-length", "host", "cookie", "connection", "transfer-encoding"]);
@@ -70,7 +70,8 @@ function fieldsOf(raw: unknown): Record<string, string> | string {
   for (const f of raw) {
     const { name, value } = (f ?? {}) as { name?: unknown; value?: unknown };
     if (typeof name !== "string" || !/^[A-Za-z_][A-Za-z0-9_]{0,39}$/.test(name)) return `a field's name must be letters, digits and _ (${String(name)})`;
-    if (ENVELOPE.has(name)) return `"${name}" is set by Jarvis in every request`;
+    // Given anyway, copied from a description of the request ("source": "jarvis"): Jarvis's own stands.
+    if (ENVELOPE.has(name)) continue;
     if (typeof value !== "string" || value.length > MAX_FIELD) return `the field "${name}" must be text under ${MAX_FIELD} characters`;
     out[name] = value.replace(/[\u0000-\u001F\u007F]/g, " ").trim();
   }
@@ -107,7 +108,8 @@ export class Skills {
     if (!nameOf(named)) return "its name needs a letter or a digit";
     const url = typeof input.url === "string" ? pageUrl(input.url) : null;
     if (!url) return "its address must be https, and not one on the home network";
-    const when = sanitise(input.when);
+    // Without one ("add a skill: Friday, at https://…"), it is used only when named (tools/skills.ts askSkill).
+    const when = typeof input.when === "string" && input.when.trim() ? sanitise(input.when) : { ok: true as const, text: "" };
     if (!when.ok) return `when to use it: ${when.why}`;
     let keyHeader: string | undefined;
     if (input.keyHeader !== null && input.keyHeader !== undefined && input.keyHeader !== "") {
