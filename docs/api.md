@@ -997,6 +997,19 @@ The same on the same address, for bots that speak something else:
 
 `GET {base}` says whose address it is: `{"ok": true, "name": "Nova"}`.
 
+**Messaging you on its own** (its own routines' news), whatever it may reach:
+
+```bash
+curl -X POST https://jarvis.example.com/api/v1/bot \
+     -H "Authorization: Bearer jbt1_…" -H "Content-Type: application/json" \
+     -d '{"title": "Parcel", "text": "Your parcel from the bookshop was delivered at 3:10 pm."}'
+```
+
+The body and the answer are as for an answer at a `replyUrl`: under the
+bot's name, never urgent, to the person who made the address and nobody
+else; `202` with `heldUntil` when it waits for their quiet hours to end. It
+counts against the bot's allowance.
+
 It asks as the person who made the address, as a device of theirs would:
 their hours (`403` with `outside`), a device's allowance (`429`), and no
 further than what was ticked for it and they may now. What it may reach

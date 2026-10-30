@@ -2,8 +2,8 @@ import type { Env } from "../types.ts";
 import { err, json, publicOrigin, readObject, readObjectOrEmpty } from "../lib/http.ts";
 import { stateStub } from "../lib/state-client.ts";
 import { looksLikeToken, sha256Hex } from "../lib/devices.ts";
-import { deliver } from "../lib/alerts.ts";
-import { ADDRESS_PREFIX, BOT_REACH, botGrants, REPLY_PREFIX } from "../lib/skills.ts";
+import { deliver, type Alert, type AlertState } from "../lib/alerts.ts";
+import { ADDRESS_PREFIX, BOT_REACH, botGrants, REPLY_PREFIX, skillAlert } from "../lib/skills.ts";
 import { credentialOf, personOf, type Principal } from "../lib/auth.ts";
 import { personView } from "../lib/hub-client.ts";
 import { allowedNow } from "../lib/access.ts";
@@ -65,6 +65,7 @@ const nowhere = () => err(404, "no such address");
 /**
  *   POST /api/v1/bot/<jrp1_…>   {text, title?, speak?, expiresAt?}: a skill's answer to one request
  *   /api/v1/bot[/<jbt1_…>][/ask|/mcp|/chat/completions]   a skill's bot's own address
+ *   POST /api/v1/bot[/<jbt1_…>]  {text, title?, speak?, expiresAt?}: a message of its own, to whoever made it
  *
  * Before the gate (index.ts), as a page's link is: the address is the proof.
  * Each request Jarvis sends a skill carries one (replyUrl), made for it; it
@@ -78,7 +79,9 @@ const nowhere = () => err(404, "no such address");
  * as its Bearer credential, asks Jarvis as the person who made it, as a
  * device of theirs would: their hours, a device's limits, and no further
  * than what was ticked for it and they may now (lib/skills.ts botGrants),
- * which never holds `skills`. GET says whose address it is.
+ * which never holds `skills`. GET says whose address it is. A message of its
+ * own (its routines' news) goes to them under its name, as an answer does,
+ * held for their quiet hours as any alert is.
  */
 export async function handleBot(req: Request, env: Env, ctx: ExecutionContext, asPerson: (env: Env, p: Principal) => Promise<Env>): Promise<Response> {
   const parts = new URL(req.url).pathname.slice("/api/v1/bot".length).split("/").filter(Boolean);
@@ -89,7 +92,8 @@ export async function handleBot(req: Request, env: Env, ctx: ExecutionContext, a
   // Its shape first: nothing malformed reaches storage.
   if (!looksLikeToken(token, ADDRESS_PREFIX) || !SERVED.has(sub)) return nowhere();
   const state = stateStub(env);
-  const bot = state ? await state.skillByAddress(await sha256Hex(token)) : null;
+  if (!state) return nowhere();
+  const bot = await state.skillByAddress(await sha256Hex(token));
   // Whoever made it has left: it went with them.
   const view = bot ? await personView(env, bot.person).catch(() => null) : null;
   if (!bot || !view?.scopes) return nowhere();
@@ -103,7 +107,14 @@ export async function handleBot(req: Request, env: Env, ctx: ExecutionContext, a
     return new Response(JSON.stringify({ ok: false, error: verdict.reason, text: limits.limitMessage(verdict.reason) }), { status: 429, headers });
   }
   if (!verdict.counted) ctx.waitUntil(limits.charge(env, `b_${bot.id}`));
-  if (!sub) return err(405, "GET only");
+  if (!sub) {
+    // A message of its own, to whoever made its address: under its name, as an answer is (lib/skills.ts skillAlert).
+    const b = await readObject(req, MAX_BODY);
+    if (!b) return err(400, "body must be a small JSON object");
+    const alert = skillAlert(bot, b, Date.now(), bot.person);
+    if (!alert) return err(400, "text is required");
+    return delivered(env, state, alert);
+  }
   const hours = allowedNow(view.access, Date.now(), localeOf(env).timeZone);
   if (!hours.ok) return json({ error: hours.why, text: `Not now: ${hours.why}.`, outside: true }, { status: 403 });
   const grants = botGrants(bot.reach, view.scopes);
@@ -141,6 +152,12 @@ async function answered(req: Request, env: Env, parts: string[]): Promise<Respon
     await state.hold(r.alert, r.holdUntil, true);
     return json({ ok: true, id: r.alert.id, heldUntil: r.holdUntil }, { status: 202 });
   }
-  const d = await deliver(env, state, r.alert);
-  return json({ ok: true, id: r.alert.id, deliveredBy: d.deliveredBy, attempts: d.attempts }, { status: d.deliveredBy ? 200 : 502 });
+  return delivered(env, state, r.alert);
+}
+
+/** Delivered, said as POST /api/v1/notify says it: where it went, or 202 held for its person's quiet hours. */
+async function delivered(env: Env, state: AlertState, alert: Alert): Promise<Response> {
+  const d = await deliver(env, state, alert);
+  if (d.heldUntil) return json({ ok: true, id: alert.id, heldUntil: d.heldUntil }, { status: 202 });
+  return json({ ok: true, id: alert.id, deliveredBy: d.deliveredBy, attempts: d.attempts }, { status: d.deliveredBy ? 200 : 502 });
 }

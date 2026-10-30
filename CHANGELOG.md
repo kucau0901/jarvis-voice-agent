@@ -26,13 +26,14 @@ of every release, and in the [README](README.md#updating).
   service that answers later posts its answer to the reply address that comes
   with each request, so it needs no token; the answer shows in Chat under its
   name, after Jarvis's own reply, and every screen, phone and pair of glasses
-  shows it as that service's. **Make its address** in Settings → Skills lets a
-  bot ask Jarvis too (plain JSON, MCP or the OpenAI chat API), reaching only
-  what you tick there, never other skills, your alerts or the family's chat;
-  each exchange shows in Chat as "Nova asked". Only the owner key and admins
-  can add or use skills (the new `skills` scope), and the house and the car
-  still go to Jarvis's own tools first. Asked for a tool, a bot or a webhook without its address, Jarvis
-  asks for it, rather than having Hermes build one on your computer.
+  shows it as that service's. **Make its address** in Settings → Skills lets
+  a bot ask Jarvis too (plain JSON, MCP or the OpenAI chat API) and message
+  you on its own, under its name, reaching only what you tick there, never
+  other skills, your alerts or the family's chat; each exchange shows in Chat
+  as "Nova asked". Only the owner key and admins can add or use skills (the
+  new `skills` scope), and the house and the car still go to Jarvis's own
+  tools first. Asked for a tool, a bot or a webhook without its address,
+  Jarvis asks for it, rather than having Hermes build one on your computer.
 - **Jarvis says what is at a pair of coordinates.** Given a position with no
   address (a phone's, from Home Assistant), it names the places nearest it, a
   clinic or a shop, or the street address where nothing named is near, with

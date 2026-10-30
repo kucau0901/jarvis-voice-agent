@@ -576,6 +576,28 @@ console.log("/api/v1/bot: its own address");
   methods.consume = async () => ({ ok: true });
   check("  past a device's allowance: 429", spent.status === 429);
   check("  its own address, only read: 405 on what it does not take", (await call(`/api/v1/bot/${made.token}/ask`)).status === 405);
+
+  // A message of its own (its routines' news), to whoever made its address.
+  const sent2: Record<string, unknown>[] = [];
+  let counted = 0;
+  methods.consume = async () => (counted++, { ok: true });
+  methods.keepAlert = async () => true;
+  methods.broadcast = async (a: Record<string, unknown>) => (sent2.push(a), { open: 1, visible: 1, acked: "phone" });
+  methods.pushTargets = async () => ({ vapid: {}, subs: [] });
+  methods.quietUntil = async () => null;
+  const msg = await said(await call("/api/v1/bot", { method: "POST", headers: bearer, body: JSON.stringify({ title: "Parcel", text: "Delivered at 3:10.", urgent: true }) }));
+  const a = sent2[0] as { title: string; text: string; for: string; urgent: boolean; skill: unknown } | undefined;
+  check("  a message: to whoever made its address, under its name, never urgent, and where it went said",
+    msg.status === 200 && msg.body.deliveredBy === "live" && a?.title === "Nova" && a.text === "Parcel: Delivered at 3:10." && a.for === "u_sara" && a.urgent === false &&
+    JSON.stringify(a.skill) === JSON.stringify({ id: s.id, name: "Nova" }), { msg, a });
+  check("  counted against its allowance", counted === 1);
+  check("  no text: 400", (await call(`/api/v1/bot/${made.token}`, { method: "POST", body: "{}" })).status === 400);
+  methods.quietUntil = async () => 9_999_999_999_999;
+  methods.hold = async () => {};
+  const quiet = await said(await call(`/api/v1/bot/${made.token}`, { method: "POST", body: '{"text":"Later is fine."}' }));
+  check("  in their quiet hours: held for then, 202", quiet.status === 202 && quiet.body.heldUntil === 9_999_999_999_999, quiet);
+  await skills.dropAddress(s.id, 5);
+  check("  its address stopped: no such address", (await call("/api/v1/bot", { method: "POST", headers: bearer, body: '{"text":"x"}' })).status === 404);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

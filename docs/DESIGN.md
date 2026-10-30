@@ -1395,7 +1395,9 @@ words (`ownWords`), so it cannot add a skill or save a specialty. Its
 exchange is kept in the person's Chat under its name, never as theirs. It
 speaks `/api/v1/ask`'s JSON, MCP, or the OpenAI chat API, whichever the bot
 has. Nothing is in KV: removing the skill or pressing Stop it ends it on the
-next request.
+next request. The same address takes a message of the bot's own (its
+routines' news), to whoever made it and nobody else, under its name, as an
+answer is.
 
 ## Architecture
 
