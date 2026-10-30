@@ -40,8 +40,8 @@ export class Skills {
       el("p", "note",
         "Outside services Jarvis sends requests to: a bot, an automation, your own code. Add one in chat, with its address: " +
         "\"add a skill: Nova, my Grok bot, for the house and the car, at https://…\". Its key goes here, never in chat, and is " +
-        "never shown again; a skill is used once it has one. One that answers later sends its answer to POST /api/v1/notify, " +
-        "with an alerts-only token from Devices. MCP servers added in chat are under MCP servers."),
+        "never shown again; a skill is used once it has one. One that answers later posts its answer to the replyUrl in each " +
+        "request: it needs no token, and its answer shows in Chat under its name. MCP servers added in chat are under MCP servers."),
       this.list,
       this.res,
     );

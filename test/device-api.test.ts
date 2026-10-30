@@ -73,6 +73,8 @@ console.log("token format — the decision everything else rests on");
   check("rejects a mangled token", !looksLikeToken("JDV1_ABC"), true);
   check("rejects the owner's key shape", !looksLikeToken("NOTAREALKEY12345"));
   check("rejects empty", !looksLikeToken(""));
+  const reply = mintToken("jrp1_");
+  check("a skill's reply address: its own kind, never taken for a device's", looksLikeToken(reply, "jrp1_") && !looksLikeToken(reply) && !looksLikeToken(t, "jrp1_"), reply);
 }
 
 console.log("\nowner regression — the car must not notice any of this");

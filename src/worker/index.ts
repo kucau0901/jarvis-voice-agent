@@ -14,7 +14,7 @@ import { handleDiag } from "./routes/diag.ts";
 import { handleDelegate } from "./routes/delegate.ts";
 import { handleTts } from "./routes/tts.ts";
 import { handleMcp } from "./routes/mcp.ts";
-import { handleSkills } from "./routes/skills.ts";
+import { handleBot, handleSkills } from "./routes/skills.ts";
 import { handleMemory } from "./routes/memory.ts";
 import { handleMap } from "./routes/map.ts";
 import { handleImage } from "./routes/image.ts";
@@ -115,6 +115,8 @@ export default {
     if (isTicketedSocket(req, url)) return openTicketedSocket(req, env);
     // Telegram's webhook (routes/telegram.ts): it cannot send a key, so its secret header is the proof.
     if (url.pathname === TELEGRAM_PATH) return await handleTelegram(req, await withSettings(env), ctx, forPerson);
+    // A skill's answer (routes/skills.ts): the secret in its address is the proof, as a page's link is.
+    if (url.pathname.startsWith("/api/v1/bot/")) return await handleBot(req, await withSettings(env));
     // Signing in, which by its nature comes before a credential (routes/hub.ts).
     if (url.pathname.startsWith("/api/auth/")) {
       try {

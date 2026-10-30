@@ -1,8 +1,8 @@
 import { api, authHeaders } from "./key";
-import { alertHistory, type History } from "./history";
+import { alertHistory, skillHistory, type History } from "./history";
 import { Reply } from "./reply";
 import { Attachments } from "./attach";
-import type { JobSaid, RoutineSaid } from "./fromRoutine";
+import type { JobSaid, RoutineSaid, SkillSaid } from "./fromRoutine";
 import { isApart, type Page } from "./madePages";
 
 /**
@@ -31,6 +31,8 @@ export interface Said {
   job?: { id: string; name: string };
   /** Any other alert that said it: where from, and its title, shown as "Title: text" (main.ts onAlert). */
   alert?: { source: string; title: string };
+  /** The skill that said it, an outside bot: under its name (fromRoutine.ts fromSkill). */
+  skill?: { id: string; name: string; about?: string };
   /** An answer's cited pages, drawn as cards under it (ui/rich.ts). */
   links?: { url: string; title: string }[];
   /** A page the answer made, as a card under it (pageCard.ts). */
@@ -49,7 +51,7 @@ export const saidId = (): string => `c_${Date.now().toString(36)}${(n++ % 1296).
  * Kept; when it cannot be, the conversation goes on all the same.
  * keepalive, so a row that ends as the page closes still arrives.
  */
-export function keep(key: string, said: Omit<Said, "at" | "routine" | "job" | "alert">): void {
+export function keep(key: string, said: Omit<Said, "at" | "routine" | "job" | "alert" | "skill">): void {
   if (!key) return;
   void fetch(PATH, { method: "POST", headers: authHeaders(key), body: JSON.stringify({ said: [said] }), keepalive: true }).catch(() => {});
 }
@@ -67,6 +69,7 @@ export interface Rows {
   row(who: "you" | "jarvis", text: string, links?: { url: string; title: string }[], page?: { id: string; title: string }): HTMLElement;
   routine(s: RoutineSaid): boolean;
   job(s: JobSaid): boolean;
+  skill(s: SkillSaid): boolean;
   /** A page set apart from any answer (madePages.ts): its card alone. */
   apart(page: Page): HTMLElement;
 }
@@ -81,6 +84,10 @@ export function restore(all: Said[], rows: Rows, history: History): void {
     }
     if (s.job) {
       if (rows.job({ id: s.id, at: s.at, title: s.job.name, text: s.text, job: s.job.id, ...(s.proposals ? { proposals: s.proposals } : {}) })) history.add("assistant", `${s.job.name}: ${s.text}`, s.at);
+      continue;
+    }
+    if (s.skill) {
+      if (rows.skill({ id: s.id, at: s.at, text: s.text, skill: s.skill })) history.add("assistant", skillHistory(s.skill, s.text), s.at);
       continue;
     }
     if (s.page && isApart(s)) {

@@ -273,6 +273,7 @@ console.log("\nredact: keys never go back in an error");
   const jwt = "eyJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJleGFtcGxlIn0.c2lnbmF0dXJlLW1hZGUtdXA";
   check("a JWT anywhere, as Home Assistant's token is", redact(`401 from https://ha.example.com/api?token=${jwt}, token=${jwt}`) === "401 from https://ha.example.com/api?token=eyJ***, token=eyJ***");
   check("the rest of the message stays, to debug from", /Incorrect API key provided/.test(said) && /platform\.openai\.com/.test(said), said);
+  check("a skill's reply address, which answers for it", redact("post to https://jarvis.example.com/api/v1/bot/jrp1_abcdefghijkmnpqrstuvwxyz23456789 later") === "post to https://jarvis.example.com/api/v1/bot/jrp1_*** later");
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

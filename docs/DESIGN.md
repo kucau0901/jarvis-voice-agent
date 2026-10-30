@@ -1355,10 +1355,24 @@ setting's secret whose address changed. A redirect is not followed with it, and
 anything a service says back has the key taken out. Adding one, and sending to
 one, needs the `skills` scope, which no role has but an admin's: a service may
 act on the house or send things, and a request approves nothing (the service
-asks the person itself). A service that answers later does so as an alert, by
-`POST /api/v1/notify` with a token of its own. Jarvis's own house and car tools
-come first: a skill is for what they cannot do, or when it is named. One list
-for the family, in the Durable Object; background jobs are never offered them.
+asks the person itself). Jarvis's own house and car tools come first: a skill
+is for what they cannot do, or when it is named. One list for the family, in
+the Durable Object; background jobs are never offered them.
+
+A service that answers later posts to the `replyUrl` its request carried
+(`/api/v1/bot/jrp1_…`), served before the gate as a page's link is: the
+address is the proof. It is made for that request and kept only as its
+digest, with who asked and what (`skill:asked`, a day, the newest 200). It
+takes 5 answers, only writes, never as urgent, and only to whoever asked, so
+a bot needs no token of Jarvis's, and one that leaked reaches no further than
+that person's Chat for a day. The answer is an alert under the skill's name,
+marked `skill`: every screen and device shows it as the bot's, and the model
+is told it as the bot's words, with what it was asked, so "was that Nova?" is
+answered from the conversation, never by asking Nova again. This replaced a
+bot posting to `/api/v1/notify` with an `alerts` token, which also let it read
+every alert of its person, and left its answer looking like Jarvis's. A skill
+is sent at most 20 requests an hour, whoever asks: where a loop between Jarvis
+and a bot stops.
 
 ## Architecture
 

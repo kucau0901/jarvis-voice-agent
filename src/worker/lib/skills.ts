@@ -2,7 +2,8 @@ import type { Storage } from "./state-host.ts";
 import { sanitise } from "./memory.ts";
 import { pageUrl } from "./page-look.ts";
 import { redact } from "./http.ts";
-import { asQuotedData } from "./quote.ts";
+import { asQuotedData, tidy } from "./quote.ts";
+import { makeAlert, type Alert } from "./alerts.ts";
 
 /**
  * Skills: outside services the owner or an admin added in chat ("add a skill:
@@ -16,7 +17,13 @@ import { asQuotedData } from "./quote.ts";
  * withholds one whose address changed. The model never names an address: it
  * picks a skill by name, and only skills with a key are offered.
  *
- * One list for the family, under one key.
+ * A request carries an address to answer it at (replyUrl): one made for it,
+ * kept here only as its digest, which takes a few answers for a day and goes
+ * to the person who asked, under the skill's name (POST /api/v1/bot/<token>,
+ * routes/skills.ts handleBot). So any bot answers later with no token of its
+ * own, and its answer shows as its own, under the question it answers.
+ *
+ * One list for the family, under one key; the requests sent, under another.
  */
 
 export const MAX_SKILLS = 20;
@@ -29,6 +36,22 @@ const WAIT_MS = 30_000;
 /** What of a reply is read, and what of a failure's is quoted. */
 const MAX_REPLY = 4000;
 const MAX_FAILURE = 200;
+/** A reply address's token (lib/devices.ts mintToken): one per request, kept only as its digest. */
+export const REPLY_PREFIX = "jrp1_";
+const ASKED_KEY = "skill:asked";
+/** How long a request's reply address takes answers, and how many: a bot may say it is working, then answer. */
+export const ANSWER_MS = 24 * 3_600_000;
+export const MAX_ANSWERS = 5;
+/** Requests remembered, the newest, across the family. */
+const MAX_ASKED = 200;
+/**
+ * Requests one skill is sent in an hour, whoever asks: where a loop between
+ * Jarvis and a bot, or a routine gone wrong, stops.
+ */
+export const SENDS_PER_HOUR = 20;
+const HOUR = 3_600_000;
+/** What of a request is kept, to show under its answer. */
+const MAX_ABOUT = 200;
 
 export interface Skill {
   id: string;
@@ -43,6 +66,8 @@ export interface Skill {
   /** Sent as they are in every request's body. */
   fields: Record<string, string>;
   key?: string;
+  /** Jarvis's own public address, as the key was saved from it: where its reply addresses point. */
+  origin?: string;
   createdAt: number;
   updatedAt: number;
 }
@@ -50,8 +75,23 @@ export interface Skill {
 /** A skill as the panel sees it: whether it has a key, never the key. */
 export type SkillView = Omit<Skill, "key"> & { hasKey: boolean };
 
+/** A request sent to a skill, while its answers are taken: who asked, and what. */
+export interface Asked {
+  /** As the request carried it. */
+  id: string;
+  /** Of its reply address's token, which is kept nowhere. */
+  digest: string;
+  skill: string;
+  /** Who its answers go to: whoever asked (lib/context.ts OWNER for the first person). */
+  person: string;
+  about: string;
+  at: number;
+  /** Answers taken so far. */
+  uses: number;
+}
+
 /** Every request's body has these; a fixed field of one of these names is left out, as Jarvis sets it. */
-const ENVELOPE = new Set(["id", "utterance", "source"]);
+const ENVELOPE = new Set(["id", "utterance", "source", "replyUrl"]);
 /** Headers the request sets itself. */
 const OWN_HEADERS = new Set(["authorization", "content-type", "content-length", "host", "cookie", "connection", "transfer-encoding"]);
 const ALPHABET = "0123456789abcdefghjkmnpqrstvwxyz";
@@ -106,6 +146,8 @@ export class Skills {
     if (!name.ok) return `its name: ${name.why}`;
     const named = name.text.slice(0, MAX_NAME);
     if (!nameOf(named)) return "its name needs a letter or a digit";
+    // Its answers show under its name: never as Jarvis's own.
+    if (nameOf(named) === "jarvis") return "a skill cannot be called Jarvis";
     const url = typeof input.url === "string" ? pageUrl(input.url) : null;
     if (!url) return "its address must be https, and not one on the home network";
     // Without one ("add a skill: Friday, at https://…"), it is used only when named (tools/skills.ts askSkill).
@@ -138,56 +180,128 @@ export class Skills {
     return view(s);
   }
 
-  /** Its key, from Settings → Skills; why not, in words. */
-  async setKey(id: string, key: unknown, now: number): Promise<SkillView | string> {
+  /** Its key, from Settings → Skills, and Jarvis's public address as it was saved from (routes/skills.ts); why not, in words. */
+  async setKey(id: string, key: unknown, now: number, origin?: string): Promise<SkillView | string> {
     if (typeof key !== "string" || key.length < 8 || key.length > 512 || /\s/.test(key)) return "a key is 8 to 512 characters, without spaces";
     const all = await this.all();
     const s = all.find((x) => x.id === id);
     if (!s) return "no such skill";
-    const next = { ...s, key, updatedAt: now };
+    const next = { ...s, key, ...(origin ? { origin } : {}), updatedAt: now };
     await this.storage.put(KEY, all.map((x) => (x.id === id ? next : x)));
     return view(next);
   }
 
-  /** Removed, by its id or its name: the one removed, if there was one. */
+  /** Removed, by its id or its name: the one removed, if there was one. Its reply addresses go with it. */
   async remove(which: string): Promise<SkillView | null> {
     const all = await this.all();
     const name = nameOf(which);
     const gone = all.find((s) => s.id === which || (!!name && nameOf(s.name) === name));
     if (!gone) return null;
     await this.storage.put(KEY, all.filter((s) => s.id !== gone.id));
+    const asked = (await this.storage.get<Asked[]>(ASKED_KEY)) ?? [];
+    if (asked.some((a) => a.skill === gone.id)) await this.storage.put(ASKED_KEY, asked.filter((a) => a.skill !== gone.id));
     return view(gone);
   }
+
+  /**
+   * A request about to be sent to a skill, for `person`, its reply address's
+   * digest kept: its id, or why not (SENDS_PER_HOUR). Those past ANSWER_MS go.
+   */
+  async asked(input: { skill: string; person: string; about: string; digest: string }, now: number): Promise<{ id: string } | string> {
+    const s = (await this.all()).find((x) => x.id === input.skill);
+    if (!s) return "no such skill";
+    const live = ((await this.storage.get<Asked[]>(ASKED_KEY)) ?? []).filter((a) => now - a.at < ANSWER_MS);
+    if (live.filter((a) => a.skill === s.id && now - a.at < HOUR).length >= SENDS_PER_HOUR) {
+      return `${s.name} has been sent ${SENDS_PER_HOUR} requests in the past hour; ask again later`;
+    }
+    const id = `jarvis-${Math.floor(now / 1000)}-${random(6)}`;
+    const a: Asked = { id, digest: input.digest, skill: s.id, person: input.person, about: tidy(input.about).slice(0, MAX_ABOUT), at: now, uses: 0 };
+    await this.storage.put(ASKED_KEY, [...live, a].slice(-MAX_ASKED));
+    return { id };
+  }
+
+  /**
+   * An answer posted to a request's reply address (by its token's digest):
+   * the alert for whoever asked, under the skill's name, or why not, with the
+   * status to say it with. A refused one is not counted.
+   */
+  async answer(digest: string, body: Record<string, unknown>, now: number): Promise<{ alert: Alert; at: number } | { refused: 400 | 404 | 429; why: string }> {
+    const asked = (await this.storage.get<Asked[]>(ASKED_KEY)) ?? [];
+    const i = asked.findIndex((a) => a.digest === digest && now - a.at < ANSWER_MS);
+    const a = asked[i];
+    const s = a && (await this.all()).find((x) => x.id === a.skill);
+    if (!a || !s) return { refused: 404, why: "no such address" };
+    if (a.uses >= MAX_ANSWERS) return { refused: 429, why: `that request has had its ${MAX_ANSWERS} answers` };
+    const alert = skillAlert(s, body, now, a.person, a.about);
+    if (!alert) return { refused: 400, why: "text is required" };
+    asked[i] = { ...a, uses: a.uses + 1 };
+    await this.storage.put(ASKED_KEY, asked);
+    return { alert, at: a.at };
+  }
+}
+
+/**
+ * What a skill said, as an alert for `person`: under its own name, whatever
+ * title it gave put before its words, and `about`, the request it answers.
+ * Never urgent: an address that leaked must not reach every channel.
+ */
+export function skillAlert(s: Pick<Skill, "id" | "name">, b: Record<string, unknown>, now: number, person: string, about?: string): Alert | null {
+  const text = typeof b.text === "string" ? b.text.trim() : "";
+  if (!text) return null;
+  const title = typeof b.title === "string" ? tidy(b.title).slice(0, 80) : "";
+  const a = makeAlert({ title: s.name, text: redact(title && nameOf(title) !== nameOf(s.name) ? `${title}: ${text}` : text), speak: b.speak, expiresAt: b.expiresAt }, "api", now, person);
+  return a && { ...a, skill: { id: s.id, name: s.name, ...(about ? { about } : {}) } };
 }
 
 /* ---------- calling one ---------------------------------------------------- */
 
+/** A request as sent (Skills.asked): its id, its reply address's token, and that address, when Jarvis knows its own. */
+export interface Sent {
+  id: string;
+  token?: string;
+  url?: string;
+}
+
 /**
  * The request a skill is sent: a POST of JSON, the key as a Bearer
  * credential and in its own header if the skill names one, and a body of
- * the request, an id the service can answer to, who sent it, and the
- * skill's fixed fields.
+ * the request, an id the service can answer to, who sent it, where to
+ * answer it later, and the skill's fixed fields.
  */
-export function skillRequest(s: Skill, request: string, now: number): { id: string; init: RequestInit & { headers: Record<string, string>; body: string } } {
-  const id = `jarvis-${Math.floor(now / 1000)}-${random(6)}`;
+export function skillRequest(s: Skill, request: string, sent: Sent): RequestInit & { headers: Record<string, string>; body: string } {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (s.key) {
     headers.Authorization = `Bearer ${s.key}`;
     if (s.keyHeader) headers[s.keyHeader] = s.key;
   }
-  return { id, init: { method: "POST", headers, body: JSON.stringify({ id, utterance: request, source: "jarvis", ...s.fields }) } };
+  return { method: "POST", headers, body: JSON.stringify({ id: sent.id, utterance: request, source: "jarvis", ...(sent.url ? { replyUrl: sent.url } : {}), ...s.fields }) };
+}
+
+/** A reply's words: `text` of the JSON many bots answer with, else the reply as it is. */
+function wordsOf(reply: string): string {
+  try {
+    const j = JSON.parse(reply) as unknown;
+    if (j && typeof j === "object" && typeof (j as { text?: unknown }).text === "string") return (j as { text: string }).text.trim();
+  } catch {
+    // not JSON: as it is
+  }
+  return reply;
 }
 
 /**
- * Send a skill a request; what happened, for the model. Never the key: a
- * service's error page or a transport error can quote it back, so anything
- * it said has the key taken out, then redact(). A redirect is not followed:
- * the key would go along with it.
+ * Send a skill a request; what happened, for the model. Never the key or the
+ * reply token: a service's error page or a transport error can quote them
+ * back, so anything it said has them taken out, then redact(). A redirect is
+ * not followed: the key would go along with it. Answered later (a 202, or
+ * nothing said, or a skill that always does): said so, and that the answer
+ * comes into the conversation under its name, so it is never asked again to
+ * find out.
  */
-export async function callSkill(s: Skill, request: string, signal: AbortSignal, now = Date.now()): Promise<string> {
+export async function callSkill(s: Skill, request: string, signal: AbortSignal, sent: Sent): Promise<string> {
   if (!s.key) return `${s.name} has no key yet: it goes in Settings → Skills.`;
-  const hide = (t: string) => redact(t.split(s.key!).join("***"));
-  const { id, init } = skillRequest(s, request, now);
+  const hide = (t: string) => redact([s.key!, sent.token ?? ""].filter(Boolean).reduce((x, secret) => x.split(secret).join("***"), t));
+  const id = sent.id;
+  const init = skillRequest(s, request, sent);
   let res: Response;
   try {
     res = await fetch(s.url, { ...init, redirect: "manual", signal: AbortSignal.any([signal, AbortSignal.timeout(WAIT_MS)]) });
@@ -200,8 +314,12 @@ export async function callSkill(s: Skill, request: string, signal: AbortSignal, 
     const why = text ? `\n${asQuotedData(`${s.name} answer`, hide(text).slice(0, MAX_FAILURE), s.name.toUpperCase())}` : "";
     return `Not sent: ${s.name} answered ${res.status}.${why}`;
   }
-  if (s.later) {
-    return `Sent to ${s.name} (request ${id}). Its answer will reach the user as a message when it is ready: tell them so, briefly, and do not wait for it or guess it.`;
+  const said = wordsOf(text);
+  if (s.later || res.status === 202 || !said) {
+    return (
+      `Sent to ${s.name} (request ${id}). Its answer comes into this conversation as a message from ${s.name}, after your reply: ` +
+      "say so in a few words; do not wait for it, guess it, or send it again to check."
+    );
   }
-  return text ? asQuotedData(`${s.name} answer`, hide(text), s.name.toUpperCase()) : `Sent to ${s.name}; it answered nothing back.`;
+  return asQuotedData(`${s.name} answer`, hide(said), s.name.toUpperCase());
 }

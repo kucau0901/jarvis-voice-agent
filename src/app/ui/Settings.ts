@@ -360,10 +360,12 @@ export class Settings {
     this.menu.build(NAV, (sections) => sections.find((s) => s.dataset.state === "need")?.dataset.section ?? "chatgpt", [note, this.versionLine]);
   }
 
-  async show() {
+  /** Opened on the list, or at one section (a skill's pill in the chat opens Skills). */
+  async show(section?: string) {
     this.el.classList.add("open");
     // Every screen starts on the list, and a section opens in its place.
     this.menu.toList();
+    if (section) this.menu.choose(section, true);
     this.msg("loading…");
     // Independent: a slow MCP server must not hold the other sections hostage.
     void this.services.load();

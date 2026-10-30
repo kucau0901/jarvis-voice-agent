@@ -69,6 +69,12 @@ export interface Alert {
    */
   job?: string;
   /**
+   * The skill that said it (lib/skills.ts skillAlert): an outside bot's answer
+   * to `about`, a request Jarvis sent it, or a message of its own. Its title is
+   * the skill's name: the app shows it under that name, never as Jarvis's.
+   */
+  skill?: { id: string; name: string; about?: string };
+  /**
    * What that job or brief proposed for the person's tap (lib/proposals.ts):
    * the app draws each as a card with its verb (Approve when it has none). Nothing here approves anything: an id
    * is done only by its person's own tap, signed in.

@@ -78,19 +78,21 @@ export async function sha256Hex(s: string): Promise<string> {
  * 32 divides 256 exactly, so masking a random byte with 31 picks a symbol with
  * no modulo bias — no rejection sampling needed.
  */
-export function mintToken(): string {
+export function mintToken(prefix = TOKEN_PREFIX): string {
   const bytes = new Uint8Array(TOKEN_BODY);
   crypto.getRandomValues(bytes);
   let body = "";
   for (const b of bytes) body += ALPHABET[b & 31];
-  return TOKEN_PREFIX + body;
+  return prefix + body;
 }
 
-const SHAPE = new RegExp(`^${TOKEN_PREFIX}[${ALPHABET}]{${TOKEN_BODY}}$`);
-
-/** Is this a device token at all? Keeps malformed input from ever reaching KV. */
-export function looksLikeToken(raw: string): boolean {
-  return SHAPE.test(raw);
+/**
+ * Is this a token of that kind at all (a device's, or a skill's reply
+ * address, lib/skills.ts REPLY_PREFIX)? Keeps malformed input from ever
+ * reaching storage.
+ */
+export function looksLikeToken(raw: string, prefix = TOKEN_PREFIX): boolean {
+  return new RegExp(`^${prefix}[${ALPHABET}]{${TOKEN_BODY}}$`).test(raw);
 }
 
 function hintOf(token: string): string {

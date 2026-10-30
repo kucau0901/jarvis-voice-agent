@@ -208,7 +208,8 @@ export function requiredScope(pathname: string, method: string): RouteRequiremen
       return "person";
 
     // Receiving alerts, and raising one. The same scope for both: a device
-    // that may be told things may also ask to be told something.
+    // that may be told things may also ask to be told something. A skill's
+    // answer, /api/v1/bot/<token>, is served before this gate, as a page is.
     case "/api/v1/events":
     case "/api/v1/events/ticket":
     case "/api/v1/push":

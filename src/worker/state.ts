@@ -770,12 +770,20 @@ export class JarvisState extends DurableObject<Env> {
     return this.skills.add(input, now);
   }
 
-  skillKey(id: string, key: unknown, now: number) {
-    return this.skills.setKey(id, key, now);
+  skillKey(id: string, key: unknown, now: number, origin?: string) {
+    return this.skills.setKey(id, key, now, origin);
   }
 
   skillRemove(which: string) {
     return this.skills.remove(which);
+  }
+
+  skillAsked(input: { skill: string; person: string; about: string; digest: string }, now: number) {
+    return this.skills.asked(input, now);
+  }
+
+  skillAnswer(digest: string, body: Record<string, unknown>, now: number) {
+    return this.skills.answer(digest, body, now);
   }
 
   episodesOf(person: string, now: number) {

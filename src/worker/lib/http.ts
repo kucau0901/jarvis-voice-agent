@@ -46,7 +46,9 @@ export function redact(s: string): string {
     .replace(/\b(sk|ek)-[A-Za-z0-9_-]{8,}/g, "$1-***")
     // A JWT, as a Home Assistant token is, wherever it appears: a header, a URL, a message quoting it.
     .replace(/\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*/g, "eyJ***")
-    .replace(/Bearer\s+[A-Za-z0-9._~+/-]+=*/gi, "Bearer ***");
+    .replace(/Bearer\s+[A-Za-z0-9._~+/-]+=*/gi, "Bearer ***")
+    // A skill's reply address (lib/skills.ts REPLY_PREFIX), which is the credential to answer it.
+    .replace(/\bjrp1_[a-z2-9]{32}\b/g, "jrp1_***");
 }
 
 /**

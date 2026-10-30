@@ -655,8 +655,10 @@ interface SkillApi {
   skillsList(): Promise<SkillView[]>;
   skillsReady(): Promise<Skill[]>;
   skillAdd(input: { name: unknown; url: unknown; when: unknown; later: unknown; keyHeader: unknown; fields: unknown }, now: number): Promise<SkillView | string>;
-  skillKey(id: string, key: unknown, now: number): Promise<SkillView | string>;
+  skillKey(id: string, key: unknown, now: number, origin?: string): Promise<SkillView | string>;
   skillRemove(which: string): Promise<SkillView | null>;
+  skillAsked(input: { skill: string; person: string; about: string; digest: string }, now: number): Promise<{ id: string } | string>;
+  skillAnswer(digest: string, body: Record<string, unknown>, now: number): Promise<{ alert: Alert; at: number } | { refused: 400 | 404 | 429; why: string }>;
 }
 
 /** What jobs propose for a person's tap (lib/proposals.ts; routes/proposals.ts). */

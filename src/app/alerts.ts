@@ -32,6 +32,8 @@ export interface Alert {
   job?: string;
   /** What that job proposed for a tap (proposal.ts). */
   proposals?: { id: string; risk: string; says: string }[];
+  /** The skill that said it, an outside bot: shown under its name, and what it was asked (fromRoutine.ts fromSkill). */
+  skill?: { id: string; name: string; about?: string };
 }
 
 /** What this screen is called in "shown on …" and in the list of devices. */

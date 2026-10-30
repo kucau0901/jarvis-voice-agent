@@ -433,9 +433,8 @@ the same `POST`), and could tell them apart by the session key:
 `X-Hermes-Session-Key` is `jarvis:tesla` for the first person and
 `jarvis:tesla:<their id>` for anyone else.
 
-A service added as a skill ([DESIGN.md](DESIGN.md#skills)) that answers later
-reports back the same way, with an `alerts` token of its own: its answer goes
-to that token's person.
+A service added as a skill answers on the `replyUrl` in each request instead;
+it needs no token ([Bots](#bots-skills-both-ways)).
 
 `alerts` works both ways ([Scopes](#scopes)): besides raising alerts, the
 token can receive every alert meant for the person it belongs to (the socket
@@ -454,7 +453,7 @@ and connects to `/api/v1/events?ticket=…`. A ticket works once.
 | Direction | Message |
 |---|---|
 | ← | `{"type":"hello","label":…}` on connecting |
-| ← | `{"type":"alert","alert":{id, at, title, text, speak, talk, urgent, source, for?, expiresAt?, routine?, job?, relay?, convo?, proposals?}}` |
+| ← | `{"type":"alert","alert":{id, at, title, text, speak, talk, urgent, source, for?, expiresAt?, routine?, job?, relay?, convo?, proposals?, skill?}}`; `skill: {id, name, about?}` when a bot said it ([Bots](#bots-skills-both-ways)): show it as `name`'s |
 | ← | `{"type":"glasses.open"}` when the person asks to open Jarvis on their display glasses (the `open_on_glasses` tool): an app holding G2 glasses shows Jarvis's own screen on them. Sent to each of the person's screens and devices; one with no such glasses ignores it |
 | → | `{"type":"presence","visible":true}` whenever the screen is shown or hidden |
 | → | `{"type":"ack","id":…,"visible":true}` on each alert, if someone can see it |
@@ -537,7 +536,7 @@ using it: [notifications.md](notifications.md).
 ### The webhook
 
 Each alert is POSTed as JSON: `{"event":"alert", id, at, title, text, speak,
-talk, urgent, source, routine?}`. With a signing secret set, `X-Jarvis-Signature` is
+talk, urgent, source, routine?, skill?}`. With a signing secret set, `X-Jarvis-Signature` is
 `sha256=` and the hex HMAC-SHA256 of the raw body:
 
 ```js
@@ -904,6 +903,67 @@ client, and its only job is to hand the client a device token:
   60 seconds.
 - Nothing is drawn, as on `/api/v1/ask`: maps are never offered, but with
   `screen` it can make and change Home panels.
+
+## Bots: skills both ways
+
+A skill is an outside bot or service the owner or an admin added in chat
+("Add a skill: Nova, my news bot, at https://bots.example.com/nova"): a Grok
+bot, an n8n or Zapier flow, a Home Assistant automation, a script, another
+assistant. Anything that takes an HTTPS `POST` of JSON works; nothing here is
+any one vendor's. Its key goes in **Settings → Skills**, never in chat
+([DESIGN.md](DESIGN.md#skills)).
+
+### Jarvis asking it
+
+```
+POST https://bots.example.com/nova
+Authorization: Bearer <its key, from Settings → Skills>
+Content-Type: application/json
+
+{"id": "jarvis-1793350800-4k2mxz",
+ "utterance": "Check the inbox for anything from the school today.",
+ "source": "jarvis",
+ "replyUrl": "https://jarvis.example.com/api/v1/bot/jrp1_…",
+ "mode": "async"}
+```
+
+The key also goes in a header of the skill's own if it names one
+(`X-Automation-Key`), and its fixed fields (`mode` above) go in every body;
+one named `id`, `utterance`, `source` or `replyUrl` is left out, as Jarvis sets
+those. A redirect is not followed, and Jarvis waits 30 seconds. `replyUrl` is
+left out while Jarvis does not know its own public address: set `PUBLIC_URL`,
+or save the skill's key again from Jarvis's own address.
+
+**Answering at once:** a `2xx` with the answer, as text or as `{"text": "…"}`.
+Jarvis reads it as the bot's words, never as instructions.
+
+**Answering later:** `202` (or an empty `2xx`, or anything from a skill added
+as answering later), then, when it is ready:
+
+```bash
+curl -X POST "https://jarvis.example.com/api/v1/bot/jrp1_…" \
+     -H "Content-Type: application/json" \
+     -d '{"title": "School mail", "text": "Two from the school: the trip form is due Friday."}'
+```
+
+```json
+{"ok": true, "id": "q8m2…", "deliveredBy": "live", "attempts": [{"channel": "live", "ok": true, "detail": "shown on phone"}]}
+```
+
+No header and no token: the address is the credential, made for that request.
+It only writes, under the skill's name, to whoever asked, and takes up to 5
+answers within a day (a bot may say it is working, then answer). `text` is
+required (1,500 characters are kept); `title` goes before it; `speak: false`
+shows it without saying it; `expiresAt` (ms) as on `/api/v1/notify`; `urgent`
+is ignored. `404` means no such address (never made, a day old, or the skill
+removed), `429` its answers are used up, `400` no text, `502` no channel took
+it, as `/api/v1/notify` says.
+
+The answer reaches every screen and device of whoever asked, as any alert
+does, with `skill: {id, name, about}` (`about`: what it was asked). The app
+shows it under the bot's name, and Jarvis reads it as the bot's words.
+
+One skill is sent at most 20 requests an hour, whoever asks.
 
 ## Live voice
 

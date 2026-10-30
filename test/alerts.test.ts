@@ -561,6 +561,8 @@ console.log("\nscopes");
   check("the overview is the owner's", requiredScope("/api/alerts", "GET") === "owner");
   check("so is removing a subscription", requiredScope("/api/alerts", "DELETE") === "owner");
   check("a lookalike path is the owner's", requiredScope("/api/v1/notifyx", "POST") === "owner");
+  // Served before the gate by the proof in its address (index.ts): reached through the gate, nobody's but the owner's.
+  check("a skill's reply address is the owner's if it ever reaches the gate", requiredScope("/api/v1/bot/jrp1_x", "POST") === "owner");
 }
 
 console.log("\nan admin sees that other people's alerts went, not what they said");

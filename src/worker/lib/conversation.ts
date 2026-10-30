@@ -37,6 +37,8 @@ export interface Said {
   job?: { id: string; name: string };
   /** Any other alert that said it (lib/alerts.ts): where it came from and its title, read as "Title: text". Only the server says this. */
   alert?: { source: Alert["source"]; title: string };
+  /** The skill that said it (lib/skills.ts), as its alert carried it: shown under its name. Only the server says this. */
+  skill?: { id: string; name: string; about?: string };
   /** An answer's cited pages, drawn as cards under it (src/app/ui/rich.ts). */
   links?: { url: string; title: string }[];
   /** A page the answer made (lib/pages.ts), drawn as a card under it (src/app/pageCard.ts). */
@@ -133,12 +135,13 @@ export function trimmed(log: readonly Said[], now: number): Said[] {
  * answered by voice (tools/family.ts pass_on). Null for Settings → Test,
  * which is nobody's conversation.
  */
-export function alertSaid(a: Pick<Alert, "id" | "at" | "title" | "text" | "source" | "routine" | "job" | "proposals">): Said | null {
+export function alertSaid(a: Pick<Alert, "id" | "at" | "title" | "text" | "source" | "routine" | "job" | "proposals" | "skill">): Said | null {
   if (a.source === "test") return null;
   // What it proposed, by id, drawn as cards under it (lib/proposals.ts).
   const proposals = (a.proposals ?? []).map((p) => p.id);
   const from = a.routine ? { routine: { id: a.routine, name: a.title } } : a.job ? { job: { id: a.job, name: a.title } } : { alert: { source: a.source, title: a.title } };
-  return { id: a.id, at: a.at, role: "assistant", text: a.text.slice(0, MAX_TEXT), ...from, ...(proposals.length ? { proposals } : {}) };
+  // A skill's keeps its alert too, so a screen that does not know skills shows it as "Name: text".
+  return { id: a.id, at: a.at, role: "assistant", text: a.text.slice(0, MAX_TEXT), ...from, ...(a.skill ? { skill: a.skill } : {}), ...(proposals.length ? { proposals } : {}) };
 }
 
 /** How long the same alert again is a repeat, not news: a door unlocked twice in a few minutes. */

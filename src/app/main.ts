@@ -1,6 +1,6 @@
 import { JarvisSession, type ServerEvent, type SessionState } from "./session";
 import { loadKey, saveKey, clearKey, authHeaders, isSession } from "./key";
-import { History, alertHistory } from "./history";
+import { History, alertHistory, skillHistory } from "./history";
 import { Settings } from "./ui/Settings";
 import { Devices } from "./ui/Devices";
 import { Memory } from "./ui/Memory";
@@ -27,7 +27,7 @@ import { takeShared } from "./share";
 import { keyboardSpace, watchKeyboard } from "./keyboard";
 import { Attachments, type Attached } from "./attach";
 import { Reply } from "./reply";
-import { fromJob, fromRoutine, jobStarted, jobsSeen, type JobSaid, type RoutineSaid } from "./fromRoutine";
+import { fromJob, fromRoutine, fromSkill, jobStarted, jobsSeen, type JobSaid, type RoutineSaid, type SkillSaid } from "./fromRoutine";
 import { asked, clearKept, keep, kept, restore, saidId } from "./conversation";
 import { inCar } from "./client";
 import { arm } from "./ui/util";
@@ -640,16 +640,28 @@ function jobSaid(a: JobSaid): boolean {
   return true;
 }
 
+/** What a skill said, an outside bot: its pill, then its words under its name, never as Jarvis's (fromRoutine.ts). */
+function skillSaid(a: SkillSaid): boolean {
+  const label = fromSkill(a, openSkills);
+  if (!label) return false;
+  els.transcript.appendChild(label);
+  const row = addRow("jarvis", a.text, "skill");
+  row.querySelector(".who")!.textContent = a.skill.name;
+  row.dataset.said = a.id;
+  return true;
+}
+
 function onAlert(a: Alert) {
   const card = showAlert(a);
   // Into the conversation as the server keeps it (lib/conversation.ts alertSaid): a routine's or a job's under its name,
   // anything else as "Title: text"; Settings → Test, which is kept nowhere, only while typing.
   if (a.routine) routineSaid({ ...a, routine: a.routine, proposals: a.proposals?.map((p) => p.id) });
   else if (a.job) jobSaid({ ...a, job: a.job, proposals: a.proposals?.map((p) => p.id) });
+  else if (a.skill) skillSaid({ id: a.id, at: a.at, text: a.text, skill: a.skill });
   else if (a.source !== "test" || mode === "type") addRow("jarvis", a.title !== "Jarvis" ? `${a.title}: ${a.text}` : a.text).dataset.said = a.id;
   // Into the conversation either way: "yes, do that" after Hermes asks a
   // question in an alert must have the question to refer to.
-  history.add("assistant", alertHistory(a.title, a.text, a.source));
+  history.add("assistant", a.skill ? skillHistory(a.skill, a.text) : alertHistory(a.title, a.text, a.source));
   // Said only when the server says to talk about it: their "Talk to me about alerts" (Family → You), and not a repeat.
   // One fetched from an older log has no `talk`: as it was, by `speak`.
   const talk = a.talk ?? a.speak;
@@ -683,7 +695,7 @@ if (key) {
   void syncPush(key);
   // The conversation kept from before, routines' words and all (conversation.ts).
   void kept(key).then((all) => {
-    restore(all, { row: (who, text, links, page) => addRow(who, text, "", links, page), routine: routineSaid, job: jobSaid, apart: (p) => showCard(pageCard(key, p)) }, history);
+    restore(all, { row: (who, text, links, page) => addRow(who, text, "", links, page), routine: routineSaid, job: jobSaid, skill: skillSaid, apart: (p) => showCard(pageCard(key, p)) }, history);
     // Nothing said yet: the first run, once on this screen (firstRun.ts).
     if (!all.length) void firstRun(key, els.transcript, chatWith);
   }).catch(() => {});
@@ -1061,11 +1073,16 @@ let devices: Devices | null = null;
 let memory: Memory | null = null;
 let settings: Settings | null = null;
 let stage: Stage | null = null;
-$("openSettings").addEventListener("click", () => {
+/** Settings, at one section when given: a skill's pill in the chat opens Skills. */
+function openSettings(section?: string) {
   if (!key) { requireKey(); return; }
   settings ??= new Settings(key);
-  void settings.show();
-});
+  void settings.show(section);
+}
+$("openSettings").addEventListener("click", () => openSettings());
+function openSkills() {
+  openSettings("skills");
+}
 
 $("openMemory").addEventListener("click", () => {
   if (!key) { requireKey(); return; }

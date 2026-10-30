@@ -2,7 +2,10 @@ import type { Tool } from "./registry.ts";
 import { stateStub } from "../lib/state-client.ts";
 import { pageUrl } from "../lib/page-look.ts";
 import { addServer, removeServer } from "../lib/config-store.ts";
-import { callSkill, nameOf, type Skill } from "../lib/skills.ts";
+import { callSkill, nameOf, REPLY_PREFIX, type Skill } from "../lib/skills.ts";
+import { mintToken, sha256Hex } from "../lib/devices.ts";
+import { publicOrigin } from "../lib/http.ts";
+import { OWNER } from "../lib/context.ts";
 
 /**
  * Adding and removing skills (lib/skills.ts): an outside service Jarvis
@@ -124,7 +127,9 @@ export const skillRemove: Tool = {
 
 /**
  * Sending a request to a skill, offered only with the skills that have a key
- * (lib/router.ts), by name: the model never names an address.
+ * (lib/router.ts), by name: the model never names an address. Each request
+ * gets a reply address of its own (lib/skills.ts Skills.asked), its token
+ * made here and kept nowhere but in the request: the object keeps its digest.
  */
 export function askSkill(ready: readonly Skill[]): Tool[] {
   if (!ready.length) return [];
@@ -137,7 +142,9 @@ export function askSkill(ready: readonly Skill[]): Tool[] {
       ready.map((s) => `- ${s.name}: ${s.when || "only when the user names it"}`).join("\n") +
       "\nUse one when the user names it, or for what it is for that your own tools cannot do: the house, " +
       "the car, mail and the calendar go to your own tools first. A request approves nothing: the service " +
-      "asks the user itself before it sends, buys, unlocks or opens anything.",
+      "asks the user itself before it sends, buys, unlocks or opens anything. An answer that comes later shows in " +
+      "this conversation under the service's name, as its own words: answer from there, and never send it again " +
+      "to find out whether it answered.",
     parameters: {
       type: "object",
       properties: {
@@ -152,8 +159,15 @@ export function askSkill(ready: readonly Skill[]): Tool[] {
       if (!s) return `No skill is called "${String(args.skill)}".`;
       const request = typeof args.request === "string" ? args.request.trim() : "";
       if (!request) return "No request was given.";
+      const state = stateStub(ctx.env);
+      if (!state) return "Not sent: skills need the state object.";
+      const token = mintToken(REPLY_PREFIX);
+      const r = await state.skillAsked({ skill: s.id, person: ctx.env.JARVIS_PERSON ?? OWNER, about: request, digest: await sha256Hex(token) }, Date.now());
+      if (typeof r === "string") return `Not sent: ${r}.`;
+      // Jarvis's public address, as the key was saved from it: without one, the request carries no reply address.
+      const origin = publicOrigin(ctx.env, s.origin ?? "");
       ctx.progress(`asking ${s.name}`);
-      return callSkill(s, request, ctx.signal);
+      return callSkill(s, request, ctx.signal, { id: r.id, token, ...(origin ? { url: `${origin}/api/v1/bot/${token}` } : {}) });
     },
   }];
 }
