@@ -161,7 +161,7 @@ existence, or argued around.
 | `ask` (jobs) | `/api/v1/jobs`, `/api/v1/jobs/cancel`, `start_job`. A job for Hermes also needs `hermes`. Each job runs with its creator's grants, no more than they hold now; it reads with their reading tools, and what it would do is proposed for their tap (or done at once, for a reversible kind they allowed). |
 | `routines` | `/api/v1/routines`, `/api/v1/routines/run`, `/api/v1/routines/runs`, `/api/v1/trigger`; `routine_add`, `routine_list`, `routine_remove`. A routine's question runs with **its creator's** grants, never more. A device sees, runs and changes only the routines it made, or ones no stronger than itself; revoking or deleting it stops the routines it made, and narrowing it narrows them. |
 | `alerts` | Receiving alerts (`/api/v1/events`, `/api/v1/push`, `/api/v1/alerts`), raising one (`/api/v1/notify`), and `send_note`. The same scope both ways: a device that may be told things may ask to be told something. |
-| `skills` | `skill_add`, `skill_remove` (outside services and MCP servers added in chat) and `ask_skill` (sending a request to a service). A service may act on the house or send things, so no role has it but an admin's. Each service's key is set in Settings → Skills, never by a device. |
+| `skills` | `skill_add`, `skill_remove` (outside services and MCP servers added in chat) and `ask_skill` (sending a request to a service). A service may act on the house or send things, so no role has it but an admin's. Each service's key is set in Settings → Skills, never by a device. A bot's own address never holds it, nor `alerts`, `chat`, `voice`, `screen` or `routines` ([Bots](#bots-skills-both-ways)). |
 
 Ask for something out of reach and you get a normal answer explaining it is not
 available — not an error. `tools` will be empty.
@@ -966,6 +966,49 @@ does, with `skill: {id, name, about}` (`about`: what it was asked). The app
 shows it under the bot's name, and Jarvis reads it as the bot's words.
 
 One skill is sent at most 20 requests an hour, whoever asks.
+
+### It asking Jarvis, with an address of its own
+
+In **Settings → Skills**, under the skill, an admin ticks what its bot may
+reach (asking questions, and nothing more, unless more is ticked) and
+presses **Make its address**. It is shown once, in two forms: a base URL,
+`https://jarvis.example.com/api/v1/bot`, with the key `jbt1_…` sent as
+`Authorization: Bearer`, which keeps it out of URL logs; or, for a bot that
+takes only a URL, `https://jarvis.example.com/api/v1/bot/jbt1_…`. Only its
+digest is kept: lost, make a new one, and the old one stops.
+
+```bash
+curl -X POST https://jarvis.example.com/api/v1/bot/ask \
+     -H "Authorization: Bearer jbt1_…" -H "Content-Type: application/json" \
+     -d '{"text": "Is the garage door shut?", "timeout": 60, "clientRef": "nova-42"}'
+```
+
+```json
+{"ok": true, "text": "Yes, it is shut.", "tools": ["ha__get_state"], "ms": 3120, "requestId": "r_4b1e9c02", "clientRef": "nova-42"}
+```
+
+The same on the same address, for bots that speak something else:
+
+- **MCP:** the server URL `{base}/mcp`, with one tool, `ask_jarvis`, as
+  [above](#grok-and-other-mcp-clients).
+- **The OpenAI chat API:** base URL `{base}`, the key as its API key, and
+  `POST {base}/chat/completions` with `{"model": "jarvis", "messages": […]}`;
+  the answer is `choices[0].message.content`, whole, not cut for glasses.
+
+`GET {base}` says whose address it is: `{"ok": true, "name": "Nova"}`.
+
+It asks as the person who made the address, as a device of theirs would:
+their hours (`403` with `outside`), a device's allowance (`429`), and no
+further than what was ticked for it and they may now. What it may reach
+never holds `skills`, so a bot asking can never make Jarvis send to a bot,
+nor `alerts`, `chat`, `voice`, `screen` or `routines`; `hermes` only if
+ticked. It is never offered your Chat (`look_back`), background jobs, your
+glasses, or MCP servers added as skills. Jarvis is told the question is the
+bot's, not yours, so nothing it says is your request or your approval, and
+the exchange is kept in your Chat as "Nova asked" and Jarvis's answer.
+`403` with `need: "ask"` means it is not ticked to ask. Every refusal of the
+address is the same `404`: not one, never made, stopped, its skill removed,
+or its maker gone. Removing the skill stops it.
 
 ## Live voice
 

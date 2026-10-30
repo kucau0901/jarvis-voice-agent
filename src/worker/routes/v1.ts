@@ -19,7 +19,7 @@ import * as devices from "../lib/devices.ts";
 import { handleLiveUsage } from "./usage.ts";
 import { originOf } from "../lib/shared.ts";
 import { mcpReply } from "../lib/mcp-server.ts";
-import { exchangeSaid } from "../lib/conversation.ts";
+import { exchangeSaid, skillExchangeSaid } from "../lib/conversation.ts";
 import { canAsk } from "../lib/openai-auth.ts";
 import { handleConnect } from "./oauth.ts";
 import { JARVIS_VERSION } from "./version.ts";
@@ -153,7 +153,10 @@ export const TIMEOUT_TEXT = "That is taking longer than I can wait on. Ask me ag
 
 /* ---------- POST /api/v1/ask --------------------------------------------- */
 
-async function handleAsk(
+/** A skill's bot asking through its own address (routes/skills.ts handleBot): its skill, as the principal carries it. */
+const botOf = (p: Principal): { id: string; name: string } | null => (p.kind === "device" && p.skill ? { id: p.skill, name: p.name } : null);
+
+export async function handleAsk(
   req: Request,
   env: Env,
   ctx: ExecutionContext,
@@ -174,8 +177,10 @@ async function handleAsk(
   const clientRef = typeof body.clientRef === "string" ? body.clientRef.slice(0, 64) : undefined;
   const requestId = "r_" + crypto.randomUUID().replace(/-/g, "").slice(0, 8);
 
-  const origin = originOf(principal, body.origin);
-  const d = await collectWithDeadline(req.signal, env, ctx, turns, grants, waitS, "v1/ask", origin ? { origin } : undefined);
+  // A bot neither reads nor adds to the person's devices' conversation (lib/shared.ts): it is told who it is instead.
+  const bot = botOf(principal);
+  const origin = bot ? null : originOf(principal, body.origin);
+  const d = await collectWithDeadline(req.signal, env, ctx, turns, grants, waitS, "v1/ask", bot ? { bot: bot.name } : origin ? { origin } : undefined);
 
   if (d.timedOut) {
     return json({
@@ -189,6 +194,7 @@ async function handleAsk(
     });
   }
 
+  if (bot && d.result.ok) ctx.waitUntil(keepInChat(env, personOf(principal), turns.at(-1)!.text, d.result.text, bot));
   return json({
     ...d.result,
     ms: d.ms,
@@ -204,7 +210,7 @@ async function handleAsk(
  * /api/v1/ask would, with the same grants. Nothing is streamed to the client,
  * so a GET, which would open that stream, is refused as the spec allows.
  */
-async function handleMcp(
+export async function handleMcp(
   req: Request,
   env: Env,
   ctx: ExecutionContext,
@@ -217,9 +223,11 @@ async function handleMcp(
   const parsed = await readJson(req);
   if (!parsed.ok) return parsed.res;
 
+  const bot = botOf(principal);
   const origin = originOf(principal, null) ?? { id: "owner-mcp", label: "an MCP client" };
   const reply = await mcpReply(parsed.body, async (question) => {
-    const d = await collectWithDeadline(req.signal, env, ctx, turnsFrom({ text: question }), grants, DEFAULT_WAIT_S, "v1/mcp", { origin });
+    const d = await collectWithDeadline(req.signal, env, ctx, turnsFrom({ text: question }), grants, DEFAULT_WAIT_S, "v1/mcp", bot ? { bot: bot.name } : { origin });
+    if (bot && !d.timedOut && d.result.ok) ctx.waitUntil(keepInChat(env, personOf(principal), question, d.result.text, bot));
     return d.timedOut ? { ok: false, text: TIMEOUT_TEXT } : d.result;
   }, JARVIS_VERSION);
   return reply ? json(reply) : new Response(null, { status: 202 });
@@ -244,8 +252,12 @@ async function handleMcp(
  *  - Every outcome is a 200 with something readable in it. Anything else makes
  *    the glasses show a bare "AI server error", which tells the user nothing.
  *    Only a body that is not a chat request at all is refused.
+ *
+ * A skill's bot (routes/skills.ts handleBot) speaks the same dialect, as many
+ * agents can: it gets the whole answer, written for no glasses, no Assist
+ * first, and the exchange is kept under its name.
  */
-async function handleChatCompletions(
+export async function handleChatCompletions(
   req: Request,
   env: Env,
   ctx: ExecutionContext,
@@ -264,14 +276,17 @@ async function handleChatCompletions(
   const reply = (answer: string, model?: string) => json(toChatCompletion(answer, model));
 
   const turns: Turn[] = [...(await priorTurns(env, thread)), { role: "user", text }];
+  const bot = botOf(principal);
   // Assist first (RunOptions.assist): the house answers what it understands.
   const d = await collectWithDeadline(
-    req.signal, env, ctx, turns, grants, waitSeconds(env.G2_WAIT_S), "v1/chat/completions",
-    {
-      surface: "glasses", charBudget: budget, assist: true,
-      // One conversation across devices (lib/shared.ts); the owner key on glasses is "glasses".
-      origin: originOf(principal, null) ?? { id: "owner-glasses", label: "glasses" },
-    },
+    req.signal, env, ctx, turns, grants, bot ? DEFAULT_WAIT_S : waitSeconds(env.G2_WAIT_S), "v1/chat/completions",
+    bot
+      ? { bot: bot.name }
+      : {
+          surface: "glasses", charBudget: budget, assist: true,
+          // One conversation across devices (lib/shared.ts); the owner key on glasses is "glasses".
+          origin: originOf(principal, null) ?? { id: "owner-glasses", label: "glasses" },
+        },
   );
 
   if (d.timedOut) {
@@ -281,19 +296,24 @@ async function handleChatCompletions(
 
   const r = d.result;
   console.log(`g2: ${r.model ?? "-"} ${r.ok ? "ok" : r.error} ${d.ms}ms tools=${r.tools.join(",") || "-"}`);
-  const answer = forGlasses(r.text || (r.ok ? "Done." : "Something went wrong."), budget);
+  const said = r.text || (r.ok ? "Done." : "Something went wrong.");
+  const answer = bot ? said : forGlasses(said, budget);
   // A failed turn is not context worth carrying: the user will ask again.
-  if (r.ok) ctx.waitUntil(Promise.all([recordTurns(env, thread, text, answer), keepInChat(env, personOf(principal), text, answer)]));
+  if (r.ok) ctx.waitUntil(Promise.all([recordTurns(env, thread, text, answer), keepInChat(env, personOf(principal), text, answer, bot)]));
   return reply(answer, r.model);
 }
 
-/** A question asked on glasses, and its answer, in the person's Chat too (lib/conversation.ts). Never throws. */
-async function keepInChat(env: Env, person: string, asked: string, answered: string): Promise<void> {
+/**
+ * A question asked on glasses, and its answer, in the person's Chat too (lib/conversation.ts); or a skill's
+ * bot's, under its name, never as theirs (skillExchangeSaid). Never throws.
+ */
+async function keepInChat(env: Env, person: string, asked: string, answered: string, bot?: { id: string; name: string } | null): Promise<void> {
   const state = stateStub(env);
   if (!state) return;
   const now = Date.now();
   try {
-    await state.conversationAdd(person, exchangeSaid(`g_${crypto.randomUUID()}`, asked, answered, now), now);
+    const id = `${bot ? "b" : "g"}_${crypto.randomUUID()}`;
+    await state.conversationAdd(person, bot ? skillExchangeSaid(id, bot, asked, answered, now) : exchangeSaid(id, asked, answered, now), now);
   } catch (e) {
     console.warn("not kept in chat:", e instanceof Error ? e.message : String(e));
   }

@@ -37,8 +37,11 @@ export interface Said {
   job?: { id: string; name: string };
   /** Any other alert that said it (lib/alerts.ts): where it came from and its title, read as "Title: text". Only the server says this. */
   alert?: { source: Alert["source"]; title: string };
-  /** The skill that said it (lib/skills.ts), as its alert carried it: shown under its name. Only the server says this. */
-  skill?: { id: string; name: string; about?: string };
+  /**
+   * The skill that said it (lib/skills.ts), as its alert carried it: shown under its name. Or a bot's question
+   * through its own address (`asked`), and Jarvis's answer to it (`answered`): skillExchangeSaid. Only the server says this.
+   */
+  skill?: { id: string; name: string; about?: string; asked?: true; answered?: true };
   /** An answer's cited pages, drawn as cards under it (src/app/ui/rich.ts). */
   links?: { url: string; title: string }[];
   /** A page the answer made (lib/pages.ts), drawn as a card under it (src/app/pageCard.ts). */
@@ -113,6 +116,21 @@ export function exchangeSaid(id: string, asked: string, answered: string, at: nu
   return [asSaid({ id: `${id}_q`, role: "user", text: asked }, at), asSaid({ id: `${id}_a`, role: "assistant", text: answered }, at)].filter(
     (s): s is Said => !!s,
   );
+}
+
+/**
+ * A skill's bot asking Jarvis through its own address (routes/skills.ts
+ * handleBot), and Jarvis's answer, kept in the person's conversation: its
+ * question under its name, never as the person's, and the answer marked as
+ * to it. Neither is a reply to the person (answeredSince).
+ */
+export function skillExchangeSaid(id: string, skill: { id: string; name: string }, asked: string, answered: string, at: number): Said[] {
+  const q = asSaid({ id: `${id}_q`, role: "assistant", text: asked }, at);
+  const a = asSaid({ id: `${id}_a`, role: "assistant", text: answered }, at);
+  return [
+    ...(q ? [{ ...q, alert: { source: "api" as const, title: `${skill.name} asked` }, skill: { id: skill.id, name: skill.name, asked: true as const } }] : []),
+    ...(a ? [{ ...a, skill: { id: skill.id, name: skill.name, answered: true as const } }] : []),
+  ];
 }
 
 /** What one message takes of the person's MAX_CHARS: its words, and its links. */

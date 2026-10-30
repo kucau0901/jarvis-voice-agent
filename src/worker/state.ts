@@ -785,6 +785,22 @@ export class JarvisState extends DurableObject<Env> {
     return this.skills.asked(input, now);
   }
 
+  skillNewAddress(id: string, person: string, reach: unknown, now: number) {
+    return this.skills.newAddress(id, person, reach, now);
+  }
+
+  skillDropAddress(id: string, now: number) {
+    return this.skills.dropAddress(id, now);
+  }
+
+  skillReach(id: string, reach: unknown, now: number) {
+    return this.skills.setReach(id, reach, now);
+  }
+
+  skillByAddress(digest: string) {
+    return this.skills.byAddress(digest);
+  }
+
   skillAnswer(digest: string, body: Record<string, unknown>, now: number) {
     return this.skills.answer(digest, body, now, (person, since) => this.conversation.answeredSince(person, since, now));
   }
@@ -909,7 +925,8 @@ export class JarvisState extends DurableObject<Env> {
   async conversationAdd(person: string, said: Said[], now: number) {
     await this.conversation.add(person, said, now);
     // A skill's answer held for Jarvis's own reply (lib/skills.ts SETTLE_MS) follows it now: the alarm delivers it.
-    if (!said.some((s) => s.role === "assistant")) return;
+    // A bot's exchange with Jarvis (lib/conversation.ts skillExchangeSaid) is not a reply to the person.
+    if (!said.some((s) => s.role === "assistant" && !s.skill)) return;
     const due = heldToRelease(await this.ctx.storage.list({ prefix: HELD }), person, now);
     for (const [k, h] of due) await this.ctx.storage.put(k, h);
     if (due.length) await this.rearm();

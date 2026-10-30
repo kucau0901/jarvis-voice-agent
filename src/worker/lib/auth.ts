@@ -47,6 +47,8 @@ export type Principal =
       owner?: string;
       /** Its owner's limits (lib/access.ts). */
       access?: Access;
+      /** A skill's bot asking through its own address: set only by routes/skills.ts handleBot, never from a stored device. */
+      skill?: string;
     }
   | {
       kind: "member";

@@ -22,7 +22,8 @@ import { button, el } from "./ui/util";
 export type RoutineSaid = Pick<Alert, "id" | "at" | "title" | "text"> & { routine: string; proposals?: string[] };
 /** `proposals`: what the job proposed, by id, for their cards (proposal.ts). */
 export type JobSaid = Pick<Alert, "id" | "at" | "title" | "text"> & { job: string; proposals?: string[] };
-export type SkillSaid = Pick<Alert, "id" | "at" | "text"> & { skill: { id: string; name: string; about?: string } };
+/** `skill.asked`: the bot's own question to Jarvis, through its own address. */
+export type SkillSaid = Pick<Alert, "id" | "at" | "text"> & { skill: { id: string; name: string; about?: string; asked?: boolean } };
 
 const shown = new Set<string>();
 /** Jobs started from this screen and not back yet: their pills, by job id. */
@@ -56,7 +57,8 @@ export function fromSkill(a: SkillSaid, open: () => void): HTMLElement | null {
   if (shown.has(a.id)) return null;
   shown.add(a.id);
   const about = a.skill.about ? ` · ${a.skill.about.length > 40 ? `${a.skill.about.slice(0, 40)}…` : a.skill.about}` : "";
-  return pillRow(a.skill.name, `${when(a.at)}${about}`, open, "frompill skill", `${a.skill.name}, a skill: open Skills`);
+  const label = a.skill.asked ? `${a.skill.name} asked` : a.skill.name;
+  return pillRow(label, `${when(a.at)}${about}`, open, "frompill skill", `${label}, a skill: open Skills`);
 }
 
 /** A job just started from this screen: its pill, working, until the result comes (fromJob). */

@@ -506,11 +506,11 @@
 
   /* Devices. Minting a credential is a phone-or-laptop job, never a driving one. */
   #devices .mint, #connect .mint { display: grid; gap: 10px; padding: 20px; margin-bottom: 14px; border-radius: 24px; background: var(--glass-hi); }
-  #devices .scopes, #connect .scopes { display: grid; gap: 6px; }
-  #devices .scope, #connect .scope { display: flex; align-items: flex-start; gap: 9px; font-size: 13px;
+  #devices .scopes, #connect .scopes, #settings .talks .scopes { display: grid; gap: 6px; }
+  #devices .scope, #connect .scope, #settings .talks .scope { display: flex; align-items: flex-start; gap: 9px; font-size: 13px;
     color: var(--dim); cursor: pointer; }
-  #devices .scope input, #connect .scope input { margin-top: 3px; min-width: 18px; min-height: 18px; }
-  #devices .scope.wild, #connect .scope.wild { color: var(--fg); padding-bottom: 6px; border-bottom: 1px solid var(--hair); }
+  #devices .scope input, #connect .scope input, #settings .talks .scope input { margin-top: 3px; min-width: 18px; min-height: 18px; }
+  #devices .scope.wild, #connect .scope.wild, #settings .talks .scope.wild { color: var(--fg); padding-bottom: 6px; border-bottom: 1px solid var(--hair); }
   #devices .dev { display: grid; gap: 8px; padding: 16px 20px; margin-bottom: 10px; border-radius: 24px; background: var(--glass-hi); }
   #devices .dev.dead { opacity: .5; }
   #devices .who { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; }
@@ -519,11 +519,11 @@
   #devices button.armed, #memory button.armed, #family button.armed { background: var(--danger); border-color: var(--danger);
     color: var(--on-accent); font-weight: 600; }
   /* The one moment the token is readable, so it gets the loudest box here. */
-  #devices .token, #family .token { border: 1px solid var(--accent); border-radius: 24px;
+  #devices .token, #family .token, #settings .token { border: 1px solid var(--accent); border-radius: 24px;
     padding: 20px; margin-bottom: 16px; background: var(--glass-hi); }
-  #devices .token p, #family .token p { color: var(--dim); font-size: 13px; margin: 8px 0; }
-  #devices .tok, #family .tok { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-  #devices .tok code, #family .tok code { font: 13px ui-monospace, Menlo, monospace; word-break: break-all;
+  #devices .token p, #family .token p, #settings .token p { color: var(--dim); font-size: 13px; margin: 8px 0; }
+  #devices .tok, #family .tok, #settings .tok { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  #devices .tok code, #family .tok code, #settings .tok code { font: 13px ui-monospace, Menlo, monospace; word-break: break-all;
     flex: 1 1 260px; padding: 10px; }
   #devices .qr, #family .qr { background: #fff; padding: 10px; border-radius: 8px;
     width: max-content; margin: 12px 0; }
@@ -677,7 +677,7 @@
     #talkrow { order: 1; }
     #transcript { order: 2; }
     #devices .qr svg, #family .qr svg { width: 150px; height: 150px; }
-    #devices .tok code, #family .tok code { flex: 1 1 100%; }
+    #devices .tok code, #family .tok code, #settings .tok code { flex: 1 1 100%; }
   }
 
   /* A desktop window has room the dashboard does not. */

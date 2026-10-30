@@ -115,8 +115,8 @@ export default {
     if (isTicketedSocket(req, url)) return openTicketedSocket(req, env);
     // Telegram's webhook (routes/telegram.ts): it cannot send a key, so its secret header is the proof.
     if (url.pathname === TELEGRAM_PATH) return await handleTelegram(req, await withSettings(env), ctx, forPerson);
-    // A skill's answer (routes/skills.ts): the secret in its address is the proof, as a page's link is.
-    if (url.pathname.startsWith("/api/v1/bot/")) return await handleBot(req, await withSettings(env));
+    // A skill's answer, or its bot's own address (routes/skills.ts): the secret in it is the proof, as a page's link is.
+    if (url.pathname === "/api/v1/bot" || url.pathname.startsWith("/api/v1/bot/")) return await handleBot(req, await withSettings(env), ctx, forPerson);
     // Signing in, which by its nature comes before a credential (routes/hub.ts).
     if (url.pathname.startsWith("/api/auth/")) {
       try {
@@ -272,7 +272,7 @@ async function route(
     case "/api/alerts":
       return await handleAlertsAdmin(req, env);
     case "/api/skills":
-      return await handleSkills(req, env);
+      return await handleSkills(req, env, principal);
     case "/api/health":
       return new Response(JSON.stringify({ ok: true, ts: Date.now(), version: JARVIS_VERSION }), {
         headers: { "content-type": "application/json" },

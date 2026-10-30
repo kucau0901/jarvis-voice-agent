@@ -12,6 +12,7 @@ import { deliver, makeAlert, type Delivery } from "../src/worker/lib/alerts.ts";
 import { b64u } from "../src/worker/lib/webauthn.ts";
 import { STUCK_MS, weigh, type LaterDeps } from "../src/worker/lib/proposals.ts";
 import { carCommand } from "../src/worker/tools/tessie.ts";
+import { sha256Hex } from "../src/worker/lib/devices.ts";
 
 registerHooks({
   resolve(spec, ctx, next) {
@@ -472,7 +473,22 @@ console.log("skills, through the object");
     mine.until === T + 5_000 && mine.alert.at === T + 5_000 && alarmAt !== null && alarmAt <= T + 5_000, { mine, alarmAt });
   check("  another person's stays held", ((await storage.get("held:h_sara")) as { until: number }).until === T + 30_000);
   check("  one held for quiet hours stays held", ((await storage.get("held:h_quiet")) as { until: number }).until === T + 600_000);
-  for (const k of ["held:h_owner", "held:h_sara", "held:h_quiet"]) await storage.delete(k);
+  // A bot's own exchange with Jarvis is not Jarvis's reply to the person: it lets nothing go.
+  await jarvis.hold(mk("h_owner2"), T + 30_000, true);
+  alarmAt = null;
+  await jarvis.conversationAdd("owner", [{ id: "b_x_q", at: T + 6_000, role: "assistant", text: "Is it shut?", skill: { id: nid, name: "Nova", asked: true } }, { id: "b_x_a", at: T + 6_000, role: "assistant", text: "Yes.", skill: { id: nid, name: "Nova", answered: true } }], T + 6_000);
+  check("  a bot's exchange with Jarvis lets nothing go", alarmAt === null && ((await storage.get("held:h_owner2")) as { until: number }).until === T + 30_000);
+
+  // Its own address, through the object: whose, what it may reach, and the clock, forwarded.
+  const made = await jarvis.skillNewAddress(nid, "u_sara", ["ask", "home"], 7_000);
+  const digest = typeof made === "string" ? "" : await sha256Hex(made.token);
+  check("  its own address made, as whoever made it, reaching what was ticked, at the time given",
+    typeof made !== "string" && made.skill.address?.person === "u_sara" && made.skill.address.reach.join() === "ask,home" && made.skill.address.at === 7_000, made);
+  check("  found by its digest", JSON.stringify(await jarvis.skillByAddress(digest)) === JSON.stringify({ id: nid, name: "Nova", person: "u_sara", reach: ["ask", "home"] }));
+  const narrowed = await jarvis.skillReach(nid, ["ask"], 8_000);
+  check("  ticked again, at the time given", typeof narrowed !== "string" && narrowed.address?.reach.join() === "ask" && narrowed.updatedAt === 8_000, narrowed);
+  check("  stopped", typeof (await jarvis.skillDropAddress(nid, 9_000)) !== "string" && (await jarvis.skillByAddress(digest)) === null);
+  for (const k of ["held:h_owner", "held:h_sara", "held:h_quiet", "held:h_owner2"]) await storage.delete(k);
   await jarvis.skillRemove("Nova");
 }
 

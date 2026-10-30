@@ -658,6 +658,10 @@ interface SkillApi {
   skillKey(id: string, key: unknown, now: number, origin?: string): Promise<SkillView | string>;
   skillRemove(which: string): Promise<SkillView | null>;
   skillAsked(input: { skill: string; person: string; about: string; digest: string }, now: number): Promise<{ id: string } | string>;
+  skillNewAddress(id: string, person: string, reach: unknown, now: number): Promise<{ skill: SkillView; token: string } | string>;
+  skillDropAddress(id: string, now: number): Promise<SkillView | string>;
+  skillReach(id: string, reach: unknown, now: number): Promise<SkillView | string>;
+  skillByAddress(digest: string): Promise<{ id: string; name: string; person: string; reach: Grant[] } | null>;
   skillAnswer(digest: string, body: Record<string, unknown>, now: number): Promise<{ alert: Alert; at: number; holdUntil?: number } | { refused: 400 | 404 | 429; why: string }>;
 }
 

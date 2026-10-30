@@ -2,7 +2,7 @@ import type { Tool } from "./registry.ts";
 import { stateStub } from "../lib/state-client.ts";
 import { pageUrl } from "../lib/page-look.ts";
 import { addServer, removeServer } from "../lib/config-store.ts";
-import { callSkill, nameOf, REPLY_PREFIX, type Skill } from "../lib/skills.ts";
+import { callSkill, nameOf, REPLY_PREFIX, SKILL_MCP, type Skill } from "../lib/skills.ts";
 import { mintToken, sha256Hex } from "../lib/devices.ts";
 import { publicOrigin } from "../lib/http.ts";
 import { OWNER } from "../lib/context.ts";
@@ -30,8 +30,10 @@ function theirs(words: unknown, what: string, verb: RegExp, asked: string | unde
   return !!asked && verb.test(w) && said(asked).includes(w) && !!said(what) && w.includes(said(what));
 }
 
-/** An MCP server's label: its tools' prefix (tools/mcp.ts toolName). */
-const labelOf = (name: string) => nameOf(name).replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 30);
+/** A name as an MCP server's label is made of it: its tools' prefix (tools/mcp.ts toolName). */
+const slugOf = (name: string) => nameOf(name).replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 30);
+/** An MCP server added as a skill: marked so (SKILL_MCP), as another bot perhaps, never offered to a bot asking (lib/skills.ts botHides). */
+const labelOf = (name: string) => (slugOf(name) ? SKILL_MCP + slugOf(name) : "");
 
 export const skillAdd: Tool = {
   name: "skill_add",
@@ -120,7 +122,8 @@ export const skillRemove: Tool = {
     const gone = await stateStub(ctx.env)?.skillRemove(name);
     if (gone) return `Removed the skill "${gone.name}", and its key.`;
     const label = labelOf(name);
-    const server = await removeServer(ctx.env, (s) => s.label === label || (!!s.spokenAs && nameOf(s.spokenAs) === nameOf(name)));
+    // Or as it was labelled before the mark (slugOf).
+    const server = await removeServer(ctx.env, (s) => s.label === label || s.label === slugOf(name) || (!!s.spokenAs && nameOf(s.spokenAs) === nameOf(name)));
     return server ? `Disconnected the MCP server "${server.spokenAs ?? server.label}".` : `No skill is called "${name}".`;
   },
 };

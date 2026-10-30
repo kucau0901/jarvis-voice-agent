@@ -95,7 +95,8 @@ export function looksLikeToken(raw: string, prefix = TOKEN_PREFIX): boolean {
   return new RegExp(`^${prefix}[${ALPHABET}]{${TOKEN_BODY}}$`).test(raw);
 }
 
-function hintOf(token: string): string {
+/** First and last few characters, for a list: a device's token, or a skill's address (lib/skills.ts). */
+export function hintOf(token: string): string {
   return `${token.slice(0, TOKEN_PREFIX.length + 4)}…${token.slice(-4)}`;
 }
 

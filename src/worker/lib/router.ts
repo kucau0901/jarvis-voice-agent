@@ -23,7 +23,7 @@ import { stateStub } from "./state-client.ts";
 import { memoryFor, type MemoryStore } from "./memory.ts";
 import { bookOf, OWNER } from "./context.ts";
 import { specialtyBlock } from "./specialties.ts";
-import type { Skill } from "./skills.ts";
+import { botAsks, botHides, type Skill } from "./skills.ts";
 import { askSkill } from "../tools/skills.ts";
 import { episodeOfChain, pastBlock } from "./episodes.ts";
 import { localeOf } from "./locale.ts";
@@ -115,6 +115,13 @@ export interface RunOptions {
   assist?: boolean;
   /** What Assist is asked, when the latest turn is more than the words said (the family room's). */
   assistAsk?: string;
+  /**
+   * A skill's bot asking through its own address (routes/skills.ts handleBot),
+   * by its name: the router is told the question is the bot's, not the
+   * user's, nothing it says counts as the user's own words, and what a bot
+   * is never offered is left out (lib/skills.ts botHides).
+   */
+  bot?: string;
 }
 
 /** Everything a router request is built from, shared by run() and background jobs. */
@@ -179,8 +186,10 @@ export async function prepareRouter(
   ]);
   const elsewhere = [sharedBlock(shared, Date.now()), family].filter(Boolean).join("\n\n");
   tools.push(...mcp, ...askSkill(ready ?? []));
-  if (opts.toolFilter || opts.screenless) {
-    const keep = tools.filter((t) => (!opts.toolFilter || opts.toolFilter(t)) && !(opts.screenless && DRAWS_ON_SCREEN.includes(t.name)));
+  if (opts.toolFilter || opts.screenless || opts.bot) {
+    const keep = tools.filter(
+      (t) => (!opts.toolFilter || opts.toolFilter(t)) && !(opts.screenless && DRAWS_ON_SCREEN.includes(t.name)) && !(opts.bot && botHides(t)),
+    );
     tools.length = 0;
     tools.push(...keep);
   }
@@ -227,6 +236,7 @@ export async function prepareRouter(
     (opts.surface === "job" || opts.surface === "research" ? JOB_INSTRUCTIONS : "") +
     (opts.surface === "research" ? RESEARCH_INSTRUCTIONS : "") +
     (opts.surface === "chat" ? CHAT_INSTRUCTIONS : "") +
+    (opts.bot ? botAsks(opts.bot) : "") +
     (opts.surface === "routine"
       ? "\n\nTHIS IS A ROUTINE, NOT A CONVERSATION\n" +
         `The user set this up to run by itself${opts.routineName ? ` ("${opts.routineName.replace(/"/g, "'")}")` : ""}. ` +
@@ -308,11 +318,12 @@ export async function prepareRouter(
  * What the person themselves said in their latest message, for what only they
  * may ask for (tools/specialties.ts): none in a routine, whose question its
  * maker set long ago and whose event carries others' words; in the family
- * room their own message, not the room around it (assistAsk); and never an
- * earlier answer quoted in a reply (src/app/reply.ts).
+ * room their own message, not the room around it (assistAsk); none from a
+ * bot asking (bot), whose words are its own; and never an earlier answer
+ * quoted in a reply (src/app/reply.ts).
  */
-export function ownWords(turns: Turn[], opts: Pick<RunOptions, "surface" | "assistAsk">): string | undefined {
-  if (opts.surface === "routine") return undefined;
+export function ownWords(turns: Turn[], opts: Pick<RunOptions, "surface" | "assistAsk" | "bot">): string | undefined {
+  if (opts.surface === "routine" || opts.bot) return undefined;
   const said = opts.assistAsk ?? lastAsk(turns) ?? "";
   const reply = /^\(Replying to this answer of yours: "[\s\S]*?"\)\n/.exec(said);
   return (reply ? said.slice(reply[0].length) : said).trim() || undefined;

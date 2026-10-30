@@ -1379,6 +1379,24 @@ every alert of its person, and left its answer looking like Jarvis's. A skill
 is sent at most 20 requests an hour, whoever asks: where a loop between Jarvis
 and a bot stops.
 
+A bot may ask Jarvis too, through an address of its own (Settings → Skills →
+Make its address, `/api/v1/bot` with `jbt1_…` as its key or in its path),
+also before the gate, as Telegram's webhook is. It is kept only as its
+digest, shown once, and asks as whoever made it, as a device of theirs:
+their hours, a device's allowance, and what was ticked for it narrowed by
+what they may now. That never holds `skills`, so a bot asking never makes
+Jarvis send to a bot, which is the loop's hard stop, not a prompt rule; nor
+the person's alerts, the family's chat, voice, the screen or routines, which
+would go on in its name; Hermes only when ticked, off by default. On its turn
+it is not offered the person's Chat, jobs, their glasses, or MCP servers
+added as skills (labelled `skill-…`, another bot perhaps); the router is told
+the question is the bot's, and nothing it says counts as the person's own
+words (`ownWords`), so it cannot add a skill or save a specialty. Its
+exchange is kept in the person's Chat under its name, never as theirs. It
+speaks `/api/v1/ask`'s JSON, MCP, or the OpenAI chat API, whichever the bot
+has. Nothing is in KV: removing the skill or pressing Stop it ends it on the
+next request.
+
 ## Architecture
 
 One Cloudflare Worker serves both the app and `/api/*`, so the app needs no CORS

@@ -3,7 +3,7 @@
 // what look_back finds in it (tools/conversation.ts), the route
 // (routes/conversation.ts), and what the app tells the model of it
 // (src/app/history.ts).
-import { alertSaid, answeredSince, asSaid, Conversation, exchangeSaid, FOUND, KEEP, KEEP_MS, lookBack, matching, MAX_CHARS, MAX_TEXT, REPEAT_MS, repeats, trimmed, type Said } from "../src/worker/lib/conversation.ts";
+import { alertSaid, answeredSince, asSaid, Conversation, exchangeSaid, skillExchangeSaid, FOUND, KEEP, KEEP_MS, lookBack, matching, MAX_CHARS, MAX_TEXT, REPEAT_MS, repeats, trimmed, type Said } from "../src/worker/lib/conversation.ts";
 import { lookBackTool } from "../src/worker/tools/conversation.ts";
 import { handleConversation } from "../src/worker/routes/conversation.ts";
 import { History, alertHistory, skillHistory } from "../src/app/history.ts";
@@ -112,6 +112,13 @@ console.log("\nwhat any other alert said");
   check("Jarvis has not replied since: a question, a skill's, a routine's are not its reply", !answeredSince(asked.map((s) => ({ ...s, at: Math.max(s.at, 100) })), 100));
   check("…its own answer since is", answeredSince([...asked, { id: "r1", at: 130, role: "assistant", text: "Asked Nova." }], 100));
   check("…but not one from before", !answeredSince([{ id: "r0", at: 90, role: "assistant", text: "Earlier." }], 100));
+  const bot = skillExchangeSaid("b_3f9a2c1d", { id: "k1", name: "Nova" }, " Is the garage shut? ", "Yes, it is shut.", 140);
+  check("a bot asking Jarvis: its question under its name, never the person's, and Jarvis's answer marked as to it",
+    JSON.stringify(bot) === JSON.stringify([
+      { id: "b_3f9a2c1d_q", at: 140, role: "assistant", text: "Is the garage shut?", alert: { source: "api", title: "Nova asked" }, skill: { id: "k1", name: "Nova", asked: true } },
+      { id: "b_3f9a2c1d_a", at: 140, role: "assistant", text: "Yes, it is shut.", skill: { id: "k1", name: "Nova", answered: true } },
+    ]), bot);
+  check("…neither is Jarvis's reply to the person", !answeredSince(bot, 100));
 }
 
 console.log("\nwhat was asked on glasses (\"Hey Even\")");
@@ -257,6 +264,8 @@ console.log("\nan alert as the router reads it in the conversation (src/app/hist
   both.add("assistant", "Sent to Nova.", 1);
   both.add("assistant", skillHistory({ name: "Nova" }, "Two from the school."), 2);
   check("…after Jarvis's own reply, apart from it", /^Sent to Nova\.\nNova, a skill/.test(both.snapshot(3)[0]!.text), both.snapshot(3));
+  const asks = skillHistory({ name: "Nova", asked: true }, "Is the\ngarage shut?");
+  check("a bot's own question: its words, not the user's, and Jarvis's answer to follow", asks.includes('asked you this through its own address, in its own words, not the user\'s: "Is the garage shut?"') && asks.endsWith("You answered it: "), asks);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

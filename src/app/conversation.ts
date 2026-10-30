@@ -31,8 +31,11 @@ export interface Said {
   job?: { id: string; name: string };
   /** Any other alert that said it: where from, and its title, shown as "Title: text" (main.ts onAlert). */
   alert?: { source: string; title: string };
-  /** The skill that said it, an outside bot: under its name (fromRoutine.ts fromSkill). */
-  skill?: { id: string; name: string; about?: string };
+  /**
+   * The skill that said it, an outside bot: under its name (fromRoutine.ts fromSkill). Or its own question to
+   * Jarvis (`asked`), and Jarvis's answer to it (`answered`), drawn as Jarvis's own.
+   */
+  skill?: { id: string; name: string; about?: string; asked?: boolean; answered?: boolean };
   /** An answer's cited pages, drawn as cards under it (ui/rich.ts). */
   links?: { url: string; title: string }[];
   /** A page the answer made, as a card under it (pageCard.ts). */
@@ -86,7 +89,7 @@ export function restore(all: Said[], rows: Rows, history: History): void {
       if (rows.job({ id: s.id, at: s.at, title: s.job.name, text: s.text, job: s.job.id, ...(s.proposals ? { proposals: s.proposals } : {}) })) history.add("assistant", `${s.job.name}: ${s.text}`, s.at);
       continue;
     }
-    if (s.skill) {
+    if (s.skill && !s.skill.answered) {
       if (rows.skill({ id: s.id, at: s.at, text: s.text, skill: s.skill })) history.add("assistant", skillHistory(s.skill, s.text), s.at);
       continue;
     }
@@ -100,7 +103,8 @@ export function restore(all: Said[], rows: Rows, history: History): void {
     row.dataset.said = s.id;
     shown.set(s.id, { row, text });
     if (s.role === "assistant") {
-      history.add("assistant", s.alert ? alertHistory(s.alert.title, s.text, s.alert.source) : text, s.at);
+      // Jarvis's answer to a bot ends the line its question began (history.ts skillHistory).
+      history.add("assistant", s.alert ? alertHistory(s.alert.title, s.text, s.alert.source) : s.skill?.answered ? `${text}\n` : text, s.at);
       continue;
     }
     const to = (s.replyTo && shown.get(s.replyTo)) || null;

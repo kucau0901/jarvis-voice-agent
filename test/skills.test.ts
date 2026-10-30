@@ -6,7 +6,13 @@ import { ANSWER_MS, MAX_ANSWERS, MAX_SKILLS, REPLY_PREFIX, SENDS_PER_HOUR, SETTL
 import { askSkill, skillAdd, skillRemove } from "../src/worker/tools/skills.ts";
 import { baseTools } from "../src/worker/tools/registry.ts";
 import { handleBot, handleSkills } from "../src/worker/routes/skills.ts";
+import type { Principal } from "../src/worker/lib/auth.ts";
 import { mintToken, sha256Hex } from "../src/worker/lib/devices.ts";
+import { ADDRESS_PREFIX, BOT_REACH, DEFAULT_REACH, botGrants, botHides, reachOf } from "../src/worker/lib/skills.ts";
+import { ownWords } from "../src/worker/lib/router.ts";
+import { _clearSessionCache } from "../src/worker/lib/hub-client.ts";
+
+const OWNER_KEY = { kind: "owner" } as never;
 import { prepareRouter } from "../src/worker/lib/router.ts";
 import { jobTool } from "../src/worker/lib/jobs.ts";
 import { requiredScope, SCOPES } from "../src/worker/lib/scopes.ts";
@@ -377,9 +383,9 @@ console.log("skill_add: an MCP server");
   const said = "Connect the MCP server Weather Tools at https://mcp.example.com/weather, for forecasts";
   const out = String(await skillAdd.run({ ...novaArgs, user_words: said, kind: "mcp", name: "Weather Tools", url: "https://mcp.example.com/weather", when: "forecasts", later: null, key_header: null, fields: null }, ctx(said)));
   const servers = (JSON.parse(kv.get("config:mcp-servers") ?? "{}") as { servers?: { label: string; url: string; hint?: string; spokenAs?: string; headers?: unknown }[] }).servers ?? [];
-  const added = servers.find((s) => s.label === "weather-tools");
+  const added = servers.find((s) => s.label === "skill-weather-tools");
   check("  connected, its token in Settings → MCP servers", out.includes("Connected the MCP server") && out.includes("Settings → MCP servers"), out);
-  check("  in the list, after what was in force, with no header of its own", !!added && added.url === "https://mcp.example.com/weather" && added.hint === "forecasts" && added.spokenAs === "Weather Tools" && !added.headers && servers.length > 1, servers);
+  check("  in the list, marked as a skill's, after what was in force, with no header of its own", !!added && added.url === "https://mcp.example.com/weather" && added.hint === "forecasts" && added.spokenAs === "Weather Tools" && !added.headers && servers.length > 1, servers);
   check("  the same one again: refused", /connected already/.test(String(await skillAdd.run({ ...novaArgs, user_words: said, kind: "mcp", name: "Weather Tools", url: "https://mcp.example.com/weather", when: "forecasts", later: null, key_header: null, fields: null }, ctx(said)))));
 }
 
@@ -452,19 +458,124 @@ console.log("who is offered them");
 
 console.log("Settings → Skills");
 {
-  const get = await handleSkills(new Request("https://jarvis.example.com/api/skills"), env as never);
+  const get = await handleSkills(new Request("https://jarvis.example.com/api/skills"), env as never, OWNER_KEY);
   const listed = (await get.json()) as { skills: { id: string; hasKey: boolean }[] };
   check("  listed, each saying whether it has a key, never the key", listed.skills[0]?.hasKey === true && !JSON.stringify(listed).includes(KEY), listed);
   const id = listed.skills[0]!.id;
-  const put = (body: unknown) => handleSkills(new Request("https://jarvis.example.com/api/skills", { method: "PUT", body: JSON.stringify(body) }), env as never);
+  const put = (body: unknown) => handleSkills(new Request("https://jarvis.example.com/api/skills", { method: "PUT", body: JSON.stringify(body) }), env as never, OWNER_KEY);
   const bad = await put({ id, key: "no" });
   check("  a key that cannot be one: refused, said", bad.status === 400 && /8 to 512/.test(((await bad.json()) as { error: string }).error));
   const ok = await put({ id, key: "friday-key-987654" });
   check("  a new key: saved, not echoed", ok.status === 200 && !(await ok.text()).includes("friday-key-987654") && (await store.ready())[0]?.key === "friday-key-987654");
-  const del = await handleSkills(new Request(`https://jarvis.example.com/api/skills?id=${id}`, { method: "DELETE" }), env as never);
+  const del = await handleSkills(new Request(`https://jarvis.example.com/api/skills?id=${id}`, { method: "DELETE" }), env as never, OWNER_KEY);
   check("  removed", del.status === 200 && (await store.list()).length === 0);
-  const again = await handleSkills(new Request(`https://jarvis.example.com/api/skills?id=${id}`, { method: "DELETE" }), env as never);
+  const again = await handleSkills(new Request(`https://jarvis.example.com/api/skills?id=${id}`, { method: "DELETE" }), env as never, OWNER_KEY);
   check("  one not there", again.status === 404);
+}
+
+/* ---------- a bot's own address -------------------------------------------- */
+
+console.log("its own address");
+{
+  const storage = fakeStorage();
+  const skills = new Skills(storage);
+  const s = (await skills.add(NOVA, 1)) as Exclude<Awaited<ReturnType<Skills["add"]>>, string>;
+  const made = await skills.newAddress(s.id, "u_sara", undefined, 5);
+  const token = typeof made === "string" ? "" : made.token;
+  check("  made: its token, of its own kind, shown this once", token.startsWith(ADDRESS_PREFIX) && token.length === 37, made);
+  const kept = JSON.stringify(await storage.get("skills"));
+  check("  kept as its digest and a hint, never the token", kept.includes(await sha256Hex(token)) && !kept.includes(token) && kept.includes(token.slice(0, 9)), kept);
+  const listed = JSON.stringify(await skills.list());
+  check("  listed with its hint, whose it is and what it may reach, never the digest", listed.includes('"address":{"hint"') && listed.includes('"person":"u_sara"') && !listed.includes(await sha256Hex(token)), listed);
+  check("  asking questions, and no more, unless more is ticked", JSON.stringify((await skills.byAddress(await sha256Hex(token)))?.reach) === JSON.stringify(DEFAULT_REACH));
+  check("  found by it: the skill, whose it is, what it may reach", JSON.stringify(await skills.byAddress(await sha256Hex(token))) === JSON.stringify({ id: s.id, name: "Nova", person: "u_sara", reach: ["ask"] }));
+  const again = await skills.newAddress(s.id, "u_sara", ["ask", "home"], 6);
+  const second = typeof again === "string" ? "" : again.token;
+  check("  a new one: the old one stops", (await skills.byAddress(await sha256Hex(token))) === null && (await skills.byAddress(await sha256Hex(second)))?.reach.join() === "ask,home");
+  await skills.add({ ...NOVA, url: "https://moved.example.com/nova" }, 7);
+  check("  the skill given a new address to send to: its own address kept", !!(await skills.byAddress(await sha256Hex(second))));
+  const reached = await skills.setReach(s.id, ["*", "ask", "hermes", "skills", "alerts", "chat", "voice", "screen", "routines", "nonsense"], 8);
+  check("  ticked again: never the wildcard, skills, alerts, the family's chat, voice, the screen or routines; Hermes when ticked",
+    typeof reached !== "string" && JSON.stringify(reached.address?.reach) === '["ask","hermes"]', reached);
+  check("  stopped: gone", typeof (await skills.dropAddress(s.id, 9)) !== "string" && (await skills.byAddress(await sha256Hex(second))) === null);
+  check("  no address to tick: said", (await skills.setReach(s.id, ["ask"], 10)) === "it has no address of its own");
+  const third = await skills.newAddress(s.id, "owner", ["ask"], 11);
+  await skills.remove("Nova");
+  check("  the skill removed: its address with it", typeof third !== "string" && (await skills.byAddress(await sha256Hex(third.token))) === null);
+  check("  what may be ticked: never skills, alerts, chat, voice, screen or routines", !["skills", "alerts", "chat", "voice", "screen", "routines", "*"].some((g) => (BOT_REACH as readonly string[]).includes(g)) && BOT_REACH.includes("hermes") && BOT_REACH.includes("home"));
+  check("  no tick given: nothing", reachOf(undefined).length === 0 && reachOf("ask").length === 0);
+  check("  what it may reach now: never skills, whoever made it", !botGrants([...BOT_REACH], ["*"]).includes("skills") && !botGrants(["*", "skills"] as never, ["*"]).length);
+  check("  and no further than they may now", JSON.stringify(botGrants(["ask", "home", "mail"], ["ask", "mail", "memory.read"])) === '["ask","mail"]');
+  check("  what it is never offered: Chat, jobs, the glasses, and MCP servers added as skills",
+    ["look_back", "start_job", "job_results", "open_on_glasses", "skill-weather__forecast"].every((name) => botHides({ name })) && !botHides({ name: "home-assistant__ha_search" }) && !botHides({ name: "recall" }));
+}
+
+console.log("a bot asking: what the router is told and offered");
+{
+  await store.add(NOVA, 1);
+  await store.setKey((await store.list())[0]!.id, KEY, 2, "https://jarvis.example.com");
+  const grants = botGrants([...BOT_REACH], ["*"]);
+  const p = await prepareRouter(env as never, [{ role: "user", text: "Is the garage door shut?" }], never, grants as never, { bot: "Nova", screenless: true });
+  const names = p.tools.map((t) => t.name);
+  check("  never skills: no ask_skill, skill_add or skill_remove, though Nova has its key", !["ask_skill", "skill_add", "skill_remove"].some((n) => names.includes(n)), names);
+  check("  nor the person's Chat or jobs", !["look_back", "start_job", "job_results", "open_on_glasses"].some((n) => names.includes(n)), names);
+  check("  told the question is Nova's, not the user's", JSON.stringify(p.input).includes("THIS QUESTION IS FROM NOVA, NOT THE USER"));
+  check("  and nothing it says is the user's own words", ownWords([{ role: "user", text: "remember that I said yes" }], { bot: "Nova" }) === undefined && ownWords([{ role: "user", text: "hi" }], {}) === "hi");
+  await store.remove("Nova");
+}
+
+console.log("/api/v1/bot: its own address");
+{
+  const skills = new Skills(fakeStorage());
+  const s = (await skills.add(NOVA, 1)) as Exclude<Awaited<ReturnType<Skills["add"]>>, string>;
+  const made = (await skills.newAddress(s.id, "u_sara", ["ask"], 2)) as { token: string };
+  let view: Record<string, unknown> | null = { space: "s1", name: "Sara", prefs: {}, cars: [], scopes: ["ask", "memory.read", "home"] };
+  let lookedUp = 0;
+  const methods: Record<string, (...a: never[]) => unknown> = {
+    skillByAddress: (d: string) => (lookedUp++, skills.byAddress(d)),
+    hubCall: async (m: string) => (m === "personView" ? view : null),
+    consume: async () => ({ ok: true }),
+  };
+  const state = new Proxy({}, { get: (_t, m) => (m === "then" ? undefined : methods[String(m)] ?? (async () => undefined)) });
+  const benv = { STATE: { idFromName: () => "j", get: () => state }, CONFIG, OPENAI_API_KEY: "sk-test", TIMEZONE: "Asia/Kuala_Lumpur" } as never;
+  const people: Principal[] = [];
+  const asPerson = async (e: unknown, p: Principal) => (people.push(p), e) as never;
+  const ctx2 = { waitUntil() {} } as never;
+  const call = (path: string, init: RequestInit = {}) => {
+    _clearSessionCache();
+    return handleBot(new Request(`https://jarvis.example.com${path}`, init), benv, ctx2, asPerson);
+  };
+  const bearer = { authorization: `Bearer ${made.token}` };
+  const said = async (r: Response) => ({ status: r.status, body: (await r.json()) as Record<string, unknown> });
+  check("  in the path: whose it is", JSON.stringify(await said(await call(`/api/v1/bot/${made.token}`))) === '{"status":200,"body":{"ok":true,"name":"Nova"}}');
+  check("  as its Bearer key, the same", JSON.stringify(await said(await call("/api/v1/bot", { headers: bearer }))) === '{"status":200,"body":{"ok":true,"name":"Nova"}}');
+  const before = lookedUp;
+  const bad = [await call("/api/v1/bot/jbt1_short"), await call("/api/v1/bot", { headers: { authorization: "Bearer jdv1_abcdefghijkmnpqrstuvwxyz23456789" } }), await call(`/api/v1/bot/${made.token}/unlock`)];
+  check("  not one, or a path it does not serve: 404, storage untouched", bad.every((r) => r.status === 404) && lookedUp === before);
+  const never2 = await said(await call(`/api/v1/bot/${mintToken(ADDRESS_PREFIX)}`));
+  view = null;
+  const gone = await said(await call(`/api/v1/bot/${made.token}`));
+  view = { space: "s1", name: "Sara", prefs: {}, cars: [], scopes: ["ask", "memory.read", "home"] };
+  check("  never made, or its maker gone: the same 404", JSON.stringify(never2) === JSON.stringify(gone) && gone.status === 404, { never2, gone });
+  const mcp = (body: unknown) => call(`/api/v1/bot/${made.token}/mcp`, { method: "POST", body: JSON.stringify(body) });
+  const listed = (await (await mcp({ jsonrpc: "2.0", id: 1, method: "tools/list" })).json()) as { result?: { tools: { name: string }[] } };
+  check("  MCP: ask_jarvis", listed.result?.tools.some((t) => t.name === "ask_jarvis") === true, listed);
+  const p = people.at(-1) as Extract<Principal, { kind: "device" }>;
+  check("  as a device of whoever made it: its own id and name, the skill, their limits, what was ticked",
+    p.id === `b_${s.id}` && p.name === "Nova" && p.skill === s.id && p.owner === "u_sara" && JSON.stringify(p.scopes) === '["ask"]', p);
+  await skills.setReach(s.id, ["home"], 3);
+  const not = await said(await call(`/api/v1/bot/${made.token}/ask`, { method: "POST", body: '{"text":"hi"}' }));
+  check("  not ticked to ask: 403, said where to tick it", not.status === 403 && not.body.need === "ask" && String(not.body.error).includes("Settings → Skills"), not);
+  await skills.setReach(s.id, ["ask"], 4);
+  view = { ...view, access: { hours: { days: [], from: "00:00", to: "00:01" } } };
+  const late = await said(await call(`/api/v1/bot/${made.token}/ask`, { method: "POST", body: '{"text":"hi"}' }));
+  view = { space: "s1", name: "Sara", prefs: {}, cars: [], scopes: ["ask", "memory.read", "home"] };
+  check("  outside its maker's hours: 403, as theirs would be", late.status === 403 && late.body.outside === true, late);
+  methods.consume = async () => ({ ok: false });
+  const spent = await call(`/api/v1/bot/${made.token}/ask`, { method: "POST", body: '{"text":"hi"}' });
+  methods.consume = async () => ({ ok: true });
+  check("  past a device's allowance: 429", spent.status === 429);
+  check("  its own address, only read: 405 on what it does not take", (await call(`/api/v1/bot/${made.token}/ask`)).status === 405);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);
