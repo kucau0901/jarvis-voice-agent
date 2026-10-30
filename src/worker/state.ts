@@ -29,6 +29,7 @@ import { Panels, type PanelItem, type PanelRefreshDeps, type Reading } from "./l
 import { alertSaid, Conversation, type Said } from "./lib/conversation.ts";
 import { Images, type StoredImage } from "./lib/images.ts";
 import { Specialties } from "./lib/specialties.ts";
+import { Skills } from "./lib/skills.ts";
 import { Pages, type StoredPage } from "./lib/pages.ts";
 import { Episodes, episodeOfJob, type Episode } from "./lib/episodes.ts";
 import { cardOf, Proposals, type LaterDeps, type Proposal, type ProposalInput } from "./lib/proposals.ts";
@@ -75,6 +76,8 @@ export class JarvisState extends DurableObject<Env> {
   private conversation: Conversation;
   private images: Images;
   private specialties: Specialties;
+  /** The family's skills: outside services added in chat (lib/skills.ts). */
+  private skills: Skills;
   private pages: Pages;
   private episodes: Episodes;
   private proposals: Proposals;
@@ -92,6 +95,7 @@ export class JarvisState extends DurableObject<Env> {
     this.conversation = new Conversation(ctx.storage);
     this.images = new Images(ctx.storage);
     this.specialties = new Specialties(ctx.storage);
+    this.skills = new Skills(ctx.storage);
     this.pages = new Pages(ctx.storage);
     this.episodes = new Episodes(ctx.storage);
     this.proposals = new Proposals(ctx.storage);
@@ -752,6 +756,26 @@ export class JarvisState extends DurableObject<Env> {
 
   specialtyForget(person: string, which: string) {
     return this.specialties.forget(person, which);
+  }
+
+  skillsList() {
+    return this.skills.list();
+  }
+
+  skillsReady() {
+    return this.skills.ready();
+  }
+
+  skillAdd(input: { name: unknown; url: unknown; when: unknown; later: unknown; keyHeader: unknown; fields: unknown }, now: number) {
+    return this.skills.add(input, now);
+  }
+
+  skillKey(id: string, key: unknown, now: number) {
+    return this.skills.setKey(id, key, now);
+  }
+
+  skillRemove(which: string) {
+    return this.skills.remove(which);
   }
 
   episodesOf(person: string, now: number) {

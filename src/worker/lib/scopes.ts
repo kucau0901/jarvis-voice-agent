@@ -33,6 +33,12 @@ export const SCOPES = [
   "routines",
   /** Talk with the family: its chat, direct messages, and passing things on (lib/relays.ts). */
   "chat",
+  /**
+   * Skills: adding outside services and MCP servers in chat, and sending
+   * requests to the services (lib/skills.ts). A service may act on the house
+   * or send things, so no role but an admin's (`*`) has it.
+   */
+  "skills",
 ] as const;
 
 export type Scope = (typeof SCOPES)[number];
@@ -227,6 +233,10 @@ export function requiredScope(pathname: string, method: string): RouteRequiremen
       return "ask";
     case "/api/camera":
       return "home";
+
+    // Skills and their keys (routes/skills.ts): an admin's, as the settings are.
+    case "/api/skills":
+      return "owner";
 
     // Diagnostics, the stored probe runs and the data export are the owner's business.
     case "/api/export":

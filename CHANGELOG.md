@@ -19,6 +19,14 @@ of every release, and in the [README](README.md#updating).
 
 ### Added
 
+- **Skills, added in chat.** "Add a skill: Nova, my Grok bot, for the house
+  and the car, at https://…" lets Jarvis send requests to an outside service
+  (a bot, an automation, your own code), or, said as an MCP server, use its
+  tools. Each service's key goes in **Settings → Skills**, never in chat; a
+  service that answers later sends its answer as an alert, with a token from
+  Devices. Only the owner key and admins can add or use skills (the new
+  `skills` scope), and the house and the car still go to Jarvis's own tools
+  first.
 - **Jarvis says what is at a pair of coordinates.** Given a position with no
   address (a phone's, from Home Assistant), it names the places nearest it, a
   clinic or a shop, or the street address where nothing named is near, with

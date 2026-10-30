@@ -432,5 +432,19 @@ console.log("\nevery pass-through to StateHost forwards what it is given");
   check(`all ${names.length} of them forward every argument but the clock`, names.length > 10 && wrong.length === 0, wrong);
 }
 
+// The family's skills (lib/skills.ts), through the object: each pass-through forwards what it is given, the key and the clock too.
+console.log("skills, through the object");
+{
+  const s = await jarvis.skillAdd({ name: "Nova", url: "https://bots.example.com/nova", when: "the house and the car", later: true, keyHeader: "X-Automation-Key", fields: [{ name: "mode", value: "async" }] }, 1_000);
+  const id = typeof s === "string" ? "" : s.id;
+  check("  added, at the time given, with what it was given", typeof s !== "string" && s.createdAt === 1_000 && s.later && s.keyHeader === "X-Automation-Key" && s.fields.mode === "async" && !s.hasKey, s);
+  check("  not offered before its key is set", (await jarvis.skillsReady()).length === 0);
+  const k = await jarvis.skillKey(id, "nova-key-12345", 2_000);
+  check("  its key set, at the time given", typeof k !== "string" && k.hasKey && k.updatedAt === 2_000, k);
+  check("  and never in the list", !JSON.stringify(await jarvis.skillsList()).includes("nova-key-12345"));
+  check("  offered with it", (await jarvis.skillsReady())[0]?.key === "nova-key-12345");
+  check("  removed by its name", (await jarvis.skillRemove("nova"))?.id === id && (await jarvis.skillsList()).length === 0);
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

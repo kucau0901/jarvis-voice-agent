@@ -9,6 +9,7 @@ import {
 } from "./settings.ts";
 import type { StoredImage } from "./images.ts";
 import type { Specialty } from "./specialties.ts";
+import type { Skill, SkillView } from "./skills.ts";
 import type { StoredPage } from "./pages.ts";
 import type { Episode } from "./episodes.ts";
 import type { Proposal, ProposalInput } from "./proposals.ts";
@@ -649,6 +650,15 @@ interface RecallApi {
   recallFor(person: string, ask: string): Promise<{ specialty: Specialty | null; past: Episode[] }>;
 }
 
+/** The family's skills (lib/skills.ts): added in chat, keys set in Settings → Skills. */
+interface SkillApi {
+  skillsList(): Promise<SkillView[]>;
+  skillsReady(): Promise<Skill[]>;
+  skillAdd(input: { name: unknown; url: unknown; when: unknown; later: unknown; keyHeader: unknown; fields: unknown }, now: number): Promise<SkillView | string>;
+  skillKey(id: string, key: unknown, now: number): Promise<SkillView | string>;
+  skillRemove(which: string): Promise<SkillView | null>;
+}
+
 /** What jobs propose for a person's tap (lib/proposals.ts; routes/proposals.ts). */
 interface ProposalApi {
   proposalsOf(person: string, now: number): Promise<Proposal[]>;
@@ -733,6 +743,7 @@ export type StateApi = Pick<
   ConversationApi &
   ImageApi &
   RecallApi &
+  SkillApi &
   PageApi &
   ProposalApi &
   PlanApi;

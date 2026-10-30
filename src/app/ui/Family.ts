@@ -91,6 +91,7 @@ const SCOPE_WORDS: Record<string, string> = {
   voice: "live voice",
   alerts: "alerts",
   routines: "routines",
+  skills: "skills (outside services)",
 };
 
 /** What went wrong, to say once the section is drawn again. */

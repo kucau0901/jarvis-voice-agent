@@ -115,3 +115,26 @@ export async function writeServers(env: Env, raw: unknown): Promise<{ saved: Mcp
   await env.CONFIG.put(KV_KEY, JSON.stringify({ servers: saved }));
   return { saved, retype: leftBehind(incoming, saved) };
 }
+
+/**
+ * A server added in chat (tools/skills.ts), put after the list in force, whose
+ * own servers keep their headers as stored; null, or why not in words. It has
+ * no header of its own: a token for it is typed in Settings → MCP servers.
+ */
+export async function addServer(env: Env, server: McpServerConfig): Promise<string | null> {
+  const current = await readConfigured(env);
+  if (current.some((s) => s.label === server.label)) return `a server called ${server.label} is connected already`;
+  await env.CONFIG.put(KV_KEY, JSON.stringify({ servers: [...current, server] }));
+  await env.CONFIG.delete(`mcp:catalog:${server.label}`).catch(() => {});
+  return null;
+}
+
+/** The first server `which` picks, taken out of the list in force, if there is one. */
+export async function removeServer(env: Env, which: (s: McpServerConfig) => boolean): Promise<McpServerConfig | null> {
+  const current = await readConfigured(env);
+  const gone = current.find(which);
+  if (!gone) return null;
+  await env.CONFIG.put(KV_KEY, JSON.stringify({ servers: current.filter((s) => s !== gone) }));
+  await env.CONFIG.delete(`mcp:catalog:${gone.label}`).catch(() => {});
+  return gone;
+}

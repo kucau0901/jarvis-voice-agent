@@ -6,10 +6,11 @@ import { speakText } from "../alerts";
 import { SectionMenu, type NavGroup } from "./sections";
 import { ChatGptPlan } from "./ChatGptPlan";
 import { exportSection } from "./Export";
+import { Skills } from "./Skills";
 
 /** The settings menu: groups, and the sections in each, by id. */
 const NAV: NavGroup[] = [
-  ["Connections", ["chatgpt", "openai", "car", "home", "hermes", "google", "spotify", "maps", "cameras", "mcp"]],
+  ["Connections", ["chatgpt", "openai", "car", "home", "hermes", "google", "spotify", "maps", "cameras", "mcp", "skills"]],
   ["How Jarvis behaves", ["router", "voice", "screen", "alerts", "locale"]],
   ["Access and advanced", ["usage", "owner", "devices", "export", "advanced"]],
 ];
@@ -88,6 +89,8 @@ export class Settings {
   private services: Services;
   /** The owner's ChatGPT plan, first among the connections (ui/ChatGptPlan.ts). */
   private plan: ChatGptPlan;
+  /** Outside services added in chat, and their keys (ui/Skills.ts). */
+  private skills: Skills;
   /** The version line under the menu, filled by loadVersion(). */
   private versionLine = node("p", "");
   private menu: SectionMenu;
@@ -181,7 +184,8 @@ export class Settings {
     );
     this.plan = new ChatGptPlan(key, () => this.buildNav());
     this.el.querySelector(".setbody")!.prepend(this.plan.el);
-    this.el.querySelector(".setbody")!.append(exportSection(key));
+    this.skills = new Skills(key, () => this.buildNav());
+    this.el.querySelector(".setbody")!.append(this.skills.el, exportSection(key));
     this.renderLoud();
     this.el.querySelector(".hear")!.addEventListener("click", () => void this.hearLoud());
     this.buildNav();
@@ -364,6 +368,7 @@ export class Settings {
     // Independent: a slow MCP server must not hold the other sections hostage.
     void this.services.load();
     void this.plan.load();
+    void this.skills.load();
     void this.loadRouter();
     void this.loadVersion();
     void this.loadUsage();

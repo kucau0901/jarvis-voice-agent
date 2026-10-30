@@ -42,6 +42,7 @@ const MEANING: Record<string, string> = {
   voice: "live voice sessions",
   alerts: "receive alerts and notifications; send notes",
   routines: "make and change routines; send the events that set them off",
+  skills: "add skills in chat, and send requests to them",
 };
 
 /** A tick box per scope, with what it means: making a device, changing one, or allowing one (ui/Connect.ts). */

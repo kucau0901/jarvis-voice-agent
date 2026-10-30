@@ -55,6 +55,7 @@ const PROMPT_SHA256 = "d89249dc823e68a7fe54e9aa8fa2ec27734d1e8333f0aa45073f5578a
 // calendar_change (tools/calendar.ts, scope calendar): as calendar_add (28 Oct 2026).
 // open_on_glasses (tools/glasses.ts, no scope beyond ask): everyone, the guest too (29 Oct 2026).
 // time_in (tools/clock.ts, no scope beyond ask): everyone, the guest too (29 Oct 2026).
+// skill_add and skill_remove (tools/skills.ts, scope skills): the owner key and admins only (30 Oct 2026).
 const EXPECTED: Record<string, { model: string; tools: string[]; input: string }> = {
  "owner key, nothing set up": {
   "model": "gpt-6-luna",
@@ -76,6 +77,8 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
    "routine_list",
    "routine_remove",
    "send_note",
+   "skill_add",
+   "skill_remove",
    "specialty_forget",
    "specialty_save",
    "start_job",
@@ -128,6 +131,8 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
    "send_note",
    "show_camera",
    "show_place",
+   "skill_add",
+   "skill_remove",
    "specialty_forget",
    "specialty_save",
    "start_job",

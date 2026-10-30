@@ -80,7 +80,8 @@ enough) or run it yourself with **Docker**.
   the car has finished charging" — Home Assistant checked every minute, at no
   AI cost. Said aloud or set up in the **routines** panel; run by the server,
   so no screen has to be open.
-- **Your own agents** — any MCP server, and optionally a
+- **Your own agents** — any MCP server, outside services you add in chat as
+  skills (a bot, an automation, your own code), and optionally a
   [Hermes](https://github.com/NousResearch/hermes-agent) agent at home, which
   can also build what research found and deploy it.
   [Hermes guide](docs/hermes.md).

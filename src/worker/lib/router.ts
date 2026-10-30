@@ -23,6 +23,8 @@ import { stateStub } from "./state-client.ts";
 import { memoryFor, type MemoryStore } from "./memory.ts";
 import { bookOf, OWNER } from "./context.ts";
 import { specialtyBlock } from "./specialties.ts";
+import type { Skill } from "./skills.ts";
+import { askSkill } from "../tools/skills.ts";
 import { episodeOfChain, pastBlock } from "./episodes.ts";
 import { localeOf } from "./locale.ts";
 import { allows, type Grant } from "./scopes.ts";
@@ -157,7 +159,9 @@ export async function prepareRouter(
   // by words, in the same wait as the rest, for those whose memory it is.
   const asked = lastAsk(turns);
   const recalls = !!asked && allows(grants, "memory.read");
-  const [, mcp, chosen, shared, family, recalled] = await Promise.all([
+  // The skills that have a key (lib/skills.ts), for those who may send to them.
+  const skilled = allows(grants, "skills");
+  const [, mcp, chosen, shared, family, recalled, ready] = await Promise.all([
     memory.load().catch((e) => {
       console.warn("memory unavailable:", e instanceof Error ? e.message : String(e));
     }),
@@ -171,9 +175,10 @@ export async function prepareRouter(
       : Promise.resolve([] as SharedTurn[]),
     talks ? familyBlock(env).catch(() => "") : Promise.resolve(""),
     recalls ? (stateStub(env)?.recallFor(env.JARVIS_PERSON || OWNER, asked!) ?? Promise.resolve(null)).catch(() => null) : Promise.resolve(null),
+    skilled ? (stateStub(env)?.skillsReady() ?? Promise.resolve([] as Skill[])).catch(() => [] as Skill[]) : Promise.resolve([] as Skill[]),
   ]);
   const elsewhere = [sharedBlock(shared, Date.now()), family].filter(Boolean).join("\n\n");
-  tools.push(...mcp);
+  tools.push(...mcp, ...askSkill(ready ?? []));
   if (opts.toolFilter || opts.screenless) {
     const keep = tools.filter((t) => (!opts.toolFilter || opts.toolFilter(t)) && !(opts.screenless && DRAWS_ON_SCREEN.includes(t.name)));
     tools.length = 0;

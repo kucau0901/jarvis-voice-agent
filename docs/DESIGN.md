@@ -1339,6 +1339,27 @@ fetched only within two hours of an event, at most every 30 minutes, and once
 more at the moment of warning. If the road has cleared by then the warning
 moves later, once.
 
+## Skills
+
+"Add a skill: Nova, my Grok bot, for the house and the car, at https://…"
+keeps an outside service Jarvis can send requests to (`lib/skills.ts`), or,
+said as an MCP server, adds one to the MCP list. It is not a tool that POSTs
+anywhere: a page or a mail the model reads could then send whatever it found to
+an address of its choosing. Instead the address comes from the person, in their
+own latest message, as asking for a specialty does (`skill_add` checks), and the
+model only ever picks a skill by name (`ask_skill`, offered with the skills
+that have a key). The key is typed in Settings → Skills, never in chat, where it
+would go to OpenAI and stay in the conversation; it never leaves the Worker
+again, and a skill given a new address loses it, as `guarded()` withholds a
+setting's secret whose address changed. A redirect is not followed with it, and
+anything a service says back has the key taken out. Adding one, and sending to
+one, needs the `skills` scope, which no role has but an admin's: a service may
+act on the house or send things, and a request approves nothing (the service
+asks the person itself). A service that answers later does so as an alert, by
+`POST /api/v1/notify` with a token of its own. Jarvis's own house and car tools
+come first: a skill is for what they cannot do, or when it is named. One list
+for the family, in the Durable Object; background jobs are never offered them.
+
 ## Architecture
 
 One Cloudflare Worker serves both the app and `/api/*`, so the app needs no CORS

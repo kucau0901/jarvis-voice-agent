@@ -161,6 +161,7 @@ existence, or argued around.
 | `ask` (jobs) | `/api/v1/jobs`, `/api/v1/jobs/cancel`, `start_job`. A job for Hermes also needs `hermes`. Each job runs with its creator's grants, no more than they hold now; it reads with their reading tools, and what it would do is proposed for their tap (or done at once, for a reversible kind they allowed). |
 | `routines` | `/api/v1/routines`, `/api/v1/routines/run`, `/api/v1/routines/runs`, `/api/v1/trigger`; `routine_add`, `routine_list`, `routine_remove`. A routine's question runs with **its creator's** grants, never more. A device sees, runs and changes only the routines it made, or ones no stronger than itself; revoking or deleting it stops the routines it made, and narrowing it narrows them. |
 | `alerts` | Receiving alerts (`/api/v1/events`, `/api/v1/push`, `/api/v1/alerts`), raising one (`/api/v1/notify`), and `send_note`. The same scope both ways: a device that may be told things may ask to be told something. |
+| `skills` | `skill_add`, `skill_remove` (outside services and MCP servers added in chat) and `ask_skill` (sending a request to a service). A service may act on the house or send things, so no role has it but an admin's. Each service's key is set in Settings → Skills, never by a device. |
 
 Ask for something out of reach and you get a normal answer explaining it is not
 available — not an error. `tools` will be empty.
@@ -431,6 +432,10 @@ person, each made in Devices (or by an admin, with `"owner": "<their id>"` in
 the same `POST`), and could tell them apart by the session key:
 `X-Hermes-Session-Key` is `jarvis:tesla` for the first person and
 `jarvis:tesla:<their id>` for anyone else.
+
+A service added as a skill ([DESIGN.md](DESIGN.md#skills)) that answers later
+reports back the same way, with an `alerts` token of its own: its answer goes
+to that token's person.
 
 `alerts` works both ways ([Scopes](#scopes)): besides raising alerts, the
 token can receive every alert meant for the person it belongs to (the socket

@@ -14,6 +14,7 @@ import { handleDiag } from "./routes/diag.ts";
 import { handleDelegate } from "./routes/delegate.ts";
 import { handleTts } from "./routes/tts.ts";
 import { handleMcp } from "./routes/mcp.ts";
+import { handleSkills } from "./routes/skills.ts";
 import { handleMemory } from "./routes/memory.ts";
 import { handleMap } from "./routes/map.ts";
 import { handleImage } from "./routes/image.ts";
@@ -268,6 +269,8 @@ async function route(
       return await handleRouter(req, env);
     case "/api/alerts":
       return await handleAlertsAdmin(req, env);
+    case "/api/skills":
+      return await handleSkills(req, env);
     case "/api/health":
       return new Response(JSON.stringify({ ok: true, ts: Date.now(), version: JARVIS_VERSION }), {
         headers: { "content-type": "application/json" },
