@@ -43,10 +43,13 @@ export class Reply {
     this.tray.hidden = !this.tray.childElementCount;
   }
 
-  /** The question as the router reads it: the answer it replies to, then its words. */
+  /**
+   * The question as the router reads it: the answer it replies to, then its words. The answer's own
+   * quotes are curled, so nothing in it ends the quote early and reads as their words (router.ts ownWords).
+   */
   static said(to: { text: string } | null, words: string): string {
     if (!to) return words;
-    const quoted = to.text.length > QUOTED ? `${to.text.slice(0, QUOTED)}…` : to.text;
+    const quoted = (to.text.length > QUOTED ? `${to.text.slice(0, QUOTED)}…` : to.text).replace(/"/g, "”");
     return `(Replying to this answer of yours: "${quoted}")\n${words}`;
   }
 

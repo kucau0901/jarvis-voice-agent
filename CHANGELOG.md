@@ -69,6 +69,14 @@ of every release, and in the [README](README.md#updating).
   open while pinned at the top, it took the whole screen; it now scrolls
   within 40% of it.
 
+### Security
+
+- **A reply to an answer is read with only your own words as yours.** The
+  answer is quoted with the reply, and a quote mark and a bracket in it (an
+  answer repeating what a website or another bot said) could end the quote
+  early, so what followed counted as your own words, which is what adding a
+  skill or saving a specialty requires. Its quote marks are now curled.
+
 ## [2.6.0] - 2026-10-28
 
 ### Added
