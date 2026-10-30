@@ -29,7 +29,7 @@ import { Panels, type PanelItem, type PanelRefreshDeps, type Reading } from "./l
 import { alertSaid, Conversation, type Said } from "./lib/conversation.ts";
 import { Images, type StoredImage } from "./lib/images.ts";
 import { Specialties } from "./lib/specialties.ts";
-import { Skills } from "./lib/skills.ts";
+import { heldToRelease, Skills } from "./lib/skills.ts";
 import { Pages, type StoredPage } from "./lib/pages.ts";
 import { Episodes, episodeOfJob, type Episode } from "./lib/episodes.ts";
 import { cardOf, Proposals, type LaterDeps, type Proposal, type ProposalInput } from "./lib/proposals.ts";
@@ -141,9 +141,12 @@ export class JarvisState extends DurableObject<Env> {
     return nextAllowed(v.access, Date.now(), localeOf(await this.localEnv()).timeZone);
   }
 
-  /** Keep an alert for someone in their quiet time; the alarm delivers it when it ends. */
-  async hold(alert: Alert, until: number): Promise<void> {
-    await this.ctx.storage.put(HELD + alert.id, { alert, until });
+  /**
+   * Keep an alert for someone in their quiet time; the alarm delivers it when it ends. `reply`: a skill's
+   * answer held for Jarvis's own reply instead, let go when that is kept (conversationAdd).
+   */
+  async hold(alert: Alert, until: number, reply = false): Promise<void> {
+    await this.ctx.storage.put(HELD + alert.id, { alert, until, ...(reply ? { reply } : {}) });
     await this.rearm();
   }
 
@@ -783,7 +786,7 @@ export class JarvisState extends DurableObject<Env> {
   }
 
   skillAnswer(digest: string, body: Record<string, unknown>, now: number) {
-    return this.skills.answer(digest, body, now);
+    return this.skills.answer(digest, body, now, (person, since) => this.conversation.answeredSince(person, since, now));
   }
 
   episodesOf(person: string, now: number) {
@@ -903,8 +906,13 @@ export class JarvisState extends DurableObject<Env> {
     return this.plan.disconnect();
   }
 
-  conversationAdd(person: string, said: Said[], now: number) {
-    return this.conversation.add(person, said, now);
+  async conversationAdd(person: string, said: Said[], now: number) {
+    await this.conversation.add(person, said, now);
+    // A skill's answer held for Jarvis's own reply (lib/skills.ts SETTLE_MS) follows it now: the alarm delivers it.
+    if (!said.some((s) => s.role === "assistant")) return;
+    const due = heldToRelease(await this.ctx.storage.list({ prefix: HELD }), person, now);
+    for (const [k, h] of due) await this.ctx.storage.put(k, h);
+    if (due.length) await this.rearm();
   }
 
   /** Cleared on every open screen of theirs too, not only the one it was cleared on. */

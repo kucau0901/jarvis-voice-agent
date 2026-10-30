@@ -3,7 +3,7 @@
 // what look_back finds in it (tools/conversation.ts), the route
 // (routes/conversation.ts), and what the app tells the model of it
 // (src/app/history.ts).
-import { alertSaid, asSaid, Conversation, exchangeSaid, FOUND, KEEP, KEEP_MS, lookBack, matching, MAX_CHARS, MAX_TEXT, REPEAT_MS, repeats, trimmed, type Said } from "../src/worker/lib/conversation.ts";
+import { alertSaid, answeredSince, asSaid, Conversation, exchangeSaid, FOUND, KEEP, KEEP_MS, lookBack, matching, MAX_CHARS, MAX_TEXT, REPEAT_MS, repeats, trimmed, type Said } from "../src/worker/lib/conversation.ts";
 import { lookBackTool } from "../src/worker/tools/conversation.ts";
 import { handleConversation } from "../src/worker/routes/conversation.ts";
 import { History, alertHistory, skillHistory } from "../src/app/history.ts";
@@ -108,6 +108,10 @@ console.log("\nwhat any other alert said");
     JSON.stringify(skill) === JSON.stringify({ id: "a_s1", at: 50, role: "assistant", text: "Two from the school.", alert: { source: "api", title: "Nova" }, skill: { id: "k1", name: "Nova", about: "Check the inbox" } }), skill);
   check("…the same words from it again soon after: not kept twice", repeats([skill!], { ...skill!, id: "a_s2", at: 60 }));
   check("a screen cannot say a message is a skill's", !("skill" in (asSaid({ id: "x3", at: 1, role: "assistant", text: "hi", skill: { id: "k1", name: "Nova" } }, 1) ?? {})));
+  const asked: Said[] = [{ id: "q1", at: 100, role: "user", text: "ask Nova" }, skill!, alertSaid({ id: "a_r9", at: 120, title: "Mail", text: "x", source: "routine", routine: "r" })!];
+  check("Jarvis has not replied since: a question, a skill's, a routine's are not its reply", !answeredSince(asked.map((s) => ({ ...s, at: Math.max(s.at, 100) })), 100));
+  check("…its own answer since is", answeredSince([...asked, { id: "r1", at: 130, role: "assistant", text: "Asked Nova." }], 100));
+  check("…but not one from before", !answeredSince([{ id: "r0", at: 90, role: "assistant", text: "Earlier." }], 100));
 }
 
 console.log("\nwhat was asked on glasses (\"Hey Even\")");

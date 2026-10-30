@@ -43,7 +43,8 @@ const MAX_BODY = 16 * 1024;
  * only ever writes, under the skill's name, to whoever asked, for a day and a
  * few answers (lib/skills.ts Skills.answer), so a bot answers later with no
  * token of Jarvis's. Every refusal of the address is the same 404. Answered
- * as POST /api/v1/notify is: where it went.
+ * as POST /api/v1/notify is: where it went; or 202, held until Jarvis's own
+ * reply to the question is in Chat (SETTLE_MS at most), so it shows after it.
  */
 export async function handleBot(req: Request, env: Env): Promise<Response> {
   const token = new URL(req.url).pathname.slice("/api/v1/bot/".length);
@@ -56,6 +57,11 @@ export async function handleBot(req: Request, env: Env): Promise<Response> {
   if (!b) return err(400, "body must be a small JSON object");
   const r = await state.skillAnswer(await sha256Hex(token), b, Date.now());
   if ("refused" in r) return err(r.refused, r.why);
+  if (r.holdUntil) {
+    // Before Jarvis's own reply to the question: kept until that is in Chat (state.ts conversationAdd), so it shows after it.
+    await state.hold(r.alert, r.holdUntil, true);
+    return json({ ok: true, id: r.alert.id, heldUntil: r.holdUntil }, { status: 202 });
+  }
   const d = await deliver(env, state, r.alert);
   return json({ ok: true, id: r.alert.id, deliveredBy: d.deliveredBy, attempts: d.attempts }, { status: d.deliveredBy ? 200 : 502 });
 }

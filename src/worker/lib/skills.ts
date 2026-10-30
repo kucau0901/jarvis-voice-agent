@@ -4,6 +4,7 @@ import { pageUrl } from "./page-look.ts";
 import { redact } from "./http.ts";
 import { asQuotedData, tidy } from "./quote.ts";
 import { makeAlert, type Alert } from "./alerts.ts";
+import { OWNER } from "./context.ts";
 
 /**
  * Skills: outside services the owner or an admin added in chat ("add a skill:
@@ -52,6 +53,12 @@ export const SENDS_PER_HOUR = 20;
 const HOUR = 3_600_000;
 /** What of a request is kept, to show under its answer. */
 const MAX_ABOUT = 200;
+/**
+ * A quick answer waits this long at most for Jarvis's own reply to the
+ * question, so it shows after it, not above it (state.ts conversationAdd
+ * lets it go as soon as the reply is kept).
+ */
+export const SETTLE_MS = 30_000;
 
 export interface Skill {
   id: string;
@@ -223,9 +230,16 @@ export class Skills {
   /**
    * An answer posted to a request's reply address (by its token's digest):
    * the alert for whoever asked, under the skill's name, or why not, with the
-   * status to say it with. A refused one is not counted.
+   * status to say it with. A refused one is not counted. `answered` says
+   * whether Jarvis has replied to them since the request: one that comes
+   * before that is held until then (holdUntil), SETTLE_MS at most.
    */
-  async answer(digest: string, body: Record<string, unknown>, now: number): Promise<{ alert: Alert; at: number } | { refused: 400 | 404 | 429; why: string }> {
+  async answer(
+    digest: string,
+    body: Record<string, unknown>,
+    now: number,
+    answered?: (person: string, since: number) => Promise<boolean>,
+  ): Promise<{ alert: Alert; at: number; holdUntil?: number } | { refused: 400 | 404 | 429; why: string }> {
     const asked = (await this.storage.get<Asked[]>(ASKED_KEY)) ?? [];
     const i = asked.findIndex((a) => a.digest === digest && now - a.at < ANSWER_MS);
     const a = asked[i];
@@ -236,8 +250,24 @@ export class Skills {
     if (!alert) return { refused: 400, why: "text is required" };
     asked[i] = { ...a, uses: a.uses + 1 };
     await this.storage.put(ASKED_KEY, asked);
-    return { alert, at: a.at };
+    const early = !!answered && now < a.at + SETTLE_MS && !(await answered(a.person, a.at));
+    return { alert, at: a.at, ...(early ? { holdUntil: a.at + SETTLE_MS } : {}) };
   }
+}
+
+/**
+ * The held answers Jarvis's reply to `person` lets go: those held for it
+ * (`reply`), not one held for quiet hours. Due now, and said now, so each
+ * sorts after the reply on every screen.
+ */
+export function heldToRelease(
+  held: Map<string, { alert: Alert; until: number; reply?: boolean }>,
+  person: string,
+  now: number,
+): [string, { alert: Alert; until: number }][] {
+  return [...held]
+    .filter(([, h]) => h.reply && (h.alert.for ?? OWNER) === person)
+    .map(([k, h]) => [k, { alert: { ...h.alert, at: now }, until: now }]);
 }
 
 /**

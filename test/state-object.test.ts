@@ -444,6 +444,36 @@ console.log("skills, through the object");
   check("  and never in the list", !JSON.stringify(await jarvis.skillsList()).includes("nova-key-12345"));
   check("  offered with it", (await jarvis.skillsReady())[0]?.key === "nova-key-12345");
   check("  removed by its name", (await jarvis.skillRemove("nova"))?.id === id && (await jarvis.skillsList()).length === 0);
+
+  // A request, and its answer at its reply address: whoever asked, what, and when, forwarded.
+  const n = await jarvis.skillAdd({ name: "Nova", url: "https://bots.example.com/nova", when: "", later: true, keyHeader: null, fields: null }, 3_000);
+  const nid = typeof n === "string" ? "" : n.id;
+  const T = Date.now();
+  const r = await jarvis.skillAsked({ skill: nid, person: "u_sara", about: "Check the inbox", digest: "d-sara" }, T);
+  check("  a request kept, at the time given", typeof r !== "string" && r.id.startsWith(`jarvis-${Math.floor(T / 1000)}-`), r);
+  const early = await jarvis.skillAnswer("d-sara", { text: "Two from the school." }, T + 1_000);
+  check("  its answer before Jarvis has replied to Sara: hers, under its name, held for the reply",
+    "alert" in early && early.alert.for === "u_sara" && early.alert.title === "Nova" && early.alert.skill?.about === "Check the inbox" && early.holdUntil === T + 30_000, early);
+  await jarvis.conversationAdd("u_sara", [{ id: "c_reply1", at: T + 2_000, role: "assistant", text: "Asked Nova." }], T + 2_000);
+  const after = await jarvis.skillAnswer("d-sara", { text: "And one more." }, T + 3_000);
+  check("  once Jarvis's reply is kept, not held", "alert" in after && !("holdUntil" in after), after);
+
+  // Held for the reply, let go by it: only that person's, and never one held for quiet hours.
+  const mk = (id: string, forWhom?: string) => ({ ...makeAlert({ title: "Nova", text: id }, "api", T, forWhom)!, id });
+  await jarvis.hold(mk("h_owner"), T + 30_000, true);
+  await jarvis.hold(mk("h_sara", "u_sara"), T + 30_000, true);
+  await jarvis.hold(mk("h_quiet"), T + 600_000);
+  alarmAt = null;
+  await jarvis.conversationAdd("owner", [{ id: "c_q1", at: T + 4_000, role: "user", text: "anything?" }], T + 4_000);
+  check("  a question alone lets nothing go", alarmAt === null && (await storage.get("held:h_owner") as { until: number }).until === T + 30_000);
+  await jarvis.conversationAdd("owner", [{ id: "c_a1", at: T + 5_000, role: "assistant", text: "Asked Nova." }], T + 5_000);
+  const mine = (await storage.get("held:h_owner")) as { alert: { at: number }; until: number };
+  check("  Jarvis's reply lets its person's held answer go now, said now, and the alarm set for it",
+    mine.until === T + 5_000 && mine.alert.at === T + 5_000 && alarmAt !== null && alarmAt <= T + 5_000, { mine, alarmAt });
+  check("  another person's stays held", ((await storage.get("held:h_sara")) as { until: number }).until === T + 30_000);
+  check("  one held for quiet hours stays held", ((await storage.get("held:h_quiet")) as { until: number }).until === T + 600_000);
+  for (const k of ["held:h_owner", "held:h_sara", "held:h_quiet"]) await storage.delete(k);
+  await jarvis.skillRemove("Nova");
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

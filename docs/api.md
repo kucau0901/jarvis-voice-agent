@@ -957,7 +957,9 @@ required (1,500 characters are kept); `title` goes before it; `speak: false`
 shows it without saying it; `expiresAt` (ms) as on `/api/v1/notify`; `urgent`
 is ignored. `404` means no such address (never made, a day old, or the skill
 removed), `429` its answers are used up, `400` no text, `502` no channel took
-it, as `/api/v1/notify` says.
+it, as `/api/v1/notify` says. `202` with `heldUntil` means it came before
+Jarvis had replied to the question: it is held until that reply is in Chat,
+half a minute at most, so it shows after it.
 
 The answer reaches every screen and device of whoever asked, as any alert
 does, with `skill: {id, name, about}` (`about`: what it was asked). The app

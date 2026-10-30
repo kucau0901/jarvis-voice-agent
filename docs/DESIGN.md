@@ -1368,7 +1368,12 @@ a bot needs no token of Jarvis's, and one that leaked reaches no further than
 that person's Chat for a day. The answer is an alert under the skill's name,
 marked `skill`: every screen and device shows it as the bot's, and the model
 is told it as the bot's words, with what it was asked, so "was that Nova?" is
-answered from the conversation, never by asking Nova again. This replaced a
+answered from the conversation, never by asking Nova again. One that comes
+before Jarvis has replied (a bot that answers in two seconds, while the
+router is still writing "I've asked Nova") is held until the reply is kept,
+half a minute at most, then delivered from the alarm and dated then, so it
+shows after the reply on every screen; a hold for quiet hours is never let go
+by it. This replaced a
 bot posting to `/api/v1/notify` with an `alerts` token, which also let it read
 every alert of its person, and left its answer looking like Jarvis's. A skill
 is sent at most 20 requests an hour, whoever asks: where a loop between Jarvis

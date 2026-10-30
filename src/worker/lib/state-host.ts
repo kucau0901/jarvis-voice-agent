@@ -658,7 +658,7 @@ interface SkillApi {
   skillKey(id: string, key: unknown, now: number, origin?: string): Promise<SkillView | string>;
   skillRemove(which: string): Promise<SkillView | null>;
   skillAsked(input: { skill: string; person: string; about: string; digest: string }, now: number): Promise<{ id: string } | string>;
-  skillAnswer(digest: string, body: Record<string, unknown>, now: number): Promise<{ alert: Alert; at: number } | { refused: 400 | 404 | 429; why: string }>;
+  skillAnswer(digest: string, body: Record<string, unknown>, now: number): Promise<{ alert: Alert; at: number; holdUntil?: number } | { refused: 400 | 404 | 429; why: string }>;
 }
 
 /** What jobs propose for a person's tap (lib/proposals.ts; routes/proposals.ts). */
@@ -690,6 +690,8 @@ interface PlanApi {
 /** What the object adds itself, because it holds the sockets (state.ts). */
 interface LiveApi {
   broadcast(alert: Alert, waitMs: number): Promise<LiveResult>;
+  /** Keep an alert until `until` (lib/alerts.ts AlertState); `reply`: a skill's answer held for Jarvis's own reply (state.ts conversationAdd). */
+  hold(alert: Alert, until: number, reply?: boolean): Promise<void>;
   /** An alert into its person's conversation (lib/alerts.ts AlertState). */
   keepAlert(alert: Alert): Promise<boolean>;
   /** Whether an alert's person wants it talked about (lib/alerts.ts AlertState). */

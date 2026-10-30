@@ -144,6 +144,14 @@ export function alertSaid(a: Pick<Alert, "id" | "at" | "title" | "text" | "sourc
   return { id: a.id, at: a.at, role: "assistant", text: a.text.slice(0, MAX_TEXT), ...from, ...(a.skill ? { skill: a.skill } : {}), ...(proposals.length ? { proposals } : {}) };
 }
 
+/**
+ * Whether Jarvis said something of its own (not an alert's, a routine's, a
+ * job's or a skill's) at or after `since`: its reply to a question asked then.
+ */
+export function answeredSince(log: readonly Said[], since: number): boolean {
+  return log.some((s) => s.role === "assistant" && s.at >= since && !s.alert && !s.routine && !s.job && !s.skill);
+}
+
 /** How long the same alert again is a repeat, not news: a door unlocked twice in a few minutes. */
 export const REPEAT_MS = 15 * 60_000;
 
@@ -234,6 +242,11 @@ export class Conversation {
     const have = new Set(log.map((s) => s.id));
     const fresh = said.filter((s) => !have.has(s.id) && !!have.add(s.id));
     if (fresh.length) await this.storage.put(key(person), trimmed([...log, ...fresh], now));
+  }
+
+  /** Whether Jarvis has replied to them since `since` (answeredSince). */
+  async answeredSince(person: string, since: number, now: number): Promise<boolean> {
+    return answeredSince(await this.list(person, now), since);
   }
 
   /** An alert's row (alertSaid), kept after the rest; false when it repeats what was just said there, and is not kept. */

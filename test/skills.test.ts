@@ -2,7 +2,7 @@
 // and MCP servers added in chat, in the person's own words; each service's key
 // set in Settings → Skills and never shown again; requests sent only to the
 // address the skill was given.
-import { ANSWER_MS, MAX_ANSWERS, MAX_SKILLS, REPLY_PREFIX, SENDS_PER_HOUR, Skills, callSkill, skillAlert, skillRequest, type Skill } from "../src/worker/lib/skills.ts";
+import { ANSWER_MS, MAX_ANSWERS, MAX_SKILLS, REPLY_PREFIX, SENDS_PER_HOUR, SETTLE_MS, Skills, callSkill, heldToRelease, skillAlert, skillRequest, type Skill } from "../src/worker/lib/skills.ts";
 import { askSkill, skillAdd, skillRemove } from "../src/worker/tools/skills.ts";
 import { baseTools } from "../src/worker/tools/registry.ts";
 import { handleBot, handleSkills } from "../src/worker/routes/skills.ts";
@@ -232,6 +232,19 @@ console.log("an answer at its reply address");
   await skills.asked({ skill: s.id, person: "owner", about: "x", digest: d3 }, now);
   await skills.remove("Nova");
   check("  the skill removed: no such address", JSON.stringify(await skills.answer(d3, { text: "x" }, now)).includes('"refused":404'));
+  const d4 = await sha256Hex("fourth");
+  await skills.add(NOVA, 2);
+  const again = (await skills.list())[0]!;
+  await skills.asked({ skill: again.id, person: "owner", about: "x", digest: d4 }, now);
+  const quick = await skills.answer(d4, { text: "fast" }, now + 2_000, async () => false);
+  check("  before Jarvis has replied: held, until it has, half a minute at most", "holdUntil" in quick && quick.holdUntil === now + SETTLE_MS, quick);
+  const replied = await skills.answer(d4, { text: "fast" }, now + 3_000, async () => true);
+  check("  after: not held", "alert" in replied && !("holdUntil" in replied), replied);
+  const late = await skills.answer(d4, { text: "slow" }, now + SETTLE_MS + 1, async () => false);
+  check("  past the half minute: not held, replied or not", "alert" in late && !("holdUntil" in late), late);
+  let since = 0;
+  await skills.answer(d4, { text: "who" }, now + 4_000, async (person, at) => ((since = at), person === "owner"));
+  check("  asked about whoever asked, since the request", since === now);
   const long = skillAlert(nova, { text: "x".repeat(3000) }, now, "owner");
   check("  as long as an alert may be; a message of its own asked nothing", long?.text.length === 1500 && !long.skill?.about, long?.text.length);
 }
@@ -264,6 +277,26 @@ console.log("POST /api/v1/bot/<its reply address>");
   check("  not JSON: 400", (await handleBot(new Request(`https://jarvis.example.com/api/v1/bot/${TOKEN}`, { method: "POST", body: "text=hi" }), benv)).status === 400);
   methods.broadcast = async () => ({ open: 0, visible: 0, acked: null });
   check("  nowhere took it: 502", (await post(`/api/v1/bot/${TOKEN}`, { text: "again" })).status === 502);
+  const held: unknown[][] = [];
+  methods.skillAnswer = async () => ({ alert: { id: "a1", title: "Nova", text: "fast" }, at: 1, holdUntil: 30_001 });
+  methods.hold = async (...a: never[]) => void held.push(a);
+  const early = await post(`/api/v1/bot/${TOKEN}`, { text: "fast" });
+  check("  before Jarvis has replied: held for its reply, 202, nothing delivered yet",
+    early.status === 202 && ((await early.json()) as { heldUntil: number }).heldUntil === 30_001 && held.length === 1 && held[0]![1] === 30_001 && held[0]![2] === true && shown.length === 1, held);
+}
+
+console.log("held for Jarvis's reply, let go by it");
+{
+  const a = (id: string, forWhom?: string) => ({ id, at: 1, title: "Nova", text: "x", speak: true, urgent: false, source: "api" as const, ...(forWhom ? { for: forWhom } : {}) });
+  const held = new Map<string, { alert: ReturnType<typeof a>; until: number; reply?: boolean }>([
+    ["held:a1", { alert: a("a1"), until: 30_001, reply: true }],
+    ["held:a2", { alert: a("a2", "u_sara"), until: 30_001, reply: true }],
+    ["held:a3", { alert: a("a3"), until: 99_000 }],
+  ]);
+  const due = heldToRelease(held, "owner", 5_000);
+  check("  only that person's, held for a reply: due now, said now", JSON.stringify(due) === JSON.stringify([["held:a1", { alert: { ...a("a1"), at: 5_000 }, until: 5_000 }]]), due);
+  check("  a member's by their id", heldToRelease(held, "u_sara", 5_000).map(([k]) => k).join() === "held:a2");
+  check("  never one held for quiet hours", !heldToRelease(held, "owner", 5_000).some(([k]) => k === "held:a3"));
 }
 
 /* ---------- the tools ----------------------------------------------------- */
