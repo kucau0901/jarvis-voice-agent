@@ -948,7 +948,7 @@ curl -X POST "https://jarvis.example.com/api/v1/bot/jrp1_…" \
 ```
 
 ```json
-{"ok": true, "id": "q8m2…", "deliveredBy": "live", "attempts": [{"channel": "live", "ok": true, "detail": "shown on phone"}]}
+{"ok": true, "id": "q8m2…"}
 ```
 
 No header and no token: the address is the credential, made for that request.
@@ -956,11 +956,14 @@ It only writes, under the skill's name, to whoever asked, and takes up to 5
 answers within a day (a bot may say it is working, then answer). `text` is
 required (1,500 characters are kept); `title` goes before it; `speak: false`
 shows it without saying it; `expiresAt` (ms) as on `/api/v1/notify`; `urgent`
-is ignored. `404` means no such address (never made, a day old, or the skill
-removed), `429` its answers are used up, `400` no text, `502` no channel took
-it, as `/api/v1/notify` says. `202` with `heldUntil` means it came before
-Jarvis had replied to the question: it is held until that reply is in Chat,
-half a minute at most, so it shows after it.
+is ignored. `200` means it was delivered and `502` that no channel took it;
+unlike `/api/v1/notify`, it never says where it went, since which screen is in
+front of the person is not the bot's business. `404` means no such address
+(never made, a day old, pushed out by 200 newer requests across the family,
+or the skill removed), `429` its answers are used up, `400` no text. `202`
+with `heldUntil` means it is held: until Jarvis's reply to the question is in
+Chat, half a minute at most, when it came before it, so it shows after it;
+or until the person's quiet hours end.
 
 The answer reaches every screen and device of whoever asked, as any alert
 does, with `skill: {id, name, about}` (`about`: what it was asked). The app
@@ -1008,8 +1011,9 @@ curl -X POST https://jarvis.example.com/api/v1/bot \
 
 The body and the answer are as for an answer at a `replyUrl`: under the
 bot's name, never urgent, to the person who made the address and nobody
-else; `202` with `heldUntil` when it waits for their quiet hours to end. It
-counts against the bot's allowance.
+else; `200`, or `502` when no channel took it, or `202` with `heldUntil` when
+it waits for their quiet hours to end. It counts against the bot's
+allowance, after the address is checked.
 
 It asks as the person who made the address, as a device of theirs would:
 their hours (`403` with `outside`), a device's allowance (`429`), and no

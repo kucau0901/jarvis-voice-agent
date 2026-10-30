@@ -72,8 +72,9 @@ const nowhere = () => err(404, "no such address");
  * only ever writes, under the skill's name, to whoever asked, for a day and a
  * few answers (lib/skills.ts Skills.answer), so a bot answers later with no
  * token of Jarvis's. Every refusal of an address is the same 404. Answered
- * as POST /api/v1/notify is: where it went; or 202, held until Jarvis's own
- * reply to the question is in Chat (SETTLE_MS at most), so it shows after it.
+ * 200 (delivered), 502 (no channel took it), or 202, held until Jarvis's own
+ * reply to the question is in Chat (SETTLE_MS at most), so it shows after it,
+ * or until its person's quiet hours end.
  *
  * A bot's own address (Settings → Skills → Make its address), in the path or
  * as its Bearer credential, asks Jarvis as the person who made it, as a
@@ -99,7 +100,14 @@ export async function handleBot(req: Request, env: Env, ctx: ExecutionContext, a
   if (!bot || !view?.scopes) return nowhere();
   if (req.method === "GET" && !sub) return json({ ok: true, name: bot.name });
   if (req.method !== "POST") return err(405, "POST only");
-  // A device's allowance, the bot's own, as the gate counts one (index.ts).
+  // Asking: within its maker's hours, and only if ticked to ask, before anything is counted, as the gate does (index.ts).
+  const grants = botGrants(bot.reach, view.scopes);
+  if (sub) {
+    const hours = allowedNow(view.access, Date.now(), localeOf(env).timeZone);
+    if (!hours.ok) return json({ error: hours.why, text: `Not now: ${hours.why}.`, outside: true }, { status: 403 });
+    if (!allows(grants, "ask")) return err(403, `${bot.name} may not ask Jarvis: tick it in Settings → Skills`, { need: "ask" });
+  }
+  // A device's allowance, the bot's own, as the gate counts one.
   const verdict = await limits.check(env, `b_${bot.id}`);
   if (!verdict.ok) {
     const headers = new Headers({ "content-type": "application/json" });
@@ -115,10 +123,6 @@ export async function handleBot(req: Request, env: Env, ctx: ExecutionContext, a
     if (!alert) return err(400, "text is required");
     return delivered(env, state, alert);
   }
-  const hours = allowedNow(view.access, Date.now(), localeOf(env).timeZone);
-  if (!hours.ok) return json({ error: hours.why, text: `Not now: ${hours.why}.`, outside: true }, { status: 403 });
-  const grants = botGrants(bot.reach, view.scopes);
-  if (!allows(grants, "ask")) return err(403, `${bot.name} may not ask Jarvis: tick it in Settings → Skills`, { need: "ask" });
   // As a device of theirs: their data, their memory as far as it was ticked, a thread of its own (routes/v1.ts botOf).
   const principal: Principal = {
     kind: "device",
@@ -147,17 +151,18 @@ async function answered(req: Request, env: Env, parts: string[]): Promise<Respon
   if (!b) return err(400, "body must be a small JSON object");
   const r = await state.skillAnswer(await sha256Hex(token), b, Date.now());
   if ("refused" in r) return err(r.refused, r.why);
-  if (r.holdUntil) {
-    // Before Jarvis's own reply to the question: kept until that is in Chat (state.ts conversationAdd), so it shows after it.
-    await state.hold(r.alert, r.holdUntil, true);
-    return json({ ok: true, id: r.alert.id, heldUntil: r.holdUntil }, { status: 202 });
-  }
+  // Before Jarvis's own reply to the question: held by the object until that is in Chat (state.ts), so it shows after it.
+  if (r.holdUntil) return json({ ok: true, id: r.alert.id, heldUntil: r.holdUntil }, { status: 202 });
   return delivered(env, state, r.alert);
 }
 
-/** Delivered, said as POST /api/v1/notify says it: where it went, or 202 held for its person's quiet hours. */
+/**
+ * Delivered: 200, or 502 when no channel took it, or 202 held for its person's quiet hours. Never where it
+ * went, as POST /api/v1/notify says: a bot holds no alerts token, and which screen is in front of its person
+ * is not its business.
+ */
 async function delivered(env: Env, state: AlertState, alert: Alert): Promise<Response> {
   const d = await deliver(env, state, alert);
   if (d.heldUntil) return json({ ok: true, id: alert.id, heldUntil: d.heldUntil }, { status: 202 });
-  return json({ ok: true, id: alert.id, deliveredBy: d.deliveredBy, attempts: d.attempts }, { status: d.deliveredBy ? 200 : 502 });
+  return json({ ok: !!d.deliveredBy, id: alert.id }, { status: d.deliveredBy ? 200 : 502 });
 }

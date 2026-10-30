@@ -694,8 +694,6 @@ interface PlanApi {
 /** What the object adds itself, because it holds the sockets (state.ts). */
 interface LiveApi {
   broadcast(alert: Alert, waitMs: number): Promise<LiveResult>;
-  /** Keep an alert until `until` (lib/alerts.ts AlertState); `reply`: a skill's answer held for Jarvis's own reply (state.ts conversationAdd). */
-  hold(alert: Alert, until: number, reply?: boolean): Promise<void>;
   /** An alert into its person's conversation (lib/alerts.ts AlertState). */
   keepAlert(alert: Alert): Promise<boolean>;
   /** Whether an alert's person wants it talked about (lib/alerts.ts AlertState). */

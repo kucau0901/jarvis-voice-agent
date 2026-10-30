@@ -110,6 +110,7 @@ export class Skills {
     arm(remove, "Remove it?", async () => {
       try {
         await api(this.key, "DELETE", `/api/skills?id=${encodeURIComponent(s.id)}`);
+        this.forget();
         this.say(`${s.name} is removed.`);
         await this.load();
       } catch (e) {
@@ -148,9 +149,16 @@ export class Skills {
     return box;
   }
 
+  /** A new address shown once is not left showing: Settings closed (ui/Settings.ts hide), or that address stopped. */
+  forget(): void {
+    this.shown?.remove();
+    this.shown = null;
+  }
+
   private async change(s: SkillView, body: Record<string, unknown>, said: string): Promise<void> {
     try {
       await api(this.key, "PATCH", "/api/skills", { id: s.id, ...body });
+      if (body.address === false) this.forget();
       this.say(said);
       await this.load();
     } catch (e) {

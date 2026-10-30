@@ -453,8 +453,9 @@ console.log("skills, through the object");
   const r = await jarvis.skillAsked({ skill: nid, person: "u_sara", about: "Check the inbox", digest: "d-sara" }, T);
   check("  a request kept, at the time given", typeof r !== "string" && r.id.startsWith(`jarvis-${Math.floor(T / 1000)}-`), r);
   const early = await jarvis.skillAnswer("d-sara", { text: "Two from the school." }, T + 1_000);
-  check("  its answer before Jarvis has replied to Sara: hers, under its name, held for the reply",
-    "alert" in early && early.alert.for === "u_sara" && early.alert.title === "Nova" && early.alert.skill?.about === "Check the inbox" && early.holdUntil === T + 30_000, early);
+  check("  its answer before Jarvis has replied to Sara: hers, under its name, held for the reply, in the same call",
+    "alert" in early && early.alert.for === "u_sara" && early.alert.title === "Nova" && early.alert.skill?.about === "Check the inbox" && early.holdUntil === T + 30_000 &&
+    ((await storage.get(`held:${early.alert.id}`)) as { reply?: boolean; until: number } | undefined)?.reply === true, early);
   await jarvis.conversationAdd("u_sara", [{ id: "c_reply1", at: T + 2_000, role: "assistant", text: "Asked Nova." }], T + 2_000);
   const after = await jarvis.skillAnswer("d-sara", { text: "And one more." }, T + 3_000);
   check("  once Jarvis's reply is kept, not held", "alert" in after && !("holdUntil" in after), after);
@@ -470,7 +471,7 @@ console.log("skills, through the object");
   await jarvis.conversationAdd("owner", [{ id: "c_a1", at: T + 5_000, role: "assistant", text: "Asked Nova." }], T + 5_000);
   const mine = (await storage.get("held:h_owner")) as { alert: { at: number }; until: number };
   check("  Jarvis's reply lets its person's held answer go now, said now, and the alarm set for it",
-    mine.until === T + 5_000 && mine.alert.at === T + 5_000 && alarmAt !== null && alarmAt <= T + 5_000, { mine, alarmAt });
+    mine.until === T + 5_000 && mine.alert.at === T + 5_001 && alarmAt !== null && alarmAt <= T + 5_000, { mine, alarmAt });
   check("  another person's stays held", ((await storage.get("held:h_sara")) as { until: number }).until === T + 30_000);
   check("  one held for quiet hours stays held", ((await storage.get("held:h_quiet")) as { until: number }).until === T + 600_000);
   // A bot's own exchange with Jarvis is not Jarvis's reply to the person: it lets nothing go.
@@ -502,7 +503,7 @@ console.log("skills, through the object");
   const narrowed = await jarvis.skillReach(nid, ["ask"], 8_000);
   check("  ticked again, at the time given", typeof narrowed !== "string" && narrowed.address?.reach.join() === "ask" && narrowed.updatedAt === 8_000, narrowed);
   check("  stopped", typeof (await jarvis.skillDropAddress(nid, 9_000)) !== "string" && (await jarvis.skillByAddress(digest)) === null);
-  for (const k of ["held:h_owner", "held:h_sara", "held:h_quiet", "held:h_owner2"]) await storage.delete(k);
+  for (const k of (await storage.list({ prefix: "held:" })).keys()) await storage.delete(k);
   await jarvis.skillRemove("Nova");
 }
 

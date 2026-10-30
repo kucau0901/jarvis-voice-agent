@@ -154,7 +154,8 @@ export class JarvisState extends DurableObject<Env> {
   private async releaseHeld(): Promise<void> {
     const now = Date.now();
     const held = await this.ctx.storage.list<{ alert: Alert; until: number }>({ prefix: HELD });
-    const due = [...held.entries()].filter(([, h]) => h.until <= now);
+    // In the order they were said: a bot's quick answers, let go together, keep theirs (lib/skills.ts heldToRelease).
+    const due = [...held.entries()].filter(([, h]) => h.until <= now).sort(([, a], [, b]) => a.alert.at - b.alert.at);
     if (!due.length) return;
     const env = await this.localEnv();
     for (const [k, h] of due) {
@@ -801,8 +802,11 @@ export class JarvisState extends DurableObject<Env> {
     return this.skills.byAddress(digest);
   }
 
-  skillAnswer(digest: string, body: Record<string, unknown>, now: number) {
-    return this.skills.answer(digest, body, now, (person, since) => this.conversation.answeredSince(person, since, now));
+  async skillAnswer(digest: string, body: Record<string, unknown>, now: number) {
+    const r = await this.skills.answer(digest, body, now, (person, since) => this.conversation.answeredSince(person, since, now));
+    // Held in the same call, so Jarvis's reply cannot be kept between the two and miss it (conversationAdd).
+    if ("alert" in r && r.holdUntil) await this.hold(r.alert, r.holdUntil, true);
+    return r;
   }
 
   episodesOf(person: string, now: number) {

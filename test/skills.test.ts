@@ -278,17 +278,16 @@ console.log("POST /api/v1/bot/<its reply address>");
   check("  read, not written: 405", (await post(`/api/v1/bot/${TOKEN}`, null, "GET")).status === 405);
   check("  one never made: the same 404", (await post(`/api/v1/bot/${mintToken(REPLY_PREFIX)}`, { text: "x" })).status === 404 && touched === 1);
   const ok = await post(`/api/v1/bot/${TOKEN}`, { text: "Two from the school." });
-  const body = (await ok.json()) as { ok: boolean; deliveredBy: string };
-  check("  its answer: delivered under its name, and where it went said", ok.status === 200 && body.ok && body.deliveredBy === "live" && JSON.stringify(shown[0]?.alert).includes('"skill":{"id"'), { body, shown });
+  const body = (await ok.json()) as Record<string, unknown>;
+  check("  its answer: delivered under its name; never where it went, which screen is in front of its person",
+    ok.status === 200 && body.ok === true && !("deliveredBy" in body) && !("attempts" in body) && JSON.stringify(shown[0]?.alert).includes('"skill":{"id"'), { body, shown });
   check("  not JSON: 400", (await handleBot(new Request(`https://jarvis.example.com/api/v1/bot/${TOKEN}`, { method: "POST", body: "text=hi" }), benv)).status === 400);
   methods.broadcast = async () => ({ open: 0, visible: 0, acked: null });
   check("  nowhere took it: 502", (await post(`/api/v1/bot/${TOKEN}`, { text: "again" })).status === 502);
-  const held: unknown[][] = [];
   methods.skillAnswer = async () => ({ alert: { id: "a1", title: "Nova", text: "fast" }, at: 1, holdUntil: 30_001 });
-  methods.hold = async (...a: never[]) => void held.push(a);
   const early = await post(`/api/v1/bot/${TOKEN}`, { text: "fast" });
-  check("  before Jarvis has replied: held for its reply, 202, nothing delivered yet",
-    early.status === 202 && ((await early.json()) as { heldUntil: number }).heldUntil === 30_001 && held.length === 1 && held[0]![1] === 30_001 && held[0]![2] === true && shown.length === 1, held);
+  check("  before Jarvis has replied: held (by the object, in the same call), 202, nothing delivered here",
+    early.status === 202 && ((await early.json()) as { heldUntil: number }).heldUntil === 30_001 && shown.length === 1);
 }
 
 console.log("held for Jarvis's reply, let go by it");
@@ -300,7 +299,14 @@ console.log("held for Jarvis's reply, let go by it");
     ["held:a3", { alert: a("a3"), until: 99_000 }],
   ]);
   const due = heldToRelease(held, "owner", 5_000);
-  check("  only that person's, held for a reply: due now, said now", JSON.stringify(due) === JSON.stringify([["held:a1", { alert: { ...a("a1"), at: 5_000 }, until: 5_000 }]]), due);
+  check("  only that person's, held for a reply: due now, said a moment after it", JSON.stringify(due) === JSON.stringify([["held:a1", { alert: { ...a("a1"), at: 5_001 }, until: 5_000 }]]), due);
+  const two = new Map([
+    ["held:zz", { alert: { ...a("zz"), at: 2, text: "Done: the gate is shut." }, until: 30_001, reply: true }],
+    ["held:aa", { alert: { ...a("aa"), at: 3, text: "Still more." }, until: 30_001, reply: true }],
+    ["held:mm", { alert: { ...a("mm"), at: 1, text: "On it." }, until: 30_001, reply: true }],
+  ]);
+  const order = heldToRelease(two, "owner", 5_000);
+  check("  several: in the order they came, a moment apart, whatever their ids", order.map(([, h]) => `${h.alert.text}@${h.alert.at}`).join(" | ") === "On it.@5001 | Done: the gate is shut.@5002 | Still more.@5003", order);
   check("  a member's by their id", heldToRelease(held, "u_sara", 5_000).map(([k]) => k).join() === "held:a2");
   check("  never one held for quiet hours", !heldToRelease(held, "owner", 5_000).some(([k]) => k === "held:a3"));
 }
@@ -564,13 +570,15 @@ console.log("/api/v1/bot: its own address");
   check("  as a device of whoever made it: its own id and name, the skill, their limits, what was ticked",
     p.id === `b_${s.id}` && p.name === "Nova" && p.skill === s.id && p.owner === "u_sara" && JSON.stringify(p.scopes) === '["ask"]', p);
   await skills.setReach(s.id, ["home"], 3);
+  let charged = 0;
+  methods.consume = async () => (charged++, { ok: true });
   const not = await said(await call(`/api/v1/bot/${made.token}/ask`, { method: "POST", body: '{"text":"hi"}' }));
-  check("  not ticked to ask: 403, said where to tick it", not.status === 403 && not.body.need === "ask" && String(not.body.error).includes("Settings → Skills"), not);
+  check("  not ticked to ask: 403, said where to tick it, and not counted", not.status === 403 && not.body.need === "ask" && String(not.body.error).includes("Settings → Skills") && charged === 0, not);
   await skills.setReach(s.id, ["ask"], 4);
   view = { ...view, access: { hours: { days: [], from: "00:00", to: "00:01" } } };
   const late = await said(await call(`/api/v1/bot/${made.token}/ask`, { method: "POST", body: '{"text":"hi"}' }));
   view = { space: "s1", name: "Sara", prefs: {}, cars: [], scopes: ["ask", "memory.read", "home"] };
-  check("  outside its maker's hours: 403, as theirs would be", late.status === 403 && late.body.outside === true, late);
+  check("  outside its maker's hours: 403, as theirs would be, and not counted", late.status === 403 && late.body.outside === true && charged === 0, late);
   methods.consume = async () => ({ ok: false });
   const spent = await call(`/api/v1/bot/${made.token}/ask`, { method: "POST", body: '{"text":"hi"}' });
   methods.consume = async () => ({ ok: true });
@@ -587,8 +595,8 @@ console.log("/api/v1/bot: its own address");
   methods.quietUntil = async () => null;
   const msg = await said(await call("/api/v1/bot", { method: "POST", headers: bearer, body: JSON.stringify({ title: "Parcel", text: "Delivered at 3:10.", urgent: true }) }));
   const a = sent2[0] as { title: string; text: string; for: string; urgent: boolean; skill: unknown } | undefined;
-  check("  a message: to whoever made its address, under its name, never urgent, and where it went said",
-    msg.status === 200 && msg.body.deliveredBy === "live" && a?.title === "Nova" && a.text === "Parcel: Delivered at 3:10." && a.for === "u_sara" && a.urgent === false &&
+  check("  a message: to whoever made its address, under its name, never urgent; never where it went",
+    msg.status === 200 && msg.body.ok === true && !("deliveredBy" in msg.body) && a?.title === "Nova" && a.text === "Parcel: Delivered at 3:10." && a.for === "u_sara" && a.urgent === false &&
     JSON.stringify(a.skill) === JSON.stringify({ id: s.id, name: "Nova" }), { msg, a });
   check("  counted against its allowance", counted === 1);
   check("  no text: 400", (await call(`/api/v1/bot/${made.token}`, { method: "POST", body: "{}" })).status === 400);

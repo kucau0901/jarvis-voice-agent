@@ -365,6 +365,9 @@
     -webkit-mask: var(--i-clock) center / contain no-repeat; mask: var(--i-clock) center / contain no-repeat; }
   .row .frompill span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .row .frompill small { flex: none; font-size: 12px; opacity: .7; }
+  /* A skill's: its name always shows; what it was asked, beside the time, is what gives way. */
+  .row .frompill.skill span { flex: none; max-width: 50%; }
+  .row .frompill.skill small { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* The first run (firstRun.ts): Jarvis's words, then what to do next, in pills; gone once anything is said. */
   #transcript .row.jarvis.firstrun { flex-direction: column; align-items: flex-start; gap: 8px; }
   .row .frbtns { display: flex; flex-wrap: wrap; gap: 8px; }

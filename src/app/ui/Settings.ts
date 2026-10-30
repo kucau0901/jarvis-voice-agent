@@ -418,6 +418,7 @@ export class Settings {
 
   hide() {
     this.el.classList.remove("open");
+    this.skills.forget();
   }
 
   /* ---------- router model ------------------------------------------------ */

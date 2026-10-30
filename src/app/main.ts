@@ -1388,7 +1388,8 @@ function addRow(who: "you" | "jarvis", text: string, cls = "", links?: { url: st
   w.className = "who";
   w.textContent = who === "you" ? "You" : "Jarvis";
   el.appendChild(w);
-  const body = who === "jarvis" ? answerBody(text, (doc) => (reader ??= new Reader()).show(doc, () => reply.quote(el, text))) : Object.assign(document.createElement("span"), { className: "txt", textContent: text });
+  // Replied to only where a reply is offered (below): never a skill's words, read whole.
+  const body = who === "jarvis" ? answerBody(text, (doc) => (reader ??= new Reader()).show(doc, () => !cls && reply.quote(el, text))) : Object.assign(document.createElement("span"), { className: "txt", textContent: text });
   if (links?.length) body.appendChild(linkCards(links));
   if (page && key) body.appendChild(pageCard(key, page));
   el.appendChild(body);

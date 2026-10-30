@@ -358,8 +358,9 @@ export class Skills {
 
 /**
  * The held answers Jarvis's reply to `person` lets go: those held for it
- * (`reply`), not one held for quiet hours. Due now, and said now, so each
- * sorts after the reply on every screen.
+ * (`reply`), not one held for quiet hours. Due now, and said now, a moment
+ * apart in the order they came, so each sorts after the reply on every
+ * screen, and after the one before it.
  */
 export function heldToRelease(
   held: Map<string, { alert: Alert; until: number; reply?: boolean }>,
@@ -368,7 +369,9 @@ export function heldToRelease(
 ): [string, { alert: Alert; until: number }][] {
   return [...held]
     .filter(([, h]) => h.reply && (h.alert.for ?? OWNER) === person)
-    .map(([k, h]) => [k, { alert: { ...h.alert, at: now }, until: now }]);
+    .sort(([, a], [, b]) => a.alert.at - b.alert.at)
+    // A moment after the reply, kept at `now` too: a screen sorting by the time (the Android app's) puts it after.
+    .map(([k, h], i) => [k, { alert: { ...h.alert, at: now + 1 + i }, until: now }]);
 }
 
 /**
