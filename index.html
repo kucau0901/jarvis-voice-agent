@@ -509,10 +509,10 @@
 
   /* Devices. Minting a credential is a phone-or-laptop job, never a driving one. */
   #devices .mint, #connect .mint { display: grid; gap: 10px; padding: 20px; margin-bottom: 14px; border-radius: 24px; background: var(--glass-hi); }
-  #devices .scopes, #connect .scopes, #settings .talks .scopes { display: grid; gap: 6px; }
-  #devices .scope, #connect .scope, #settings .talks .scope { display: flex; align-items: flex-start; gap: 9px; font-size: 13px;
+  #devices .scopes, #connect .scopes, #settings .talks .scopes, .addrcard .scopes { display: grid; gap: 6px; }
+  #devices .scope, #connect .scope, #settings .talks .scope, .addrcard .scope { display: flex; align-items: flex-start; gap: 9px; font-size: 13px;
     color: var(--dim); cursor: pointer; }
-  #devices .scope input, #connect .scope input, #settings .talks .scope input { margin-top: 3px; min-width: 18px; min-height: 18px; }
+  #devices .scope input, #connect .scope input, #settings .talks .scope input, .addrcard .scope input { margin-top: 3px; min-width: 18px; min-height: 18px; }
   #devices .scope.wild, #connect .scope.wild, #settings .talks .scope.wild { color: var(--fg); padding-bottom: 6px; border-bottom: 1px solid var(--hair); }
   #devices .dev { display: grid; gap: 8px; padding: 16px 20px; margin-bottom: 10px; border-radius: 24px; background: var(--glass-hi); }
   #devices .dev.dead { opacity: .5; }
@@ -525,8 +525,8 @@
   #devices .token, #family .token, #settings .token { border: 1px solid var(--accent); border-radius: 24px;
     padding: 20px; margin-bottom: 16px; background: var(--glass-hi); }
   #devices .token p, #family .token p, #settings .token p { color: var(--dim); font-size: 13px; margin: 8px 0; }
-  #devices .tok, #family .tok, #settings .tok { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-  #devices .tok code, #family .tok code, #settings .tok code { font: 13px ui-monospace, Menlo, monospace; word-break: break-all;
+  #devices .tok, #family .tok, #settings .tok, .addrcard .tok { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  #devices .tok code, #family .tok code, #settings .tok code, .addrcard .tok code { font: 13px ui-monospace, Menlo, monospace; word-break: break-all;
     flex: 1 1 260px; padding: 10px; }
   #devices .qr, #family .qr { background: #fff; padding: 10px; border-radius: 8px;
     width: max-content; margin: 12px 0; }
@@ -680,7 +680,7 @@
     #talkrow { order: 1; }
     #transcript { order: 2; }
     #devices .qr svg, #family .qr svg { width: 150px; height: 150px; }
-    #devices .tok code, #family .tok code, #settings .tok code { flex: 1 1 100%; }
+    #devices .tok code, #family .tok code, #settings .tok code, .addrcard .tok code { flex: 1 1 100%; }
   }
 
   /* A desktop window has room the dashboard does not. */
@@ -781,16 +781,25 @@
   /* A page Jarvis made (pageCard.ts), under the answer that made it. */
   .pagecard { display: grid; gap: 6px; margin-top: 10px; padding: 12px 14px; border: 1px solid var(--hair); border-radius: 16px; background: var(--glass); white-space: normal; }
   .pagecard .doctag { font-size: 12px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--dim); }
-  .pagecard .doctitle { font-size: 1.05em; line-height: 1.3; }
+  .pagecard .doctitle, .addrcard .doctitle { font-size: 1.05em; line-height: 1.3; }
   .pagecard .pagesaid { color: var(--dim); font-size: 12px; overflow-wrap: anywhere; }
-  .pagecard .docopen { min-height: 34px; padding: 0 14px; border: 1px solid var(--hair); border-radius: 999px; background: var(--glass); color: var(--fg); font: inherit; font-size: 13px; cursor: pointer; }
-  .pagecard .docopen.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); font-weight: 600; }
+  .pagecard .docopen, .addrcard .docopen { min-height: 34px; padding: 0 14px; border: 1px solid var(--hair); border-radius: 999px; background: var(--glass); color: var(--fg); font: inherit; font-size: 13px; cursor: pointer; }
+  .pagecard .docopen.primary, .addrcard .docopen.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); font-weight: 600; }
   .proposals { display: grid; gap: 8px; margin-top: 10px; }
   .proposals:empty { display: none; }
   .proposalcard .doctitle { overflow-wrap: anywhere; }
   #alerts .proposals { max-height: 40vh; overflow-y: auto; }
   .proposals .pagecard { margin-top: 0; }
   .draftcard .draftbody, .proposalcard .draftbody { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 14em; overflow-y: auto; font-size: 14px; line-height: 1.5; }
+  /* A skill's bot's own address (botAddress.ts): in Chat as a card, in Settings → Skills in its row. */
+  .addrcard { display: grid; gap: 8px; }
+  .addrcard p, #settings .addrcard p { color: var(--dim); font-size: 13px; margin: 0; }
+  .addrcard .addrkinds, .addrcard .addrlines { display: flex; flex-wrap: wrap; gap: 6px; }
+  .addrcard .addrlines { flex-direction: column; flex-wrap: nowrap; gap: 8px; }
+  .addrcard .tok small { flex: 1 1 100%; color: var(--dim); font-size: 12px; }
+  .addrcard .tok code, #settings .addrcard .tok code { padding: 6px 8px; }
+  .addrcard .docopen.armed { background: var(--danger); border-color: var(--danger); color: var(--on-accent); }
+  .addrcard .addrsaid:empty { display: none; }
   /* The pages an answer cited (ui/rich.ts linkCards), under it. */
   .links { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; white-space: normal; }
   .links .lcard { display: grid; gap: 2px; max-width: 240px; padding: 8px 12px; border: 1px solid var(--hair); border-radius: 14px; background: var(--glass); color: var(--fg) !important; text-decoration: none; }

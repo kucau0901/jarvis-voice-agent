@@ -975,8 +975,11 @@ One skill is sent at most 20 requests an hour, whoever asks.
 
 In **Settings → Skills**, under the skill, an admin ticks what its bot may
 reach (asking questions, and nothing more, unless more is ticked) and
-presses **Make its address**. It is shown once, in two forms: a base URL,
-`https://jarvis.example.com/api/v1/bot`, with the key `jbt1_…` sent as
+presses **Make its address**; or asks in Chat ("give it its own address"),
+which puts the same ticks and button on that screen as a card, never kept or
+synced. It is shown once, in two forms, laid out as the kind of app the bot
+is in asks for it (base URL and API key, MCP server, or just a URL): a base
+URL, `https://jarvis.example.com/api/v1/bot`, with the key `jbt1_…` sent as
 `Authorization: Bearer`, which keeps it out of URL logs; or, for a bot that
 takes only a URL, `https://jarvis.example.com/api/v1/bot/jbt1_…`. Only its
 digest is kept: lost, make a new one, and the old one stops.

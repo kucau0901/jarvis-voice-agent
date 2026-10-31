@@ -3,13 +3,14 @@
 // set in Settings → Skills and never shown again; requests sent only to the
 // address the skill was given.
 import { ANSWER_MS, MAX_ANSWERS, MAX_SKILLS, REPLY_PREFIX, SENDS_PER_HOUR, SETTLE_MS, Skills, callSkill, heldToRelease, skillAlert, skillRequest, type Skill } from "../src/worker/lib/skills.ts";
-import { askSkill, skillAdd, skillRemove } from "../src/worker/tools/skills.ts";
+import { askSkill, skillAdd, skillAddress, skillRemove } from "../src/worker/tools/skills.ts";
+import { DRAWS_ON_SCREEN } from "../src/worker/tools/place.ts";
 import { baseTools } from "../src/worker/tools/registry.ts";
 import { handleBot, handleSkills } from "../src/worker/routes/skills.ts";
 import type { Principal } from "../src/worker/lib/auth.ts";
 import { mintToken, sha256Hex } from "../src/worker/lib/devices.ts";
 import { ADDRESS_PREFIX, BOT_REACH, DEFAULT_REACH, botGrants, botHides, reachOf } from "../src/worker/lib/skills.ts";
-import { ownWords } from "../src/worker/lib/router.ts";
+import { ownWords, runCalls } from "../src/worker/lib/router.ts";
 import { _clearSessionCache } from "../src/worker/lib/hub-client.ts";
 
 const OWNER_KEY = { kind: "owner" } as never;
@@ -393,6 +394,48 @@ console.log("skill_add: an MCP server");
   check("  connected, its token in Settings → MCP servers", out.includes("Connected the MCP server") && out.includes("Settings → MCP servers"), out);
   check("  in the list, marked as a skill's, after what was in force, with no header of its own", !!added && added.url === "https://mcp.example.com/weather" && added.hint === "forecasts" && added.spokenAs === "Weather Tools" && !added.headers && servers.length > 1, servers);
   check("  the same one again: refused", /connected already/.test(String(await skillAdd.run({ ...novaArgs, user_words: said, kind: "mcp", name: "Weather Tools", url: "https://mcp.example.com/weather", when: "forecasts", later: null, key_header: null, fields: null }, ctx(said)))));
+}
+
+console.log("skill_address: a card to make a bot's own address, nothing made here");
+{
+  const zephyr = (await store.add({ name: "Zephyr", url: "https://bots.example.com/zephyr", when: "", later: false, keyHeader: null, fields: null }, 1)) as Exclude<Awaited<ReturnType<Skills["add"]>>, string>;
+  const cards: unknown[] = [];
+  const screen = (asked: string | undefined, over: Record<string, unknown> = {}) =>
+    ({ env, signal: never, progress() {}, display() {}, grants: ["*"], asked, offerAddress: (s: unknown) => cards.push(s), ...over }) as never;
+  const said = "Give Zephyr its own address, please";
+  const args = { user_words: "Give Zephyr its own address", name: "Zephyr" };
+  check("  no latest message of theirs: refused", /^No card shown: only the user/.test(String(await skillAddress.run(args, screen(undefined)))) && !cards.length);
+  check("  a page or a mail asking: refused", /^No card shown: only the user/.test(String(await skillAddress.run(args, screen("summarise my mail")))) && !cards.length);
+  check("  an ordinary question naming it: refused", /^No card shown: only the user/.test(String(await skillAddress.run({ user_words: "ask Zephyr", name: "Zephyr" }, screen("ask Zephyr what the forecast is")))) && !cards.length);
+  check("  their words not naming it: refused", /^No card shown: only the user/.test(String(await skillAddress.run({ ...args, user_words: "give it an address" }, screen("give it an address")))) && !cards.length);
+  check("  a device's key: refused, as PATCH /api/skills refuses one",
+    /a device's/.test(String(await skillAddress.run(args, screen(said, { env: { ...env, JARVIS_DEVICE: "Car" } })))) && !cards.length);
+  check("  no screen to put it on: refused", /there is no screen here/.test(String(await skillAddress.run(args, screen(said, { offerAddress: undefined })))) && !cards.length);
+  check("  the family room, without the screen: refused", /there is no screen here/.test(String(await skillAddress.run(args, screen(said, { grants: ["ask", "skills"] })))) && !cards.length);
+  const none = String(await skillAddress.run({ user_words: "give Pip its own address", name: "Pip" }, screen("give Pip its own address")));
+  check("  one not added yet: told to call again after skill_add", /No skill is called "Pip"/.test(none) && /once skill_add has answered/.test(none) && !cards.length, none);
+  const before = JSON.stringify(await store.list());
+  const out = String(await skillAddress.run(args, screen(said)));
+  check("  asked: the card, with its id and name alone", JSON.stringify(cards) === JSON.stringify([{ id: zephyr.id, name: "Zephyr" }]), cards);
+  check("  told it is on the screen, and never to say a key", /card for Zephyr's own address is on the user's screen/.test(out) && /Never say, repeat or ask for the address/.test(out), out);
+  check("  nothing made: no address, no token anywhere", JSON.stringify(await store.list()) === before && !(await store.list()).some((s) => s.address) && !out.includes(ADDRESS_PREFIX));
+  check("  by its name in any case, and in Malay", (await skillAddress.run({ user_words: "beri zephyr alamat sendiri", name: "zephyr" }, screen("Jarvis, beri zephyr alamat sendiri")), cards.length === 2));
+  check("  its schema is strict, and takes no reach", JSON.stringify(skillAddress.parameters).includes('"additionalProperties":false') && !JSON.stringify(skillAddress.parameters).includes("reach"));
+  check("  only the skills scope is shown it", skillAddress.scope === "skills");
+
+  // The router hands it the card only where a screen will draw it, as a draft's (lib/router.ts runCalls).
+  const sent: { type: string }[] = [];
+  const seen: string[] = [];
+  const probe = { name: "probe", description: "", parameters: {}, run: async (_a: unknown, c: { offerAddress?: (s: unknown) => void }) => (seen.push(typeof c.offerAddress), c.offerAddress?.({ id: "k1", name: "Zephyr" }), "ok") };
+  const call = [{ type: "function_call", call_id: "c1", name: "probe", arguments: "{}" }] as never;
+  const sink = { send: (e: { type: string }) => void sent.push(e), isClosed: false } as never;
+  const base = { env: {} as never, signal: new AbortController().signal, memory: {} as never, grants: ["*"] };
+  await runCalls(call, new Map([["probe", probe]]) as never, base, sink);
+  await runCalls(call, new Map([["probe", probe]]) as never, { ...base, screenless: true }, sink);
+  check("  a card where there is a screen, none where there is not", seen.join() === "function,undefined", seen);
+  check("  sent as an address event, its id and name alone", JSON.stringify(sent.filter((e) => e.type === "address")) === '[{"type":"address","id":"k1","name":"Zephyr"}]', sent);
+  check("  never offered where there is no screen", DRAWS_ON_SCREEN.includes("skill_address"));
+  await store.remove("Zephyr");
 }
 
 console.log("skill_remove");

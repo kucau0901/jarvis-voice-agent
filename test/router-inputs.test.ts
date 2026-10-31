@@ -57,6 +57,7 @@ const PROMPT_SHA256 = "ca9ae682da7e82a9d110cc7936180ac53ec84c1bcaafd152ffeb1fa8d
 // open_on_glasses (tools/glasses.ts, no scope beyond ask): everyone, the guest too (29 Oct 2026).
 // time_in (tools/clock.ts, no scope beyond ask): everyone, the guest too (29 Oct 2026).
 // skill_add and skill_remove (tools/skills.ts, scope skills): the owner key and admins only (30 Oct 2026).
+// skill_address (tools/skills.ts, scope skills, a screen in front): the owner key and admins only (31 Oct 2026).
 const EXPECTED: Record<string, { model: string; tools: string[]; input: string }> = {
  "owner key, nothing set up": {
   "model": "gpt-6-luna",
@@ -79,6 +80,7 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
    "routine_remove",
    "send_note",
    "skill_add",
+   "skill_address",
    "skill_remove",
    "specialty_forget",
    "specialty_save",
@@ -133,6 +135,7 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
    "show_camera",
    "show_place",
    "skill_add",
+   "skill_address",
    "skill_remove",
    "specialty_forget",
    "specialty_save",
@@ -294,6 +297,7 @@ try {
   const none = await names(["*"], true);
   check("  without one, no maps", !none.tools.includes("show_place") && !none.tools.includes("hide_display"), none.tools);
   check("  nor pictures to make", !none.tools.includes("make_image"), none.tools);
+  check("  nor a card for a bot's own address", here.tools.includes("skill_address") && !none.tools.includes("skill_address"), none.tools);
   check("  but panels, for whoever has screen", ["panel_set", "panel_remove", "panel_list"].every((n) => none.tools.includes(n)), none.tools);
   check("  and it is told both", none.said.includes("THIS REQUEST HAS NO SCREEN") && none.said.includes("Panels on the user's Home tab are not this screen"));
   const noGrant = await names(["ask"], true);

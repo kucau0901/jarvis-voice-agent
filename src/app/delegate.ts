@@ -2,6 +2,7 @@ import { authHeaders } from "./key";
 import type { Turn } from "./history";
 import { originHere } from "./alerts";
 import { asDraft, type Draft } from "./draft";
+import { asAddress, type Addressee } from "./botAddress";
 
 /**
  * Drive one delegation from GPT-Live to the Worker and back.
@@ -39,6 +40,8 @@ interface DelegateHandlers {
   tool?(name: string, phase: string): void;
   /** A mail written and held for the person's tap (Draft first): its card (draft.ts). */
   drafted?(d: Draft): void;
+  /** A card to make a skill's bot its own address, on this screen only (botAddress.ts). */
+  address?(s: Addressee): void;
   done(): void;
 }
 
@@ -140,6 +143,10 @@ export async function runDelegation(
 
           case "draft":
             asDraft(ev, h.drafted);
+            break;
+
+          case "address":
+            asAddress(ev, h.address);
             break;
 
           case "used":

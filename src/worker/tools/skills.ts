@@ -6,6 +6,7 @@ import { callSkill, nameOf, REPLY_PREFIX, SKILL_MCP, type Skill } from "../lib/s
 import { mintToken, sha256Hex } from "../lib/devices.ts";
 import { publicOrigin } from "../lib/http.ts";
 import { OWNER } from "../lib/context.ts";
+import { allows } from "../lib/scopes.ts";
 
 /**
  * Adding and removing skills (lib/skills.ts): an outside service Jarvis
@@ -23,6 +24,8 @@ const said = (s: string) => s.toLowerCase().replace(/https?:\/\//g, "").replace(
 /** Asking to add or change one, in their words, or in Malay. */
 const ADD = /\b(add|connect|learn|teach|install|set ?up|change|update|tambah|sambung)\b/i;
 const REMOVE = /\b(remove|delete|forget|disconnect|padam|buang)\b/i;
+/** Asking for a skill's bot to have an address of its own, to ask Jarvis or message them. */
+const ADDRESS = /\b(address|alamat|key|kunci|url|link|connect|sambung|talk|bercakap)\b/i;
 
 /** Whether `words` are the user's, in their latest message, asking with `verb` and naming `what`. */
 function theirs(words: unknown, what: string, verb: RegExp, asked: string | undefined): boolean {
@@ -96,7 +99,55 @@ export const skillAdd: Tool = {
     if (typeof s === "string") return `Not added: ${s}.`;
     return s.hasKey
       ? `Saved the skill "${s.name}"; its key is kept.`
-      : `Saved the skill "${s.name}". It is used once its key is set: tell them it goes in Settings → Skills, never in chat.`;
+      : `Saved the skill "${s.name}". It is used once its key is set: tell them it goes in Settings → Skills, never in chat. ` +
+        "If its bot should also ask Jarvis or message them, they can ask you to give it its own address.";
+  },
+};
+
+/**
+ * Starting a skill's bot's own address from chat (lib/skills.ts newAddress):
+ * a card on the screen that asked (src/app/botAddress.ts), where the person
+ * ticks what it may reach and taps to make it, through PATCH /api/skills,
+ * the owner's and admins' alone. Nothing is made here: the model never
+ * chooses what a bot reaches, and the address never passes through it, the
+ * stream or the kept chat. Offered only where there is a screen
+ * (place.ts DRAWS_ON_SCREEN).
+ */
+export const skillAddress: Tool = {
+  name: "skill_address",
+  scope: "skills",
+  pace: "fast",
+  description:
+    "Give a skill's bot an address of its own, to ask Jarvis questions or message the user, only when the user " +
+    "asks in their own words ('give Zephyr its own address'). It puts a card on their screen where they tick what " +
+    "the bot may reach and make it; nothing is made until they tap. Never ask for, repeat or say an address or a " +
+    "key: they are shown only on the card. A skill added in this same message: call this once skill_add has answered.",
+  parameters: {
+    type: "object",
+    properties: {
+      user_words: { type: "string", description: "The user's own words asking for it, with the skill's name, copied exactly from their latest message." },
+      name: { type: "string", description: "The skill's name." },
+    },
+    required: ["user_words", "name"],
+    additionalProperties: false,
+  },
+  async run(args, ctx) {
+    const name = typeof args.name === "string" ? args.name.trim() : "";
+    if (!theirs(args.user_words, name, ADDRESS, ctx.asked)) {
+      return "No card shown: only the user can ask for a bot's own address, in their own latest message, naming the skill.";
+    }
+    // The card makes it through PATCH /api/skills, which a device's key is refused.
+    if (ctx.env.JARVIS_DEVICE) return "No card shown: an address is made from an admin's own signed-in screen, not a device's. Tell them so.";
+    if (!ctx.offerAddress || !allows(ctx.grants, "screen")) {
+      return "No card shown: there is no screen here. Tell them to ask again in Chat on their phone or computer, or to use Settings → Skills.";
+    }
+    const s = (await stateStub(ctx.env)?.skillsList())?.find((x) => nameOf(x.name) === nameOf(name));
+    if (!s) return `No skill is called "${name}". If it is being added in this same message, call skill_address again once skill_add has answered.`;
+    ctx.offerAddress({ id: s.id, name: s.name });
+    return (
+      `A card for ${s.name}'s own address is on the user's screen, in Chat: they tick what it may reach, tap Make, ` +
+      `and copy what ${s.name} needs from it. Say so in a sentence. Never say, repeat or ask for the address or its key.`
+    );
   },
 };
 
@@ -175,4 +226,4 @@ export function askSkill(ready: readonly Skill[]): Tool[] {
   }];
 }
 
-export const skillTools = [skillAdd, skillRemove];
+export const skillTools = [skillAdd, skillRemove, skillAddress];
