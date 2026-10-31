@@ -10,7 +10,7 @@ import { narrow, saneGrants, SCOPES, type Grant } from "./scopes.ts";
 
 /**
  * Skills: outside services the owner or an admin added in chat ("add a skill:
- * Nova, my Grok bot, for the house and the car, at https://…"), which Jarvis
+ * Wren, my Grok bot, for the house and the car, at https://…"), which Jarvis
  * then sends requests to (tools/skills.ts ask_skill). Added only in the
  * person's own words, the address in them, so a page or a mail cannot add one.
  *
@@ -211,7 +211,7 @@ export class Skills {
     if (nameOf(named) === "jarvis") return "a skill cannot be called Jarvis";
     const url = typeof input.url === "string" ? pageUrl(input.url) : null;
     if (!url) return "its address must be https, and not one on the home network";
-    // Without one ("add a skill: Friday, at https://…"), it is used only when named (tools/skills.ts askSkill).
+    // Without one ("add a skill: Pip, at https://…"), it is used only when named (tools/skills.ts askSkill).
     const when = typeof input.when === "string" && input.when.trim() ? sanitise(input.when) : { ok: true as const, text: "" };
     if (!when.ok) return `when to use it: ${when.why}`;
     let keyHeader: string | undefined;
