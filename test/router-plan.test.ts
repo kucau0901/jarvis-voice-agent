@@ -239,7 +239,7 @@ console.log("specialties (lib/specialties.ts): an answer of two tools offers its
   check("a routine: not offered", none(await two({ run: { surface: "routine", routineName: "Tokyo" } })));
   // A tile asks as panels.ts does: in Chat's words, with nobody at a screen or device.
   check("a tile: not offered", none(await two({ origin: false, run: { surface: "chat", screenless: true } })));
-  check("a bot asking: not offered", none(await two({ run: { bot: "Nova" } })));
+  check("a bot asking: not offered", none(await two({ run: { bot: "Zephyr" } })));
   const job = { ...call, id: "fc_4", call_id: "call_4", name: "start_job", arguments: JSON.stringify({ title: "Look into it", task: "Look into it", research: "no" }) };
   const started = await two({ keys: [{ items: [job, clock] }, { items: [answer("Started that, and it is 3 PM in Tokyo.")] }] });
   check("one that started a background job: not offered", started.said.some((e) => e.type === "job") && none(started), started.said.map((e) => e.type));

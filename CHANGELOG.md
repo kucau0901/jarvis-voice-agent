@@ -19,7 +19,7 @@ of every release, and in the [README](README.md#updating).
 
 ### Added
 
-- **Skills, added in chat.** "Add a skill: Nova, my Grok bot, for the house
+- **Skills, added in chat.** "Add a skill: Zephyr, my Grok bot, for the house
   and the car, at https://…" lets Jarvis send requests to an outside service
   (a bot, an automation, your own code), or, said as an MCP server, use its
   tools. Each service's key goes in **Settings → Skills**, never in chat; a
@@ -34,7 +34,7 @@ of every release, and in the [README](README.md#updating).
   once, as the kind of app the bot is in asks for it (base URL and API key,
   MCP server, or just a URL), each line with its own Copy. It reaches only
   what you tick, never other skills, your alerts or the family's chat; each
-  exchange shows in Chat as "Nova asked". Only the owner key and admins can
+  exchange shows in Chat as "Zephyr asked". Only the owner key and admins can
   add or use skills (the new `skills` scope), and the house and the car still
   go to Jarvis's own tools first. Asked for a tool, a bot or a webhook
   without its address, Jarvis asks for it, rather than having Hermes build

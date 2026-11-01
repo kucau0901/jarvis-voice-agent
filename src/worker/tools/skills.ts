@@ -45,7 +45,7 @@ export const skillAdd: Tool = {
   description:
     "Add a skill, or change one by giving its name again: an outside service Jarvis can send requests to " +
     "(a bot, an automation, the user's own code), or an MCP server whose tools Jarvis can use. Only when " +
-    "the user asks you to, with its https address in their own words ('add a skill: Nova, my Grok bot, for " +
+    "the user asks you to, with its https address in their own words ('add a skill: Zephyr, my Grok bot, for " +
     "the house and the car, at https://…'). Never ask for or take its key in chat: once it is added, tell " +
     "them its key goes in Settings → Skills (a service) or Settings → MCP servers (an MCP server, if it needs one). " +
     "Asked for one without its address, however they put it ('a tool that POSTs to my bot', secrets they will " +
@@ -55,7 +55,7 @@ export const skillAdd: Tool = {
     properties: {
       user_words: { type: "string", description: "The user's own words asking for it, with its address, copied exactly from their latest message." },
       kind: { type: "string", enum: ["service", "mcp"], description: "service: Jarvis POSTs it requests. mcp: an MCP server, if they say so." },
-      name: { type: "string", description: "What they call it, e.g. 'Nova'." },
+      name: { type: "string", description: "What they call it, e.g. 'Zephyr'." },
       url: { type: "string", description: "Its https address, as they wrote it." },
       when: { type: "string", description: "When to use it, in their words, e.g. 'the house, the lights, the aircon and the Tesla'." },
       later: { type: ["boolean", "null"], description: "A service: true if its answer comes later as a message, not in the reply. Null for an MCP server." },

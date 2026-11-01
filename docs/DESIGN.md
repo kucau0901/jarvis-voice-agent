@@ -1349,7 +1349,7 @@ moves later, once.
 
 ## Skills
 
-"Add a skill: Nova, my Grok bot, for the house and the car, at https://…"
+"Add a skill: Zephyr, my Grok bot, for the house and the car, at https://…"
 keeps an outside service Jarvis can send requests to (`lib/skills.ts`), or,
 said as an MCP server, adds one to the MCP list. It is not a tool that POSTs
 anywhere: a page or a mail the model reads could then send whatever it found to
@@ -1375,10 +1375,10 @@ takes 5 answers, only writes, never as urgent, and only to whoever asked, so
 a bot needs no token of Jarvis's, and one that leaked reaches no further than
 that person's Chat for a day. The answer is an alert under the skill's name,
 marked `skill`: every screen and device shows it as the bot's, and the model
-is told it as the bot's words, with what it was asked, so "was that Nova?" is
-answered from the conversation, never by asking Nova again. One that comes
+is told it as the bot's words, with what it was asked, so "was that Zephyr?" is
+answered from the conversation, never by asking Zephyr again. One that comes
 before Jarvis has replied (a bot that answers in two seconds, while the
-router is still writing "I've asked Nova") is held until the reply is kept,
+router is still writing "I've asked Zephyr") is held until the reply is kept,
 half a minute at most, then delivered from the alarm and dated then, so it
 shows after the reply on every screen; a hold for quiet hours is never let go
 by it. This replaced a

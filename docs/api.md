@@ -912,7 +912,7 @@ client, and its only job is to hand the client a device token:
 ## Bots: skills both ways
 
 A skill is an outside bot or service the owner or an admin added in chat
-("Add a skill: Nova, my news bot, at https://bots.example.com/nova"): a Grok
+("Add a skill: Zephyr, my news bot, at https://bots.example.com/zephyr"): a Grok
 bot, an n8n or Zapier flow, a Home Assistant automation, a script, another
 assistant. Anything that takes an HTTPS `POST` of JSON works; nothing here is
 any one vendor's. Its key goes in **Settings → Skills**, never in chat
@@ -921,7 +921,7 @@ any one vendor's. Its key goes in **Settings → Skills**, never in chat
 ### Jarvis asking it
 
 ```
-POST https://bots.example.com/nova
+POST https://bots.example.com/zephyr
 Authorization: Bearer <its key, from Settings → Skills>
 Content-Type: application/json
 
@@ -992,11 +992,11 @@ lost, make a new one, and the old one stops.
 ```bash
 curl -X POST https://jarvis.example.com/api/v1/bot/ask \
      -H "Authorization: Bearer jbt1_…" -H "Content-Type: application/json" \
-     -d '{"text": "Is the garage door shut?", "timeout": 60, "clientRef": "nova-42"}'
+     -d '{"text": "Is the garage door shut?", "timeout": 60, "clientRef": "zephyr-42"}'
 ```
 
 ```json
-{"ok": true, "text": "Yes, it is shut.", "tools": ["ha__get_state"], "ms": 3120, "requestId": "r_4b1e9c02", "clientRef": "nova-42"}
+{"ok": true, "text": "Yes, it is shut.", "tools": ["ha__get_state"], "ms": 3120, "requestId": "r_4b1e9c02", "clientRef": "zephyr-42"}
 ```
 
 The same on the same address, for bots that speak something else:
@@ -1007,7 +1007,7 @@ The same on the same address, for bots that speak something else:
   `POST {base}/chat/completions` with `{"model": "jarvis", "messages": […]}`;
   the answer is `choices[0].message.content`, whole, not cut for glasses.
 
-`GET {base}` says whose address it is: `{"ok": true, "name": "Nova"}`.
+`GET {base}` says whose address it is: `{"ok": true, "name": "Zephyr"}`.
 
 **Messaging you on its own** (its own routines' news), whatever it may reach:
 
@@ -1031,7 +1031,7 @@ nor `alerts`, `chat`, `voice`, `screen` or `routines`; `hermes` only if
 ticked. It is never offered your Chat (`look_back`), background jobs, your
 glasses, or MCP servers added as skills. Jarvis is told the question is the
 bot's, not yours, so nothing it says is your request or your approval, and
-the exchange is kept in your Chat as "Nova asked" and Jarvis's answer.
+the exchange is kept in your Chat as "Zephyr asked" and Jarvis's answer.
 `403` with `need: "ask"` means it is not ticked to ask. Every refusal of the
 address is the same `404`: not one, never made, stopped, its skill removed,
 or its maker gone. Removing the skill stops it.
