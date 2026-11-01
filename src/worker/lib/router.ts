@@ -489,7 +489,8 @@ export async function run(
       return { model: p.model, input: p.input, save: () => p!.memory.save() };
     },
     async ask(model, input, previousResponseId) {
-      if (carried) carried = carried.length ? [...carried, ...lastOutput, ...(input as OpenAI.Responses.ResponseInput)] : (input as OpenAI.Responses.ResponseInput);
+      // Built afresh until a hop has answered: a first hop retried on the default model must not send its input twice.
+      if (carried) carried = previousResponseId ? [...carried, ...lastOutput, ...(input as OpenAI.Responses.ResponseInput)] : (input as OpenAI.Responses.ResponseInput);
       if (onPlan) {
         const used = plan!.model ?? model;
         try {

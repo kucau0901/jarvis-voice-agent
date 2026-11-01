@@ -162,6 +162,15 @@ console.log("the limit, with the key not to be used");
   check("…marked as a limit, for typed chat's notice", r.result?.limit === "chatgpt", r.result);
 }
 
+// The chosen model refused on the first hop, the default retried it: once, not twice over (router-loop.ts shouldFallBack).
+console.log("a first hop retried on the default model");
+{
+  const r = await ask({ plan: true, env: { ROUTER_MODEL: "gpt-5.4" }, plans: [{ error: { status: 400, code: "model_not_found" } }, { items: [answer("Friday.")] }] });
+  const [one, two] = r.sent;
+  check("answered by the default, sent what the first hop was, not twice over",
+    r.result?.text === "Friday." && r.sent.length === 2 && two!.body.model !== one!.body.model && two!.body.input.length === one!.body.input.length, r.sent.map((x) => ({ model: x.body.model, items: x.body.input.length })));
+}
+
 console.log("another error is not a reason to spend the key");
 {
   const r = await ask({ plan: true, plans: [{ error: { status: 500, code: "server_error" } }] });
