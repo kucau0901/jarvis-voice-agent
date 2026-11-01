@@ -53,6 +53,8 @@ export interface ToolContext {
   started?(job: { id: string; title: string; engine: string }): void;
   /** A Gmail draft waiting for the person's tap (lib/mail-draft.ts): the screen shows it as a card with Send (src/app/draft.ts). */
   drafted?(d: DraftCard): void;
+  /** A card to make a skill's bot its own address, on the screen that asked (tools/skills.ts skill_address, src/app/botAddress.ts). */
+  offerAddress?(skill: { id: string; name: string }): void;
   /**
    * What the caller may reach. A routine made by voice keeps these, so it can
    * never later do more than the person or device that asked for it.

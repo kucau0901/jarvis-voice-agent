@@ -4,6 +4,7 @@ import type { VoiceLevels } from "./audio";
 import type { Turn } from "./history";
 import { originHere } from "./alerts";
 import { asDraft, type Draft } from "./draft";
+import { asAddress, type Addressee } from "./botAddress";
 
 /**
  * Push-to-talk: the cheap way to talk to Jarvis.
@@ -31,6 +32,8 @@ interface PttHooks {
   dictated?(text: string): void;
   /** A mail written and held for the person's tap (Draft first): its card (draft.ts). */
   drafted?(d: Draft): void;
+  /** A card to make a skill's bot its own address, on this screen only (botAddress.ts). */
+  address?(s: Addressee): void;
 }
 
 interface VoiceConfig {
@@ -402,6 +405,7 @@ export class PushToTalk {
           else if (ev.type === "progress" && ev.text) this.hooks.status(`${String(ev.text)}…`);
           else if (ev.type === "tool" && typeof ev.name === "string") this.hooks.tool?.(ev.name, String(ev.phase ?? ""));
           else if (ev.type === "draft") asDraft(ev, this.hooks.drafted);
+          else if (ev.type === "address") asAddress(ev, this.hooks.address);
           else if (ev.type === "display") this.hooks.display(ev);
           else if (ev.type === "result" || ev.type === "error") {
             answer = String(ev.text ?? "");

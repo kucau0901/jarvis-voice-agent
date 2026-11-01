@@ -639,6 +639,7 @@ export async function runCalls(
           started: (job) => sse.send({ type: "job", ...job }),
           // A draft's card only where a screen will draw it (src/app/draft.ts): otherwise it waits in Drafts.
           ...(screenless ? {} : { drafted: (d: DraftCard) => sse.send({ type: "draft", ...d }) }),
+          ...(screenless ? {} : { offerAddress: (s: { id: string; name: string }) => sse.send({ type: "address", ...s }) }),
         }, sse)
         : `No such tool: ${call.name}`;
 
