@@ -1397,12 +1397,13 @@ shown at once on their open screens, which never sent it
 (`conversation.said` on the socket). It
 speaks `/api/v1/ask`'s JSON, MCP, or the OpenAI chat API, whichever the bot
 has. Nothing is in KV: removing the skill or pressing Stop it ends it on the
-next request. Asked for in Chat ("give it its own address"), `skill_address`
-makes nothing: it puts a card on the screen that asked (an `address` event,
-as a draft's card is, never kept or synced), where the person ticks what the
-bot may reach and taps Make, through the same admin-only `PATCH /api/skills`.
-So the model never chooses what a bot reaches, the token never passes through
-it, the stream or the kept chat, and a device's key, which that route
+next request. Asked for in Chat by name ("give Zephyr its own address"),
+`skill_address` makes nothing: it puts a card on the screen that asked (an
+`address` event, as a draft's card is, never kept or synced), where the
+person ticks what the bot may reach and taps Make, through the same
+admin-only `PATCH /api/skills`. So the model never chooses what a bot
+reaches, the token never passes through it, the stream or the kept chat, and
+a device's key or a member who is not an admin, both of which that route
 refuses, is told so; it is not offered where there is no screen. The same
 address takes a message of the bot's own (its
 routines' news), to whoever made it and nobody else, under its name, as an

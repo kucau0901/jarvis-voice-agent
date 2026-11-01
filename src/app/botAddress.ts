@@ -73,6 +73,7 @@ function kinds(m: Made): { name: string; lines: Line[]; note: string }[] {
         { label: "Header", value: `Authorization: Bearer ${m.token}` },
         { label: "To message you: POST {\"title\": \"…\", \"text\": \"…\"}", value: m.base },
         { label: "No headers: to ask Jarvis", value: `${m.url}/ask` },
+        { label: "No headers: to message you", value: m.url },
       ],
       note: "n8n, Zapier, a script: any HTTP request with a JSON body.",
     },
@@ -94,6 +95,10 @@ export function shownOnce(box: HTMLElement, name: string, m: Made, done: () => v
     open = k;
     for (const b of choices.children) b.classList.toggle("primary", b.textContent === k.name);
     lines.replaceChildren(...k.lines.map((l) => line(l, said)), el("p", "", k.note));
+    // What was copied was another kind's lines: never left looking copied.
+    copyAll.classList.remove("copied");
+    copyAll.textContent = "Copy all";
+    said.textContent = "";
   };
   choices.append(...all.map((k) => button(k.name, () => show(k), "docopen")));
   const copyAll = button("Copy all", () => void copy(open.lines.map((l) => `${l.label}: ${l.value}`).join("\n"), copyAll, said), "docopen");

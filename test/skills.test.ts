@@ -345,6 +345,8 @@ console.log("skill_add: only in the person's own words");
   check("  nothing was kept", (await store.list()).length === 0);
   const out = String(await skillAdd.run(novaArgs, ctx(ask)));
   check("  asked: added, and its key goes in the panel, never in chat", out.includes('Saved the skill "Nova"') && out.includes("Settings → Skills") && out.includes("never in chat"), out);
+  // skill_address takes only words naming the skill, so the hint names it.
+  check("  …and that its own address is asked for by its name", /naming it: "give (.+) its own address"/.exec(out)?.[1] === novaArgs.name, out);
   const kept = (await store.list())[0];
   check("  as asked", kept?.url === NOVA.url && kept.keyHeader === "X-Automation-Key" && kept.fields.mode === "async" && kept.later, kept);
   const home = "Add a skill called Box at https://192.168.1.9/hook";
@@ -412,6 +414,8 @@ console.log("skill_address: a card to make a bot's own address, nothing made her
     /a device's/.test(String(await skillAddress.run(args, screen(said, { env: { ...env, JARVIS_DEVICE: "Car" } })))) && !cards.length);
   check("  no screen to put it on: refused", /there is no screen here/.test(String(await skillAddress.run(args, screen(said, { offerAddress: undefined })))) && !cards.length);
   check("  the family room, without the screen: refused", /there is no screen here/.test(String(await skillAddress.run(args, screen(said, { grants: ["ask", "skills"] })))) && !cards.length);
+  check("  a member ticked skills, not an admin: refused, as GET and PATCH /api/skills refuse them",
+    /only the owner or a family admin/.test(String(await skillAddress.run(args, screen(said, { grants: [...ROLE_SCOPES.adult, "skills"] })))) && !cards.length);
   const none = String(await skillAddress.run({ user_words: "give Pip its own address", name: "Pip" }, screen("give Pip its own address")));
   check("  one not added yet: told to call again after skill_add", /No skill is called "Pip"/.test(none) && /once skill_add has answered/.test(none) && !cards.length, none);
   const before = JSON.stringify(await store.list());

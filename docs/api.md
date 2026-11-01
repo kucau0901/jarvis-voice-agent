@@ -161,7 +161,7 @@ existence, or argued around.
 | `ask` (jobs) | `/api/v1/jobs`, `/api/v1/jobs/cancel`, `start_job`. A job for Hermes also needs `hermes`. Each job runs with its creator's grants, no more than they hold now; it reads with their reading tools, and what it would do is proposed for their tap (or done at once, for a reversible kind they allowed). |
 | `routines` | `/api/v1/routines`, `/api/v1/routines/run`, `/api/v1/routines/runs`, `/api/v1/trigger`; `routine_add`, `routine_list`, `routine_remove`. A routine's question runs with **its creator's** grants, never more. A device sees, runs and changes only the routines it made, or ones no stronger than itself; revoking or deleting it stops the routines it made, and narrowing it narrows them. |
 | `alerts` | Receiving alerts (`/api/v1/events`, `/api/v1/push`, `/api/v1/alerts`), raising one (`/api/v1/notify`), and `send_note`. The same scope both ways: a device that may be told things may ask to be told something. |
-| `skills` | `skill_add`, `skill_remove` (outside services and MCP servers added in chat) and `ask_skill` (sending a request to a service). A service may act on the house or send things, so no role has it but an admin's. Each service's key is set in Settings → Skills, never by a device. A bot's own address never holds it, nor `alerts`, `chat`, `voice`, `screen` or `routines` ([Bots](#bots-skills-both-ways)). |
+| `skills` | `skill_add`, `skill_remove` (outside services and MCP servers added in chat), `skill_address` (a card for a bot's own address, on an admin's screen) and `ask_skill` (sending a request to a service). A service may act on the house or send things, so no role has it but an admin's. Each service's key is set in Settings → Skills, never by a device. A bot's own address never holds it, nor `alerts`, `chat`, `voice`, `screen` or `routines` ([Bots](#bots-skills-both-ways)). |
 
 Ask for something out of reach and you get a normal answer explaining it is not
 available — not an error. `tools` will be empty.
@@ -762,13 +762,17 @@ meantime. Most devices should not bother.
   every 15 seconds after. Skip comments; treat a gap as a dead link.
 - **There is no `[DONE]` sentinel.** The stream simply ends.
 - Event `type` is one of `progress`, `tool`, `used`, `display`, `job`, `draft`,
-  `result`, `error`. Skip a type you do not know: more may be added.
+  `address`, `result`, `error`. Skip a type you do not know: more may be added.
 - `job` is a background job the question started (`{"type":"job","id","title","engine"}`);
   its result comes later as an alert, not in this stream.
 - `draft` is a mail Jarvis wrote and saved to the person's Gmail Drafts
   (`{"type":"draft","draft","to","subject","body","reply"}`), held for them to
   send when Settings → Google → Draft first is on. A screen shows it with Send;
   the app sends it with `POST /api/google/drafts/send {"id": draft}`.
+- `address` (`{"type":"address","id","name"}`) asks a screen to show a card
+  for giving that skill's bot its own address; the card makes it with the
+  admin-only `PATCH /api/skills`. It carries no address or key; a client
+  without a screen skips it.
 - `display` may be `{kind: "page", page, label}`: a page Jarvis made (below).
 - `result` may carry `links: [{url, title}]`, the https pages the answer cited
   (up to six), for showing beside it. The answer's words are complete without them.
@@ -975,14 +979,15 @@ One skill is sent at most 20 requests an hour, whoever asks.
 
 In **Settings → Skills**, under the skill, an admin ticks what its bot may
 reach (asking questions, and nothing more, unless more is ticked) and
-presses **Make its address**; or asks in Chat ("give it its own address"),
-which puts the same ticks and button on that screen as a card, never kept or
-synced. It is shown once, in two forms, laid out as the kind of app the bot
-is in asks for it (base URL and API key, MCP server, or just a URL): a base
-URL, `https://jarvis.example.com/api/v1/bot`, with the key `jbt1_…` sent as
-`Authorization: Bearer`, which keeps it out of URL logs; or, for a bot that
-takes only a URL, `https://jarvis.example.com/api/v1/bot/jbt1_…`. Only its
-digest is kept: lost, make a new one, and the old one stops.
+presses **Make its address**; or asks in Chat, by its name ("give Zephyr its
+own address"), which puts the same ticks and button on that screen as a
+card, never kept or synced. It is shown once, in two forms, laid out as the
+kind of app the bot is in asks for it (base URL and API key, MCP server, or
+just a URL): a base URL, `https://jarvis.example.com/api/v1/bot`, with the
+key `jbt1_…` sent as `Authorization: Bearer`, which keeps it out of URL
+logs; or, for a bot that takes only a URL,
+`https://jarvis.example.com/api/v1/bot/jbt1_…`. Only its digest is kept:
+lost, make a new one, and the old one stops.
 
 ```bash
 curl -X POST https://jarvis.example.com/api/v1/bot/ask \

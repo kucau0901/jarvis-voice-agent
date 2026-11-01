@@ -26,14 +26,14 @@ of every release, and in the [README](README.md#updating).
   service that answers later posts its answer to the reply address that comes
   with each request, so it needs no token; the answer shows in Chat under its
   name, after Jarvis's own reply, and every screen, phone and pair of glasses
-  shows it as that service's. An address of its own lets a bot ask Jarvis
-  too (plain JSON, MCP or the OpenAI chat API) and message you on its own,
-  under its name: ask for one in Chat ("give it its own address") and a card
-  comes up on that screen only, or press **Make its address** in Settings →
-  Skills. You tick what it may reach and make it; it is then shown once, as
-  the kind of app the bot is in asks for it (base URL and API key, MCP
-  server, or just a URL), each line with its own Copy. It reaches only what
-  you tick, never other skills, your alerts or the family's chat; each
+  shows it as that service's. An address of its own lets a bot ask Jarvis too
+  (plain JSON, MCP or the OpenAI chat API) and message you on its own, under
+  its name: ask for one in Chat, by its name ("give Zephyr its own address"),
+  and a card comes up on that screen only, or press **Make its address** in
+  Settings → Skills. You tick what it may reach and make it; it is then shown
+  once, as the kind of app the bot is in asks for it (base URL and API key,
+  MCP server, or just a URL), each line with its own Copy. It reaches only
+  what you tick, never other skills, your alerts or the family's chat; each
   exchange shows in Chat as "Nova asked". Only the owner key and admins can
   add or use skills (the new `skills` scope), and the house and the car still
   go to Jarvis's own tools first. Asked for a tool, a bot or a webhook

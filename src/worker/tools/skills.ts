@@ -6,7 +6,7 @@ import { callSkill, nameOf, REPLY_PREFIX, SKILL_MCP, type Skill } from "../lib/s
 import { mintToken, sha256Hex } from "../lib/devices.ts";
 import { publicOrigin } from "../lib/http.ts";
 import { OWNER } from "../lib/context.ts";
-import { allows } from "../lib/scopes.ts";
+import { WILDCARD, allows } from "../lib/scopes.ts";
 
 /**
  * Adding and removing skills (lib/skills.ts): an outside service Jarvis
@@ -100,7 +100,7 @@ export const skillAdd: Tool = {
     return s.hasKey
       ? `Saved the skill "${s.name}"; its key is kept.`
       : `Saved the skill "${s.name}". It is used once its key is set: tell them it goes in Settings → Skills, never in chat. ` +
-        "If its bot should also ask Jarvis or message them, they can ask you to give it its own address.";
+        `If its bot should also ask Jarvis or message them, they can ask you, naming it: "give ${s.name} its own address".`;
   },
 };
 
@@ -141,6 +141,8 @@ export const skillAddress: Tool = {
     if (!ctx.offerAddress || !allows(ctx.grants, "screen")) {
       return "No card shown: there is no screen here. Tell them to ask again in Chat on their phone or computer, or to use Settings → Skills.";
     }
+    // GET and PATCH /api/skills are the owner's and admins' alone: a member ticked `skills` would get a card that only fails.
+    if (!ctx.grants.includes(WILDCARD)) return "No card shown: only the owner or a family admin can make a bot's address, from their own signed-in screen. Tell them so.";
     const s = (await stateStub(ctx.env)?.skillsList())?.find((x) => nameOf(x.name) === nameOf(name));
     if (!s) return `No skill is called "${name}". If it is being added in this same message, call skill_address again once skill_add has answered.`;
     ctx.offerAddress({ id: s.id, name: s.name });
