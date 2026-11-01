@@ -31,6 +31,13 @@ of every release, and in the [README](README.md#updating).
 
 ### Fixed
 
+- **Glasses no longer answer music or other people.** The glasses hear
+  whatever is said nearby, so song lyrics, the TV and people talking were
+  answered, and sometimes looked up. Now, when nothing it heard was said to
+  it, Jarvis does nothing, the glasses show "That didn't sound like it was
+  for me. Ask again if it was.", and none of it is kept in Chat or the
+  conversation. A real request, however short, is still answered. On the
+  Jarvis glasses app for Android too.
 - **A ChatGPT plan alone answers again.** With the plan connected and no
   OpenAI key, every question failed ("That request was cut off", or
   `aborted` from `/api/v1/ask`), and no background job could start: Jarvis

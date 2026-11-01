@@ -190,6 +190,10 @@ In Jarvis, **Settings → Devices**:
   far back, or turns it off.
 - **It is in Chat.** What you ask and what Jarvis answers is in your
   conversation with Jarvis, on the phone and the web, as if asked there.
+- **Music and other people are not you.** The glasses hear whatever is said
+  near you: a song, the TV, people talking. When nothing Jarvis heard was said
+  to it, it does nothing, shows "That didn't sound like it was for me. Ask
+  again if it was.", and keeps none of it. If it was you, just ask again.
 - **Any language.** The Even app transcribes what you say, Malay included,
   and Jarvis answers in the language you asked in.
 - **How long:** house commands through Assist, about a second. Most other
@@ -216,6 +220,7 @@ In Jarvis, **Settings → Devices**:
 | House commands take 5 seconds or more | Assist did not understand, so the AI did it. | Check Home is set up and **Try Assist first** is on; the thing is exposed to Assist; you used its Home Assistant name; **Assist language** matches what you speak. |
 | "I can't do that" for mail, the car, … | The token lacks that permission. | Make a new token with it ticked, and revoke the old one. |
 | It stops answering late in the day | The daily limit for the device is used up. | Raise **Requests per device per day**. |
+| Jarvis answers music or other people, or "That didn't sound like it was for me" keeps coming up | The Even app may have been listening when you did not ask: perhaps after an answer, or on a misheard "Hi Even". | Where your Even app has them, in Even AI's settings: turn off continuous conversation, and near music start with hold-to-talk on the touchpad rather than "Hi Even". |
 
 ## Keeping it safe
 
@@ -229,7 +234,8 @@ In Jarvis, **Settings → Devices**:
   already: nothing more is stored, nobody else's is ever read, and **Clear
   chat** makes it forget.
 - What the house will do is set in Home Assistant, by what you expose to
-  Assist (step 4).
+  Assist (step 4). Assist hears whatever the glasses hear, the TV and people
+  nearby included, so expose only what anyone in earshot may do.
 
 ## For developers
 

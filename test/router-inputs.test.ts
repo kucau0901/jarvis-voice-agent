@@ -367,6 +367,11 @@ try {
   const midway = await onGlasses(["*"], { surface: "glasses", ...phone });
   check("  never to someone whose memory it is not, nor in the middle of a conversation: not even read",
     reads.length === 0 && ![...notTheirs.input, ...midway.input].some((m) => JSON.stringify(m).includes("EARLIER ON THESE GLASSES")), reads);
+  // What the glasses hear may not be said to Jarvis (lib/glasses.ts, issue #16): its rule is the glasses', an instruction of Jarvis's own.
+  const ruled = (input: { role?: string }[], role: string) => input.some((m) => m.role === role && JSON.stringify(m).includes("NOT_FOR_ME"));
+  const plain = await prepareRouter(withGlasses as never, [{ role: "user", text: "and tomorrow?" }], new AbortController().signal, ["*"] as never, {});
+  check("  the glasses' rule for what was not said to Jarvis: in its own instructions, never as the user's, and only on the glasses",
+    ruled(midway.input, "developer") && !ruled(midway.input, "user") && !plain.input.some((m) => JSON.stringify(m).includes("NOT_FOR_ME")));
 } finally {
   globalThis.fetch = realFetch;
 }

@@ -13,6 +13,7 @@ import {
 import { jarvisPrompt, spokenReplyInstructions } from "../src/worker/lib/prompt.ts";
 import { requiredScope } from "../src/worker/lib/scopes.ts";
 import { handleVoice } from "../src/worker/routes/voice.ts";
+import { OVERHEARD_TEXT } from "../src/worker/lib/glasses.ts";
 import { validateChanges } from "../src/worker/lib/settings.ts";
 
 let pass = 0;
@@ -248,6 +249,26 @@ console.log("\nan answer for a small display (chars)");
   check("a budget too small to say anything is raised to the least", /under 80 characters/.test(tiny.told));
   const spoken = await ask({});
   check("without it, the answer is written to be spoken, whole", /word for word/.test(spoken.told) && !/SHOWN ON SMART GLASSES/.test(spoken.told) && spoken.body.text === said, spoken.body.text);
+  check("…and it is not told the glasses hear everyone", !/HEAR WHATEVER IS SAID NEAR THE USER/.test(spoken.told) && /HEAR WHATEVER IS SAID NEAR THE USER/.test(small.told));
+  // Heard on the glasses, but not said to Jarvis (lib/glasses.ts, issue #16): a fixed line, and no turn kept for it.
+  const threaded: unknown[][] = [];
+  const stub = new Proxy({}, { get: (_t, m) => (m === "then" ? undefined : async (...a: unknown[]) => (m === "loadThread" ? [] : m === "appendThread" ? void threaded.push(a) : undefined)) });
+  const heard = async (text: string, chars: number | null = 100) => {
+    answer = (url) =>
+      url.endsWith("/responses")
+        ? Response.json({ id: "r1", object: "response", status: "completed", output: [{ type: "message", id: "m1", role: "assistant", status: "completed", content: [{ type: "output_text", text, annotations: [] }] }], output_text: text, usage: { input_tokens: 1, output_tokens: 1 } })
+        : Response.json({});
+    threaded.length = 0;
+    const r = await handleVoice(new Request("https://j.test/api/v1/voice", { method: "POST", body: JSON.stringify({ text: "never let me go tonight", reply: "text", thread: "g2", ...(chars ? { chars } : {}) }) }),
+      env({ STATE: { idFromName: () => "j", get: () => stub } }), ctx, owner, ["*"] as never);
+    return { text: ((await r.json()) as { text: string }).text, threaded: threaded.length };
+  };
+  const notMine = await heard("NOT_FOR_ME");
+  check("on a small display, heard but not for Jarvis: the fixed line, no turn kept", notMine.text === OVERHEARD_TEXT && notMine.threaded === 0, notMine);
+  const mine = await heard("Tonight is clear, 26 degrees.");
+  check("…an answer is shown and kept as before", mine.text === "Tonight is clear, 26 degrees." && mine.threaded === 1, mine);
+  const spokenWord = await heard("NOT_FOR_ME", null);
+  check("spoken, with no small display, the same words are only an answer: whole, and kept", spokenWord.text === "NOT_FOR_ME" && spokenWord.threaded === 1, spokenWord);
   answer = () => Response.json({ text: "hello" });
 }
 

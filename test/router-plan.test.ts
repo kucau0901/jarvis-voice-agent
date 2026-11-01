@@ -299,6 +299,13 @@ console.log("specialties: saved only by the next message, in the person's own wo
   check("a routine: takes nothing, saves nothing", !routine.saved.length && routine.recalls[0]?.[2] === false, routine.recalls);
 }
 
+// Only what the glasses heard can be "not for me" (lib/glasses.ts, issue #16): typed, the same words are an answer, kept as one.
+console.log("outside the glasses, \"Not for me.\" is an answer");
+{
+  const r = await ask({ plan: false, plans: [], origin: true, text: "is this cake for me?", keys: [{ items: [answer("Not for me.")] }] });
+  check("shown, and its question kept in Usage", r.result?.text === "Not for me." && (r.recorded[0] as { ask?: string }).ask === "is this cake for me?", r.recorded);
+}
+
 console.log("a page watch's look, on the plan (lib/page-look.ts)");
 {
   // Until 20 Oct 2026 every page watch on the plan failed: its question went as a

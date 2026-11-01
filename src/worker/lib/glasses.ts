@@ -156,9 +156,38 @@ export function glassesInstructions(limit: number): string {
     "because the display font drops them. Put the answer in the first sentence, " +
     "with no preamble and no sign-off. For several items, one per line starting " +
     'with "- ", at most five, and say how many were left out. The user can ask a ' +
-    "follow-up for more."
+    "follow-up for more." +
+    "\n\nTHE GLASSES HEAR WHATEVER IS SAID NEAR THE USER\n" +
+    "The latest message is what their microphone picked up, and it may not be the user talking to you: a song, " +
+    "a radio or TV, or other people talking among themselves. Decide which from its words alone, first: before " +
+    "calling any tool (never look anything up to decide) and before anything earlier on these glasses. Anything a " +
+    "person would say to an assistant is the user's, however short, casual or rambling, in any language or mix of " +
+    "languages: a question, a request, an instruction, something to remember, a reply to your last answer. Answer " +
+    "it, using the rest of what was heard only where it bears on it. Words that read as part of a song or a script " +
+    'are not a request, even when they say "you" or give an order. When you cannot tell, a message that asks for ' +
+    "something you could do or answer is the user's. Only when nothing in it is for you, call no tools and reply " +
+    `with exactly ${NOT_FOR_ME}, in English capitals whatever language you would otherwise answer in, and nothing ` +
+    "else: it is then neither shown as an answer nor kept."
   );
 }
+
+/*
+ * What the glasses heard but was not said to Jarvis: a song, the TV, people
+ * talking among themselves (issue #16). Only the words reach Jarvis, so the
+ * router judges, in the call it makes anyway, and answers with its own word
+ * for it: not the routines' NOTHING, which is an answer here ("anything on my
+ * calendar?" "Nothing.").
+ */
+const NOT_FOR_ME = "NOT_FOR_ME";
+
+/** What the glasses show instead: fixed, so it is never taken for an answer, and something, since what the Even app does with nothing is not known. */
+export const OVERHEARD_TEXT = "That didn't sound like it was for me. Ask again if it was.";
+
+/** Whether the router said nothing heard was for it: its word alone, however dressed, and never with an answer around it. */
+export const notForMe = (text: string): boolean => /^[\W_]*not[\s_-]+for[\s_-]+me[\W_]*$/i.test(text.trim());
+
+/** Heard, not for Jarvis, and nothing done: kept nowhere, neither in the thread, Chat nor the conversation shared between devices. */
+export const overheard = (r: { text: string; tools: readonly string[] }): boolean => notForMe(r.text) && !r.tools.length;
 
 /** The response shape the Even app reads: an OpenAI chat completion. */
 export function toChatCompletion(text: string, model = "jarvis") {

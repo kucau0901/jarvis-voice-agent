@@ -31,7 +31,7 @@ import { DRAWS_ON_SCREEN } from "../tools/place.ts";
 import { isResearchCap, jobTool } from "./jobs.ts";
 import { Collector } from "./collector.ts";
 import { clientFor, forKey, forPlan, modelAuth, planFailed, planRespond, refusalOf } from "./openai-auth.ts";
-import { DEFAULT_CHAR_BUDGET, earlierOnGlasses, earlierSince, glassesInstructions } from "./glasses.ts";
+import { DEFAULT_CHAR_BUDGET, earlierOnGlasses, earlierSince, glassesInstructions, overheard } from "./glasses.ts";
 import type { Said } from "./conversation.ts";
 import { spokenReplyInstructions } from "./prompt.ts";
 import {
@@ -580,9 +580,12 @@ export async function run(
       }
       // The steps just offered, until their next question (lib/specialties.ts).
       if (offered) writes.push((stateStub(env)?.specialtyOffer(env.JARVIS_PERSON || OWNER, offered, Date.now()) ?? Promise.resolve()).catch(() => {}));
+      // Heard on the glasses but not said to Jarvis, and nothing done (lib/glasses.ts): no part of any conversation,
+      // and its words, perhaps a stranger's, not kept in Usage either.
+      const ignored = opts.surface === "glasses" && overheard(r);
       // One conversation across devices (lib/shared.ts): what was asked here, and answered.
       const asked = lastAsk(turns);
-      if (opts.origin && allows(grants, "memory.read") && r.ok && asked) {
+      if (opts.origin && allows(grants, "memory.read") && r.ok && asked && !ignored) {
         const at = Date.now();
         const o = opts.origin;
         writes.push(
@@ -601,7 +604,7 @@ export async function run(
         ms: r.ms,
         ...r.usage,
         tools: r.tools,
-        ask: (asked ?? "").slice(0, 80),
+        ask: ignored ? "(not for me)" : (asked ?? "").slice(0, 80),
         who: env.JARVIS_PERSON,
       }));
       const write = Promise.all(writes).then(() => {});

@@ -8,7 +8,7 @@ import { whoOf, grantsOf, isAdmin, personOf, type Principal } from "../lib/auth.
 import { deviceWho, OWNER } from "../lib/context.ts";
 import { hubStub } from "../lib/hub-client.ts";
 import { stateStub } from "../lib/state-client.ts";
-import { GLASSES_SAID, charBudget, forGlasses, latestUserText, toChatCompletion, waitSeconds } from "../lib/glasses.ts";
+import { GLASSES_SAID, OVERHEARD_TEXT, charBudget, forGlasses, latestUserText, notForMe, overheard, toChatCompletion, waitSeconds } from "../lib/glasses.ts";
 import { allows, saneGrants, SCOPES, WILDCARD, type Grant } from "../lib/scopes.ts";
 import { handleAlertApi } from "./alerts.ts";
 import { handleRoutines } from "./routines.ts";
@@ -298,11 +298,13 @@ export async function handleChatCompletions(
   }
 
   const r = d.result;
-  console.log(`g2: ${r.model ?? "-"} ${r.ok ? "ok" : r.error} ${d.ms}ms tools=${r.tools.join(",") || "-"}`);
+  // Heard, but not said to Jarvis (lib/glasses.ts): a fixed line, and, when nothing was done, kept nowhere. Never the words in the log.
+  const ignored = !bot && overheard(r);
+  console.log(`g2: ${r.model ?? "-"} ${ignored ? "not for me" : r.ok ? "ok" : r.error} ${d.ms}ms tools=${r.tools.join(",") || "-"}`);
   const said = r.text || (r.ok ? "Done." : "Something went wrong.");
-  const answer = bot ? said : forGlasses(said, budget);
+  const answer = bot ? said : forGlasses(notForMe(r.text) ? OVERHEARD_TEXT : said, budget);
   // A failed turn is not context worth carrying: the user will ask again.
-  if (r.ok) ctx.waitUntil(Promise.all([recordTurns(env, thread, text, answer), keepInChat(env, personOf(principal), text, answer, bot)]));
+  if (r.ok && !ignored) ctx.waitUntil(Promise.all([recordTurns(env, thread, text, answer), keepInChat(env, personOf(principal), text, answer, bot)]));
   return reply(answer, r.model);
 }
 

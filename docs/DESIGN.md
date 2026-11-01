@@ -1071,6 +1071,24 @@ and no second call. It needs `memory.read`, as look_back and the conversation
 shared between devices do, and reads in the
 same wait as the rest of the question; Assist's house commands never see it.
 
+**Overheard on the glasses.** The glasses hear whatever is said near the
+wearer, and the Even app turns a song, the TV or people talking among
+themselves into a question like any other: the router answered lyrics, and
+looked things up for them. Only the words reach Jarvis, with no audio, no
+speaker and no confidence, so the router judges, in the call it makes
+anyway: the glasses' instructions say that anything a person would say to
+an assistant is the user's, however short and in any language, and that
+when nothing heard was for it, it calls no tools and answers with one word.
+No keyword list, no length test, no second call, and nothing in front of
+Assist, which is Home Assistant's to limit. The rule is in the glasses'
+instructions rather than the router prompt, which other surfaces share and
+which is cached, and the word is its own, not the routines' NOTHING, since
+"Nothing." answers "anything on my calendar?". The glasses then show a fixed
+line, so it is never mistaken for an answer, and the exchange is kept
+nowhere, so it cannot come back after a pause; Usage counts the call without
+the words, which may be a stranger's. When unsure, the router answers: a
+wrong guess costs the wearer a repeat, never a dropped request.
+
 **Search, by words only.** Chat's Search box (`lib/search.ts`,
 `ui/Search.ts`) looks through the person's conversation, memory (their own
 book and the family's) and mail at once, as Hark's does, and groups what it

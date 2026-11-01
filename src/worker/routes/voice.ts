@@ -21,7 +21,7 @@ import {
   type Spoken,
 } from "../lib/speech.ts";
 import { run } from "../lib/router.ts";
-import { charBudget, forGlasses } from "../lib/glasses.ts";
+import { OVERHEARD_TEXT, charBudget, forGlasses, notForMe, overheard } from "../lib/glasses.ts";
 import { MAX_PHOTOS, MAX_PHOTO_CHARS, photosFrom } from "../lib/photos.ts";
 import { dataUrl } from "../lib/cameras.ts";
 import { originOf, type Origin } from "../lib/shared.ts";
@@ -236,9 +236,11 @@ async function pipeline(
     ...(input.photos?.length ? { images: input.photos } : {}),
   });
   const finished = collector.finish();
-  const reply = chars ? { ...finished, text: forGlasses(finished.text, chars) } : finished;
+  // On a small display, heard but not said to Jarvis (lib/glasses.ts): a fixed line, and no turn kept for it.
+  const ignored = !!chars && overheard(finished);
+  const reply = chars ? { ...finished, text: forGlasses(notForMe(finished.text) ? OVERHEARD_TEXT : finished.text, chars) } : finished;
 
-  if (threadKey && state) {
+  if (threadKey && state && !ignored) {
     await state
       .appendThread(threadKey, [{ role: "user", text: transcript }, { role: "assistant", text: reply.text }])
       .catch(() => {});

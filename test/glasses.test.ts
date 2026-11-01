@@ -11,8 +11,11 @@ import {
   waitSeconds,
   EARLIER,
   GLASSES_SAID,
+  OVERHEARD_TEXT,
   earlierOnGlasses,
   earlierSince,
+  notForMe,
+  overheard,
 } from "../src/worker/lib/glasses.ts";
 import { localParts, zonedToUtc } from "../src/worker/lib/routines.ts";
 import { exchangeSaid, type Said } from "../src/worker/lib/conversation.ts";
@@ -176,21 +179,40 @@ console.log("\nafter a pause: what is given");
   check("nothing: nothing given", earlierOnGlasses([], at(4), at(13), KL) === "" && earlierOnGlasses(log, at(12), at(13), KL) === "");
 }
 
+console.log("\nheard, but not said to Jarvis: the word for it");
+{
+  const told = glassesInstructions(350);
+  check("the glasses' rule: everyone is heard, a person's request answered however short, else no tools and the word",
+    /HEAR WHATEVER IS SAID NEAR THE USER/.test(told) && /however short/.test(told) && /call no tools/.test(told) && /exactly NOT_FOR_ME/.test(told) &&
+    /English capitals/.test(told) && /When you cannot tell, a message that asks for something you could do or answer is the user's/.test(told) && /under 350 characters/.test(told), told.slice(-400));
+  for (const w of ["NOT_FOR_ME", "**NOT_FOR_ME**", "__NOT_FOR_ME__", "`NOT_FOR_ME`", " not_for_me. ", "NOT FOR ME.", '"Not-for-me"']) check(`  "${w}" is the word`, notForMe(w));
+  for (const w of ["Nothing.", "NOTHING", "Tiada", "Not for me to say, the gate is closed.", "NOT_FOR_ME\nThe weather is fine.", "It's sunny. NOT_FOR_ME", "It's not for me.", ""]) {
+    check(`  "${w.replace("\n", "\\n")}" is not`, !notForMe(w));
+  }
+  check("overheard only when no tool ran", !overheard({ text: "NOT_FOR_ME", tools: ["send_note"] }) && overheard({ text: "NOT_FOR_ME", tools: [] }));
+}
+
 console.log("\nafter a pause: through the glasses route");
 {
   const KL = "Asia/Kuala_Lumpur";
   const now = Date.now();
   const kept: Said[] = exchangeSaid(`${GLASSES_SAID}1-test`, "What's on my calendar today?", "A dentist at 3 PM.", now - 3 * 3_600_000);
-  const route = async (thread: { role: "user" | "assistant"; text: string }[], over: Record<string, unknown> = {}, grants: string[] = ["*"]) => {
+  const route = async (thread: { role: "user" | "assistant"; text: string }[], over: Record<string, unknown> = {}, grants: string[] = ["*"], answered: string | string[] = "Tomorrow's calendar: nothing yet.", principal: unknown = { kind: "owner" }) => {
     const read: unknown[][] = [];
     const sent: string[] = [];
     const added: Said[] = [];
+    const threaded: unknown[][] = [];
+    const shared: unknown[][] = [];
+    const usage: { ask?: string; surface?: string }[] = [];
     const stub = new Proxy({}, {
       get: (_t, m) => (m === "then" ? undefined : async (...a: unknown[]) => {
         if (m === "loadThread") return thread;
         if (m === "conversationOf") return (read.push(a), kept);
         if (m === "recentShared") return [];
         if (m === "conversationAdd") return void added.push(...(a[1] as Said[]));
+        if (m === "appendThread") return void threaded.push(a);
+        if (m === "appendShared") return void shared.push(a);
+        if (m === "recordUsage") return void usage.push(a[0] as { ask?: string; surface?: string });
         return undefined;
       }),
     });
@@ -203,15 +225,21 @@ console.log("\nafter a pause: through the glasses route");
       const url = String(input instanceof Request ? input.url : input);
       if (!url.endsWith("/responses")) throw new Error(`nothing else is reached here: ${url}`);
       sent.push(String(init?.body ?? ""));
-      const text = "Tomorrow's calendar: nothing yet.";
+      // A list answers hop by hop, a tool's name being a call to it.
+      const text = Array.isArray(answered) ? String(answered.shift()) : answered;
+      if (text.startsWith("call:")) {
+        const item = { type: "function_call", id: "fc1", call_id: "c1", name: text.slice(5), arguments: JSON.stringify({ zone: "Asia/Tokyo" }), status: "completed" };
+        return Response.json({ id: "resp_t", object: "response", status: "completed", output: [item], output_text: "", usage: { input_tokens: 10, output_tokens: 5 } });
+      }
       return Response.json({ id: "resp_1", object: "response", status: "completed", output: [{ type: "message", id: "m1", role: "assistant", status: "completed", content: [{ type: "output_text", text, annotations: [] }] }], output_text: text, usage: { input_tokens: 10, output_tokens: 5 } });
     }) as typeof fetch;
     try {
       const req = new Request("https://jarvis.example.com/api/v1/chat/completions", { method: "POST", body: JSON.stringify({ model: "openclaw", messages: [{ role: "user", content: "and tomorrow?" }] }) });
       const later: Promise<unknown>[] = [];
-      const res = await handleChatCompletions(req, env as never, { waitUntil: (w: Promise<unknown>) => void later.push(w), passThroughOnException() {} } as never, grants as never, { kind: "owner" } as never);
+      const res = await handleChatCompletions(req, env as never, { waitUntil: (w: Promise<unknown>) => void later.push(w), passThroughOnException() {} } as never, grants as never, principal as never);
       await Promise.all(later);
-      return { status: res.status, read, sent: sent.join("\n"), added };
+      const shown = ((await res.json()) as { choices: { message: { content: string } }[] }).choices[0]!.message.content;
+      return { status: res.status, read, sent: sent.join("\n"), added, threaded, shared, usage, shown };
     } finally {
       globalThis.fetch = realFetch;
     }
@@ -226,6 +254,27 @@ console.log("\nafter a pause: through the glasses route");
   check("set off: not read, not given", off.read.length === 0 && !off.sent.includes("EARLIER ON THESE GLASSES"), off.read);
   const noMemory = await route([], {}, ["ask", "home"]);
   check("a token without Memory: not read, not given", noMemory.read.length === 0 && !noMemory.sent.includes("EARLIER ON THESE GLASSES"), noMemory.read);
+
+  // Heard, but not said to Jarvis (issue #16): a song, the TV, people nearby. A fixed line, and nothing kept.
+  console.log("\nheard, but not said to Jarvis");
+  const keptAny = (r: Awaited<ReturnType<typeof route>>) => !!(r.added.length || r.threaded.length || r.shared.length);
+  const song = await route([], {}, ["*"], "NOT_FOR_ME");
+  check("the router is told the glasses hear everyone, and how to say a line was not for it", song.sent.includes("THE GLASSES HEAR WHATEVER IS SAID NEAR THE USER") && song.sent.includes("NOT_FOR_ME"));
+  check("its word is never shown: a fixed line is", song.status === 200 && song.shown === OVERHEARD_TEXT, song.shown);
+  check("…and nothing kept: not the thread, not Chat, not the conversation shared between devices", !keptAny(song), { added: song.added.length, threaded: song.threaded.length, shared: song.shared.length });
+  check("…the call in Usage, without the words heard", song.usage.length === 1 && song.usage[0]!.ask === "(not for me)" && song.usage[0]!.surface === "glasses", song.usage);
+  const dressed = await route([], {}, ["*"], "**Not for me.**");
+  check("its word however dressed", dressed.shown === OVERHEARD_TEXT && !keptAny(dressed), dressed.shown);
+  // Something done is never hidden: a tool that ran keeps the exchange, though its word still never shows.
+  const acted = await route([], {}, ["*"], ["call:time_in", "NOT_FOR_ME"]);
+  check("a tool ran before its word: the fixed line shown, but the exchange kept", acted.shown === OVERHEARD_TEXT && acted.added.length === 2 && acted.threaded.length === 1, { shown: acted.shown, added: acted.added.length });
+  const nothing = await route([], {}, ["*"], "Nothing.");
+  check("\"Nothing.\" is an answer, shown and kept", nothing.shown === "Nothing." && nothing.added.length === 2 && nothing.threaded.length === 1 && nothing.shared.length === 1, nothing.shown);
+  // A skill's bot on the same route is never told the glasses' rule, and its answer is its own, whole.
+  const bot = await route([], {}, ["ask"], "NOT_FOR_ME", { kind: "device", id: "d_bot", name: "Zephyr", scopes: ["ask"], skill: "k_zephyr" });
+  check("a bot asking: not told the rule, its answer whole and kept", !bot.sent.includes("THE GLASSES HEAR WHATEVER") && bot.shown === "NOT_FOR_ME" && bot.added.length === 2, bot.shown);
+  const real = await route([], {}, ["*"]);
+  check("an answer is kept everywhere as before, its words in Usage", real.shown.startsWith("Tomorrow's calendar") && keptAny(real) && real.shared.length === 1 && real.usage[0]!.ask === "and tomorrow?", real.usage);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

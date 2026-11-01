@@ -355,7 +355,8 @@ hearing, for a device that recognised the speech itself; `reply=text` skips
 the speaking. `chars=350` is for a device that shows the answer on a small
 display, such as glasses: the answer is written for it as for the
 [G2 route](#even-realities-g2-glasses) (the point first, plain text) and cut
-at a sentence to that many characters (80 to 2 000). The app sends `multipart/form-data` — an `audio` file and an
+at a sentence to that many characters (80 to 2 000); what was heard but not
+said to Jarvis gets the G2 route's fixed line, and no turn is kept for it. The app sends `multipart/form-data` — an `audio` file and an
 `options` JSON field — with `Accept: text/event-stream`, and gets `transcript`,
 `progress`, `display`, `result`, then the answer's speech sentence by sentence
 as `audio` events, so it starts talking about a second after the words are
@@ -843,6 +844,13 @@ and `car.control` are not needed.
 4. **Always a 200.** A timeout or a router error comes back as readable text in
    the completion, because any other status makes the glasses show only "AI
    server error". A body with no user message is still a 400.
+5. **Not for Jarvis.** The glasses hear everyone nearby, so the router judges
+   whether what was heard was said to it. When nothing was, it does nothing,
+   the completion is a fixed line ("That didn't sound like it was for me. Ask
+   again if it was."), and the exchange is kept nowhere: not the thread, Chat
+   or the conversation shared between devices. Usage counts the call as
+   "(not for me)", without the words heard. `/api/v1/voice` with `chars` does
+   the same.
 
 It waits `G2_WAIT_S` seconds (default 240) before answering that it is still
 working, which leaves room for most Hermes questions.
