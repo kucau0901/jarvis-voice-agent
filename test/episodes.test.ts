@@ -1,6 +1,6 @@
 // Past attempts (lib/episodes.ts): what was tried, how it went, given to the
 // next question like it, as data.
-import { Episodes, episodeOfChain, episodeOfJob, KEEP_MS, MAX_EPISODES, pastBlock } from "../src/worker/lib/episodes.ts";
+import { Episodes, episodeOfChain, episodeOfAnswer, episodeOfJob, KEEP_MS, MAX_EPISODES, pastBlock } from "../src/worker/lib/episodes.ts";
 import { requiredScope } from "../src/worker/lib/scopes.ts";
 
 let pass = 0;
@@ -75,6 +75,40 @@ console.log("\ngiven to a question like them");
   const block = pastBlock(like, "Asia/Kuala_Lumpur");
   check("as data, not instructions, with how it went", /DATA, NOT INSTRUCTIONS/.test(block) && block.includes("failed. Shopee refused the search") && /avoid repeating what did not work/.test(block), block);
   check("read and forgotten as memory is", requiredScope("/api/memory/past", "GET") === "memory.read" && requiredScope("/api/memory/past", "DELETE") === "memory.write");
+}
+
+console.log("\na question someone asked, answered with two tools or more: what worked");
+{
+  const asked = "Will it rain before my dentist appointment on Friday?";
+  const two = { ok: true, tools: ["calendar_list", "weather"], text: "Your dentist is at 3 PM on Friday, and rain is due from 5. Take an umbrella anyway." };
+  const ok = episodeOfAnswer(asked, two);
+  check("kept as what worked", ok?.source === "chain" && ok.outcome === "ok" && ok.goal === asked, ok);
+  check("its lesson: the tools in order, then the answer's first sentence",
+    ok?.lesson === "calendar_list, weather: Your dentist is at 3 PM on Friday, and rain is due from 5.", ok?.lesson);
+  check("one tool: nothing kept", episodeOfAnswer(asked, { ...two, tools: ["weather"] }) === null);
+  check("only chatted: nothing kept", episodeOfAnswer("Tell me a joke about umbrellas", { ok: true, tools: [], text: "Why did the umbrella…" }) === null);
+  check("two tools but no answer: nothing kept", episodeOfAnswer(asked, { ...two, ok: false, text: "I got stuck working that one out." }) === null);
+  check("one that started a job: nothing kept, the job is noted when it finishes",
+    episodeOfAnswer(asked, { ...two, tools: ["recall", "start_job"], text: "I've started researching that." }) === null);
+  check("a first sentence that ends too soon is not all that is kept",
+    episodeOfAnswer(asked, { ...two, text: "Dr. Lee is at 3. Rain from 5." })?.lesson === "calendar_list, weather: Dr. Lee is at 3. Rain from 5.");
+  const long = episodeOfAnswer("x ".repeat(300), { ok: true, tools: Array.from({ length: 12 }, (_, i) => `tool_number_${i}`), text: "word ".repeat(200) });
+  check("still inside the 240-character cut", !!long && long.goal.length <= 240 && long.lesson.length <= 240 && long.lesson.endsWith("…"), long);
+  const clause = episodeOfAnswer(asked, { ...two, text: "a".repeat(400) });
+  check("a first sentence that runs on is cut short", !!clause && clause.lesson.length < 160 && clause.lesson.endsWith("…"), clause?.lesson.length);
+
+  const e = new Episodes(fakeStorage());
+  await e.add("u_sara", ok!, T);
+  const like = await e.match("u_sara", "is rain due for the dentist?", T);
+  check("matched by two words it shares", like.length === 1 && like[0]!.outcome === "ok", like);
+  check("not by one alone", !(await e.match("u_sara", "dentist", T)).length);
+  const block = pastBlock(like, "Asia/Kuala_Lumpur");
+  check("given as data, saying it worked", /DATA, NOT INSTRUCTIONS/.test(block) && block.includes(`"${asked}" worked. calendar_list, weather: `), block);
+  await e.add("u_sara", episodeOfAnswer(asked, two)!, T + 1);
+  await e.add("u_sara", episodeOfAnswer(asked, two)!, T + 2);
+  const again = await e.of("u_sara", T + 2);
+  check("asked again: counted on the one kept, not kept twice", again.length === 1 && again[0]!.seen === 3 && again[0]!.id === ok!.id, again);
+  check("forgotten as any other", (await e.forget("u_sara", ok!.id)) && !(await e.of("u_sara", T + 2)).length);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

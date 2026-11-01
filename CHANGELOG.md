@@ -52,6 +52,16 @@ of every release, and in the [README](README.md#updating).
   socket (`{"type":"glasses.open"}`), to show its own screen on the glasses.
   The glasses app for Android does, with G2 glasses.
 
+### Changed
+
+- **Successful multi-step answers are now listed under Memory → Past
+  attempts.** A question asked from a screen or device and answered with two
+  tools or more is noted with the person's own words, the tools in order and
+  the answer's first sentence, so the next question like it starts from what
+  worked. Each can be forgotten there. A question that only chatted or used
+  one tool, one that started a job (noted when the job finishes), and
+  routines, Home tiles and bots asking are not noted.
+
 ### Fixed
 
 - **"What time is it in London?" says London's time.** Home Assistant's

@@ -77,6 +77,6 @@ export async function showPast(key: string, box: HTMLElement): Promise<number> {
     }));
     row.appendChild(btns);
     return row;
-  }) : [el("p", "note", "Nothing yet. Each background job, and each question whose tools failed, is noted here, so the next one like it goes better.")]));
+  }) : [el("p", "note", "Nothing yet. Each background job, each question whose tools failed, and each answer that took two tools or more, is noted here, so the next one like it goes better.")]));
   return all.length;
 }

@@ -25,7 +25,7 @@ import { bookOf, OWNER } from "./context.ts";
 import { specialtyBlock } from "./specialties.ts";
 import { botAsks, botHides, type Skill } from "./skills.ts";
 import { askSkill } from "../tools/skills.ts";
-import { episodeOfChain, pastBlock } from "./episodes.ts";
+import { episodeOfAnswer, episodeOfChain, pastBlock } from "./episodes.ts";
 import { localeOf } from "./locale.ts";
 import { allows, type Grant } from "./scopes.ts";
 import { DRAWS_ON_SCREEN } from "../tools/place.ts";
@@ -510,6 +510,12 @@ export async function run(
       const tried = lastAsk(turns);
       if (failed.length && tried && allows(grants, "memory.read")) {
         writes.push((stateStub(env)?.episodeAdd(env.JARVIS_PERSON || OWNER, episodeOfChain(tried, failed), Date.now()) ?? Promise.resolve()).catch(() => {}));
+      } else if (opts.origin && allows(grants, "memory.read")) {
+        // And one answered with two tools or more, when someone asked it from a screen or device (origin): not a
+        // routine, a tile's refresh or a bot, which would note the same answer again on every run. Their own words only.
+        const own = ownWords(turns, opts);
+        const worked = own ? episodeOfAnswer(own, r) : null;
+        if (worked) writes.push((stateStub(env)?.episodeAdd(env.JARVIS_PERSON || OWNER, worked, Date.now()) ?? Promise.resolve()).catch(() => {}));
       }
       // One conversation across devices (lib/shared.ts): what was asked here, and answered.
       const asked = lastAsk(turns);

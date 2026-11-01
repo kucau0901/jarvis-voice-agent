@@ -22,10 +22,11 @@ const kv = new Map<string, string>();
 const CONFIG = { get: async (k: string) => kv.get(k) ?? null, put: async (k: string, v: string) => void kv.set(k, v), delete: async () => {}, list: async () => ({ keys: [] }) };
 
 /** One question: the plan's and the key's answers in turn, and what was sent to each. */
-async function ask(opts: { plan: boolean; plans: Answer[]; keys?: Answer[]; fallback?: "0" | "1" }) {
+async function ask(opts: { plan: boolean; plans: Answer[]; keys?: Answer[]; fallback?: "0" | "1"; grants?: string[]; text?: string; origin?: boolean }) {
   const sent: { by: "plan" | "key"; body: Body }[] = [];
   const failed: string[] = [];
   const recorded: { by: string }[] = [];
+  const episodes: Record<string, unknown>[] = [];
   const stub = new Proxy({}, {
     get: (_t, m) =>
       m === "then"
@@ -34,6 +35,8 @@ async function ask(opts: { plan: boolean; plans: Answer[]; keys?: Answer[]; fall
             if (m === "chatgptToken") return opts.plan ? { token: "at_plan", model: null } : null;
             if (m === "chatgptFailed") return (failed.push(String(args[0])), { first: false });
             if (m === "recordUsage") return void recorded.push(args[0] as { by: string });
+            if (m === "episodeAdd") return void episodes.push(args[1] as Record<string, unknown>);
+            if (m === "recentShared") return [];
             return undefined;
           },
   });
@@ -70,12 +73,13 @@ async function ask(opts: { plan: boolean; plans: Answer[]; keys?: Answer[]; fall
   const said: Record<string, unknown>[] = [];
   const sink = { send: (ev: Record<string, unknown>) => void said.push(ev), get isClosed() { return false; } };
   try {
-    await run(env as never, [{ role: "user", text: "what did I save about the dentist?" }], sink as never, new AbortController().signal, ["*"] as never, {});
+    await run(env as never, [{ role: "user", text: opts.text ?? "what did I save about the dentist?" }], sink as never, new AbortController().signal, (opts.grants ?? ["*"]) as never,
+      opts.origin ? { origin: { id: "phone-1", label: "a phone" } } : {});
   } finally {
     globalThis.fetch = realFetch;
   }
   const result = said.find((e) => e.type === "result" || e.type === "error");
-  return { sent, failed, recorded, result, said };
+  return { sent, failed, recorded, result, said, episodes };
 }
 
 const call = { type: "function_call", id: "fc_1", call_id: "call_1", name: "recall", namespace: "jarvis", arguments: JSON.stringify({ query: "dentist" }), status: "completed" };
@@ -141,6 +145,33 @@ console.log("no plan: the key, as before");
   check("chained by id and stored, the tools flat",
     r.result?.text === "Friday." && r.sent.every((s) => s.by === "key" && s.body.store === true && !s.body.stream) &&
     r.sent[1]!.body.previous_response_id === "resp_1" && !r.sent[0]!.body.tools.some((t) => t.type === "namespace"), r.sent.map((s) => s.body.previous_response_id));
+}
+
+console.log("past attempts (lib/episodes.ts): an answer that took two tools is kept");
+{
+  // Two that need nothing set up here, so neither fails (recall does: there is no memory to search).
+  const clock = { ...call, id: "fc_2", call_id: "call_2", name: "time_in", arguments: JSON.stringify({ zone: "Asia/Tokyo" }) };
+  const clear = { ...call, id: "fc_3", call_id: "call_3", name: "hide_display", arguments: "{}" };
+  const two = (over: Partial<Parameters<typeof ask>[0]> = {}) =>
+    ask({ plan: false, plans: [], origin: true, keys: [{ items: [clock, clear] }, { items: [answer("Your dentist is at 3 PM on Friday, Tokyo time. I noted it too.")] }], ...over });
+  const r = await two();
+  const e = r.episodes[0];
+  check("one, as what worked, the tools in order and the answer's first sentence",
+    r.episodes.length === 1 && e?.outcome === "ok" && e.source === "chain" && e.goal === "what did I save about the dentist?" && e.lesson === "time_in, hide_display: Your dentist is at 3 PM on Friday, Tokyo time.", r.episodes);
+  const quoted = await two({ text: "(Replying to this answer of yours: \"Your dentist is on Friday.\")\nand what time is it in Tokyo then?" });
+  check("a reply: their own words, not the answer they quoted", quoted.episodes[0]?.goal === "and what time is it in Tokyo then?", quoted.episodes);
+  const one = await ask({ plan: false, plans: [], origin: true, keys: [{ items: [clock] }, { items: [answer("Friday.")] }] });
+  check("one tool: none", one.result?.text === "Friday." && !one.episodes.length, one.episodes);
+  const none = await ask({ plan: false, plans: [], origin: true, keys: [{ items: [answer("Hello.")] }] });
+  check("no tools: none", none.result?.text === "Hello." && !none.episodes.length, none.episodes);
+  const theirs = await two({ grants: ["ask", "screen"] });
+  check("not for someone whose memory it is not", theirs.result?.type === "result" && !theirs.episodes.length, theirs.episodes);
+  // A routine, a tile's refresh, a bot: nobody asked from a screen, and the same answer would be noted on every run.
+  const unasked = await two({ origin: false });
+  check("not without a screen or device that asked", unasked.result?.type === "result" && !unasked.episodes.length, unasked.episodes);
+  const broke = await two({ keys: [{ items: [call, clock] }, { items: [answer("Tokyo is 1 hour ahead; I could not search your notes.")] }] });
+  check("a tool failed though it answered: kept as failed, never as worked",
+    broke.episodes.length === 1 && broke.episodes[0]?.outcome === "failed" && /^recall: /.test(String(broke.episodes[0]?.lesson)), broke.episodes);
 }
 
 console.log("a page watch's look, on the plan (lib/page-look.ts)");
