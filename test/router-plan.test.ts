@@ -119,6 +119,24 @@ console.log("a question on the plan");
     toolEvents.length === 2 && toolEvents[0]!.phase === "start" && toolEvents.every((e) => e.name === "recall" && e.id === "call_1") && toolEvents[1]!.phase === "done", toolEvents);
 }
 
+// Every question failed with "aborted" with only the plan connected (issue #14): the router built the key's client
+// first, and the SDK refuses one without a key. As on Workers, no key in the process either.
+console.log("the plan alone, no key at all");
+{
+  const saved = process.env.OPENAI_API_KEY;
+  delete process.env.OPENAI_API_KEY;
+  try {
+    // What run() threw, as the route would have turned it into "aborted".
+    const planOnly = (plans: Answer[]) => ask({ plan: true, env: { OPENAI_API_KEY: undefined }, plans }).catch((e: Error) => ({ result: { type: "thrown", text: e.message }, sent: [] as { by: string }[] }));
+    const r = await planOnly([{ items: [call] }, { items: [answer("Your dentist is on Friday.")] }]);
+    check("answered, by the plan", r.result?.type === "result" && r.result.text === "Your dentist is on Friday." && r.sent.length === 2 && r.sent.every((s) => s.by === "plan"), r.result);
+    const limit = await planOnly([{ error: { status: 429, code: "subscription_sharing_usage_limit_exceeded" } }]);
+    check("…and at its limit, says so, with no key to try", limit.result?.type === "error" && /usage limit is reached/.test(String(limit.result.text)) && !limit.sent.some((s) => s.by === "key"), limit.result);
+  } finally {
+    if (saved !== undefined) process.env.OPENAI_API_KEY = saved;
+  }
+}
+
 console.log("the plan's limit, part way through");
 {
   const r = await ask({

@@ -4,7 +4,6 @@
  * lib/router-prompt.ts. Used by every route that asks, and by background
  * jobs. Moved out of routes/delegate.ts unchanged.
  */
-import { openaiBase } from "./openai-base.ts";
 import OpenAI from "openai";
 import type { Env } from "../types.ts";
 import { redact } from "./http.ts";
@@ -126,7 +125,6 @@ export interface RunOptions {
 
 /** Everything a router request is built from, shared by run() and background jobs. */
 export interface Prepared {
-  client: OpenAI;
   /** The model chosen in settings, before any fallback. */
   model: string;
   instructions: string;
@@ -202,7 +200,6 @@ export async function prepareRouter(
   }
 
 
-  const client = new OpenAI({ apiKey: env.OPENAI_API_KEY, baseURL: openaiBase(env) });
   // Chosen in settings (lib/router-model.ts). A first hop the chosen model
   // rejects is retried on the default, and the rest follows it (run()).
   const model = chosen.model;
@@ -318,7 +315,7 @@ export async function prepareRouter(
         ]
       : []),
   ];
-  return { client, model, instructions, input, tools, byName, memory, specialty: recalled?.specialty ?? null, procedure: recalled?.procedure ?? null };
+  return { model, instructions, input, tools, byName, memory, specialty: recalled?.specialty ?? null, procedure: recalled?.procedure ?? null };
 }
 
 /**
@@ -417,8 +414,11 @@ export async function run(
   // How long to think (lib/router-model.ts): dropped for the rest of the
   // question if the model refuses it.
   let effort = effortFor(opts.surface, env.ROUTER_EFFORT);
+  // The key's client, made only when the key answers: with the plan alone there is no key, and the SDK
+  // refuses to make a client without one, which failed every question (issue #14).
+  let keyClient: OpenAI | null = null;
   const create = (params: OpenAI.Responses.ResponseCreateParamsNonStreaming) =>
-    p!.client.responses.create(effort ? { ...params, reasoning: { effort } } : params, { signal });
+    (keyClient ??= clientFor(env, { kind: "key" })).responses.create(effort ? { ...params, reasoning: { effort } } : params, { signal });
   // The owner's ChatGPT plan first, else the key (lib/openai-auth.ts).
   const auth = await modelAuth(env);
   const plan = auth?.kind === "plan" ? { client: clientFor(env, auth), model: auth.model } : null;

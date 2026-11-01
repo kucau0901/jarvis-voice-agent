@@ -210,7 +210,7 @@ export function jobEngine(
         input = forKey(input);
       }
     }
-    const res = await r.p.client.responses.create(
+    const res = await client().responses.create(
       { ...r.base, tool_choice: toolChoice, input, ...(previous ? { previous_response_id: previous } : {}) },
       { signal: signal() },
     );

@@ -17,6 +17,15 @@ of every release, and in the [README](README.md#updating).
 
 ## [Unreleased]
 
+### Fixed
+
+- **A ChatGPT plan alone answers again.** With the plan connected and no
+  OpenAI key, every question failed ("That request was cut off", or
+  `aborted` from `/api/v1/ask`), and no background job could start: Jarvis
+  made the key's OpenAI client before trying the plan, and the OpenAI
+  library refuses to make one without a key. It is now made only when the
+  key answers.
+
 ## [2.7.0] - 2026-11-01
 
 ### Added
