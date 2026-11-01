@@ -832,7 +832,11 @@ and `car.control` are not needed.
 2. **Follow-ups.** The last six turns per device are kept for five minutes in the
    Durable Object, so "turn it off" knows what "it" is. Each question and its
    answer is also kept in the conversation of the person the token belongs
-   to (`GET /api/hub/conversation`), so Chat shows it.
+   to (`GET /api/hub/conversation`), so Chat shows it. After a pause, with
+   `memory.read`, the first question also gets that person's glasses
+   exchanges since `G2_EARLIER`'s start (`today`, from 4am, the default;
+   `1 hour`; `24 hours`; or `off`): at most three, dated, quoted as what was
+   said, for a follow-up like "and tomorrow?" to find what it follows on from.
 3. **Length.** The router is told the answer is going to the glasses, and the
    reply is cut at a sentence boundary to `G2_CHAR_BUDGET` characters (default
    350) with markdown and emoji removed.

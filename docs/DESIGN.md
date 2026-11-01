@@ -1051,6 +1051,26 @@ says as much about a person as memory does. There is no summarising of old
 turns: that would be a model call every few exchanges, and a longer question
 every time, to keep what memory and look_back already reach.
 
+**Glasses after a pause.** The Even app sends one sentence at a time and ends
+its conversation at every pause, and the glasses' own thread lasts five
+minutes, so "and tomorrow?" after lunch used to arrive alone. Making the
+thread longer would have put a morning's exchange into "Conversation so far"
+with no time on it, to be read as if just said: an old "the gate is closed"
+as the gate now, a bare "yes" as the answer to a question from hours ago. So
+the thread stays at five minutes, and only when it has lapsed does the
+question also get the person's own glasses exchanges since 4am (OpenClaw's
+day too; `G2_EARLIER` makes it an hour, a day or nothing), from the Chat
+where they are kept already (`lib/glasses.ts earlierOnGlasses`): at most
+three, each dated ("[Sat 09:00, 4 h ago]"), quoted as what was said, with
+the rules for it. Only a message that cannot stand alone may use them; what
+changes, the house and the car, is looked at again; a bare yes answers
+nothing there; and an answer that relies on one starts with what it took
+the message to mean, so a misreading is seen at once. Whether a message is a
+follow-up is the router's own judgement, in any language: no keyword list
+and no second call. It needs `memory.read`, as look_back and the conversation
+shared between devices do, and reads in the
+same wait as the rest of the question; Assist's house commands never see it.
+
 **Search, by words only.** Chat's Search box (`lib/search.ts`,
 `ui/Search.ts`) looks through the person's conversation, memory (their own
 book and the family's) and mail at once, as Hark's does, and groups what it

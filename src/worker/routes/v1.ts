@@ -8,7 +8,7 @@ import { whoOf, grantsOf, isAdmin, personOf, type Principal } from "../lib/auth.
 import { deviceWho, OWNER } from "../lib/context.ts";
 import { hubStub } from "../lib/hub-client.ts";
 import { stateStub } from "../lib/state-client.ts";
-import { charBudget, forGlasses, latestUserText, toChatCompletion, waitSeconds } from "../lib/glasses.ts";
+import { GLASSES_SAID, charBudget, forGlasses, latestUserText, toChatCompletion, waitSeconds } from "../lib/glasses.ts";
 import { allows, saneGrants, SCOPES, WILDCARD, type Grant } from "../lib/scopes.ts";
 import { handleAlertApi } from "./alerts.ts";
 import { handleRoutines } from "./routines.ts";
@@ -275,7 +275,8 @@ export async function handleChatCompletions(
   const thread = threadOf(principal);
   const reply = (answer: string, model?: string) => json(toChatCompletion(answer, model));
 
-  const turns: Turn[] = [...(await priorTurns(env, thread)), { role: "user", text }];
+  const prior = await priorTurns(env, thread);
+  const turns: Turn[] = [...prior, { role: "user", text }];
   const bot = botOf(principal);
   // Assist first (RunOptions.assist): the house answers what it understands.
   const d = await collectWithDeadline(
@@ -286,6 +287,8 @@ export async function handleChatCompletions(
           surface: "glasses", charBudget: budget, assist: true,
           // One conversation across devices (lib/shared.ts); the owner key on glasses is "glasses".
           origin: originOf(principal, null) ?? { id: "owner-glasses", label: "glasses" },
+          // Their own conversation lapsed after a pause: what was asked on them earlier goes with it, dated (lib/glasses.ts).
+          ...(prior.length ? {} : { earlierOnGlasses: true }),
         },
   );
 
@@ -312,7 +315,7 @@ async function keepInChat(env: Env, person: string, asked: string, answered: str
   if (!state) return;
   const now = Date.now();
   try {
-    const id = `${bot ? "b" : "g"}_${crypto.randomUUID()}`;
+    const id = `${bot ? "b_" : GLASSES_SAID}${crypto.randomUUID()}`;
     await state.conversationAdd(person, bot ? skillExchangeSaid(id, bot, asked, answered, now) : exchangeSaid(id, asked, answered, now), now);
   } catch (e) {
     console.warn("not kept in chat:", e instanceof Error ? e.message : String(e));

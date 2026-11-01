@@ -3,6 +3,7 @@ import { DEFAULT_ORDER, validateOrder } from "./alerts.ts";
 import { validateCameraList } from "./cameras.ts";
 import { DEFAULT_STYLE, DEFAULT_VOICE, STT_PROVIDERS, TTS_PROVIDERS, TTS_VOICES } from "./speech.ts";
 import { EFFORTS } from "./router-model.ts";
+import { EARLIER } from "./glasses.ts";
 import { sha256Hex } from "./devices.ts";
 
 /**
@@ -510,6 +511,11 @@ export const SETTINGS: readonly SettingDef[] = [
     name: "G2_WAIT_S", group: "devices", kind: "number", default: "240",
     label: "Glasses: seconds to wait", help: "The Even app hangs up at 300.",
     validate: intIn(10, 290),
+  },
+  {
+    name: "G2_EARLIER", group: "devices", kind: "enum", default: "today", options: [...EARLIER],
+    label: "Glasses: earlier talk after a pause",
+    help: "The glasses forget at every pause. After one, Jarvis also sees what you asked on them since: today (from 4am), the last hour or the last day, dated, so \"and tomorrow?\" still follows on. Off: only the last five minutes. Needs memory.read on the glasses' token.",
   },
 
   // --- Advanced

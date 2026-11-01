@@ -17,6 +17,18 @@ of every release, and in the [README](README.md#updating).
 
 ## [Unreleased]
 
+### Added
+
+- **Glasses follow-ups after a pause.** The glasses forget at every pause,
+  so "and tomorrow?" after lunch used to start from nothing. Now the first
+  question after a pause also sees what you asked on the glasses earlier
+  today (from 4am), dated and marked as earlier, and an answer that follows
+  on starts with what Jarvis took you to mean ("Tomorrow's calendar: …").
+  Nothing more is stored: it reads your own Chat, and Clear chat makes it
+  forget. It needs Memory (`memory.read`) on the glasses' token. **Settings →
+  Devices → Glasses: earlier talk after a pause** makes it the last hour or
+  the last day, or turns it off.
+
 ### Fixed
 
 - **A ChatGPT plan alone answers again.** With the plan connected and no

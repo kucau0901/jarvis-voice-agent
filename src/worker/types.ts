@@ -162,6 +162,8 @@ export interface Env {
   G2_CHAR_BUDGET?: string;
   /** Seconds to wait for an answer. The Even app hangs up at 300. Defaults to 240. */
   G2_WAIT_S?: string;
+  /** How far back the glasses look after a pause: today (from 4am, the default), 1 hour, 24 hours or off. */
+  G2_EARLIER?: string;
   /** Old name of HA_ASSIST, still read. */
   G2_FASTPATH?: string;
   /** Old name of HA_ASSIST_LANGUAGE, still read. */

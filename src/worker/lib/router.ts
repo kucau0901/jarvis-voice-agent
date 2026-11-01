@@ -31,7 +31,8 @@ import { DRAWS_ON_SCREEN } from "../tools/place.ts";
 import { isResearchCap, jobTool } from "./jobs.ts";
 import { Collector } from "./collector.ts";
 import { clientFor, forKey, forPlan, modelAuth, planFailed, planRespond, refusalOf } from "./openai-auth.ts";
-import { DEFAULT_CHAR_BUDGET, glassesInstructions } from "./glasses.ts";
+import { DEFAULT_CHAR_BUDGET, earlierOnGlasses, earlierSince, glassesInstructions } from "./glasses.ts";
+import type { Said } from "./conversation.ts";
 import { spokenReplyInstructions } from "./prompt.ts";
 import {
   DEFAULT_ROUTER_MODEL,
@@ -115,6 +116,11 @@ export interface RunOptions {
   /** What Assist is asked, when the latest turn is more than the words said (the family room's). */
   assistAsk?: string;
   /**
+   * The glasses' own conversation had lapsed (routes/v1.ts): their earlier exchanges since G2_EARLIER's start go with
+   * the question, dated and quoted (lib/glasses.ts earlierOnGlasses), for those whose memory it is.
+   */
+  earlierOnGlasses?: boolean;
+  /**
    * A skill's bot asking through its own address (routes/skills.ts handleBot),
    * by its name: the router is told the question is the bot's, not the
    * user's, nothing it says counts as the user's own words, and what a bot
@@ -173,7 +179,9 @@ export async function prepareRouter(
   const takes = !!opts.origin && allows(grants, "memory.write");
   // The skills that have a key (lib/skills.ts), for those who may send to them.
   const skilled = allows(grants, "skills");
-  const [, mcp, chosen, shared, family, recalled, ready] = await Promise.all([
+  // After a pause on the glasses, what was asked on them since (lib/glasses.ts), from their person's Chat: theirs to read.
+  const since = opts.earlierOnGlasses && allows(grants, "memory.read") ? earlierSince(env.G2_EARLIER, Date.now(), localeOf(env).timeZone) : null;
+  const [, mcp, chosen, shared, family, recalled, ready, said] = await Promise.all([
     memory.load().catch((e) => {
       console.warn("memory unavailable:", e instanceof Error ? e.message : String(e));
     }),
@@ -188,7 +196,9 @@ export async function prepareRouter(
     talks ? familyBlock(env).catch(() => "") : Promise.resolve(""),
     recalls ? (stateStub(env)?.recallFor(env.JARVIS_PERSON || OWNER, asked!, takes) ?? Promise.resolve(null)).catch(() => null) : Promise.resolve(null),
     skilled ? (stateStub(env)?.skillsReady() ?? Promise.resolve([] as Skill[])).catch(() => [] as Skill[]) : Promise.resolve([] as Skill[]),
+    since !== null ? (stateStub(env)?.conversationOf(env.JARVIS_PERSON || OWNER, Date.now()) ?? Promise.resolve([] as Said[])).catch(() => [] as Said[]) : Promise.resolve([] as Said[]),
   ]);
+  const earlier = since !== null ? earlierOnGlasses(said ?? [], since, Date.now(), localeOf(env).timeZone) : "";
   const elsewhere = [sharedBlock(shared, Date.now()), family].filter(Boolean).join("\n\n");
   tools.push(...mcp, ...askSkill(ready ?? []));
   if (opts.toolFilter || opts.screenless || opts.bot) {
@@ -294,6 +304,8 @@ export async function prepareRouter(
     ...(recalled?.specialty ? [{ role: "user" as const, content: specialtyBlock(recalled.specialty) }] : []),
     // What happened before, quoted as data: it can carry what a site or a tool said.
     ...(recalled?.past?.length ? [{ role: "user" as const, content: pastBlock(recalled.past, localeOf(env).timeZone) }] : []),
+    // What was asked on the glasses before a pause: dated, quoted as data, never the live conversation.
+    ...(earlier ? [{ role: "user" as const, content: earlier }] : []),
     // What was said, like the profile: a user message, never an instruction.
     ...(elsewhere ? [{ role: "user" as const, content: elsewhere }] : []),
     { role: "user" as const, content: `Conversation so far:\n\n${conversation}` },
