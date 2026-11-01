@@ -56,9 +56,10 @@ of every release, and in the [README](README.md#updating).
 
 - **Successful multi-step answers are now listed under Memory → Past
   attempts.** A question asked from a screen or device and answered with two
-  tools or more is noted with the person's own words, the tools in order and
-  the answer's first sentence, so the next question like it starts from what
-  worked. Each can be forgotten there. A question that only chatted or used
+  tools or more is noted with the person's own words and the tools in order,
+  so the next question like it starts from what worked. Nothing of the
+  answer is kept, so a code or reading a tool found is not held for months.
+  Each can be forgotten there. A question that only chatted or used
   one tool, one that started a job (noted when the job finishes), and
   routines, Home tiles and bots asking are not noted.
 

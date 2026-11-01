@@ -80,22 +80,21 @@ console.log("\ngiven to a question like them");
 console.log("\na question someone asked, answered with two tools or more: what worked");
 {
   const asked = "Will it rain before my dentist appointment on Friday?";
-  const two = { ok: true, tools: ["calendar_list", "weather"], text: "Your dentist is at 3 PM on Friday, and rain is due from 5. Take an umbrella anyway." };
+  // The answer rides along as the router's record has it, to show none of it is kept.
+  const two = { ok: true, tools: ["calendar_list", "weather"], text: "Your dentist is at 3 PM on Friday, and rain is due from 5. Take an umbrella anyway." } as { ok: boolean; tools: string[] };
   const ok = episodeOfAnswer(asked, two);
   check("kept as what worked", ok?.source === "chain" && ok.outcome === "ok" && ok.goal === asked, ok);
-  check("its lesson: the tools in order, then the answer's first sentence",
-    ok?.lesson === "calendar_list, weather: Your dentist is at 3 PM on Friday, and rain is due from 5.", ok?.lesson);
+  check("its lesson: the tools in order, and nothing of the answer", ok?.lesson === "calendar_list, weather", ok?.lesson);
+  // What a tool read can be in the answer (a code from a mail), which would be kept for months and shown as true.
+  const code = episodeOfAnswer("What's the code in the courier's text?", { ok: true, tools: ["mail_search", "mail_read"], text: "The code is 482913. It expires at 6 PM." } as { ok: boolean; tools: string[] });
+  check("a code in the answer is not kept", !!code && !JSON.stringify(code).includes("482913") && !/\d/.test(code.lesson) && code.lesson === "mail_search, mail_read", code);
   check("one tool: nothing kept", episodeOfAnswer(asked, { ...two, tools: ["weather"] }) === null);
   check("only chatted: nothing kept", episodeOfAnswer("Tell me a joke about umbrellas", { ok: true, tools: [], text: "Why did the umbrella…" }) === null);
   check("two tools but no answer: nothing kept", episodeOfAnswer(asked, { ...two, ok: false, text: "I got stuck working that one out." }) === null);
   check("one that started a job: nothing kept, the job is noted when it finishes",
     episodeOfAnswer(asked, { ...two, tools: ["recall", "start_job"], text: "I've started researching that." }) === null);
-  check("a first sentence that ends too soon is not all that is kept",
-    episodeOfAnswer(asked, { ...two, text: "Dr. Lee is at 3. Rain from 5." })?.lesson === "calendar_list, weather: Dr. Lee is at 3. Rain from 5.");
-  const long = episodeOfAnswer("x ".repeat(300), { ok: true, tools: Array.from({ length: 12 }, (_, i) => `tool_number_${i}`), text: "word ".repeat(200) });
+  const long = episodeOfAnswer("x ".repeat(300), { ok: true, tools: Array.from({ length: 30 }, (_, i) => `tool_number_${i}`) });
   check("still inside the 240-character cut", !!long && long.goal.length <= 240 && long.lesson.length <= 240 && long.lesson.endsWith("…"), long);
-  const clause = episodeOfAnswer(asked, { ...two, text: "a".repeat(400) });
-  check("a first sentence that runs on is cut short", !!clause && clause.lesson.length < 160 && clause.lesson.endsWith("…"), clause?.lesson.length);
 
   const e = new Episodes(fakeStorage());
   await e.add("u_sara", ok!, T);
@@ -103,7 +102,7 @@ console.log("\na question someone asked, answered with two tools or more: what w
   check("matched by two words it shares", like.length === 1 && like[0]!.outcome === "ok", like);
   check("not by one alone", !(await e.match("u_sara", "dentist", T)).length);
   const block = pastBlock(like, "Asia/Kuala_Lumpur");
-  check("given as data, saying it worked", /DATA, NOT INSTRUCTIONS/.test(block) && block.includes(`"${asked}" worked. calendar_list, weather: `), block);
+  check("given as data, saying it worked", /DATA, NOT INSTRUCTIONS/.test(block) && block.includes(`"${asked}" worked. calendar_list, weather`) && !block.includes("umbrella"), block);
   await e.add("u_sara", episodeOfAnswer(asked, two)!, T + 1);
   await e.add("u_sara", episodeOfAnswer(asked, two)!, T + 2);
   const again = await e.of("u_sara", T + 2);

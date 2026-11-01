@@ -156,8 +156,10 @@ console.log("past attempts (lib/episodes.ts): an answer that took two tools is k
     ask({ plan: false, plans: [], origin: true, keys: [{ items: [clock, clear] }, { items: [answer("Your dentist is at 3 PM on Friday, Tokyo time. I noted it too.")] }], ...over });
   const r = await two();
   const e = r.episodes[0];
-  check("one, as what worked, the tools in order and the answer's first sentence",
-    r.episodes.length === 1 && e?.outcome === "ok" && e.source === "chain" && e.goal === "what did I save about the dentist?" && e.lesson === "time_in, hide_display: Your dentist is at 3 PM on Friday, Tokyo time.", r.episodes);
+  check("one, as what worked, the tools in order and nothing of the answer",
+    r.episodes.length === 1 && e?.outcome === "ok" && e.source === "chain" && e.goal === "what did I save about the dentist?" && e.lesson === "time_in, hide_display" && !JSON.stringify(e).includes("Tokyo time"), r.episodes);
+  const code = await two({ keys: [{ items: [clock, clear] }, { items: [answer("The code is 482913. It expires at 6 PM.")] }] });
+  check("a code in the answer is not kept", code.episodes.length === 1 && !JSON.stringify(code.episodes).includes("482913"), code.episodes);
   const quoted = await two({ text: "(Replying to this answer of yours: \"Your dentist is on Friday.\")\nand what time is it in Tokyo then?" });
   check("a reply: their own words, not the answer they quoted", quoted.episodes[0]?.goal === "and what time is it in Tokyo then?", quoted.episodes);
   const one = await ask({ plan: false, plans: [], origin: true, keys: [{ items: [clock] }, { items: [answer("Friday.")] }] });

@@ -78,27 +78,17 @@ export function episodeOfChain(asked: string, failed: { tool: string; said: stri
   };
 }
 
-/** How much of an answer a worked attempt keeps: about its first sentence. */
-const CLAUSE = 120;
-
 /**
  * A question someone asked, answered with two tools or more, as what worked:
- * the tools in order and the start of the answer (lib/router.ts). Null for
- * one that only chatted or used one tool, which teaches nothing worth the
- * room, and for one that started a job, which is noted when the job finishes.
+ * the tools, in order (lib/router.ts). Never the answer: it can carry what a
+ * tool read (a code from a mail, a reading), which would be kept for months
+ * and shown to the next question as true. Null for one that only chatted or
+ * used one tool, which teaches nothing worth the room, and for one that
+ * started a job, which is noted when the job finishes.
  */
-export function episodeOfAnswer(asked: string, r: { ok: boolean; tools: readonly string[]; text: string }): Omit<Episode, "at" | "keys" | "seen"> | null {
+export function episodeOfAnswer(asked: string, r: { ok: boolean; tools: readonly string[] }): Omit<Episode, "at" | "keys" | "seen"> | null {
   if (!r.ok || r.tools.length < 2 || r.tools.includes("start_job")) return null;
-  // The first sentence, unless it ends too soon to say anything ("Dr.", "1.").
-  const text = tidy(r.text);
-  const said = text.match(/^.{30,}?[.!?](?=\s|$)/)?.[0] ?? text;
-  return {
-    id: chainId(),
-    source: "chain",
-    goal: cut(asked),
-    outcome: "ok",
-    lesson: cut(`${r.tools.join(", ")}: ${said.length > CLAUSE ? `${said.slice(0, CLAUSE - 1)}…` : said}`),
-  };
+  return { id: chainId(), source: "chain", goal: cut(asked), outcome: "ok", lesson: cut(r.tools.join(", ")) };
 }
 
 export class Episodes {
