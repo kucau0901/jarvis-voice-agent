@@ -65,6 +65,10 @@ of every release, and in the [README](README.md#updating).
 
 ### Fixed
 
+- **A past attempt that failed is named by what the person asked.** Asked in
+  a reply in Chat, it was named by the answer replied to; asked in the family
+  room, by Jarvis's own note about the room, so every such failure looked the
+  same. Memory → Past attempts now keeps only their own words.
 - **"What time is it in London?" says London's time.** Home Assistant's
   Assist, asked first, read it as the time at home: an answer from Assist
   about nothing in the house now goes to the router. The router then worked

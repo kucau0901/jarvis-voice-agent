@@ -506,8 +506,10 @@ export async function run(
     // glasses and push-to-talk do not wait on the write.
     record(r) {
       const writes: Promise<void>[] = [];
-      // A question whose tools failed is remembered, so the next like it knows (lib/episodes.ts).
-      const tried = lastAsk(turns);
+      // A question whose tools failed is remembered, so the next like it knows (lib/episodes.ts): by their own
+      // words, not an answer quoted in a reply nor the family room around their message; a routine's or a
+      // bot's question, which has none of its own, as asked.
+      const tried = ownWords(turns, opts) ?? lastAsk(turns);
       if (failed.length && tried && allows(grants, "memory.read")) {
         writes.push((stateStub(env)?.episodeAdd(env.JARVIS_PERSON || OWNER, episodeOfChain(tried, failed), Date.now()) ?? Promise.resolve()).catch(() => {}));
       } else if (opts.origin && allows(grants, "memory.read")) {
