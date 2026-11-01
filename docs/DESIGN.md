@@ -575,16 +575,24 @@ the slow path. Memory is now local: one document in the Durable Object, plus a
 second for reference material, and retrieval by words (BM25-lite) and by
 meaning (embeddings), merged.
 
-**Specialties: the user's own way, saved.** "Save this as my Monday report"
-keeps the steps Jarvis just took (`lib/specialties.ts`), and a later question
-that names it, or shares two words with it, gets them beside the profile, as
-Hark's Specialties do. Steps are followed, so they are a standing instruction
-of the user's, and only the user can make one: `specialty_save` takes their
-own words asking for it, which must be in their latest message, so a page, a
-mail or a tool's output cannot save one, and jobs are never offered it. They
-go to the router as a user message, as the profile does, worded as a
-procedure the user approved, to follow only if it fits and with the tools it
-has now. Matched by words, in the same wait as the rest of the question's
+**Specialties: the user's own way, saved.** An answer that took two tools or
+more, to a question asked from a screen or device, ends by offering to keep
+its steps, as Hark offers after a solved problem; "save this as my Monday
+report" in the next message keeps them (`lib/specialties.ts`), and a later
+question that names it, or shares two words with it, gets them beside the
+profile. Steps are followed, so they are a standing instruction of the
+user's, and only the user can make one: `specialty_save` takes their own
+words asking for it, which must be in their latest message, so a page, a
+mail or a tool's output cannot save one, and jobs are never offered it. Nor
+does the model write the steps: Jarvis keeps them itself when it offers,
+each tool in order with only the values the person said, so nothing a tool
+found (a code read from mail) or the answer said is kept, nor any character
+they did not type; their next question takes them, saving them or not, and a
+reply to an earlier answer saves nothing. No offer for a routine, a Home
+tile, a bot, glasses, an answer that started a background job, or one a
+specialty already does. They go to the router as a user message, as the
+profile does, worded as a procedure the user approved, to follow only if it
+fits and with the tools it has now. Matched by words, in the same wait as the rest of the question's
 preparation (one call to the Durable Object), so a question pays no model call
 and the car no extra wait.
 

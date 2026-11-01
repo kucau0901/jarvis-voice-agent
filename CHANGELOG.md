@@ -62,6 +62,15 @@ of every release, and in the [README](README.md#updating).
   Each can be forgotten there. A question that only chatted or used
   one tool, one that started a job (noted when the job finishes), and
   routines, Home tiles and bots asking are not noted.
+- **Jarvis offers to keep a multi-step answer as a specialty.** An answer
+  that took two tools or more, to a question asked from a screen or device,
+  ends by saying how: "save this as" and a name, in your next message, keeps
+  it, and Memory → Specialties lists it to check or forget. Jarvis keeps the
+  steps itself, your question and the tools in order with only the values you
+  said, never what a tool found or the answer said, so a code read from mail
+  is not kept. A specialty can no longer be saved at any other time. Not
+  offered for routines, Home tiles, bots, glasses, an answer that started a
+  background job, or one a specialty already does.
 
 ### Fixed
 

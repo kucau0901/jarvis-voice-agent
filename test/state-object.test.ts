@@ -433,6 +433,17 @@ console.log("\nevery pass-through to StateHost forwards what it is given");
   check(`all ${names.length} of them forward every argument but the clock`, names.length > 10 && wrong.length === 0, wrong);
 }
 
+// An answer's steps offered to save (lib/specialties.ts), through the object: taken only when asked to, and whose.
+console.log("steps offered to save, through the object");
+{
+  const offered = { asked: "what's my week", steps: ["calendar_check", "weather"] };
+  await jarvis.specialtyOffer("u_sara", offered, Date.now());
+  check("  a routine's or a job's question leaves them", (await jarvis.recallFor("u_sara", "what's my week", false)).procedure === null);
+  check("  another person's question does not take them", (await jarvis.recallFor("owner", "what's my week", true)).procedure === null);
+  check("  their own question takes them, once", JSON.stringify((await jarvis.recallFor("u_sara", "what's my week", true)).procedure) === JSON.stringify(offered) &&
+    (await jarvis.recallFor("u_sara", "what's my week", true)).procedure === null);
+}
+
 // The family's skills (lib/skills.ts), through the object: each pass-through forwards what it is given, the key and the clock too.
 console.log("skills, through the object");
 {

@@ -22,7 +22,7 @@ import { sharedBlock, type Origin, type SharedTurn } from "./shared.ts";
 import { stateStub } from "./state-client.ts";
 import { memoryFor, type MemoryStore } from "./memory.ts";
 import { bookOf, OWNER } from "./context.ts";
-import { specialtyBlock } from "./specialties.ts";
+import { OFFER, procedureOf, specialtyBlock, type Procedure, type Specialty } from "./specialties.ts";
 import { botAsks, botHides, type Skill } from "./skills.ts";
 import { askSkill } from "../tools/skills.ts";
 import { episodeOfAnswer, episodeOfChain, pastBlock } from "./episodes.ts";
@@ -134,6 +134,10 @@ export interface Prepared {
   tools: Tool[];
   byName: Map<string, Tool>;
   memory: MemoryStore;
+  /** The specialty the question asks for, if any (lib/specialties.ts). */
+  specialty: Specialty | null;
+  /** The steps the person's last answer offered to save, taken by this question of theirs (lib/specialties.ts). */
+  procedure: Procedure | null;
 }
 
 export async function prepareRouter(
@@ -163,9 +167,12 @@ export async function prepareRouter(
   // The family, and what is waiting for this person to answer (lib/relays.ts), when they talk with the family.
   const talks = !!env.JARVIS_FAMILY && allows(grants, "chat");
   // A specialty the question asks for (lib/specialties.ts), and past attempts like it (lib/episodes.ts):
-  // by words, in the same wait as the rest, for those whose memory it is.
+  // by words, in the same wait as the rest, for those whose memory it is. And the steps their last answer
+  // offered to save, which a question they asked from a screen or device takes, saving them or not: the
+  // same test that offers them (run()), so a routine, a tile, a bot or a job never takes them.
   const asked = lastAsk(turns);
   const recalls = !!asked && allows(grants, "memory.read");
+  const takes = !!opts.origin && allows(grants, "memory.write");
   // The skills that have a key (lib/skills.ts), for those who may send to them.
   const skilled = allows(grants, "skills");
   const [, mcp, chosen, shared, family, recalled, ready] = await Promise.all([
@@ -181,7 +188,7 @@ export async function prepareRouter(
       ? (stateStub(env)?.recentShared(opts.origin!.id, Date.now(), bookOf(env.JARVIS_PERSON)) ?? Promise.resolve([] as SharedTurn[])).catch(() => [] as SharedTurn[])
       : Promise.resolve([] as SharedTurn[]),
     talks ? familyBlock(env).catch(() => "") : Promise.resolve(""),
-    recalls ? (stateStub(env)?.recallFor(env.JARVIS_PERSON || OWNER, asked!) ?? Promise.resolve(null)).catch(() => null) : Promise.resolve(null),
+    recalls ? (stateStub(env)?.recallFor(env.JARVIS_PERSON || OWNER, asked!, takes) ?? Promise.resolve(null)).catch(() => null) : Promise.resolve(null),
     skilled ? (stateStub(env)?.skillsReady() ?? Promise.resolve([] as Skill[])).catch(() => [] as Skill[]) : Promise.resolve([] as Skill[]),
   ]);
   const elsewhere = [sharedBlock(shared, Date.now()), family].filter(Boolean).join("\n\n");
@@ -311,7 +318,7 @@ export async function prepareRouter(
         ]
       : []),
   ];
-  return { client, model, instructions, input, tools, byName, memory };
+  return { client, model, instructions, input, tools, byName, memory, specialty: recalled?.specialty ?? null, procedure: recalled?.procedure ?? null };
 }
 
 /**
@@ -327,6 +334,17 @@ export function ownWords(turns: Turn[], opts: Pick<RunOptions, "surface" | "assi
   const said = opts.assistAsk ?? lastAsk(turns) ?? "";
   const reply = /^\(Replying to this answer of yours: "[\s\S]*?"\)\n/.exec(said);
   return (reply ? said.slice(reply[0].length) : said).trim() || undefined;
+}
+
+/**
+ * Whether the latest message replies to an answer before the one just given
+ * (src/app/reply.ts quotes it as the history holds it): "save this" there is
+ * not about the steps that answer offered (tools/specialties.ts).
+ */
+export function repliesToEarlier(turns: Turn[]): boolean {
+  const reply = /^\(Replying to this answer of yours: "([\s\S]*?)"\)\n/.exec(lastAsk(turns) ?? "");
+  const before = [...turns].reverse().find((t) => t.role === "assistant")?.text ?? "";
+  return !!reply && !reply[1]!.startsWith(before.replace(/"/g, "”").slice(0, 200));
 }
 
 /** What the router is told of photos and files that came with the latest message. */
@@ -412,6 +430,19 @@ export async function run(
   let carried: OpenAI.Responses.ResponseInput | null = plan ? [] : null;
   let lastOutput: OpenAI.Responses.ResponseInput = [];
   const failed: { tool: string; said: string }[] = [];
+  // Every call, for the steps an answer may offer to save (lib/specialties.ts), and whether one started a background job.
+  const made: { name: string; arguments: string }[] = [];
+  let startedJob = false;
+  const watched: EventSink = {
+    send(ev) {
+      if (ev.type === "job") startedJob = true;
+      sse.send(ev);
+    },
+    get isClosed() {
+      return sse.isClosed;
+    },
+  };
+  let offered: Procedure | null = null;
   const onPlanHop = async (model: string, input: OpenAI.Responses.ResponseInput) => {
     const ask = (withEffort: boolean) =>
       planRespond(plan!.client, {
@@ -493,7 +524,11 @@ export async function run(
       return res;
     },
     runCalls: async (calls) => {
-      const out = await runCalls(calls as OpenAI.Responses.ResponseFunctionToolCall[], p!.byName, { env, signal, memory: p!.memory, grants, offered: [...p!.byName.keys()], asked: ownWords(turns, opts), screenless: opts.screenless === true }, sse);
+      made.push(...calls.map((c) => ({ name: c.name, arguments: c.arguments })));
+      const out = await runCalls(calls as OpenAI.Responses.ResponseFunctionToolCall[], p!.byName, {
+        env, signal, memory: p!.memory, grants, offered: [...p!.byName.keys()], asked: ownWords(turns, opts), screenless: opts.screenless === true,
+        ...(p!.procedure && !repliesToEarlier(turns) ? { procedure: p!.procedure } : {}),
+      }, watched);
       // Tools that failed, for a past attempt (lib/episodes.ts): what callTool says when one throws.
       out.forEach((o, i) => {
         const said = "output" in o && typeof o.output === "string" ? o.output : "";
@@ -502,6 +537,18 @@ export async function run(
       return out;
     },
     close: () => sessions.close(),
+    // An answer that took two tools or more, asked from a screen or device (origin) by someone who may save it, ends by
+    // offering its steps, kept for their next question (lib/specialties.ts). Not for a routine, a tile, a bot or a job,
+    // none asked from a screen or device, and a routine's or a bot's not in anyone's own words; nor one that failed in
+    // part, started a background job or followed a specialty already; nor on glasses, whose answer is cut to fit.
+    offer(tools) {
+      const own = ownWords(turns, opts);
+      // Taken only with memory.read (prepareRouter) and kept only with a state object: offered only where it can be saved.
+      if (!own || !opts.origin || opts.surface === "glasses" || !allows(grants, "memory.write") || !allows(grants, "memory.read") || !stateStub(env)) return null;
+      if (tools.length < 2 || failed.length || startedJob || p?.specialty) return null;
+      offered = procedureOf(own, made);
+      return offered ? OFFER : null;
+    },
     // Settings → Usage: after the answer, where the request allows, so the
     // glasses and push-to-talk do not wait on the write.
     record(r) {
@@ -519,6 +566,8 @@ export async function run(
         const worked = own ? episodeOfAnswer(own, r) : null;
         if (worked) writes.push((stateStub(env)?.episodeAdd(env.JARVIS_PERSON || OWNER, worked, Date.now()) ?? Promise.resolve()).catch(() => {}));
       }
+      // The steps just offered, until their next question (lib/specialties.ts).
+      if (offered) writes.push((stateStub(env)?.specialtyOffer(env.JARVIS_PERSON || OWNER, offered, Date.now()) ?? Promise.resolve()).catch(() => {}));
       // One conversation across devices (lib/shared.ts): what was asked here, and answered.
       const asked = lastAsk(turns);
       if (opts.origin && allows(grants, "memory.read") && r.ok && asked) {
@@ -572,7 +621,7 @@ export async function run(
 export async function runCalls(
   calls: OpenAI.Responses.ResponseFunctionToolCall[],
   byName: Map<string, Tool>,
-  { screenless, ...base }: { env: Env; signal: AbortSignal; memory: MemoryStore; grants: readonly Grant[]; offered?: readonly string[]; asked?: string; screenless?: boolean },
+  { screenless, ...base }: { env: Env; signal: AbortSignal; memory: MemoryStore; grants: readonly Grant[]; offered?: readonly string[]; asked?: string; procedure?: Procedure; screenless?: boolean },
   sse: EventSink,
 ): Promise<OpenAI.Responses.ResponseInput> {
   return Promise.all(

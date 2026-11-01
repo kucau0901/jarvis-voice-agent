@@ -28,7 +28,7 @@ import { Chat, dmId, talksAbout, type ChatMessage } from "./lib/chat.ts";
 import { Panels, type PanelItem, type PanelRefreshDeps, type Reading } from "./lib/panels.ts";
 import { alertSaid, Conversation, type Said } from "./lib/conversation.ts";
 import { Images, type StoredImage } from "./lib/images.ts";
-import { Specialties } from "./lib/specialties.ts";
+import { Specialties, type Procedure } from "./lib/specialties.ts";
 import { heldToRelease, Skills } from "./lib/skills.ts";
 import { Pages, type StoredPage } from "./lib/pages.ts";
 import { Episodes, episodeOfJob, type Episode } from "./lib/episodes.ts";
@@ -762,6 +762,10 @@ export class JarvisState extends DurableObject<Env> {
     return this.specialties.forget(person, which);
   }
 
+  specialtyOffer(person: string, p: Procedure, now: number) {
+    return this.specialties.offer(person, p, now);
+  }
+
   skillsList() {
     return this.skills.list();
   }
@@ -886,10 +890,19 @@ export class JarvisState extends DurableObject<Env> {
     return this.proposals.disallow(person, category);
   }
 
-  /** What the router is given beside the question (lib/router.ts): the specialty it asks for, and past attempts like it. One call, so the question waits on one. */
-  async recallFor(person: string, ask: string) {
-    const [specialty, past] = await Promise.all([this.specialties.match(person, ask), this.episodes.match(person, ask, Date.now())]);
-    return { specialty, past };
+  /**
+   * What the router is given beside the question (lib/router.ts): the specialty it asks for, past attempts like it,
+   * and, taken by a question the person asked themselves, the steps their last answer offered to save. One call, so
+   * the question waits on one.
+   */
+  async recallFor(person: string, ask: string, take: boolean) {
+    const now = Date.now();
+    const [specialty, past, procedure] = await Promise.all([
+      this.specialties.match(person, ask),
+      this.episodes.match(person, ask, now),
+      take ? this.specialties.take(person, now) : null,
+    ]);
+    return { specialty, past, procedure };
   }
 
   conversationOf(person: string, now: number) {

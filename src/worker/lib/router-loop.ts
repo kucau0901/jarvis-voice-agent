@@ -82,6 +82,8 @@ export interface LoopDeps {
   /** The chosen model was refused on the first hop and the default is taking over. */
   onFallback?(e: unknown, model: string): void;
   record?(r: LoopRecord): void | Promise<void>;
+  /** Words to end an answer that used these tools with, or none: an offer to save its steps (lib/router.ts). */
+  offer?(tools: readonly string[]): string | null;
   now?(): number;
   log?(line: string): void;
 }
@@ -183,8 +185,10 @@ export async function routerLoop(deps: LoopDeps): Promise<void> {
         if (text) {
           // The pages it cited, for typed chat's link cards (src/app/ui/rich.ts); everything else reads only the text.
           const links = sourcesOf(citationsOf(res.output).filter((c) => /^https:/i.test(c.url)), MAX_LINKS);
-          sink.send({ type: "result", text, model, usage, ...(links.length ? { links } : {}) });
-          settle(model, true, text);
+          const offer = deps.offer?.(used);
+          const said = offer ? `${text}\n\n${offer}` : text;
+          sink.send({ type: "result", text: said, model, usage, ...(links.length ? { links } : {}) });
+          settle(model, true, said);
         } else {
           const said = "I could not work out an answer to that.";
           sink.send({ type: "error", text: said, model, usage });

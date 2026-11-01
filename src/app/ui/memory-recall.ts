@@ -40,7 +40,7 @@ export async function showSpecialties(key: string, box: HTMLElement): Promise<nu
     }));
     row.appendChild(btns);
     return row;
-  }) : [el("p", "note", 'None yet. After Jarvis does something in a few steps, say "save this as a specialty", and it does it the same way next time you ask.')]));
+  }) : [el("p", "note", 'None yet. When an answer takes Jarvis a few steps, it offers to keep them: say "save this as" and a name, and it does it the same way next time you ask.')]));
   return all.length;
 }
 
