@@ -308,6 +308,27 @@ console.log("specialties: saved only by the next message, in the person's own wo
   check("a routine: takes nothing, saves nothing", !routine.saved.length && routine.recalls[0]?.[2] === false, routine.recalls);
 }
 
+// A microphone that hears everyone (RunOptions.openMic, and the glasses): on the key, OpenAI keeps none of it.
+console.log("an open microphone on the key: nothing stored at OpenAI");
+{
+  const clock = { ...call, id: "fc_2", call_id: "call_2", name: "time_in", arguments: JSON.stringify({ zone: "Asia/Tokyo" }) };
+  for (const [name, run] of [["open microphone", { surface: "voice", openMic: true }], ["glasses", { surface: "glasses", charBudget: 350 }]] as const) {
+    const r = await ask({ plan: false, plans: [], run, keys: [{ items: [clock] }, { items: [answer("3 PM in Tokyo.")] }] });
+    const [one, two] = r.sent;
+    check(`${name}: not stored, not chained by id; the second hop carries the whole exchange`,
+      r.result?.type === "result" && r.sent.length === 2 && r.sent.every((s) => s.body.store === false && !("previous_response_id" in s.body)) &&
+      two!.body.input.length > one!.body.input.length && two!.body.input.at(-1)!.type === "function_call_output", r.sent.map((s) => ({ store: s.body.store, prev: s.body.previous_response_id })));
+  }
+  // Not stored, the model's reasoning comes back encrypted and goes on with the next step, as on the plan.
+  const reasoned = await ask({ plan: false, plans: [], run: { surface: "voice", openMic: true }, keys: [{ items: [thought, clock] }, { items: [answer("3 PM in Tokyo.")] }] });
+  check("its reasoning asked for, and carried to the next step",
+    JSON.stringify(reasoned.sent[0]!.body.include) === '["reasoning.encrypted_content"]' && reasoned.sent[1]!.body.input.some((i) => i.type === "reasoning"), reasoned.sent[1]!.body.input.map((i) => i.type));
+  // Taken by a line that was not said to Jarvis: the steps their last answer offered go back, for their next question.
+  const procedure = { asked: "the time in Asia/Tokyo, then clear", steps: ["time_in: Asia/Tokyo", "hide_display"] };
+  const putBack = await ask({ plan: false, plans: [], origin: true, run: { surface: "voice", openMic: true }, recalled: { procedure }, keys: [{ items: [answer("NOT_FOR_ME")] }] });
+  check("an overheard line leaves the steps offered as they were", putBack.recalls[0]?.[2] === true && putBack.offers.length === 1 && JSON.stringify(putBack.offers[0]) === JSON.stringify(procedure), putBack.offers);
+}
+
 // Only what the glasses heard can be "not for me" (lib/glasses.ts, issue #16): typed, the same words are an answer, kept as one.
 console.log("outside the glasses, \"Not for me.\" is an answer");
 {

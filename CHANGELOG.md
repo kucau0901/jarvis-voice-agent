@@ -19,6 +19,13 @@ of every release, and in the [README](README.md#updating).
 
 ### Added
 
+- **Glasses that hear everyone: an open microphone.** `/api/v1/voice` and
+  `/api/v1/stream` take `openMic`, for a microphone that hears whoever is
+  near (Ray-Ban Meta glasses, listening hands-free): what was not said to
+  Jarvis is neither answered nor kept, and the reply says `notForMe` so the
+  app keeps nothing either. Live voice takes `client: "glasses"`: worn, no
+  screen, and silent unless spoken to. The Jarvis glasses app for Android
+  uses both once it is updated.
 - **Glasses follow-ups after a pause.** The glasses forget at every pause,
   so "and tomorrow?" after lunch used to start from nothing. Now the first
   question after a pause also sees what you asked on the glasses earlier
@@ -28,6 +35,13 @@ of every release, and in the [README](README.md#updating).
   forget. It needs Memory (`memory.read`) on the glasses' token. **Settings →
   Devices → Glasses: earlier talk after a pause** makes it the last hour or
   the last day, or turns it off.
+
+### Changed
+
+- **Questions from glasses are not stored at OpenAI.** Answered with the
+  OpenAI key, a glasses question, or one from an open microphone, is no
+  longer kept at OpenAI: each step carries the exchange, as on the ChatGPT
+  plan.
 
 ### Fixed
 

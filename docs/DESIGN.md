@@ -1089,6 +1089,23 @@ nowhere, so it cannot come back after a pause; Usage counts the call without
 the words, which may be a stranger's. When unsure, the router answers: a
 wrong guess costs the wearer a repeat, never a dropped request.
 
+**An open microphone, spoken.** Ray-Ban Meta glasses have no display: their
+app asks `/api/v1/voice` turn by turn, and listens a few seconds for a
+follow-up, or opens a live voice. Both hear whoever is near: a TV, people
+talking among themselves. Turn by turn, the app says `openMic`, and
+the router gets the same rule as the G2's and the same word back; nothing is
+then said, the app is told (`notForMe`), and nothing is kept, on Jarvis or in
+the app. A live voice speaks straight into the room with nothing to check it,
+so its `glasses` instructions lean the other way from the router's: when it
+cannot tell and was not just spoken to, it stays silent, since the wearer only
+has to say its name again. Its handoffs to Jarvis carry `openMic` too, so the
+router judges again, and a "not for me" goes back to the voice as thinking,
+which it does not say. On the OpenAI key, open-microphone and glasses
+questions are not stored at OpenAI: each hop carries the exchange instead, as
+on the ChatGPT plan. None of this stops what is heard from reaching
+speech-to-text, Home Assistant and the router before it is judged; only a
+closed microphone does that.
+
 **Search, by words only.** Chat's Search box (`lib/search.ts`,
 `ui/Search.ts`) looks through the person's conversation, memory (their own
 book and the family's) and mail at once, as Hark's does, and groups what it

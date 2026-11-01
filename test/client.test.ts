@@ -59,6 +59,7 @@ console.log("\nthe prompt actually changes with it");
   const desk = jarvisPrompt("desktop");
   const phone = jarvisPrompt("mobile");
   const dev = jarvisPrompt("device");
+  const glasses = jarvisPrompt("glasses");
 
   check("the car is told it is a car", /riding in the user's Tesla/.test(car));
   check("the desktop is not told it is driving", !/probably driving/.test(desk), desk.slice(0, 200));
@@ -69,7 +70,17 @@ console.log("\nthe prompt actually changes with it");
   check("the phone knows it is a phone", /on a phone|on their phone/i.test(phone));
 
   // The parts that are true wherever it runs must survive the split.
-  for (const [name, p] of [["car", car], ["desktop", desk], ["mobile", phone], ["device", dev]] as const) {
+  // Glasses with no screen whose microphone hears everyone (the Ray-Bans' live voice): silent unless spoken to.
+  check("glasses: worn, and the voice in their ear", /speaking in their ear through the glasses they are wearing/.test(glasses));
+  check("glasses: no screen, and the microphone hears everyone near them", /NO SCREEN, AND THE MICROPHONE HEARS EVERYONE NEAR THEM/.test(glasses) && /never refer to a screen/.test(glasses));
+  check("glasses: speaks only when spoken to, however short, in any language", /Speak only when the user speaks to you/.test(glasses) && /"and tomorrow\?", "tutup lampu bilik"/.test(glasses));
+  check("glasses: anything else, silence: no acknowledgement, nothing delegated", /say nothing and delegate nothing/.test(glasses) && /No acknowledgement/.test(glasses));
+  check("glasses: unsure and not just spoken to, silent", /When you cannot tell and they have not just spoken to you, stay silent/.test(glasses));
+  check("glasses: never acts on what someone else said", /Never repeat, sum up, translate or act on what someone else said/.test(glasses));
+  const told = jarvisPrompt("glasses", { alert: true });
+  check("glasses: what Jarvis hands it, an alert included, is not overheard: said", /is not overheard: say it, briefly/.test(glasses) && /AN ALERT TO START WITH/.test(told) && /Speak only when the user speaks to you/.test(told));
+  check("the others are not told any of it", ![car, desk, phone, dev].some((p) => /HEARS EVERYONE|Speak only when the user speaks to you/.test(p)));
+  for (const [name, p] of [["car", car], ["desktop", desk], ["mobile", phone], ["device", dev], ["glasses", glasses]] as const) {
     check(`${name}: keeps the butler manner`, /composed British butler/.test(p));
     check(`${name}: keeps the no-narrating-machinery rule`, /Never say which system you are contacting/.test(p));
     check(`${name}: keeps the honesty rule`, /Never invent a REASON/.test(p));
@@ -102,7 +113,7 @@ console.log("\nthe prompt actually changes with it");
 
 console.log("\nisClientKind");
 {
-  check("accepts the four", ["car", "desktop", "mobile", "device"].every(isClientKind));
+  check("accepts the five", ["car", "desktop", "mobile", "device", "glasses"].every(isClientKind));
   check("rejects anything else", !isClientKind("toaster") && !isClientKind(null) && !isClientKind(7));
 }
 

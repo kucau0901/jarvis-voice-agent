@@ -370,6 +370,11 @@ try {
   // What the glasses hear may not be said to Jarvis (lib/glasses.ts, issue #16): its rule is the glasses', an instruction of Jarvis's own.
   const ruled = (input: { role?: string }[], role: string) => input.some((m) => m.role === role && JSON.stringify(m).includes("NOT_FOR_ME"));
   const plain = await prepareRouter(withGlasses as never, [{ role: "user", text: "and tomorrow?" }], new AbortController().signal, ["*"] as never, {});
+  // A spoken open microphone (the Ray-Bans' push-to-talk, a live voice's handoff): the same rule, in Jarvis's own instructions.
+  const open = await prepareRouter(withGlasses as never, [{ role: "user", text: "and tomorrow?" }], new AbortController().signal, ["*"] as never, { surface: "voice", openMic: true });
+  const spoken = await prepareRouter(withGlasses as never, [{ role: "user", text: "and tomorrow?" }], new AbortController().signal, ["*"] as never, { surface: "voice" });
+  check("  an open microphone, spoken: the same rule, in Jarvis's own instructions, never the user's; not without it",
+    ruled(open.input, "developer") && !ruled(open.input, "user") && !spoken.input.some((m) => JSON.stringify(m).includes("NOT_FOR_ME")));
   check("  the glasses' rule for what was not said to Jarvis: in its own instructions, never as the user's, and only on the glasses",
     ruled(midway.input, "developer") && !ruled(midway.input, "user") && !plain.input.some((m) => JSON.stringify(m).includes("NOT_FOR_ME")));
 } finally {

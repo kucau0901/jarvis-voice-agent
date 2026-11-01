@@ -1,12 +1,13 @@
 import type { Env } from "../types.ts";
 import { err } from "../lib/http.ts";
-import { SseStream } from "../lib/sse.ts";
+import { SseStream, type EventSink } from "../lib/sse.ts";
 import { buildHistory, type Turn } from "../lib/history.ts";
 import { originOf } from "../lib/shared.ts";
 import type { Principal } from "../lib/auth.ts";
 import type { Grant } from "../lib/scopes.ts";
 import { filesFrom, photosFrom } from "../lib/photos.ts";
 import { run, type RunOptions } from "../lib/router.ts";
+import { notForMe } from "../lib/glasses.ts";
 
 export async function handleDelegate(
   req: Request,
@@ -19,7 +20,7 @@ export async function handleDelegate(
   // No OpenAI key is not refused here: Home Assistant's Assist can still
   // answer a typed house request, and run() says plainly what cannot be.
 
-  let body: { transcript?: unknown; delegationId?: unknown; images?: unknown; files?: unknown; surface?: unknown; origin?: unknown };
+  let body: { transcript?: unknown; delegationId?: unknown; images?: unknown; files?: unknown; surface?: unknown; origin?: unknown; openMic?: unknown };
   try {
     body = await req.json();
   } catch {
@@ -63,6 +64,8 @@ export async function handleDelegate(
     ...(body.surface === "chat" ? { surface: "chat" as const, assist: true } : {}),
     // One conversation across the user's devices (lib/shared.ts).
     ...(origin ? { origin } : {}),
+    // A live voice on glasses whose microphone hears everyone: the router judges again (RunOptions.openMic).
+    ...(body.openMic === true ? { openMic: true } : {}),
     waitUntil: (p) => ctx.waitUntil(p),
   };
   /*
@@ -73,9 +76,31 @@ export async function handleDelegate(
    * killed half-way: a fact remembered during a drive was gone by the next one.
    * It does not keep the work alive indefinitely (see the note above).
    */
-  ctx.waitUntil(run(env, turns, sse, ac.signal, grants, opts).finally(() => sse.close()));
+  ctx.waitUntil(run(env, turns, opts.openMic ? notForMeSink(sse) : sse, ac.signal, grants, opts).finally(() => sse.close()));
 
   return sse.response();
+}
+
+/**
+ * For an open microphone: the router's word for "not said to me" (lib/glasses.ts)
+ * never reaches the live voice to be said. With no tool run, the result says so
+ * (notForMe), for the app to tell the live voice silently; after one, it is only
+ * emptied, as what was done stays to be said.
+ */
+function notForMeSink(sse: EventSink): EventSink {
+  let tools: unknown[] = [];
+  return {
+    send(ev) {
+      if (ev.type === "used" && Array.isArray(ev.tools)) tools = ev.tools;
+      if (ev.type === "result" && typeof ev.text === "string" && notForMe(ev.text)) {
+        return sse.send({ ...ev, text: "", ...(tools.length ? {} : { notForMe: true }) });
+      }
+      sse.send(ev);
+    },
+    get isClosed() {
+      return sse.isClosed;
+    },
+  };
 }
 
 function normaliseTranscript(raw: unknown): Turn[] {

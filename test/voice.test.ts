@@ -13,6 +13,7 @@ import {
 import { jarvisPrompt, spokenReplyInstructions } from "../src/worker/lib/prompt.ts";
 import { requiredScope } from "../src/worker/lib/scopes.ts";
 import { handleVoice } from "../src/worker/routes/voice.ts";
+import { handleDelegate } from "../src/worker/routes/delegate.ts";
 import { OVERHEARD_TEXT } from "../src/worker/lib/glasses.ts";
 import { validateChanges } from "../src/worker/lib/settings.ts";
 
@@ -269,6 +270,116 @@ console.log("\nan answer for a small display (chars)");
   check("…an answer is shown and kept as before", mine.text === "Tonight is clear, 26 degrees." && mine.threaded === 1, mine);
   const spokenWord = await heard("NOT_FOR_ME", null);
   check("spoken, with no small display, the same words are only an answer: whole, and kept", spokenWord.text === "NOT_FOR_ME" && spokenWord.threaded === 1, spokenWord);
+  answer = () => Response.json({ text: "hello" });
+}
+
+// Glasses with no display, their microphone hearing everyone (RunOptions.openMic): the Ray-Bans' push-to-talk.
+console.log("\nan open microphone, spoken (openMic)");
+{
+  const ctx = (later: Promise<unknown>[]) => ({ waitUntil: (w: Promise<unknown>) => void later.push(w), passThroughOnException() {} }) as never;
+  const owner = { kind: "owner" } as never;
+  // Hop by hop: a tool's name is a call to it, anything else the answer.
+  const hops = (...said: string[]) => (url: string) => {
+    if (!url.endsWith("/responses")) return Response.json({});
+    const text = said.shift() ?? "";
+    const output = text.startsWith("call:")
+      ? [{ type: "function_call", id: "fc1", call_id: "c1", name: text.slice(5), arguments: JSON.stringify({ zone: "Asia/Tokyo" }), status: "completed" }]
+      : [{ type: "message", id: "m1", role: "assistant", status: "completed", content: [{ type: "output_text", text, annotations: [] }] }];
+    return Response.json({ id: "r1", object: "response", status: "completed", output, output_text: text.startsWith("call:") ? "" : text, usage: { input_tokens: 1, output_tokens: 1 } });
+  };
+  const kept = { threaded: 0, shared: 0, offered: 0, usage: [] as { ask?: string }[] };
+  const stub = new Proxy({}, {
+    get: (_t, m) => (m === "then" ? undefined : async (...a: unknown[]) => {
+      if (m === "loadThread" || m === "recentShared") return [];
+      if (m === "appendThread") return void kept.threaded++;
+      if (m === "appendShared") return void kept.shared++;
+      if (m === "recordUsage") return void kept.usage.push(a[0] as { ask?: string });
+      if (m === "specialtyOffer") return void kept.offered++;
+      return undefined;
+    }),
+  });
+  const heard = async (body: Record<string, unknown>, accept = "application/json") => {
+    calls = [];
+    kept.threaded = 0;
+    kept.shared = 0;
+    kept.offered = 0;
+    kept.usage = [];
+    const later: Promise<unknown>[] = [];
+    const r = await handleVoice(new Request("https://j.test/api/v1/voice", { method: "POST", headers: { accept }, body: JSON.stringify({ text: "call now, offer ends tonight", thread: "rb", origin: { id: "phone-1", label: "Phone" }, ...body }) }),
+      env({ STATE: { idFromName: () => "j", get: () => stub } }), ctx(later), owner, ["*"] as never);
+    const raw = await r.text();
+    await Promise.all(later);
+    const told = calls.filter((c) => c.url.endsWith("/responses")).map((c) => String(c.init.body)).join("");
+    const spoken = calls.some((c) => c.url.includes("/audio/speech"));
+    return { status: r.status, type: r.headers.get("content-type") ?? "", raw, told, spoken, ...kept, usage: [...kept.usage] };
+  };
+  answer = hops("NOT_FOR_ME");
+  const notMine = await heard({ openMic: true, reply: "audio" });
+  const body = JSON.parse(notMine.raw) as { text: string; notForMe?: boolean; audio?: unknown };
+  check("told the microphone hears everyone, as the glasses are", /HEAR WHATEVER IS SAID NEAR THE USER/.test(notMine.told) && /exactly NOT_FOR_ME/.test(notMine.told));
+  check("not for Jarvis: nothing said, and the reply says so", body.text === "" && body.notForMe === true && !body.audio && !notMine.spoken, body);
+  check("…and nothing kept: not the thread, not the conversation shared between devices", notMine.threaded === 0 && notMine.shared === 0, notMine);
+  check("…the call in Usage, without the words heard", notMine.usage.length === 1 && notMine.usage[0]!.ask === "(not for me)", notMine.usage);
+  answer = hops("NOT_FOR_ME");
+  const streamed = await heard({ openMic: true, reply: "audio" }, "text/event-stream");
+  const events = streamed.raw.split("\n\n").filter((b) => b.includes("data:")).map((b) => JSON.parse(b.slice(b.indexOf("data:") + 5)) as { type: string; text?: string; notForMe?: boolean });
+  const results = events.filter((e) => e.type === "result");
+  check("streamed: one result saying so, empty, and no speech", results.length === 1 && results[0]!.text === "" && results[0]!.notForMe === true && !events.some((e) => e.type === "audio"), events.map((e) => e.type));
+  answer = hops("NOT_FOR_ME");
+  const asAudio = await heard({ openMic: true, reply: "audio" }, "audio/mpeg");
+  check("asked for audio: there is none, so the words come back as JSON", asAudio.type.includes("json") && JSON.parse(asAudio.raw).notForMe === true, asAudio.type);
+  answer = hops("The gate is closed.");
+  const mine = await heard({ openMic: true, reply: "text", text: "is the gate closed?" });
+  check("for Jarvis: answered and kept as before", JSON.parse(mine.raw).text === "The gate is closed." && !("notForMe" in JSON.parse(mine.raw)) && mine.threaded === 1 && mine.shared === 1 && mine.usage[0]!.ask === "is the gate closed?", mine);
+  answer = hops("call:time_in", "NOT_FOR_ME");
+  const acted = await heard({ openMic: true, reply: "text" });
+  check("a tool ran before its word: the word never said, the exchange kept", JSON.parse(acted.raw).text === "" && !("notForMe" in JSON.parse(acted.raw)) && acted.threaded === 1, acted);
+  answer = hops("NOT_FOR_ME");
+  const closed = await heard({ reply: "text" });
+  check("no open microphone: not told it, and the same words are only an answer", !/HEAR WHATEVER IS SAID/.test(closed.told) && JSON.parse(closed.raw).text === "NOT_FOR_ME" && closed.threaded === 1, closed.raw);
+  // Two tools, then the word (against its rule): no offer to save steps goes after it, so it is never said.
+  answer = hops("call:time_in", "call:hide_display", "NOT_FOR_ME");
+  const twice = await heard({ openMic: true, reply: "audio" });
+  check("two tools, then its word: no offer to save the steps after it, and nothing said", JSON.parse(twice.raw).text === "" && twice.offered === 0 && !twice.spoken, twice.raw);
+  answer = hops("NOT_FOR_ME");
+  const charsOnly = await heard({ chars: 200, reply: "text" });
+  check("a small display alone: the fixed line, and the reply says so too", JSON.parse(charsOnly.raw).text === OVERHEARD_TEXT && JSON.parse(charsOnly.raw).notForMe === true && charsOnly.threaded === 0, charsOnly.raw);
+  answer = hops("NOT_FOR_ME");
+  const shown = await heard({ openMic: true, chars: 200, reply: "text" });
+  check("on a small display, the fixed line, and the reply says so", JSON.parse(shown.raw).text === OVERHEARD_TEXT && JSON.parse(shown.raw).notForMe === true && shown.threaded === 0, shown.raw);
+  answer = () => Response.json({ text: "hello" });
+}
+
+// A live voice on glasses hands a question to Jarvis (/api/v1/stream): with openMic the router judges again.
+console.log("\na live voice's handoff from glasses (openMic)");
+{
+  const handoff = async (body: Record<string, unknown>, ...said: string[]) => {
+    calls = [];
+    answer = (url) => {
+      if (!url.endsWith("/responses")) return Response.json({});
+      const text = said.shift() ?? "";
+      const output = text.startsWith("call:")
+        ? [{ type: "function_call", id: "fc1", call_id: "c1", name: text.slice(5), arguments: JSON.stringify({ zone: "Asia/Tokyo" }), status: "completed" }]
+        : [{ type: "message", id: "m1", role: "assistant", status: "completed", content: [{ type: "output_text", text, annotations: [] }] }];
+      return Response.json({ id: "r1", object: "response", status: "completed", output, output_text: text.startsWith("call:") ? "" : text, usage: { input_tokens: 1, output_tokens: 1 } });
+    };
+    const later: Promise<unknown>[] = [];
+    const r = await handleDelegate(new Request("https://j.test/api/v1/stream", { method: "POST", body: JSON.stringify({ transcript: [{ role: "user", text: "call now, offer ends tonight" }], ...body }) }),
+      env(), { waitUntil: (w: Promise<unknown>) => void later.push(w), passThroughOnException() {} } as never, ["*"] as never, { kind: "owner" } as never);
+    const raw = await r.text();
+    await Promise.all(later);
+    const told = calls.filter((c) => c.url.endsWith("/responses")).map((c) => String(c.init.body)).join("");
+    const result = raw.split("\n\n").filter((b) => b.includes("data:")).map((b) => JSON.parse(b.slice(b.indexOf("data:") + 5)) as Record<string, unknown>).find((e) => e.type === "result");
+    return { told, result };
+  };
+  const notMine = await handoff({ openMic: true }, "NOT_FOR_ME");
+  check("told the microphone hears everyone", /HEAR WHATEVER IS SAID NEAR THE USER/.test(notMine.told));
+  check("not for Jarvis: an empty result that says so, for the app to tell the live voice silently",
+    notMine.result?.text === "" && notMine.result?.notForMe === true, notMine.result);
+  const acted = await handoff({ openMic: true }, "call:time_in", "NOT_FOR_ME");
+  check("a tool ran before its word: the word emptied, what was done not hidden", acted.result?.text === "" && !("notForMe" in (acted.result ?? {})), acted.result);
+  const plain = await handoff({}, "NOT_FOR_ME");
+  check("without it: not told, and the result as the router gave it", !/HEAR WHATEVER IS SAID/.test(plain.told) && plain.result?.text === "NOT_FOR_ME" && !("notForMe" in (plain.result ?? {})), plain.result);
   answer = () => Response.json({ text: "hello" });
 }
 

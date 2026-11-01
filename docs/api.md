@@ -356,7 +356,8 @@ the speaking. `chars=350` is for a device that shows the answer on a small
 display, such as glasses: the answer is written for it as for the
 [G2 route](#even-realities-g2-glasses) (the point first, plain text) and cut
 at a sentence to that many characters (80 to 2 000); what was heard but not
-said to Jarvis gets the G2 route's fixed line, and no turn is kept for it. The app sends `multipart/form-data` — an `audio` file and an
+said to Jarvis gets the G2 route's fixed line, the reply carries
+`"notForMe": true`, and no turn is kept for it. The app sends `multipart/form-data` — an `audio` file and an
 `options` JSON field — with `Accept: text/event-stream`, and gets `transcript`,
 `progress`, `display`, `result`, then the answer's speech sentence by sentence
 as `audio` events, so it starts talking about a second after the words are
@@ -365,6 +366,18 @@ ready.
 `transcribe=1` (or `"transcribe": true` in the app's `options`) only hears
 the recording: `{ok, transcript, heardBy}`, nothing answered or spoken. The
 chat box's mic uses it to dictate. The same `voice` and `ask` grants apply.
+
+`openMic=1` (or `"openMic": true`) is for a microphone that hears whoever is
+near, not only its wearer: glasses with no display, listening hands-free. The
+router is told so, as the [G2 route](#even-realities-g2-glasses) is, and when
+nothing heard was said to Jarvis the answer is empty, nothing is spoken, and
+the reply carries `"notForMe": true`: `text` is `""` in the JSON, one `result`
+event with `notForMe` and no `audio` events when streamed, and the JSON rather
+than audio for `Accept: audio/*`. Nothing of it is kept: not the thread, not
+the conversation shared between devices, and Usage counts it as
+"(not for me)". With `chars`, the display gets the fixed line instead, as
+above. If a tool did run, the exchange is kept, `text` is `""` without
+`notForMe`, and the router's word is never said. Absent, `notForMe` is false.
 
 How it hears and speaks is set in Settings → Voice, which also sets the voice
 of alerts said aloud: OpenAI (default; any language, mixed ones too; hearing
@@ -764,6 +777,13 @@ meantime. Most devices should not bother.
 - **There is no `[DONE]` sentinel.** The stream simply ends.
 - Event `type` is one of `progress`, `tool`, `used`, `display`, `job`, `draft`,
   `address`, `result`, `error`. Skip a type you do not know: more may be added.
+- `"openMic": true` in the body, for a live voice on glasses whose microphone
+  hears everyone, has the router judge again whether the question was said to
+  Jarvis. When it was not and no tool ran, the `result` has `"text":""` and
+  `"notForMe":true`, and nothing is kept: tell the live voice so with
+  `session.thinking.append`, which it does not say aloud, never
+  `session.commentary.append`, which it does. If a tool did run first, `text`
+  is `""` without `notForMe`: what was done stays, and there is nothing to say.
 - `job` is a background job the question started (`{"type":"job","id","title","engine"}`);
   its result comes later as an alert, not in this stream.
 - `draft` is a mail Jarvis wrote and saved to the person's Gmail Drafts
@@ -1090,6 +1110,13 @@ why the conversation has to be sent. The Worker does not do this for you.
 Permitted client events: `session.commentary.append`,
 `session.thinking.append`, `session.input_audio.mute`,
 `session.input_audio.unmute`, `session.close`.
+
+`client` says where the voice is heard, and so how it speaks: `car` (the
+default), `desktop`, `mobile`, `device` (a small device with no screen), or
+`glasses`: worn, no screen, and a microphone that hears everyone near the
+wearer, so the voice speaks only when spoken to and stays silent otherwise.
+A server older than 2.8.0 takes an unknown value as `car`: check `version` in
+`GET /api/health` before sending `glasses`.
 
 **For smartglasses, consider not doing any of this.** If they can load a web
 page, point them at `https://jarvis.example.com` — it is already a web app

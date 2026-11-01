@@ -31,7 +31,7 @@ import { DRAWS_ON_SCREEN } from "../tools/place.ts";
 import { isResearchCap, jobTool } from "./jobs.ts";
 import { Collector } from "./collector.ts";
 import { clientFor, forKey, forPlan, modelAuth, planFailed, planRespond, refusalOf } from "./openai-auth.ts";
-import { DEFAULT_CHAR_BUDGET, earlierOnGlasses, earlierSince, glassesInstructions, overheard } from "./glasses.ts";
+import { DEFAULT_CHAR_BUDGET, OVERHEARD_RULE, earlierOnGlasses, earlierSince, glassesInstructions, notForMe, overheard } from "./glasses.ts";
 import type { Said } from "./conversation.ts";
 import { spokenReplyInstructions } from "./prompt.ts";
 import {
@@ -120,6 +120,13 @@ export interface RunOptions {
    * the question, dated and quoted (lib/glasses.ts earlierOnGlasses), for those whose memory it is.
    */
   earlierOnGlasses?: boolean;
+  /**
+   * The microphone hears whoever is near the user, not only them: glasses with
+   * no display, or a live voice's handoff (routes/voice.ts, routes/delegate.ts).
+   * The router is told so (lib/glasses.ts OVERHEARD_RULE), what was not said to
+   * Jarvis is kept nowhere, and on the key OpenAI keeps none of it either.
+   */
+  openMic?: boolean;
   /**
    * A skill's bot asking through its own address (routes/skills.ts handleBot),
    * by its name: the router is told the question is the bot's, not the
@@ -247,6 +254,7 @@ export async function prepareRouter(
       ? glassesInstructions(opts.charBudget ?? DEFAULT_CHAR_BUDGET)
       : "") +
     (opts.surface === "voice" ? spokenReplyInstructions(env.JARVIS_AGENT_NAME) : "") +
+    (opts.openMic ? OVERHEARD_RULE : "") +
     (opts.surface === "job" || opts.surface === "research" ? JOB_INSTRUCTIONS : "") +
     (opts.surface === "research" ? RESEARCH_INSTRUCTIONS : "") +
     (opts.surface === "chat" ? CHAT_INSTRUCTIONS : "") +
@@ -439,7 +447,10 @@ export async function run(
   let planModel: string | null = null;
   // On the plan nothing is stored at OpenAI, so each hop carries the whole
   // exchange, and keeps doing so on the key after falling back mid-question.
-  let carried: OpenAI.Responses.ResponseInput | null = plan ? [] : null;
+  // Nor on the key for a microphone that hears everyone: a stranger's words are
+  // not left at OpenAI either.
+  const unstored = opts.surface === "glasses" || !!opts.openMic;
+  let carried: OpenAI.Responses.ResponseInput | null = plan || unstored ? [] : null;
   let lastOutput: OpenAI.Responses.ResponseInput = [];
   const failed: { tool: string; said: string }[] = [];
   // Every call, for the steps an answer may offer to save (lib/specialties.ts), and whether one started a background job.
@@ -520,9 +531,11 @@ export async function run(
           ...builtinTools(env),
         ],
         tool_choice: "auto",
+        // Not stored, so the reasoning comes back to be carried, as on the plan.
+        ...(unstored ? { include: ["reasoning.encrypted_content" as const] } : {}),
         ...(previousResponseId && !carried ? { previous_response_id: previousResponseId } : {}),
         ...(explicitCache(model) ? { prompt_cache_options: { mode: "explicit" as const, ttl: "30m" as const } } : {}),
-        store: true,
+        store: !unstored,
       };
       let res: OpenAI.Responses.Response;
       try {
@@ -533,7 +546,8 @@ export async function run(
         effort = null;
         res = await create(params);
       }
-      if (carried) lastOutput = forKey(res.output as unknown as OpenAI.Responses.ResponseInput);
+      // The key's own steps go on as they came, reasoning and all, when nothing is stored; only what the plan said is made fit for it.
+      if (carried) lastOutput = unstored ? (res.output as unknown as OpenAI.Responses.ResponseInput) : forKey(res.output as unknown as OpenAI.Responses.ResponseInput);
       return res;
     },
     runCalls: async (calls) => {
@@ -554,8 +568,10 @@ export async function run(
     // offering its steps, kept for their next question (lib/specialties.ts). Not for a routine, a tile, a bot or a job,
     // none asked from a screen or device, and a routine's or a bot's not in anyone's own words; nor one that failed in
     // part, started a background job or followed a specialty already; nor on glasses, whose answer is cut to fit.
-    offer(tools) {
+    offer(tools, text) {
       const own = ownWords(turns, opts);
+      // Heard but not said to Jarvis (lib/glasses.ts): nothing to offer, and the word must stay alone to be seen.
+      if (notForMe(text)) return null;
       // Taken only with memory.read (prepareRouter) and kept only with a state object: offered only where it can be saved.
       if (!own || !opts.origin || opts.surface === "glasses" || !allows(grants, "memory.write") || !allows(grants, "memory.read") || !stateStub(env)) return null;
       if (tools.length < 2 || failed.length || startedJob || p?.specialty) return null;
@@ -581,9 +597,11 @@ export async function run(
       }
       // The steps just offered, until their next question (lib/specialties.ts).
       if (offered) writes.push((stateStub(env)?.specialtyOffer(env.JARVIS_PERSON || OWNER, offered, Date.now()) ?? Promise.resolve()).catch(() => {}));
-      // Heard on the glasses but not said to Jarvis, and nothing done (lib/glasses.ts): no part of any conversation,
+      // Heard by an open microphone but not said to Jarvis, and nothing done (lib/glasses.ts): no part of any conversation,
       // and its words, perhaps a stranger's, not kept in Usage either.
-      const ignored = opts.surface === "glasses" && overheard(r);
+      const ignored = (opts.surface === "glasses" || !!opts.openMic) && overheard(r);
+      // It took the steps their last answer offered (prepareRouter) before it was judged: they go back, for their next question.
+      if (ignored && p?.procedure) writes.push((stateStub(env)?.specialtyOffer(env.JARVIS_PERSON || OWNER, p.procedure, Date.now()) ?? Promise.resolve()).catch(() => {}));
       // One conversation across devices (lib/shared.ts): what was asked here, and answered.
       const asked = lastAsk(turns);
       if (opts.origin && allows(grants, "memory.read") && r.ok && asked && !ignored) {
