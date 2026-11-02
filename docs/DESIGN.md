@@ -1353,6 +1353,16 @@ Whatever the schedule, it says at most four things a day to one person, and a
 look past that is not made at all, because each look is a paid answer. It is
 one an alarm with briefs, for the same reason.
 
+**A look follows up on what was left open.** Beside the day it is given the
+threads left open since a look last judged (kept under `looked:<person>`, so
+a look held back by the day's say leaves them for the next): a message to
+family that ran out unanswered, one still unanswered after its sender was
+told, a job's card that lapsed without an OK, and a call they approved that
+failed. Each is put to the model once. What was already reported is left out:
+a group's answers (its own alert), a rota's (it comes round again), an
+escalated one (the whole family was told), a brief's card (the next brief
+offers it again), and a call allowed without asking (its job's alert said it).
+
 **"Leave now" uses what is there.** The car's position if Tessie is set up,
 else the saved home; live traffic if Google Maps is set up; otherwise a plain
 reminder a fixed time ahead. Routes are billed per call, so drive times are

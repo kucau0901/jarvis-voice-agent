@@ -451,7 +451,9 @@ export class JarvisState extends DurableObject<Env> {
           day: dayOf(now, timeZone),
           noticed: this.noticed,
           jobs: (await this.jobs.list()).filter((j) => personOfWho(j.createdBy) === person),
-          waiting: async () => (await this.proposals.list(person, now)).filter((p) => p.state === "pending"),
+          proposals: () => this.proposals.list(person, now),
+          // As far as the family tools reach them (tools/family.ts, scope chat); without a family there are none.
+          relays: allows(grants, "chat") ? (await this.relays.forPerson(person, now)).sent : [],
         });
         if (typeof n === "string") return { ok: false, text: n };
         if (n.usage) {
