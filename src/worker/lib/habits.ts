@@ -1,8 +1,7 @@
 import type { Storage } from "./state-host.ts";
 import { tokenise } from "./memory.ts";
 import { localParts } from "./routines.ts";
-import { jobTool } from "./jobs.ts";
-import { allows, type Grant } from "./scopes.ts";
+import { allows, type Grant, type Scope } from "./scopes.ts";
 import { overlap } from "./episodes.ts";
 
 /**
@@ -15,9 +14,7 @@ import { overlap } from "./episodes.ts";
  * MIN_WORDS words that count ("check it again") is a follow-up, not a habit.
  *
  * Only what the router says may be noted (lib/router.ts record): their own
- * words, answered by reading alone (jobTool) or by the house: Assist's
- * answers and Home Assistant's own tools, whatever they change, since what
- * the house may do is set in Home Assistant. Each habit is offered once, and not again for OFFERED_MS, whatever
+ * words, answered with tools a routine can use (noteworthy). Each habit is offered once, and not again for OFFERED_MS, whatever
  * became of the card; one a routine of theirs already asks is not offered.
  */
 
@@ -54,17 +51,20 @@ export interface Habit {
   days: number[];
 }
 
-/** A Home Assistant tool, through its MCP server whatever the server is called: its own names start ha_ (lib/jobs.ts). */
-const houseTool = (name: string): boolean => /__ha_/.test(name);
+/** What a routine's question runs without (routes/routines.ts askForRoutine): nothing to draw on, and never Hermes. */
+const UNATTENDED: readonly Scope[] = ["screen", "hermes"];
 
 /**
  * Whether a finished turn may be noted (lib/router.ts record): answered, for someone who may have routines, with only
- * tools that read (jobTool) or are the house's (houseTool). Assist's answers use none. What the house may do is set in
- * Home Assistant, and the routine is made only on their tap; anything else that sends, changes or unlocks (mail, the
- * car, memory, Hermes) is never offered.
+ * tools a routine can use, as `offered` (the tools the router was given) names their scopes: anything that reads,
+ * sends or changes, the house's and the car's included, but nothing that draws on a screen or asks Hermes, which a
+ * routine runs without. The routine is made only on their tap, with no more than they could reach.
  */
-export const noteworthy = (r: { ok: boolean; tools: readonly string[] }, grants: readonly Grant[]): boolean =>
-  r.ok && allows(grants, "routines") && r.tools.every((t) => jobTool({ name: t }) || houseTool(t));
+export const noteworthy = (r: { ok: boolean; tools: readonly string[] }, grants: readonly Grant[], offered: readonly { name: string; scope?: Scope }[]): boolean =>
+  r.ok && allows(grants, "routines") && r.tools.every((name) => {
+    const t = offered.find((o) => o.name === name);
+    return !!t && !(t.scope && UNATTENDED.includes(t.scope));
+  });
 
 const minuteOf = (at: number, timeZone: string) => {
   const p = localParts(at, timeZone);

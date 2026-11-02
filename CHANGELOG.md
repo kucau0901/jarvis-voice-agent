@@ -32,8 +32,9 @@ of every release, and in the [README](README.md#updating).
 - **Routines from habits.** Ask the same thing at about the same time on three
   days ("what's the traffic to work like?" most mornings) and Jarvis offers,
   once and quietly, to make it a routine that asks for you. One tap makes it.
-  Questions answered by reading are offered, and so are house requests
-  ("turn on the porch light" every evening); never mail, the car or Hermes.
+  Anything a routine can do is offered: questions, house requests ("turn on
+  the porch light" every evening), the car, mail. Not what needs a screen or
+  Hermes, which routines run without.
 - **Skills, added in chat.** "Add a skill: Wren, my Grok bot, for the house
   and the car, at https://…" lets Jarvis send requests to an outside service
   (a bot, an automation, your own code), or, said as an MCP server, use its
