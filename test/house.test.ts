@@ -1,6 +1,8 @@
 // Watching the house (lib/house.ts): what matters, read in one template call
 // with no model, compared with the read before, and seen at a glance.
-import { active, changes, FRESH_MS, House, houseSection, houseTemplate, KINDS, MAX_THINGS, parseThings, type Thing } from "../src/worker/lib/house.ts";
+import { active, changes, FRESH_MS, HEARD_MS, House, houseSection, houseTemplate, KINDS, MAX_BATCH, MAX_THINGS, parseBatch, parseThings, watchList, type Thing } from "../src/worker/lib/house.ts";
+import { handleHouse } from "../src/worker/routes/house.ts";
+import { requiredScope } from "../src/worker/lib/scopes.ts";
 
 let pass = 0;
 let fail = 0;
@@ -108,6 +110,52 @@ console.log("\nreading and keeping the house");
   let asked = "";
   await h.glance(async (t) => ((asked = t), raw(house)), 200_000);
   check("what was added is read", asked.includes("'sensor.freezer_temperature'"));
+}
+
+console.log("\nthe component in Home Assistant");
+{
+  const b = parseBatch({ changes: [{ id: "light.study", from: "off", to: "on" }, { id: "not an id", to: "on" }, { id: "lock.front_door", to: 3 }, "x"] });
+  check("a batch: each change, malformed ones left out", JSON.stringify(b) === '[{"id":"light.study","from":"off","to":"on"}]', b);
+  check("not a batch: null", parseBatch({ change: [] }) === null && parseBatch(null) === null);
+  check(`at most ${MAX_BATCH} at a time`, parseBatch({ changes: Array.from({ length: MAX_BATCH + 5 }, () => ({ id: "light.a", to: "on" })) })!.length === MAX_BATCH);
+  const w1 = await watchList([thing("lock.front_door", "locked"), thing("light.study", "off")]);
+  const w2 = await watchList([thing("light.study", "on"), thing("lock.front_door", "unlocked")]);
+  const w3 = await watchList([thing("light.study", "on")]);
+  check("the watch list, sorted, with a version that moves only with what is watched", w1.entities.join() === "light.study,lock.front_door" && w1.version === w2.version && w1.version !== w3.version && w1.version.length === 12, [w1, w3]);
+
+  const h = new House(fakeStorage() as never);
+  check("before anything was read, a batch changes nothing", (await h.apply([{ id: "light.study", from: "off", to: "on" }], 1000)).length === 0);
+  let reads = 0;
+  const render = async () => (reads++, raw([thing("light.study", "off"), thing("lock.front_door", "locked"), thing("sensor.freezer", "-18", { kind: "temperature" })]));
+  const first = await h.watching(render, 10_000);
+  check("asked what to watch: the house read once, and kept", reads === 1 && first.things.length === 3);
+  await h.watching(render, 20_000);
+  check("asked again soon: no read", reads === 1);
+  const c = await h.apply([
+    { id: "light.study", from: "off", to: "on" },
+    { id: "lock.front_door", from: "locked", to: "unavailable" },
+    { id: "sensor.freezer", from: "-18", to: "-12" },
+    { id: "light.not_watched", from: "off", to: "on" },
+    { id: "light.study", from: "on", to: "on" },
+  ], 30_000);
+  check("what changed, as from what Jarvis knew: not Home Assistant starting, a number, or a thing not watched", JSON.stringify(c) === '[{"id":"light.study","from":"off","to":"on"}]', c);
+  const kept = (await h.last())!;
+  check("all of it kept as the house now, the number too, and when it was heard", kept.things.find((t) => t.id === "light.study")!.state === "on" && kept.things.find((t) => t.id === "sensor.freezer")!.state === "-12" && kept.heardAt === 30_000, kept);
+  check("while it is heard from, a look takes the house as kept, with no read", (await h.now(render, 30_000 + HEARD_MS - 1)).find((t) => t.id === "light.study")!.state === "on" && reads === 1);
+  await h.setPref("binary_sensor.shed_door", "watch");
+  await h.watching(render, 40_000);
+  check("what is watched changed: the next ask reads the house again, for a new list", reads === 2);
+}
+
+console.log("\nwho may send");
+{
+  const env = { HA_BASE_URL: "https://ha.example.com", HA_TOKEN: "t" } as never;
+  const go = (principal: unknown, path = "/api/v1/house/watch", method = "GET", e = env) => handleHouse(new Request(`https://j.test${path}`, { method }), e, new URL(`https://j.test${path}`), principal as never);
+  check("a member's device: no, it could make up the house", (await go({ kind: "device", id: "d1", name: "Phone", scopes: ["home"], owner: "u_sara" }))?.status === 403);
+  check("a member who is not an admin: no", (await go({ kind: "member", id: "u_sara", role: "adult", scopes: ["*"], session: "s" }))?.status === 403);
+  check("the first person's device, with no Home Assistant: said so", (await go({ kind: "device", id: "d_ha", name: "Home Assistant", scopes: ["home"] }, "/api/v1/house/watch", "GET", {} as never))?.status === 404);
+  check("another path: not this route's", (await go({ kind: "owner" }, "/api/v1/house/other")) === null);
+  check("both need the house's scope", requiredScope("/api/v1/house/watch", "GET") === "home" && requiredScope("/api/v1/house/events", "POST") === "home");
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

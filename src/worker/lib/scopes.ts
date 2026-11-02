@@ -232,6 +232,12 @@ export function requiredScope(pathname: string, method: string): RouteRequiremen
     case "/api/v1/jobs/cancel":
     case "/api/v1/jobs/csv":
       return "ask";
+
+    // Jarvis's component in Home Assistant: what to watch, and what changed. The route
+    // takes these from the owner's devices and admins only: they are the house's.
+    case "/api/v1/house/watch":
+    case "/api/v1/house/events":
+      return "home";
     case "/api/camera":
       return "home";
 

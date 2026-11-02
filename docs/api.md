@@ -915,6 +915,26 @@ client, and its only job is to hand the client a device token:
 - Nothing is drawn, as on `/api/v1/ask`: maps are never offered, but with
   `screen` it can make and change Home panels.
 
+## The house
+
+For Jarvis's component in Home Assistant (the `jarvis-home-assistant`
+repository), which tells Jarvis what changes in the house as it happens.
+Both need the `home` scope and are the house's: the owner key, an admin, or a
+device of the first person; anyone else gets 403. Without Home Assistant set
+up, 404.
+
+`GET /api/v1/house/watch` returns `{version, entities}`: the entity ids Jarvis
+watches (chosen by kind, with what the person added or left out), sorted, and
+a 12-character `version` that changes only when that list does. Jarvis reads
+the house to answer it when it has not lately (502 if Home Assistant cannot be
+read).
+
+`POST /api/v1/house/events` takes `{changes: [{id, from, to}]}`, at most 100,
+the newest state of each changed entity. It returns `{version, changed}`: the
+watch list's version, to fetch the list again when it moved, and how many of
+them were changes to Jarvis (one not watched, Home Assistant starting up, or a
+number drifting is kept but is not a change).
+
 ## Bots: skills both ways
 
 A skill is an outside bot or service the owner or an admin added in chat

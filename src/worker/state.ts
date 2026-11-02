@@ -42,7 +42,7 @@ import { runBrief } from "./lib/brief.ts";
 import { MeetingsSeen, meetingsSaid, runMeetings } from "./lib/meetings.ts";
 import { Noticed, runNotice } from "./lib/notice.ts";
 import { Habits } from "./lib/habits.ts";
-import { House, type Prefs } from "./lib/house.ts";
+import { House, watchList, type Change, type Prefs } from "./lib/house.ts";
 import { routineMake } from "./tools/routines.ts";
 import { DEFAULT_ROUTER_MODEL } from "./lib/router-model.ts";
 import { budgetOf, budgetSays, costOf, dayOf } from "./lib/usage.ts";
@@ -954,6 +954,25 @@ export class JarvisState extends DurableObject<Env> {
 
   houseWatched(): Promise<Prefs> {
     return this.house.prefs();
+  }
+
+  /** What the component in Home Assistant should listen to (routes/house.ts): read from the house if not lately; why not, in words. */
+  async houseWatchList(now: number): Promise<{ version: string; entities: string[] } | string> {
+    const ha = haConfig(await this.localEnv());
+    if (!ha) return "Home Assistant is not set up";
+    try {
+      const { things } = await this.house.watching((t) => renderTemplate(ha, t), now);
+      return await watchList(things);
+    } catch (e) {
+      return `Home Assistant could not be read: ${e instanceof Error ? e.message : String(e)}`;
+    }
+  }
+
+  /** What the component sent (routes/house.ts): kept as the house now; the watch list's version, and how many were changes. */
+  async houseEvents(batch: Change[], now: number): Promise<{ version: string; changed: number }> {
+    const changed = await this.house.apply(batch, now);
+    const last = await this.house.last();
+    return { version: (await watchList(last?.things ?? [])).version, changed: changed.length };
   }
 
   /**

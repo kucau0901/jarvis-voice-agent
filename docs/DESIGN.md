@@ -1428,6 +1428,17 @@ kept (`house:last`) and compared with the one before: what changed, leaving
 out Home Assistant starting up (`unavailable`, `unknown`) and numbers that
 drift (a temperature is read, not followed).
 
+**Changes are pushed, not polled.** Jarvis's component in Home Assistant
+(its own repository, installed from HACS) asks Jarvis what to watch
+(`GET /api/v1/house/watch`), listens to those things' changes inside Home
+Assistant, and sends them in batches (`POST /api/v1/house/events`). Each batch
+is kept as the house now. A minute's polling was the other way: it needs no
+setup in Home Assistant, but is up to a minute late, misses what flickers
+between reads, and asks the house every minute of the day. Only the owner's
+devices and admins may send, as house-wide events are: a member's device
+could otherwise tell Jarvis the front door opened. When the component has not
+been heard from, Jarvis reads the house itself.
+
 **A look sees the house.** Who is home, what is open, unlocked or on and since
 when, by room, what is sounding, and batteries running low, fenced as data
 like the rest (names and rooms are written by people). A look takes the last

@@ -1,5 +1,6 @@
 import type { Storage } from "./state-host.ts";
 import { plain, type Section } from "./brief.ts";
+import { sha256Hex } from "./devices.ts";
 
 /**
  * Watching the house: Jarvis's own picture of what matters in it, read from
@@ -16,6 +17,12 @@ import { plain, type Section } from "./brief.ts";
  * Each read is kept (house:last) and compared with the one before: what
  * changed between them, leaving out Home Assistant starting up (unavailable,
  * unknown) and numbers that drift (a temperature is read, not followed).
+ *
+ * Changes are pushed by Jarvis's component in Home Assistant (the
+ * jarvis-home-assistant repository): it asks which things to watch
+ * (watching), listens to their changes inside Home Assistant and sends them
+ * in batches (apply). Jarvis reads the house itself only when the component
+ * has not been heard from, and as a safety net.
  */
 
 /** A thing in the house as one read saw it. `t`: when its state last changed, in seconds. */
@@ -46,6 +53,10 @@ export interface Change {
 /** Things read, at most: a large house's lights and sensors, not every helper it has. */
 export const MAX_THINGS = 250;
 export const MAX_PREFS = 50;
+/** Changes taken in one batch from the component, at most. */
+export const MAX_BATCH = 100;
+/** The component heard from this lately: the house as kept is the house now, without reading it. */
+export const HEARD_MS = 15 * 60_000;
 /** A read this recent is the house now. */
 export const FRESH_MS = 3 * 60_000;
 const ENTITY = /^[a-z_]+\.[a-z0-9_]+$/;
@@ -94,6 +105,23 @@ export function houseTemplate(prefs: Prefs = { add: [], ignore: [] }): string {
 }
 
 /** What the template gave, as things; anything malformed is left out. Throws when it is not a list at all. */
+/** A batch the component sent, as changes; anything malformed is left out. Null when it is not one. */
+export function parseBatch(body: unknown): Change[] | null {
+  const list = body && typeof body === "object" ? (body as { changes?: unknown }).changes : undefined;
+  if (!Array.isArray(list)) return null;
+  return list.slice(0, MAX_BATCH).flatMap((c): Change[] => {
+    if (!c || typeof c !== "object") return [];
+    const { id, from, to } = c as Record<string, unknown>;
+    return typeof id === "string" && ENTITY.test(id) && typeof to === "string" ? [{ id, from: typeof from === "string" ? from.slice(0, 60) : "", to: to.slice(0, 60) }] : [];
+  });
+}
+
+/** What the component watches, and a version that changes with it, so it knows to ask again. */
+export async function watchList(things: readonly Thing[]): Promise<{ version: string; entities: string[] }> {
+  const entities = things.map((t) => t.id).sort();
+  return { version: (await sha256Hex(entities.join(","))).slice(0, 12), entities };
+}
+
 export function parseThings(rendered: string): Thing[] {
   const v: unknown = JSON.parse(rendered);
   if (!Array.isArray(v)) throw new Error("Home Assistant did not give a list");
@@ -155,6 +183,13 @@ export function houseSection(things: readonly Thing[], timeZone: string): Sectio
   return lines.length ? { head: "The house", lines } : { head: "The house", lines: ["Everything watched is shut, off and quiet."] };
 }
 
+/** The house as last read (`at`), kept up to date by the component (`heardAt`: when it was last heard from). */
+interface Kept {
+  at: number;
+  things: Thing[];
+  heardAt?: number;
+}
+
 /** The house as last read, and what the person added or left out: under house:*, the household's. */
 export class House {
   private storage: Storage;
@@ -177,11 +212,47 @@ export class House {
     if (add.length > MAX_PREFS || ignore.length > MAX_PREFS) return `at most ${MAX_PREFS} each`;
     const next = { add, ignore };
     await this.storage.put("house:prefs", next);
+    // What is watched moved: the next read is now (`at` 0: never read), and with it the watch list's version.
+    const last = await this.last();
+    if (last) await this.storage.put("house:last", { ...last, at: 0 });
     return next;
   }
 
-  async last(): Promise<{ at: number; things: Thing[] } | null> {
-    return (await this.storage.get<{ at: number; things: Thing[] }>("house:last")) ?? null;
+  async last(): Promise<Kept | null> {
+    return (await this.storage.get<Kept>("house:last")) ?? null;
+  }
+
+  /**
+   * What the component sent: kept as the house now, and what it changes, as from what Jarvis last knew. A thing not
+   * watched, Home Assistant starting, or a number drifting changes nothing said; a number is still kept as read.
+   */
+  async apply(batch: readonly Change[], now: number): Promise<Change[]> {
+    const last = await this.last();
+    if (!last) return [];
+    const byId = new Map(last.things.map((t) => [t.id, t]));
+    const out: Change[] = [];
+    for (const c of batch) {
+      const t = byId.get(c.id);
+      if (!t || NOISE.has(c.to) || t.state === c.to) continue;
+      if (!NUMERIC.has(c.id.split(".")[0]!) && !NOISE.has(t.state)) out.push({ id: c.id, from: t.state, to: c.to });
+      t.state = c.to;
+      t.t = Math.floor(now / 1000);
+    }
+    await this.storage.put("house:last", { ...last, heardAt: now });
+    return out;
+  }
+
+  /** The component asked what to watch: the house as kept, read again if it is older than a safety net's while. */
+  async watching(render: (template: string) => Promise<string>, now: number): Promise<{ things: Thing[]; changed: Change[] }> {
+    const last = await this.last();
+    if (last && last.at > 0 && now - last.at < HEARD_MS) {
+      await this.storage.put("house:last", { ...last, heardAt: now });
+      return { things: last.things, changed: [] };
+    }
+    const g = await this.glance(render, now);
+    const kept = await this.last();
+    if (kept) await this.storage.put("house:last", { ...kept, heardAt: now });
+    return g;
   }
 
   /**
@@ -190,7 +261,7 @@ export class House {
    */
   async now(render: (template: string) => Promise<string>, now: number): Promise<Thing[]> {
     const last = await this.last();
-    if (last && now - last.at < FRESH_MS) return last.things;
+    if (last && last.at > 0 && (now - last.at < FRESH_MS || (last.heardAt !== undefined && now - last.heardAt < HEARD_MS))) return last.things;
     return parseThings(await render(houseTemplate(await this.prefs())));
   }
 

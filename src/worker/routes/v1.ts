@@ -14,6 +14,7 @@ import { handleAlertApi } from "./alerts.ts";
 import { handleRoutines } from "./routines.ts";
 import { handleVoice } from "./voice.ts";
 import { handleJobs } from "./jobs.ts";
+import { handleHouse } from "./house.ts";
 
 import * as devices from "../lib/devices.ts";
 import { handleLiveUsage } from "./usage.ts";
@@ -492,6 +493,10 @@ export async function handleV1(
   // Background jobs: minutes of work, answered later.
   const jobs = await handleJobs(req, env, url, principal);
   if (jobs) return jobs;
+
+  // The house: what Jarvis's component in Home Assistant watches, and what changed.
+  const house = await handleHouse(req, env, url, principal);
+  if (house) return house;
 
   return err(404, `no route for ${url.pathname}`);
 }
