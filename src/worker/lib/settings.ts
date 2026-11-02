@@ -300,6 +300,11 @@ export const SETTINGS: readonly SettingDef[] = [
     help: "House requests from the glasses, Type and push-to-talk go to Home Assistant's Assist before the AI: under a second and no model cost. What it may do is what you expose to Assist in Home Assistant.",
   },
   {
+    name: "HOUSE_WATCH", group: "home", kind: "enum", default: "off", options: ["off", "unusual", "every"],
+    label: "Watch the house",
+    help: "Jarvis keeps an eye on doors, locks, lights, presence, leaks and the alarm, and acts or tells the admins. Unusual: only what its rules find worth it (opened at night or while nobody is home, left open, a light on in an empty room, a leak), a few paid answers a day. Every: each change as well, up to 200 answers a day. Changes arrive from Jarvis's Home Assistant component, or Jarvis reads the house every 15 minutes.",
+  },
+  {
     name: "HA_ASSIST_LANGUAGE", group: "home", kind: "text", default: "en",
     label: "Assist language", help: "The language Assist is asked in.",
     validate: locale,

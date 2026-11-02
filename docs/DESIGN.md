@@ -1439,6 +1439,32 @@ devices and admins may send, as house-wide events are: a member's device
 could otherwise tell Jarvis the front door opened. When the component has not
 been heard from, Jarvis reads the house itself.
 
+**Moments are found by code; only they reach the model.** On each change, and
+every five minutes for what lasts, code looks for what an attentive person
+would notice (lib/house.ts): a way in (a door, window, garage door, lock or
+cover) opening or unlocking while nobody is home or at night; a leak, smoke,
+gas or the alarm going off at any time; a way in left open 15 minutes; a light
+on with nobody home 10 minutes; a light on in a room whose motion sensors have
+seen nobody for 20; a battery under 15%. One from a change is said once in 30
+minutes; one that lasts, once while it lasts. The `HOUSE_WATCH` setting says
+how much is judged: off (the default: each judgment is a paid answer), unusual
+(moments only, at most 40 judgments a day), or every (each change of a thing
+watched as well, at most 200 a day, past which only moments, as unusual).
+Changes are queued as they arrive and judged on the alarm, never in the
+component's request.
+
+**A judgment may act through the house.** It is a routine's question
+(`askForRoutine`) asked as the first person with `ask`, `home`, `memory.read`
+and `calendar` only, no screen and never Hermes, given the moments, the
+changes, the house now and what was said today, all fenced. It may do the
+obvious thing with the house's tools ("the study light was on in an empty
+room, so I turned it off"): what the house may do is set in Home Assistant,
+and Jarvis's MCP list still forbids what it forbids. It may say what needs a
+person, or suggest an automation for what keeps happening, or answer NOTHING.
+What is said goes to the household's admins, at most 12 things a day. Its
+tick is the house's own (`House.nextWake`/`tick`), beside the routines',
+not in `Scheduler`: it is the household's, not any person's routine.
+
 **A look sees the house.** Who is home, what is open, unlocked or on and since
 when, by room, what is sounding, and batteries running low, fenced as data
 like the rest (names and rooms are written by people). A look takes the last

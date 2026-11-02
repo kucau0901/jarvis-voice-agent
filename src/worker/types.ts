@@ -92,6 +92,8 @@ export interface Env {
   HA_ASSIST?: string;
   /** Language Assist is asked in. Defaults to "en". */
   HA_ASSIST_LANGUAGE?: string;
+  /** Watching the house (lib/house.ts): off, unusual or every. */
+  HOUSE_WATCH?: string;
 
   /** HA MCP endpoint. Held as a secret because the webhook URL IS the credential. */
   HA_MCP_URL?: string;

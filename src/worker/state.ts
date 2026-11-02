@@ -42,7 +42,7 @@ import { runBrief } from "./lib/brief.ts";
 import { MeetingsSeen, meetingsSaid, runMeetings } from "./lib/meetings.ts";
 import { Noticed, runNotice } from "./lib/notice.ts";
 import { Habits } from "./lib/habits.ts";
-import { House, watchList, type Change, type Prefs } from "./lib/house.ts";
+import { House, HOUSE_INSTRUCTIONS, modeOf, watchList, type Change, type HouseDeps, type Prefs } from "./lib/house.ts";
 import { routineMake } from "./tools/routines.ts";
 import { DEFAULT_ROUTER_MODEL } from "./lib/router-model.ts";
 import { budgetOf, budgetSays, costOf, dayOf } from "./lib/usage.ts";
@@ -536,7 +536,8 @@ export class JarvisState extends DurableObject<Env> {
   /** Point the one alarm at whatever is due first: an approved call, a routine, a job, a relay or a held alert. */
   private async rearm(): Promise<void> {
     const held = [...(await this.ctx.storage.list<{ until: number }>({ prefix: HELD })).values()].map((h) => h.until);
-    const wakes = [...(await Promise.all([this.proposals.nextWake(), this.scheduler.nextWake(), this.jobs.nextWake(), this.relays.nextWake(), this.panels.nextWake()])), ...held].filter(
+    const mode = modeOf((await this.localEnv()).HOUSE_WATCH);
+    const wakes = [...(await Promise.all([this.proposals.nextWake(), this.scheduler.nextWake(), this.jobs.nextWake(), this.relays.nextWake(), this.panels.nextWake(), this.house.nextWake(mode, Date.now())])), ...held].filter(
       (t): t is number => t !== null,
     );
     const at = wakes.length ? Math.min(...wakes) : null;
@@ -555,6 +556,10 @@ export class JarvisState extends DurableObject<Env> {
         await this.scheduler.tick();
         await this.jobs.tick();
         await this.relays.tick();
+        // The house (lib/house.ts): its failure is its own, logged, never the alarm's.
+        await this.houseDeps().then((d) => this.house.tick(d, Date.now())).then((what) => {
+          if (what !== "not due" && what !== "off" && what !== "quiet") console.log(`house: ${what}`);
+        }, (e) => console.warn("house:", e instanceof Error ? e.message : String(e)));
         await this.releaseHeld();
         // Last, and a couple a run: what this alarm has left of its budget is the panels' (lib/panels.ts).
         await this.panels.refresh(await this.panelDeps());
@@ -562,6 +567,35 @@ export class JarvisState extends DurableObject<Env> {
     ]);
     for (const d of done) if (d.status === "rejected") throw d.reason;
     await this.rearm();
+  }
+
+  /**
+   * Watching the house (lib/house.ts): judged as the first person, with the house and little else, no screen and
+   * never Hermes (askForRoutine); what is worth it told to the household's admins.
+   */
+  private async houseDeps(): Promise<HouseDeps> {
+    const env = await this.localEnv();
+    const ha = haConfig(env);
+    const timeZone = localeOf(env).timeZone;
+    const now = Date.now();
+    return {
+      mode: modeOf(env.HOUSE_WATCH),
+      timeZone,
+      day: dayOf(now, timeZone),
+      render: ha ? (t) => renderTemplate(ha, t) : null,
+      judge: async (input) =>
+        askForRoutine(await this.personEnv(env, OWNER), `${HOUSE_INSTRUCTIONS}\n\n${input}`, ["ask", "home", "memory.read", "calendar"], {
+          name: "Watching the house",
+          action: { kind: "ask", prompt: "", notify: "if-important" },
+        }),
+      tell: async (text) => {
+        const admins = (await this.people.familyPeople()).filter((p) => p.role === "admin").map((p) => p.person);
+        for (const person of admins.length ? admins : [OWNER]) {
+          const made = makeAlert({ title: "The house", text }, "routine", Date.now(), person);
+          if (made) await deliver(env, this, made);
+        }
+      },
+    };
   }
 
   /** Putting errands for later to their person (lib/later.ts, Proposals.tick), each as that person. */
@@ -971,6 +1005,11 @@ export class JarvisState extends DurableObject<Env> {
   /** What the component sent (routes/house.ts): kept as the house now; the watch list's version, and how many were changes. */
   async houseEvents(batch: Change[], now: number): Promise<{ version: string; changed: number }> {
     const changed = await this.house.apply(batch, now);
+    // Watched: judged on the alarm, now, never in this request (a judgment takes seconds).
+    if (changed.length && modeOf((await this.localEnv()).HOUSE_WATCH) !== "off") {
+      await this.house.queue(changed);
+      await this.rearm();
+    }
     const last = await this.house.last();
     return { version: (await watchList(last?.things ?? [])).version, changed: changed.length };
   }

@@ -142,7 +142,7 @@ export async function askForRoutine(
   env: Env,
   prompt: string,
   grants: readonly Grant[],
-  routine: Routine,
+  routine: Pick<Routine, "name" | "action">,
 ): Promise<{ ok: boolean; text: string }> {
   if (!(await canAsk(env))) return { ok: false, text: "no ChatGPT plan or OpenAI key is set" };
   const sink = new Collector();

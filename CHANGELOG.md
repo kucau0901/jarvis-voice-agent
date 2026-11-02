@@ -35,6 +35,13 @@ of every release, and in the [README](README.md#updating).
   locks, lights, presence, leaks, the alarm…); say "don't watch the garden
   lights" or "also watch the freezer temperature" to change it. Needs Home
   Assistant.
+- **Jarvis watches the house.** Settings → Home Assistant → **Watch the
+  house**: off (the default), unusual, or every. Jarvis notices what an
+  attentive person would (a door opening at night or while nobody is home,
+  a door left open, a light on in an empty room, a leak, the alarm, a low
+  battery), then does the obvious thing through Home Assistant, tells the
+  admins, or suggests an automation. "Every" also judges each change. Each
+  judgment is a paid answer: at most 40 a day for unusual, 200 for every.
 - **Routines from habits.** Ask the same thing at about the same time on three
   days ("what's the traffic to work like?" most mornings) and Jarvis offers,
   once and quietly, to make it a routine that asks for you. One tap makes it.
