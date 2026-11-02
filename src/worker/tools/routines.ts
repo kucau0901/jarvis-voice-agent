@@ -58,6 +58,10 @@ const routineAdd: Tool = {
     "Meetings emailed to them put in their calendar ('every hour on workdays, add meetings sent to me to my calendar'): " +
     "when=cron (or daily) with meetings=true and neither say nor ask; code finds mail sent to them by name with a meeting link, " +
     "adds each with a reminder, and says only when it added one. " +
+    "A look around during the day ('check on me during the day', 'tell me if anything needs me'): when=cron (or daily) with " +
+    "notice=true and neither say nor ask, e.g. '0 10,13,16 * * *'; Jarvis reads what a brief reads and speaks only when " +
+    "something is worth the interruption, at most four times a day. One each: another replaces its schedule, so 'check " +
+    "less often' or 'more often' is a new schedule, and 'stop checking' is routine_remove. Each look costs a small answer. " +
     "Afterwards read back what was set and when it will next happen.",
   parameters: {
     type: "object",
@@ -93,6 +97,7 @@ const routineAdd: Tool = {
       },
       brief: { type: ["boolean", "null"], description: "true for a brief of their day in place of say or ask; daily or once only. Null otherwise." },
       meetings: { type: ["boolean", "null"], description: "true to put meetings emailed to them in their calendar, in place of say or ask; cron, daily or once. Null otherwise." },
+      notice: { type: ["boolean", "null"], description: "true for a look around that speaks only when something is worth it, in place of say or ask; cron, daily or once. Null otherwise." },
       notify: {
         type: ["string", "null"],
         description: "With ask: \"if-important\" to send the answer only when something deserves attention; null or \"always\" to send it every time.",
@@ -110,7 +115,7 @@ const routineAdd: Tool = {
         description: "With pass_to: how long they have to answer before the user (or family) is told; nudged halfway. Null for the family's usual (an hour). Medicine might be 20.",
       },
     },
-    required: ["name", "when", "local_time", "in_minutes", "time", "days", "cron", "event", "buffer_min", "condition", "for_minutes", "say", "ask", "brief", "meetings", "notify", "pass_to", "pass_kind", "points", "escalate", "answer_within_minutes"],
+    required: ["name", "when", "local_time", "in_minutes", "time", "days", "cron", "event", "buffer_min", "condition", "for_minutes", "say", "ask", "brief", "meetings", "notice", "notify", "pass_to", "pass_kind", "points", "escalate", "answer_within_minutes"],
     additionalProperties: false,
   },
   async run(args, ctx) {
@@ -133,6 +138,7 @@ const routineAdd: Tool = {
         ask: args.ask,
         brief: args.brief,
         meetings: args.meetings,
+        notice: args.notice,
         notify: args.notify,
         ...(Array.isArray(args.pass_to) && args.pass_to.length
           ? { passTo: args.pass_to, passKind: args.pass_kind, points: args.points, escalate: args.escalate, answerMin: args.answer_within_minutes }

@@ -1332,6 +1332,27 @@ without an opening. Daily or once only, two each, and one an alarm: a brief is
 a dozen requests of the alarm's fifty, so a second due at the same minute goes
 in an alarm of its own straight after.
 
+**A look around speaks only when it is worth the interruption.** Proactive
+agents (Muse, dots, Claude Duet, Hark) share one shape: look on a cadence,
+judge whether anything is worth interrupting for, and offer rather than act.
+A routine's `notice` action (lib/notice.ts) is that shape on what Jarvis
+already has. Code reads what a brief reads, over the next 24 hours rather than
+the day, and one small answer judges it, from those facts fenced as data, with
+what its maker was already told today beside them (their brief, earlier looks,
+kept under `noticed:<person>`, each with what the run that said it could
+reach: a look is shown only what runs reaching no further said, so a brief
+that read the mail is not passed to a look made where mail cannot be read).
+NOTHING sends nothing, and an answer that fails is a failed run. It calls no tool and
+files no card, so nothing it reads can talk it into doing anything; cards
+already waiting go with what it says. How often it looks is its schedule, at
+most hourly as any cron is, so "check on me less" is that routine's schedule
+changed: one each, and another replaces it, keeping its id, when made where
+as much can be reached. A person's own
+setting for it was considered and left out: the schedule already is one.
+Whatever the schedule, it says at most four things a day to one person, and a
+look past that is not made at all, because each look is a paid answer. It is
+one an alarm with briefs, for the same reason.
+
 **"Leave now" uses what is there.** The car's position if Tessie is set up,
 else the saved home; live traffic if Google Maps is set up; otherwise a plain
 reminder a fixed time ahead. Routes are billed per call, so drive times are

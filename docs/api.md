@@ -701,6 +701,14 @@ Webex link is read by a model, each email once, and each meeting at a time
 still free in their calendar is added with a reminder 10 minutes before. The
 alert lists what was added; a run that added nothing sends nothing, and its
 last result says "nothing new". It needs the creator's mail and calendar.
+A `once`, `daily` or `cron` routine may instead take `"notice": true`: a look
+around. Jarvis reads what a brief reads over the next 24 hours and a small
+answer judges whether anything is worth the interruption, leaving out what the
+creator was told today by their brief and earlier looks. Nothing worth it
+sends nothing, and its last result says why. What is said is at most 300
+characters, sent with what waits for their OK as `proposals`, and at most four
+things a day to one person. One each: posting another replaces its schedule,
+keeping its id. It needs a ChatGPT plan or an OpenAI key.
 `GET /api/v1/routines` lists them with plain-English `when` and `does`, the
 next run and the last result; `PATCH` takes `{id, enabled?, name?}`; `DELETE
 ?id=` removes one; `POST /api/v1/routines/run {id}` runs one now.

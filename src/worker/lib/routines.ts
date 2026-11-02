@@ -28,6 +28,8 @@ import { pageCondition, pageUrl } from "./page-look.ts";
  *           opening (lib/brief.ts): daily or once only
  *   meetings  meetings emailed to them put in their calendar
  *           (lib/meetings.ts): at a time, said only when one was added
+ *   notice  a look around (lib/notice.ts): said only when something is
+ *           worth the interruption; at a time, one routine each
  *
  * This file is the pure part — shapes, validation, time zones — so Node tests it.
  */
@@ -65,6 +67,8 @@ export type Action =
   | { kind: "brief" }
   /** Meetings emailed to them, put in their calendar (lib/meetings.ts). */
   | { kind: "meetings" }
+  /** A look around, said only when something is worth the interruption (lib/notice.ts). */
+  | { kind: "notice" }
   /**
    * Passed on to someone in the family (lib/relays.ts), or to several in
    * turn: a chore rota, a daily check-in on a grandparent, a medicine
@@ -356,6 +360,7 @@ export function describeAction(a: Action): string {
   }
   if (a.kind === "brief") return "brief you on your day, with anything waiting for your OK";
   if (a.kind === "meetings") return "put meetings emailed to you in your calendar, and tell you";
+  if (a.kind === "notice") return "look at your calendar, mail, car and what waits for your OK, and tell you only what is worth it";
   if (a.kind === "say") return `say "${a.text.length > 80 ? a.text.slice(0, 80) + "…" : a.text}"`;
   if (a.kind === "ask") {
     return `ask Jarvis "${a.prompt.length > 80 ? a.prompt.slice(0, 80) + "…" : a.prompt}" and send the answer` +
@@ -405,6 +410,8 @@ export interface RoutineInput {
   brief?: unknown;
   /** true: meetings emailed to them put in their calendar (lib/meetings.ts), in place of say or ask; at a time only. */
   meetings?: unknown;
+  /** true: a look around, said only when worth it (lib/notice.ts), in place of say or ask; at a time only. */
+  notice?: unknown;
   /** ask: "always" (the default) or "if-important", sent only when something deserves attention, as Hark's checks do. */
   notify?: unknown;
   /** Pass it on to these family members (already named as people: lib/relays.ts), in turn if several. */
@@ -507,13 +514,18 @@ export function buildRoutine(input: RoutineInput, timeZone: string, now: number)
   if (input.brief === true) {
     // At a time: a brief on every event or page change would be a dozen requests each time.
     if (trigger.kind !== "daily" && trigger.kind !== "once") return { ok: false, error: "a brief goes out at a time: make it daily or once" };
-    if (str(input.say) || str(input.ask) || passTo.length) return { ok: false, error: "a brief writes itself: leave say, ask and pass_to out" };
+    if (str(input.say) || str(input.ask) || passTo.length || input.notice === true) return { ok: false, error: "a brief writes itself: leave say, ask, notice and pass_to out" };
     action = { kind: "brief" };
   } else if (input.meetings === true) {
     // At a time, an hour apart at most (cron's rule): each run is a search of their mail.
     if (trigger.kind !== "daily" && trigger.kind !== "cron" && trigger.kind !== "once") return { ok: false, error: "looking for meetings in mail goes at a time: make it daily, cron or once" };
-    if (str(input.say) || str(input.ask) || passTo.length || input.brief === true) return { ok: false, error: "meetings from mail does itself: leave say, ask, brief and pass_to out" };
+    if (str(input.say) || str(input.ask) || passTo.length || input.brief === true || input.notice === true) return { ok: false, error: "meetings from mail does itself: leave say, ask, brief, notice and pass_to out" };
     action = { kind: "meetings" };
+  } else if (input.notice === true) {
+    // At a time, an hour apart at most (cron's rule): each look is a paid answer.
+    if (trigger.kind !== "daily" && trigger.kind !== "cron" && trigger.kind !== "once") return { ok: false, error: "a look around goes at a time: make it daily, cron or once" };
+    if (str(input.say) || str(input.ask) || passTo.length || input.brief === true || input.meetings === true) return { ok: false, error: "a look around says what it finds: leave say, ask, brief, meetings and pass_to out" };
+    action = { kind: "notice" };
   } else if (trigger.kind === "leave") {
     action = { kind: "leave" };
   } else if (passTo.length) {
@@ -546,7 +558,7 @@ export function buildRoutine(input: RoutineInput, timeZone: string, now: number)
   }
 
   const fallback =
-    action.kind === "say" ? action.text : action.kind === "ask" ? action.prompt : action.kind === "relay" ? action.text : action.kind === "brief" ? "Your brief" : action.kind === "meetings" ? "Meetings from my mail" : "Time to leave";
+    action.kind === "say" ? action.text : action.kind === "ask" ? action.prompt : action.kind === "relay" ? action.text : action.kind === "brief" ? "Your brief" : action.kind === "meetings" ? "Meetings from my mail" : action.kind === "notice" ? "Anything worth knowing" : "Time to leave";
   const name = (str(input.name) || fallback).replace(/[\u0000-\u001f\u007f]/g, " ").slice(0, MAX_NAME);
   return { ok: true, trigger, action, name };
 }

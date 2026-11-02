@@ -1,5 +1,5 @@
 import type { Storage } from "./state-host.ts";
-import { allows, narrow, type Grant } from "./scopes.ts";
+import { allows, covers, narrow, type Grant } from "./scopes.ts";
 import { makeAlert, summarise, type Alert, type Delivery } from "./alerts.ts";
 import { bookOf, personOfWho } from "./context.ts";
 import {
@@ -71,6 +71,8 @@ export interface SchedulerDeps {
   brief?(r: Routine, now: number): Promise<{ ok: boolean; text: string; proposals?: Alert["proposals"] }>;
   /** Meetings emailed to the maker, put in their calendar (lib/meetings.ts): what to say, null when nothing was added, or why not. */
   meetings?(r: Routine, now: number): Promise<{ ok: boolean; text: string | null }>;
+  /** A look around for the maker (lib/notice.ts): what to say, null with why not when nothing is worth it, or that it could not look. */
+  notice?(r: Routine, now: number): Promise<{ ok: boolean; text: string | null; detail?: string; proposals?: Alert["proposals"] }>;
 }
 
 const R = "routine:";
@@ -170,6 +172,19 @@ export class Scheduler {
       const had = all.find((r) => r.trigger.kind === "leave" && personOfWho(r.createdBy) === mine);
       if (had) {
         const updated: Routine = { ...had, trigger: built.trigger, enabled: true };
+        await this.save(updated);
+        return updated;
+      }
+    }
+    // One look around each: how often it looks is its schedule, so a new one is that schedule changed.
+    if (built.action.kind === "notice") {
+      const mine = personOfWho(by.who);
+      const had = all.find((r) => r.action.kind === "notice" && personOfWho(r.createdBy) === mine);
+      if (had) {
+        // Only by its maker or one that reaches as far (mayWork, lib/context.ts): a narrower device of theirs does not take it over.
+        if (had.createdBy !== by.who && !covers(by.grants, had.grants)) return "there is already a look around for you, made where more can be reached; change it there";
+        // Its id and past runs kept, as a leave routine's are.
+        const updated: Routine = { ...makeRoutine({ ...built, name: had.name }, by, timeZone, now), id: had.id, createdAt: had.createdAt, ...(had.lastRun ? { lastRun: had.lastRun } : {}) };
         await this.save(updated);
         return updated;
       }
@@ -330,13 +345,14 @@ export class Scheduler {
     // 15 s timeout) must not hold up the others, or a reminder due now.
     const due = all.filter((r) => r.enabled && (r.trigger.kind === "watch" || r.trigger.kind === "page") && (r.watch?.nextCheck ?? 0) <= now + 1000);
     const looks = new Map(await Promise.all(due.map(async (r) => [r.id, await this.look(r, deps)] as const)));
-    // One brief an alarm: each is a dozen requests of the alarm's fifty. Another due is
+    // One brief or look around an alarm: each is a dozen requests of the alarm's fifty. Another due is
     // left as it is, so nextWake is now and it goes in an alarm of its own straight after.
+    const reads = (r: Routine) => r.action.kind === "brief" || r.action.kind === "notice";
     let briefed = false;
     for (const r of all) {
       try {
-        if (r.action.kind === "brief" && briefed) continue;
-        if ((await this.tickOne(r, deps, now)) && r.action.kind === "brief") briefed = true;
+        if (reads(r) && briefed) continue;
+        if ((await this.tickOne(r, deps, now)) && reads(r)) briefed = true;
         const look = looks.get(r.id);
         if (look) await this.applyWatch(r.id, look, deps, now);
       } catch (e) {
@@ -546,6 +562,23 @@ export class Scheduler {
         return;
       }
       text = m.text;
+    } else if (r.action.kind === "notice") {
+      if (!deps.notice) {
+        await this.record(r.id, { at: now, ok: false, detail: "looking around cannot run here" });
+        return;
+      }
+      const n = await deps.notice(r, now);
+      if (!n.ok) {
+        await this.record(r.id, { at: now, ok: false, detail: `could not look: ${n.text}` });
+        return;
+      }
+      // Said only when something is worth the interruption: a look with nothing sends nothing, and Routines says why.
+      if (n.text === null) {
+        await this.record(r.id, { at: now, ok: true, detail: n.detail || "nothing worth saying" });
+        return;
+      }
+      text = n.text;
+      cards = n.proposals;
     } else {
       return; // leave has its own path
     }

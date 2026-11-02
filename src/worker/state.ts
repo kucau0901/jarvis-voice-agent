@@ -40,6 +40,7 @@ import { OWNER, personOfWho, withPerson } from "./lib/context.ts";
 import { lookAtPage } from "./lib/page-look.ts";
 import { runBrief } from "./lib/brief.ts";
 import { MeetingsSeen, meetingsSaid, runMeetings } from "./lib/meetings.ts";
+import { Noticed, runNotice } from "./lib/notice.ts";
 import { DEFAULT_ROUTER_MODEL } from "./lib/router-model.ts";
 import { budgetOf, budgetSays, costOf, dayOf } from "./lib/usage.ts";
 import { nextAllowed } from "./lib/access.ts";
@@ -82,6 +83,7 @@ export class JarvisState extends DurableObject<Env> {
   private episodes: Episodes;
   private proposals: Proposals;
   private meetingsSeen: MeetingsSeen;
+  private noticed: Noticed;
   /** The owner's ChatGPT plan, which model calls use first (lib/chatgpt-plan.ts). */
   private plan: ChatGptPlan;
 
@@ -100,6 +102,7 @@ export class JarvisState extends DurableObject<Env> {
     this.episodes = new Episodes(ctx.storage);
     this.proposals = new Proposals(ctx.storage);
     this.meetingsSeen = new MeetingsSeen(ctx.storage);
+    this.noticed = new Noticed(ctx.storage);
     this.plan = new ChatGptPlan(ctx.storage, (input, init) => fetch(input, init));
     this.relays = new Relays(ctx.storage, () => this.relayDeps());
     this.jobs = new Jobs(ctx.storage, async () => {
@@ -322,6 +325,7 @@ export class JarvisState extends DurableObject<Env> {
     await this.episodes.clear(person);
     await this.proposals.forget(person);
     await this.meetingsSeen.forget(person);
+    await this.noticed.forget(person);
     await this.rearm();
   }
 
@@ -428,7 +432,42 @@ export class JarvisState extends DurableObject<Env> {
           await this.proposals.forgetRun(person, from.id, now);
           return { ok: false, text: "whoever made it is no longer in the family" };
         }
+        // What a look around later today leaves out (lib/notice.ts).
+        await this.noticed.told(person, dayOf(now, timeZone), b.text, grants, false);
         return { ok: true, text: b.text, proposals: b.proposals.map(cardOf) };
+      },
+      // A look around for its maker (lib/notice.ts): as far as they may reach now, its judging counted in their usage.
+      notice: async (r, now) => {
+        const person = personOfWho(r.createdBy);
+        const grants = reachNow(r.grants, await this.people.personView(person).catch(() => null));
+        if (!grants) return { ok: false, text: "whoever made it is no longer in the family" };
+        const timeZone = localeOf(env).timeZone;
+        const n = await runNotice(r, now, {
+          env: await this.personEnv(env, r.createdBy),
+          grants,
+          timeZone,
+          house: ha,
+          person,
+          day: dayOf(now, timeZone),
+          noticed: this.noticed,
+          jobs: (await this.jobs.list()).filter((j) => personOfWho(j.createdBy) === person),
+          waiting: async () => (await this.proposals.list(person, now)).filter((p) => p.state === "pending"),
+        });
+        if (typeof n === "string") return { ok: false, text: n };
+        if (n.usage) {
+          const u = n.usage;
+          await this.recordUsage(
+            { at: now, surface: "routine", by: u.model, ok: u.ok, ms: u.ms, input: u.input, cached: 0, written: 0, output: u.output, searches: 0, tools: [], ask: `look around: ${r.name}`.slice(0, 80), who: person },
+            dayOf(now, timeZone),
+          ).catch((e) => console.warn("look around not counted:", e instanceof Error ? e.message : String(e)));
+        }
+        // No longer in the family while it looked: what it remembered of them goes too, as forgetting them took the rest.
+        if (!reachNow(r.grants, await this.people.personView(person).catch(() => null))) {
+          await this.noticed.forget(person);
+          return { ok: false, text: "whoever made it is no longer in the family" };
+        }
+        if (n.failed) return { ok: false, text: n.detail };
+        return { ok: true, text: n.text, detail: n.detail, proposals: n.proposals.map(cardOf) };
       },
       // Meetings emailed to its maker (lib/meetings.ts): as far as they may reach now, both mail and calendar; its reading counted in their usage.
       meetings: async (r, now) => {

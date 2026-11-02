@@ -154,7 +154,10 @@ export function fit(lines: readonly string[]): string {
   return out.join("\n");
 }
 
-type Section = { head: string; lines: string[] };
+export type Section = { head: string; lines: string[] };
+
+/** What the sources are read with: a brief's deps, or a check's (lib/notice.ts). */
+export type Sources = Pick<BriefDeps, "env" | "grants" | "timeZone" | "house">;
 
 const hhmm = (ts: number, timeZone: string) =>
   new Intl.DateTimeFormat("en-GB", { timeZone, hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(ts));
@@ -198,7 +201,7 @@ export function scheduleOf(events: readonly AgendaEvent[], span: { from: number;
   return lines;
 }
 
-async function calendarSection(d: BriefDeps, span: { from: number; to: number }, now: number, read: Read): Promise<Section | null> {
+async function calendarSection(d: Sources, span: { from: number; to: number }, now: number, read: Read): Promise<Section | null> {
   if (!allows(d.grants, "calendar") || !googleConfig(d.env, "https://jarvis.invalid")) return null;
   // From now, whatever the day covered: an invitation for later today is still worth answering. A day past the last
   // an invitation may start (staleInvites: a week), so what one runs into is read too.
@@ -216,7 +219,7 @@ async function calendarSection(d: BriefDeps, span: { from: number; to: number },
   return { head: "Schedule", lines: scheduleOf(events, span, d.timeZone, now, through) };
 }
 
-async function weatherSection(d: BriefDeps): Promise<Section | null> {
+async function weatherSection(d: Sources): Promise<Section | null> {
   const ha = allows(d.grants, "home") ? d.house : null;
   if (!ha) return null;
   try {
@@ -227,7 +230,7 @@ async function weatherSection(d: BriefDeps): Promise<Section | null> {
   }
 }
 
-async function carSection(d: BriefDeps): Promise<Section | null> {
+async function carSection(d: Sources): Promise<Section | null> {
   if (!allows(d.grants, "car.read")) return null;
   const picked = pickCar(d.env);
   if (typeof picked === "string") return null; // no car of theirs: nothing to say
@@ -249,7 +252,7 @@ async function carSection(d: BriefDeps): Promise<Section | null> {
   }
 }
 
-async function mailSection(d: BriefDeps, read: Read): Promise<Section | null> {
+async function mailSection(d: Sources, read: Read): Promise<Section | null> {
   if (!allows(d.grants, "mail") || !googleConfig(d.env, "https://jarvis.invalid")) return null;
   const [orders, promos] = await Promise.all([
     findMail(d.env, "category:purchases newer_than:1d", 3, AbortSignal.timeout(SOURCE_MS)).catch(why),
@@ -326,11 +329,23 @@ function climateFor(d: BriefDeps, e: AgendaEvent): { action: Proposal["action"];
   };
 }
 
+/**
+ * The deployment's language, named for a model. The tag without its extensions (-u-, -x-, which name no
+ * language): zh-TW is written in Traditional characters, sr-Latn in Latin ones. Throws on a tag Intl rejects.
+ */
+export const languageOf = (env: Env): string => new Intl.DisplayNames(["en"], { type: "language" }).of(new Intl.Locale(localeOf(env).tag).baseName) ?? "English";
+
+/** The calendar for `span`, the weather, the car and mail, as far as they may reach: each a section, or null for one not theirs. */
+export async function readDay(d: Sources, span: { from: number; to: number }, now: number): Promise<{ sections: (Section | null)[]; read: Read }> {
+  const read: Read = { invites: [], promotions: null };
+  const sections = await Promise.all([calendarSection(d, span, now, read), weatherSection(d), carSection(d), mailSection(d, read)]);
+  return { sections, read };
+}
+
 export async function runBrief(r: Routine, now: number, d: BriefDeps, ask?: Ask): Promise<Brief> {
   const span = dayCovered(now, d.timeZone);
   const since = r.lastRun?.at ?? now - DAY;
-  const read: Read = { invites: [], promotions: null };
-  const gathered = await Promise.all([calendarSection(d, span, now, read), weatherSection(d), carSection(d), mailSection(d, read)]);
+  const { sections: gathered, read } = await readDay(d, span, now);
   // Their jobs and proposals as far as asking reaches: a device allowed only routines reads neither (lib/scopes.ts).
   const asks = allows(d.grants, "ask");
   // Filed before the model is asked anything: the cards wait whatever becomes of the opening.
@@ -374,9 +389,8 @@ export async function runBrief(r: Routine, now: number, d: BriefDeps, ask?: Ask)
       ask ?? ((inp: string, ins: string) => respondOnce(d.env, { model: DEFAULT_ROUTER_MODEL, instructions: ins, input: inp }, AbortSignal.timeout(45_000)));
     const started = Date.now();
     try {
-      // The tag without its extensions (-u-, -x-, which name no language): zh-TW is written in
-      // Traditional characters, sr-Latn in Latin ones. Inside the try: naming it never stops a brief.
-      const language = new Intl.DisplayNames(["en"], { type: "language" }).of(new Intl.Locale(localeOf(d.env).tag).baseName) ?? "English";
+      // Inside the try: naming the language never stops a brief.
+      const language = languageOf(d.env);
       // All of it fenced: event titles, places, senders and subjects were written by someone else.
       const input = `Language: ${language}\nThe day covered: ${title.slice(2)}\n\n${asQuotedData("the day", fit(body), "THE PEOPLE WHO SENT THESE EVENTS AND EMAILS")}`;
       const got = await call(input, BRIEF_INSTRUCTIONS);

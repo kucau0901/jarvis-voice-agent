@@ -19,6 +19,12 @@ of every release, and in the [README](README.md#updating).
 
 ### Added
 
+- **A look around.** "Check on me during the day" sets up a routine that reads
+  what a brief reads (calendar, mail, car, weather, what waits for your OK) a
+  few times a day and tells you only what is worth an interruption, leaving
+  out what you were already told today. A look with nothing worth saying sends
+  nothing; at most four things a day. Also in **Routines** as "Look around,
+  and tell me only what is worth it". Each look is one small model answer.
 - **Skills, added in chat.** "Add a skill: Wren, my Grok bot, for the house
   and the car, at https://…" lets Jarvis send requests to an outside service
   (a bot, an automation, your own code), or, said as an MCP server, use its
