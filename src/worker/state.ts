@@ -991,7 +991,7 @@ export class JarvisState extends DurableObject<Env> {
   }
 
   /** What the component in Home Assistant should listen to (routes/house.ts): read from the house if not lately; why not, in words. */
-  async houseWatchList(now: number): Promise<{ version: string; entities: string[] } | string> {
+  async houseWatchList(now: number): Promise<{ version: string; entities: string[]; urgent: string[] } | string> {
     const ha = haConfig(await this.localEnv());
     if (!ha) return "Home Assistant is not set up";
     try {

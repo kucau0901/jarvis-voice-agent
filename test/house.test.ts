@@ -123,6 +123,8 @@ console.log("\nthe component in Home Assistant");
   const w2 = await watchList([thing("light.study", "on"), thing("lock.front_door", "unlocked")]);
   const w3 = await watchList([thing("light.study", "on")]);
   check("the watch list, sorted, with a version that moves only with what is watched", w1.entities.join() === "light.study,lock.front_door" && w1.version === w2.version && w1.version !== w3.version && w1.version.length === 12, [w1, w3]);
+  const w4 = await watchList([thing("lock.front_door", "locked"), thing("light.study", "off"), thing("person.adam", "home"), thing("binary_sensor.leak", "off", { kind: "moisture" }), thing("binary_sensor.hall_motion", "off", { kind: "motion" })]);
+  check("urgent: ways in, leaks, people; not lights or motion, which wait for the batch", w4.urgent.join() === "binary_sensor.leak,lock.front_door,person.adam", w4.urgent);
 
   const h = new House(fakeStorage() as never);
   check("before anything was read, a batch changes nothing", (await h.apply([{ id: "light.study", from: "off", to: "on" }], 1000)).length === 0);

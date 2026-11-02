@@ -676,7 +676,7 @@ interface ProposalApi {
   lookAnswer(person: string, id: string, answer: "later" | "less", now: number): Promise<string | null>;
   houseWatchSet(entity: string, choice: "watch" | "ignore" | "default"): Promise<Prefs | string>;
   houseWatched(): Promise<Prefs>;
-  houseWatchList(now: number): Promise<{ version: string; entities: string[] } | string>;
+  houseWatchList(now: number): Promise<{ version: string; entities: string[]; urgent: string[] } | string>;
   houseEvents(batch: Change[], now: number): Promise<{ version: string; changed: number }>;
   noteAsk(person: string, who: string, ask: string, tools: string[], grants: readonly Grant[], now: number, house?: boolean): Promise<void>;
   proposalsLater(person: string): Promise<Staged[]>;

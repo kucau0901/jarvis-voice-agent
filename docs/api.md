@@ -923,9 +923,13 @@ Both need the `home` scope and are the house's: the owner key, an admin, or a
 device of the first person; anyone else gets 403. Without Home Assistant set
 up, 404.
 
-`GET /api/v1/house/watch` returns `{version, entities}`: the entity ids Jarvis
-watches (chosen by kind, with what the person added or left out), sorted, and
-a 12-character `version` that changes only when that list does. Jarvis reads
+`GET /api/v1/house/watch` returns `{version, entities, urgent}`: the entity
+ids Jarvis watches (chosen by kind, with what the person added or left out),
+sorted; those of them whose changes to send at once (`urgent`: doors, windows,
+locks and covers, leaks, smoke and gas, the alarm, people), the rest being
+sent in a batch every few minutes, since every request counts towards the
+device's day; and a 12-character `version` that changes only when either
+list does. Jarvis reads
 the house to answer it when it has not lately (502 if Home Assistant cannot be
 read).
 

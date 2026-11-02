@@ -119,11 +119,20 @@ export function parseBatch(body: unknown): Change[] | null {
   });
 }
 
-/** What the component watches, and a version that changes with it, so it knows to ask again. */
-export async function watchList(things: readonly Thing[]): Promise<{ version: string; entities: string[] }> {
+/**
+ * What the component watches, which of it is urgent, and a version that changes with the list, so it knows to ask
+ * again. Urgent is sent at once (a way in, a leak, smoke or gas, the alarm, people coming and going); the rest in a
+ * batch every few minutes, so a busy house stays within a device's day of requests (lib/limits.ts).
+ */
+export async function watchList(things: readonly Thing[]): Promise<{ version: string; entities: string[]; urgent: string[] }> {
   const entities = things.map((t) => t.id).sort();
-  return { version: (await sha256Hex(entities.join(","))).slice(0, 12), entities };
+  const urgent = things.filter(urgentThing).map((t) => t.id).sort();
+  return { version: (await sha256Hex(`${entities.join(",")}|${urgent.join(",")}`)).slice(0, 12), entities, urgent };
 }
+
+/** A change the household would want judged at once, not in a few minutes' batch. */
+export const urgentThing = (t: Thing): boolean =>
+  wayIn(t) || domainOf(t.id) === "person" || domainOf(t.id) === "alarm_control_panel" || (domainOf(t.id) === "binary_sensor" && HAZARDS.has(t.kind));
 
 export function parseThings(rendered: string): Thing[] {
   const v: unknown = JSON.parse(rendered);

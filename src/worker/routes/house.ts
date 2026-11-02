@@ -11,7 +11,8 @@ import { parseBatch } from "../lib/house.ts";
  * devices, as house-wide events are (routes/routines.ts /api/v1/trigger). A member's device could otherwise tell
  * Jarvis the front door opened.
  *
- *   GET  /api/v1/house/watch    {version, entities}: the things Jarvis watches, which the component listens to
+ *   GET  /api/v1/house/watch    {version, entities, urgent}: the things Jarvis watches, which the component listens to,
+ *                               and those whose changes it sends at once rather than in its next batch
  *   POST /api/v1/house/events   {changes: [{id, from, to}]}: what changed, in a batch; → {version, changed}, the
  *                               watch list's version, to ask again when it moved, and how many were changes to Jarvis
  */
