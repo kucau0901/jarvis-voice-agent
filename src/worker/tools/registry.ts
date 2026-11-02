@@ -3,6 +3,7 @@ import type { Env } from "../types.ts";
 import type { DraftCard } from "../lib/mail-draft.ts";
 import type { Weighed } from "../lib/proposals.ts";
 import type { MemoryStore } from "../lib/memory.ts";
+import type { Procedure } from "../lib/specialties.ts";
 import { allows, type Grant, type Scope } from "../lib/scopes.ts";
 import * as hermes from "./hermes.ts";
 import { memoryTools } from "./memory.ts";
@@ -53,6 +54,8 @@ export interface ToolContext {
   started?(job: { id: string; title: string; engine: string }): void;
   /** A Gmail draft waiting for the person's tap (lib/mail-draft.ts): the screen shows it as a card with Send (src/app/draft.ts). */
   drafted?(d: DraftCard): void;
+  /** A card to make a skill's bot its own address, on the screen that asked (tools/skills.ts skill_address, src/app/botAddress.ts). */
+  offerAddress?(skill: { id: string; name: string }): void;
   /**
    * What the caller may reach. A routine made by voice keeps these, so it can
    * never later do more than the person or device that asked for it.
@@ -62,6 +65,8 @@ export interface ToolContext {
   offered?: readonly string[];
   /** The user's latest message, as they said it: what only they can ask for must be in it (tools/specialties.ts). */
   asked?: string;
+  /** The steps the answer before this question offered to save (lib/specialties.ts): all specialty_save may keep. */
+  procedure?: Procedure;
   /**
    * Told that the call did what was asked: a tool a job may propose says so
    * on success, since it says failure in words, not by throwing. Only what

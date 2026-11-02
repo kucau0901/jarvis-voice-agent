@@ -21,7 +21,7 @@ import {
   type Spoken,
 } from "../lib/speech.ts";
 import { run } from "../lib/router.ts";
-import { charBudget, forGlasses } from "../lib/glasses.ts";
+import { OVERHEARD_TEXT, charBudget, forGlasses, notForMe, overheard } from "../lib/glasses.ts";
 import { MAX_PHOTOS, MAX_PHOTO_CHARS, photosFrom } from "../lib/photos.ts";
 import { dataUrl } from "../lib/cameras.ts";
 import { originOf, type Origin } from "../lib/shared.ts";
@@ -66,6 +66,8 @@ interface Options {
   transcribe: boolean;
   /** Which screen asked, for the conversation shared across devices (lib/shared.ts). */
   origin?: unknown;
+  /** The microphone hears whoever is near (glasses with no display): what was not said to Jarvis is neither answered nor kept. */
+  openMic: boolean;
 }
 
 interface Input {
@@ -94,6 +96,7 @@ function options(raw: Record<string, unknown>): Options {
     ...(raw.chars !== undefined && raw.chars !== null ? { chars: charBudget(String(raw.chars)) } : {}),
     transcribe: raw.transcribe === true || raw.transcribe === "1" || raw.transcribe === "true",
     ...(raw.origin !== undefined ? { origin: raw.origin } : {}),
+    openMic: raw.openMic === true || raw.openMic === "1" || raw.openMic === "true",
   };
 }
 
@@ -174,6 +177,8 @@ interface Outcome {
   heardBy: string;
   reply: Collected;
   audio?: Spoken;
+  /** Heard, but not said to Jarvis, and nothing done: nothing said, and the caller keeps nothing either. */
+  notForMe?: boolean;
 }
 
 /** Whether the caller wants the answer spoken, and how. */
@@ -227,7 +232,7 @@ async function pipeline(
   const chars = input.opts.chars;
   await run(env, [...prior, { role: "user", text: transcript }], tee, signal, grants, {
     // Read on a small display rather than heard: written for it (lib/glasses.ts).
-    ...(chars ? { surface: "glasses" as const, charBudget: chars } : { surface: "voice" as const }),
+    ...(chars ? { surface: "glasses" as const, charBudget: chars } : { surface: "voice" as const, ...(input.opts.openMic ? { openMic: true } : {}) }),
     assist: true,
     // Their own asking: a habit may be offered as a routine (lib/habits.ts).
     habit: true,
@@ -238,15 +243,22 @@ async function pipeline(
     ...(input.photos?.length ? { images: input.photos } : {}),
   });
   const finished = collector.finish();
-  const reply = chars ? { ...finished, text: forGlasses(finished.text, chars) } : finished;
+  // Heard but not said to Jarvis (lib/glasses.ts): on a small display a fixed line, spoken nothing at all; and no turn kept for it.
+  const ignored = (!!chars || input.opts.openMic) && overheard(finished);
+  const notMine = (!!chars || input.opts.openMic) && notForMe(finished.text);
+  const reply = chars
+    ? { ...finished, text: forGlasses(notMine ? OVERHEARD_TEXT : finished.text, chars) }
+    : notMine
+      ? { ...finished, text: "" }
+      : finished;
 
-  if (threadKey && state) {
+  if (threadKey && state && !ignored) {
     await state
       .appendThread(threadKey, [{ role: "user", text: transcript }, { role: "assistant", text: reply.text }])
       .catch(() => {});
   }
 
-  const out: Outcome = { transcript, heardBy, reply };
+  const out: Outcome = { transcript, heardBy, reply, ...(ignored ? { notForMe: true } : {}) };
   if (input.opts.reply !== "audio" || !reply.text || speak === "none") return out;
   if (speak === "whole") {
     out.audio = await synthesize(env, reply.text, input.opts.format);
@@ -274,6 +286,7 @@ function emitResult(emit: (ev: SseEvent) => void, o: Outcome): void {
     ...(r.model ? { model: r.model } : {}),
     ...(r.usage ? { usage: r.usage } : {}),
     heardBy: o.heardBy,
+    ...(o.notForMe ? { notForMe: true } : {}),
   });
 }
 
@@ -370,6 +383,7 @@ export async function handleVoice(
     tools: o.reply.tools,
     heardBy: o.heardBy,
     ...(o.reply.usage ? { usage: o.reply.usage } : {}),
+    ...(o.notForMe ? { notForMe: true } : {}),
     ...audioJson(o.audio),
   });
 }

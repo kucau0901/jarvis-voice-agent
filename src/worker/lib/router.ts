@@ -4,7 +4,6 @@
  * lib/router-prompt.ts. Used by every route that asks, and by background
  * jobs. Moved out of routes/delegate.ts unchanged.
  */
-import { openaiBase } from "./openai-base.ts";
 import OpenAI from "openai";
 import type { Env } from "../types.ts";
 import { redact } from "./http.ts";
@@ -22,10 +21,10 @@ import { sharedBlock, type Origin, type SharedTurn } from "./shared.ts";
 import { stateStub } from "./state-client.ts";
 import { memoryFor, type MemoryStore } from "./memory.ts";
 import { bookOf, callerWho, OWNER } from "./context.ts";
-import { specialtyBlock } from "./specialties.ts";
+import { OFFER, procedureOf, specialtyBlock, type Procedure, type Specialty } from "./specialties.ts";
 import { botAsks, botHides, type Skill } from "./skills.ts";
 import { askSkill } from "../tools/skills.ts";
-import { episodeOfChain, pastBlock } from "./episodes.ts";
+import { episodeOfAnswer, episodeOfChain, pastBlock } from "./episodes.ts";
 import { localeOf } from "./locale.ts";
 import { allows, type Grant } from "./scopes.ts";
 import { DRAWS_ON_SCREEN } from "../tools/place.ts";
@@ -33,7 +32,9 @@ import { isResearchCap, jobTool } from "./jobs.ts";
 import { houseOnly, noteworthy } from "./habits.ts";
 import { Collector } from "./collector.ts";
 import { clientFor, forKey, forPlan, modelAuth, planFailed, planRespond, refusalOf } from "./openai-auth.ts";
-import { DEFAULT_CHAR_BUDGET, glassesInstructions } from "./glasses.ts";
+import { DEFAULT_CHAR_BUDGET, OVERHEARD_RULE, earlierOnGlasses, earlierSince, glassesInstructions, notForMe, overheard } from "./glasses.ts";
+import { aroundUser } from "./around.ts";
+import type { Said } from "./conversation.ts";
 import { spokenReplyInstructions } from "./prompt.ts";
 import {
   DEFAULT_ROUTER_MODEL,
@@ -117,6 +118,18 @@ export interface RunOptions {
   /** What Assist is asked, when the latest turn is more than the words said (the family room's). */
   assistAsk?: string;
   /**
+   * The glasses' own conversation had lapsed (routes/v1.ts): their earlier exchanges since G2_EARLIER's start go with
+   * the question, dated and quoted (lib/glasses.ts earlierOnGlasses), for those whose memory it is.
+   */
+  earlierOnGlasses?: boolean;
+  /**
+   * The microphone hears whoever is near the user, not only them: glasses with
+   * no display, or a live voice's handoff (routes/voice.ts, routes/delegate.ts).
+   * The router is told so (lib/glasses.ts OVERHEARD_RULE), what was not said to
+   * Jarvis is kept nowhere, and on the key OpenAI keeps none of it either.
+   */
+  openMic?: boolean;
+  /**
    * A skill's bot asking through its own address (routes/skills.ts handleBot),
    * by its name: the router is told the question is the bot's, not the
    * user's, nothing it says counts as the user's own words, and what a bot
@@ -132,7 +145,6 @@ export interface RunOptions {
 
 /** Everything a router request is built from, shared by run() and background jobs. */
 export interface Prepared {
-  client: OpenAI;
   /** The model chosen in settings, before any fallback. */
   model: string;
   instructions: string;
@@ -140,6 +152,10 @@ export interface Prepared {
   tools: Tool[];
   byName: Map<string, Tool>;
   memory: MemoryStore;
+  /** The specialty the question asks for, if any (lib/specialties.ts). */
+  specialty: Specialty | null;
+  /** The steps the person's last answer offered to save, taken by this question of theirs (lib/specialties.ts). */
+  procedure: Procedure | null;
 }
 
 export async function prepareRouter(
@@ -169,12 +185,20 @@ export async function prepareRouter(
   // The family, and what is waiting for this person to answer (lib/relays.ts), when they talk with the family.
   const talks = !!env.JARVIS_FAMILY && allows(grants, "chat");
   // A specialty the question asks for (lib/specialties.ts), and past attempts like it (lib/episodes.ts):
-  // by words, in the same wait as the rest, for those whose memory it is.
+  // by words, in the same wait as the rest, for those whose memory it is. And the steps their last answer
+  // offered to save, which a question they asked from a screen or device takes, saving them or not: the
+  // same test that offers them (run()), so a routine, a tile, a bot or a job never takes them.
   const asked = lastAsk(turns);
   const recalls = !!asked && allows(grants, "memory.read");
+  const takes = !!opts.origin && allows(grants, "memory.write");
   // The skills that have a key (lib/skills.ts), for those who may send to them.
   const skilled = allows(grants, "skills");
-  const [, mcp, chosen, shared, family, recalled, ready] = await Promise.all([
+  // After a pause on the glasses, what was asked on them since (lib/glasses.ts), from their person's Chat: theirs to read.
+  const since = opts.earlierOnGlasses && allows(grants, "memory.read") ? earlierSince(env.G2_EARLIER, Date.now(), localeOf(env).timeZone) : null;
+  // Where the microphone hears whoever is near (the glasses, a spoken open microphone), what is around the wearer
+  // (lib/around.ts). Not a live voice's handoff: the live voice has already judged it was said to Jarvis.
+  const near = opts.surface === "glasses" || (opts.surface === "voice" && opts.openMic === true);
+  const [, mcp, chosen, shared, family, recalled, ready, said, around] = await Promise.all([
     memory.load().catch((e) => {
       console.warn("memory unavailable:", e instanceof Error ? e.message : String(e));
     }),
@@ -187,9 +211,12 @@ export async function prepareRouter(
       ? (stateStub(env)?.recentShared(opts.origin!.id, Date.now(), bookOf(env.JARVIS_PERSON)) ?? Promise.resolve([] as SharedTurn[])).catch(() => [] as SharedTurn[])
       : Promise.resolve([] as SharedTurn[]),
     talks ? familyBlock(env).catch(() => "") : Promise.resolve(""),
-    recalls ? (stateStub(env)?.recallFor(env.JARVIS_PERSON || OWNER, asked!) ?? Promise.resolve(null)).catch(() => null) : Promise.resolve(null),
+    recalls ? (stateStub(env)?.recallFor(env.JARVIS_PERSON || OWNER, asked!, takes) ?? Promise.resolve(null)).catch(() => null) : Promise.resolve(null),
     skilled ? (stateStub(env)?.skillsReady() ?? Promise.resolve([] as Skill[])).catch(() => [] as Skill[]) : Promise.resolve([] as Skill[]),
+    since !== null ? (stateStub(env)?.conversationOf(env.JARVIS_PERSON || OWNER, Date.now()) ?? Promise.resolve([] as Said[])).catch(() => [] as Said[]) : Promise.resolve([] as Said[]),
+    near ? aroundUser(env, grants, opts.waitUntil).catch(() => "") : Promise.resolve(""),
   ]);
+  const earlier = since !== null ? earlierOnGlasses(said ?? [], since, Date.now(), localeOf(env).timeZone) : "";
   const elsewhere = [sharedBlock(shared, Date.now()), family].filter(Boolean).join("\n\n");
   tools.push(...mcp, ...askSkill(ready ?? []));
   if (opts.toolFilter || opts.screenless || opts.bot) {
@@ -201,7 +228,6 @@ export async function prepareRouter(
   }
 
 
-  const client = new OpenAI({ apiKey: env.OPENAI_API_KEY, baseURL: openaiBase(env) });
   // Chosen in settings (lib/router-model.ts). A first hop the chosen model
   // rejects is retried on the default, and the rest follows it (run()).
   const model = chosen.model;
@@ -239,6 +265,7 @@ export async function prepareRouter(
       ? glassesInstructions(opts.charBudget ?? DEFAULT_CHAR_BUDGET)
       : "") +
     (opts.surface === "voice" ? spokenReplyInstructions(env.JARVIS_AGENT_NAME) : "") +
+    (opts.openMic ? OVERHEARD_RULE : "") +
     (opts.surface === "job" || opts.surface === "research" ? JOB_INSTRUCTIONS : "") +
     (opts.surface === "research" ? RESEARCH_INSTRUCTIONS : "") +
     (opts.surface === "chat" ? CHAT_INSTRUCTIONS : "") +
@@ -296,8 +323,12 @@ export async function prepareRouter(
     ...(recalled?.specialty ? [{ role: "user" as const, content: specialtyBlock(recalled.specialty) }] : []),
     // What happened before, quoted as data: it can carry what a site or a tool said.
     ...(recalled?.past?.length ? [{ role: "user" as const, content: pastBlock(recalled.past, localeOf(env).timeZone) }] : []),
+    // What was asked on the glasses before a pause: dated, quoted as data, never the live conversation.
+    ...(earlier ? [{ role: "user" as const, content: earlier }] : []),
     // What was said, like the profile: a user message, never an instruction.
     ...(elsewhere ? [{ role: "user" as const, content: elsewhere }] : []),
+    // What Jarvis read of what is around them: a note, never an instruction, with what is playing quoted as data.
+    ...(around ? [{ role: "user" as const, content: around }] : []),
     { role: "user" as const, content: `Conversation so far:\n\n${conversation}` },
     ...(opts.images?.length || opts.files?.length
       ? [
@@ -317,7 +348,7 @@ export async function prepareRouter(
         ]
       : []),
   ];
-  return { client, model, instructions, input, tools, byName, memory };
+  return { model, instructions, input, tools, byName, memory, specialty: recalled?.specialty ?? null, procedure: recalled?.procedure ?? null };
 }
 
 /**
@@ -333,6 +364,17 @@ export function ownWords(turns: Turn[], opts: Pick<RunOptions, "surface" | "assi
   const said = opts.assistAsk ?? lastAsk(turns) ?? "";
   const reply = /^\(Replying to this answer of yours: "[\s\S]*?"\)\n/.exec(said);
   return (reply ? said.slice(reply[0].length) : said).trim() || undefined;
+}
+
+/**
+ * Whether the latest message replies to an answer before the one just given
+ * (src/app/reply.ts quotes it as the history holds it): "save this" there is
+ * not about the steps that answer offered (tools/specialties.ts).
+ */
+export function repliesToEarlier(turns: Turn[]): boolean {
+  const reply = /^\(Replying to this answer of yours: "([\s\S]*?)"\)\n/.exec(lastAsk(turns) ?? "");
+  const before = [...turns].reverse().find((t) => t.role === "assistant")?.text ?? "";
+  return !!reply && !reply[1]!.startsWith(before.replace(/"/g, "”").slice(0, 200));
 }
 
 /** What the router is told of photos and files that came with the latest message. */
@@ -405,8 +447,11 @@ export async function run(
   // How long to think (lib/router-model.ts): dropped for the rest of the
   // question if the model refuses it.
   let effort = effortFor(opts.surface, env.ROUTER_EFFORT);
+  // The key's client, made only when the key answers: with the plan alone there is no key, and the SDK
+  // refuses to make a client without one, which failed every question (issue #14).
+  let keyClient: OpenAI | null = null;
   const create = (params: OpenAI.Responses.ResponseCreateParamsNonStreaming) =>
-    p!.client.responses.create(effort ? { ...params, reasoning: { effort } } : params, { signal });
+    (keyClient ??= clientFor(env, { kind: "key" })).responses.create(effort ? { ...params, reasoning: { effort } } : params, { signal });
   // The owner's ChatGPT plan first, else the key (lib/openai-auth.ts).
   const auth = await modelAuth(env);
   const plan = auth?.kind === "plan" ? { client: clientFor(env, auth), model: auth.model } : null;
@@ -415,9 +460,25 @@ export async function run(
   let planModel: string | null = null;
   // On the plan nothing is stored at OpenAI, so each hop carries the whole
   // exchange, and keeps doing so on the key after falling back mid-question.
-  let carried: OpenAI.Responses.ResponseInput | null = plan ? [] : null;
+  // Nor on the key for a microphone that hears everyone: a stranger's words are
+  // not left at OpenAI either.
+  const unstored = opts.surface === "glasses" || !!opts.openMic;
+  let carried: OpenAI.Responses.ResponseInput | null = plan || unstored ? [] : null;
   let lastOutput: OpenAI.Responses.ResponseInput = [];
   const failed: { tool: string; said: string }[] = [];
+  // Every call, for the steps an answer may offer to save (lib/specialties.ts), and whether one started a background job.
+  const made: { name: string; arguments: string }[] = [];
+  let startedJob = false;
+  const watched: EventSink = {
+    send(ev) {
+      if (ev.type === "job") startedJob = true;
+      sse.send(ev);
+    },
+    get isClosed() {
+      return sse.isClosed;
+    },
+  };
+  let offered: Procedure | null = null;
   const onPlanHop = async (model: string, input: OpenAI.Responses.ResponseInput) => {
     const ask = (withEffort: boolean) =>
       planRespond(plan!.client, {
@@ -452,7 +513,8 @@ export async function run(
       return { model: p.model, input: p.input, save: () => p!.memory.save() };
     },
     async ask(model, input, previousResponseId) {
-      if (carried) carried = carried.length ? [...carried, ...lastOutput, ...(input as OpenAI.Responses.ResponseInput)] : (input as OpenAI.Responses.ResponseInput);
+      // Built afresh until a hop has answered: a first hop retried on the default model must not send its input twice.
+      if (carried) carried = previousResponseId ? [...carried, ...lastOutput, ...(input as OpenAI.Responses.ResponseInput)] : (input as OpenAI.Responses.ResponseInput);
       if (onPlan) {
         const used = plan!.model ?? model;
         try {
@@ -482,9 +544,11 @@ export async function run(
           ...builtinTools(env),
         ],
         tool_choice: "auto",
+        // Not stored, so the reasoning comes back to be carried, as on the plan.
+        ...(unstored ? { include: ["reasoning.encrypted_content" as const] } : {}),
         ...(previousResponseId && !carried ? { previous_response_id: previousResponseId } : {}),
         ...(explicitCache(model) ? { prompt_cache_options: { mode: "explicit" as const, ttl: "30m" as const } } : {}),
-        store: true,
+        store: !unstored,
       };
       let res: OpenAI.Responses.Response;
       try {
@@ -495,11 +559,16 @@ export async function run(
         effort = null;
         res = await create(params);
       }
-      if (carried) lastOutput = forKey(res.output as unknown as OpenAI.Responses.ResponseInput);
+      // The key's own steps go on as they came, reasoning and all, when nothing is stored; only what the plan said is made fit for it.
+      if (carried) lastOutput = unstored ? (res.output as unknown as OpenAI.Responses.ResponseInput) : forKey(res.output as unknown as OpenAI.Responses.ResponseInput);
       return res;
     },
     runCalls: async (calls) => {
-      const out = await runCalls(calls as OpenAI.Responses.ResponseFunctionToolCall[], p!.byName, { env, signal, memory: p!.memory, grants, offered: [...p!.byName.keys()], asked: ownWords(turns, opts), screenless: opts.screenless === true }, sse);
+      made.push(...calls.map((c) => ({ name: c.name, arguments: c.arguments })));
+      const out = await runCalls(calls as OpenAI.Responses.ResponseFunctionToolCall[], p!.byName, {
+        env, signal, memory: p!.memory, grants, offered: [...p!.byName.keys()], asked: ownWords(turns, opts), screenless: opts.screenless === true,
+        ...(p!.procedure && !repliesToEarlier(turns) ? { procedure: p!.procedure } : {}),
+      }, watched);
       // Tools that failed, for a past attempt (lib/episodes.ts): what callTool says when one throws.
       out.forEach((o, i) => {
         const said = "output" in o && typeof o.output === "string" ? o.output : "";
@@ -508,18 +577,47 @@ export async function run(
       return out;
     },
     close: () => sessions.close(),
+    // An answer that took two tools or more, asked from a screen or device (origin) by someone who may save it, ends by
+    // offering its steps, kept for their next question (lib/specialties.ts). Not for a routine, a tile, a bot or a job,
+    // none asked from a screen or device, and a routine's or a bot's not in anyone's own words; nor one that failed in
+    // part, started a background job or followed a specialty already; nor on glasses, whose answer is cut to fit.
+    offer(tools, text) {
+      const own = ownWords(turns, opts);
+      // Heard but not said to Jarvis (lib/glasses.ts): nothing to offer, and the word must stay alone to be seen.
+      if (notForMe(text)) return null;
+      // Taken only with memory.read (prepareRouter) and kept only with a state object: offered only where it can be saved.
+      if (!own || !opts.origin || opts.surface === "glasses" || !allows(grants, "memory.write") || !allows(grants, "memory.read") || !stateStub(env)) return null;
+      if (tools.length < 2 || failed.length || startedJob || p?.specialty) return null;
+      offered = procedureOf(own, made);
+      return offered ? OFFER : null;
+    },
     // Settings → Usage: after the answer, where the request allows, so the
     // glasses and push-to-talk do not wait on the write.
     record(r) {
       const writes: Promise<void>[] = [];
-      // A question whose tools failed is remembered, so the next like it knows (lib/episodes.ts).
-      const tried = lastAsk(turns);
+      // A question whose tools failed is remembered, so the next like it knows (lib/episodes.ts): by their own
+      // words, not an answer quoted in a reply nor the family room around their message; a routine's or a
+      // bot's question, which has none of its own, as asked.
+      const tried = ownWords(turns, opts) ?? lastAsk(turns);
       if (failed.length && tried && allows(grants, "memory.read")) {
         writes.push((stateStub(env)?.episodeAdd(env.JARVIS_PERSON || OWNER, episodeOfChain(tried, failed), Date.now()) ?? Promise.resolve()).catch(() => {}));
+      } else if (opts.origin && allows(grants, "memory.read")) {
+        // And one answered with two tools or more, when someone asked it from a screen or device (origin): not a
+        // routine, a tile's refresh or a bot, which would note the same answer again on every run. Their own words only.
+        const own = ownWords(turns, opts);
+        const worked = own ? episodeOfAnswer(own, r) : null;
+        if (worked) writes.push((stateStub(env)?.episodeAdd(env.JARVIS_PERSON || OWNER, worked, Date.now()) ?? Promise.resolve()).catch(() => {}));
       }
+      // The steps just offered, until their next question (lib/specialties.ts).
+      if (offered) writes.push((stateStub(env)?.specialtyOffer(env.JARVIS_PERSON || OWNER, offered, Date.now()) ?? Promise.resolve()).catch(() => {}));
+      // Heard by an open microphone but not said to Jarvis, and nothing done (lib/glasses.ts): no part of any conversation,
+      // and its words, perhaps a stranger's, not kept in Usage either.
+      const ignored = (opts.surface === "glasses" || !!opts.openMic) && overheard(r);
+      // It took the steps their last answer offered (prepareRouter) before it was judged: they go back, for their next question.
+      if (ignored && p?.procedure) writes.push((stateStub(env)?.specialtyOffer(env.JARVIS_PERSON || OWNER, p.procedure, Date.now()) ?? Promise.resolve()).catch(() => {}));
       // One conversation across devices (lib/shared.ts): what was asked here, and answered.
       const asked = lastAsk(turns);
-      if (opts.origin && allows(grants, "memory.read") && r.ok && asked) {
+      if (opts.origin && allows(grants, "memory.read") && r.ok && asked && !ignored) {
         const at = Date.now();
         const o = opts.origin;
         writes.push(
@@ -541,7 +639,7 @@ export async function run(
         ms: r.ms,
         ...r.usage,
         tools: r.tools,
-        ask: (asked ?? "").slice(0, 80),
+        ask: ignored ? "(not for me)" : (asked ?? "").slice(0, 80),
         who: env.JARVIS_PERSON,
       }));
       const write = Promise.all(writes).then(() => {});
@@ -573,7 +671,7 @@ export async function run(
 export async function runCalls(
   calls: OpenAI.Responses.ResponseFunctionToolCall[],
   byName: Map<string, Tool>,
-  { screenless, ...base }: { env: Env; signal: AbortSignal; memory: MemoryStore; grants: readonly Grant[]; offered?: readonly string[]; asked?: string; screenless?: boolean },
+  { screenless, ...base }: { env: Env; signal: AbortSignal; memory: MemoryStore; grants: readonly Grant[]; offered?: readonly string[]; asked?: string; procedure?: Procedure; screenless?: boolean },
   sse: EventSink,
 ): Promise<OpenAI.Responses.ResponseInput> {
   return Promise.all(
@@ -591,6 +689,7 @@ export async function runCalls(
           started: (job) => sse.send({ type: "job", ...job }),
           // A draft's card only where a screen will draw it (src/app/draft.ts): otherwise it waits in Drafts.
           ...(screenless ? {} : { drafted: (d: DraftCard) => sse.send({ type: "draft", ...d }) }),
+          ...(screenless ? {} : { offerAddress: (s: { id: string; name: string }) => sse.send({ type: "address", ...s }) }),
         }, sse)
         : `No such tool: ${call.name}`;
 

@@ -26,6 +26,8 @@ export interface Env {
   /** What they like to be called, and their birthday (YYYY-MM-DD), when they said (ui/Profile.ts). */
   JARVIS_PERSON_NICKNAME?: string;
   JARVIS_PERSON_BIRTHDAY?: string;
+  /** Their Home Assistant person or tracker, for "when home" (Family): whether the house's media is near them (lib/around.ts). */
+  JARVIS_PERSON_PRESENCE?: string;
   /** What the family calls its assistant. */
   JARVIS_AGENT_NAME?: string;
   /** The family's shared memory book, when there is a family. */
@@ -164,6 +166,8 @@ export interface Env {
   G2_CHAR_BUDGET?: string;
   /** Seconds to wait for an answer. The Even app hangs up at 300. Defaults to 240. */
   G2_WAIT_S?: string;
+  /** How far back the glasses look after a pause: today (from 4am, the default), 1 hour, 24 hours or off. */
+  G2_EARLIER?: string;
   /** Old name of HA_ASSIST, still read. */
   G2_FASTPATH?: string;
   /** Old name of HA_ASSIST_LANGUAGE, still read. */

@@ -141,6 +141,7 @@ export class Scheduler {
 
     // A watch is tried once before it is kept: a misspelt entity id is better
     // said now, to the router that can fix it, than found out never to fire.
+    let already: boolean | null = null;
     if (built.trigger.kind === "watch") {
       if (!deps.renderTemplate) return "watches need Home Assistant, which is not set up";
       // A watch reads the house with its own token, and says what it read: only for those who may reach the house.
@@ -154,7 +155,8 @@ export class Scheduler {
       } catch (e) {
         return `Home Assistant could not check that condition: ${e instanceof Error ? e.message : String(e)}`;
       }
-      if (truthy(out) === null) return `the condition must come out True or False, and it gave "${out.slice(0, 80)}"`;
+      already = truthy(out);
+      if (already === null) return `the condition must come out True or False, and it gave "${out.slice(0, 80)}"`;
     }
     // A page is read once before it is kept, as a watch is tried: one that does not say is no use.
     // That read is its first look, so setting one up costs one look, and an alert already true is said now.
@@ -200,6 +202,8 @@ export class Scheduler {
     if (all.length >= MAX_ROUTINES) return `there are already ${MAX_ROUTINES} routines; remove one first`;
 
     const r = makeRoutine(built, by, timeZone, now);
+    // One said on a change (getting home) that is already true waits for the next time it comes true.
+    if (r.trigger.kind === "watch" && input.onChange === true) r.watch = { nextCheck: now, onChange: true, fired: already === true };
     await this.save(r);
     if (first && r.trigger.kind === "page") {
       await this.applyWatch(r.id, { template: `${r.trigger.url}\n${r.trigger.condition}`, state: first.state, error: "", text: first.text }, deps, now);
@@ -220,8 +224,8 @@ export class Scheduler {
         if (r.trigger.kind === "once" && next === undefined) return "that one-off time has passed; make a new one";
         r.enabled = true;
         if (next !== undefined) r.nextAt = next;
-        // Switched back on, a watch starts afresh: what it saw before is old news.
-        if (r.trigger.kind === "watch" || r.trigger.kind === "page") r.watch = { nextCheck: now };
+        // Switched back on, a watch starts afresh: what it saw before is old news. One said on a change waits for one.
+        if (r.trigger.kind === "watch" || r.trigger.kind === "page") r.watch = r.watch?.onChange ? { nextCheck: now, onChange: true, fired: true } : { nextCheck: now };
       } else {
         r.enabled = false;
         delete r.nextAt;
@@ -472,6 +476,7 @@ export class Scheduler {
     w.errors = 0;
     w.nextCheck = now + every;
     if (state) {
+      delete w.falseSince;
       w.trueSince ??= now;
       const due = w.trueSince + forMin * 60_000;
       if (!w.fired && now >= due) {
@@ -486,7 +491,11 @@ export class Scheduler {
       if (!w.fired) w.nextCheck = Math.min(w.nextCheck, due);
     } else {
       delete w.trueSince;
-      w.fired = false;
+      // One said on a change needs as long out as in: a phone's position wavering for a minute at home is not leaving it.
+      if (w.onChange) {
+        w.falseSince ??= now;
+        if (now - w.falseSince >= forMin * 60_000) w.fired = false;
+      } else w.fired = false;
     }
     r.watch = w;
     await this.save(r);

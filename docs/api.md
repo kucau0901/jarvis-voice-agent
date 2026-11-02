@@ -161,7 +161,7 @@ existence, or argued around.
 | `ask` (jobs) | `/api/v1/jobs`, `/api/v1/jobs/cancel`, `start_job`. A job for Hermes also needs `hermes`. Each job runs with its creator's grants, no more than they hold now; it reads with their reading tools, and what it would do is proposed for their tap (or done at once, for a reversible kind they allowed). |
 | `routines` | `/api/v1/routines`, `/api/v1/routines/run`, `/api/v1/routines/runs`, `/api/v1/trigger`; `routine_add`, `routine_list`, `routine_remove`. A routine's question runs with **its creator's** grants, never more. A device sees, runs and changes only the routines it made, or ones no stronger than itself; revoking or deleting it stops the routines it made, and narrowing it narrows them. |
 | `alerts` | Receiving alerts (`/api/v1/events`, `/api/v1/push`, `/api/v1/alerts`), raising one (`/api/v1/notify`), and `send_note`. The same scope both ways: a device that may be told things may ask to be told something. |
-| `skills` | `skill_add`, `skill_remove` (outside services and MCP servers added in chat) and `ask_skill` (sending a request to a service). A service may act on the house or send things, so no role has it but an admin's. Each service's key is set in Settings → Skills, never by a device. A bot's own address never holds it, nor `alerts`, `chat`, `voice`, `screen` or `routines` ([Bots](#bots-skills-both-ways)). |
+| `skills` | `skill_add`, `skill_remove` (outside services and MCP servers added in chat), `skill_address` (a card for a bot's own address, on an admin's screen) and `ask_skill` (sending a request to a service). A service may act on the house or send things, so no role has it but an admin's. Each service's key is set in Settings → Skills, never by a device. A bot's own address never holds it, nor `alerts`, `chat`, `voice`, `screen` or `routines` ([Bots](#bots-skills-both-ways)). |
 
 Ask for something out of reach and you get a normal answer explaining it is not
 available — not an error. `tools` will be empty.
@@ -355,7 +355,9 @@ hearing, for a device that recognised the speech itself; `reply=text` skips
 the speaking. `chars=350` is for a device that shows the answer on a small
 display, such as glasses: the answer is written for it as for the
 [G2 route](#even-realities-g2-glasses) (the point first, plain text) and cut
-at a sentence to that many characters (80 to 2 000). The app sends `multipart/form-data` — an `audio` file and an
+at a sentence to that many characters (80 to 2 000); what was heard but not
+said to Jarvis gets the G2 route's fixed line, the reply carries
+`"notForMe": true`, and no turn is kept for it. The app sends `multipart/form-data` — an `audio` file and an
 `options` JSON field — with `Accept: text/event-stream`, and gets `transcript`,
 `progress`, `display`, `result`, then the answer's speech sentence by sentence
 as `audio` events, so it starts talking about a second after the words are
@@ -364,6 +366,18 @@ ready.
 `transcribe=1` (or `"transcribe": true` in the app's `options`) only hears
 the recording: `{ok, transcript, heardBy}`, nothing answered or spoken. The
 chat box's mic uses it to dictate. The same `voice` and `ask` grants apply.
+
+`openMic=1` (or `"openMic": true`) is for a microphone that hears whoever is
+near, not only its wearer: glasses with no display, listening hands-free. The
+router is told so, as the [G2 route](#even-realities-g2-glasses) is, and when
+nothing heard was said to Jarvis the answer is empty, nothing is spoken, and
+the reply carries `"notForMe": true`: `text` is `""` in the JSON, one `result`
+event with `notForMe` and no `audio` events when streamed, and the JSON rather
+than audio for `Accept: audio/*`. Nothing of it is kept: not the thread, not
+the conversation shared between devices, and Usage counts it as
+"(not for me)". With `chars`, the display gets the fixed line instead, as
+above. If a tool did run, the exchange is kept, `text` is `""` without
+`notForMe`, and the router's word is never said. Absent, `notForMe` is false.
 
 How it hears and speaks is set in Settings → Voice, which also sets the voice
 of alerts said aloud: OpenAI (default; any language, mixed ones too; hearing
@@ -677,7 +691,7 @@ POST /api/v1/routines
 | `cron` | `cron`: five fields, minute hour day month weekday, in the time zone set in Settings (`"0 8,12 * * *"`, `"0 */6 * * *"`, `"0 9 1 * *"`). Lists, ranges, steps and names (`mon-fri`, `jan`); no `L`, `W`, `#` or `@daily`. One number for the minute, so at most hourly. With both day fields given, either will do |
 | `event` | `event`: a name like `arrived_home` |
 | `leave` | optional `bufferMin` (default 10). No message: it warns before each calendar event with a place |
-| `watch` | `condition`: a Home Assistant template, true while the thing is happening (`"{{ is_state('cover.main_gate', 'open') }}"`); optional `forMinutes` (how long it must stay true first, default 0) |
+| `watch` | `condition`: a Home Assistant template, true while the thing is happening (`"{{ is_state('cover.main_gate', 'open') }}"`); optional `forMinutes` (how long it must stay true first, default 0); optional `onChange: true` to say it only when the condition comes true, not because it already is, and to count it false only after `forMinutes` of being so (getting home, with `forMinutes` 2: `"{% set s = states('person.example') %}{{ 'unknown' if s in ['unknown', 'unavailable'] else s == 'home' }}"`, where an unknown person counts as not read, so a restart of Home Assistant is not a homecoming) |
 
 Every kind but `leave` takes exactly one of `say` (a fixed message) or `ask`
 (a request for Jarvis, answered at the time with the creator's grants and sent).
@@ -772,13 +786,24 @@ meantime. Most devices should not bother.
   every 15 seconds after. Skip comments; treat a gap as a dead link.
 - **There is no `[DONE]` sentinel.** The stream simply ends.
 - Event `type` is one of `progress`, `tool`, `used`, `display`, `job`, `draft`,
-  `result`, `error`. Skip a type you do not know: more may be added.
+  `address`, `result`, `error`. Skip a type you do not know: more may be added.
+- `"openMic": true` in the body, for a live voice on glasses whose microphone
+  hears everyone, has the router judge again whether the question was said to
+  Jarvis. When it was not and no tool ran, the `result` has `"text":""` and
+  `"notForMe":true`, and nothing is kept: tell the live voice so with
+  `session.thinking.append`, which it does not say aloud, never
+  `session.commentary.append`, which it does. If a tool did run first, `text`
+  is `""` without `notForMe`: what was done stays, and there is nothing to say.
 - `job` is a background job the question started (`{"type":"job","id","title","engine"}`);
   its result comes later as an alert, not in this stream.
 - `draft` is a mail Jarvis wrote and saved to the person's Gmail Drafts
   (`{"type":"draft","draft","to","subject","body","reply"}`), held for them to
   send when Settings → Google → Draft first is on. A screen shows it with Send;
   the app sends it with `POST /api/google/drafts/send {"id": draft}`.
+- `address` (`{"type":"address","id","name"}`) asks a screen to show a card
+  for giving that skill's bot its own address; the card makes it with the
+  admin-only `PATCH /api/skills`. It carries no address or key; a client
+  without a screen skips it.
 - `display` may be `{kind: "page", page, label}`: a page Jarvis made (below).
 - `result` may carry `links: [{url, title}]`, the https pages the answer cited
   (up to six), for showing beside it. The answer's words are complete without them.
@@ -838,13 +863,24 @@ and `car.control` are not needed.
 2. **Follow-ups.** The last six turns per device are kept for five minutes in the
    Durable Object, so "turn it off" knows what "it" is. Each question and its
    answer is also kept in the conversation of the person the token belongs
-   to (`GET /api/hub/conversation`), so Chat shows it.
+   to (`GET /api/hub/conversation`), so Chat shows it. After a pause, with
+   `memory.read`, the first question also gets that person's glasses
+   exchanges since `G2_EARLIER`'s start (`today`, from 4am, the default;
+   `1 hour`; `24 hours`; or `off`): at most three, dated, quoted as what was
+   said, for a follow-up like "and tomorrow?" to find what it follows on from.
 3. **Length.** The router is told the answer is going to the glasses, and the
    reply is cut at a sentence boundary to `G2_CHAR_BUDGET` characters (default
    350) with markdown and emoji removed.
 4. **Always a 200.** A timeout or a router error comes back as readable text in
    the completion, because any other status makes the glasses show only "AI
    server error". A body with no user message is still a 400.
+5. **Not for Jarvis.** The glasses hear everyone nearby, so the router judges
+   whether what was heard was said to it. When nothing was, it does nothing,
+   the completion is a fixed line ("That didn't sound like it was for me. Ask
+   again if it was."), and the exchange is kept nowhere: not the thread, Chat
+   or the conversation shared between devices. Usage counts the call as
+   "(not for me)", without the words heard. `/api/v1/voice` with `chars` does
+   the same.
 
 It waits `G2_WAIT_S` seconds (default 240) before answering that it is still
 working, which leaves room for most Hermes questions.
@@ -942,7 +978,7 @@ number drifting is kept but is not a change).
 ## Bots: skills both ways
 
 A skill is an outside bot or service the owner or an admin added in chat
-("Add a skill: Wren, my news bot, at https://bots.example.com/wren"): a Grok
+("Add a skill: Zephyr, my news bot, at https://bots.example.com/zephyr"): a Grok
 bot, an n8n or Zapier flow, a Home Assistant automation, a script, another
 assistant. Anything that takes an HTTPS `POST` of JSON works; nothing here is
 any one vendor's. Its key goes in **Settings → Skills**, never in chat
@@ -951,7 +987,7 @@ any one vendor's. Its key goes in **Settings → Skills**, never in chat
 ### Jarvis asking it
 
 ```
-POST https://bots.example.com/wren
+POST https://bots.example.com/zephyr
 Authorization: Bearer <its key, from Settings → Skills>
 Content-Type: application/json
 
@@ -1009,20 +1045,24 @@ One skill is sent at most 20 requests an hour, whoever asks.
 
 In **Settings → Skills**, under the skill, an admin ticks what its bot may
 reach (asking questions, and nothing more, unless more is ticked) and
-presses **Make its address**. It is shown once, in two forms: a base URL,
-`https://jarvis.example.com/api/v1/bot`, with the key `jbt1_…` sent as
-`Authorization: Bearer`, which keeps it out of URL logs; or, for a bot that
-takes only a URL, `https://jarvis.example.com/api/v1/bot/jbt1_…`. Only its
-digest is kept: lost, make a new one, and the old one stops.
+presses **Make its address**; or asks in Chat, by its name ("give Zephyr its
+own address"), which puts the same ticks and button on that screen as a
+card, never kept or synced. It is shown once, in two forms, laid out as the
+kind of app the bot is in asks for it (base URL and API key, MCP server, or
+just a URL): a base URL, `https://jarvis.example.com/api/v1/bot`, with the
+key `jbt1_…` sent as `Authorization: Bearer`, which keeps it out of URL
+logs; or, for a bot that takes only a URL,
+`https://jarvis.example.com/api/v1/bot/jbt1_…`. Only its digest is kept:
+lost, make a new one, and the old one stops.
 
 ```bash
 curl -X POST https://jarvis.example.com/api/v1/bot/ask \
      -H "Authorization: Bearer jbt1_…" -H "Content-Type: application/json" \
-     -d '{"text": "Is the garage door shut?", "timeout": 60, "clientRef": "wren-42"}'
+     -d '{"text": "Is the garage door shut?", "timeout": 60, "clientRef": "zephyr-42"}'
 ```
 
 ```json
-{"ok": true, "text": "Yes, it is shut.", "tools": ["ha__get_state"], "ms": 3120, "requestId": "r_4b1e9c02", "clientRef": "wren-42"}
+{"ok": true, "text": "Yes, it is shut.", "tools": ["ha__get_state"], "ms": 3120, "requestId": "r_4b1e9c02", "clientRef": "zephyr-42"}
 ```
 
 The same on the same address, for bots that speak something else:
@@ -1033,7 +1073,7 @@ The same on the same address, for bots that speak something else:
   `POST {base}/chat/completions` with `{"model": "jarvis", "messages": […]}`;
   the answer is `choices[0].message.content`, whole, not cut for glasses.
 
-`GET {base}` says whose address it is: `{"ok": true, "name": "Wren"}`.
+`GET {base}` says whose address it is: `{"ok": true, "name": "Zephyr"}`.
 
 **Messaging you on its own** (its own routines' news), whatever it may reach:
 
@@ -1057,7 +1097,7 @@ nor `alerts`, `chat`, `voice`, `screen` or `routines`; `hermes` only if
 ticked. It is never offered your Chat (`look_back`), background jobs, your
 glasses, or MCP servers added as skills. Jarvis is told the question is the
 bot's, not yours, so nothing it says is your request or your approval, and
-the exchange is kept in your Chat as "Wren asked" and Jarvis's answer.
+the exchange is kept in your Chat as "Zephyr asked" and Jarvis's answer.
 `403` with `need: "ask"` means it is not ticked to ask. Every refusal of the
 address is the same `404`: not one, never made, stopped, its skill removed,
 or its maker gone. Removing the skill stops it.
@@ -1104,6 +1144,13 @@ why the conversation has to be sent. The Worker does not do this for you.
 Permitted client events: `session.commentary.append`,
 `session.thinking.append`, `session.input_audio.mute`,
 `session.input_audio.unmute`, `session.close`.
+
+`client` says where the voice is heard, and so how it speaks: `car` (the
+default), `desktop`, `mobile`, `device` (a small device with no screen), or
+`glasses`: worn, no screen, and a microphone that hears everyone near the
+wearer, so the voice speaks only when spoken to and stays silent otherwise.
+A server older than 2.8.0 takes an unknown value as `car`: check `version` in
+`GET /api/health` before sending `glasses`.
 
 **For smartglasses, consider not doing any of this.** If they can load a web
 page, point them at `https://jarvis.example.com` — it is already a web app

@@ -8,7 +8,7 @@ import { whoOf, grantsOf, isAdmin, personOf, type Principal } from "../lib/auth.
 import { deviceWho, OWNER } from "../lib/context.ts";
 import { hubStub } from "../lib/hub-client.ts";
 import { stateStub } from "../lib/state-client.ts";
-import { charBudget, forGlasses, latestUserText, toChatCompletion, waitSeconds } from "../lib/glasses.ts";
+import { GLASSES_SAID, OVERHEARD_TEXT, charBudget, forGlasses, latestUserText, notForMe, overheard, toChatCompletion, waitSeconds } from "../lib/glasses.ts";
 import { allows, saneGrants, SCOPES, WILDCARD, type Grant } from "../lib/scopes.ts";
 import { handleAlertApi } from "./alerts.ts";
 import { handleRoutines } from "./routines.ts";
@@ -276,7 +276,8 @@ export async function handleChatCompletions(
   const thread = threadOf(principal);
   const reply = (answer: string, model?: string) => json(toChatCompletion(answer, model));
 
-  const turns: Turn[] = [...(await priorTurns(env, thread)), { role: "user", text }];
+  const prior = await priorTurns(env, thread);
+  const turns: Turn[] = [...prior, { role: "user", text }];
   const bot = botOf(principal);
   // Assist first (RunOptions.assist): the house answers what it understands.
   const d = await collectWithDeadline(
@@ -287,6 +288,8 @@ export async function handleChatCompletions(
           surface: "glasses", charBudget: budget, assist: true, habit: true,
           // One conversation across devices (lib/shared.ts); the owner key on glasses is "glasses".
           origin: originOf(principal, null) ?? { id: "owner-glasses", label: "glasses" },
+          // Their own conversation lapsed after a pause: what was asked on them earlier goes with it, dated (lib/glasses.ts).
+          ...(prior.length ? {} : { earlierOnGlasses: true }),
         },
   );
 
@@ -296,11 +299,13 @@ export async function handleChatCompletions(
   }
 
   const r = d.result;
-  console.log(`g2: ${r.model ?? "-"} ${r.ok ? "ok" : r.error} ${d.ms}ms tools=${r.tools.join(",") || "-"}`);
+  // Heard, but not said to Jarvis (lib/glasses.ts): a fixed line, and, when nothing was done, kept nowhere. Never the words in the log.
+  const ignored = !bot && overheard(r);
+  console.log(`g2: ${r.model ?? "-"} ${ignored ? "not for me" : r.ok ? "ok" : r.error} ${d.ms}ms tools=${r.tools.join(",") || "-"}`);
   const said = r.text || (r.ok ? "Done." : "Something went wrong.");
-  const answer = bot ? said : forGlasses(said, budget);
+  const answer = bot ? said : forGlasses(notForMe(r.text) ? OVERHEARD_TEXT : said, budget);
   // A failed turn is not context worth carrying: the user will ask again.
-  if (r.ok) ctx.waitUntil(Promise.all([recordTurns(env, thread, text, answer), keepInChat(env, personOf(principal), text, answer, bot)]));
+  if (r.ok && !ignored) ctx.waitUntil(Promise.all([recordTurns(env, thread, text, answer), keepInChat(env, personOf(principal), text, answer, bot)]));
   return reply(answer, r.model);
 }
 
@@ -313,7 +318,7 @@ async function keepInChat(env: Env, person: string, asked: string, answered: str
   if (!state) return;
   const now = Date.now();
   try {
-    const id = `${bot ? "b" : "g"}_${crypto.randomUUID()}`;
+    const id = `${bot ? "b_" : GLASSES_SAID}${crypto.randomUUID()}`;
     await state.conversationAdd(person, bot ? skillExchangeSaid(id, bot, asked, answered, now) : exchangeSaid(id, asked, answered, now), now);
   } catch (e) {
     console.warn("not kept in chat:", e instanceof Error ? e.message : String(e));

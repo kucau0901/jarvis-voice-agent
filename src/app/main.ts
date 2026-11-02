@@ -18,6 +18,7 @@ import { Sky } from "./orb/Sky";
 import { watchSky } from "./sky";
 import { runDelegation } from "./delegate";
 import { draftCard, type Draft } from "./draft";
+import { addressCard, type Addressee } from "./botAddress";
 import { LiveLink, releasePush, speakAlert, speakHere, speakText, syncPush, type Alert } from "./alerts";
 import { askTyped } from "./chat";
 import { pin, working } from "./working";
@@ -329,6 +330,7 @@ function onEvent(ev: ServerEvent) {
           slow: (name) => dropSessionKeepWaiting(`${name} takes minutes; not paying to listen`),
           tool: (name, phase) => panelTool(name, phase),
           drafted: showDraft,
+          address: showAddress,
           // Given up on (another question took its place): a page it made is not left for the next answer.
           done: () => {
             if (mine.signal.aborted) voicePages.flush();
@@ -1206,6 +1208,7 @@ function pushToTalk(): PushToTalk {
     tool: (name, phase) => panelTool(name, phase),
     dictated: (text) => insertTyped(text),
     drafted: showDraft,
+    address: showAddress,
   }));
 }
 
@@ -1379,6 +1382,10 @@ function pageApart(p: Page) {
 function showDraft(d: Draft) {
   if (key) showCard(draftCard(key, d));
 }
+/** A skill's bot's own address to make, on this screen only: never kept, so never on another (botAddress.ts). */
+function showAddress(s: Addressee) {
+  if (key) showCard(addressCard(key, s));
+}
 
 let reader: Reader | null = null;
 /** A finished row of its own, its markdown drawn, a document as a card to open (ui/rich.ts), and the pages it cited. */
@@ -1433,6 +1440,7 @@ async function sendTyped() {
     },
     progress: (t, call) => work.note(t, call),
     drafted: showDraft,
+    address: showAddress,
     // Handed to a background job: its pill at once, which the result takes when it comes (fromRoutine.ts).
     job: (j) => {
       els.transcript.insertBefore(jobStarted(j, openJob), els.transcript.querySelector(".row.working"));
@@ -1622,6 +1630,8 @@ function busy(): boolean {
     typed.value.trim() ||
     pairing ||
     document.querySelector(".panel.open") ||
+    // A bot's address shown once: reloaded for a new build, it would be gone before it is copied.
+    document.querySelector(".addrcard .addrlines") ||
     !unlock.joinView.hidden ||
     !unlock.pinView.hidden
   );

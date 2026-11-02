@@ -488,42 +488,53 @@ console.log("\nevery pass-through to StateHost forwards what it is given");
   check(`all ${names.length} of them forward every argument but the clock`, names.length > 10 && wrong.length === 0, wrong);
 }
 
+// An answer's steps offered to save (lib/specialties.ts), through the object: taken only when asked to, and whose.
+console.log("steps offered to save, through the object");
+{
+  const offered = { asked: "what's my week", steps: ["calendar_check", "weather"] };
+  await jarvis.specialtyOffer("u_sara", offered, Date.now());
+  check("  a routine's or a job's question leaves them", (await jarvis.recallFor("u_sara", "what's my week", false)).procedure === null);
+  check("  another person's question does not take them", (await jarvis.recallFor("owner", "what's my week", true)).procedure === null);
+  check("  their own question takes them, once", JSON.stringify((await jarvis.recallFor("u_sara", "what's my week", true)).procedure) === JSON.stringify(offered) &&
+    (await jarvis.recallFor("u_sara", "what's my week", true)).procedure === null);
+}
+
 // The family's skills (lib/skills.ts), through the object: each pass-through forwards what it is given, the key and the clock too.
 console.log("skills, through the object");
 {
-  const s = await jarvis.skillAdd({ name: "Wren", url: "https://bots.example.com/wren", when: "the house and the car", later: true, keyHeader: "X-Automation-Key", fields: [{ name: "mode", value: "async" }] }, 1_000);
+  const s = await jarvis.skillAdd({ name: "Zephyr", url: "https://bots.example.com/zephyr", when: "the house and the car", later: true, keyHeader: "X-Automation-Key", fields: [{ name: "mode", value: "async" }] }, 1_000);
   const id = typeof s === "string" ? "" : s.id;
   check("  added, at the time given, with what it was given", typeof s !== "string" && s.createdAt === 1_000 && s.later && s.keyHeader === "X-Automation-Key" && s.fields.mode === "async" && !s.hasKey, s);
   check("  not offered before its key is set", (await jarvis.skillsReady()).length === 0);
-  const k = await jarvis.skillKey(id, "wren-key-12345", 2_000);
+  const k = await jarvis.skillKey(id, "zephyr-key-12345", 2_000);
   check("  its key set, at the time given", typeof k !== "string" && k.hasKey && k.updatedAt === 2_000, k);
-  check("  and never in the list", !JSON.stringify(await jarvis.skillsList()).includes("wren-key-12345"));
-  check("  offered with it", (await jarvis.skillsReady())[0]?.key === "wren-key-12345");
-  check("  removed by its name", (await jarvis.skillRemove("wren"))?.id === id && (await jarvis.skillsList()).length === 0);
+  check("  and never in the list", !JSON.stringify(await jarvis.skillsList()).includes("zephyr-key-12345"));
+  check("  offered with it", (await jarvis.skillsReady())[0]?.key === "zephyr-key-12345");
+  check("  removed by its name", (await jarvis.skillRemove("zephyr"))?.id === id && (await jarvis.skillsList()).length === 0);
 
   // A request, and its answer at its reply address: whoever asked, what, and when, forwarded.
-  const n = await jarvis.skillAdd({ name: "Wren", url: "https://bots.example.com/wren", when: "", later: true, keyHeader: null, fields: null }, 3_000);
+  const n = await jarvis.skillAdd({ name: "Zephyr", url: "https://bots.example.com/zephyr", when: "", later: true, keyHeader: null, fields: null }, 3_000);
   const nid = typeof n === "string" ? "" : n.id;
   const T = Date.now();
   const r = await jarvis.skillAsked({ skill: nid, person: "u_sara", about: "Check the inbox", digest: "d-sara" }, T);
   check("  a request kept, at the time given", typeof r !== "string" && r.id.startsWith(`jarvis-${Math.floor(T / 1000)}-`), r);
   const early = await jarvis.skillAnswer("d-sara", { text: "Two from the school." }, T + 1_000);
   check("  its answer before Jarvis has replied to Sara: hers, under its name, held for the reply, in the same call",
-    "alert" in early && early.alert.for === "u_sara" && early.alert.title === "Wren" && early.alert.skill?.about === "Check the inbox" && early.holdUntil === T + 30_000 &&
+    "alert" in early && early.alert.for === "u_sara" && early.alert.title === "Zephyr" && early.alert.skill?.about === "Check the inbox" && early.holdUntil === T + 30_000 &&
     ((await storage.get(`held:${early.alert.id}`)) as { reply?: boolean; until: number } | undefined)?.reply === true, early);
-  await jarvis.conversationAdd("u_sara", [{ id: "c_reply1", at: T + 2_000, role: "assistant", text: "Asked Wren." }], T + 2_000);
+  await jarvis.conversationAdd("u_sara", [{ id: "c_reply1", at: T + 2_000, role: "assistant", text: "Asked Zephyr." }], T + 2_000);
   const after = await jarvis.skillAnswer("d-sara", { text: "And one more." }, T + 3_000);
   check("  once Jarvis's reply is kept, not held", "alert" in after && !("holdUntil" in after), after);
 
   // Held for the reply, let go by it: only that person's, and never one held for quiet hours.
-  const mk = (id: string, forWhom?: string) => ({ ...makeAlert({ title: "Wren", text: id }, "api", T, forWhom)!, id });
+  const mk = (id: string, forWhom?: string) => ({ ...makeAlert({ title: "Zephyr", text: id }, "api", T, forWhom)!, id });
   await jarvis.hold(mk("h_owner"), T + 30_000, true);
   await jarvis.hold(mk("h_sara", "u_sara"), T + 30_000, true);
   await jarvis.hold(mk("h_quiet"), T + 600_000);
   alarmAt = null;
   await jarvis.conversationAdd("owner", [{ id: "c_q1", at: T + 4_000, role: "user", text: "anything?" }], T + 4_000);
   check("  a question alone lets nothing go", alarmAt === null && (await storage.get("held:h_owner") as { until: number }).until === T + 30_000);
-  await jarvis.conversationAdd("owner", [{ id: "c_a1", at: T + 5_000, role: "assistant", text: "Asked Wren." }], T + 5_000);
+  await jarvis.conversationAdd("owner", [{ id: "c_a1", at: T + 5_000, role: "assistant", text: "Asked Zephyr." }], T + 5_000);
   const mine = (await storage.get("held:h_owner")) as { alert: { at: number }; until: number };
   check("  Jarvis's reply lets its person's held answer go now, said now, and the alarm set for it",
     mine.until === T + 5_000 && mine.alert.at === T + 5_001 && alarmAt !== null && alarmAt <= T + 5_000, { mine, alarmAt });
@@ -532,7 +543,7 @@ console.log("skills, through the object");
   // A bot's own exchange with Jarvis is not Jarvis's reply to the person: it lets nothing go.
   await jarvis.hold(mk("h_owner2"), T + 30_000, true);
   alarmAt = null;
-  await jarvis.conversationAdd("owner", [{ id: "b_x_q", at: T + 6_000, role: "assistant", text: "Is it shut?", skill: { id: nid, name: "Wren", asked: true } }, { id: "b_x_a", at: T + 6_000, role: "assistant", text: "Yes.", skill: { id: nid, name: "Wren", answered: true } }], T + 6_000);
+  await jarvis.conversationAdd("owner", [{ id: "b_x_q", at: T + 6_000, role: "assistant", text: "Is it shut?", skill: { id: nid, name: "Zephyr", asked: true } }, { id: "b_x_a", at: T + 6_000, role: "assistant", text: "Yes.", skill: { id: nid, name: "Zephyr", answered: true } }], T + 6_000);
   check("  a bot's exchange with Jarvis lets nothing go", alarmAt === null && ((await storage.get("held:h_owner2")) as { until: number }).until === T + 30_000);
 
   // Shown at once on that person's own open screens: no screen of theirs sent it.
@@ -541,7 +552,7 @@ console.log("skills, through the object");
   const herGlasses = open("u_sara~d_glasses");
   const mineToo = open("owner");
   sockets.push(hers, herGlasses, mineToo);
-  const exchange = [{ id: "b_y_q", at: T + 7_000, role: "assistant" as const, text: "Is it shut?", skill: { id: nid, name: "Wren", asked: true as const } }];
+  const exchange = [{ id: "b_y_q", at: T + 7_000, role: "assistant" as const, text: "Is it shut?", skill: { id: nid, name: "Zephyr", asked: true as const } }];
   await jarvis.conversationAdd("u_sara", exchange, T + 7_000);
   check("  a bot's exchange: told to that person's open screens at once, not their devices', not anyone else's",
     hers.sent.length === 1 && JSON.parse(hers.sent[0]!).type === "conversation.said" && JSON.parse(hers.sent[0]!).said[0].id === "b_y_q" && !herGlasses.sent.length && !mineToo.sent.length, hers.sent);
@@ -554,12 +565,12 @@ console.log("skills, through the object");
   const digest = typeof made === "string" ? "" : await sha256Hex(made.token);
   check("  its own address made, as whoever made it, reaching what was ticked, at the time given",
     typeof made !== "string" && made.skill.address?.person === "u_sara" && made.skill.address.reach.join() === "ask,home" && made.skill.address.at === 7_000, made);
-  check("  found by its digest", JSON.stringify(await jarvis.skillByAddress(digest)) === JSON.stringify({ id: nid, name: "Wren", person: "u_sara", reach: ["ask", "home"] }));
+  check("  found by its digest", JSON.stringify(await jarvis.skillByAddress(digest)) === JSON.stringify({ id: nid, name: "Zephyr", person: "u_sara", reach: ["ask", "home"] }));
   const narrowed = await jarvis.skillReach(nid, ["ask"], 8_000);
   check("  ticked again, at the time given", typeof narrowed !== "string" && narrowed.address?.reach.join() === "ask" && narrowed.updatedAt === 8_000, narrowed);
   check("  stopped", typeof (await jarvis.skillDropAddress(nid, 9_000)) !== "string" && (await jarvis.skillByAddress(digest)) === null);
   for (const k of (await storage.list({ prefix: "held:" })).keys()) await storage.delete(k);
-  await jarvis.skillRemove("Wren");
+  await jarvis.skillRemove("Zephyr");
 }
 
 console.log("\nWatch the house, switched on in Settings, wakes the alarm (state.ts putSettings)");

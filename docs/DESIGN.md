@@ -575,16 +575,24 @@ the slow path. Memory is now local: one document in the Durable Object, plus a
 second for reference material, and retrieval by words (BM25-lite) and by
 meaning (embeddings), merged.
 
-**Specialties: the user's own way, saved.** "Save this as my Monday report"
-keeps the steps Jarvis just took (`lib/specialties.ts`), and a later question
-that names it, or shares two words with it, gets them beside the profile, as
-Hark's Specialties do. Steps are followed, so they are a standing instruction
-of the user's, and only the user can make one: `specialty_save` takes their
-own words asking for it, which must be in their latest message, so a page, a
-mail or a tool's output cannot save one, and jobs are never offered it. They
-go to the router as a user message, as the profile does, worded as a
-procedure the user approved, to follow only if it fits and with the tools it
-has now. Matched by words, in the same wait as the rest of the question's
+**Specialties: the user's own way, saved.** An answer that took two tools or
+more, to a question asked from a screen or device, ends by offering to keep
+its steps, as Hark offers after a solved problem; "save this as my Monday
+report" in the next message keeps them (`lib/specialties.ts`), and a later
+question that names it, or shares two words with it, gets them beside the
+profile. Steps are followed, so they are a standing instruction of the
+user's, and only the user can make one: `specialty_save` takes their own
+words asking for it, which must be in their latest message, so a page, a
+mail or a tool's output cannot save one, and jobs are never offered it. Nor
+does the model write the steps: Jarvis keeps them itself when it offers,
+each tool in order with only the values the person said, so nothing a tool
+found (a code read from mail) or the answer said is kept, nor any character
+they did not type; their next question takes them, saving them or not, and a
+reply to an earlier answer saves nothing. No offer for a routine, a Home
+tile, a bot, glasses, an answer that started a background job, or one a
+specialty already does. They go to the router as a user message, as the
+profile does, worded as a procedure the user approved, to follow only if it
+fits and with the tools it has now. Matched by words, in the same wait as the rest of the question's
 preparation (one call to the Durable Object), so a question pays no model call
 and the car no extra wait.
 
@@ -1043,6 +1051,103 @@ says as much about a person as memory does. There is no summarising of old
 turns: that would be a model call every few exchanges, and a longer question
 every time, to keep what memory and look_back already reach.
 
+**Glasses after a pause.** The Even app sends one sentence at a time and ends
+its conversation at every pause, and the glasses' own thread lasts five
+minutes, so "and tomorrow?" after lunch used to arrive alone. Making the
+thread longer would have put a morning's exchange into "Conversation so far"
+with no time on it, to be read as if just said: an old "the gate is closed"
+as the gate now, a bare "yes" as the answer to a question from hours ago. So
+the thread stays at five minutes, and only when it has lapsed does the
+question also get the person's own glasses exchanges since 4am (OpenClaw's
+day too; `G2_EARLIER` makes it an hour, a day or nothing), from the Chat
+where they are kept already (`lib/glasses.ts earlierOnGlasses`): at most
+three, each dated ("[Sat 09:00, 4 h ago]"), quoted as what was said, with
+the rules for it. Only a message that cannot stand alone may use them; what
+changes, the house and the car, is looked at again; a bare yes answers
+nothing there; and an answer that relies on one starts with what it took
+the message to mean, so a misreading is seen at once. Whether a message is a
+follow-up is the router's own judgement, in any language: no keyword list
+and no second call. It needs `memory.read`, as look_back and the conversation
+shared between devices do, and reads in the
+same wait as the rest of the question; Assist's house commands never see it.
+
+**Overheard on the glasses.** The glasses hear whatever is said near the
+wearer, and the Even app turns a song, the TV or people talking among
+themselves into a question like any other: the router answered lyrics, and
+looked things up for them. Only the words reach Jarvis, with no audio, no
+speaker and no confidence, so the router judges, in the call it makes
+anyway: the glasses' instructions say that anything a person would say to
+an assistant is the user's, however short and in any language, and that
+when nothing heard was for it, it calls no tools and answers with one word.
+No keyword list, no length test, no second call, and nothing in front of
+Assist, which is Home Assistant's to limit. The rule is in the glasses'
+instructions rather than the router prompt, which other surfaces share and
+which is cached, and the word is its own, not the routines' NOTHING, since
+"Nothing." answers "anything on my calendar?". The glasses then show a fixed
+line, so it is never mistaken for an answer, and the exchange is kept
+nowhere, so it cannot come back after a pause; Usage counts the call without
+the words, which may be a stranger's. When unsure, the router answers: a
+wrong guess costs the wearer a repeat, never a dropped request.
+
+**An open microphone, spoken.** Ray-Ban Meta glasses have no display: their
+app asks `/api/v1/voice` turn by turn, and listens a few seconds for a
+follow-up, or opens a live voice. Both hear whoever is near: a TV, people
+talking among themselves. Turn by turn, the app says `openMic`, and
+the router gets the same rule as the G2's and the same word back; nothing is
+then said, the app is told (`notForMe`), and nothing is kept, on Jarvis or in
+the app. A live voice speaks straight into the room with nothing to check it,
+so its `glasses` instructions lean the other way from the router's: when it
+cannot tell and was not just spoken to, it stays silent, since the wearer only
+has to say its name again. Its handoffs to Jarvis carry `openMic` too, so the
+router judges again, and a "not for me" goes back to the voice as thinking,
+which it does not say. On the OpenAI key, open-microphone and glasses
+questions are not stored at OpenAI: each hop carries the exchange instead, as
+on the ChatGPT plan. None of this stops what is heard from reaching
+speech-to-text, Home Assistant and the router before it is judged; only a
+closed microphone does that.
+
+**Around them.** Words alone are often not enough: a song's line can sound
+like an order, and a remark to a colleague ("yeah, the numbers look fine")
+like something said to Jarvis. So on the glasses and a spoken open microphone, the question also
+carries a note of what Jarvis read about what is around the wearer
+(`lib/around.ts`), in the same wait as the rest and with no model call:
+- **Their calendar**, when it has them with other people now. That is an
+  event they accepted or made, timed, busy and with someone else in it.
+  Invitations they have not answered never count, or anyone could make
+  Jarvis take them for busy. Neither do events of their own with no one else
+  in them: the gym, a drive, time to work, which is when they most talk to
+  Jarvis. The read asks Google for no title, description, place or name, and
+  the note says only that they are with other people, not even until when.
+- **What is playing near them**, with its title. In the house, these are
+  Home Assistant's media players in a room (an area), read only while their
+  person in Family is home; without one set, the house is not read. A player
+  in no room may be anywhere (a media server's remote viewer), and an online
+  service's (Spotify's) or a car's plays elsewhere, so they are left out. In
+  their own car, never one shared with them, the source is Tessie's last
+  state, which never wakes it, and only while someone is in the car and the
+  state is fresh; that someone may be another driver, which Tesla does not
+  say. Titles are someone else's words, so they are quoted. Spotify itself
+  is not read: on every heard sentence it would use the quota the music tools
+  need, and a speaker in the house that plays Spotify is a Home Assistant
+  player anyway.
+
+It shifts the odds, never the words. Being with people makes remarks,
+half-sentences and replies to someone else likelier talk among them; it
+never makes a question, request, instruction or something to remember any
+less the user's, and any request is the user's, one about what is playing
+too ("pause it"). When the router cannot tell, it still answers, and the
+note is never mentioned or answered from. It is a user message
+after the cache breakpoint. Each source needs its scope (`calendar`, `home`,
+`car.read`), so a guest reads nothing. Each waits at most 1.2 seconds; a
+slower read finishes after the answer, for the next sentence, and while a
+source stays that slow its reads are started, not waited on. The calendar
+is kept five minutes per person and isolate, what is playing half a minute,
+and a failure a minute, or an hour when only the person can fix it (a lapsed
+link, a Home Assistant token that may not render templates). A live voice's
+handoffs do not get it, since the live voice has already judged that it was
+spoken to; nor does Assist, which hears first. Like the overheard words, the
+note goes to the model provider, so it carries nothing of what an event is.
+
 **Search, by words only.** Chat's Search box (`lib/search.ts`,
 `ui/Search.ts`) looks through the person's conversation, memory (their own
 book and the family's) and mail at once, as Hark's does, and groups what it
@@ -1315,6 +1420,21 @@ a page's message carries the reading it rests on. Each is tried once before it
 is kept, and a page watch's try is its first look, so one already true is said
 at once. Ten of each at most.
 
+**"When I get home" is a watch on their person.** Asked to do something when
+they get home or leave, the router says so (`arrive_home`, `leave_home`) and
+code writes the watch on their Home Assistant person from Family, never one
+the model typed. It is said on the change, not because it is already so (a
+watch's `onChange`, kept in its state): made or switched back on while home,
+it waits until they have been out. Two minutes count either way, home or out,
+so a phone's position wavering at the gate, or for a minute while they sit at
+home, is not a second homecoming. While Home Assistant starts up the person
+reads unknown, which counts as not read, so a restart is not one either. Only
+their own: someone else's getting home is a watch on that person. Without
+their person set, nothing is made, and they are told where to set it. Without
+Home Assistant, or for someone who may not read the house (a child), it is an
+event their own automation or phone sends, as before. A routine keeps the
+person it was made with: after Getting home changes, it is made again.
+
 **A brief is written by code, opened by one answer.** A routine's `brief`
 action (lib/brief.ts) reads what its maker may reach and has set up: one read
 of the calendar for its clashes, free time and invitations left unanswered
@@ -1498,7 +1618,7 @@ the watch's to find.
 
 ## Skills
 
-"Add a skill: Wren, my Grok bot, for the house and the car, at https://…"
+"Add a skill: Zephyr, my Grok bot, for the house and the car, at https://…"
 keeps an outside service Jarvis can send requests to (`lib/skills.ts`), or,
 said as an MCP server, adds one to the MCP list. It is not a tool that POSTs
 anywhere: a page or a mail the model reads could then send whatever it found to
@@ -1524,10 +1644,10 @@ takes 5 answers, only writes, never as urgent, and only to whoever asked, so
 a bot needs no token of Jarvis's, and one that leaked reaches no further than
 that person's Chat for a day. The answer is an alert under the skill's name,
 marked `skill`: every screen and device shows it as the bot's, and the model
-is told it as the bot's words, with what it was asked, so "was that Wren?" is
-answered from the conversation, never by asking Wren again. One that comes
+is told it as the bot's words, with what it was asked, so "was that Zephyr?" is
+answered from the conversation, never by asking Zephyr again. One that comes
 before Jarvis has replied (a bot that answers in two seconds, while the
-router is still writing "I've asked Wren") is held until the reply is kept,
+router is still writing "I've asked Zephyr") is held until the reply is kept,
 half a minute at most, then delivered from the alarm and dated then, so it
 shows after the reply on every screen; a hold for quiet hours is never let go
 by it. This replaced a
@@ -1554,7 +1674,15 @@ shown at once on their open screens, which never sent it
 (`conversation.said` on the socket). It
 speaks `/api/v1/ask`'s JSON, MCP, or the OpenAI chat API, whichever the bot
 has. Nothing is in KV: removing the skill or pressing Stop it ends it on the
-next request. The same address takes a message of the bot's own (its
+next request. Asked for in Chat by name ("give Zephyr its own address"),
+`skill_address` makes nothing: it puts a card on the screen that asked (an
+`address` event, as a draft's card is, never kept or synced), where the
+person ticks what the bot may reach and taps Make, through the same
+admin-only `PATCH /api/skills`. So the model never chooses what a bot
+reaches, the token never passes through it, the stream or the kept chat, and
+a device's key or a member who is not an admin, both of which that route
+refuses, is told so; it is not offered where there is no screen. The same
+address takes a message of the bot's own (its
 routines' news), to whoever made it and nobody else, under its name, as an
 answer is.
 

@@ -1,6 +1,7 @@
 import type { Tool } from "./registry.ts";
 import { stateStub } from "../lib/state-client.ts";
 import { OWNER } from "../lib/context.ts";
+import { saidIn } from "../lib/specialties.ts";
 
 /**
  * Saving and forgetting a specialty (lib/specialties.ts): a way of doing
@@ -12,6 +13,11 @@ import { OWNER } from "../lib/context.ts";
  * a mail or a tool's output that asks to save one cannot. Jobs are never
  * offered these (lib/jobs.ts READ_TOOLS), and a routine runs without them
  * having been asked for.
+ *
+ * The steps are never written here: they are the ones Jarvis kept when the
+ * answer before offered them (ToolContext.procedure, lib/router.ts), so
+ * nothing a tool said, nor the answer, can be in them. The name and why are
+ * kept only if they are the user's own words.
  */
 
 const said = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim();
@@ -23,32 +29,38 @@ export const specialtySave: Tool = {
   scope: "memory.write",
   pace: "fast",
   description:
-    "Save a way of doing something so you do it the same way next time: a specialty. Only when " +
-    "the user asks you to ('save this as my Monday report', 'remember how to do this'), or agrees " +
-    "when you offer at the end of a task that took several steps. Give it a short name, the " +
-    "phrases that would ask for it, and the steps as you did them, with the tools and values used.",
+    "Save the steps of the answer you just gave, so you do it the same way next time: a specialty. Only " +
+    "when the user asks you to in their latest message ('save this as my Monday report'), after an answer " +
+    "that ended by offering it. Jarvis keeps the steps itself, as they were done: give only the user's " +
+    "words asking, the name they gave it, and why, if they said.",
   parameters: {
     type: "object",
     properties: {
       user_words: { type: "string", description: "The user's own words asking to save it, copied exactly from their latest message." },
-      name: { type: "string", description: "A short name, e.g. 'Monday report' or 'pre-cool the car'." },
-      when: { type: "array", items: { type: "string" }, description: "A few phrases that would ask for it." },
-      steps: { type: "array", items: { type: "string" }, description: "The steps in order, each one line, with the tools and values to use." },
-      why: { type: ["string", "null"], description: "Why it is done this way, if the user said. Null otherwise." },
+      name: { type: ["string", "null"], description: "The name the user gave it, in their words, e.g. 'Monday report'. Null if they gave none." },
+      why: { type: ["string", "null"], description: "Why it is done this way, in the user's words, if they said. Null otherwise." },
     },
-    required: ["user_words", "name", "when", "steps", "why"],
+    required: ["user_words", "name", "why"],
     additionalProperties: false,
   },
   async run(args, ctx) {
     const state = stateStub(ctx.env);
     if (!state) return "Specialties cannot be kept on this deployment: it has no state object.";
     const words = typeof args.user_words === "string" ? said(args.user_words) : "";
-    if (words.length < 4 || !SAVE.test(words) || !ctx.asked || !said(ctx.asked).includes(words)) {
+    const asked = ctx.asked;
+    if (words.length < 4 || !SAVE.test(words) || !asked || !said(asked).includes(words)) {
       return "Not saved: only the user can ask for a specialty, in their own latest message. Ask them whether to save it.";
     }
-    const s = await state.specialtySave(ctx.env.JARVIS_PERSON || OWNER, { name: args.name, when: args.when, steps: args.steps, why: args.why }, Date.now());
+    const offered = ctx.procedure;
+    if (!offered) return "Not saved: only the steps of an answer that offered to save them can be kept, by the very next message. Say so.";
+    const theirs = (v: unknown) => (typeof v === "string" && saidIn(asked, v) ? v : null);
+    const s = await state.specialtySave(
+      ctx.env.JARVIS_PERSON || OWNER,
+      { name: theirs(args.name) ?? offered.asked, when: [offered.asked], steps: offered.steps, why: theirs(args.why) },
+      Date.now(),
+    );
     if (typeof s === "string") return `Not saved: ${s}.`;
-    return `Saved the specialty "${s.name}" (${s.steps.length} step${s.steps.length === 1 ? "" : "s"}). It is in Memory → Specialties. Asking for it by name, or as they usually would, uses it.`;
+    return `Saved the specialty "${s.name}": ${s.steps.join("; then ")}. It is in Memory → Specialties. Asking for it by name, or as they usually would, uses it.`;
   },
 };
 

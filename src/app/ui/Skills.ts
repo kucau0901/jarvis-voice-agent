@@ -1,6 +1,7 @@
 import { api } from "../key";
 import { arm, button, el } from "./util";
 import { scopeLabels } from "./Devices";
+import { makeAddress, shownOnce } from "../botAddress";
 
 /**
  * Settings → Skills (src/worker/lib/skills.ts): the outside services Jarvis
@@ -30,8 +31,8 @@ export class Skills {
   private key: string;
   private list = el("div", "rlist");
   private res = el("div", "res");
-  /** A new address, shown this once, above the list. */
-  private shown: HTMLElement | null = null;
+  /** A new address, shown this once, in its skill's row: kept there when the list is drawn again. */
+  private shown: { card: HTMLElement; id: string } | null = null;
   /** What an address may be ticked to reach (src/worker/lib/skills.ts BOT_REACH). */
   private reach: string[] = [];
   /** Told when its state changes, so the menu's mark follows. */
@@ -48,10 +49,11 @@ export class Skills {
       el("h3", "", "Skills"),
       el("p", "note",
         "Outside services Jarvis sends requests to: a bot, an automation, your own code. Add one in chat, with its address: " +
-        "\"add a skill: Wren, my Grok bot, for the house and the car, at https://…\". Its key goes here, never in chat, and is " +
+        "\"add a skill: Zephyr, my Grok bot, for the house and the car, at https://…\". Its key goes here, never in chat, and is " +
         "never shown again; a skill is used once it has one. One that answers later posts its answer to the replyUrl in each " +
         "request: it needs no token, and its answer shows in Chat under its name. Give one an address of its own to let it ask " +
-        "Jarvis or message you, reaching only what you tick. MCP servers added in chat are under MCP servers."),
+        "Jarvis or message you, reaching only what you tick, here or by asking in chat (\"give Zephyr its own address\"). " +
+        "MCP servers added in chat are under MCP servers."),
       this.list,
       this.res,
     );
@@ -77,10 +79,12 @@ export class Skills {
     this.el.dataset.state = !all.length ? "off" : all.every((s) => s.hasKey || s.address) ? "on" : "need";
     this.changed();
     this.list.replaceChildren(...(all.length ? all.map((s) => this.row(s)) : [el("p", "note", "None yet.")]));
+    if (this.shown) this.place(this.shown);
   }
 
   private row(s: SkillView): HTMLElement {
     const row = el("div", "routine");
+    row.dataset.skill = s.id;
     const top = el("div", "rtop");
     top.append(el("b", "", s.name), el("small", "", s.hasKey ? "key set" : "needs its key"));
     row.append(top, el("div", "rwhen", s.when));
@@ -151,8 +155,15 @@ export class Skills {
 
   /** A new address shown once is not left showing: Settings closed (ui/Settings.ts hide), or that address stopped. */
   forget(): void {
-    this.shown?.remove();
+    this.shown?.card.remove();
     this.shown = null;
+  }
+
+  /** Above what its skill's bot may reach; with the skill gone, not at all. */
+  private place(shown: { card: HTMLElement; id: string }): void {
+    const talks = this.list.querySelector(`[data-skill="${CSS.escape(shown.id)}"] .talks`);
+    if (talks) talks.before(shown.card);
+    else this.forget();
   }
 
   private async change(s: SkillView, body: Record<string, unknown>, said: string): Promise<void> {
@@ -166,42 +177,24 @@ export class Skills {
     }
   }
 
-  /** A new address: shown this once, as a device's token is (ui/Devices.ts); Jarvis keeps only its digest. */
+  /** A new address: shown this once in its row, as a device's token is (ui/Devices.ts); Jarvis keeps only its digest. */
   private async make(s: SkillView, reach: string[]): Promise<void> {
     try {
-      const r = (await api(this.key, "PATCH", "/api/skills", { id: s.id, address: true, reach })) as { token: string; base: string; url: string };
-      const card = el("div", "token");
-      card.append(
-        el("strong", "", `${s.name}'s address: copy it now`),
-        el("p", "", `This is the only time it is shown. Put it in ${s.name}'s settings: the base URL with the key sent as ` +
-          "Authorization: Bearer, or, where only a URL can be given, the URL alone. Lost, make a new one here."),
-        this.copy("Base URL", r.base),
-        this.copy("Key", r.token),
-        this.copy("Or the URL", r.url),
-      );
-      this.shown?.remove();
-      this.shown = card;
-      this.list.before(card);
+      const m = await makeAddress(this.key, s.id, reach);
+      const card = el("div", "token addrcard");
+      shownOnce(card, s.name, m, () => {
+        this.forget();
+        this.say(`${s.name}'s address is in.`);
+      });
+      card.appendChild(el("p", "", "Closing Settings hides it."));
+      this.forget();
+      this.shown = { card, id: s.id };
+      // Shown at once, in the row pressed: the list read again moves it, and its failing must not lose it.
+      this.place(this.shown);
       this.say(`${s.name} has an address of its own.`);
       await this.load();
     } catch (e) {
       this.say(e instanceof Error ? e.message : String(e), true);
     }
-  }
-
-  private copy(label: string, value: string): HTMLElement {
-    const line = el("div", "tok");
-    const code = el("code", "", value);
-    line.append(el("small", "", label), code, button("Copy", async () => {
-      try {
-        await navigator.clipboard.writeText(value);
-        this.say(`${label} copied.`);
-      } catch {
-        // Clipboard needs a secure context and permission; selecting is the fallback.
-        getSelection()?.selectAllChildren(code);
-        this.say("Select and copy it yourself.");
-      }
-    }));
-    return line;
   }
 }

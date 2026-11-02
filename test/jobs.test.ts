@@ -799,6 +799,58 @@ console.log("\nthe engine: what a report's check is sent");
   }
 }
 
+// A job with the plan alone (issue #14): preparing it made the key's client first, which the SDK refuses
+// without a key, so no job could start. As on Workers, no key in the process either.
+console.log("\nthe engine: a job on the plan alone, no key at all");
+{
+  const kv = new Map<string, string>();
+  const CONFIG = { get: async (k: string) => kv.get(k) ?? null, put: async (k: string, v: string) => void kv.set(k, v), delete: async () => {}, list: async () => ({ keys: [] }) };
+  const stub = new Proxy({}, { get: (_t, m) => (m === "then" ? undefined : async () => (m === "chatgptToken" ? { token: "at_plan", model: null } : undefined)) });
+  const env = { CONFIG, TIMEZONE: "Asia/Kuala_Lumpur", STATE: { idFromName: () => "j", get: () => stub } } as never;
+  const m = new Map<string, unknown>();
+  const kept = {
+    get: async (k: string) => m.get(k),
+    put: async (k: string, v: unknown) => void m.set(k, v),
+    delete: async (k: string) => m.delete(k),
+    list: async ({ prefix }: { prefix: string }) => new Map([...m].filter(([k]) => k.startsWith(prefix))),
+  } as never;
+  const by: string[] = [];
+  const realFetch = globalThis.fetch;
+  const savedKey = process.env.OPENAI_API_KEY;
+  delete process.env.OPENAI_API_KEY;
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input instanceof Request ? input.url : input);
+    if (!url.endsWith("/responses")) throw new Error(`nothing else is reached here: ${url}`);
+    by.push(new Headers(init?.headers).get("authorization") ?? "");
+    // As the plan's route sends it: items as each is done, and an empty output at the end. First a tool to run, then the answer.
+    const usage = { input_tokens: 10, output_tokens: 5, input_tokens_details: { cached_tokens: 0 }, output_tokens_details: { reasoning_tokens: 0 } };
+    const item = by.length === 1
+      ? { type: "function_call", id: "fc1", call_id: "c1", name: "time_in", namespace: "jarvis", arguments: JSON.stringify({ zone: "Asia/Tokyo" }), status: "completed" }
+      : { type: "message", id: "m1", role: "assistant", status: "completed", content: [{ type: "output_text", text: "SUMMARY: Open 9 to 5.\n\nOpen 9 to 5.", annotations: [] }] };
+    const events = [
+      { type: "response.created", response: { id: "resp_p", status: "in_progress", output: [] } },
+      { type: "response.output_item.done", output_index: 0, item },
+      { type: "response.completed", response: { id: "resp_p", object: "response", status: "completed", output: [], usage } },
+    ];
+    return new Response(events.map((e) => `event: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`).join(""), { headers: { "content-type": "text/event-stream" } });
+  }) as typeof fetch;
+  try {
+    const engine = jobEngine(env, async (a) => ({ alert: a, attempts: [], deliveredBy: null }) as never, async () => env, kept);
+    const job = { id: "j2", title: "Dentist", task: "Find my dentist's opening hours.", engine: "jarvis", status: "running", createdBy: "owner", grants: ["*"], createdAt: T0, updatedAt: T0, steps: 0, attempts: 0 } as Job;
+    const started = await engine.start(job).catch((e: Error) => ({ error: e.message }));
+    check("started, on the plan", "responseId" in started && started.responseId.startsWith("plan_") && by.join() === "Bearer at_plan", { started, by });
+    // Its tool run, and the next step asked for, on the plan too: each step prepares the router again.
+    const next = "responseId" in started ? await engine.poll({ ...job, responseId: started.responseId }).catch((e: Error) => ({ kind: "thrown", error: e.message })) : null;
+    const after = next && "responseId" in next ? String(next.responseId) : "";
+    check("its tool run and the next step asked, on the plan", after.startsWith("plan_") && by.join() === "Bearer at_plan,Bearer at_plan", { next, by });
+    const done = after ? await engine.poll({ ...job, responseId: after }).catch((e: Error) => ({ kind: "thrown", error: e.message })) : null;
+    check("…and finished, with its answer", done?.kind === "done" && "text" in done && /Open 9 to 5/.test(done.text) && by.length === 2, { done, by });
+  } finally {
+    globalThis.fetch = realFetch;
+    if (savedKey !== undefined) process.env.OPENAI_API_KEY = savedKey;
+  }
+}
+
 console.log("\ncancelled while OpenAI was being asked");
 {
   // The alarm is waiting on OpenAI when the user cancels: the step's save must not undo it.

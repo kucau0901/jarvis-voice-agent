@@ -174,15 +174,26 @@ In Jarvis, **Settings → Devices**:
 |---|---|---|
 | Glasses: characters shown | 350 | The longest answer sent. The G2 display gives up at about 400–500 characters. |
 | Glasses: seconds to wait | 240 | How long Jarvis works on an answer before saying it is still busy. The Even app hangs up at 300. |
+| Glasses: earlier talk after a pause | today | After a pause, what you asked on the glasses since 4am (or in the last hour, or the last day) goes with the next question, dated. Off: only the last five minutes. |
 | Requests per device per day | 500 | A cost ceiling for every device token. |
 
 ## What to expect
 
 - **Text only, and short.** Answers are written for the display: the point
   first, about 350 characters, no formatting. Ask a follow-up for more.
-- **Follow-ups work** for five minutes: "turn it off", "and tomorrow?".
+- **Follow-ups work**: within five minutes as one conversation ("turn it
+  off"), and after a pause too. The glasses forget at every pause, so the
+  first question after one also sees what you asked on them earlier today
+  (from 4am), dated: "and tomorrow?" after lunch still follows the morning's
+  calendar, and the answer starts with what Jarvis took you to mean. It needs
+  `memory.read` on the token; **Glasses: earlier talk after a pause** sets how
+  far back, or turns it off.
 - **It is in Chat.** What you ask and what Jarvis answers is in your
   conversation with Jarvis, on the phone and the web, as if asked there.
+- **Music and other people are not you.** The glasses hear whatever is said
+  near you: a song, the TV, people talking. When nothing Jarvis heard was said
+  to it, it does nothing, shows "That didn't sound like it was for me. Ask
+  again if it was.", and keeps none of it. If it was you, just ask again.
 - **Any language.** The Even app transcribes what you say, Malay included,
   and Jarvis answers in the language you asked in.
 - **How long:** house commands through Assist, about a second. Most other
@@ -209,6 +220,7 @@ In Jarvis, **Settings → Devices**:
 | House commands take 5 seconds or more | Assist did not understand, so the AI did it. | Check Home is set up and **Try Assist first** is on; the thing is exposed to Assist; you used its Home Assistant name; **Assist language** matches what you speak. |
 | "I can't do that" for mail, the car, … | The token lacks that permission. | Make a new token with it ticked, and revoke the old one. |
 | It stops answering late in the day | The daily limit for the device is used up. | Raise **Requests per device per day**. |
+| Jarvis answers music or other people, or "That didn't sound like it was for me" keeps coming up | The Even app may have been listening when you did not ask: perhaps after an answer, or on a misheard "Hi Even". | Where your Even app has them, in Even AI's settings: turn off continuous conversation, and near music start with hold-to-talk on the touchpad rather than "Hi Even". |
 
 ## Keeping it safe
 
@@ -217,9 +229,13 @@ In Jarvis, **Settings → Devices**:
   Even app.
 - What you ask goes from the Even app to your own Jarvis, then to Home
   Assistant or OpenAI to be answered. Jarvis keeps the last few exchanges per
-  device, for five minutes, for follow-ups.
+  device, for five minutes, for follow-ups. After a pause it reads back what
+  you asked on the glasses earlier from your own Chat, where it is kept
+  already: nothing more is stored, nobody else's is ever read, and **Clear
+  chat** makes it forget.
 - What the house will do is set in Home Assistant, by what you expose to
-  Assist (step 4).
+  Assist (step 4). Assist hears whatever the glasses hear, the TV and people
+  nearby included, so expose only what anyone in earshot may do.
 
 ## For developers
 

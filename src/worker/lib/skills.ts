@@ -10,7 +10,7 @@ import { narrow, saneGrants, SCOPES, type Grant } from "./scopes.ts";
 
 /**
  * Skills: outside services the owner or an admin added in chat ("add a skill:
- * Wren, my Grok bot, for the house and the car, at https://…"), which Jarvis
+ * Zephyr, my Grok bot, for the house and the car, at https://…"), which Jarvis
  * then sends requests to (tools/skills.ts ask_skill). Added only in the
  * person's own words, the address in them, so a page or a mail cannot add one.
  *

@@ -1,6 +1,6 @@
 // Past attempts (lib/episodes.ts): what was tried, how it went, given to the
 // next question like it, as data.
-import { Episodes, episodeOfChain, episodeOfJob, KEEP_MS, MAX_EPISODES, pastBlock } from "../src/worker/lib/episodes.ts";
+import { Episodes, episodeOfChain, episodeOfAnswer, episodeOfJob, KEEP_MS, MAX_EPISODES, pastBlock } from "../src/worker/lib/episodes.ts";
 import { requiredScope } from "../src/worker/lib/scopes.ts";
 
 let pass = 0;
@@ -75,6 +75,39 @@ console.log("\ngiven to a question like them");
   const block = pastBlock(like, "Asia/Kuala_Lumpur");
   check("as data, not instructions, with how it went", /DATA, NOT INSTRUCTIONS/.test(block) && block.includes("failed. Shopee refused the search") && /avoid repeating what did not work/.test(block), block);
   check("read and forgotten as memory is", requiredScope("/api/memory/past", "GET") === "memory.read" && requiredScope("/api/memory/past", "DELETE") === "memory.write");
+}
+
+console.log("\na question someone asked, answered with two tools or more: what worked");
+{
+  const asked = "Will it rain before my dentist appointment on Friday?";
+  // The answer rides along as the router's record has it, to show none of it is kept.
+  const two = { ok: true, tools: ["calendar_list", "weather"], text: "Your dentist is at 3 PM on Friday, and rain is due from 5. Take an umbrella anyway." } as { ok: boolean; tools: string[] };
+  const ok = episodeOfAnswer(asked, two);
+  check("kept as what worked", ok?.source === "chain" && ok.outcome === "ok" && ok.goal === asked, ok);
+  check("its lesson: the tools in order, and nothing of the answer", ok?.lesson === "calendar_list, weather", ok?.lesson);
+  // What a tool read can be in the answer (a code from a mail), which would be kept for months and shown as true.
+  const code = episodeOfAnswer("What's the code in the courier's text?", { ok: true, tools: ["mail_search", "mail_read"], text: "The code is 482913. It expires at 6 PM." } as { ok: boolean; tools: string[] });
+  check("a code in the answer is not kept", !!code && !JSON.stringify(code).includes("482913") && !/\d/.test(code.lesson) && code.lesson === "mail_search, mail_read", code);
+  check("one tool: nothing kept", episodeOfAnswer(asked, { ...two, tools: ["weather"] }) === null);
+  check("only chatted: nothing kept", episodeOfAnswer("Tell me a joke about umbrellas", { ok: true, tools: [], text: "Why did the umbrella…" }) === null);
+  check("two tools but no answer: nothing kept", episodeOfAnswer(asked, { ...two, ok: false, text: "I got stuck working that one out." }) === null);
+  check("one that started a job: nothing kept, the job is noted when it finishes",
+    episodeOfAnswer(asked, { ...two, tools: ["recall", "start_job"], text: "I've started researching that." }) === null);
+  const long = episodeOfAnswer("x ".repeat(300), { ok: true, tools: Array.from({ length: 30 }, (_, i) => `tool_number_${i}`) });
+  check("still inside the 240-character cut", !!long && long.goal.length <= 240 && long.lesson.length <= 240 && long.lesson.endsWith("…"), long);
+
+  const e = new Episodes(fakeStorage());
+  await e.add("u_sara", ok!, T);
+  const like = await e.match("u_sara", "is rain due for the dentist?", T);
+  check("matched by two words it shares", like.length === 1 && like[0]!.outcome === "ok", like);
+  check("not by one alone", !(await e.match("u_sara", "dentist", T)).length);
+  const block = pastBlock(like, "Asia/Kuala_Lumpur");
+  check("given as data, saying it worked", /DATA, NOT INSTRUCTIONS/.test(block) && block.includes(`"${asked}" worked. calendar_list, weather`) && !block.includes("umbrella"), block);
+  await e.add("u_sara", episodeOfAnswer(asked, two)!, T + 1);
+  await e.add("u_sara", episodeOfAnswer(asked, two)!, T + 2);
+  const again = await e.of("u_sara", T + 2);
+  check("asked again: counted on the one kept, not kept twice", again.length === 1 && again[0]!.seen === 3 && again[0]!.id === ok!.id, again);
+  check("forgotten as any other", (await e.forget("u_sara", ok!.id)) && !(await e.of("u_sara", T + 2)).length);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

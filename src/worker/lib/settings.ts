@@ -3,6 +3,7 @@ import { DEFAULT_ORDER, validateOrder } from "./alerts.ts";
 import { validateCameraList } from "./cameras.ts";
 import { DEFAULT_STYLE, DEFAULT_VOICE, STT_PROVIDERS, TTS_PROVIDERS, TTS_VOICES } from "./speech.ts";
 import { EFFORTS } from "./router-model.ts";
+import { EARLIER } from "./glasses.ts";
 import { sha256Hex } from "./devices.ts";
 
 /**
@@ -516,6 +517,11 @@ export const SETTINGS: readonly SettingDef[] = [
     label: "Glasses: seconds to wait", help: "The Even app hangs up at 300.",
     validate: intIn(10, 290),
   },
+  {
+    name: "G2_EARLIER", group: "devices", kind: "enum", default: "today", options: [...EARLIER],
+    label: "Glasses: earlier talk after a pause",
+    help: "The glasses forget at every pause. After one, Jarvis also sees what you asked on them since: today (from 4am), the last hour or the last day, dated, so \"and tomorrow?\" still follows on. Off: only the last five minutes. Needs memory.read on the glasses' token.",
+  },
 
   // --- Advanced
   {
@@ -569,6 +575,7 @@ export const NOT_SETTINGS: Readonly<Record<string, string>> = {
   JARVIS_PERSON_NAME: "per request: who is asking (lib/context.ts)",
   JARVIS_PERSON_NICKNAME: "per request: what they like to be called (lib/context.ts)",
   JARVIS_PERSON_BIRTHDAY: "per request: their birthday (lib/context.ts)",
+  JARVIS_PERSON_PRESENCE: "per request: their Home Assistant person (lib/context.ts)",
   JARVIS_AGENT_NAME: "per request: the family's name for the assistant (lib/context.ts)",
   JARVIS_FAMILY: "per request: the family's shared memory (lib/context.ts)",
   JARVIS_CARS: "per request: the cars this person may reach (lib/context.ts)",

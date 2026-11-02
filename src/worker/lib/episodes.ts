@@ -4,9 +4,9 @@ import { asQuotedData, tidy } from "./quote.ts";
 
 /**
  * What happened last time: each background job, question for Hermes and
- * research run, and each question whose tools failed, as one line — what was
- * wanted, whether it worked, and what came of it ("the site refused the
- * search"). A question that shares words with one is given the best three
+ * research run, each question whose tools failed, and each answer that took
+ * two tools or more, as one line — what was wanted, whether it worked, and
+ * what came of it ("the site refused the search"). A question that shares words with one is given the best three
  * (lib/router.ts), so Jarvis does not walk into the same wall twice.
  *
  * Tidied as each is written rather than in a nightly pass, so it costs no
@@ -65,16 +65,30 @@ export function episodeOfJob(j: { id: string; title: string; task: string; engin
   };
 }
 
+const chainId = () => "e" + [...crypto.getRandomValues(new Uint8Array(6))].map((b) => b.toString(16).padStart(2, "0")).join("");
+
 /** A question whose tools failed: which, and what they said. */
 export function episodeOfChain(asked: string, failed: { tool: string; said: string }[]): Omit<Episode, "at" | "keys" | "seen"> {
-  const bytes = crypto.getRandomValues(new Uint8Array(6));
   return {
-    id: "e" + [...bytes].map((b) => b.toString(16).padStart(2, "0")).join(""),
+    id: chainId(),
     source: "chain",
     goal: cut(asked),
     outcome: "failed",
     lesson: cut(failed.map((f) => `${f.tool}: ${f.said.replace(/^That failed:\s*/, "")}`).join("; ")),
   };
+}
+
+/**
+ * A question someone asked, answered with two tools or more, as what worked:
+ * the tools, in order (lib/router.ts). Never the answer: it can carry what a
+ * tool read (a code from a mail, a reading), which would be kept for months
+ * and shown to the next question as true. Null for one that only chatted or
+ * used one tool, which teaches nothing worth the room, and for one that
+ * started a job, which is noted when the job finishes.
+ */
+export function episodeOfAnswer(asked: string, r: { ok: boolean; tools: readonly string[] }): Omit<Episode, "at" | "keys" | "seen"> | null {
+  if (!r.ok || r.tools.length < 2 || r.tools.includes("start_job")) return null;
+  return { id: chainId(), source: "chain", goal: cut(asked), outcome: "ok", lesson: cut(r.tools.join(", ")) };
 }
 
 export class Episodes {

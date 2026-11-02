@@ -132,6 +132,10 @@ export interface WatchState {
   fired?: boolean;
   /** Checks in a row that failed. */
   errors?: number;
+  /** Said only when it comes true, never because it already is (arriving home, leaving it): made and switched on as said. */
+  onChange?: boolean;
+  /** For one said on a change: when it last became false, while it still is. Only false as long as forMin counts as a change. */
+  falseSince?: number;
 }
 
 export const MAX_WATCHES = 10;
@@ -398,6 +402,8 @@ export interface RoutineInput {
   condition?: unknown;
   /** watch: how long it must stay true first; 0 for at once. page: what must be true, in words. */
   forMinutes?: unknown;
+  /** watch: true to say it only when the condition comes true, not because it already is (tools/routines.ts, getting home). */
+  onChange?: unknown;
   /** page: the web page to read, found once, when the alert is set. */
   url?: unknown;
   /** page: what it is about ("the air quality in Springfield"). */

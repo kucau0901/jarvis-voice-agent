@@ -3,6 +3,7 @@ import { originHere } from "./alerts";
 import type { Turn } from "./history";
 import type { Attached } from "./attach";
 import { asDraft, type Draft } from "./draft";
+import { asAddress, type Addressee } from "./botAddress";
 
 /**
  * Typed chat: the conversation so far, sent to the same router a spoken
@@ -22,6 +23,8 @@ interface ChatHooks {
   progress(text: string, call?: string): void;
   /** A mail written and held for the person's tap (Draft first): its card (draft.ts). */
   drafted?(d: Draft): void;
+  /** A card to make a skill's bot its own address, on this screen only (botAddress.ts). */
+  address?(s: Addressee): void;
   display(payload: Record<string, unknown>): void;
   /** The answer; `limit` when a limit stopped it (a device's day, the ChatGPT plan's), shown as a notice rather than a failure. */
   answer(text: string, ok: boolean, limit?: boolean, links?: { url: string; title: string }[]): void;
@@ -82,6 +85,7 @@ export async function askTyped(key: string, transcript: Turn[], hooks: ChatHooks
         }
         else if (ev.type === "job" && typeof ev.id === "string" && typeof ev.title === "string") hooks.job?.({ id: ev.id, title: ev.title, engine: String(ev.engine ?? "") });
         else if (ev.type === "draft") asDraft(ev, hooks.drafted);
+        else if (ev.type === "address") asAddress(ev, hooks.address);
         else if (ev.type === "display") hooks.display(ev);
         else if (ev.type === "result" || ev.type === "error") {
           answered = true;

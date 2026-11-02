@@ -21,7 +21,7 @@ interface RoutineView {
   nextAt?: number;
   lastRun?: { at: number; ok: boolean; detail: string };
   /** A watch's last look at the house. */
-  watch?: { checkedAt?: number; trueSince?: number; fired?: boolean; errors?: number };
+  watch?: { checkedAt?: number; trueSince?: number; fired?: boolean; errors?: number; onChange?: boolean };
   when: string;
   does: string;
 }
@@ -121,7 +121,7 @@ export class Routines {
         const w = r.watch;
         facts.push(
           `checked ${when(w.checkedAt!, this.tz)}` +
-            (w.errors ? ", could not check" : w.trueSince ? `, true since ${when(w.trueSince, this.tz)}${w.fired ? ", told you" : ""}` : ", not true"),
+            (w.errors ? ", could not check" : w.trueSince ? `, true since ${when(w.trueSince, this.tz)}${w.fired && (!w.onChange || (r.lastRun?.at ?? 0) >= w.trueSince) ? ", told you" : ""}` : ", not true"),
         );
       }
       if (r.lastRun) facts.push(`last ${when(r.lastRun.at, this.tz)}: ${r.lastRun.ok ? "✓" : "✗"} ${r.lastRun.detail}`);

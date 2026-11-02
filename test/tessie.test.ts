@@ -210,5 +210,54 @@ console.log("\ncar_command — waking the car stops when the question does");
   check("cancelled while waking: it stops at once", /^Could not wake the car/.test(out) && Date.now() - t0 < 2000, { out, ms: Date.now() - t0 });
 }
 
+console.log("\ncar_command — navigate_to puts only a destination on the car's screen");
+{
+  // `share` also takes a video URL, so a link from mail or a page must never reach it.
+  const realFetch = globalThis.fetch;
+  let calls: string[] = [];
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    const url = String(input instanceof Request ? input.url : input);
+    calls.push(url);
+    if (url.includes("/status")) return Response.json({ status: "awake" });
+    return Response.json({ result: true });
+  }) as typeof fetch;
+  const nctx = { env: { TESSIE_TOKEN: "test-token", TESSIE_VIN: "LRWTEST0000000000" }, signal: new AbortController().signal, progress() {} } as never;
+  const go = (value: string | null) => {
+    calls = [];
+    return carCommand.run({ command: "navigate_to", temperature: null, percent: null, value, car: null }, nctx) as Promise<string>;
+  };
+  const REFUSED = "That does not look like an address, so it was not sent to the car. Ask the user for a street address.";
+
+  // The last two have a digit or a second word, so only the link rule refuses them.
+  for (const link of ["https://evil.example/watch", "http://evil.example/watch", "https://evil.example/watch?v=42", "HTTP://evil.example/watch now"]) {
+    const out = await go(link);
+    check(`${link}: refused`, out === REFUSED, out);
+    check(`${link}: nothing was sent`, calls.length === 0, calls);
+  }
+
+  const word = await go("home");
+  check("one word with no number: refused", word === REFUSED, word);
+  check("one word with no number: nothing was sent", calls.length === 0, calls);
+
+  const long = await go(`${"Example Street ".repeat(14)}12`);
+  check("longer than 200 characters: refused", long === REFUSED, long);
+  check("longer than 200 characters: nothing was sent", calls.length === 0, calls);
+
+  for (const blank of ["", "   ", null]) {
+    const out = await go(blank);
+    check(`no destination (${JSON.stringify(blank)}): says so`, out === "No destination was supplied.", out);
+    check(`no destination (${JSON.stringify(blank)}): nothing was sent`, calls.length === 0, calls);
+  }
+
+  // "1,2" is too short for the address rule: only the lat,lng rule lets it through.
+  for (const place of ["12 Example Street, Springfield", "3.139,101.687", "1,2"]) {
+    const out = await go(place);
+    const share = calls.find((u) => u.includes("/command/share"));
+    check(`"${place}": sent to the car's share command`, !!share && new URL(share).searchParams.get("value") === place, calls);
+    check(`"${place}": says it was sent`, out === `Sent ${place} to the car. It takes a few seconds to appear on the screen.`, out);
+  }
+  globalThis.fetch = realFetch;
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

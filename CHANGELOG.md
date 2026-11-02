@@ -62,21 +62,103 @@ of every release, and in the [README](README.md#updating).
   request ("turn on the porch light" every evening) is offered as a Home
   Assistant automation instead, which costs nothing each day. Not what needs
   a screen or Hermes, which routines run without.
-- **Skills, added in chat.** "Add a skill: Wren, my Grok bot, for the house
+- **Glasses know what is around you.** When Jarvis answers glasses turn by
+  turn (the G2, or the Android glasses app; not live voice), it now also
+  looks at whether your calendar has you with other people right now, and at
+  what is playing near you: the house's speakers and TVs that are in a room
+  (while your Home Assistant person in Family is home) and your own car
+  (through Tessie, while someone is in it). So a colleague's "yeah, the
+  numbers look fine", or a song's lines, are less often taken as said to
+  Jarvis, while any question or request, "pause it" included, is still
+  answered. Nothing of an event is passed on (not its title, guests, place
+  or time), nothing is kept, and no extra AI call is made. Each part needs
+  its service and the device's permission (calendar, home, car); without
+  them nothing changes.
+- **"When I get home" routines just work.** Say "when I get home, remind me
+  to take the bins out" (or "when I leave home…") and Jarvis watches your
+  Home Assistant person, set in Family → Home → Getting home, and says it
+  each time you arrive or leave: not straight away because you are home
+  already, not when your phone's position wavers for a minute, and not when
+  Home Assistant restarts. Before, it needed an automation of your own
+  sending Jarvis an event, which is still how it works without Home
+  Assistant or for a child. A watch made through the API can do the same
+  with `onChange`.
+
+### Fixed
+
+- **Music, mail and calendar no longer hang when Spotify or Google does.** If
+  Spotify or Google stopped answering while Jarvis signed in to it, the
+  request waited with it, for as long as the question lasted. Signing in now
+  gives up after ten seconds, or when the question ends.
+
+## [2.8.0] - 2026-11-02
+
+### Added
+
+- **Glasses that hear everyone: an open microphone.** `/api/v1/voice` and
+  `/api/v1/stream` take `openMic`, for a microphone that hears whoever is
+  near (Ray-Ban Meta glasses, listening hands-free): what was not said to
+  Jarvis is neither answered nor kept, and the reply says `notForMe` so the
+  app keeps nothing either. Live voice takes `client: "glasses"`: worn, no
+  screen, and silent unless spoken to. The Jarvis glasses app for Android
+  uses both once it is updated.
+- **Glasses follow-ups after a pause.** The glasses forget at every pause,
+  so "and tomorrow?" after lunch used to start from nothing. Now the first
+  question after a pause also sees what you asked on the glasses earlier
+  today (from 4am), dated and marked as earlier, and an answer that follows
+  on starts with what Jarvis took you to mean ("Tomorrow's calendar: …").
+  Nothing more is stored: it reads your own Chat, and Clear chat makes it
+  forget. It needs Memory (`memory.read`) on the glasses' token. **Settings →
+  Devices → Glasses: earlier talk after a pause** makes it the last hour or
+  the last day, or turns it off.
+
+### Changed
+
+- **Questions from glasses are not stored at OpenAI.** Answered with the
+  OpenAI key, a glasses question, or one from an open microphone, is no
+  longer kept at OpenAI: each step carries the exchange, as on the ChatGPT
+  plan.
+
+### Fixed
+
+- **Glasses no longer answer music or other people.** The glasses hear
+  whatever is said nearby, so song lyrics, the TV and people talking were
+  answered, and sometimes looked up. Now, when nothing it heard was said to
+  it, Jarvis does nothing, the glasses show "That didn't sound like it was
+  for me. Ask again if it was.", and none of it is kept in Chat or the
+  conversation. A real request, however short, is still answered. On the
+  Jarvis glasses app for Android too.
+- **A ChatGPT plan alone answers again.** With the plan connected and no
+  OpenAI key, every question failed ("That request was cut off", or
+  `aborted` from `/api/v1/ask`), and no background job could start: Jarvis
+  made the key's OpenAI client before trying the plan, and the OpenAI
+  library refuses to make one without a key. It is now made only when the
+  key answers.
+
+## [2.7.0] - 2026-11-01
+
+### Added
+
+- **Skills, added in chat.** "Add a skill: Zephyr, my Grok bot, for the house
   and the car, at https://…" lets Jarvis send requests to an outside service
   (a bot, an automation, your own code), or, said as an MCP server, use its
   tools. Each service's key goes in **Settings → Skills**, never in chat; a
   service that answers later posts its answer to the reply address that comes
   with each request, so it needs no token; the answer shows in Chat under its
   name, after Jarvis's own reply, and every screen, phone and pair of glasses
-  shows it as that service's. **Make its address** in Settings → Skills lets
-  a bot ask Jarvis too (plain JSON, MCP or the OpenAI chat API) and message
-  you on its own, under its name, reaching only what you tick there, never
-  other skills, your alerts or the family's chat; each exchange shows in Chat
-  as "Wren asked". Only the owner key and admins can add or use skills (the
-  new `skills` scope), and the house and the car still go to Jarvis's own
-  tools first. Asked for a tool, a bot or a webhook without its address,
-  Jarvis asks for it, rather than having Hermes build one on your computer.
+  shows it as that service's. An address of its own lets a bot ask Jarvis too
+  (plain JSON, MCP or the OpenAI chat API) and message you on its own, under
+  its name: ask for one in Chat, by its name ("give Zephyr its own address"),
+  and a card comes up on that screen only, or press **Make its address** in
+  Settings → Skills. You tick what it may reach and make it; it is then shown
+  once, as the kind of app the bot is in asks for it (base URL and API key,
+  MCP server, or just a URL), each line with its own Copy. It reaches only
+  what you tick, never other skills, your alerts or the family's chat; each
+  exchange shows in Chat as "Zephyr asked". Only the owner key and admins can
+  add or use skills (the new `skills` scope), and the house and the car still
+  go to Jarvis's own tools first. Asked for a tool, a bot or a webhook
+  without its address, Jarvis asks for it, rather than having Hermes build
+  one on your computer.
 - **Jarvis says what is at a pair of coordinates.** Given a position with no
   address (a phone's, from Home Assistant), it names the places nearest it, a
   clinic or a shop, or the street address where nothing named is near, with
@@ -95,8 +177,32 @@ of every release, and in the [README](README.md#updating).
   socket (`{"type":"glasses.open"}`), to show its own screen on the glasses.
   The glasses app for Android does, with G2 glasses.
 
+### Changed
+
+- **Successful multi-step answers are now listed under Memory → Past
+  attempts.** A question asked from a screen or device and answered with two
+  tools or more is noted with the person's own words and the tools in order,
+  so the next question like it starts from what worked. Nothing of the
+  answer is kept, so a code or reading a tool found is not held for months.
+  Each can be forgotten there. A question that only chatted or used
+  one tool, one that started a job (noted when the job finishes), and
+  routines, Home tiles and bots asking are not noted.
+- **Jarvis offers to keep a multi-step answer as a specialty.** An answer
+  that took two tools or more, to a question asked from a screen or device,
+  ends by saying how: "save this as" and a name, in your next message, keeps
+  it, and Memory → Specialties lists it to check or forget. Jarvis keeps the
+  steps itself, your question and the tools in order with only the values you
+  said, never what a tool found or the answer said, so a code read from mail
+  is not kept. A specialty can no longer be saved at any other time. Not
+  offered for routines, Home tiles, bots, glasses, an answer that started a
+  background job, or one a specialty already does.
+
 ### Fixed
 
+- **A past attempt that failed is named by what the person asked.** Asked in
+  a reply in Chat, it was named by the answer replied to; asked in the family
+  room, by Jarvis's own note about the room, so every such failure looked the
+  same. Memory → Past attempts now keeps only their own words.
 - **"What time is it in London?" says London's time.** Home Assistant's
   Assist, asked first, read it as the time at home: an answer from Assist
   about nothing in the house now goes to the router. The router then worked
@@ -1278,7 +1384,9 @@ updating to this one needs nothing doing.
 - A camera picture in Type mode was drawn under the chat; the chat now keeps
   its newest message in view above the phone's keyboard.
 
-[Unreleased]: https://github.com/kucau0901/jarvis-voice-agent/compare/v2.6.0...HEAD
+[Unreleased]: https://github.com/kucau0901/jarvis-voice-agent/compare/v2.8.0...HEAD
+[2.8.0]: https://github.com/kucau0901/jarvis-voice-agent/compare/v2.7.0...v2.8.0
+[2.7.0]: https://github.com/kucau0901/jarvis-voice-agent/compare/v2.6.0...v2.7.0
 [2.6.0]: https://github.com/kucau0901/jarvis-voice-agent/compare/v2.5.0...v2.6.0
 [2.5.0]: https://github.com/kucau0901/jarvis-voice-agent/compare/v2.4.0...v2.5.0
 [2.4.0]: https://github.com/kucau0901/jarvis-voice-agent/compare/v2.3.0...v2.4.0

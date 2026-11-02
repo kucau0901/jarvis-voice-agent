@@ -60,6 +60,17 @@ try {
   globalThis.fetch = (async () => new Response("down", { status: 503 })) as typeof fetch;
   check("Gmail", (await mail(KEYS)) === "Gmail error: could not refresh Google access (503)", await mail(KEYS));
   check("Calendar", (await cal(KEYS)) === "Calendar error: could not refresh Google access (503)", await cal(KEYS));
+
+  console.log("\nGoogle never answers");
+  globalThis.fetch = ((_url: string | URL | Request, init?: RequestInit) =>
+    new Promise<Response>((_, reject) => init?.signal?.addEventListener("abort", () => reject(new Error("aborted"))))) as typeof fetch;
+  const stop = new AbortController();
+  setTimeout(() => stop.abort(), 50);
+  const hung = await Promise.race([
+    calendarCheck.run({ range: "today", limit: null }, { ...(ctx(KEYS) as object), signal: stop.signal } as never).then(String),
+    new Promise<string>((r) => setTimeout(() => r("still waiting"), 2_000)),
+  ]);
+  check("signing in ends with the question", hung.startsWith("Calendar error"), hung);
 } finally {
   globalThis.fetch = realFetch;
 }

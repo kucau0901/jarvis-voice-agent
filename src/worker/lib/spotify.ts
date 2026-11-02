@@ -148,7 +148,7 @@ export async function unlinkEveryone(env: Env): Promise<void> {
  * and getting the refresh race right, for a saving of a few hundred
  * milliseconds on a path that is already talking to Spotify.
  */
-async function accessToken(env: Env, cfg: SpotifyConfig): Promise<string> {
+async function accessToken(env: Env, cfg: SpotifyConfig, signal?: AbortSignal): Promise<string> {
   const refresh = await env.CONFIG.get(tokenKey(env));
   if (!refresh) throw new Error("Spotify is not linked yet");
 
@@ -159,6 +159,8 @@ async function accessToken(env: Env, cfg: SpotifyConfig): Promise<string> {
       "Content-Type": "application/x-www-form-urlencoded",
     },
     body: new URLSearchParams({ grant_type: "refresh_token", refresh_token: refresh }),
+    // A Spotify that never answers would otherwise hold every music tool with it.
+    signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(10_000)]) : AbortSignal.timeout(10_000),
   });
   const body = (await res.json().catch(() => ({}))) as {
     access_token?: string;
@@ -187,7 +189,7 @@ export async function call(
   path: string,
   init: { method?: string; body?: unknown; signal?: AbortSignal } = {},
 ): Promise<SpotifyResult> {
-  const token = await accessToken(env, cfg);
+  const token = await accessToken(env, cfg, init.signal);
   const res = await fetch(`${API}${path}`, {
     method: init.method ?? "GET",
     headers: {
