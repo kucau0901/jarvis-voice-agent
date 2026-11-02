@@ -14,9 +14,9 @@ export const houseWatch: Tool = {
   available: (env) => !!haConfig(env),
   description:
     "Change what Jarvis watches in the house: 'don't watch the garden lights', 'also keep an eye on the freezer " +
-    "temperature', 'watch the study light again'. Jarvis watches doors, windows, locks, lights, covers, people, " +
-    "motion, climate, leaks, smoke, the alarm, batteries and temperatures by itself; this adds one thing, leaves " +
-    "one out, or puts one back to that. Find the entity id with the house tools first, never guess it.",
+    "temperature', 'watch the study light again'. Jarvis watches locks, the alarm, people, doors, windows, leaks, " +
+    "smoke, covers, lights, climate, outlets, motion and batteries running low by itself, but no temperature unless " +
+    "added; this adds one thing, leaves one out, or puts one back to that. Find the entity id with the house tools first, never guess it.",
   parameters: {
     type: "object",
     properties: {

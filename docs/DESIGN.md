@@ -1415,9 +1415,13 @@ Jarvis is the brain and Home Assistant the backend: Home Assistant senses
 and switches, Jarvis keeps its own picture of what matters and decides
 (lib/house.ts).
 
-**What matters is chosen by code, by kind.** Doors, windows and garage doors,
-locks, lights, covers, people, presence and motion, climate, leaks, smoke and
-gas, the alarm, batteries and temperatures (`KINDS`). The person can add a
+**What matters is chosen by code, by kind, most important first.** Locks, the
+alarm, people, doors, windows and garage doors, leaks, smoke and gas, covers,
+lights, climate, outlets, presence and motion, and batteries running low
+(`GROUPS`), read in that order so that past 250 things a house loses its
+motion sensors, never a lock. No temperature unless the person adds one: a
+house can have dozens, which with every device's battery once filled the cap
+and cut doors and locks in Home Assistant's own order, before this order. The person can add a
 thing or leave one out ("don't watch the garden lights": the `house_watch`
 tool, kept under `house:prefs`). There is no list to keep in Home Assistant.
 

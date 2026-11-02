@@ -11,10 +11,12 @@ import { isNothing } from "./scheduler.ts";
  * Home Assistant in one template call with no model (docs/DESIGN.md
  * "Watching the house").
  *
- * Code chooses what matters, by kind (KINDS): doors, windows and garage
- * doors, locks, lights, covers, presence and motion, people, climate, leaks,
- * smoke and gas, the alarm, batteries and temperatures. The person can add a
- * thing or leave one out (Prefs, tools/house.ts). Home Assistant renders the
+ * Code chooses what matters, by kind (GROUPS, most important first): locks,
+ * the alarm, people, doors, windows and garage doors, leaks, smoke and gas,
+ * covers, lights, climate, outlets, presence and motion, and batteries
+ * running low. A temperature only when the person adds it ("also watch the
+ * freezer"): a house has dozens. The person can add a thing or leave one out
+ * (Prefs, tools/house.ts), and what they add is read before anything else. Home Assistant renders the
  * list itself, so only those things come back, small, and never the whole of
  * /api/states, which took half a minute over a slow link (lib/cameras.ts).
  *
@@ -65,18 +67,23 @@ export const HEARD_MS = 15 * 60_000;
 export const FRESH_MS = 3 * 60_000;
 const ENTITY = /^[a-z_]+\.[a-z0-9_]+$/;
 
-/** The kinds that matter, by domain: all of the domain, or only these device classes. */
-export const KINDS: Readonly<Record<string, "all" | readonly string[]>> = {
-  lock: "all",
-  light: "all",
-  cover: "all",
-  person: "all",
-  climate: "all",
-  alarm_control_panel: "all",
-  binary_sensor: ["door", "window", "garage_door", "opening", "motion", "occupancy", "presence", "moisture", "smoke", "gas", "carbon_monoxide"],
-  sensor: ["battery", "temperature"],
-  switch: ["outlet"],
-};
+/**
+ * The kinds that matter, most important first: read in this order, so a house with more than MAX_THINGS of them
+ * loses its motion sensors before a door or a lock. Each is a domain, all of it or only these device classes, and
+ * for a battery, only one running low.
+ */
+export const GROUPS: readonly { domain: string; classes: "all" | readonly string[]; below?: number }[] = [
+  { domain: "lock", classes: "all" },
+  { domain: "alarm_control_panel", classes: "all" },
+  { domain: "person", classes: "all" },
+  { domain: "binary_sensor", classes: ["door", "window", "garage_door", "opening", "moisture", "smoke", "gas", "carbon_monoxide"] },
+  { domain: "cover", classes: "all" },
+  { domain: "light", classes: "all" },
+  { domain: "climate", classes: "all" },
+  { domain: "switch", classes: ["outlet"] },
+  { domain: "binary_sensor", classes: ["motion", "occupancy", "presence"] },
+  { domain: "sensor", classes: ["battery"], below: 20 },
+];
 
 /** Numbers drift: read for what they are, never followed as changes. */
 const NUMERIC = new Set(["sensor"]);
@@ -89,24 +96,23 @@ const NOISE = new Set(["unavailable", "unknown", ""]);
  * its states itself, so what comes back is only these, at most MAX_THINGS.
  */
 export function houseTemplate(prefs: Prefs = { add: [], ignore: [] }): string {
-  const kinds = Object.entries(KINDS)
-    .map(([d, c]) => (c === "all" ? `s.domain == ${q(d)}` : `(s.domain == ${q(d)} and (s.attributes.device_class | default('')) in [${c.map(q).join(",")}])`))
-    .join(" or ");
-  const add = `[${prefs.add.map(q).join(",")}]`;
   const ignore = `[${prefs.ignore.map(q).join(",")}]`;
-  return (
-    "{%- set ns = namespace(out=[]) -%}" +
-    "{%- for s in states -%}" +
-    `{%- if ns.out | length < ${MAX_THINGS} and s.entity_id not in ${ignore} and ((${kinds}) or s.entity_id in ${add}) -%}` +
+  const keep =
+    `{%- if ns.out | length < ${MAX_THINGS} and s.entity_id not in ns.ids and s.entity_id not in ${ignore} -%}` +
+    "{%- set ns.ids = ns.ids + [s.entity_id] -%}" +
     "{%- set ns.out = ns.out + [{'i': s.entity_id, 'n': s.name, 'a': area_name(s.entity_id) or '', 'c': s.attributes.device_class | default(''), " +
     "'s': s.state, 'u': s.attributes.unit_of_measurement | default(''), 't': as_timestamp(s.last_changed) | int(0)}] -%}" +
-    "{%- endif -%}" +
-    "{%- endfor -%}" +
-    "{{ ns.out | tojson }}"
-  );
+    "{%- endif -%}";
+  // What the person added first, then each kind in turn (Home Assistant's states.<domain>, one domain at a time).
+  const added = prefs.add.length ? `{%- for s in expand([${prefs.add.map(q).join(",")}]) -%}${keep}{%- endfor -%}` : "";
+  const groups = GROUPS.map((g) => {
+    const cls = g.classes === "all" ? "true" : `(s.attributes.device_class | default('')) in [${g.classes.map(q).join(",")}]`;
+    const low = g.below !== undefined ? ` and (s.state | float(100)) < ${g.below}` : "";
+    return `{%- for s in states.${g.domain.replace(/[^a-z_]/g, "")} -%}{%- if ${cls}${low} -%}${keep}{%- endif -%}{%- endfor -%}`;
+  }).join("");
+  return `{%- set ns = namespace(out=[], ids=[]) -%}${added}${groups}{{ ns.out | tojson }}`;
 }
 
-/** What the template gave, as things; anything malformed is left out. Throws when it is not a list at all. */
 /** A batch the component sent, as changes; anything malformed is left out. Null when it is not one. */
 export function parseBatch(body: unknown): Change[] | null {
   const list = body && typeof body === "object" ? (body as { changes?: unknown }).changes : undefined;
@@ -135,6 +141,7 @@ export async function watchList(things: readonly Thing[], prefs: Prefs): Promise
 export const urgentThing = (t: Thing): boolean =>
   wayIn(t) || domainOf(t.id) === "person" || domainOf(t.id) === "alarm_control_panel" || (domainOf(t.id) === "binary_sensor" && HAZARDS.has(t.kind));
 
+/** What the template gave, as things; anything malformed is left out. Throws when it is not a list at all. */
 export function parseThings(rendered: string): Thing[] {
   const v: unknown = JSON.parse(rendered);
   if (!Array.isArray(v)) throw new Error("Home Assistant did not give a list");
@@ -184,7 +191,8 @@ export function houseSection(things: readonly Thing[], timeZone: string): Sectio
   if (people.length) lines.push(`People: ${people.map((p) => `${plain(p.name, 30)} ${p.state === "home" ? "home" : p.state === "not_home" ? "away" : plain(p.state, 20)}`).join(", ")}`);
   for (const t of things) {
     const d = t.id.split(".")[0]!;
-    if (d === "person" || d === "sensor") continue;
+    // A curtain, blind or screen open is the ordinary run of the day, not news.
+    if (d === "person" || d === "sensor" || (d === "cover" && !wayIn(t))) continue;
     if (active(t)) lines.push(`- ${plain(t.name, 40)}${where(t)}: ${plain(t.state, 20)}${since(t)}`);
   }
   for (const t of things.filter((x) => x.kind === "battery" && Number(x.state) < LOW_BATTERY && x.state !== "")) {

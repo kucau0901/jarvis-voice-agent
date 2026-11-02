@@ -1,6 +1,6 @@
 // Watching the house (lib/house.ts): what matters, read in one template call
 // with no model, compared with the read before, and seen at a glance.
-import { active, changes, FRESH_MS, HEARD_MS, House, houseSection, houseTemplate, KINDS, MAX_BATCH, MAX_THINGS, parseBatch, parseThings, watchList, type Thing } from "../src/worker/lib/house.ts";
+import { active, changes, FRESH_MS, GROUPS, HEARD_MS, House, houseSection, houseTemplate, MAX_BATCH, MAX_THINGS, parseBatch, parseThings, watchList, type Thing } from "../src/worker/lib/house.ts";
 import { handleHouse } from "../src/worker/routes/house.ts";
 import { urgentThing } from "../src/worker/lib/house.ts";
 import { AGAIN_MS, changeMoments, EMPTY_MS, EVERY_CAP, judgeInput, LEFT_OPEN_MS, MOMENT_CAP, modeOf, nobodyHome, SAFETY_MS, SAY_CAP, standingMoments, TICK_MS, type HouseDeps } from "../src/worker/lib/house.ts";
@@ -38,8 +38,13 @@ const raw = (things: Thing[]) => JSON.stringify(things.map((t) => ({ i: t.id, n:
 console.log("the template");
 {
   const t = houseTemplate({ add: ["sensor.freezer_temperature"], ignore: ["light.garden'); {{ evil }}"] });
-  check("reads every kind that matters", Object.keys(KINDS).every((d) => t.includes(`'${d}'`)), t.slice(0, 300));
-  check("with what the person added and left out", t.includes("'sensor.freezer_temperature'") && t.includes("'light.garden"));
+  check("reads every kind that matters, a domain at a time", GROUPS.every((g) => t.includes(`states.${g.domain} `)), t.slice(0, 300));
+  const order = GROUPS.map((g) => t.indexOf(`states.${g.domain} `));
+  check("most important first: locks, the alarm, people and doors before lights, motion and batteries", t.indexOf("states.lock ") < t.indexOf("states.light ") && t.indexOf("'door'") < t.indexOf("'motion'") && t.lastIndexOf("states.sensor ") === Math.max(...order), order);
+  check("a battery only when it runs low", t.includes("(s.state | float(100)) < 20"));
+  check("what the person added first, and each thing once", t.indexOf("expand(['sensor.freezer_temperature'])") < t.indexOf("states.lock ") && t.includes("not in ns.ids"));
+  check("and what they left out left out", t.includes("'light.garden"));
+  check("nothing added: no expand", !houseTemplate().includes("expand("));
   check("an id cannot break out of its quotes", !t.includes("evil }}") && !t.includes("'light.garden')"), t);
   check(`and stops at ${MAX_THINGS}`, t.includes(`< ${MAX_THINGS}`));
   check("as JSON", t.endsWith("{{ ns.out | tojson }}"));
@@ -87,6 +92,7 @@ console.log("\nat a glance");
   ], TZ);
   check("who is home, what is on and since when, by room, and a battery running low", JSON.stringify(s?.lines) === JSON.stringify(["People: Adam away, Sara home", "- Study light (Study): on since 14:00", "- Hall motion battery (Hall): battery 9%"]), s?.lines);
   check("all quiet is said so", houseSection([thing("light.study", "off")], TZ)?.lines[0] === "Everything watched is shut, off and quiet.");
+  check("a curtain or a screen open is no news; a garage door is", JSON.stringify(houseSection([thing("cover.living_curtain", "open", { kind: "curtain" }), thing("cover.projector", "open"), thing("cover.garage", "open", { kind: "garage", name: "Garage" })], TZ)?.lines) === JSON.stringify(["- Garage: open"]));
   check("nothing read: no section", houseSection([], TZ) === null);
 }
 

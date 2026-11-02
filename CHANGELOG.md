@@ -32,8 +32,9 @@ of every release, and in the [README](README.md#updating).
 - **Jarvis sees the house.** A look around now glances at the house too:
   who is home, what is open, unlocked or on and since when, room by room,
   and batteries running low. Jarvis picks what matters by itself (doors,
-  locks, lights, presence, leaks, the alarm…); say "don't watch the garden
-  lights" or "also watch the freezer temperature" to change it. Needs Home
+  locks, lights, presence, leaks, the alarm…), most important first; say
+  "don't watch the garden lights" or "also watch the freezer temperature"
+  (temperatures only when you ask) to change it. Needs Home
   Assistant.
 - **Jarvis watches the house.** Settings → Home Assistant → **Watch the
   house**: off (the default), unusual, or every. Jarvis notices what an
