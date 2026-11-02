@@ -1,3 +1,4 @@
+import { houseWatch } from "./house.ts";
 import type { Env } from "../types.ts";
 import type { DraftCard } from "../lib/mail-draft.ts";
 import type { Weighed } from "../lib/proposals.ts";
@@ -273,6 +274,7 @@ const ALL: Tool[] = [
   ...familyTools,
   passTool,
   ...panelTools,
+  houseWatch,
   ...skillTools,
   askHermes,
   controlHome,

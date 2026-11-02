@@ -61,6 +61,7 @@ const deps = (noticed: Noticed, over: Partial<NoticeDeps> = {}): NoticeDeps => (
   jobs: [job({ title: INJECTION, status: "failed", finishedAt: NOW - 60_000 })],
   proposals: async () => [proposal('Send the email "Quote" to sam@example.com')],
   relays: [],
+  glance: async () => null,
   ...over,
 });
 const asked: { input: string; instructions: string }[] = [];
@@ -237,6 +238,22 @@ console.log("\nNot now, and Less of this");
   check(`at most ${MAX_LESS}, the newest kept`, kept.length === MAX_LESS && kept.at(-1)!.text === `Thing ${MAX_LESS + 4}`, kept.length);
   await less.forget("owner");
   check("forgotten with the person", (await less.looked("owner")).less === undefined);
+}
+
+console.log("\nthe house at a glance");
+{
+  const noticed = new Noticed(fakeStorage() as never);
+  const things = [
+    { id: "person.adam", name: "Adam", area: "", kind: "", state: "not_home", unit: "", t: 0 },
+    { id: "light.study", name: "Study light", area: "Study", kind: "", state: "on", unit: "", t: Math.floor(at(13) / 1000) - 3600 },
+  ];
+  asked.length = 0;
+  await runNotice(ROUTINE, NOW, deps(noticed, { glance: async () => things }), model("NOTHING"));
+  const input = asked[0]?.input ?? "";
+  check("the house goes to the look, fenced", input.includes("## The house") && input.includes("Study light (Study): on since 12:00") && input.indexOf("Study light") > input.indexOf("what Jarvis can see"), input);
+  asked.length = 0;
+  await runNotice(ROUTINE, NOW, deps(new Noticed(fakeStorage() as never), { glance: async () => { throw new Error("timed out"); } }), model("NOTHING"));
+  check("a house that does not answer is a line saying so, and the look goes on", (asked[0]?.input ?? "").includes("Home Assistant did not answer: timed out"), asked[0]?.input);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

@@ -39,6 +39,7 @@ import type { Panel, PanelItem, Reading } from "./panels.ts";
 import type { Said } from "./conversation.ts";
 import type { PlanFailure, PlanStatus } from "./chatgpt-plan.ts";
 import type { Grant } from "./scopes.ts";
+import type { Prefs } from "./house.ts";
 
 /**
  * Everything behind the one Durable Object, as plain code.
@@ -673,6 +674,8 @@ interface ProposalApi {
   proposalApprove(person: string, id: string, scopesNow: readonly Grant[] | null | undefined, approver: readonly Grant[], now: number): Promise<Proposal | string>;
   proposalDecline(person: string, id: string, now: number): Promise<Proposal | string>;
   lookAnswer(person: string, id: string, answer: "later" | "less", now: number): Promise<string | null>;
+  houseWatchSet(entity: string, choice: "watch" | "ignore" | "default"): Promise<Prefs | string>;
+  houseWatched(): Promise<Prefs>;
   noteAsk(person: string, who: string, ask: string, tools: string[], grants: readonly Grant[], now: number): Promise<void>;
   proposalsLater(person: string): Promise<Staged[]>;
   proposalUndo(person: string, id: string, scopesNow: readonly Grant[] | null | undefined, approver: readonly Grant[], now: number): Promise<Proposal | string>;

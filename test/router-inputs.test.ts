@@ -57,6 +57,7 @@ const PROMPT_SHA256 = "ca9ae682da7e82a9d110cc7936180ac53ec84c1bcaafd152ffeb1fa8d
 // open_on_glasses (tools/glasses.ts, no scope beyond ask): everyone, the guest too (29 Oct 2026).
 // time_in (tools/clock.ts, no scope beyond ask): everyone, the guest too (29 Oct 2026).
 // skill_add and skill_remove (tools/skills.ts, scope skills): the owner key and admins only (30 Oct 2026).
+// house_watch (tools/house.ts, scope home, with Home Assistant): admin and adult (2 Nov 2026).
 const EXPECTED: Record<string, { model: string; tools: string[]; input: string }> = {
  "owner key, nothing set up": {
   "model": "gpt-6-luna",
@@ -105,6 +106,7 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
    "family_messages",
    "forget",
    "hide_display",
+   "house_watch",
    "job_results",
    "look_at_camera",
    "look_back",
@@ -157,6 +159,7 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
    "family_messages",
    "forget",
    "hide_display",
+   "house_watch",
    "job_results",
    "look_at_camera",
    "look_back",

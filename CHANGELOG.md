@@ -29,6 +29,12 @@ of every release, and in the [README](README.md#updating).
   unanswered, a card that lapsed without your OK, a call you approved that
   failed. Under what it says are **Not now** (no look for three hours) and
   **Less of this** (it leaves things like that out for a month).
+- **Jarvis sees the house.** A look around now glances at the house too:
+  who is home, what is open, unlocked or on and since when, room by room,
+  and batteries running low. Jarvis picks what matters by itself (doors,
+  locks, lights, presence, leaks, the alarm…); say "don't watch the garden
+  lights" or "also watch the freezer temperature" to change it. Needs Home
+  Assistant.
 - **Routines from habits.** Ask the same thing at about the same time on three
   days ("what's the traffic to work like?" most mornings) and Jarvis offers,
   once and quietly, to make it a routine that asks for you. One tap makes it.

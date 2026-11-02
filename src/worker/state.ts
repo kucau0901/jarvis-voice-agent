@@ -42,6 +42,7 @@ import { runBrief } from "./lib/brief.ts";
 import { MeetingsSeen, meetingsSaid, runMeetings } from "./lib/meetings.ts";
 import { Noticed, runNotice } from "./lib/notice.ts";
 import { Habits } from "./lib/habits.ts";
+import { House, type Prefs } from "./lib/house.ts";
 import { routineMake } from "./tools/routines.ts";
 import { DEFAULT_ROUTER_MODEL } from "./lib/router-model.ts";
 import { budgetOf, budgetSays, costOf, dayOf } from "./lib/usage.ts";
@@ -87,6 +88,7 @@ export class JarvisState extends DurableObject<Env> {
   private meetingsSeen: MeetingsSeen;
   private noticed: Noticed;
   private habits: Habits;
+  private house: House;
   /** The owner's ChatGPT plan, which model calls use first (lib/chatgpt-plan.ts). */
   private plan: ChatGptPlan;
 
@@ -107,6 +109,7 @@ export class JarvisState extends DurableObject<Env> {
     this.meetingsSeen = new MeetingsSeen(ctx.storage);
     this.noticed = new Noticed(ctx.storage);
     this.habits = new Habits(ctx.storage);
+    this.house = new House(ctx.storage);
     this.plan = new ChatGptPlan(ctx.storage, (input, init) => fetch(input, init));
     this.relays = new Relays(ctx.storage, () => this.relayDeps());
     this.jobs = new Jobs(ctx.storage, async () => {
@@ -459,6 +462,8 @@ export class JarvisState extends DurableObject<Env> {
           proposals: () => this.proposals.list(person, now),
           // As far as the family tools reach them (tools/family.ts, scope chat); without a family there are none.
           relays: allows(grants, "chat") ? (await this.relays.forPerson(person, now)).sent : [],
+          // The house is the household's: read with its own token, as watches read it, for those who may reach it.
+          glance: async () => (ha && allows(grants, "home") ? this.house.now((t) => renderTemplate(ha, t), now) : null),
         });
         if (typeof n === "string") return { ok: false, text: n };
         if (n.usage) {
@@ -940,6 +945,15 @@ export class JarvisState extends DurableObject<Env> {
 
   conversationOf(person: string, now: number) {
     return this.conversation.list(person, now);
+  }
+
+  /** Watch a thing in the house whatever its kind, leave it out, or let its kind decide again (lib/house.ts, tools/house.ts). */
+  houseWatchSet(entity: string, choice: "watch" | "ignore" | "default"): Promise<Prefs | string> {
+    return this.house.setPref(entity, choice);
+  }
+
+  houseWatched(): Promise<Prefs> {
+    return this.house.prefs();
   }
 
   /**

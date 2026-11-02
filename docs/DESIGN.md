@@ -1409,6 +1409,31 @@ fetched only within two hours of an event, at most every 30 minutes, and once
 more at the moment of warning. If the road has cleared by then the warning
 moves later, once.
 
+## Watching the house
+
+Jarvis is the brain and Home Assistant the backend: Home Assistant senses
+and switches, Jarvis keeps its own picture of what matters and decides
+(lib/house.ts).
+
+**What matters is chosen by code, by kind.** Doors, windows and garage doors,
+locks, lights, covers, people, presence and motion, climate, leaks, smoke and
+gas, the alarm, batteries and temperatures (`KINDS`). The person can add a
+thing or leave one out ("don't watch the garden lights": the `house_watch`
+tool, kept under `house:prefs`). There is no list to keep in Home Assistant.
+
+**One template call reads it all.** Home Assistant goes through its own states
+and returns only those things, each with its room, small, as JSON; never the
+whole of `/api/states`, which took half a minute over a slow link. A read is
+kept (`house:last`) and compared with the one before: what changed, leaving
+out Home Assistant starting up (`unavailable`, `unknown`) and numbers that
+drift (a temperature is read, not followed).
+
+**A look sees the house.** Who is home, what is open, unlocked or on and since
+when, by room, what is sounding, and batteries running low, fenced as data
+like the rest (names and rooms are written by people). A look takes the last
+read if it is fresh, else reads once without keeping it, so what changed stays
+the watch's to find.
+
 ## Skills
 
 "Add a skill: Wren, my Grok bot, for the house and the car, at https://…"

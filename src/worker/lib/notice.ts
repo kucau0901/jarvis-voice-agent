@@ -4,6 +4,7 @@ import { whenSaid, type Routine } from "./routines.ts";
 import type { Job } from "./jobs.ts";
 import type { Proposal } from "./proposals.ts";
 import { GIVE_UP_MS, type Relay } from "./relays.ts";
+import { houseSection, type Thing } from "./house.ts";
 import { fit, jobsSection, languageOf, MAX_DOC, plain, readDay, waitingSection, type Section, type Sources } from "./brief.ts";
 import { isNothing } from "./scheduler.ts";
 import { asQuotedData } from "./quote.ts";
@@ -16,7 +17,8 @@ import { DEFAULT_ROUTER_MODEL } from "./router-model.ts";
  *
  * Code reads what a brief reads (readDay, lib/brief.ts), over the next
  * AHEAD_MS rather than the day: the calendar, the weather, the car, mail,
- * their jobs and what waits for their OK. It adds the threads left open since
+ * their jobs and what waits for their OK, and the house at a glance
+ * (houseSection, lib/house.ts). It adds the threads left open since
  * the last look (threadsSection): a message to family that went unanswered,
  * a card that lapsed without their OK, a call they approved that failed.
  *
@@ -177,6 +179,8 @@ export interface NoticeDeps extends Sources {
   proposals(): Promise<readonly Proposal[]>;
   /** Messages they passed to family lately (lib/relays.ts), where they may: none otherwise. */
   relays: readonly Relay[];
+  /** The house as Jarvis watches it (lib/house.ts), where they may reach it: null otherwise. */
+  glance(): Promise<readonly Thing[] | null>;
 }
 
 export interface Notice {
@@ -212,9 +216,12 @@ export async function runNotice(r: Routine, now: number, d: NoticeDeps, ask?: As
   // Since a look last judged, not since it last ran: one held back by the day's say leaves its jobs for the next.
   const since = looked.judgedAt ?? now - DAY;
   const threads = asks ? threadsSection(proposals, d.relays, looked.raised ?? {}, now, d.timeZone) : null;
+  // A house that cannot be read is a line saying so, as any source is (lib/brief.ts).
+  const house = await d.glance().then((t) => (t ? houseSection(t, d.timeZone) : null), (e) => ({ head: "The house", lines: [`Home Assistant did not answer: ${plain(e instanceof Error ? e.message : String(e), 80)}`] }));
   const all = [
     waitingSection(waiting, [], d.timeZone),
     threads?.section ?? null,
+    house,
     ...sections,
     asks ? jobsSection(d.jobs, since) : null,
   ].filter((s): s is Section => s !== null);
