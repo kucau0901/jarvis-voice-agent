@@ -42,6 +42,10 @@ of every release, and in the [README](README.md#updating).
   battery), then does the obvious thing through Home Assistant, tells the
   admins, or suggests an automation. "Every" also judges each change. Each
   judgment is a paid answer: at most 40 a day for unusual, 200 for every.
+  For changes within seconds rather than every 15 minutes, install Jarvis's
+  Home Assistant component (the `jarvis-home-assistant` repository, through
+  HACS) with a device token of the first person's that has "the house and
+  cameras".
 - **Home Assistant automations, by asking.** "Turn the study lights off when
   it's been empty ten minutes and it's dim" has Jarvis write the automation
   in Home Assistant, through ha-mcp. When Jarvis notices the same thing
