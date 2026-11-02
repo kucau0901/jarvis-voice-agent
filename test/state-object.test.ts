@@ -580,6 +580,39 @@ console.log("\nWatch the house, switched on in Settings, wakes the alarm (state.
   check("on, but no Home Assistant to watch: off, so nothing wakes for it", (await inside.houseDeps()).mode === "off");
   await jarvis.putSettings({ HA_BASE_URL: "https://ha.example.com", HA_TOKEN: "a-long-lived-token-for-tests" });
   check("on, with Home Assistant: watched, and the alarm set for its tick", (await inside.houseDeps()).mode === "unusual" && alarmAt !== null, alarmAt);
+  // Allowed for that one light: done now, checked again as it is done, and the record says so (the review's
+  // "running, but never run").
+  const now = Date.now();
+  const sec = (ms: number) => Math.floor(ms / 1000);
+  const rows = [
+    { i: "person.owner", n: "Owner", a: "", c: "", s: "not_home", u: "", t: sec(now - 3_600_000) },
+    { i: "light.study", n: "Study light", a: "Study", c: "", s: "on", u: "", t: sec(now - 40 * 60_000) },
+  ];
+  const services: string[] = [];
+  const realFetch2 = globalThis.fetch;
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input instanceof Request ? input.url : input);
+    if (url.endsWith("/api/template")) return new Response(String(init?.body ?? "").includes("{{ states(") ? "off" : JSON.stringify(rows));
+    if (url.includes("/api/services/")) return services.push(url.split("/api/services/")[1]!), new Response("[]");
+    return new Response(null, { status: 201 });
+  }) as typeof fetch;
+  try {
+    await storage.put("propallow:owner", ["house:light.turn_off:light.study@away"]);
+    const deps = await (jarvis as unknown as { houseDeps(): Promise<{ act(a: unknown, w: unknown, name: string): Promise<unknown>; fresh(e: string): Promise<unknown[]> }> }).houseDeps();
+    check("the fresh read reaches Home Assistant's own template", (await deps.fresh("light.study")).length === 2);
+    const out = await deps.act({ service: "light.turn_off", entity: "light.study", why: "left on" }, { ok: true, alone: true, when: "away", evidence: "nobody is home" }, "Study light");
+    check("allowed for that light: done at once, through Home Assistant", JSON.stringify(out).includes('"done":true') && services.join() === "light/turn_off", { out, services });
+    const kept = (await jarvis.proposalsOf("owner", Date.now())).find((p) => p.action.tool === "house_do");
+    check("…recorded as done without asking, with why", kept?.state === "done" && kept.by === "standing" && /^nobody is home/.test(kept.why) && !/left on/.test(kept.why), kept);
+    services.length = 0;
+    const other = await deps.act({ service: "light.turn_off", entity: "light.lounge", why: "left on" }, { ok: true, alone: true, when: "away", evidence: "nobody is home" }, "Lounge light");
+    check("another light, never allowed: a card, nothing done", JSON.stringify(other).includes('"card"') && !services.length, other);
+    const again = await deps.act({ service: "light.turn_off", entity: "light.lounge", why: "still on" }, { ok: true, alone: true, when: "away", evidence: "nobody is home" }, "Lounge light");
+    check("asked again while it still waits: the same card, not a second, and never held back for days", JSON.stringify(again) === JSON.stringify(other), { other, again });
+  } finally {
+    globalThis.fetch = realFetch2;
+    await storage.delete("propallow:owner");
+  }
   await jarvis.putSettings({ HOUSE_WATCH: null, HA_BASE_URL: null, HA_TOKEN: null });
 }
 

@@ -6,7 +6,7 @@ import { personView } from "../lib/hub-client.ts";
 import { PROPOSAL_ID, UNDO_MS, viewOf, weigh } from "../lib/proposals.ts";
 import { whenSaid } from "../lib/later.ts";
 import { localeOf } from "../lib/locale.ts";
-import { notAsShown } from "../lib/approval.ts";
+import { APPROVED_ONLY, notAsShown } from "../lib/approval.ts";
 import { baseTools } from "../tools/registry.ts";
 
 /**
@@ -61,7 +61,8 @@ export async function handleProposals(req: Request, env: Env, principal: Princip
     const p = id ? await state.proposalGet(me, id, now) : null;
     if (!p) return err(404, "No such proposal.");
     // Weighed again from what is stored: only a call that still reads as reversible, of the kind it was filed as.
-    const local = baseTools(env).find((t) => t.name === p.action.tool);
+    // An approval-only tool's too (lib/approval.ts): a house card's "Let Jarvis do this without asking" (tools/house.ts).
+    const local = [...baseTools(env), ...APPROVED_ONLY].find((t) => t.name === p.action.tool);
     // The kind, weighed without which car it named (a car since unshared or renamed must not stop it being allowed).
     const w = local ? weigh(local, "car" in p.action.args ? { ...p.action.args, car: null } : p.action.args, env) : null;
     // The kind, not this one call: which car it was does not matter to what is allowed.

@@ -42,8 +42,9 @@ import { runBrief } from "./lib/brief.ts";
 import { MeetingsSeen, meetingsSaid, runMeetings } from "./lib/meetings.ts";
 import { Noticed, runNotice } from "./lib/notice.ts";
 import { Habits } from "./lib/habits.ts";
-import { House, HOUSE_INSTRUCTIONS, modeOf, watchList, type Change, type HouseDeps, type Prefs } from "./lib/house.ts";
+import { checkTemplate, House, HOUSE_INSTRUCTIONS, modeOf, parseThings, QUESTION_MS, watchList, type Change, type HouseDeps, type Prefs } from "./lib/house.ts";
 import { routineMake } from "./tools/routines.ts";
+import { houseDo } from "./tools/house.ts";
 import { DEFAULT_ROUTER_MODEL } from "./lib/router-model.ts";
 import { budgetOf, budgetSays, costOf, dayOf } from "./lib/usage.ts";
 import { nextAllowed } from "./lib/access.ts";
@@ -589,16 +590,47 @@ export class JarvisState extends DurableObject<Env> {
       day: dayOf(now, timeZone),
       render: ha ? (t) => renderTemplate(ha, t) : null,
       judge: async (input) =>
-        // The house only: what it says goes to every admin, so never anyone's own memory or calendar.
+        // The house only: what it says goes to every admin, so never anyone's own memory or calendar. And no house tool
+        // at all, not even one that reads by its name (a Home Assistant script can be called get_…): only a camera's look.
+        // What it proposes doing is decided by code (lib/house.ts weighAct).
         askForRoutine(await this.personEnv(env, OWNER), `${HOUSE_INSTRUCTIONS}\n\n${input}`, ["ask", "home"], {
           name: "Watching the house",
           action: { kind: "ask", prompt: "", notify: "if-important" },
-        }),
-      tell: async (text) => {
+        }, (t) => t.name === "look_at_camera"),
+      fresh: async (entity) => {
+        if (!ha) throw new Error("Home Assistant is not set up");
+        return parseThings(await renderTemplate(ha, checkTemplate(entity)));
+      },
+      // Filed as the first person's card: done at once only if they allow that kind and it had its evidence (lib/proposals.ts).
+      act: async (a, w, name) => {
+        const args = { service: a.service, entity_id: a.entity, name, when: w.alone ? w.when : "ask" };
+        const base = houseDo.propose?.(args, env);
+        if (!base) return "it is not something Jarvis does in the house";
+        // One that still waits for the same thing is that card again: a question is never held back for days, as a
+        // brief's dismissed card is (no about), and lasts half an hour.
+        const open = (await this.proposals.list(OWNER, Date.now())).find((p) => p.state === "pending" && p.action.tool === houseDo.name && p.action.args.entity_id === a.entity && p.action.args.service === a.service);
+        if (open) return { card: cardOf(open) };
+        const weighed = { ...base, until: Date.now() + QUESTION_MS };
+        // Its why is the sensors' facts, never the model's words (lib/house.ts parseJudgment).
+        const why = (w.alone ? w.evidence : `asked by Jarvis watching the house`).slice(0, 120);
+        const p = await this.proposals.add({ who: OWNER, person: OWNER, from: { kind: "suggestion", id: `house:${Date.now()}:${a.entity}`, title: why }, action: { tool: houseDo.name, args }, weighed, grants: ["ask", "home"] }, Date.now());
+        if (typeof p === "string") return p;
+        // Allowed for that thing: done now, house_do checking its evidence again as it does it, and only then said.
+        if (p.state === "running" && p.by === "standing") {
+          const out = await this.makeApproved(p, p.grants);
+          await this.proposals.finish(OWNER, p.id, out, Date.now());
+          return { done: out.ok, text: out.text };
+        }
+        return { card: cardOf(p) };
+      },
+      tell: async (text, cards = []) => {
+        // The admins, and the first person always: the questions are their cards, so theirs carries them.
         const admins = (await this.people.familyPeople()).filter((p) => p.role === "admin").map((p) => p.person);
-        for (const person of admins.length ? admins : [OWNER]) {
-          const made = makeAlert({ title: "The house", text }, "routine", Date.now(), person);
-          if (made) await deliver(env, this, made);
+        for (const person of [...new Set([OWNER, ...admins])]) {
+          const mine = person === OWNER;
+          const words = !mine && cards.length ? `${text}\nThe question waits for the first person, in their Jarvis.` : text;
+          const made = makeAlert({ title: "The house", text: words }, "routine", Date.now(), person);
+          if (made) await deliver(env, this, { ...made, ...(mine && cards.length ? { proposals: cards } : {}) });
         }
       },
     };

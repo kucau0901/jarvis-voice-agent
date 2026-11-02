@@ -11,6 +11,7 @@ import { EVENT_NAME, describeAction, describeTrigger, type Routine } from "../li
 import type { Travel } from "../lib/scheduler.ts";
 import { SCOPES, WILDCARD, type Grant } from "../lib/scopes.ts";
 import { run } from "../lib/router.ts";
+import type { Tool } from "../tools/registry.ts";
 import { canAsk } from "../lib/openai-auth.ts";
 
 /**
@@ -146,6 +147,8 @@ export async function askForRoutine(
   prompt: string,
   grants: readonly Grant[],
   routine: Pick<Routine, "name" | "action">,
+  /** Only these tools: watching the house only looks (lib/house.ts), what it proposes doing is decided by code. */
+  only?: (t: Tool) => boolean,
 ): Promise<{ ok: boolean; text: string }> {
   if (!(await canAsk(env))) return { ok: false, text: "no ChatGPT plan or OpenAI key is set" };
   const sink = new Collector();
@@ -154,7 +157,7 @@ export async function askForRoutine(
   await run(env, [{ role: "user", text: prompt }], sink, AbortSignal.timeout(120_000), unattended, {
     surface: "routine",
     // Nor Home Assistant's own configuration: an automation is written when someone asks, in the conversation.
-    toolFilter: (t) => !WRITES_HOUSE_CONFIG.test(t.name),
+    toolFilter: (t) => !WRITES_HOUSE_CONFIG.test(t.name) && (!only || only(t)),
     routineName: routine.name,
     ...(routine.action.kind === "ask" && routine.action.notify === "if-important" ? { routineIfImportant: true } : {}),
   });

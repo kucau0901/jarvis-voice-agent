@@ -2,7 +2,9 @@
 // with no model, compared with the read before, and seen at a glance.
 import { active, changes, FRESH_MS, GROUPS, HEARD_MS, House, houseSection, houseTemplate, MAX_BATCH, MAX_THINGS, parseBatch, parseThings, watchList, type Thing } from "../src/worker/lib/house.ts";
 import { handleHouse } from "../src/worker/routes/house.ts";
-import { urgentThing } from "../src/worker/lib/house.ts";
+import { urgentThing, parseJudgment, weighAct, IN_USE_MS, type Card } from "../src/worker/lib/house.ts";
+import { houseDo } from "../src/worker/tools/house.ts";
+import { APPROVED_ONLY } from "../src/worker/lib/approval.ts";
 import { AGAIN_MS, changeMoments, EMPTY_MS, EVERY_CAP, judgeInput, LEFT_OPEN_MS, MOMENT_CAP, modeOf, nobodyHome, SAFETY_MS, SAY_CAP, standingMoments, TICK_MS, type HouseDeps } from "../src/worker/lib/house.ts";
 import { requiredScope } from "../src/worker/lib/scopes.ts";
 import { refuseIfForbidden } from "../src/worker/tools/mcp.ts";
@@ -234,9 +236,9 @@ console.log("\nwatching the house, tick by tick");
   // What the house itself says from now on, for when Jarvis reads it as a safety net.
   house = [thing("person.adam", "not_home"), thing("binary_sensor.front_door", "on", { name: "Front door", kind: "door", t: Math.floor((T0 + 60_000) / 1000) })];
   check("a change waiting: wake now", (await h.nextWake("unusual", T0 + 60_000)) === T0 + 60_000);
-  answer = "The front door opened while nobody is home.";
+  answer = "TELL";
   const r = await h.tick(deps(), T0 + 61_000);
-  check("judged, and the household told", r.startsWith("said:") && told.at(-1) === "The front door opened while nobody is home." && judged.at(-1)!.includes("## Moments"), r);
+  check("judged worth telling: the household told the facts, in code's words", r.startsWith("said:") && /^- Front door: on at \d\d:\d\d, while nobody is home$/.test(told.at(-1) ?? "") && judged.at(-1)!.includes("## Moments"), told.at(-1));
   check("heard from: no read of its own", reads === 1);
   check("fenced: names are people's", judged.at(-1)!.indexOf("Front door") > judged.at(-1)!.indexOf("the house:"), judged.at(-1));
   await h.queue([{ id: "binary_sensor.front_door", from: "off", to: "on" }]);
@@ -328,7 +330,7 @@ console.log("\nwhat review found");
   // A judgment that fails keeps its moments for the next.
   const f = new House(fakeStorage() as never);
   let ok = false;
-  const fd: HouseDeps = { mode: "unusual", timeZone: TZ, day: "2026-10-21", render: async () => raw([...away, shut]), judge: async () => ({ ok, text: ok ? "Front door opened." : "model unavailable" }), tell: async () => {} };
+  const fd: HouseDeps = { mode: "unusual", timeZone: TZ, day: "2026-10-21", render: async () => raw([...away, shut]), judge: async () => ({ ok, text: ok ? "TELL" : "model unavailable" }), tell: async () => {}, fresh: async () => [], act: async () => "unused" };
   await f.tick(fd, T0);
   await f.apply([{ id: shut.id, from: "off", to: "on" }], T0 + 1000);
   await f.queue([{ id: shut.id, from: "off", to: "on" }]);
@@ -340,6 +342,153 @@ console.log("\nwhat review found");
   check("an automation calling a forbidden service is refused", !!refuseIfForbidden("home-assistant__ha_config_set_automation", { config: { alias: "x", actions: [{ action: "homeassistant.restart" }] } }));
   check("an ordinary one is not", refuseIfForbidden("home-assistant__ha_config_set_automation", { config: { alias: "Study off", actions: [{ action: "light.turn_off", target: { area_id: "study" } }] } }) === null);
   check("a service call is checked as before", !!refuseIfForbidden("home-assistant__ha_call_service", { domain: "lock", service: "open" }) && refuseIfForbidden("home-assistant__ha_call_service", { domain: "light", service: "turn_on" }) === null);
+}
+
+console.log("\nsafety: the judgment only proposes; code decides, with evidence");
+{
+  const T = Date.UTC(2026, 9, 21, 15, 0);
+  const sec = (ms: number) => Math.floor(ms / 1000);
+  const p = parseJudgment("TELL\n- **ACT: light.turn_off light.master_toilet | it has been on a while**\nACT: open the gate please\nI turned off the toilet light.\n1. ACT: fan.turn_off fan.study | left on\nACT: fan.turn_off fan.study | again");
+  check("what it decided: tell, and what it proposes, bulleted, bold or numbered, each thing once; its own words never kept", p.tell && p.acts.map((a) => a.entity).join() === "light.master_toilet,fan.study" && !("say" in p), p);
+  check("an ACT: in the middle of a sentence is no action (\"I would not ACT: …\")", !parseJudgment("TELL\nI would not ACT: cover.open_cover cover.main_gate | a stranger is there").acts.length);
+  check("NOTHING first is nothing, whatever follows", !parseJudgment("NOTHING\nACT: light.turn_off light.study | x").acts.length);
+  check("NOTHING: nothing told, nothing proposed", !parseJudgment("NOTHING").tell && !parseJudgment("NOTHING").acts.length);
+  const home = thing("person.adam", "home");
+  const away = thing("person.adam", "not_home");
+  const toilet = (onFor: number) => thing("light.master_toilet", "on", { name: "Master Toilet Light", area: "Master Bedroom", t: sec(T - onFor) });
+  const off = (a: string) => ({ service: "light.turn_off", entity: a, why: "it is on" });
+  // The light that was switched off while someone was in there: on for two minutes, in a room with no presence sensor.
+  const justOn = weighAct(off("light.master_toilet"), [home, toilet(2 * 60_000)], T);
+  check(`switched on less than ${IN_USE_MS / 60_000} minutes ago: refused, someone is using it`, !justOn.ok && /someone may be using it/.test(justOn.why), justOn);
+  const noSensor = weighAct(off("light.master_toilet"), [home, toilet(40 * 60_000)], T);
+  check("a room with no presence sensor, someone home: refused, nothing shows it is empty (allowed or not)", !noSensor.ok && /no presence sensor/.test(noSensor.why), noSensor);
+  const gone = weighAct(off("light.master_toilet"), [away, toilet(40 * 60_000)], T);
+  check("nobody home: may be done alone, if allowed, with that evidence", gone.ok && gone.alone && gone.when === "away" && gone.evidence === "nobody is home, and no presence sensor has seen anyone for 20 minutes", gone);
+  const hall = weighAct(off("light.master_toilet"), [away, toilet(40 * 60_000), thing("binary_sensor.hall_motion", "on", { name: "Hall motion", kind: "motion", area: "Hall", t: sec(T - 60_000) })], T);
+  check("the phones say away, but a sensor elsewhere saw someone a minute ago: refused", !hall.ok && /phones say nobody is home, but Hall motion saw someone/.test(hall.why), hall);
+  const untracked = weighAct(off("light.master_toilet"), [away, thing("person.grandparent", "unknown"), toilet(40 * 60_000)], T);
+  check("a person with no tracker (unknown) is no evidence of nobody home: refused", !untracked.ok, untracked);
+  const guest = weighAct(off("light.lounge"), [away, thing("light.lounge", "on", { area: "Lounge", t: sec(T - 40 * 60_000) }), thing("binary_sensor.lounge_motion", "on", { name: "Lounge motion", kind: "motion", area: "Lounge", t: sec(T - 30_000) })], T);
+  check("nobody home by their phones, but the room's sensor sees someone (a guest): refused", !guest.ok && /saw someone/.test(guest.why), guest);
+  const dead = weighAct(off("light.lounge"), [home, thing("light.lounge", "on", { area: "Lounge", t: sec(T - 40 * 60_000) }), thing("binary_sensor.lounge_motion", "unavailable", { name: "Lounge motion", kind: "motion", area: "Lounge", t: sec(T - 3 * 3_600_000) })], T);
+  check("a presence sensor not answering is no evidence of an empty room: refused", !dead.ok && /not answering/.test(dead.why), dead);
+  check("a switch is never done alone: a plug can power a freezer", (() => { const w = weighAct({ service: "switch.turn_off", entity: "switch.freezer_plug", why: "x" }, [away, thing("switch.freezer_plug", "on", { kind: "outlet", t: sec(T - 5 * 86_400_000) })], T); return w.ok && !w.alone; })());
+  const study = thing("light.study", "on", { name: "Study light", area: "Study", t: sec(T - 40 * 60_000) });
+  const seen = weighAct(off("light.study"), [home, study, thing("binary_sensor.study_motion", "off", { name: "Study motion", kind: "motion", area: "Study", t: sec(T - 5 * 60_000) })], T);
+  check("its room's sensor saw someone lately: refused", !seen.ok && /saw someone/.test(seen.why), seen);
+  const clear = weighAct(off("light.study"), [home, study, thing("binary_sensor.study_motion", "off", { kind: "motion", area: "Study", t: sec(T - 30 * 60_000) })], T);
+  check("its room's sensors clear for long enough: may be done alone, with that evidence", clear.ok && clear.alone && clear.when === "empty" && /seen nobody for 30 minutes/.test(clear.evidence), clear);
+  const gate = weighAct({ service: "cover.close_cover", entity: "cover.main_gate", why: "it is open" }, [away, thing("cover.main_gate", "open", { kind: "gate" })], T);
+  check("a gate: never alone, whoever is home or away; only ever a question", gate.ok && !gate.alone, gate);
+  check("a lock: only a question", (() => { const w = weighAct({ service: "lock.lock", entity: "lock.front", why: "x" }, [away, thing("lock.front", "unlocked")], T); return w.ok && !w.alone; })());
+  check("something not watched, or a service not for it: refused", !weighAct(off("light.garden"), [home], T).ok && !weighAct({ service: "switch.turn_off", entity: "light.study", why: "x" }, [home, study], T).ok);
+
+  const card = (args: Record<string, unknown>) => houseDo.propose?.(args, {} as never);
+  const allowed = card({ service: "light.turn_off", entity_id: "light.study", name: "Study light", when: "empty" });
+  check("a card that can be allowed: reversible, for that one thing and its evidence, not every light", allowed?.risk === "reversible" && allowed.category === "house:light.turn_off:light.study@empty" && allowed.says === "Home: turn off Study light (its room is empty)", allowed);
+  const asked = card({ service: "cover.close_cover", entity_id: "cover.main_gate", name: "Main gate", when: "ask" });
+  check("a gate's card: irreversible, no kind, so never allowed without asking", asked?.risk === "irreversible" && !asked.category, asked);
+  check("what Jarvis never does is never a card, nor a mismatch", card({ service: "lock.open", entity_id: "lock.front", name: "Front", when: "ask" }) === null && card({ service: "switch.turn_off", entity_id: "light.study", name: "x", when: "away" }) === null);
+  check("a house card can be allowed at all: the allow route finds approval-only tools (routes/proposals.ts)", APPROVED_ONLY.some((t) => t.name === "house_do"));
+  check("a switch's card cannot be allowed either", !card({ service: "switch.turn_off", entity_id: "switch.freezer_plug", name: "Freezer plug", when: "away" })?.category);
+
+  // Through the tick: decided on a fresh read; what was refused is said, with why; what was done, only once it was.
+  const deps = (judge: string, house: Thing[], act?: HouseDeps["act"]) => {
+    const told: { text: string; cards: Card[] }[] = [];
+    const acts: string[] = [];
+    const d: HouseDeps = {
+      mode: "every", timeZone: TZ, day: "2026-10-21", render: null,
+      judge: async () => ({ ok: true, text: judge }),
+      tell: async (text, cards = []) => void told.push({ text, cards }),
+      fresh: async () => house,
+      act: act ?? (async (a) => (acts.push(a.entity), { done: true, text: "Done: nobody is home, read just now" })),
+    };
+    return { d, told, acts };
+  };
+  // Kept: the toilet light on for an hour. Read fresh: someone switched it on two minutes ago.
+  const h = new House(fakeStorage() as never);
+  await h.glance(async () => raw([home, toilet(60 * 60_000)]), T);
+  await h.queue([{ id: "light.master_toilet", from: "off", to: "on" }]);
+  const r1 = deps("TELL\nACT: light.turn_off light.master_toilet | the light is on\nI turned off the toilet light.", [home, toilet(2 * 60_000)]);
+  const out1 = await h.tick(r1.d, T + 1000);
+  check("the toilet: decided on the fresh read, refused, nothing done", r1.acts.length === 0 && /refused light.turn_off light.master_toilet \(the light is on\): Master Toilet Light was switched on 2 minutes ago/.test(out1), out1);
+  check("…told plainly that it was not done, and why; the model's claim never shown", /Did not turn off Master Toilet Light: Master Toilet Light was switched on 2 minutes ago: someone may be using it\./.test(r1.told[0]?.text.split("\n").at(-1) ?? "") && !/turned off the toilet/i.test(r1.told[0]?.text.split("\n").at(-1) ?? ""), r1.told);
+  const g = new House(fakeStorage() as never);
+  await g.glance(async () => raw([away, study]), T);
+  await g.queue([{ id: "light.study", from: "off", to: "on" }]);
+  const r2 = deps("ACT: light.turn_off light.study | left on", [away, study]);
+  await g.tick(r2.d, T + 1000);
+  check("allowed and its evidence holding: done, then said by code with the evidence of the read it was done on, never the model's words", r2.acts.join() === "light.study" && r2.told[0]?.text.split("\n").at(-1) === "Turned off Study light: nobody is home, read just now." && !/left on/.test(r2.told[0]?.text ?? ""), r2.told);
+  const r2b = deps("ACT: light.turn_off light.study | left on", [away, study], async () => ({ done: false, text: "Not done: Study motion saw someone in Study less than 20 minutes ago." }));
+  const g2 = new House(fakeStorage() as never);
+  await g2.glance(async () => raw([away, study]), T);
+  await g2.queue([{ id: "light.study", from: "off", to: "on" }]);
+  await g2.tick(r2b.d, T + 1000);
+  check("allowed, but not done as it came to it: said so, never 'turned off'", /^Did not turn off Study light: Not done: Study motion saw someone in Study less than 20 minutes ago\.$/.test(r2b.told[0]?.text.split("\n").at(-1) ?? "") && !/Turned off/.test(r2b.told[0]?.text ?? ""), r2b.told);
+  const gateThing = thing("cover.main_gate", "open", { name: "Main gate", kind: "gate", t: sec(T - 10 * 60_000) });
+  const c = new House(fakeStorage() as never);
+  await c.glance(async () => raw([away, gateThing]), T);
+  await c.queue([{ id: "cover.main_gate", from: "closed", to: "open" }]);
+  const r3 = deps("ACT: cover.close_cover cover.main_gate | opened while nobody is home", [away, gateThing], async () => ({ card: { id: "c9", risk: "irreversible", says: "Home: close cover Main gate" } }));
+  await c.tick(r3.d, T + 1000);
+  check("the facts first, in code's words, each thing once", r3.told[0]?.text.split("\n")[0] === "- Main gate: open at 23:00, while nobody is home" && r3.told[0]?.text.split("\n").length === 2, r3.told);
+  check("a gate: only a question, with its state from the fresh read, never the model's reason", /^Close cover Main gate\? It is open since \d\d:\d\d\.$/.test(r3.told[0]?.text.split("\n").at(-1) ?? "") && r3.told[0]?.cards[0]?.id === "c9", r3.told);
+  const r4 = deps("ACT: light.turn_off light.study | left on", [], async () => "unused");
+  const g4 = new House(fakeStorage() as never);
+  await g4.glance(async () => raw([away, study]), T);
+  await g4.queue([{ id: "light.study", from: "off", to: "on" }]);
+  r4.d.fresh = async () => { throw new Error("timed out"); };
+  await g4.tick(r4.d, T + 1000);
+  check("the house cannot be read to decide: nothing done, said why", /^Did not turn off Study light: Home Assistant could not be read \(timed out\)\.$/.test(r4.told[0]?.text.split("\n").at(-1) ?? ""), r4.told);
+}
+
+console.log("\nsafety: checked again as it is done (house_do)");
+{
+  const T = Date.now();
+  const sec = (ms: number) => Math.floor(ms / 1000);
+  let house: Thing[] = [];
+  let off = true;
+  const called: string[] = [];
+  const real = globalThis.fetch;
+  globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+    const u = String(url instanceof Request ? url.url : url);
+    if (u.endsWith("/api/template")) {
+      const body = String(init?.body ?? "");
+      if (body.includes("{{ states(")) return new Response(off ? "off" : "on");
+      return new Response(raw(house));
+    }
+    if (u.includes("/api/services/")) return called.push(`${u.split("/api/services/")[1]} ${init?.body}`), new Response("[]");
+    throw new Error(`nothing else: ${u}`);
+  }) as typeof fetch;
+  try {
+    const env = { HA_BASE_URL: "https://ha.example.com", HA_TOKEN: "t" } as never;
+    let done = false;
+    const ctx = { env, done: () => void (done = true) } as never;
+    const args = { service: "light.turn_off", entity_id: "light.study", name: "Study light", when: "empty" };
+    const study = thing("light.study", "on", { name: "Study light", area: "Study", t: sec(T - 40 * 60_000) });
+    house = [thing("person.adam", "home"), study, thing("binary_sensor.study_motion", "on", { name: "Study motion", kind: "motion", area: "Study", t: sec(T - 30_000) })];
+    const no = await houseDo.run(args, ctx);
+    check("someone walked in since: not done, and why", String(no).startsWith("Not done: Study motion saw someone") && !called.length && !done, no);
+    house = [thing("person.adam", "home"), study, thing("binary_sensor.study_motion", "off", { kind: "motion", area: "Study", t: sec(T - 30 * 60_000) })];
+    const yes = await houseDo.run(args, ctx);
+    check("still empty: done, as its card said, and only then, with the evidence of that read", done && called.length === 1 && called[0]!.startsWith("light/turn_off") && called[0]!.includes("light.study") && /^Done: Study's presence sensors have seen nobody/.test(String(yes)), { yes, called });
+    done = false;
+    off = false;
+    const deadDevice = await houseDo.run(args, ctx);
+    check("Home Assistant accepted it, but the light still reads on (a device not answering): not said done", !done && /still reads on/.test(String(deadDevice)), deadDevice);
+    off = true;
+    done = false;
+    called.length = 0;
+    house = [thing("person.adam", "home"), study, thing("binary_sensor.study_motion", "off", { kind: "motion", area: "Study", t: sec(T - 30 * 60_000) })];
+    const wrongWhy = await houseDo.run({ ...args, when: "away" }, ctx);
+    check("allowed for while nobody is home, but someone is: not done on other evidence", !done && !called.length && /no longer holds/.test(String(wrongWhy)), wrongWhy);
+    done = false;
+    called.length = 0;
+    const gate = await houseDo.run({ service: "cover.close_cover", entity_id: "cover.main_gate", name: "Main gate", when: "ask" }, ctx);
+    check("a question the person answered (a gate): done as they said, with no sensor check of Jarvis's", done && called[0]?.startsWith("cover/close_cover") === true, gate);
+  } finally {
+    globalThis.fetch = real;
+  }
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

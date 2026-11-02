@@ -48,8 +48,16 @@ of every release, and in the [README](README.md#updating).
   house**: off (the default), unusual, or every. Jarvis notices what an
   attentive person would (a door opening at night or while nobody is home,
   a door left open, a light on in an empty room, a leak, the alarm, a low
-  battery), then does the obvious thing through Home Assistant, tells the
-  admins, or suggests an automation. "Every" also judges each change. Each
+  battery), then tells the admins, asks before doing anything, or suggests
+  an automation. It never changes the house on its own unless you allow
+  it for that one thing ("Let Jarvis do this without asking" on a card),
+  and even then only with evidence read from Home Assistant at that
+  moment, and checked again as it does it: a light, fan or media player is
+  switched off only if nobody is home, or its room's presence sensors have
+  seen nobody for 20 minutes, and never within 10 minutes of being switched
+  on. A gate, garage door, door, lock, cover or switch is only ever a
+  question. What it tells you is the sensors' facts, then what it did,
+  asked or did not do, and why. "Every" also judges each change. Each
   judgment is a paid answer: at most 40 a day for unusual, 200 for every.
   For changes within seconds rather than every 15 minutes, install Jarvis's
   Home Assistant component (the `jarvis-home-assistant` repository, through

@@ -98,11 +98,13 @@ function draw(key: string, card: HTMLElement, p: ProposalView): void {
     }
     // Approved and done, and of a kind that can be put back: jobs may do it without asking from now on.
     if (p.state === "done" && p.by === "tap" && p.risk === "reversible" && p.category) {
-      const allow = button("Let jobs do this without asking", async () => {
+      // A house card's (tools/house.ts house_do) is Jarvis's own doing, with its evidence each time; any other, a job's.
+      const house = p.action.tool === "house_do";
+      const allow = button(house ? "Let Jarvis do this without asking" : "Let jobs do this without asking", async () => {
         allow.disabled = true;
         try {
           await api(key, "POST", "/api/hub/proposals/allow", { id: p.id });
-          allow.replaceWith(el("small", "pagesaid", "Jobs now do this without asking. Stop it in Jobs."));
+          allow.replaceWith(el("small", "pagesaid", house ? "Jarvis now does this without asking, only when the sensors show it is right. Stop it in Jobs." : "Jobs now do this without asking. Stop it in Jobs."));
         } catch (e) {
           allow.disabled = false;
           said.textContent = e instanceof Error ? e.message : String(e);

@@ -1584,16 +1584,69 @@ answering it; what a read finds changed is judged like what is sent. What the
 person adds or leaves out moves the watch list's version at once, so a
 component in use asks for it again.
 
-**A judgment may act through the house.** It is a routine's question
-(`askForRoutine`) asked as the first person with `ask` and `home` only, no
-screen and never Hermes (what it says goes to every admin, so never anyone's
-own memory or calendar), given the moments, the
-changes, the house now and what was said today, all fenced. It may do the
-obvious thing with the house's tools ("the study light was on in an empty
-room, so I turned it off"): what the house may do is set in Home Assistant,
-and Jarvis's MCP list still forbids what it forbids, in an automation it
-writes too (`refuseIfForbidden`). It may say what needs a
-person, or suggest an automation for what keeps happening, or answer NOTHING.
+**A judgment only looks; code decides what is done, with evidence.** It is
+a routine's question (`askForRoutine`) asked as the first person with `ask`
+and `home` only, no screen and never Hermes (what it says goes to every
+admin, so never anyone's own memory or calendar), given the moments, the
+changes, the house now and what was said today, all fenced. Why it is built
+this way: given the house's tools and told to "do the obvious thing", it
+switched off a toilet light a minute after someone had switched it on, in a
+room with no presence sensor, and could not say why; the same words would
+have it close a gate onto a car. A review of the first answer to that then
+showed every softer rule leaking. So:
+
+- **It cannot change anything.** It is offered no house tool at all, only a
+  camera's look: a "read" tool chosen by its name is not enough, as a Home
+  Assistant script called `get_ready_for_bed` would pass. It replies TELL or
+  NOTHING, and `ACT: <domain>.<service> <entity> | <why>` lines to propose.
+- **Code decides, on a fresh read** (`checkTemplate`: the thing, every
+  person and the presence sensors in its room, from Home Assistant at that
+  moment, with its own `last_changed`), never on what Jarvis kept: a batch
+  from the component misses a motion sensor that fired and cleared, one
+  that died, or a light switched back on.
+- **Only switching off a light, fan or media player can ever be done
+  without the person**, and only if they allow it for that one thing (a
+  card's "Let Jarvis do this without asking": the kind is
+  `house:light.turn_off:light.study@away` or `@empty`, never every light).
+  Not a switch: a plug can power a freezer, a pump, the router, a gate's
+  relay.
+- **Evidence each time, allowed or not**, or it is refused: switched on in
+  the last 10 minutes is in use; a presence sensor in its room that is on,
+  changed in the last 20 minutes or not answering says no, whoever is home
+  or away (a guest, a child without a phone); "nobody is home" needs every
+  person away, not unknown (no tracker, Home Assistant starting); someone
+  home and no presence sensor in the room: refused.
+- **Checked again as it is done** (`house_do`, approval-only): its card may
+  be tapped later, and the house moves on.
+- **A gate, garage door, door, lock, cover, switch, the alarm or climate is
+  only ever a question**, a card that lasts 30 minutes, one per thing at a
+  time. Whether a gate may close with a car in it is the gate's own safety
+  (its photo-eye) and Home Assistant's (a condition on the cover or a
+  script in front of it), which hold for anyone closing it, Jarvis
+  included: Jarvis is never the only thing between a gate and a car.
+- **Code writes what is told**: the facts from the sensors, then what was
+  done (only once Home Assistant has done it and it reads off), asked or
+  refused, with the evidence of the read it was done on ("Turned off Study
+  light: nobody is home, and no presence sensor has seen anyone for 20
+  minutes, read just now."). The model's own words are never shown, not
+  even its reason (kept for the log only): it cannot act, so anything it
+  says it did is untrue, and no filter of what it might say would catch
+  every way of saying it. The card keeps the evidence as its why, so "why
+  did you…" has its answer in the conversation.
+- "Nobody is home" needs the phones and the house to agree: every person
+  away, and no presence sensor anywhere seeing someone in the last 20
+  minutes or not answering. What was allowed "while nobody is home" never
+  runs on "its room is empty" evidence, or the other way round.
+- A question is one card per thing while it waits, and is never held back
+  for days because an earlier one was answered or declined. The first
+  person gets it; other admins are told it waits for them.
+- Known limits: a motion sensor does not see someone sitting still, so
+  "its room is empty" is only as good as the room's sensor (presence
+  radar is better); a light grouping several rooms is refused, as it
+  cannot be read as one place.
+
+It may also suggest an automation for what keeps happening, in chat, or
+answer NOTHING.
 What is said goes to the household's admins, at most 12 things a day. Its
 tick is the house's own (`House.nextWake`/`tick`), beside the routines',
 not in `Scheduler`: it is the household's, not any person's routine.
