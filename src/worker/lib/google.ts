@@ -307,7 +307,7 @@ async function cacheAccess(env: Env, token: string, expiresIn = 3600): Promise<v
  * wins. The only genuine hazard is handing out a token that expires mid-flight,
  * which the margin above covers.
  */
-async function accessToken(env: Env, cfg: GoogleConfig): Promise<string> {
+async function accessToken(env: Env, cfg: GoogleConfig, signal?: AbortSignal): Promise<string> {
   const cached = (await env.CONFIG.get(accessKey(env), "json").catch(() => null)) as
     | CachedAccess
     | null;
@@ -325,6 +325,8 @@ async function accessToken(env: Env, cfg: GoogleConfig): Promise<string> {
       client_id: cfg.clientId,
       client_secret: cfg.clientSecret,
     }),
+    // A Google that never answers would otherwise hold every mail and calendar tool with it.
+    signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(10_000)]) : AbortSignal.timeout(10_000),
   });
   const body = (await res.json().catch(() => ({}))) as {
     access_token?: string;
@@ -382,7 +384,7 @@ export async function call(
   path: string,
   init: { method?: string; body?: unknown; signal?: AbortSignal; base?: string } = {},
 ): Promise<GoogleResult> {
-  const token = await accessToken(env, cfg);
+  const token = await accessToken(env, cfg, init.signal);
   const res = await fetch(`${init.base ?? GMAIL}${path}`, {
     method: init.method ?? "GET",
     headers: {
