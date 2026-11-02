@@ -29,6 +29,8 @@ export interface Alert {
   convo?: string;
   /** The routine that said it: shown under its name in the conversation (fromRoutine.ts). */
   routine?: string;
+  /** What a look around said: Not now and Less of this under it (look.ts). */
+  look?: true;
   /** The background job it is the result of: its pill in the conversation takes it (fromRoutine.ts). */
   job?: string;
   /** What that job proposed for a tap (proposal.ts). */

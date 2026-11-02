@@ -937,6 +937,18 @@ export class JarvisState extends DurableObject<Env> {
     return this.conversation.list(person, now);
   }
 
+  /**
+   * Not now or Less of this, on what a look around said (lib/notice.ts): found by its alert's id in the person's own
+   * conversation, its routine still theirs, and what is kept is the server's text, never the request's. Why not, or null.
+   */
+  async lookAnswer(person: string, id: string, answer: "later" | "less", now: number): Promise<string | null> {
+    const said = (await this.conversation.list(person, now)).find((s) => s.id === id && s.look && s.routine);
+    const r = said?.routine ? (await this.scheduler.list()).find((x) => x.id === said.routine!.id) : undefined;
+    if (!said || !r || r.action.kind !== "notice" || personOfWho(r.createdBy) !== person) return "That look is no longer here.";
+    await this.noticed.answer(person, answer, said.text, r.grants, now);
+    return null;
+  }
+
   /* ---------- the owner's ChatGPT plan (lib/chatgpt-plan.ts) ----------------------- */
 
   chatgptStatus(now: number) {

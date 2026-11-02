@@ -590,7 +590,7 @@ export class Scheduler {
     }
     // A brief is a page to read, not something to say aloud; its cards come with it.
     const made = makeAlert({ title: r.name, text, ...(r.action.kind === "brief" ? { speak: false } : {}) }, "routine", now, personOfWho(r.createdBy))!;
-    const alert = { ...made, routine: r.id, ...(cards?.length ? { proposals: cards } : {}) };
+    const alert = { ...made, routine: r.id, ...(r.action.kind === "notice" ? { look: true as const } : {}), ...(cards?.length ? { proposals: cards } : {}) };
     const d = await deps.deliver(alert);
     await this.record(r.id, outcome(d, now), text);
   }

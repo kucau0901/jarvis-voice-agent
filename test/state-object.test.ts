@@ -280,6 +280,25 @@ console.log("\na brief whose maker can no longer reach anything by its end (stat
   }
 }
 
+console.log("\nanswering what a look around said (state.ts lookAnswer)");
+{
+  const now = Date.now();
+  const look = await jarvis.addRoutine({ when: "cron", cron: "0 * * * *", notice: true }, { who: "u_sara", grants: ["ask", "calendar"] });
+  const other = await jarvis.addRoutine({ when: "daily", time: "07:00", say: "Stretch" }, { who: "u_sara", grants: ["*"] });
+  const inside: { conversation: { addAlert(person: string, said: unknown, now: number): Promise<boolean> }; noticed: { looked(p: string): Promise<{ quietUntil?: number; less?: { text: string; grants: string[] }[] }> } } = jarvis as never;
+  const row = (id: string, routine: unknown, text: string, look = true) => ({ id, at: now, role: "assistant", text, routine: { id: (routine as { id: string }).id, name: "Anything worth knowing" }, ...(look ? { look: true } : {}) });
+  await inside.conversation.addAlert("u_sara", row("alook00000001", look, "Your 3 PM clashes with the school run."), now);
+  await inside.conversation.addAlert("u_sara", row("aother0000001", other, "Stretch", false), now);
+  check("Not now: quiet for a while", (await jarvis.lookAnswer("u_sara", "alook00000001", "later", now)) === null && ((await inside.noticed.looked("u_sara")).quietUntil ?? 0) > now);
+  check("Less of this: the server's own words kept, with what the look could reach", (await jarvis.lookAnswer("u_sara", "alook00000001", "less", now)) === null && JSON.stringify((await inside.noticed.looked("u_sara")).less?.map((l) => [l.text, l.grants])) === '[["Your 3 PM clashes with the school run.",["ask","calendar"]]]');
+  check("not someone else's", (await jarvis.lookAnswer("u_adam", "alook00000001", "less", now)) !== null && (await inside.noticed.looked("u_adam")).less === undefined);
+  check("not what another routine said", (await jarvis.lookAnswer("u_sara", "aother0000001", "less", now)) !== null);
+  check("not one never said", (await jarvis.lookAnswer("u_sara", "anothere00001", "later", now)) !== null);
+  if (typeof look !== "string") await jarvis.removeRoutine(look.id);
+  check("not once its routine is gone", (await jarvis.lookAnswer("u_sara", "alook00000001", "later", now)) !== null);
+  if (typeof other !== "string") await jarvis.removeRoutine(other.id);
+}
+
 console.log("\nan approved call, made on the object's alarm");
 {
   const now = Date.now();

@@ -2,7 +2,7 @@
 // answer that sees it only as quoted data, said only when worth it, at most
 // PER_DAY things a day, leaving out what they were already told today.
 import { MAX_DOC } from "../src/worker/lib/brief.ts";
-import { MAX_SAID, MAX_TOLD, NOTICE_INSTRUCTIONS, Noticed, PER_DAY, runNotice, threadsSection, type NoticeDeps } from "../src/worker/lib/notice.ts";
+import { LESS_MS, MAX_LESS, QUIET_MS, MAX_SAID, MAX_TOLD, NOTICE_INSTRUCTIONS, Noticed, PER_DAY, runNotice, threadsSection, type NoticeDeps } from "../src/worker/lib/notice.ts";
 import { GIVE_UP_MS, type Relay } from "../src/worker/lib/relays.ts";
 import type { Routine } from "../src/worker/lib/routines.ts";
 import type { Job } from "../src/worker/lib/jobs.ts";
@@ -200,6 +200,38 @@ console.log("\nthreads left open since the last look");
   check("a look held back by the day's say leaves its threads for the next", (await held.judgedAt("owner")) === since);
   await held.forget("owner");
   check("forgotten with the person", (await held.judgedAt("owner")) === undefined);
+}
+
+console.log("\nNot now, and Less of this");
+{
+  const H = 3_600_000;
+  const noticed = new Noticed(fakeStorage() as never);
+  await noticed.answer("owner", "later", "The plumber job failed.", ["*"], NOW);
+  asked.length = 0;
+  const quiet = await runNotice(ROUTINE, NOW + H, deps(noticed), model("Something"));
+  check("Not now: no look while quiet, and none paid for", typeof quiet !== "string" && quiet.text === null && /^asked for quiet until/.test(quiet.detail) && asked.length === 0 && !quiet.usage, quiet);
+  await runNotice(ROUTINE, NOW + QUIET_MS + 1, deps(noticed), model("NOTHING"));
+  check("…and looks again after", asked.length === 1);
+
+  const less = new Noticed(fakeStorage() as never);
+  await less.answer("owner", "less", "Forty promotions wait in the inbox.", ["ask", "mail"], NOW);
+  await less.answer("owner", "less", "Rain at nine.", ["ask"], NOW);
+  await less.answer("owner", "less", "Rain at nine.", ["ask"], NOW + 1);
+  check("the same thing kept once", (await less.looked("owner")).less?.length === 2, await less.looked("owner"));
+  asked.length = 0;
+  await runNotice(ROUTINE, NOW, deps(less), model("NOTHING"));
+  const input = asked[0]!.input;
+  check("what they want less of goes to the model, fenced", input.includes("what they asked to hear less of") && input.indexOf("Rain at nine.") > input.indexOf("what they asked to hear less of"), input);
+  check("but not what a run reaching further said", !input.includes("promotions"), input);
+  check("the instructions say to leave it out", NOTICE_INSTRUCTIONS.includes("what they asked to hear less of"));
+  asked.length = 0;
+  await runNotice(ROUTINE, NOW + LESS_MS + 2, deps(less), model("NOTHING"));
+  check(`kept ${LESS_MS / 86_400_000} days`, !asked[0]!.input.includes("Rain at nine."), asked[0]?.input);
+  for (let i = 0; i < MAX_LESS + 5; i++) await less.answer("owner", "less", `Thing ${i}`, ["*"], NOW + i);
+  const kept = (await less.looked("owner")).less ?? [];
+  check(`at most ${MAX_LESS}, the newest kept`, kept.length === MAX_LESS && kept.at(-1)!.text === `Thing ${MAX_LESS + 4}`, kept.length);
+  await less.forget("owner");
+  check("forgotten with the person", (await less.looked("owner")).less === undefined);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

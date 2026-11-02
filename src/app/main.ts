@@ -40,6 +40,7 @@ import { LiveVoice, wakeVoice } from "./loud";
 import { Family } from "./ui/Family";
 import { Chat } from "./ui/Chat";
 import { relayActions } from "./relay";
+import { lookActions } from "./look";
 import { proposalCards } from "./proposal";
 import { hubStatus, inviteInfo, joinWithInvite, pairThisScreen, signInWithPasskey } from "./account";
 import { passkeyError, passkeysSupported } from "./passkey";
@@ -626,6 +627,7 @@ function routineSaid(a: RoutineSaid): boolean {
   els.transcript.appendChild(label);
   const row = addRow("jarvis", a.text);
   if (a.proposals?.length && key) (row.querySelector(":scope > .who + *") ?? row).appendChild(proposalCards(key, a.proposals));
+  if (a.look && key) (row.querySelector(":scope > .who + *") ?? row).appendChild(lookActions(key, a.id));
   return true;
 }
 

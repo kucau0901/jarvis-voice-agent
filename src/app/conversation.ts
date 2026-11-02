@@ -28,6 +28,8 @@ export interface Said {
   /** The answer this question replied to (reply.ts). */
   replyTo?: string;
   routine?: { id: string; name: string };
+  /** What a look around said: answered with Not now or Less of this (look.ts). */
+  look?: true;
   job?: { id: string; name: string };
   /** Any other alert that said it: where from, and its title, shown as "Title: text" (main.ts onAlert). */
   alert?: { source: string; title: string };
@@ -82,7 +84,7 @@ export function restore(all: Said[], rows: Rows, history: History): void {
   const shown = new Map<string, { row: HTMLElement; text: string }>();
   for (const s of all) {
     if (s.routine) {
-      if (rows.routine({ id: s.id, at: s.at, title: s.routine.name, text: s.text, routine: s.routine.id, ...(s.proposals ? { proposals: s.proposals } : {}) })) history.add("assistant", `${s.routine.name}: ${s.text}`, s.at);
+      if (rows.routine({ id: s.id, at: s.at, title: s.routine.name, text: s.text, routine: s.routine.id, ...(s.look ? { look: true } : {}), ...(s.proposals ? { proposals: s.proposals } : {}) })) history.add("assistant", `${s.routine.name}: ${s.text}`, s.at);
       continue;
     }
     if (s.job) {

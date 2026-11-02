@@ -79,6 +79,9 @@ console.log("\nwhat a routine said");
   const brief = alertSaid({ id: "a_b1", at: 60, title: "Morning brief", text: "# Wednesday", source: "routine", routine: "rb", proposals: [{ id: "a1", risk: "reversible", says: "Mail: archive 30 promotions", verb: "Archive" }] });
   check("a brief's cards kept with it, by id, as a job's are", JSON.stringify(brief?.proposals) === '["a1"]' && brief?.routine?.id === "rb", brief);
   check("one with none keeps none", !("proposals" in (s ?? {})));
+  const look = alertSaid({ id: "a_l1", at: 70, title: "Anything worth knowing", text: "Your 3 PM clashes.", source: "routine", routine: "rl", look: true });
+  check("a look around's keeps its mark, to be answered later", look?.look === true && look.routine?.id === "rl", look);
+  check("no other keeps one", !("look" in (s ?? {})) && !("look" in (alertSaid({ id: "a_x", at: 1, title: "T", text: "x", source: "job", look: true }) ?? {})));
 }
 
 console.log("\nwhat a background job came back with");

@@ -29,6 +29,25 @@ import { canAsk } from "../lib/openai-auth.ts";
 
 const MAX_BODY = 8 * 1024;
 
+/**
+ *   POST   /api/hub/looks/answer     {id, answer: "later" | "less"}: Not now, or Less of this, on what a look around
+ *                                    said (lib/notice.ts), by its alert's id. A person's own, never a device's (the gate
+ *                                    refuses devices everything under /api/hub/), and only their own looks.
+ */
+export async function handleLookAnswer(req: Request, env: Env, principal: Principal): Promise<Response> {
+  if (req.method !== "POST") return err(405, "POST only");
+  if (principal.kind === "device") return err(403, "a look is answered by its person, signed in");
+  const state = stateStub(env);
+  if (!state) return err(503, "looks need the STATE Durable Object");
+  const b = await readObject(req, MAX_BODY);
+  if (!b) return err(400, "send a JSON object");
+  const id = typeof b.id === "string" && /^[0-9a-z]{1,40}$/i.test(b.id) ? b.id : "";
+  const answer = b.answer === "later" || b.answer === "less" ? b.answer : null;
+  if (!id || !answer) return err(400, 'give the look\'s id, and answer "later" or "less"');
+  const why = await state.lookAnswer(personOf(principal), id, answer, Date.now());
+  return why ? err(404, why) : json({ ok: true });
+}
+
 
 const creator = (p: Principal) => ({ who: whoOf(p), grants: grantsOf(p) });
 

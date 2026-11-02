@@ -524,7 +524,9 @@ endpoints. A tapped notification carries only the alert's id; the text is
 `GET /api/v1/alerts?id=…` for about the last thirty alerts, each only to the
 person it was for (admins included). The notification itself carries
 `{id, title, at, speak, talk, text}`, the text cut to fit. An alert a routine raised carries
-`routine`, the routine's id, wherever it goes. On iPhone and
+`routine`, the routine's id, wherever it goes, and one a look around said
+carries `look: true` too, for a device to offer Not now and Less of this
+(answered by the person, signed in, in the web app). On iPhone and
 iPad, notifications need the app added to the Home Screen first.
 
 Every push is sent with `Urgency: high`, so Android delivers it to an idle

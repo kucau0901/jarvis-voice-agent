@@ -27,7 +27,8 @@ of every release, and in the [README](README.md#updating).
   and tell me only what is worth it". Each look is one small model answer.
   It also follows up on what was left open: a message to family that went
   unanswered, a card that lapsed without your OK, a call you approved that
-  failed.
+  failed. Under what it says are **Not now** (no look for three hours) and
+  **Less of this** (it leaves things like that out for a month).
 - **Skills, added in chat.** "Add a skill: Wren, my Grok bot, for the house
   and the car, at https://…" lets Jarvis send requests to an outside service
   (a bot, an automation, your own code), or, said as an MCP server, use its

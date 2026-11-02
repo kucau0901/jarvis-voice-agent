@@ -62,6 +62,8 @@ export interface Alert {
    * (src/app/fromRoutine.ts).
    */
   routine?: string;
+  /** What a look around said (lib/notice.ts): the app offers Not now and Less of this under it (src/app/look.ts). */
+  look?: true;
   /**
    * The background job it is the result of (lib/jobs.ts): the app turns that
    * job's "On it" pill in the conversation into the result, and the pill opens

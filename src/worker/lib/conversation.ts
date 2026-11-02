@@ -33,6 +33,8 @@ export interface Said {
   replyTo?: string;
   /** The routine that said it: its id, to open it, and its name. Only the server says this. */
   routine?: { id: string; name: string };
+  /** A look around's (lib/notice.ts): answered with Not now or Less of this. Only the server says this. */
+  look?: true;
   /** The background job it is the result of: its id, to open it in Jobs, and its alert's title. Only the server says this. */
   job?: { id: string; name: string };
   /** Any other alert that said it (lib/alerts.ts): where it came from and its title, read as "Title: text". Only the server says this. */
@@ -153,13 +155,13 @@ export function trimmed(log: readonly Said[], now: number): Said[] {
  * answered by voice (tools/family.ts pass_on). Null for Settings → Test,
  * which is nobody's conversation.
  */
-export function alertSaid(a: Pick<Alert, "id" | "at" | "title" | "text" | "source" | "routine" | "job" | "proposals" | "skill">): Said | null {
+export function alertSaid(a: Pick<Alert, "id" | "at" | "title" | "text" | "source" | "routine" | "look" | "job" | "proposals" | "skill">): Said | null {
   if (a.source === "test") return null;
   // What it proposed, by id, drawn as cards under it (lib/proposals.ts).
   const proposals = (a.proposals ?? []).map((p) => p.id);
   const from = a.routine ? { routine: { id: a.routine, name: a.title } } : a.job ? { job: { id: a.job, name: a.title } } : { alert: { source: a.source, title: a.title } };
   // A skill's keeps its alert too, so a screen that does not know skills shows it as "Name: text".
-  return { id: a.id, at: a.at, role: "assistant", text: a.text.slice(0, MAX_TEXT), ...from, ...(a.skill ? { skill: a.skill } : {}), ...(proposals.length ? { proposals } : {}) };
+  return { id: a.id, at: a.at, role: "assistant", text: a.text.slice(0, MAX_TEXT), ...from, ...(a.routine && a.look ? { look: true as const } : {}), ...(a.skill ? { skill: a.skill } : {}), ...(proposals.length ? { proposals } : {}) };
 }
 
 /**

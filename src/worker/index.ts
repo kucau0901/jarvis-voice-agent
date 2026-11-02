@@ -38,6 +38,7 @@ import { handleConversation } from "./routes/conversation.ts";
 import { handleSearch } from "./routes/search.ts";
 import { handlePage, handlePageMeta } from "./routes/page.ts";
 import { handleProposals } from "./routes/proposals.ts";
+import { handleLookAnswer } from "./routes/routines.ts";
 import { handleTelegram } from "./routes/telegram.ts";
 import { TELEGRAM_PATH } from "./lib/telegram.ts";
 
@@ -235,6 +236,7 @@ async function route(
   if (url.pathname === "/api/hub/search") return await handleSearch(req, env, principal);
   if (url.pathname === "/api/page" || url.pathname === "/api/page/share") return await handlePageMeta(req, env, principal);
   if (url.pathname.startsWith("/api/hub/panels")) return (await handlePanels(req, env, principal)) ?? (await handleHub(req, env, principal));
+  if (url.pathname === "/api/hub/looks/answer") return await handleLookAnswer(req, env, principal);
   if (url.pathname.startsWith("/api/hub/proposals")) return (await handleProposals(req, env, principal)) ?? (await handleHub(req, env, principal));
   if (url.pathname.startsWith("/api/hub/")) return await handleHub(req, env, principal);
   if (url.pathname.startsWith("/api/mcp")) return await handleMcp(req, env, principal.kind === "owner");

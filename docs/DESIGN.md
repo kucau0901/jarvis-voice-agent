@@ -1363,6 +1363,16 @@ a group's answers (its own alert), a rota's (it comes round again), an
 escalated one (the whole family was told), a brief's card (the next brief
 offers it again), and a call allowed without asking (its job's alert said it).
 
+**What a look says can be answered.** Under its words in the conversation are
+Not now and Less of this (`src/app/look.ts`, `POST /api/hub/looks/answer`).
+Not now makes no look for three hours, so it costs nothing. Less of this keeps
+what that look said for 30 days, at most 20, beside what they were told today,
+as something like which not to raise; it is the server's own text, found by
+the alert's id in the person's own conversation, never words the request
+sends, and it carries what the look could reach, as what they were told does.
+It is kept with the look, not in Memory: it is a look's words, built from
+mail and events, and Memory goes into every request.
+
 **"Leave now" uses what is there.** The car's position if Tessie is set up,
 else the saved home; live traffic if Google Maps is set up; otherwise a plain
 reminder a fixed time ahead. Routes are billed per call, so drive times are

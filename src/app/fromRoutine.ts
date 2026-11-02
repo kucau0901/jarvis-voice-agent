@@ -19,7 +19,7 @@ import { button, el } from "./ui/util";
  * and what it was asked beside the time; pressed, Settings opens at Skills.
  */
 
-export type RoutineSaid = Pick<Alert, "id" | "at" | "title" | "text"> & { routine: string; proposals?: string[] };
+export type RoutineSaid = Pick<Alert, "id" | "at" | "title" | "text" | "look"> & { routine: string; proposals?: string[] };
 /** `proposals`: what the job proposed, by id, for their cards (proposal.ts). */
 export type JobSaid = Pick<Alert, "id" | "at" | "title" | "text"> & { job: string; proposals?: string[] };
 /** `skill.asked`: the bot's own question to Jarvis, through its own address. */

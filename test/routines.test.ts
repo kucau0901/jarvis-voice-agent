@@ -345,6 +345,7 @@ console.log("\na look around: said only when worth it, one each");
   said = { text: "Your 3 PM clashes with the school run." };
   await h.s.tick(T0 + 120 * MIN);
   check("something worth it: said, with its cards", h.sent.length === 1 && h.sent[0]!.text === "Your 3 PM clashes with the school run." && h.sent[0]!.proposals?.[0]?.id === "p1", h.sent);
+  check("marked as a look's, to be answered with Not now or Less of this", h.sent[0]!.look === true);
   const second = (await h.s.add({ when: "cron", cron: "0 10,16 * * *", notice: true }, OWNER, T0 + 130 * MIN)) as Routine;
   const all = await h.s.list();
   check("another replaces its schedule, keeping its id and its last run", all.length === 1 && second.id === first.id && all[0]!.trigger.kind === "cron" && all[0]!.trigger.expr === "0 10,16 * * *" && !!all[0]!.lastRun, all);
