@@ -62,6 +62,19 @@ const routineAdd: Tool = {
     "{{ is_state('cover.main_gate', 'open') }}, {{ states('sensor.car_battery') | float(0) >= 80 }}, " +
     "{{ is_state('sensor.washer_state', 'idle') }}. It is checked every minute, at no cost, and " +
     "says its message once each time the condition comes true. " +
+    "A watch can do anything you can, not only say something: give ask in place of say, written as what to " +
+    "do when it comes true, checks first ('when someone is seen outside at night, look at that camera and, " +
+    "only if there really is a person, announce it on the kitchen and bedroom speakers'; 'when the freezer " +
+    "goes above -10, check whether its door is open and tell me'; 'when everyone has left, turn off the " +
+    "lights still on and tell me which'). The ask runs then with the user's tools (the house, its cameras, " +
+    "its speakers through Home Assistant, the car, messages), with no screen; it is not told which part of " +
+    "the condition came true, so it checks first (which sensor is on). With notify=if-important it answers " +
+    "NOTHING when its checks find nothing worth it, and nothing is said. A condition can join several " +
+    "things and a time of day: {{ (now().hour >= 23 or now().hour < 6) and (expand(['binary_sensor.a', " +
+    "'binary_sensor.b']) | selectattr('state', 'eq', 'on') | list | count > 0) }}. Each time it comes " +
+    "true is one paid answer. For a condition outside the house (mail, the calendar, the web), use cron " +
+    "with ask and notify=if-important, the check in the ask ('every hour, if the school has emailed, tell " +
+    "me what it says'). Never say a routine cannot check something before it acts: its ask can. " +
     "For someone else in the family, on a schedule, give pass_to (their names from THE FAMILY): " +
     "a chore rota ('every Saturday at ten, remind Aisyah and Adam in turn to wash the car, 5 " +
     "points': pass_to both, points 5), a check-in on a grandparent ('every day at ten ask Grandma " +

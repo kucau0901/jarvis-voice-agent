@@ -19,6 +19,14 @@ of every release, and in the [README](README.md#updating).
 
 ### Added
 
+- **"When this happens, do that."** A watch routine can now do anything
+  Jarvis can when its condition comes true, not only say a message: "when
+  someone is seen outside at night, look at that camera and, only if there
+  really is a person, announce it on the kitchen and bedroom speakers";
+  "when everyone has left, turn off the lights still on and tell me which".
+  Jarvis checks first and says nothing when its checks find nothing. A
+  condition can join several sensors and a time of day. Before, Jarvis told
+  you it couldn't.
 - **A look around.** "Check on me during the day" sets up a routine that reads
   what a brief reads (calendar, mail, car, weather, what waits for your OK) a
   few times a day and tells you only what is worth an interruption, leaving

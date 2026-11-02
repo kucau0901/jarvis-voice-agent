@@ -718,6 +718,39 @@ console.log("\nwhat a routine says names the routine, for the app's conversation
   check("a message and an answer each carry their routine", of("Call Mum")?.routine === said.id && of("Your first meeting")?.routine === asked.id, h.sent);
 }
 
+console.log("\nwatches: a condition, then anything Jarvis can do");
+{
+  // "When someone is seen outside at night, look at that camera and, only if there really is a person, announce it."
+  const NIGHT = "{{ (now().hour >= 23 or now().hour < 6) and (expand(['binary_sensor.porch_person', 'binary_sensor.gate_person']) | selectattr('state', 'eq', 'on') | list | count > 0) }}";
+  const ASK = "Look at the camera of whichever person sensor is on; only if there really is a person, announce it on the kitchen speaker.";
+  const built = buildRoutine({ when: "watch", condition: NIGHT, ask: ASK, notify: "if-important" }, tz, T0);
+  check("a watch takes ask, not only say: what to do when it comes true, checks first", built.ok && built.trigger.kind === "watch" && built.action.kind === "ask" && built.action.prompt === ASK && built.action.notify === "if-important", built);
+  const h = harness();
+  const deps = await (h.s as unknown as { deps: () => Promise<SchedulerDeps> }).deps();
+  let answer = "NOTHING";
+  const asked: { prompt: string; grants: readonly string[] }[] = [];
+  deps.ask = async (prompt, grants) => (asked.push({ prompt, grants }), { ok: true, text: answer });
+  h.state.ha = () => "False";
+  const r = (await h.s.add({ when: "watch", condition: NIGHT, ask: ASK, notify: "if-important" }, { who: "u_b", grants: ["ask", "home", "routines"] }, T0)) as Routine;
+  check("kept, tried first as any watch", typeof r !== "string" && r.action.kind === "ask", r);
+  h.state.ha = () => "True";
+  h.state.now = T0 + MIN;
+  await h.s.tick(T0 + MIN);
+  check("when it comes true, Jarvis is asked what to do, with its maker's reach", asked.length === 1 && asked[0]!.prompt === ASK && asked[0]!.grants.join() === "ask,home,routines", asked);
+  check("its checks found nothing (a shadow): nothing said", h.sent.length === 0);
+  h.state.now = T0 + 2 * MIN;
+  await h.s.tick(T0 + 2 * MIN);
+  check("and not asked again while it stays true", asked.length === 1);
+  h.state.ha = () => "False";
+  h.state.now = T0 + 3 * MIN;
+  await h.s.tick(T0 + 3 * MIN);
+  h.state.ha = () => "True";
+  answer = "Someone is at the porch: I announced it on the kitchen speaker.";
+  h.state.now = T0 + 4 * MIN;
+  await h.s.tick(T0 + 4 * MIN);
+  check("true again: asked again, and what it did is said", asked.length === 2 && h.sent.at(-1)?.text === answer, h.sent.at(-1));
+}
+
 console.log("\nwatches: when Home Assistant cannot be reached");
 {
   const h = harness();
