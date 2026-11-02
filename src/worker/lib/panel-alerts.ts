@@ -54,7 +54,7 @@ export function alertChoice(entity: string, state: string, a: Attrs): AlertChoic
 }
 
 /** Quoted for a Home Assistant template: entity ids are checked, but quotes are never trusted. */
-const q = (s: string) => `'${s.replace(/[^a-z0-9_.]/gi, "")}'`;
+export const q = (s: string) => `'${s.replace(/[^a-z0-9_.]/gi, "")}'`;
 
 /**
  * The watch for "Alert me": its condition, what it says and its name. `when`

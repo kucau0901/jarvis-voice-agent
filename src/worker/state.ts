@@ -235,8 +235,11 @@ export class JarvisState extends DurableObject<Env> {
     return this.host.getSettings();
   }
 
-  putSettings(changes: Changes) {
-    return this.host.putSettings(changes);
+  /** Saved, then the alarm pointed again: a setting such as Watch the house decides what wakes (lib/house.ts). */
+  async putSettings(changes: Changes) {
+    const r = await this.host.putSettings(changes);
+    await this.rearm();
+    return r;
   }
 
   vectorsNeeded(items: { id: string; hash: string }[], book?: string) {
@@ -584,7 +587,8 @@ export class JarvisState extends DurableObject<Env> {
       day: dayOf(now, timeZone),
       render: ha ? (t) => renderTemplate(ha, t) : null,
       judge: async (input) =>
-        askForRoutine(await this.personEnv(env, OWNER), `${HOUSE_INSTRUCTIONS}\n\n${input}`, ["ask", "home", "memory.read", "calendar"], {
+        // The house only: what it says goes to every admin, so never anyone's own memory or calendar.
+        askForRoutine(await this.personEnv(env, OWNER), `${HOUSE_INSTRUCTIONS}\n\n${input}`, ["ask", "home"], {
           name: "Watching the house",
           action: { kind: "ask", prompt: "", notify: "if-important" },
         }),
@@ -995,8 +999,13 @@ export class JarvisState extends DurableObject<Env> {
     const ha = haConfig(await this.localEnv());
     if (!ha) return "Home Assistant is not set up";
     try {
-      const { things } = await this.house.watching((t) => renderTemplate(ha, t), now);
-      return await watchList(things);
+      const { things, changed } = await this.house.watching((t) => renderTemplate(ha, t), now);
+      // What changed while the component was not sending (a restart, a lost link): judged like anything it sends.
+      if (changed.length && modeOf((await this.localEnv()).HOUSE_WATCH) !== "off") {
+        await this.house.queue(changed);
+        await this.rearm();
+      }
+      return await watchList(things, await this.house.prefs());
     } catch (e) {
       return `Home Assistant could not be read: ${e instanceof Error ? e.message : String(e)}`;
     }
@@ -1011,7 +1020,7 @@ export class JarvisState extends DurableObject<Env> {
       await this.rearm();
     }
     const last = await this.house.last();
-    return { version: (await watchList(last?.things ?? [])).version, changed: changed.length };
+    return { version: (await watchList(last?.things ?? [], await this.house.prefs())).version, changed: changed.length };
   }
 
   /**

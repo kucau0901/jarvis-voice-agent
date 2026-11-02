@@ -159,7 +159,7 @@ export type Section = { head: string; lines: string[] };
 /** What the sources are read with: a brief's deps, or a check's (lib/notice.ts). */
 export type Sources = Pick<BriefDeps, "env" | "grants" | "timeZone" | "house">;
 
-const hhmm = (ts: number, timeZone: string) =>
+export const hhmm = (ts: number, timeZone: string) =>
   new Intl.DateTimeFormat("en-GB", { timeZone, hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(ts));
 const dateSaid = (ts: number, timeZone: string, weekday: "long" | "short") =>
   new Intl.DateTimeFormat("en-GB", { timeZone, weekday, day: "numeric", month: weekday === "long" ? "long" : "short" }).format(new Date(ts));

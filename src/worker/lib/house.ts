@@ -1,5 +1,6 @@
 import type { Storage } from "./state-host.ts";
-import { plain, type Section } from "./brief.ts";
+import { hhmm, plain, type Section } from "./brief.ts";
+import { q } from "./panel-alerts.ts";
 import { sha256Hex } from "./devices.ts";
 import { asQuotedData } from "./quote.ts";
 import { localParts } from "./routines.ts";
@@ -82,8 +83,6 @@ const NUMERIC = new Set(["sensor"]);
 /** Home Assistant starting, or a device dropping off: not a change in the house. */
 const NOISE = new Set(["unavailable", "unknown", ""]);
 
-/** Quoted for a template: entity ids are checked, but quotes are never trusted. */
-const q = (s: string) => `'${s.replace(/[^a-z0-9_.]/gi, "")}'`;
 
 /**
  * The template that reads what matters: each thing as {i, n, a, c, s, u, t}, as JSON. Home Assistant goes through
@@ -124,10 +123,12 @@ export function parseBatch(body: unknown): Change[] | null {
  * again. Urgent is sent at once (a way in, a leak, smoke or gas, the alarm, people coming and going); the rest in a
  * batch every few minutes, so a busy house stays within a device's day of requests (lib/limits.ts).
  */
-export async function watchList(things: readonly Thing[]): Promise<{ version: string; entities: string[]; urgent: string[] }> {
+export async function watchList(things: readonly Thing[], prefs: Prefs): Promise<{ version: string; entities: string[]; urgent: string[] }> {
   const entities = things.map((t) => t.id).sort();
   const urgent = things.filter(urgentThing).map((t) => t.id).sort();
-  return { version: (await sha256Hex(`${entities.join(",")}|${urgent.join(",")}`)).slice(0, 12), entities, urgent };
+  // What the person added or left out moves it too, before the house is read again: the component then asks, and that read follows.
+  const chose = `${[...prefs.add].sort().join(",")}|${[...prefs.ignore].sort().join(",")}`;
+  return { version: (await sha256Hex(`${entities.join(",")}|${urgent.join(",")}|${chose}`)).slice(0, 12), entities, urgent };
 }
 
 /** A change the household would want judged at once, not in a few minutes' batch. */
@@ -167,8 +168,6 @@ export function active(t: Thing): boolean {
   return t.state === "on";
 }
 
-const hhmm = (s: number, timeZone: string) =>
-  new Intl.DateTimeFormat("en-GB", { timeZone, hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(s * 1000));
 const LOW_BATTERY = 15;
 const MAX_LINES = 14;
 
@@ -179,7 +178,7 @@ const MAX_LINES = 14;
 export function houseSection(things: readonly Thing[], timeZone: string): Section | null {
   if (!things.length) return null;
   const where = (t: Thing) => (t.area ? ` (${plain(t.area, 30)})` : "");
-  const since = (t: Thing) => (t.t ? ` since ${hhmm(t.t, timeZone)}` : "");
+  const since = (t: Thing) => (t.t ? ` since ${hhmm(t.t * 1000, timeZone)}` : "");
   const lines: string[] = [];
   const people = things.filter((t) => t.id.startsWith("person."));
   if (people.length) lines.push(`People: ${people.map((p) => `${plain(p.name, 30)} ${p.state === "home" ? "home" : p.state === "not_home" ? "away" : plain(p.state, 20)}`).join(", ")}`);
@@ -279,9 +278,13 @@ export class House {
 
   /** Read the house now (render: the template rendered by Home Assistant), keep it, and say what changed since the last read. */
   async glance(render: (template: string) => Promise<string>, now: number): Promise<{ things: Thing[]; changed: Change[] }> {
-    const things = parseThings(await render(houseTemplate(await this.prefs())));
+    const read = parseThings(await render(houseTemplate(await this.prefs())));
+    // Read after the wait: the component may have sent something newer while Home Assistant answered (apply).
+    // What it sent since this read began stands; the read is older.
     const before = await this.last();
-    await this.storage.put("house:last", { at: now, things });
+    const newer = new Map((before?.things ?? []).filter((t) => t.t >= Math.floor(now / 1000)).map((t) => [t.id, t]));
+    const things = read.map((t) => newer.get(t.id) ?? t);
+    await this.storage.put("house:last", { at: now, things, ...(before?.heardAt !== undefined ? { heardAt: before.heardAt } : {}) });
     return { things, changed: before ? changes(before.things, things) : [] };
   }
 
@@ -354,6 +357,14 @@ export class House {
     if (!judgeMoments && !batch.length) return moments.length ? "moments, but the day's cap is reached" : "quiet";
     if (day.said >= SAY_CAP) return "the day's say is reached";
     const r = await d.judge(judgeInput(judgeMoments ? moments : [], batch, things, day.told, now, d.timeZone));
+    if (!r.ok) {
+      // Not judged: its moments are found again next time (a lasting one) or wait in the queue (a change), and nothing is counted.
+      const again = (await this.storage.get<Record<string, number>>("house:seen")) ?? {};
+      for (const m of moments) delete again[`c:${m.rule}:${m.id}`], delete again[`s:${m.rule}:${m.id}`];
+      await this.storage.put("house:seen", again);
+      await this.queue(changed.filter((c) => moments.some((m) => m.id === c.id) || batch.includes(c)));
+      return `could not judge: ${r.text}`;
+    }
     if (judgeMoments) day.moments++;
     else day.changes++;
     const said = r.ok && !isNothing(r.text) ? plain(r.text, MAX_SAID_HOUSE) : "";
@@ -364,7 +375,7 @@ export class House {
       while (day.told.join("\n").length > MAX_TOLD_HOUSE) day.told.shift();
     }
     await this.storage.put("house:day", day);
-    return !r.ok ? `could not judge: ${r.text}` : said ? `said: ${said}` : "judged: nothing to say";
+    return said ? `said: ${said}` : "judged: nothing to say";
   }
 
   private async today(day: string): Promise<Day> {
@@ -439,8 +450,10 @@ const domainOf = (id: string) => id.split(".")[0]!;
 const OPENINGS = new Set(["door", "window", "garage_door", "opening"]);
 const PRESENCE = new Set(["motion", "occupancy", "presence"]);
 const HAZARDS = new Set(["moisture", "smoke", "gas", "carbon_monoxide"]);
-/** A way in: a door, window or garage door, a lock, a cover such as a garage door or gate. */
-const wayIn = (t: Thing) => domainOf(t.id) === "lock" || domainOf(t.id) === "cover" || (domainOf(t.id) === "binary_sensor" && OPENINGS.has(t.kind));
+/** Covers that are ways in; blinds, shades, curtains, shutters and awnings are not, opened on purpose every day. */
+const GATES = new Set(["garage", "gate", "door"]);
+/** A way in: a door, window or garage door, a lock, a garage door, gate or door worked by a motor. */
+const wayIn = (t: Thing) => domainOf(t.id) === "lock" || (domainOf(t.id) === "cover" && GATES.has(t.kind)) || (domainOf(t.id) === "binary_sensor" && OPENINGS.has(t.kind));
 
 /** Whether nobody is home: every person Home Assistant knows is somewhere else. False with no people to go by. */
 export function nobodyHome(things: readonly Thing[]): boolean {
@@ -457,9 +470,11 @@ export function changeMoments(changed: readonly Change[], things: readonly Thing
   const h = localParts(now, timeZone).h;
   const night = h >= NIGHT_FROM || h < NIGHT_TO;
   const away = nobodyHome(things);
-  const at = new Intl.DateTimeFormat("en-GB", { timeZone, hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(now));
+  const at = hhmm(now, timeZone);
   return changed.flatMap((c): Moment[] => {
-    const t = byId.get(c.id);
+    const kept = byId.get(c.id);
+    // As it changed, not as it is by the time this runs: a door opened and shut again before the tick still opened.
+    const t = kept && { ...kept, state: c.to };
     if (!t || !active(t)) return [];
     const name = `${plain(t.name, 40)}${t.area ? ` (${plain(t.area, 30)})` : ""}`;
     if ((domainOf(t.id) === "binary_sensor" && HAZARDS.has(t.kind)) || (domainOf(t.id) === "alarm_control_panel" && t.state === "triggered")) {
@@ -478,7 +493,7 @@ export function changeMoments(changed: readonly Change[], things: readonly Thing
 export function standingMoments(things: readonly Thing[], now: number, timeZone: string): Moment[] {
   const out: Moment[] = [];
   const name = (t: Thing) => `${plain(t.name, 40)}${t.area ? ` (${plain(t.area, 30)})` : ""}`;
-  const since = (t: Thing) => (t.t ? ` since ${hhmm(t.t, timeZone)}` : "");
+  const since = (t: Thing) => (t.t ? ` since ${hhmm(t.t * 1000, timeZone)}` : "");
   const lasted = (t: Thing, ms: number) => t.t > 0 && now - t.t * 1000 >= ms;
   const away = nobodyHome(things);
   for (const t of things) {

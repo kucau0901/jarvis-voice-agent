@@ -562,5 +562,12 @@ console.log("skills, through the object");
   await jarvis.skillRemove("Wren");
 }
 
+console.log("\nWatch the house, switched on in Settings, wakes the alarm (state.ts putSettings)");
+{
+  await jarvis.putSettings({ HOUSE_WATCH: "unusual" });
+  check("on: the alarm is set, for the house's tick", alarmAt !== null, alarmAt);
+  await jarvis.putSettings({ HOUSE_WATCH: null });
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

@@ -171,7 +171,24 @@ export function calledService(args: Record<string, unknown>): string | null {
   return null;
 }
 
-function refuseIfForbidden(tool: string, args: Record<string, unknown>): string | null {
+/** Every "domain.service" anywhere in an automation's or script's config: what it would call, whenever it runs. */
+function servicesIn(v: unknown, out: string[] = []): string[] {
+  if (typeof v === "string") {
+    if (/^[a-z_]+\.[a-z0-9_]+$/i.test(v.trim())) out.push(v.trim());
+  } else if (Array.isArray(v)) {
+    for (const x of v) servicesIn(x, out);
+  } else if (v && typeof v === "object") {
+    for (const x of Object.values(v)) servicesIn(x, out);
+  }
+  return out;
+}
+
+export function refuseIfForbidden(tool: string, args: Record<string, unknown>): string | null {
+  // Written into Home Assistant, a forbidden service would run later, whenever the automation fires: refused here too.
+  if (/config_set_(automation|script)/i.test(tool)) {
+    const bad = servicesIn(args).find((s) => FORBIDDEN_SERVICES.some((re) => re.test(s)));
+    return bad ? `Refused: an automation that calls ${bad} is not something I will set up. Do that at home directly.` : null;
+  }
   if (!/call_service|bulk_control/i.test(tool)) return null;
   const svc = calledService(args);
   if (!svc) return null;

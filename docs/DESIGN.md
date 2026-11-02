@@ -1441,8 +1441,9 @@ been heard from, Jarvis reads the house itself.
 
 **Moments are found by code; only they reach the model.** On each change, and
 every five minutes for what lasts, code looks for what an attentive person
-would notice (lib/house.ts): a way in (a door, window, garage door, lock or
-cover) opening or unlocking while nobody is home or at night; a leak, smoke,
+would notice (lib/house.ts): a way in (a door, window, garage door, lock, or
+a garage door, gate or door worked by a motor; never a blind or curtain,
+opened on purpose every day) opening or unlocking while nobody is home or at night; a leak, smoke,
 gas or the alarm going off at any time; a way in left open 15 minutes; a light
 on with nobody home 10 minutes; a light on in a room whose motion sensors have
 seen nobody for 20; a battery under 15%. One from a change is said once in 30
@@ -1451,15 +1452,22 @@ how much is judged: off (the default: each judgment is a paid answer), unusual
 (moments only, at most 40 judgments a day), or every (each change of a thing
 watched as well, at most 200 a day, past which only moments, as unusual).
 Changes are queued as they arrive and judged on the alarm, never in the
-component's request.
+component's request, by what they changed to (a door opened and shut before
+the tick still opened). A judgment that fails keeps its moments for the next.
+A read never undoes what the component sent while Home Assistant was
+answering it; what a read finds changed is judged like what is sent. What the
+person adds or leaves out moves the watch list's version at once, so a
+component in use asks for it again.
 
 **A judgment may act through the house.** It is a routine's question
-(`askForRoutine`) asked as the first person with `ask`, `home`, `memory.read`
-and `calendar` only, no screen and never Hermes, given the moments, the
+(`askForRoutine`) asked as the first person with `ask` and `home` only, no
+screen and never Hermes (what it says goes to every admin, so never anyone's
+own memory or calendar), given the moments, the
 changes, the house now and what was said today, all fenced. It may do the
 obvious thing with the house's tools ("the study light was on in an empty
 room, so I turned it off"): what the house may do is set in Home Assistant,
-and Jarvis's MCP list still forbids what it forbids. It may say what needs a
+and Jarvis's MCP list still forbids what it forbids, in an automation it
+writes too (`refuseIfForbidden`). It may say what needs a
 person, or suggest an automation for what keeps happening, or answer NOTHING.
 What is said goes to the household's admins, at most 12 things a day. Its
 tick is the house's own (`House.nextWake`/`tick`), beside the routines',
