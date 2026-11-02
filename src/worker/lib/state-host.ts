@@ -673,6 +673,7 @@ interface ProposalApi {
   proposalApprove(person: string, id: string, scopesNow: readonly Grant[] | null | undefined, approver: readonly Grant[], now: number): Promise<Proposal | string>;
   proposalDecline(person: string, id: string, now: number): Promise<Proposal | string>;
   lookAnswer(person: string, id: string, answer: "later" | "less", now: number): Promise<string | null>;
+  noteAsk(person: string, who: string, ask: string, tools: string[], grants: readonly Grant[], now: number): Promise<void>;
   proposalsLater(person: string): Promise<Staged[]>;
   proposalUndo(person: string, id: string, scopesNow: readonly Grant[] | null | undefined, approver: readonly Grant[], now: number): Promise<Proposal | string>;
   proposalFinish(person: string, id: string, outcome: { ok: boolean; text: string }, now: number): Promise<Proposal | null>;

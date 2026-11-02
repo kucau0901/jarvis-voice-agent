@@ -1377,6 +1377,26 @@ it came from.
 It is kept with the look, not in Memory: it is a look's words, built from
 mail and events, and Memory goes into every request.
 
+**A habit is offered as a routine, once.** When someone asks the same thing at
+about the same time on three different days within two weeks, a card offers a
+routine that asks it for them a little before (lib/habits.ts). Code alone
+decides, with no model call: the words overlap by three quarters, the tools
+used were the same, and the times are within 45 minutes, either side of
+midnight. A request of fewer than three words that count ("check it again")
+is a follow-up, and one longer than 120 characters is not offered, as cut it
+would ask something else. Only what the router
+marks as a person asking for themselves is noted (`RunOptions.habit`: voice,
+typing, glasses, `/api/v1/ask`, Telegram's own messages), never a routine's,
+a panel's, a job's, the family room's, a bot's or a forward; and only an
+answer made by reading alone (jobTool), never one by Home Assistant: a house
+action made into a routine is the owner's to set up. What was asked is kept
+21 days under `asked:<person>`, cleared with Clear chat; what was offered is
+kept through it. Each habit is offered once its card is filed, and not for six
+months after, nor when a routine of theirs already asks it. The card is quiet (no voice) and is left out of a look's reasons to
+interrupt; its tool, `routine_make`, is approval-only (lib/approval.ts), so
+the router and jobs never see it, and the routine it makes has no more than
+the person could reach when they asked.
+
 **"Leave now" uses what is there.** The car's position if Tessie is set up,
 else the saved home; live traffic if Google Maps is set up; otherwise a plain
 reminder a fixed time ahead. Routes are billed per call, so drive times are

@@ -180,7 +180,7 @@ export async function handleAsk(
   // A bot neither reads nor adds to the person's devices' conversation (lib/shared.ts): it is told who it is instead.
   const bot = botOf(principal);
   const origin = bot ? null : originOf(principal, body.origin);
-  const d = await collectWithDeadline(req.signal, env, ctx, turns, grants, waitS, "v1/ask", bot ? { bot: bot.name } : origin ? { origin } : undefined);
+  const d = await collectWithDeadline(req.signal, env, ctx, turns, grants, waitS, "v1/ask", bot ? { bot: bot.name } : { habit: true, ...(origin ? { origin } : {}) });
 
   if (d.timedOut) {
     return json({
@@ -283,7 +283,7 @@ export async function handleChatCompletions(
     bot
       ? { bot: bot.name }
       : {
-          surface: "glasses", charBudget: budget, assist: true,
+          surface: "glasses", charBudget: budget, assist: true, habit: true,
           // One conversation across devices (lib/shared.ts); the owner key on glasses is "glasses".
           origin: originOf(principal, null) ?? { id: "owner-glasses", label: "glasses" },
         },

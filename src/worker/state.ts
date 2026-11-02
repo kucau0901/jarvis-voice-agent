@@ -41,6 +41,8 @@ import { lookAtPage } from "./lib/page-look.ts";
 import { runBrief } from "./lib/brief.ts";
 import { MeetingsSeen, meetingsSaid, runMeetings } from "./lib/meetings.ts";
 import { Noticed, runNotice } from "./lib/notice.ts";
+import { Habits } from "./lib/habits.ts";
+import { routineMake } from "./tools/routines.ts";
 import { DEFAULT_ROUTER_MODEL } from "./lib/router-model.ts";
 import { budgetOf, budgetSays, costOf, dayOf } from "./lib/usage.ts";
 import { nextAllowed } from "./lib/access.ts";
@@ -84,6 +86,7 @@ export class JarvisState extends DurableObject<Env> {
   private proposals: Proposals;
   private meetingsSeen: MeetingsSeen;
   private noticed: Noticed;
+  private habits: Habits;
   /** The owner's ChatGPT plan, which model calls use first (lib/chatgpt-plan.ts). */
   private plan: ChatGptPlan;
 
@@ -103,6 +106,7 @@ export class JarvisState extends DurableObject<Env> {
     this.proposals = new Proposals(ctx.storage);
     this.meetingsSeen = new MeetingsSeen(ctx.storage);
     this.noticed = new Noticed(ctx.storage);
+    this.habits = new Habits(ctx.storage);
     this.plan = new ChatGptPlan(ctx.storage, (input, init) => fetch(input, init));
     this.relays = new Relays(ctx.storage, () => this.relayDeps());
     this.jobs = new Jobs(ctx.storage, async () => {
@@ -326,6 +330,7 @@ export class JarvisState extends DurableObject<Env> {
     await this.proposals.forget(person);
     await this.meetingsSeen.forget(person);
     await this.noticed.forget(person);
+    await this.habits.forget(person);
     await this.rearm();
   }
 
@@ -938,6 +943,29 @@ export class JarvisState extends DurableObject<Env> {
   }
 
   /**
+   * One request someone made, as the router noted it (lib/router.ts record): when it is the same thing at about the
+   * same time on several days, a routine that asks it is offered once, as a quiet card (lib/habits.ts). `who` is who
+   * asked (their device, or them), whose routine it would be, with `grants`, what they could reach.
+   */
+  async noteAsk(person: string, who: string, ask: string, tools: string[], grants: readonly Grant[], now: number): Promise<void> {
+    const env = await this.localEnv();
+    const timeZone = localeOf(env).timeZone;
+    const made = (await this.scheduler.list()).flatMap((r) => (personOfWho(r.createdBy) === person && r.action.kind === "ask" ? [r.action.prompt] : []));
+    const habit = await this.habits.note(person, ask, tools, timeZone, now, made);
+    if (!habit) return;
+    const args = { ask: habit.ask, time: habit.time, days: habit.days };
+    const weighed = routineMake.propose?.(args, env);
+    if (!weighed) return;
+    const days = habit.days.length === 5 ? "most weekdays" : habit.days.length === 2 ? "most weekends" : "most days";
+    const from = { kind: "suggestion" as const, id: `habit:${habit.key}`.slice(0, 200), title: `You ask this ${days} around ${habit.time}` };
+    const p = await this.proposals.add({ who, person, from, action: { tool: routineMake.name, args }, weighed, grants }, now);
+    if (typeof p === "string") return;
+    await this.habits.offered(person, habit.key, now);
+    const alert = makeAlert({ title: "Make it a routine?", text: `${p.says}. ${from.title}.`, speak: false }, "routine", now, person);
+    if (alert) await deliver(env, this, { ...alert, proposals: [cardOf(p)] });
+  }
+
+  /**
    * Not now or Less of this, on what a look around said (lib/notice.ts): found by its alert's id in the person's own
    * conversation, its routine still theirs, and what is kept is the server's text, never the request's. Why not, or null.
    */
@@ -997,6 +1025,8 @@ export class JarvisState extends DurableObject<Env> {
   /** Cleared on every open screen of theirs too, not only the one it was cleared on. */
   async conversationClear(person: string) {
     await this.conversation.clear(person);
+    // What they asked goes with it, so no routine is offered from it (lib/habits.ts); what was offered stays offered.
+    await this.habits.clearAsked(person);
     // The pictures and pages made in it go with it (lib/images.ts, lib/pages.ts).
     await this.images.clear(person);
     await this.pages.clear(person);

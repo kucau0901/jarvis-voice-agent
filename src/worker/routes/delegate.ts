@@ -63,6 +63,8 @@ export async function handleDelegate(
     ...(body.surface === "chat" ? { surface: "chat" as const, assist: true } : {}),
     // One conversation across the user's devices (lib/shared.ts).
     ...(origin ? { origin } : {}),
+    // Their own asking, in a live session or typed: a habit may be offered as a routine (lib/habits.ts).
+    habit: true,
     waitUntil: (p) => ctx.waitUntil(p),
   };
   /*

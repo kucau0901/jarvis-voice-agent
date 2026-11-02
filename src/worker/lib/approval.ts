@@ -4,6 +4,7 @@ import { RUN_MS, weigh, type Proposal, type Weighed } from "./proposals.ts";
 import { mailDraftSend } from "./mail-draft.ts";
 import { mailArchiveMany, mailInboxMany } from "./mail-bulk.ts";
 import { calendarRsvp } from "../tools/calendar.ts";
+import { routineMake } from "../tools/routines.ts";
 import type { Grant } from "./scopes.ts";
 import { baseTools, outputText } from "../tools/registry.ts";
 
@@ -15,7 +16,7 @@ import { baseTools, outputText } from "../tools/registry.ts";
  */
 
 /** What only an approval runs: never offered to the router, nor to a job. */
-const APPROVED_ONLY = [mailDraftSend, calendarRsvp, mailArchiveMany, mailInboxMany];
+const APPROVED_ONLY = [mailDraftSend, calendarRsvp, mailArchiveMany, mailInboxMany, routineMake];
 
 const goneSaid = (tool: string) => `That can no longer be done: ${tool} is not set up, or not yours to use now.`;
 

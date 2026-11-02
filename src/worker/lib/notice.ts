@@ -207,7 +207,8 @@ export async function runNotice(r: Routine, now: number, d: NoticeDeps, ask?: As
   // Their jobs and proposals as far as asking reaches, as a brief's (lib/brief.ts).
   const asks = allows(d.grants, "ask");
   const proposals = asks ? await d.proposals() : [];
-  const waiting = proposals.filter((p) => p.state === "pending");
+  // A routine offered from a habit (lib/habits.ts) waits quietly: not a reason to interrupt.
+  const waiting = proposals.filter((p) => p.state === "pending" && p.from.kind !== "suggestion");
   // Since a look last judged, not since it last ran: one held back by the day's say leaves its jobs for the next.
   const since = looked.judgedAt ?? now - DAY;
   const threads = asks ? threadsSection(proposals, d.relays, looked.raised ?? {}, now, d.timeZone) : null;

@@ -3,6 +3,8 @@ import { stateStub } from "../lib/state-client.ts";
 import { localeOf } from "../lib/locale.ts";
 import { describeAction, describeTrigger, whenSaid, type Routine } from "../lib/routines.ts";
 import { callerWho, mayWork } from "../lib/context.ts";
+import { MAX_ASK } from "../lib/habits.ts";
+import { tidy } from "../lib/quote.ts";
 
 /**
  * Making routines by voice (lib/routines.ts). The routine keeps the caller's
@@ -199,6 +201,47 @@ const routineRemove: Tool = {
     const r = (await state.listRoutines()).find((x) => x.id === id);
     if (!r || !mayWork(r, ctx.env, ctx.grants)) return "No routine has that id.";
     return (await state.removeRoutine(id)) ? "Removed." : "No routine has that id.";
+  },
+};
+
+/** A habit's routine (lib/habits.ts), as its card was offered: what to ask, when, on which days. Null when it is not one. */
+function habitArgs(args: Record<string, unknown>): { ask: string; time: string; days: number[] } | null {
+  const ask = typeof args.ask === "string" ? tidy(args.ask) : "";
+  const time = typeof args.time === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(args.time) ? args.time : "";
+  const days = Array.isArray(args.days) && args.days.every((d) => Number.isInteger(d) && (d as number) >= 0 && (d as number) <= 6) ? (args.days as number[]) : null;
+  return ask && ask.length <= MAX_ASK && time && days ? { ask, time, days } : null;
+}
+
+/**
+ * Making a routine from a habit: for an approval only (lib/approval.ts), never
+ * offered to the router or a job. Its card is filed by code when someone asks
+ * the same thing at about the same time on several days (state.ts noteAsk).
+ */
+export const routineMake: Tool = {
+  name: "routine_make",
+  scope: "routines",
+  pace: "fast",
+  description: "Make a routine that asks something at a time: for an approval only.",
+  parameters: {
+    type: "object",
+    properties: { ask: { type: "string" }, time: { type: "string" }, days: { type: "array", items: { type: "integer" } } },
+    required: ["ask", "time", "days"],
+    additionalProperties: false,
+  },
+  // Reversible (it can be removed), with no kind a standing permission could name: it always waits for a tap.
+  propose(args) {
+    const h = habitArgs(args);
+    return h ? { risk: "reversible", says: `Routine: ask "${h.ask}" ${describeTrigger({ kind: "daily", time: h.time, days: h.days }, "UTC")}, and send you the answer`, verb: "Make it a routine" } : null;
+  },
+  async run(args, ctx) {
+    const h = habitArgs(args);
+    if (!h) return "That is not a routine to make, so nothing was set up.";
+    const state = stateStub(ctx.env);
+    if (!state) return "Routines cannot be kept on this deployment: it has no state object.";
+    const r = await state.addRoutine({ when: "daily", time: h.time, days: h.days, ask: h.ask }, { who: callerWho(ctx.env), grants: ctx.grants });
+    if (typeof r === "string") return `Not set up: ${r}.`;
+    ctx.done?.();
+    return `Set up: ${said(r, localeOf(ctx.env).timeZone)}`;
   },
 };
 

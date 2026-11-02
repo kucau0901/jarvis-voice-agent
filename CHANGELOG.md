@@ -29,6 +29,10 @@ of every release, and in the [README](README.md#updating).
   unanswered, a card that lapsed without your OK, a call you approved that
   failed. Under what it says are **Not now** (no look for three hours) and
   **Less of this** (it leaves things like that out for a month).
+- **Routines from habits.** Ask the same thing at about the same time on three
+  days ("what's the traffic to work like?" most mornings) and Jarvis offers,
+  once and quietly, to make it a routine that asks for you. One tap makes it.
+  Only questions answered by reading are offered, never house actions.
 - **Skills, added in chat.** "Add a skill: Wren, my Grok bot, for the house
   and the car, at https://…" lets Jarvis send requests to an outside service
   (a bot, an automation, your own code), or, said as an MCP server, use its

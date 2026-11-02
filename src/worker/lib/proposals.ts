@@ -75,7 +75,8 @@ export interface Proposal {
   who: string;
   person: string;
   /** What proposed it: a job, or one run of a brief (its routine's name). Copied, since only the newest jobs are kept. */
-  from: { kind: "job"; id: string; title: string } | { kind: "brief"; id: string; title: string; routine: string };
+  /** A suggestion's title says why it was offered (lib/habits.ts): "You ask this most weekdays around 07:40". */
+  from: { kind: "job"; id: string; title: string } | { kind: "brief"; id: string; title: string; routine: string } | { kind: "suggestion"; id: string; title: string };
   /** The call in words, as code renders it, and why it is asked for, written by code too. */
   says: string;
   why: string;
@@ -226,7 +227,7 @@ function recordOf(input: ProposalInput, body: string | undefined): Omit<Proposal
     from: { ...input.from, title },
     says: input.weighed.says,
     ...(body ? { body } : {}),
-    why: `From your ${input.from.kind} “${title}”`,
+    why: input.from.kind === "suggestion" ? title : `From your ${input.from.kind} “${title}”`,
     action: input.action,
     risk: input.weighed.risk,
     ...(input.weighed.risk === "reversible" && input.weighed.category ? { category: input.weighed.category } : {}),

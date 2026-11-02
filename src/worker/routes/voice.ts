@@ -229,6 +229,8 @@ async function pipeline(
     // Read on a small display rather than heard: written for it (lib/glasses.ts).
     ...(chars ? { surface: "glasses" as const, charBudget: chars } : { surface: "voice" as const }),
     assist: true,
+    // Their own asking: a habit may be offered as a routine (lib/habits.ts).
+    habit: true,
     // A screen only when the caller has one to show a map on (RunOptions.screenless).
     ...(input.opts.screen ? {} : { screenless: true }),
     ...(input.origin ? { origin: input.origin } : {}),

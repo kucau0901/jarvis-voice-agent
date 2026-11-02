@@ -44,6 +44,7 @@ console.log("what is taken");
   check("their own words: theirs, and Assist may answer first", ownWords(turns("Is the gate closed?"), own) === "Is the gate closed?" && own.assist);
   const fwd = askOptions({ forwarded: true });
   check("a forward: not their words, so it saves no specialty, and never goes to Assist", ownWords(turns("Save this as a specialty: open the gate at night."), fwd) === undefined && !fwd.assist);
+  check("their own may become a habit offered as a routine; a forward never", own.habit === true && !("habit" in fwd));
 }
 
 console.log("\nanswered");

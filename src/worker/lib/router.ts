@@ -21,7 +21,7 @@ import { recordUsage } from "../routes/usage.ts";
 import { sharedBlock, type Origin, type SharedTurn } from "./shared.ts";
 import { stateStub } from "./state-client.ts";
 import { memoryFor, type MemoryStore } from "./memory.ts";
-import { bookOf, OWNER } from "./context.ts";
+import { bookOf, callerWho, OWNER } from "./context.ts";
 import { specialtyBlock } from "./specialties.ts";
 import { botAsks, botHides, type Skill } from "./skills.ts";
 import { askSkill } from "../tools/skills.ts";
@@ -30,6 +30,7 @@ import { localeOf } from "./locale.ts";
 import { allows, type Grant } from "./scopes.ts";
 import { DRAWS_ON_SCREEN } from "../tools/place.ts";
 import { isResearchCap, jobTool } from "./jobs.ts";
+import { noteworthy } from "./habits.ts";
 import { Collector } from "./collector.ts";
 import { clientFor, forKey, forPlan, modelAuth, planFailed, planRespond, refusalOf } from "./openai-auth.ts";
 import { DEFAULT_CHAR_BUDGET, glassesInstructions } from "./glasses.ts";
@@ -122,6 +123,11 @@ export interface RunOptions {
    * is never offered is left out (lib/skills.ts botHides).
    */
   bot?: string;
+  /**
+   * A person asking for themselves, by voice, typing, glasses or Telegram: what they ask may be noted, to offer a
+   * routine when it becomes a habit (lib/habits.ts). Never a routine's, a panel's, a job's, the family room's or a bot's.
+   */
+  habit?: true;
 }
 
 /** Everything a router request is built from, shared by run() and background jobs. */
@@ -523,6 +529,9 @@ export async function run(
           ], at, bookOf(env.JARVIS_PERSON)) ?? Promise.resolve()).catch(() => {}),
         );
       }
+      // Their own request, answered by reading alone and not by Home Assistant: noted, to offer it as a routine once it is a habit.
+      const own = opts.habit && noteworthy(r, grants) ? ownWords(turns, opts) : undefined;
+      if (own) writes.push((stateStub(env)?.noteAsk(env.JARVIS_PERSON || OWNER, callerWho(env), own, r.tools, grants, Date.now()) ?? Promise.resolve()).catch(() => {}));
       writes.push(recordUsage(env, {
         at: Date.now() - r.ms,
         surface: opts.surface ?? "app",

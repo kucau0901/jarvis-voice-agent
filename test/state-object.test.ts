@@ -304,6 +304,33 @@ console.log("\nanswering what a look around said (state.ts lookAnswer)");
   if (typeof other !== "string") await jarvis.removeRoutine(other.id);
 }
 
+console.log("\na habit offered as a routine, made on approval (state.ts noteAsk)");
+{
+  const DAY = 86_400_000;
+  const start = Date.now() - 2 * DAY - 60_000;
+  const ask = "What's the traffic to work like?";
+  for (let i = 0; i < 3; i++) await jarvis.noteAsk("owner", "owner", ask, ["directions"], ["ask", "routines", "car.read"], start + i * DAY);
+  const cards = (await jarvis.proposalsOf("owner", Date.now())).filter((p) => p.from.kind === "suggestion");
+  check("asked on three days: one card, saying why, waiting for a tap", cards.length === 1 && cards[0]!.state === "pending" && cards[0]!.action.tool === "routine_make" && /^You ask this most (weekdays|weekends|days) around \d\d:\d\d$/.test(cards[0]!.why), cards);
+  await jarvis.noteAsk("owner", "owner", ask, ["directions"], ["ask", "routines", "car.read"], start + 3 * DAY);
+  check("not offered twice", (await jarvis.proposalsOf("owner", Date.now())).filter((p) => p.from.kind === "suggestion").length === 1);
+  const id = cards[0]?.id ?? "none";
+  const claimed = await jarvis.proposalApprove("owner", id, ["ask", "routines", "car.read"], ["ask", "routines", "car.read"], Date.now());
+  check("approved: running", typeof claimed !== "string" && claimed.state === "running", claimed);
+  await jarvis.alarm();
+  const made = (await jarvis.listRoutines()).find((r) => r.action.kind === "ask" && r.action.prompt === ask);
+  check("the alarm makes the routine, as theirs (the first person's, made as by voice), with no more than they could reach", made?.createdBy === "voice" && made.action.kind === "ask" && made.action.prompt === ask && made.trigger.kind === "daily" && made.grants.join() === "ask,routines,car.read", await jarvis.listRoutines());
+  check("and the card is done", (await jarvis.proposalGet("owner", id, Date.now()))?.state === "done", (({ state, outcome }) => ({ state, outcome }))((await jarvis.proposalGet("owner", id, Date.now()))!));
+  if (made) await jarvis.removeRoutine(made.id);
+  for (let i = 0; i < 2; i++) await jarvis.noteAsk("u_hab2", "u_hab2", ask, ["directions"], ["*"], start + i * DAY);
+  await jarvis.conversationClear("u_hab2");
+  await jarvis.noteAsk("u_hab2", "u_hab2", ask, ["directions"], ["*"], start + 2 * DAY);
+  check("Clear chat forgets what they asked: nothing offered from before it", !(await jarvis.proposalsOf("u_hab2", Date.now())).some((p) => p.from.kind === "suggestion"));
+  await jarvis.conversationClear("owner");
+  for (let i = 4; i < 7; i++) await jarvis.noteAsk("owner", "owner", ask, ["directions"], ["ask", "routines", "car.read"], start + i * DAY);
+  check("but not what was offered: the habit already made is not offered again", (await jarvis.proposalsOf("owner", Date.now() + 7 * DAY)).filter((p) => p.from.kind === "suggestion").length === 1);
+}
+
 console.log("\nan approved call, made on the object's alarm");
 {
   const now = Date.now();

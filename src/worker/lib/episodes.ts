@@ -45,7 +45,7 @@ const cut = (s: string) => {
   return t.length > TEXT ? `${t.slice(0, TEXT - 1)}…` : t;
 };
 /** How much two attempts' words are the same: what they share of all they have between them. */
-const overlap = (a: readonly string[], b: readonly string[]) => {
+export const overlap = (a: readonly string[], b: readonly string[]) => {
   const x = new Set(a);
   const y = new Set(b);
   if (x.size < 2 || y.size < 2) return 0;

@@ -72,12 +72,13 @@ export function readUpdate(body: unknown): Update | null {
 
 /**
  * How a message is asked. The person's own words may go to Home
- * Assistant's Assist first, and alone may save a specialty (ownWords() in
- * lib/router.ts); a forwarded message is someone else's words, so neither.
+ * Assistant's Assist first, alone may save a specialty (ownWords() in
+ * lib/router.ts), and may become a habit offered as a routine
+ * (lib/habits.ts); a forwarded message is someone else's words, so none.
  */
 export const askOptions = (u: Pick<Update, "forwarded">) => ({
   assist: !u.forwarded,
-  ...(u.forwarded ? { assistAsk: "" } : {}),
+  ...(u.forwarded ? { assistAsk: "" } : { habit: true as const }),
   origin: { id: "telegram", label: "Telegram" },
 });
 
