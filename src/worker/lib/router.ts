@@ -628,7 +628,8 @@ export async function run(
         );
       }
       // Their own request, answered with tools a routine can use: noted, to offer it as a routine once it is a habit.
-      const own = opts.habit && noteworthy(r, grants, p?.tools ?? []) ? ownWords(turns, opts) : undefined;
+      // Never what an open microphone overheard: not said to Jarvis, perhaps not even theirs.
+      const own = opts.habit && !ignored && noteworthy(r, grants, p?.tools ?? []) ? ownWords(turns, opts) : undefined;
       if (own) writes.push((stateStub(env)?.noteAsk(env.JARVIS_PERSON || OWNER, callerWho(env), own, r.tools, grants, Date.now(), houseOnly(r)) ?? Promise.resolve()).catch(() => {}));
       writes.push(recordUsage(env, {
         at: Date.now() - r.ms,
