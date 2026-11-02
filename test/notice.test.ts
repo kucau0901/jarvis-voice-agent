@@ -2,7 +2,7 @@
 // answer that sees it only as quoted data, said only when worth it, at most
 // PER_DAY things a day, leaving out what they were already told today.
 import { MAX_DOC } from "../src/worker/lib/brief.ts";
-import { LESS_MS, MAX_LESS, QUIET_MS, MAX_SAID, MAX_TOLD, NOTICE_INSTRUCTIONS, Noticed, PER_DAY, runNotice, threadsSection, type NoticeDeps } from "../src/worker/lib/notice.ts";
+import { LESS_MS, MAX_LESS, OPEN_MS, QUIET_MS, MAX_SAID, MAX_TOLD, NOTICE_INSTRUCTIONS, Noticed, PER_DAY, runNotice, threadsSection, type NoticeDeps } from "../src/worker/lib/notice.ts";
 import { GIVE_UP_MS, type Relay } from "../src/worker/lib/relays.ts";
 import type { Routine } from "../src/worker/lib/routines.ts";
 import type { Job } from "../src/worker/lib/jobs.ts";
@@ -163,7 +163,7 @@ console.log("\nthreads left open since the last look");
   });
   const relays = [
     relay({ id: "expired", status: "expired", sentAt: since - GIVE_UP_MS + H }),
-    relay({ id: "old", status: "expired", sentAt: since - GIVE_UP_MS - H, text: "Old one" }),
+    relay({ id: "old", status: "expired", sentAt: NOW - OPEN_MS - GIVE_UP_MS - H, text: "Old one" }),
     relay({ id: "never", status: "expired", sentAt: undefined, text: "Never passed on" }),
     relay({ id: "group", status: "expired", group: "g1", sentAt: since - GIVE_UP_MS + H, text: "Everyone" }),
     relay({ id: "rota", status: "expired", routine: "r1", sentAt: since - GIVE_UP_MS + H, text: "Bins" }),
@@ -175,29 +175,34 @@ console.log("\nthreads left open since the last look");
   const brief = { ...lapsed, id: "p3", from: { kind: "brief" as const, id: "rb@1", title: "Brief", routine: "rb" }, says: "Accept the invitation" };
   const failed = { ...proposal("Lock the car"), id: "p4", state: "failed" as const, by: "tap" as const, decidedAt: NOW - H, outcome: { ok: false, text: "The car is asleep" } };
   const standing = { ...failed, id: "p5", by: "standing" as const, says: "Close the gate" };
-  const before = { ...lapsed, id: "p6", decidedAt: since - H, says: "Order more coffee" };
-  const t = threadsSection([lapsed, brief, failed, standing, before], relays, since, TZ);
-  const lines = t?.lines ?? [];
-  check("a message that ran out unanswered since the last look", lines.some((l) => l.startsWith("- No answer came from Bilal") && l.includes("parcel")), lines);
+  const before = { ...lapsed, id: "p6", decidedAt: NOW - OPEN_MS - H, says: "Order more coffee" };
+  const t = threadsSection([lapsed, brief, failed, standing, before], relays, {}, NOW, TZ);
+  const lines = t?.section.lines ?? [];
+  check("a message that ran out unanswered within the day", lines.some((l) => l.startsWith("- No answer came from Bilal") && l.includes("parcel")), lines);
   check("one still unanswered after they were told", lines.some((l) => l.startsWith("- Still no answer from Siti")), lines);
-  check("not one already reported: before the last look, never passed on, a group's, a rota's, the family's", !lines.some((l) => /Old one|Never passed on|Everyone|Bins|Medicine|Just asked/.test(l)), lines);
+  check("not one already reported: long ago, never passed on, a group's, a rota's, the family's", !lines.some((l) => /Old one|Never passed on|Everyone|Bins|Medicine|Just asked/.test(l)), lines);
   check("a job's card that lapsed, and a tapped call that failed, with why", lines.some((l) => l === "- Lapsed without their OK: Book the plumber for Friday") && lines.some((l) => l.includes("Lock the car") && l.includes("The car is asleep")), lines);
-  check("not a brief's (it offers its own again), one allowed without asking, or one decided before", !lines.some((l) => /invitation|Close the gate|coffee/.test(l)), lines);
-  check("nothing open: no section", threadsSection([proposal("x")], [relay({ id: "f" })], since, TZ) === null);
+  check("not a brief's (it offers its own again), one allowed without asking, or one decided over a day ago", !lines.some((l) => /invitation|Close the gate|coffee/.test(l)), lines);
+  check("each with its id", t?.ids.join() === "relay:expired,relay:told,card:p2,card:p4", t?.ids);
+  check("one already put to the model is not put again, whichever way it was put", !threadsSection([lapsed], [relay({ id: "told", status: "expired", sentAt: NOW - 2 * H })], { "relay:told": NOW - 3 * H, "card:p2": NOW - H }, NOW, TZ));
+  // Tapped before a look, failed after it: decidedAt is the tap, and it is still raised once.
+  const lateFail = { ...failed, id: "p7", decidedAt: NOW - 3 * H };
+  check("a call tapped before the last look and failed after it is still raised", threadsSection([lateFail], [], { "card:p4": NOW - H }, NOW, TZ)?.ids.join() === "card:p7");
+  check("nothing open: no section", threadsSection([proposal("x")], [relay({ id: "f" })], {}, NOW, TZ) === null);
 
   const noticed = new Noticed(fakeStorage() as never);
   asked.length = 0;
   await runNotice(ROUTINE, NOW, deps(noticed, { proposals: async () => [lapsed], relays }), model("NOTHING"));
   check("the look is given its threads, fenced", asked[0]!.input.includes("## Open threads") && asked[0]!.input.indexOf("Bilal") > asked[0]!.input.indexOf("what Jarvis can see"), asked[0]?.input);
-  check("…and remembers it judged them", (await noticed.judgedAt("owner")) === NOW);
+  check("…and remembers it judged them, by id", (await noticed.judgedAt("owner")) === NOW && Object.keys((await noticed.looked("owner")).raised ?? {}).sort().join() === "card:p2,relay:expired,relay:told", await noticed.looked("owner"));
   asked.length = 0;
   await runNotice(ROUTINE, NOW + H, deps(noticed, { proposals: async () => [lapsed], relays }), model("NOTHING"));
-  check("the next look does not raise them again", !asked[0]!.input.includes("Lapsed without") && !asked[0]!.input.includes("No answer came"), asked[0]?.input);
+  check("the next look does not raise them again: with nothing new, no answer is paid for", asked.length === 0, asked[0]?.input);
   const held = new Noticed(fakeStorage() as never);
   for (let i = 0; i < PER_DAY; i++) await held.told("owner", "2026-10-21", `Thing ${i}`, ["*"], true);
   await held.judged("owner", since);
   await runNotice(ROUTINE, NOW, deps(held, { proposals: async () => [lapsed] }), model("NOTHING"));
-  check("a look held back by the day's say leaves its threads for the next", (await held.judgedAt("owner")) === since);
+  check("a look held back by the day's say leaves its threads for the next", (await held.judgedAt("owner")) === since && !(await held.looked("owner")).raised?.["card:p2"]);
   await held.forget("owner");
   check("forgotten with the person", (await held.judgedAt("owner")) === undefined);
 }

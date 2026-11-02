@@ -1354,11 +1354,12 @@ look past that is not made at all, because each look is a paid answer. It is
 one an alarm with briefs, for the same reason.
 
 **A look follows up on what was left open.** Beside the day it is given the
-threads left open since a look last judged (kept under `looked:<person>`, so
-a look held back by the day's say leaves them for the next): a message to
-family that ran out unanswered, one still unanswered after its sender was
-told, a job's card that lapsed without an OK, and a call they approved that
-failed. Each is put to the model once. What was already reported is left out:
+threads left open within the last day: a message to family that ran out
+unanswered, one still unanswered after its sender was told, a job's card that
+lapsed without an OK, and a call they approved that failed. Each is put to
+the model once, remembered by id under `looked:<person>` (a look held back by
+the day's say puts none, so it leaves them for the next), not by time: a call
+tapped before a look and failing after it would fall between two windows. What was already reported is left out:
 a group's answers (its own alert), a rota's (it comes round again), an
 escalated one (the whole family was told), a brief's card (the next brief
 offers it again), and a call allowed without asking (its job's alert said it).
@@ -1369,7 +1370,10 @@ Not now makes no look for three hours, so it costs nothing. Less of this keeps
 what that look said for 30 days, at most 20, beside what they were told today,
 as something like which not to raise; it is the server's own text, found by
 the alert's id in the person's own conversation, never words the request
-sends, and it carries what the look could reach, as what they were told does.
+sends, and it carries what the look that said it could reach (as kept with
+what they were told that day; on a later day, its routine's grants, which
+reach at least as far), so it is never shown to a look that may not read what
+it came from.
 It is kept with the look, not in Memory: it is a look's words, built from
 mail and events, and Memory goes into every request.
 

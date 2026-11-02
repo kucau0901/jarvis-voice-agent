@@ -453,7 +453,7 @@ and connects to `/api/v1/events?ticket=…`. A ticket works once.
 | Direction | Message |
 |---|---|
 | ← | `{"type":"hello","label":…}` on connecting |
-| ← | `{"type":"alert","alert":{id, at, title, text, speak, talk, urgent, source, for?, expiresAt?, routine?, job?, relay?, convo?, proposals?, skill?}}`; `skill: {id, name, about?}` when a bot said it ([Bots](#bots-skills-both-ways)): show it as `name`'s |
+| ← | `{"type":"alert","alert":{id, at, title, text, speak, talk, urgent, source, for?, expiresAt?, routine?, look?, job?, relay?, convo?, proposals?, skill?}}`; `skill: {id, name, about?}` when a bot said it ([Bots](#bots-skills-both-ways)): show it as `name`'s |
 | ← | `{"type":"glasses.open"}` when the person asks to open Jarvis on their display glasses (the `open_on_glasses` tool): an app holding G2 glasses shows Jarvis's own screen on them. Sent to each of the person's screens and devices; one with no such glasses ignores it |
 | ← | `{"type":"conversation.said","said":[…]}` when a bot's exchange with Jarvis is kept in the person's conversation ([Bots](#bots-skills-both-ways)), rows as `GET /api/hub/conversation` gives them: sent to the person's own screens, signed in, never to a device |
 | → | `{"type":"presence","visible":true}` whenever the screen is shown or hidden |

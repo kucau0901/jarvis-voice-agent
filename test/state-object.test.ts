@@ -13,6 +13,7 @@ import { b64u } from "../src/worker/lib/webauthn.ts";
 import { STUCK_MS, weigh, type LaterDeps } from "../src/worker/lib/proposals.ts";
 import { carCommand } from "../src/worker/tools/tessie.ts";
 import { sha256Hex } from "../src/worker/lib/devices.ts";
+import { dayOf } from "../src/worker/lib/usage.ts";
 
 registerHooks({
   resolve(spec, ctx, next) {
@@ -290,7 +291,11 @@ console.log("\nanswering what a look around said (state.ts lookAnswer)");
   await inside.conversation.addAlert("u_sara", row("alook00000001", look, "Your 3 PM clashes with the school run."), now);
   await inside.conversation.addAlert("u_sara", row("aother0000001", other, "Stretch", false), now);
   check("Not now: quiet for a while", (await jarvis.lookAnswer("u_sara", "alook00000001", "later", now)) === null && ((await inside.noticed.looked("u_sara")).quietUntil ?? 0) > now);
-  check("Less of this: the server's own words kept, with what the look could reach", (await jarvis.lookAnswer("u_sara", "alook00000001", "less", now)) === null && JSON.stringify((await inside.noticed.looked("u_sara")).less?.map((l) => [l.text, l.grants])) === '[["Your 3 PM clashes with the school run.",["ask","calendar"]]]');
+  check("Less of this, said on another day: the server's own words kept, with its routine's reach", (await jarvis.lookAnswer("u_sara", "alook00000001", "less", now)) === null && JSON.stringify((await inside.noticed.looked("u_sara")).less?.map((l) => [l.text, l.grants])) === '[["Your 3 PM clashes with the school run.",["ask","calendar"]]]');
+  const told: { noticed: { told(p: string, day: string, text: string, grants: string[], byCheck: boolean): Promise<void> } } = jarvis as never;
+  await told.noticed.told("u_sara", dayOf(now, "UTC"), "Your 3 PM clashes with the school run.", ["ask"], true);
+  await jarvis.lookAnswer("u_sara", "alook00000001", "less", now);
+  check("said today: kept with what that look itself could reach", JSON.stringify((await inside.noticed.looked("u_sara")).less?.map((l) => l.grants)) === '[["ask"]]', (await inside.noticed.looked("u_sara")).less);
   check("not someone else's", (await jarvis.lookAnswer("u_adam", "alook00000001", "less", now)) !== null && (await inside.noticed.looked("u_adam")).less === undefined);
   check("not what another routine said", (await jarvis.lookAnswer("u_sara", "aother0000001", "less", now)) !== null);
   check("not one never said", (await jarvis.lookAnswer("u_sara", "anothere00001", "later", now)) !== null);

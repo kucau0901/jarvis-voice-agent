@@ -96,7 +96,7 @@ export class Noticed {
     await this.storage.put(this.key(person), { day, said, sent: t.sent + (byCheck ? 1 : 0) });
   }
   private lookedKey = (person: string) => `looked:${person}`;
-  /** When a look last judged for them: the threads since then are its to raise. */
+  /** When a look last judged for them: the jobs ended since then are its to raise. */
   async judgedAt(person: string): Promise<number | undefined> {
     return (await this.storage.get<Looked>(this.lookedKey(person)))?.judgedAt;
   }
@@ -113,9 +113,11 @@ export class Noticed {
   async looked(person: string): Promise<Looked> {
     return (await this.storage.get<Looked>(this.lookedKey(person))) ?? {};
   }
-  async judged(person: string, at: number): Promise<void> {
+  /** A look judged at `at`, putting the open threads `raised` (threadsSection's ids) to the model: none of them is put again. */
+  async judged(person: string, at: number, raised: readonly string[] = []): Promise<void> {
     const l = (await this.storage.get<Looked>(this.lookedKey(person))) ?? {};
-    await this.storage.put(this.lookedKey(person), { ...l, judgedAt: at });
+    const kept = Object.entries(l.raised ?? {}).filter(([, t]) => at - t < 2 * OPEN_MS);
+    await this.storage.put(this.lookedKey(person), { ...l, judgedAt: at, raised: Object.fromEntries([...kept, ...raised.map((id) => [id, at] as const)]) });
   }
   async forget(person: string): Promise<void> {
     await this.storage.delete(this.key(person));
@@ -130,30 +132,38 @@ interface Looked {
   quietUntil?: number;
   /** Less of this: what looks said that they want less of, with what the run that said it could reach. */
   less?: (Said & { at: number })[];
+  /** Open threads already put to the model (threadsSection), by id, and when: each is put once. */
+  raised?: Record<string, number>;
 }
 
+/** How far back an open thread is looked for: what ended longer ago than this is past following up. */
+export const OPEN_MS = DAY;
+
 /**
- * The threads left open since `since`, each said once: a message they passed
- * to family that ran out unanswered (one in a group is reported by the group,
- * one a routine made by the routine), one still unanswered after they were
- * told so, a card that lapsed without their OK (a job's: a brief offers its
- * own again), and a call they approved that failed. An escalated message is
- * left out: the whole family was already told.
+ * The threads left open within OPEN_MS, each put to the model once (`raised`,
+ * by id, whichever way it was put): a message they passed to family still
+ * unanswered after they were told so, or that ran out unanswered (one in a
+ * group is reported by the group, one a routine made by the routine), a card
+ * that lapsed without their OK (a job's: a brief offers its own again), and a
+ * call they approved that failed. An escalated message is left out: the whole
+ * family was already told. The section, with the ids of what is in it.
  */
-export function threadsSection(proposals: readonly Proposal[], relays: readonly Relay[], since: number, timeZone: string): Section | null {
-  const lines: string[] = [];
+export function threadsSection(proposals: readonly Proposal[], relays: readonly Relay[], raised: Readonly<Record<string, number>>, now: number, timeZone: string): { section: Section; ids: string[] } | null {
+  const open: [string, string][] = [];
   for (const r of relays) {
-    if (r.group || r.routine || r.escalate || r.sentAt === undefined) continue;
+    if (r.group || r.routine || r.escalate || r.sentAt === undefined || raised[`relay:${r.id}`]) continue;
     const to = `${plain(r.toName, 40)}, ${whenSaid(r.sentAt, timeZone)}: ${plain(r.text, 100)}`;
-    if (r.status === "expired" && r.sentAt + GIVE_UP_MS > since) lines.push(`- No answer came from ${to}`);
-    else if (r.status === "sent" && r.kind !== "tell" && r.toldSender) lines.push(`- Still no answer from ${to}`);
+    if (r.status === "expired" && r.sentAt + GIVE_UP_MS > now - OPEN_MS) open.push([`relay:${r.id}`, `- No answer came from ${to}`]);
+    else if (r.status === "sent" && r.kind !== "tell" && r.toldSender) open.push([`relay:${r.id}`, `- Still no answer from ${to}`]);
   }
   for (const p of proposals) {
-    if ((p.decidedAt ?? 0) <= since) continue;
-    if (p.state === "expired" && p.from.kind === "job") lines.push(`- Lapsed without their OK: ${plain(p.says, 160)}`);
-    else if (p.state === "failed" && p.by === "tap") lines.push(`- Approved, but it did not work: ${plain(p.says, 120)} (${plain(p.outcome?.text ?? "no reason given", 100)})`);
+    // A failed call's decidedAt is when it was tapped, an expired card's when it ran out.
+    if ((p.decidedAt ?? 0) <= now - OPEN_MS || raised[`card:${p.id}`]) continue;
+    if (p.state === "expired" && p.from.kind === "job") open.push([`card:${p.id}`, `- Lapsed without their OK: ${plain(p.says, 160)}`]);
+    else if (p.state === "failed" && p.by === "tap") open.push([`card:${p.id}`, `- Approved, but it did not work: ${plain(p.says, 120)} (${plain(p.outcome?.text ?? "no reason given", 100)})`]);
   }
-  return lines.length ? { head: "Open threads", lines: lines.slice(0, CARDS) } : null;
+  const shown = open.slice(0, CARDS);
+  return shown.length ? { section: { head: "Open threads", lines: shown.map(([, l]) => l) }, ids: shown.map(([id]) => id) } : null;
 }
 
 export interface NoticeDeps extends Sources {
@@ -198,11 +208,12 @@ export async function runNotice(r: Routine, now: number, d: NoticeDeps, ask?: As
   const asks = allows(d.grants, "ask");
   const proposals = asks ? await d.proposals() : [];
   const waiting = proposals.filter((p) => p.state === "pending");
-  // Since a look last judged, not since it last ran: one held back by the day's say leaves its threads for the next.
-  const since = (await d.noticed.judgedAt(d.person)) ?? now - DAY;
+  // Since a look last judged, not since it last ran: one held back by the day's say leaves its jobs for the next.
+  const since = looked.judgedAt ?? now - DAY;
+  const threads = asks ? threadsSection(proposals, d.relays, looked.raised ?? {}, now, d.timeZone) : null;
   const all = [
     waitingSection(waiting, [], d.timeZone),
-    asks ? threadsSection(proposals, d.relays, since, d.timeZone) : null,
+    threads?.section ?? null,
     ...sections,
     asks ? jobsSection(d.jobs, since) : null,
   ].filter((s): s is Section => s !== null);
@@ -228,7 +239,7 @@ export async function runNotice(r: Routine, now: number, d: NoticeDeps, ask?: As
     return { text: null, detail: `the answer failed: ${plain(why, 120)}`, failed: true, proposals: [], usage: { model: DEFAULT_ROUTER_MODEL, input: 0, output: 0, ms: Date.now() - started, ok: false } };
   }
   // Judged: what was open until now was put to the model, said or not.
-  await d.noticed.judged(d.person, now);
+  await d.noticed.judged(d.person, now, threads?.ids);
   const said = isNothing(got.text) ? "" : plain(got.text, MAX_SAID);
   const usage = { model: got.model ?? DEFAULT_ROUTER_MODEL, input: got.input, output: got.output, ms: Date.now() - started, ok: true };
   if (!said) return { text: null, detail: "nothing worth saying", proposals: [], usage };

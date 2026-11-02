@@ -945,7 +945,10 @@ export class JarvisState extends DurableObject<Env> {
     const said = (await this.conversation.list(person, now)).find((s) => s.id === id && s.look && s.routine);
     const r = said?.routine ? (await this.scheduler.list()).find((x) => x.id === said.routine!.id) : undefined;
     if (!said || !r || r.action.kind !== "notice" || personOfWho(r.createdBy) !== person) return "That look is no longer here.";
-    await this.noticed.answer(person, answer, said.text, r.grants, now);
+    // Kept with what the look that said it could reach, as what they were told is; said on another day, its routine's
+    // grants, which reach at least as far: either way never shown to a look that may not read what it came from.
+    const told = (await this.noticed.today(person, dayOf(now, localeOf(await this.localEnv()).timeZone))).said.find((s) => s.text === said.text);
+    await this.noticed.answer(person, answer, said.text, told?.grants ?? r.grants, now);
     return null;
   }
 
