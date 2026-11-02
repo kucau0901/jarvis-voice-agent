@@ -529,7 +529,7 @@ export async function run(
           ], at, bookOf(env.JARVIS_PERSON)) ?? Promise.resolve()).catch(() => {}),
         );
       }
-      // Their own request, answered by reading alone and not by Home Assistant: noted, to offer it as a routine once it is a habit.
+      // Their own request, answered by reading or by the house: noted, to offer it as a routine once it is a habit.
       const own = opts.habit && noteworthy(r, grants) ? ownWords(turns, opts) : undefined;
       if (own) writes.push((stateStub(env)?.noteAsk(env.JARVIS_PERSON || OWNER, callerWho(env), own, r.tools, grants, Date.now()) ?? Promise.resolve()).catch(() => {}));
       writes.push(recordUsage(env, {

@@ -101,7 +101,9 @@ console.log("\nwhat may be noted");
   check("answered with no tool: yes", noteworthy({ ok: true, by: "gpt-5", tools: [] }, ["ask", "routines"]));
   check("a tool that changes something: no", !noteworthy({ ok: true, by: "gpt-5", tools: ["directions", "car_command"] }, ["*"]));
   check("Hermes or a page: no", !noteworthy({ ok: true, by: "gpt-5", tools: ["ask_hermes"] }, ["*"]) && !noteworthy({ ok: true, by: "gpt-5", tools: ["make_page"] }, ["*"]));
-  check("Home Assistant's answer: no (a house action)", !noteworthy({ ok: true, by: "home-assistant", tools: [] }, ["*"]));
+  check("Home Assistant's own answer (Assist): yes, the house decides what it may do", noteworthy({ ok: true, by: "home-assistant", tools: [] }, ["*"]));
+  check("the router changing the house with Home Assistant's tools: yes, whatever the server is called", noteworthy({ ok: true, by: "gpt-5", tools: ["home-assistant__ha_call_service"] }, ["*"]) && noteworthy({ ok: true, by: "gpt-5", tools: ["house__ha_bulk_control", "car_state"] }, ["*"]));
+  check("another MCP server's tool that changes something: no", !noteworthy({ ok: true, by: "gpt-5", tools: ["notes__create_page"] }, ["*"]));
   check("a failed answer: no", !noteworthy({ ok: false, by: "gpt-5", tools: [] }, ["*"]));
   check("someone who may not have routines (a guest): no", !noteworthy({ ok: true, by: "gpt-5", tools: [] }, ["ask", "voice"]));
 }

@@ -15,8 +15,9 @@ import { overlap } from "./episodes.ts";
  * MIN_WORDS words that count ("check it again") is a follow-up, not a habit.
  *
  * Only what the router says may be noted (lib/router.ts record): their own
- * words, answered, by reading alone (jobTool), never Home Assistant's
- * answers. Each habit is offered once, and not again for OFFERED_MS, whatever
+ * words, answered by reading alone (jobTool) or by the house: Assist's
+ * answers and Home Assistant's own tools, whatever they change, since what
+ * the house may do is set in Home Assistant. Each habit is offered once, and not again for OFFERED_MS, whatever
  * became of the card; one a routine of theirs already asks is not offered.
  */
 
@@ -53,13 +54,17 @@ export interface Habit {
   days: number[];
 }
 
+/** A Home Assistant tool, through its MCP server whatever the server is called: its own names start ha_ (lib/jobs.ts). */
+const houseTool = (name: string): boolean => /__ha_/.test(name);
+
 /**
- * Whether a finished turn may be noted (lib/router.ts record): answered, not by Home Assistant (a house action made
- * a routine is the owner's to set up), only by reading (jobTool: nothing that sends, changes or unlocks), for someone
- * who may have routines.
+ * Whether a finished turn may be noted (lib/router.ts record): answered, for someone who may have routines, with only
+ * tools that read (jobTool) or are the house's (houseTool). Assist's answers use none. What the house may do is set in
+ * Home Assistant, and the routine is made only on their tap; anything else that sends, changes or unlocks (mail, the
+ * car, memory, Hermes) is never offered.
  */
-export const noteworthy = (r: { ok: boolean; by: string; tools: readonly string[] }, grants: readonly Grant[]): boolean =>
-  r.ok && r.by !== "home-assistant" && allows(grants, "routines") && r.tools.every((t) => jobTool({ name: t }));
+export const noteworthy = (r: { ok: boolean; tools: readonly string[] }, grants: readonly Grant[]): boolean =>
+  r.ok && allows(grants, "routines") && r.tools.every((t) => jobTool({ name: t }) || houseTool(t));
 
 const minuteOf = (at: number, timeZone: string) => {
   const p = localParts(at, timeZone);

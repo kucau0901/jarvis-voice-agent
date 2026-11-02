@@ -1388,8 +1388,11 @@ would ask something else. Only what the router
 marks as a person asking for themselves is noted (`RunOptions.habit`: voice,
 typing, glasses, `/api/v1/ask`, Telegram's own messages), never a routine's,
 a panel's, a job's, the family room's, a bot's or a forward; and only an
-answer made by reading alone (jobTool), never one by Home Assistant: a house
-action made into a routine is the owner's to set up. What was asked is kept
+answer made by reading (jobTool) or by the house: Assist's, or with Home
+Assistant's own tools (`<server>__ha_…`), whatever they change, since what the
+house may do is set in Home Assistant and the routine is made only on a tap.
+Nothing else that sends, changes or unlocks is offered (mail, the car, memory,
+Hermes). What was asked is kept
 21 days under `asked:<person>`, cleared with Clear chat; what was offered is
 kept through it. Each habit is offered once its card is filed, and not for six
 months after, nor when a routine of theirs already asks it. The card is quiet (no voice) and is left out of a look's reasons to
