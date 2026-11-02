@@ -539,7 +539,9 @@ export class JarvisState extends DurableObject<Env> {
   /** Point the one alarm at whatever is due first: an approved call, a routine, a job, a relay or a held alert. */
   private async rearm(): Promise<void> {
     const held = [...(await this.ctx.storage.list<{ until: number }>({ prefix: HELD })).values()].map((h) => h.until);
-    const mode = modeOf((await this.localEnv()).HOUSE_WATCH);
+    // Watched only with Home Assistant to watch: without it, the setting wakes nothing.
+    const houseEnv = await this.localEnv();
+    const mode = haConfig(houseEnv) ? modeOf(houseEnv.HOUSE_WATCH) : "off";
     const wakes = [...(await Promise.all([this.proposals.nextWake(), this.scheduler.nextWake(), this.jobs.nextWake(), this.relays.nextWake(), this.panels.nextWake(), this.house.nextWake(mode, Date.now())])), ...held].filter(
       (t): t is number => t !== null,
     );
@@ -582,7 +584,7 @@ export class JarvisState extends DurableObject<Env> {
     const timeZone = localeOf(env).timeZone;
     const now = Date.now();
     return {
-      mode: modeOf(env.HOUSE_WATCH),
+      mode: ha ? modeOf(env.HOUSE_WATCH) : "off",
       timeZone,
       day: dayOf(now, timeZone),
       render: ha ? (t) => renderTemplate(ha, t) : null,

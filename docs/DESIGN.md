@@ -1455,6 +1455,7 @@ minutes; one that lasts, once while it lasts. The `HOUSE_WATCH` setting says
 how much is judged: off (the default: each judgment is a paid answer), unusual
 (moments only, at most 40 judgments a day), or every (each change of a thing
 watched as well, at most 200 a day, past which only moments, as unusual).
+Without Home Assistant set up it is off whatever it says, and wakes nothing.
 Changes are queued as they arrive and judged on the alarm, never in the
 component's request, by what they changed to (a door opened and shut before
 the tick still opened). A judgment that fails keeps its moments for the next.

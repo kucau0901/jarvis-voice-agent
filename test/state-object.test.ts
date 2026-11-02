@@ -564,9 +564,12 @@ console.log("skills, through the object");
 
 console.log("\nWatch the house, switched on in Settings, wakes the alarm (state.ts putSettings)");
 {
+  const inside: { houseDeps(): Promise<{ mode: string }> } = jarvis as never;
   await jarvis.putSettings({ HOUSE_WATCH: "unusual" });
-  check("on: the alarm is set, for the house's tick", alarmAt !== null, alarmAt);
-  await jarvis.putSettings({ HOUSE_WATCH: null });
+  check("on, but no Home Assistant to watch: off, so nothing wakes for it", (await inside.houseDeps()).mode === "off");
+  await jarvis.putSettings({ HA_BASE_URL: "https://ha.example.com", HA_TOKEN: "a-long-lived-token-for-tests" });
+  check("on, with Home Assistant: watched, and the alarm set for its tick", (await inside.houseDeps()).mode === "unusual" && alarmAt !== null, alarmAt);
+  await jarvis.putSettings({ HOUSE_WATCH: null, HA_BASE_URL: null, HA_TOKEN: null });
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);
