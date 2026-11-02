@@ -217,6 +217,11 @@ async function refresh(key: string, ids: readonly string[], box?: HTMLElement, a
 export function labelOf(category: string): string {
   const [tool, what = ""] = category.split(":");
   const words = what.replace(/_/g, " ");
+  // One thing the house watcher may do alone (src/worker/tools/house.ts): "house:light.turn_off:light.study@away".
+  if (tool === "house") {
+    const [entity = "", when] = (category.split(":")[2] ?? "").split("@");
+    return `Home: ${words.split(".")[1] ?? words} ${entity} (${when === "away" ? "nobody home" : "its room is empty"})`;
+  }
   return tool === "car_command" ? `Car: ${words}` : tool === "mail_manage" ? `Mail: ${words}` : tool === "calendar_add" ? "Calendar: add an event" : category;
 }
 
@@ -275,7 +280,8 @@ export function proposalsBox(key: string): { el: HTMLElement; load(): Promise<vo
       box.appendChild(el("h3", "", "Allowed without asking"));
       for (const c of r.allowed) {
         const row = el("div", "pagecard");
-        row.append(el("b", "doctitle", labelOf(c)), el("small", "pagesaid", "Jobs do this without asking you first."));
+        const said = c.startsWith("house:") ? "Jarvis does this without asking, only when the sensors show it is right." : "Jobs do this without asking you first.";
+        row.append(el("b", "doctitle", labelOf(c)), el("small", "pagesaid", said));
         const btns = el("div", "mdbtns");
         btns.appendChild(button("Stop", async () => {
           await api(key, "DELETE", `/api/hub/proposals/allow?category=${encodeURIComponent(c)}`).catch(() => {});
