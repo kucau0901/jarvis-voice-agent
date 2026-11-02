@@ -689,7 +689,7 @@ POST /api/v1/routines
 | `cron` | `cron`: five fields, minute hour day month weekday, in the time zone set in Settings (`"0 8,12 * * *"`, `"0 */6 * * *"`, `"0 9 1 * *"`). Lists, ranges, steps and names (`mon-fri`, `jan`); no `L`, `W`, `#` or `@daily`. One number for the minute, so at most hourly. With both day fields given, either will do |
 | `event` | `event`: a name like `arrived_home` |
 | `leave` | optional `bufferMin` (default 10). No message: it warns before each calendar event with a place |
-| `watch` | `condition`: a Home Assistant template, true while the thing is happening (`"{{ is_state('cover.main_gate', 'open') }}"`); optional `forMinutes` (how long it must stay true first, default 0) |
+| `watch` | `condition`: a Home Assistant template, true while the thing is happening (`"{{ is_state('cover.main_gate', 'open') }}"`); optional `forMinutes` (how long it must stay true first, default 0); optional `onChange: true` to say it only when the condition comes true, not because it already is, and to count it false only after `forMinutes` of being so (getting home, with `forMinutes` 2: `"{% set s = states('person.example') %}{{ 'unknown' if s in ['unknown', 'unavailable'] else s == 'home' }}"`, where an unknown person counts as not read, so a restart of Home Assistant is not a homecoming) |
 
 Every kind but `leave` takes exactly one of `say` (a fixed message) or `ask`
 (a request for Jarvis, answered at the time with the creator's grants and sent).

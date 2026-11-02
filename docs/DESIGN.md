@@ -1420,6 +1420,21 @@ a page's message carries the reading it rests on. Each is tried once before it
 is kept, and a page watch's try is its first look, so one already true is said
 at once. Ten of each at most.
 
+**"When I get home" is a watch on their person.** Asked to do something when
+they get home or leave, the router says so (`arrive_home`, `leave_home`) and
+code writes the watch on their Home Assistant person from Family, never one
+the model typed. It is said on the change, not because it is already so (a
+watch's `onChange`, kept in its state): made or switched back on while home,
+it waits until they have been out. Two minutes count either way, home or out,
+so a phone's position wavering at the gate, or for a minute while they sit at
+home, is not a second homecoming. While Home Assistant starts up the person
+reads unknown, which counts as not read, so a restart is not one either. Only
+their own: someone else's getting home is a watch on that person. Without
+their person set, nothing is made, and they are told where to set it. Without
+Home Assistant, or for someone who may not read the house (a child), it is an
+event their own automation or phone sends, as before. A routine keeps the
+person it was made with: after Getting home changes, it is made again.
+
 **A brief is written by code, opened by one answer.** A routine's `brief`
 action (lib/brief.ts) reads what its maker may reach and has set up: one read
 of the calendar for its clashes, free time and invitations left unanswered

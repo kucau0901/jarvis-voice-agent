@@ -31,6 +31,15 @@ of every release, and in the [README](README.md#updating).
   or time), nothing is kept, and no extra AI call is made. Each part needs
   its service and the device's permission (calendar, home, car); without
   them nothing changes.
+- **"When I get home" routines just work.** Say "when I get home, remind me
+  to take the bins out" (or "when I leave home…") and Jarvis watches your
+  Home Assistant person, set in Family → Home → Getting home, and says it
+  each time you arrive or leave: not straight away because you are home
+  already, not when your phone's position wavers for a minute, and not when
+  Home Assistant restarts. Before, it needed an automation of your own
+  sending Jarvis an event, which is still how it works without Home
+  Assistant or for a child. A watch made through the API can do the same
+  with `onChange`.
 
 ### Fixed
 

@@ -24,6 +24,7 @@ import { haConfig, haUrl, renderTemplate, truthy } from "../src/worker/lib/ha.ts
 import type { Alert, Delivery } from "../src/worker/lib/alerts.ts";
 import { requiredScope } from "../src/worker/lib/scopes.ts";
 import { lookAtPage, pageCondition, pageText, pageUrl, verdictOf } from "../src/worker/lib/page-look.ts";
+import { homeCondition, routineTools } from "../src/worker/tools/routines.ts";
 
 let pass = 0;
 let fail = 0;
@@ -713,6 +714,81 @@ console.log("\nwatches: off and on again");
   await h.s.update(r.id, { enabled: true }, T0 + 2 * MIN);
   await h.s.tick(T0 + 2 * MIN);
   check("on again, it starts afresh", h.sent.length === 2);
+}
+
+// "When I get home" (tools/routines.ts): a watch on their Home Assistant person, said when they get home, not because they are.
+console.log("\nwatches: getting home, said on the change");
+{
+  const h = harness();
+  // Home when it is made, out from 10:30, home again from 11:30.
+  h.state.ha = (now) => (now < T0 + 30 * MIN || now >= T0 + 90 * MIN ? "True" : "False");
+  const r = (await h.s.add({ when: "watch", condition: homeCondition("person.example", true), forMinutes: 2, say: "Welcome home.", onChange: true }, OWNER, T0)) as Routine;
+  await runAlarm(h, T0, T0 + 29 * MIN);
+  check("home already when it is made: not said, however long they stay", h.sent.length === 0, h.sent.map((a) => a.text));
+  await runAlarm(h, T0 + 29 * MIN, T0 + 89 * MIN);
+  check("out: nothing said", h.sent.length === 0);
+  await runAlarm(h, T0 + 89 * MIN, T0 + 95 * MIN);
+  check("home again for two minutes: said once", h.sent.length === 1 && h.sent[0]!.text === "Welcome home." && h.sent[0]!.at >= T0 + 92 * MIN, h.sent.map((a) => [a.text, iso(a.at)]));
+  await h.s.update(r.id, { enabled: false }, T0 + 96 * MIN);
+  await h.s.update(r.id, { enabled: true }, T0 + 97 * MIN);
+  await runAlarm(h, T0 + 97 * MIN, T0 + 110 * MIN);
+  check("switched off and on while home: waits for the next time", h.sent.length === 1, h.sent.length);
+}
+{
+  const h = harness();
+  // Home all day but for the phone reading away for one minute at 10:30, and again at 11:30 after a real return.
+  h.state.ha = (now) => (now >= T0 + 30 * MIN && now < T0 + 31 * MIN) || (now >= T0 + 60 * MIN && now < T0 + 80 * MIN) || (now >= T0 + 100 * MIN && now < T0 + 101 * MIN) ? "False" : "True";
+  await h.s.add({ when: "watch", condition: homeCondition("person.example", true), forMinutes: 2, say: "Welcome home.", onChange: true }, OWNER, T0);
+  await runAlarm(h, T0, T0 + 59 * MIN);
+  check("a minute's wavering while home is not leaving: nothing said", h.sent.length === 0, h.sent.map((a) => iso(a.at)));
+  await runAlarm(h, T0 + 59 * MIN, T0 + 99 * MIN);
+  check("out twenty minutes and back: said once", h.sent.length === 1, h.sent.map((a) => iso(a.at)));
+  await runAlarm(h, T0 + 99 * MIN, T0 + 120 * MIN);
+  check("…and a wavering after it is not a second homecoming", h.sent.length === 1, h.sent.map((a) => iso(a.at)));
+}
+{
+  const h = harness();
+  // Home, then Home Assistant restarting (the person unknown for ten minutes), then home again.
+  h.state.ha = (now) => (now >= T0 + 10 * MIN && now < T0 + 20 * MIN ? "unknown" : "True");
+  await h.s.add({ when: "watch", condition: homeCondition("person.example", true), forMinutes: 2, say: "Welcome home.", onChange: true }, OWNER, T0);
+  await runAlarm(h, T0, T0 + 40 * MIN);
+  check("Home Assistant restarting is not getting home", h.sent.length === 0, h.sent.map((a) => a.text));
+  check("…unknown, unavailable: not read, rather than away", homeCondition("person.example", true).includes("'unknown' if s in ['unknown', 'unavailable']") && homeCondition("person.example", false).includes("s != 'home'"));
+}
+{
+  const h = harness();
+  h.state.ha = (now) => (now >= T0 + 10 * MIN ? "True" : "False");
+  await h.s.add({ when: "watch", condition: "{{ is_state('cover.main_gate', 'open') }}", say: "Gate open.", onChange: true }, OWNER, T0);
+  await runAlarm(h, T0, T0 + 12 * MIN);
+  check("away when it is made: said when they get there", h.sent.length === 1);
+}
+
+console.log("\nwhen I get home, by voice");
+{
+  const add = routineTools.find((t) => t.name === "routine_add")!;
+  const sent: Record<string, unknown>[] = [];
+  const stub = { addRoutine: async (input: Record<string, unknown>) => (sent.push(input), { id: "r1", name: "x", enabled: true, trigger: { kind: "watch", template: input.condition, forMin: input.forMinutes }, action: { kind: "say", text: "x" }, grants: ["*"], createdBy: "owner", createdAt: T0 }) };
+  const env = (presence?: string, ha = true) => ({ STATE: { idFromName: () => "j", get: () => stub }, TIMEZONE: tz, ...(ha ? { HA_BASE_URL: "https://ha.example.com", HA_TOKEN: "t" } : {}), ...(presence ? { JARVIS_PERSON_PRESENCE: presence } : {}) });
+  const args = (when: string) => ({ name: null, when, local_time: null, in_minutes: null, time: null, days: null, cron: null, event: null, buffer_min: null, condition: null, for_minutes: null, say: "Take the bins out.", ask: null, brief: null, meetings: null, notify: null, pass_to: null, pass_kind: null, points: null, escalate: null, answer_within_minutes: null });
+  const ctx = (presence?: string, o: { ha?: boolean; grants?: string[] } = {}) =>
+    ({ env: env(presence, o.ha ?? true), signal: new AbortController().signal, progress() {}, display() {}, memory: {}, grants: o.grants ?? ["*"] }) as never;
+  const home = String(await add.run(args("arrive_home"), ctx("person.sara")));
+  check("getting home: a watch on their own person, two minutes, said on the change",
+    sent[0]?.when === "watch" && sent[0]?.condition === homeCondition("person.sara", true) && sent[0]?.forMinutes === 2 && sent[0]?.onChange === true &&
+    /sees person\.sara get home for 2 minutes/.test(home), [sent[0], home]);
+  await add.run(args("leave_home"), ctx("person.sara"));
+  check("leaving: the same, the other way", sent[1]?.condition === homeCondition("person.sara", false) && sent[1]?.onChange === true, sent[1]);
+  const unknown = String(await add.run(args("arrive_home"), ctx()));
+  check("not knowing who they are in Home Assistant: says where to set it, makes nothing", sent.length === 2 && /Family → Home → Getting home/.test(unknown), unknown);
+  await add.run(args("watch"), ctx("person.sara"));
+  check("any other watch is as it was", sent[2]?.onChange === undefined && sent[2]?.when === "watch");
+  await add.run(args("arrive_home"), ctx(undefined, { ha: false }));
+  await add.run(args("leave_home"), ctx("person.sara", { grants: ["ask", "routines", "chat"] }));
+  check("no Home Assistant, or not allowed the house (a child): an event their own automation sends, as before",
+    sent[3]?.when === "event" && sent[3]?.event === "arrived_home" && sent[4]?.when === "event" && sent[4]?.event === "left_home" && sent[4]?.onChange === undefined, sent.slice(3));
+  const refusing = { addRoutine: async () => 'the condition must come out True or False, and it gave "unknown"' };
+  const wrong = String(await add.run(args("arrive_home"), { ...(ctx("person.sara") as object), env: { ...env("person.sara"), STATE: { idFromName: () => "j", get: () => refusing } } } as never));
+  check("a person Home Assistant does not know: said plainly, with where to look", /does not know person\.sara right now/.test(wrong) && /Getting home/.test(wrong), wrong);
 }
 
 console.log("\nwatches: changed while Home Assistant is being asked");
