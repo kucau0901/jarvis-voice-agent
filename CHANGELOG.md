@@ -17,6 +17,13 @@ of every release, and in the [README](README.md#updating).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Music no longer hangs when Spotify does.** If Spotify stopped answering
+  while Jarvis signed in to it, the music request waited with it, for as long
+  as the question lasted. Signing in now gives up after ten seconds, or
+  when the question ends.
+
 ## [2.8.0] - 2026-11-02
 
 ### Added

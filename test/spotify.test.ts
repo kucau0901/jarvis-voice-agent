@@ -46,6 +46,17 @@ try {
   spotify(() => Response.json({ is_playing: true, device: { name: "Kitchen" }, item: { name: "Song", artists: [{ name: "Band" }], album: { name: "Album" } } }));
   const playing = String(await state.run({}, ctx));
   check("playing: what and where", playing.startsWith('Playing: "Song" by Band (Album) on Kitchen.'), playing);
+
+  // Spotify's token endpoint never answering: the question's signal still ends the tool.
+  globalThis.fetch = ((_url: string | URL | Request, init?: RequestInit) =>
+    new Promise<Response>((_, reject) => init?.signal?.addEventListener("abort", () => reject(new Error("aborted"))))) as typeof fetch;
+  const stop = new AbortController();
+  setTimeout(() => stop.abort(), 50);
+  const hung = await Promise.race([
+    state.run({}, { ...(ctx as object), signal: stop.signal } as never).then(String),
+    new Promise<string>((r) => setTimeout(() => r("still waiting"), 2_000)),
+  ]);
+  check("a token request that never answers ends with the question", hung.startsWith("Spotify error"), hung);
 } finally {
   globalThis.fetch = realFetch;
 }
