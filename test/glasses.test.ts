@@ -185,6 +185,8 @@ console.log("\nheard, but not said to Jarvis: the word for it");
   check("the glasses' rule: everyone is heard, a person's request answered however short, else no tools and the word",
     /HEAR WHATEVER IS SAID NEAR THE USER/.test(told) && /however short/.test(told) && /call no tools/.test(told) && /exactly NOT_FOR_ME/.test(told) &&
     /English capitals/.test(told) && /When you cannot tell, a message that asks for something you could do or answer is the user's/.test(told) && /under 350 characters/.test(told), told.slice(-400));
+  check("  judged by its words and what is around the user (lib/around.ts), still never by looking anything up",
+    /from its words, and AROUND THE USER NOW\s+when it is given, first/.test(told) && /never look anything up to decide/.test(told));
   for (const w of ["NOT_FOR_ME", "**NOT_FOR_ME**", "__NOT_FOR_ME__", "`NOT_FOR_ME`", " not_for_me. ", "NOT FOR ME.", '"Not-for-me"']) check(`  "${w}" is the word`, notForMe(w));
   for (const w of ["Nothing.", "NOTHING", "Tiada", "Not for me to say, the gate is closed.", "NOT_FOR_ME\nThe weather is fine.", "It's sunny. NOT_FOR_ME", "It's not for me.", ""]) {
     check(`  "${w.replace("\n", "\\n")}" is not`, !notForMe(w));

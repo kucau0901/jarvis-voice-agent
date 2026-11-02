@@ -162,6 +162,39 @@ export async function carSnapshot(cfg: TessieConfig, signal?: AbortSignal): Prom
 
 const num = (v: unknown): number | undefined => (typeof v === "number" ? v : undefined);
 
+/** The person's own car (lib/around.ts), never one shared with them: without a family, the car in the settings. */
+export function ownCar(env: Env): TessieConfig | null {
+  const cars = carsOf(env);
+  if (!cars.length) return tessieConfig(env);
+  const mine = cars.find((c) => c.mine);
+  return mine ? { token: mine.token, vin: mine.vin } : null;
+}
+
+/** How old the car's last state may be and still say what it plays now: a sleeping car's stays as it was. */
+const PLAYING_FRESH_MS = 5 * 60_000;
+
+/**
+ * What the car is playing, from Tessie's last state, when someone is in it
+ * and the state is fresh: its title and artist, or null. A parked car left
+ * playing to no one, or one asleep with an old song in its state, says nothing.
+ */
+export function playingIn(s: unknown, now: number): { title: string; artist: string } | null {
+  const st = (s ?? {}) as { state?: unknown; vehicle_state?: Record<string, unknown>; drive_state?: Record<string, unknown> };
+  const v = st.vehicle_state ?? {};
+  const media = (v.media_info ?? {}) as Record<string, unknown>;
+  const at = num(v.timestamp);
+  const inGear = ["D", "R", "N"].includes(String(st.drive_state?.shift_state ?? ""));
+  const title = typeof media.now_playing_title === "string" ? media.now_playing_title.trim() : "";
+  if (st.state !== "online" || at === undefined || now - at > PLAYING_FRESH_MS) return null;
+  if (!(v.is_user_present === true || inGear) || media.media_playback_status !== "Playing" || !title) return null;
+  return { title, artist: typeof media.now_playing_artist === "string" ? media.now_playing_artist.trim() : "" };
+}
+
+/** What the car plays now (playingIn), from its last state: never wakes it. */
+export async function carPlaying(cfg: TessieConfig, signal: AbortSignal, now: number): Promise<{ title: string; artist: string } | null> {
+  return playingIn(await call(cfg, `/${cfg.vin}/state?use_cache=true`, { signal }), now);
+}
+
 /** A clause only when its reading is there: a missing one is left out, never said as "undefined". */
 const said = (v: unknown, say: (n: number) => string): string | null => {
   const n = num(v);

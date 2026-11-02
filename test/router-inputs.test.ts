@@ -7,6 +7,7 @@ import { createHash } from "node:crypto";
 import { prepareRouter } from "../src/worker/lib/router.ts";
 import { ROUTER_PROMPT } from "../src/worker/lib/router-prompt.ts";
 import { ROLE_SCOPES } from "../src/worker/lib/hub.ts";
+import { _clearAround } from "../src/worker/lib/around.ts";
 const kv = new Map<string, string>();
 const CONFIG = { get: async (k: string) => kv.get(k) ?? null, put: async (k: string, v: string) => void kv.set(k, v), delete: async () => {}, list: async () => ({ keys: [] }) };
 const people = [{ person: "owner", name: "Adam", role: "admin", chat: true }, { person: "u_sara", name: "Sara", role: "adult", chat: true }, { person: "u_siti", name: "Siti", role: "guest", chat: false }];
@@ -379,6 +380,50 @@ try {
     ruled(midway.input, "developer") && !ruled(midway.input, "user") && !plain.input.some((m) => JSON.stringify(m).includes("NOT_FOR_ME")));
 } finally {
   globalThis.fetch = realFetch;
+}
+
+// What is around the wearer (lib/around.ts): read where the microphone hears whoever is near, as a note of Jarvis's
+// own after what was said elsewhere and before the conversation; never in an instruction, and nowhere else.
+console.log("around the user now");
+{
+  const store = new Map<string, string>([["google:access", JSON.stringify({ token: "access", expiresAt: Date.now() + 3_600_000 })]]);
+  const json = { get: async (k: string, t?: string) => (t === "json" ? JSON.parse(store.get(k) ?? "null") : (store.get(k) ?? null)), put: async () => {}, delete: async () => {}, list: async () => ({ keys: [] }) };
+  const withCalendar = { ...base, CONFIG: json, GOOGLE_CLIENT_ID: "g", GOOGLE_CLIENT_SECRET: "s" };
+  const realFetch = globalThis.fetch;
+  let reads = 0;
+  globalThis.fetch = (async (url: string | URL | Request) => {
+    if (!String(url).startsWith("https://www.googleapis.com/calendar/")) return new Response("unexpected", { status: 500 });
+    reads++;
+    const now = Date.now();
+    return Response.json({ items: [{ start: { dateTime: new Date(now - 60_000).toISOString() }, end: { dateTime: new Date(now + 3_600_000).toISOString() }, attendees: [{ self: true, responseStatus: "accepted" }, { responseStatus: "accepted" }] }] });
+  }) as typeof fetch;
+  const NOTE = "with other people at the moment";
+  const prepared = async (grants: string[], opts: Record<string, unknown>) => {
+    _clearAround();
+    return (await prepareRouter(withCalendar as never, [{ role: "user", text: "yeah, the numbers look fine to me" }], new AbortController().signal, grants as never, opts as never)).input;
+  };
+  try {
+    for (const [what, opts] of [["the glasses", { surface: "glasses" }], ["a spoken open microphone", { surface: "voice", openMic: true }]] as const) {
+      const input = await prepared(["*"], opts);
+      const note = input.findIndex((m) => JSON.stringify(m).includes(NOTE));
+      const conv = input.findIndex((m) => JSON.stringify(m).includes("Conversation so far"));
+      check(`  ${what}: a user message just before the conversation, in no instruction`,
+        note > 0 && note === conv - 1 && input[note]!.role === "user" && !input.some((m) => m.role !== "user" && JSON.stringify(m).includes(NOTE)), { note, conv });
+    }
+    reads = 0;
+    const elsewhere = [
+      await prepared(["*"], {}),
+      await prepared(["*"], { surface: "voice" }),
+      await prepared(["*"], { surface: "chat" }),
+      await prepared(["*"], { openMic: true }),
+      await prepared(["ask", "voice"], { surface: "glasses" }),
+    ];
+    check("  nowhere else, and not even read: a live voice's handoff, typed or spoken without it, a token without calendar",
+      reads === 0 && !elsewhere.some((input) => input.some((m) => JSON.stringify(m).includes(NOTE))), reads);
+  } finally {
+    globalThis.fetch = realFetch;
+    _clearAround();
+  }
 }
 
 // An English question about a Malay page was answered in Malay (20 Oct 2026): the

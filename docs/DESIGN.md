@@ -1106,6 +1106,48 @@ on the ChatGPT plan. None of this stops what is heard from reaching
 speech-to-text, Home Assistant and the router before it is judged; only a
 closed microphone does that.
 
+**Around them.** Words alone are often not enough: a song's line can sound
+like an order, and a remark to a colleague ("yeah, the numbers look fine")
+like something said to Jarvis. So on the glasses and a spoken open microphone, the question also
+carries a note of what Jarvis read about what is around the wearer
+(`lib/around.ts`), in the same wait as the rest and with no model call:
+- **Their calendar**, when it has them with other people now. That is an
+  event they accepted or made, timed, busy and with someone else in it.
+  Invitations they have not answered never count, or anyone could make
+  Jarvis take them for busy. Neither do events of their own with no one else
+  in them: the gym, a drive, time to work, which is when they most talk to
+  Jarvis. The read asks Google for no title, description, place or name, and
+  the note says only that they are with other people, not even until when.
+- **What is playing near them**, with its title. In the house, these are
+  Home Assistant's media players in a room (an area), read only while their
+  person in Family is home; without one set, the house is not read. A player
+  in no room may be anywhere (a media server's remote viewer), and an online
+  service's (Spotify's) or a car's plays elsewhere, so they are left out. In
+  their own car, never one shared with them, the source is Tessie's last
+  state, which never wakes it, and only while someone is in the car and the
+  state is fresh; that someone may be another driver, which Tesla does not
+  say. Titles are someone else's words, so they are quoted. Spotify itself
+  is not read: on every heard sentence it would use the quota the music tools
+  need, and a speaker in the house that plays Spotify is a Home Assistant
+  player anyway.
+
+It shifts the odds, never the words. Being with people makes remarks,
+half-sentences and replies to someone else likelier talk among them; it
+never makes a question, request, instruction or something to remember any
+less the user's, and any request is the user's, one about what is playing
+too ("pause it"). When the router cannot tell, it still answers, and the
+note is never mentioned or answered from. It is a user message
+after the cache breakpoint. Each source needs its scope (`calendar`, `home`,
+`car.read`), so a guest reads nothing. Each waits at most 1.2 seconds; a
+slower read finishes after the answer, for the next sentence, and while a
+source stays that slow its reads are started, not waited on. The calendar
+is kept five minutes per person and isolate, what is playing half a minute,
+and a failure a minute, or an hour when only the person can fix it (a lapsed
+link, a Home Assistant token that may not render templates). A live voice's
+handoffs do not get it, since the live voice has already judged that it was
+spoken to; nor does Assist, which hears first. Like the overheard words, the
+note goes to the model provider, so it carries nothing of what an event is.
+
 **Search, by words only.** Chat's Search box (`lib/search.ts`,
 `ui/Search.ts`) looks through the person's conversation, memory (their own
 book and the family's) and mail at once, as Hark's does, and groups what it

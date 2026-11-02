@@ -85,8 +85,9 @@ console.log("\nthe environment, per person");
   check("their own, if they gave one", own.TELEGRAM_CHAT_ID === "12345");
   const owner = withPerson(base, { person: OWNER });
   check("the first person keeps the family's", owner.TELEGRAM_CHAT_ID === "999" && owner.VOICE_TTS_VOICE === "cedar");
-  const known = withPerson(base, { person: "u_sara", name: "Sara", space: SPACE, prefs: { nickname: "Kak Sara", birthday: "1990-04-02" } });
+  const known = withPerson(base, { person: "u_sara", name: "Sara", space: SPACE, prefs: { nickname: "Kak Sara", birthday: "1990-04-02", presence: "person.sara" } });
   check("what they like to be called, and their birthday", known.JARVIS_PERSON_NICKNAME === "Kak Sara" && known.JARVIS_PERSON_BIRTHDAY === "1990-04-02");
+  check("where Home Assistant has them, for what plays near them; none when not said", known.JARVIS_PERSON_PRESENCE === "person.sara" && e.JARVIS_PERSON_PRESENCE === undefined);
   check("…told to the router with who they are", nowLine(known).includes("You are answering Sara, who likes to be called Kak Sara.") && nowLine(known).includes("Their birthday is 1990-04-02."));
   check("…and nothing of it when not said", !nowLine(e).includes("likes to be called") && !nowLine(e).includes("birthday"));
 }

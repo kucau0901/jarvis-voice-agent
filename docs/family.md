@@ -121,7 +121,9 @@ remind or ask them, and they are not in the chat.
 **"When she gets home"** needs to know where she is: her person in Home
 Assistant, which follows her phone (Family → **Home**, or an
 admin sets it on her page in Family, `person.aisyah`). Without it, it goes by the time
-alone, and Jarvis says so.
+alone, and Jarvis says so. On glasses it also says whether she is home, so
+what plays in the house counts as near her only then; without it, the house's
+players are not looked at.
 
 **Messages** (in the menu) has the family room everyone shares, and a
 conversation with each person. What Jarvis passed on between two people
@@ -234,7 +236,10 @@ only the owner key can.
   so.
 - **Mail, calendar and contacts.** Link your own Google in **Family →
   Accounts**. If the family's Google app is still in testing, an admin
-  adds your Google address as a test user in Google Cloud first.
+  adds your Google address as a test user in Google Cloud first. On glasses
+  whose device has **calendar**, Jarvis also checks whether your calendar has
+  you with other people right now, never what the event is, to tell their
+  talk from what you ask it.
 - **Spotify.** Link your own the same way.
 - **Reminders, routines and background jobs.** They are yours, they run as
   you (your calendar, your memory), and they tell only you.

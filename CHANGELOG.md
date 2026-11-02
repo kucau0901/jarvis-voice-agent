@@ -17,6 +17,21 @@ of every release, and in the [README](README.md#updating).
 
 ## [Unreleased]
 
+### Added
+
+- **Glasses know what is around you.** When Jarvis answers glasses turn by
+  turn (the G2, or the Android glasses app; not live voice), it now also
+  looks at whether your calendar has you with other people right now, and at
+  what is playing near you: the house's speakers and TVs that are in a room
+  (while your Home Assistant person in Family is home) and your own car
+  (through Tessie, while someone is in it). So a colleague's "yeah, the
+  numbers look fine", or a song's lines, are less often taken as said to
+  Jarvis, while any question or request, "pause it" included, is still
+  answered. Nothing of an event is passed on (not its title, guests, place
+  or time), nothing is kept, and no extra AI call is made. Each part needs
+  its service and the device's permission (calendar, home, car); without
+  them nothing changes.
+
 ### Fixed
 
 - **Music, mail and calendar no longer hang when Spotify or Google does.** If

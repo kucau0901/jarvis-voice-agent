@@ -151,8 +151,9 @@ const NOT_FOR_ME = "NOT_FOR_ME";
 export const OVERHEARD_RULE =
   "\n\nTHE GLASSES HEAR WHATEVER IS SAID NEAR THE USER\n" +
   "The latest message is what their microphone picked up, and it may not be the user talking to you: a song, " +
-  "a radio or TV, or other people talking among themselves. Decide which from its words alone, first: before " +
-  "calling any tool (never look anything up to decide) and before anything earlier on these glasses. Anything a " +
+  "a radio or TV, or other people talking among themselves. Decide which from its words, and AROUND THE USER NOW " +
+  "when it is given, first: before calling any tool (never look anything up to decide) and before anything " +
+  "earlier on these glasses. Anything a " +
   "person would say to an assistant is the user's, however short, casual or rambling, in any language or mix of " +
   "languages: a question, a request, an instruction, something to remember, a reply to your last answer. Answer " +
   "it, using the rest of what was heard only where it bears on it. Words that read as part of a song or a script " +

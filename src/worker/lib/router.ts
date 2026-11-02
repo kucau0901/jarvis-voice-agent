@@ -32,6 +32,7 @@ import { isResearchCap, jobTool } from "./jobs.ts";
 import { Collector } from "./collector.ts";
 import { clientFor, forKey, forPlan, modelAuth, planFailed, planRespond, refusalOf } from "./openai-auth.ts";
 import { DEFAULT_CHAR_BUDGET, OVERHEARD_RULE, earlierOnGlasses, earlierSince, glassesInstructions, notForMe, overheard } from "./glasses.ts";
+import { aroundUser } from "./around.ts";
 import type { Said } from "./conversation.ts";
 import { spokenReplyInstructions } from "./prompt.ts";
 import {
@@ -188,7 +189,10 @@ export async function prepareRouter(
   const skilled = allows(grants, "skills");
   // After a pause on the glasses, what was asked on them since (lib/glasses.ts), from their person's Chat: theirs to read.
   const since = opts.earlierOnGlasses && allows(grants, "memory.read") ? earlierSince(env.G2_EARLIER, Date.now(), localeOf(env).timeZone) : null;
-  const [, mcp, chosen, shared, family, recalled, ready, said] = await Promise.all([
+  // Where the microphone hears whoever is near (the glasses, a spoken open microphone), what is around the wearer
+  // (lib/around.ts). Not a live voice's handoff: the live voice has already judged it was said to Jarvis.
+  const near = opts.surface === "glasses" || (opts.surface === "voice" && opts.openMic === true);
+  const [, mcp, chosen, shared, family, recalled, ready, said, around] = await Promise.all([
     memory.load().catch((e) => {
       console.warn("memory unavailable:", e instanceof Error ? e.message : String(e));
     }),
@@ -204,6 +208,7 @@ export async function prepareRouter(
     recalls ? (stateStub(env)?.recallFor(env.JARVIS_PERSON || OWNER, asked!, takes) ?? Promise.resolve(null)).catch(() => null) : Promise.resolve(null),
     skilled ? (stateStub(env)?.skillsReady() ?? Promise.resolve([] as Skill[])).catch(() => [] as Skill[]) : Promise.resolve([] as Skill[]),
     since !== null ? (stateStub(env)?.conversationOf(env.JARVIS_PERSON || OWNER, Date.now()) ?? Promise.resolve([] as Said[])).catch(() => [] as Said[]) : Promise.resolve([] as Said[]),
+    near ? aroundUser(env, grants, opts.waitUntil).catch(() => "") : Promise.resolve(""),
   ]);
   const earlier = since !== null ? earlierOnGlasses(said ?? [], since, Date.now(), localeOf(env).timeZone) : "";
   const elsewhere = [sharedBlock(shared, Date.now()), family].filter(Boolean).join("\n\n");
@@ -316,6 +321,8 @@ export async function prepareRouter(
     ...(earlier ? [{ role: "user" as const, content: earlier }] : []),
     // What was said, like the profile: a user message, never an instruction.
     ...(elsewhere ? [{ role: "user" as const, content: elsewhere }] : []),
+    // What Jarvis read of what is around them: a note, never an instruction, with what is playing quoted as data.
+    ...(around ? [{ role: "user" as const, content: around }] : []),
     { role: "user" as const, content: `Conversation so far:\n\n${conversation}` },
     ...(opts.images?.length || opts.files?.length
       ? [
