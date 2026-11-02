@@ -1465,6 +1465,18 @@ What is said goes to the household's admins, at most 12 things a day. Its
 tick is the house's own (`House.nextWake`/`tick`), beside the routines',
 not in `Scheduler`: it is the household's, not any person's routine.
 
+**Home Assistant runs the rules; Jarvis writes them when asked.** What
+should simply happen every time (a room empty and dim, so its lights off)
+belongs in a Home Assistant automation: free, instant, every time, where a
+judgment is a paid answer each time. ha-mcp's automation tools are allowed for
+that (`config/mcp-servers.json`): shown, written and removed when someone asks
+in the conversation. Nothing unattended writes one: a routine's question and
+a house judgment run without them (`WRITES_HOUSE_CONFIG`, askForRoutine), so a
+judgment that sees a pattern suggests the automation in words, and a "yes"
+in the conversation has it written. A habit that is the house's alone (Assist
+answered it, or only Home Assistant's tools) is offered the same way, as an
+automation, not as a routine: done by the house, it costs nothing each day.
+
 **A look sees the house.** Who is home, what is open, unlocked or on and since
 when, by room, what is sounding, and batteries running low, fenced as data
 like the rest (names and rooms are written by people). A look takes the last

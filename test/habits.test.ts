@@ -1,7 +1,8 @@
 // Habits (lib/habits.ts): the same request at about the same time on several
 // days, found by code alone and offered once as a routine; and the card that
 // makes it (tools/routines.ts routine_make), for an approval only.
-import { DAYS_MIN, Habits, habitOf, MAX_ASK, MIN_WORDS, NEAR_MIN, noteworthy, OFFERED_MS, WINDOW_MS, type Asked } from "../src/worker/lib/habits.ts";
+import { WRITES_HOUSE_CONFIG } from "../src/worker/routes/routines.ts";
+import { DAYS_MIN, Habits, habitOf, houseOnly, MAX_ASK, MIN_WORDS, NEAR_MIN, noteworthy, OFFERED_MS, WINDOW_MS, type Asked } from "../src/worker/lib/habits.ts";
 import { overlap } from "../src/worker/lib/episodes.ts";
 import { tokenise } from "../src/worker/lib/memory.ts";
 import { zonedToUtc } from "../src/worker/lib/routines.ts";
@@ -111,6 +112,14 @@ console.log("\nwhat may be noted");
   check("a tool it was not given: no", !n(["unknown_tool"]));
   check("a failed answer: no", !n([], ["*"], false));
   check("someone who may not have routines (a guest): no", !n([], ["ask", "voice"]));
+}
+
+console.log("\nthe house's alone: an automation, not a routine");
+{
+  check("answered by Assist: the house's", houseOnly({ by: "home-assistant", tools: [] }));
+  check("only Home Assistant's tools: the house's", houseOnly({ by: "gpt-5", tools: ["home-assistant__ha_call_service", "house__ha_get_state"] }));
+  check("a question with no tool, or anything else beside the house: not", !houseOnly({ by: "gpt-5", tools: [] }) && !houseOnly({ by: "gpt-5", tools: ["home-assistant__ha_call_service", "car_state"] }));
+  check("routines and watching the house never write Home Assistant's automations; reading them is fine", WRITES_HOUSE_CONFIG.test("home-assistant__ha_config_set_automation") && WRITES_HOUSE_CONFIG.test("house__ha_config_remove_automation") && !WRITES_HOUSE_CONFIG.test("home-assistant__ha_config_get_automation") && !WRITES_HOUSE_CONFIG.test("home-assistant__ha_call_service"));
 }
 
 console.log("\nthe card that makes it");

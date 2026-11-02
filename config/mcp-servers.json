@@ -4,7 +4,7 @@
       "label": "home-assistant",
       "url": "${HA_MCP_URL}",
       "headers": {},
-      "_comment": "Nabu Casa Webhook Proxy for HA MCP. The URL is the credential, so it lives in a Worker secret. 86 tools are offered; only these are allowed - the rest are config, file and system administration that has no business being reachable from a car.",
+      "_comment": "Nabu Casa Webhook Proxy for HA MCP. The URL is the credential, so it lives in a Worker secret. 86 tools are offered; only these are allowed - the rest are config, file and system administration that has no business being reachable from a car. Automations are the exception, asked for in words and confirmed in the conversation; routines and watching the house never write them (askForRoutine).",
       "allowedTools": [
         "ha_get_overview",
         "ha_search",
@@ -16,10 +16,14 @@
         "ha_bulk_control",
         "ha_eval_template",
         "ha_get_todo",
-        "ha_set_todo_item"
+        "ha_set_todo_item",
+        "ha_config_get_automation",
+        "ha_config_set_automation",
+        "ha_config_remove_automation",
+        "ha_get_automation_traces"
       ],
       "enabled": true,
-      "hint": "Direct and fast (about a second), and can see the whole house, the car's basic state, and the calendar. Use for reading any state or operating any device.",
+      "hint": "Direct and fast (about a second), and can see the whole house, the car's basic state, and the calendar. Use for reading any state or operating any device, and for the house's automations: show one, or write one only when the user has said to.",
       "spokenAs": "the house"
     }
   ]

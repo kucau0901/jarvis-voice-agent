@@ -1019,16 +1019,25 @@ export class JarvisState extends DurableObject<Env> {
    * same time on several days, a routine that asks it is offered once, as a quiet card (lib/habits.ts). `who` is who
    * asked (their device, or them), whose routine it would be, with `grants`, what they could reach.
    */
-  async noteAsk(person: string, who: string, ask: string, tools: string[], grants: readonly Grant[], now: number): Promise<void> {
+  async noteAsk(person: string, who: string, ask: string, tools: string[], grants: readonly Grant[], now: number, house = false): Promise<void> {
     const env = await this.localEnv();
     const timeZone = localeOf(env).timeZone;
     const made = (await this.scheduler.list()).flatMap((r) => (personOfWho(r.createdBy) === person && r.action.kind === "ask" ? [r.action.prompt] : []));
     const habit = await this.habits.note(person, ask, tools, timeZone, now, made);
     if (!habit) return;
+    const days = habit.days.length === 5 ? "most weekdays" : habit.days.length === 2 ? "most weekends" : "most days";
+    // The house's alone (Assist, Home Assistant's tools): better done by Home Assistant itself, free every day, than
+    // a routine, a paid answer each time. Offered in words: a "yes" in the conversation has it written (ha-mcp).
+    if (house) {
+      const text = `You ask "${habit.ask}" ${days} around ${habit.time}. Home Assistant could do that by itself: say "make it an automation" and I'll set it up there.`;
+      const said = makeAlert({ title: "Make it an automation?", text, speak: false }, "routine", now, person);
+      if (said) await deliver(env, this, said);
+      await this.habits.offered(person, habit.key, now);
+      return;
+    }
     const args = { ask: habit.ask, time: habit.time, days: habit.days };
     const weighed = routineMake.propose?.(args, env);
     if (!weighed) return;
-    const days = habit.days.length === 5 ? "most weekdays" : habit.days.length === 2 ? "most weekends" : "most days";
     const from = { kind: "suggestion" as const, id: `habit:${habit.key}`.slice(0, 200), title: `You ask this ${days} around ${habit.time}` };
     const p = await this.proposals.add({ who, person, from, action: { tool: routineMake.name, args }, weighed, grants }, now);
     if (typeof p === "string") return;

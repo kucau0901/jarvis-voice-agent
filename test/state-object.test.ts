@@ -328,6 +328,10 @@ console.log("\na habit offered as a routine, made on approval (state.ts noteAsk)
   check("Clear chat forgets what they asked: nothing offered from before it", !(await jarvis.proposalsOf("u_hab2", Date.now())).some((p) => p.from.kind === "suggestion"));
   await jarvis.conversationClear("owner");
   for (let i = 4; i < 7; i++) await jarvis.noteAsk("owner", "owner", ask, ["directions"], ["ask", "routines", "car.read"], start + i * DAY);
+  for (let i = 0; i < 3; i++) await jarvis.noteAsk("u_hab3", "u_hab3", "Turn on the porch light please", [], ["*"], start + i * DAY, true);
+  check("the house's alone: offered as a Home Assistant automation, in words, with no routine card", !(await jarvis.proposalsOf("u_hab3", Date.now())).some((p) => p.from.kind === "suggestion"));
+  const offeredOnce: { habits: { note(p: string, a: string, t: string[], tz: string, now: number, made: string[]): Promise<unknown> } } = jarvis as never;
+  check("…and once", (await offeredOnce.habits.note("u_hab3", "Turn on the porch light please", [], "UTC", start + 3 * DAY, [])) === null);
   check("but not what was offered: the habit already made is not offered again", (await jarvis.proposalsOf("owner", Date.now() + 7 * DAY)).filter((p) => p.from.kind === "suggestion").length === 1);
 }
 

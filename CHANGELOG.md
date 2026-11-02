@@ -42,12 +42,21 @@ of every release, and in the [README](README.md#updating).
   battery), then does the obvious thing through Home Assistant, tells the
   admins, or suggests an automation. "Every" also judges each change. Each
   judgment is a paid answer: at most 40 a day for unusual, 200 for every.
+- **Home Assistant automations, by asking.** "Turn the study lights off when
+  it's been empty ten minutes and it's dim" has Jarvis write the automation
+  in Home Assistant, through ha-mcp. When Jarvis notices the same thing
+  keeps happening, or you keep asking for the same house action, it suggests
+  one, and a "yes" sets it up. Routines and watching the house never write
+  automations themselves. If you saved your own MCP list in Settings, add
+  `ha_config_get_automation`, `ha_config_set_automation`,
+  `ha_config_remove_automation` and `ha_get_automation_traces` to it.
 - **Routines from habits.** Ask the same thing at about the same time on three
   days ("what's the traffic to work like?" most mornings) and Jarvis offers,
   once and quietly, to make it a routine that asks for you. One tap makes it.
-  Anything a routine can do is offered: questions, house requests ("turn on
-  the porch light" every evening), the car, mail. Not what needs a screen or
-  Hermes, which routines run without.
+  Anything a routine can do is offered: questions, the car, mail. A house
+  request ("turn on the porch light" every evening) is offered as a Home
+  Assistant automation instead, which costs nothing each day. Not what needs
+  a screen or Hermes, which routines run without.
 - **Skills, added in chat.** "Add a skill: Wren, my Grok bot, for the house
   and the car, at https://…" lets Jarvis send requests to an outside service
   (a bot, an automation, your own code), or, said as an MCP server, use its

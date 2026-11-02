@@ -30,7 +30,9 @@ console.log("the case that was broken");
   check("an empty saved list resolves to the defaults", r.source === "default", r.source);
   check("so the panel shows the Home Assistant server", r.servers.length === 1 && r.servers[0]!.label === "home-assistant", r.servers);
   check("with its URL as a placeholder, not the secret", r.servers[0]!.url === "${HA_MCP_URL}");
-  check("and its tool allowlist", r.servers[0]!.allowedTools?.length === 11, r.servers[0]!.allowedTools);
+  // The house's automations joined it (2 Nov 2026): shown, written and removed when someone asks, and their traces.
+  const automations = ["ha_config_get_automation", "ha_config_set_automation", "ha_config_remove_automation", "ha_get_automation_traces"];
+  check("and its tool allowlist", r.servers[0]!.allowedTools?.length === 15 && automations.every((t) => r.servers[0]!.allowedTools?.includes(t)), r.servers[0]!.allowedTools);
 }
 
 console.log("\nresolution");

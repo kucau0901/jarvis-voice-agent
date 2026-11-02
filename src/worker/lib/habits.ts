@@ -51,6 +51,13 @@ export interface Habit {
   days: number[];
 }
 
+/**
+ * Whether a request was the house's alone: answered by Assist, or only with Home Assistant's tools (ha-mcp's names
+ * start ha_). Such a habit is better as a Home Assistant automation, free every day, than a routine, a paid answer.
+ */
+export const houseOnly = (r: { by: string; tools: readonly string[] }): boolean =>
+  r.by === "home-assistant" || (r.tools.length > 0 && r.tools.every((t) => t.includes("__ha_")));
+
 /** What a routine's question runs without (routes/routines.ts askForRoutine): nothing to draw on, and never Hermes. */
 const UNATTENDED: readonly Scope[] = ["screen", "hermes"];
 

@@ -131,6 +131,9 @@ export async function handleRoutines(req: Request, env: Env, url: URL, principal
 
 /* ---------- what the Durable Object runs a routine with ----------------------- */
 
+/** Home Assistant's automations written or removed (ha-mcp's ha_config_set_automation and the like): never unattended. */
+export const WRITES_HOUSE_CONFIG = /__ha_config_(set|remove)_/;
+
 /**
  * A routine's question, answered by the router with the creator's grants and
  * no screen. Two minutes at most: nobody is waiting, but nothing should run
@@ -150,6 +153,8 @@ export async function askForRoutine(
   const unattended = (grants.includes(WILDCARD) ? SCOPES : grants).filter((g) => g !== "screen" && g !== "hermes");
   await run(env, [{ role: "user", text: prompt }], sink, AbortSignal.timeout(120_000), unattended, {
     surface: "routine",
+    // Nor Home Assistant's own configuration: an automation is written when someone asks, in the conversation.
+    toolFilter: (t) => !WRITES_HOUSE_CONFIG.test(t.name),
     routineName: routine.name,
     ...(routine.action.kind === "ask" && routine.action.notify === "if-important" ? { routineIfImportant: true } : {}),
   });

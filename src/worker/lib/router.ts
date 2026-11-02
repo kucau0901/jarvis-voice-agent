@@ -30,7 +30,7 @@ import { localeOf } from "./locale.ts";
 import { allows, type Grant } from "./scopes.ts";
 import { DRAWS_ON_SCREEN } from "../tools/place.ts";
 import { isResearchCap, jobTool } from "./jobs.ts";
-import { noteworthy } from "./habits.ts";
+import { houseOnly, noteworthy } from "./habits.ts";
 import { Collector } from "./collector.ts";
 import { clientFor, forKey, forPlan, modelAuth, planFailed, planRespond, refusalOf } from "./openai-auth.ts";
 import { DEFAULT_CHAR_BUDGET, glassesInstructions } from "./glasses.ts";
@@ -531,7 +531,7 @@ export async function run(
       }
       // Their own request, answered with tools a routine can use: noted, to offer it as a routine once it is a habit.
       const own = opts.habit && noteworthy(r, grants, p?.tools ?? []) ? ownWords(turns, opts) : undefined;
-      if (own) writes.push((stateStub(env)?.noteAsk(env.JARVIS_PERSON || OWNER, callerWho(env), own, r.tools, grants, Date.now()) ?? Promise.resolve()).catch(() => {}));
+      if (own) writes.push((stateStub(env)?.noteAsk(env.JARVIS_PERSON || OWNER, callerWho(env), own, r.tools, grants, Date.now(), houseOnly(r)) ?? Promise.resolve()).catch(() => {}));
       writes.push(recordUsage(env, {
         at: Date.now() - r.ms,
         surface: opts.surface ?? "app",
