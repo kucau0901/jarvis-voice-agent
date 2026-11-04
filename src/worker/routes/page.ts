@@ -10,6 +10,8 @@ import { renderPage } from "../lib/page-template.ts";
  *
  *   GET    /api/v1/p/<id>?k=<token>   the page itself: before any sign-in, the token its proof
  *   GET    /api/page?id=              {title, at, viewUrl, shareUrl|null}: one of yours
+ *   GET    /api/page?id=&full=1       the same, plus `page`: its words as stored, for a screen
+ *                                      that draws them itself instead of opening HTML (a wall panel)
  *   POST   /api/page/share {id}       {shareUrl}: shared for anyone with the link (admins only)
  *   DELETE /api/page/share?id=        not shared any more
  *
@@ -66,5 +68,10 @@ export async function handlePageMeta(req: Request, env: Env, principal: Principa
   const page = PAGE_ID.test(id) ? await state.pageMine(me, id, now) : null;
   const view = page ? await state.pageView(me, id, now) : null;
   if (!page || !view) return err(404, "no such page");
-  return json({ title: page.title, at: page.at, viewUrl: `${base}${id}?k=${view}`, shared: !!page.share, canShare: isAdmin(principal) });
+  // `full=1`: the sections as words (never HTML), for a screen with no browser to open viewUrl in.
+  // Whose it is and its share hash stay behind.
+  const full = url.searchParams.get("full") === "1"
+    ? { page: { title: page.title, ...(page.subtitle ? { subtitle: page.subtitle } : {}), sections: page.sections } }
+    : {};
+  return json({ title: page.title, at: page.at, viewUrl: `${base}${id}?k=${view}`, shared: !!page.share, canShare: isAdmin(principal), ...full });
 }

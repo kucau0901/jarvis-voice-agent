@@ -19,6 +19,10 @@ of every release, and in the [README](README.md#updating).
 
 ### Added
 
+- **Pages for screens without a browser.** `GET /api/page?id=&full=1` also
+  returns the page's words as stored (`title`, `subtitle`, `sections` with
+  heading, body and table), so a wall panel can draw a page Jarvis made itself
+  instead of opening its HTML.
 - **"When this happens, do that."** A watch routine can now do anything
   Jarvis can when its condition comes true, not only say a message: "when
   someone is seen outside at night, look at that camera and, only if there
