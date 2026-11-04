@@ -108,6 +108,15 @@ console.log("\nserved");
   check("the card is told whether they may share", (await can(sara)) === false && (await can(admin)) === true);
   const stop = await handlePageMeta(new Request(`https://j.test/api/page/share?id=${id}`, { method: "DELETE" }), env, sara);
   check("one no longer an admin can still stop sharing their own", stop.status === 200 && calls.includes("pageUnshare"), stop.status);
+  const fullBody = (await (await handlePageMeta(new Request(`https://j.test/api/page?id=${id}&full=1`), env, sara)).json()) as {
+    page?: { title?: string; sections?: unknown[]; who?: unknown; share?: unknown };
+    viewUrl?: string;
+  };
+  check("full=1: the words for a screen to draw, not whose it is",
+    fullBody.page?.title === doc.title && Array.isArray(fullBody.page?.sections) && fullBody.page!.sections!.length === doc.sections.length &&
+      !("who" in (fullBody.page ?? {})) && !("share" in (fullBody.page ?? {})) && typeof fullBody.viewUrl === "string");
+  const plain = (await (await handlePageMeta(new Request(`https://j.test/api/page?id=${id}`), env, sara)).json()) as { page?: unknown };
+  check("without full=1, no words", plain.page === undefined);
   check("scopes: a screen's to open from the app, a person's to share", requiredScope("/api/page", "GET") === "screen" && requiredScope("/api/page/share", "POST") === "person");
 }
 
