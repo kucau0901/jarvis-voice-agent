@@ -17,6 +17,8 @@ of every release, and in the [README](README.md#updating).
 
 ## [Unreleased]
 
+## [2.9.0] - 2026-11-06
+
 ### Added
 
 - **A light's colour on Home panels.** A colour light opens to colour
@@ -1411,7 +1413,8 @@ updating to this one needs nothing doing.
 - A camera picture in Type mode was drawn under the chat; the chat now keeps
   its newest message in view above the phone's keyboard.
 
-[Unreleased]: https://github.com/kucau0901/jarvis-voice-agent/compare/v2.8.0...HEAD
+[Unreleased]: https://github.com/kucau0901/jarvis-voice-agent/compare/v2.9.0...HEAD
+[2.9.0]: https://github.com/kucau0901/jarvis-voice-agent/compare/v2.8.0...v2.9.0
 [2.8.0]: https://github.com/kucau0901/jarvis-voice-agent/compare/v2.7.0...v2.8.0
 [2.7.0]: https://github.com/kucau0901/jarvis-voice-agent/compare/v2.6.0...v2.7.0
 [2.6.0]: https://github.com/kucau0901/jarvis-voice-agent/compare/v2.5.0...v2.6.0
