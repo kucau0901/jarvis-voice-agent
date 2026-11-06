@@ -180,13 +180,18 @@ function colorOf(entity: string, state: string, a: Attrs): Color | null {
   const kelvin = (k: unknown, mireds: unknown, fallback: number) => Math.round(num(k) ?? (num(mireds) ? 1_000_000 / num(mireds)! : fallback));
   const warm = kelvin(a.min_color_temp_kelvin, a.max_mireds, 2000);
   const cool = kelvin(a.max_color_temp_kelvin, a.min_mireds, 6500);
-  const hs = Array.isArray(a.hs_color) ? a.hs_color : [];
+  // Home Assistant works out an hs_color for a white too (and a color_temp
+  // for a colour), so each is the light's own only in its own mode; with no
+  // mode given (off, or older) it is the last one known.
+  const mode = typeof a.color_mode === "string" ? a.color_mode : null;
+  const hs = Array.isArray(a.hs_color) && (mode === null || WHEEL.includes(mode)) ? a.hs_color : [];
+  const k = mode === null || mode === "color_temp" ? a.color_temp_kelvin : null;
   return {
     wheel,
     hue: Math.round(num(hs[0]) ?? 0) % 360,
     sat: Math.round(num(hs[1]) ?? 0),
     white,
-    kelvin: Math.round(num(a.color_temp_kelvin) ?? (warm + cool) / 2),
+    kelvin: Math.round(num(k) ?? (warm + cool) / 2),
     warm,
     cool,
     on: state === "on",

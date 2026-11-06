@@ -568,6 +568,10 @@ console.log("a light's colour and white");
   check("…off, it keeps the colour it last had and says it is off",
     more("light.living_strip", "off", { ...strip, hs_color: [30, 100] })?.color?.on === false && more("light.living_strip", "off", { ...strip, hs_color: [30, 100] })?.color?.hue === 30 &&
     more("light.living_strip", "off", { supported_color_modes: ["rgbww"] })?.color?.hue === 0);
+  check("…set to a white, the hue Home Assistant works out for it is not its colour (the White swatch is nearest), and its white is",
+    JSON.stringify(more("light.living_strip", "on", { ...strip, color_mode: "color_temp", color_temp_kelvin: 2700, hs_color: [28.6, 65.9] })?.color) === '{"wheel":true,"hue":0,"sat":0,"white":true,"kelvin":2700,"warm":2202,"cool":6535,"on":true}' &&
+    more("light.living_strip", "on", { ...strip, color_mode: "hs", color_temp_kelvin: 2700 })?.color?.kelvin === 4369,
+    more("light.living_strip", "on", { ...strip, color_mode: "color_temp", color_temp_kelvin: 2700, hs_color: [28.6, 65.9] }));
   check("a hue that rounds to 360 is 0", more("light.living_strip", "on", { ...strip, hs_color: [359.7, 50] })?.color?.hue === 0);
   const desk = { supported_color_modes: ["color_temp"], color_mode: "color_temp", brightness: 128, color_temp_kelvin: 3000, min_color_temp_kelvin: 2700, max_color_temp_kelvin: 6500 };
   check("a white-only light: no colours, only its whites, at the white it is now",
