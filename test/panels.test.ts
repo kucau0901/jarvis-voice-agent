@@ -556,6 +556,73 @@ console.log("sliders: brightness, speed, position, volume, a number");
   const pressed = await actOn(p, "light.desk", "level:30", src, signal);
   check("…dimmed from the panel", pressed.status === 200 && calls[0]?.svc === "light.turn_on light.desk" && JSON.stringify(calls[0]?.data) === '{"brightness_pct":30}', { pressed, calls });
 }
+
+console.log("a light's colour and white");
+{
+  const more = (entity: string, state: string, a: Record<string, unknown>) => controlsOf(entity, state, a)?.more;
+  const strip = { supported_color_modes: ["hs", "color_temp"], color_mode: "hs", brightness: 255, hs_color: [219.6, 98.4], color_temp_kelvin: null, min_color_temp_kelvin: 2202, max_color_temp_kelvin: 6535 };
+  check("a colour light opens to its brightness and its colour now, with its range of whites",
+    more("light.living_strip", "on", strip)?.level?.value === 100 &&
+    JSON.stringify(more("light.living_strip", "on", strip)?.color) === '{"wheel":true,"hue":220,"sat":98,"white":true,"kelvin":4369,"warm":2202,"cool":6535,"on":true}',
+    more("light.living_strip", "on", strip));
+  check("…off, it keeps the colour it last had and says it is off",
+    more("light.living_strip", "off", { ...strip, hs_color: [30, 100] })?.color?.on === false && more("light.living_strip", "off", { ...strip, hs_color: [30, 100] })?.color?.hue === 30 &&
+    more("light.living_strip", "off", { supported_color_modes: ["rgbww"] })?.color?.hue === 0);
+  check("a hue that rounds to 360 is 0", more("light.living_strip", "on", { ...strip, hs_color: [359.7, 50] })?.color?.hue === 0);
+  const desk = { supported_color_modes: ["color_temp"], color_mode: "color_temp", brightness: 128, color_temp_kelvin: 3000, min_color_temp_kelvin: 2700, max_color_temp_kelvin: 6500 };
+  check("a white-only light: no colours, only its whites, at the white it is now",
+    JSON.stringify(more("light.study_desk", "on", desk)?.color) === '{"wheel":false,"hue":0,"sat":0,"white":true,"kelvin":3000,"warm":2700,"cool":6500,"on":true}' && more("light.study_desk", "on", desk)?.level?.value === 50,
+    more("light.study_desk", "on", desk));
+  check("…its range from mireds when Home Assistant gives no kelvin, and 2000–6500 K when neither",
+    JSON.stringify(more("light.hall", "on", { supported_color_modes: ["color_temp"], min_mireds: 153, max_mireds: 500 })?.color) === '{"wheel":false,"hue":0,"sat":0,"white":true,"kelvin":4268,"warm":2000,"cool":6536,"on":true}' &&
+    more("light.hall", "on", { supported_color_modes: ["color_temp"] })?.color?.warm === 2000 && more("light.hall", "on", { supported_color_modes: ["color_temp"] })?.color?.cool === 6500);
+  check("a dimmable light with no colour has its slider and no colour",
+    !!more("light.desk", "on", { supported_color_modes: ["brightness"], brightness: 200 })?.level && more("light.desk", "on", { supported_color_modes: ["brightness"], brightness: 200 })?.color === undefined);
+  check("a light only on or off, and a switch, have neither",
+    controlsOf("light.porch", "on", { supported_color_modes: ["onoff"] }) === null && controlsOf("switch.bed_fan", "on", { supported_color_modes: ["hs"] }) === null);
+  check("…nor a colour light that is unavailable", controlsOf("light.living_strip", "unavailable", strip) === null);
+
+  const call = (a: Record<string, unknown>, action: string, entity = "light.living_strip", state = "on") => controlCall(entity, state, a, action);
+  const red = call(strip, "color:0,100") as { domain: string; service: string; data: unknown; said: string };
+  check("a colour pressed is its hs_color, turning it on",
+    red.domain === "light" && red.service === "turn_on" && JSON.stringify(red.data) === '{"hs_color":[0,100]}' && red.said === "Colour 0°/100%" &&
+    JSON.stringify((call(strip, "color:360,0", "light.living_strip", "off") as { data: unknown }).data) === '{"hs_color":[0,0]}', red);
+  check("…refused out of range, not whole numbers, or for a light with no colours",
+    typeof call(strip, "color:361,50") === "string" && typeof call(strip, "color:20,101") === "string" && typeof call(strip, "color:-5,50") === "string" &&
+    typeof call(strip, "color:20.5,50") === "string" && typeof call(strip, "color:20") === "string" && typeof call(desk, "color:0,100", "light.study_desk") === "string");
+  const warm = call(desk, "kelvin:2700", "light.study_desk") as { data: unknown; said: string };
+  check("a white pressed is its color_temp_kelvin, within its range",
+    JSON.stringify(warm.data) === '{"color_temp_kelvin":2700}' && warm.said === "White 2700 K" && JSON.stringify((call(strip, "kelvin:6535") as { data: unknown }).data) === '{"color_temp_kelvin":6535}');
+  check("…refused outside it, or for a light with no whites",
+    typeof call(desk, "kelvin:2699", "light.study_desk") === "string" && typeof call(desk, "kelvin:6501", "light.study_desk") === "string" &&
+    typeof call(desk, "kelvin:3000.5", "light.study_desk") === "string" && typeof call({ supported_color_modes: ["hs"] }, "kelvin:3000") === "string");
+  check("…and a switch or an on/off light takes neither",
+    typeof controlCall("switch.bed_fan", "on", {}, "color:0,100") === "string" && typeof controlCall("light.porch", "on", { supported_color_modes: ["onoff"] }, "kelvin:3000") === "string");
+
+  const room: Record<string, { state: string; attributes: Record<string, unknown> }> = {
+    "light.bed_strip": { state: "on", attributes: { ...strip, friendly_name: "Bed strip" } },
+    "light.bed_ceiling": { state: "off", attributes: { supported_color_modes: ["onoff"], friendly_name: "Ceiling" } },
+    "switch.bed_lamp": { state: "on", attributes: { friendly_name: "Bedside lamp" } },
+    "light.bed_reading": { state: "on", attributes: { supported_color_modes: ["brightness"], brightness: 255, friendly_name: "Reading" } },
+  };
+  const calls: { svc: string; data: unknown }[] = [];
+  const { src } = sources({ read: async (_c, id) => room[id] ?? null, call: async (_c, d, sv, id, data) => void calls.push({ svc: `${d}.${sv} ${id}`, data }) });
+  const ref = "light.bed_strip,light.bed_ceiling,switch.bed_lamp,light.bed_reading";
+  const p: Panel = { ...panel, items: [{ kind: "home", ref, label: "Bedroom lights" }] };
+  const [view] = await viewPanels([p], src);
+  const members = view!.rows[0]!.more?.members ?? [];
+  check("in a room, only its colour light has colours, and only its dimmable ones a slider",
+    members.map((m) => `${m.label}:${m.more?.level ? "level" : ""}${m.more?.color ? "+color" : ""}`).join("|") === "Bed strip:level+color|Ceiling:|Bedside lamp:|Reading:level" &&
+    view!.rows[0]!.more?.color === undefined && view!.rows[0]!.more?.level === undefined, members.map((m) => m.more));
+  const blue = await actOn(p, ref, "color:220,100", src, signal, { member: "light.bed_strip" });
+  const white = await actOn(p, ref, "kelvin:3000", src, signal, { member: "light.bed_strip" });
+  check("one of them set to a colour and a white, that one alone",
+    blue.status === 200 && white.status === 200 && blue.text === "That: Colour 220°/100%." &&
+    calls.map((c) => `${c.svc} ${JSON.stringify(c.data)}`).join("|") === 'light.turn_on light.bed_strip {"hs_color":[220,100]}|light.turn_on light.bed_strip {"color_temp_kelvin":3000}', { blue, white, calls });
+  const lamp = await actOn(p, ref, "color:0,100", src, signal, { member: "switch.bed_lamp" });
+  const ceiling = await actOn(p, ref, "kelvin:3000", src, signal, { member: "light.bed_ceiling" });
+  check("…a switch or an on/off light among them is refused, nothing sent", lamp.status === 409 && ceiling.status === 409 && calls.length === 2, { lamp, ceiling });
+}
 {
   const spec = tileSpec({ read: null, buttons: [
     { label: "Volume", tool: { tool: "music_control", args: { action: "volume" } }, input: { kind: "slider", arg: "volume", min: 0, max: 100 } },

@@ -8,10 +8,11 @@ import type { PanelMore } from "../../shared/panels.ts";
  * the person must hold `home`, and what the house then does — a code it
  * wants, a mode it refuses — is Home Assistant's to decide.
  *
- * Actions carry their value: "mode:cool", "fan:high", "temp:24", "level:60".
- * A light's brightness, a fan's speed, a blind's position, a speaker's volume
- * and a number in the house open to a slider, from the range Home Assistant
- * gives each.
+ * Actions carry their value: "mode:cool", "fan:high", "temp:24", "level:60",
+ * "color:220,100", "kelvin:3000". A light's brightness, a fan's speed, a
+ * blind's position, a speaker's volume and a number in the house open to a
+ * slider, from the range Home Assistant gives each; a light with a colour or a
+ * white temperature to its colours and its warm-to-cool range too.
  */
 
 type Attrs = Record<string, unknown>;
@@ -157,13 +158,68 @@ function levelCall(entity: string, state: string, a: Attrs, value: string): Call
   }
 }
 
+/* ---------- a light's colour and white ------------------------------------------- */
+
+type Color = NonNullable<PanelMore["color"]>;
+
+/** Home Assistant's colour modes that take any colour; color_temp is a white's warmth alone. */
+const WHEEL = ["hs", "rgb", "rgbw", "rgbww", "xy"];
+
+/**
+ * A light's colour now and the whites it can be, from the colour modes Home
+ * Assistant says it supports; null for anything that is not a light, or a
+ * light with neither (only on and off, or only dimmed). An older Home
+ * Assistant gives its whites in mireds, the inverse of kelvin.
+ */
+function colorOf(entity: string, state: string, a: Attrs): Color | null {
+  if (!entity.startsWith("light.") || gone(state)) return null;
+  const modes = words(a.supported_color_modes);
+  const wheel = modes.some((m) => WHEEL.includes(m));
+  const white = modes.includes("color_temp");
+  if (!wheel && !white) return null;
+  const kelvin = (k: unknown, mireds: unknown, fallback: number) => Math.round(num(k) ?? (num(mireds) ? 1_000_000 / num(mireds)! : fallback));
+  const warm = kelvin(a.min_color_temp_kelvin, a.max_mireds, 2000);
+  const cool = kelvin(a.max_color_temp_kelvin, a.min_mireds, 6500);
+  const hs = Array.isArray(a.hs_color) ? a.hs_color : [];
+  return {
+    wheel,
+    hue: Math.round(num(hs[0]) ?? 0) % 360,
+    sat: Math.round(num(hs[1]) ?? 0),
+    white,
+    kelvin: Math.round(num(a.color_temp_kelvin) ?? (warm + cool) / 2),
+    warm,
+    cool,
+    on: state === "on",
+  };
+}
+
+/** A colour pressed, "220,100": whole numbers, hue 0–360 (360 is 0) and saturation 0–100, for a light that takes any colour. */
+function colorCall(entity: string, state: string, a: Attrs, value: string): Call | string {
+  if (!colorOf(entity, state, a)?.wheel) return "it cannot be set to a colour now";
+  const m = /^(\d{1,3}),(\d{1,3})$/.exec(value);
+  if (!m || Number(m[1]) > 360 || Number(m[2]) > 100) return `${value} is not a hue 0–360 and a saturation 0–100`;
+  const hue = Number(m[1]) % 360;
+  const sat = Number(m[2]);
+  return { domain: "light", service: "turn_on", data: { hs_color: [hue, sat] }, said: `Colour ${hue}°/${sat}%` };
+}
+
+/** A white pressed: whole kelvin, within the light's warm-to-cool range. */
+function kelvinCall(entity: string, state: string, a: Attrs, value: string): Call | string {
+  const c = colorOf(entity, state, a);
+  if (!c?.white) return "it cannot be set to a white now";
+  const k = Number(value);
+  if (!/^\d+$/.test(value) || k < c.warm || k > c.cool) return `${value} K is outside ${c.warm}–${c.cool} K`;
+  return { domain: "light", service: "turn_on", data: { color_temp_kelvin: k }, said: `White ${k} K` };
+}
+
 /* ---------- for lib/panel-view.ts ------------------------------------------------- */
 
 const LABEL: Record<string, string> = { on: "Turn on", off: "Turn off" };
 
 /**
  * An aircond's or an alarm's buttons and opened controls, or a slider for
- * what has a level (its buttons left to houseActions); null for anything else.
+ * what has a level and a light's colours (its buttons left to houseActions);
+ * null for anything else.
  */
 export function controlsOf(entity: string, state: string, a: Attrs): { actions?: { action: string; label: string }[]; more?: PanelMore } | null {
   const domain = entity.split(".")[0];
@@ -172,14 +228,17 @@ export function controlsOf(entity: string, state: string, a: Attrs): { actions?:
   }
   if (domain === "alarm_control_panel") return { actions: [], ...(gone(state) ? {} : { more: alarmMore(state, a) }) };
   const level = levelOf(entity, state, a);
-  return level ? { more: { level } } : null;
+  const color = colorOf(entity, state, a);
+  return level || color ? { more: { ...(level ? { level } : {}), ...(color ? { color } : {}) } } : null;
 }
 
-/** What a press on an aircond or an alarm sends, if its state offers it now (a string says why not); null for anything else. */
+/** What a press on an aircond, an alarm, a slider or a light's colour sends, if its state offers it now (a string says why not); null for anything else. */
 export function controlCall(entity: string, state: string, a: Attrs, action: string, code?: string): Call | string | null {
   const domain = entity.split(".")[0];
   if (domain === "climate") return climateCall(state, a, action);
   if (domain === "alarm_control_panel") return alarmCall(state, a, action, code);
   if (action.startsWith("level:")) return levelCall(entity, state, a, action.slice("level:".length));
+  if (action.startsWith("color:")) return colorCall(entity, state, a, action.slice("color:".length));
+  if (action.startsWith("kelvin:")) return kelvinCall(entity, state, a, action.slice("kelvin:".length));
   return null;
 }

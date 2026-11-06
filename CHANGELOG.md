@@ -19,6 +19,13 @@ of every release, and in the [README](README.md#updating).
 
 ### Added
 
+- **A light's colour on Home panels.** A colour light opens to colour
+  swatches and a warm-to-cool white slider beside its brightness, on its own
+  tile and as one of a room's lights; a light that only dims keeps its
+  slider alone, and switches and plain lights keep On and Off. For other
+  screens, `GET /api/hub/panels` gives such a light `more.color`, and
+  `POST /api/hub/panels/act` takes `color:<hue>,<sat>` and `kelvin:<k>`
+  (`docs/api.md`).
 - **Pages for screens without a browser.** `GET /api/page?id=&full=1` also
   returns the page's words as stored (`title`, `subtitle`, `sections` with
   heading, body and table), so a wall panel can draw a page Jarvis made itself

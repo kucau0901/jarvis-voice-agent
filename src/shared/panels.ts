@@ -70,6 +70,15 @@ export interface PanelMore {
   map?: { lat: number; lng: number };
   /** A slider: a light's brightness, a fan's speed, a blind's position, a speaker's volume, a number. Pressed as `level:<n>`. */
   level?: { name: string; value: number; min: number; max: number; step: number; unit: string };
+  /**
+   * A light's colour, only for one Home Assistant says has a colour (`wheel`:
+   * hs, rgb, rgbw, rgbww or xy) or a white temperature (`white`: color_temp);
+   * none for a switch or a light that is only on, off or dimmed. Hue 0–359 and
+   * saturation 0–100 are its hs_color (0 and 0 when it has none); `kelvin` its
+   * white now, or halfway from `warm` to `cool` when it has none. Pressed as
+   * `color:<hue>,<sat>` and `kelvin:<k>`.
+   */
+  color?: { wheel: boolean; hue: number; sat: number; white: boolean; kelvin: number; warm: number; cool: number; on: boolean };
 }
 
 export interface PanelView {
