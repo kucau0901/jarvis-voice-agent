@@ -3,10 +3,11 @@ import { button, el } from "./util";
 
 /**
  * What a tile on the Home tab shows when it is opened (src/app/ui/Home.ts):
- * a room's lights each with its own button, an aircond's temperature, modes
- * and fan, or an alarm's arming and disarming with its code. Every press goes
- * through `press`, which the server checks against the thing's state now
- * (src/worker/lib/panel-controls.ts), and whose answer shows in `said`.
+ * a room's lights each with its own button, a light's colours and whites, an
+ * aircond's temperature, modes and fan, or an alarm's arming and disarming
+ * with its code. Every press goes through `press`, which the server checks
+ * against the thing's state now (src/worker/lib/panel-controls.ts), and whose
+ * answer shows in `said`.
  * "Alert me" goes through `alert` instead: the server makes it a routine
  * (src/worker/lib/panel-alerts.ts), and what it said is `told` under it.
  */
@@ -65,6 +66,7 @@ export function moreBody(more: PanelMore, said: HTMLElement, press: Press, alert
   const body = el("div", "hbody");
   if (more.members) body.appendChild(members(more.members, press));
   if (more.level) body.appendChild(slider(more.level.name, more.level, (n, input) => void press(`level:${n}`, input, said)));
+  if (more.color) body.appendChild(colour(more.color, (action, b) => void press(action, b, said)));
   if (more.climate) body.appendChild(climate(more.climate, said, press));
   if (more.actions?.length) body.appendChild(alarm(more, said, press));
   if (more.alert) body.appendChild(alertMe(more.alert, alert, told));
@@ -134,9 +136,50 @@ function members(rows: PanelRow[], press: Press): HTMLElement {
     // A dimmable light in the room dims on its own, under its row.
     const level = m.more?.level;
     if (level) row.appendChild(slider(level.name, level, (n, input) => void press(`level:${n}`, input, said, { member: m.key })));
+    // …and a colour light takes its colours and whites there too; a switch or a plain light neither.
+    if (m.more?.color) row.appendChild(colour(m.more.color, (action, b) => void press(action, b, said, { member: m.key })));
     list.appendChild(row);
   }
   return list;
+}
+
+/** The same colours on every screen that draws a light's (the wall panel and the phone's too), as hue and saturation. */
+const SWATCHES: [name: string, hue: number, sat: number][] = [
+  ["Red", 0, 100], ["Orange", 30, 100], ["Yellow", 55, 100], ["Green", 120, 100], ["Cyan", 180, 100],
+  ["Blue", 220, 100], ["Purple", 275, 100], ["Pink", 320, 100], ["White", 0, 0],
+];
+
+/** A hue and saturation as a point on the colour wheel, white at its middle, to find the swatch nearest. */
+const onWheel = (hue: number, sat: number): [number, number] => [sat * Math.cos((hue * Math.PI) / 180), sat * Math.sin((hue * Math.PI) / 180)];
+
+/**
+ * A light's colours as swatches, the one nearest its colour marked while it
+ * is on; and its whites from warm to cool, sent once the slider is let go.
+ */
+function colour(c: NonNullable<PanelMore["color"]>, send: (action: string, b: HTMLButtonElement | HTMLInputElement) => void): HTMLElement {
+  const box = el("div", "hcolour");
+  if (c.wheel) {
+    const row = el("div", "hswatches");
+    const [x, y] = onWheel(c.hue, c.sat);
+    const far = SWATCHES.map(([, hue, sat]) => Math.hypot(onWheel(hue, sat)[0] - x, onWheel(hue, sat)[1] - y));
+    const near = c.on ? far.indexOf(Math.min(...far)) : -1;
+    SWATCHES.forEach(([name, hue, sat], i) => {
+      const b = button("", () => send(`color:${hue},${sat}`, b));
+      b.style.background = sat ? `hsl(${hue} 100% 50%)` : "#fff";
+      b.title = name;
+      b.setAttribute("aria-label", name);
+      b.setAttribute("aria-pressed", String(i === near));
+      row.appendChild(b);
+    });
+    box.appendChild(row);
+  }
+  if (c.white) {
+    const row = slider("Warm", { value: c.kelvin, min: c.warm, max: c.cool, step: 1, unit: " K" }, (k, input) => send(`kelvin:${k}`, input));
+    row.classList.add("hwhite");
+    row.insertBefore(el("small", "", "Cool"), row.lastChild);
+    box.appendChild(row);
+  }
+  return box;
 }
 
 /** An aircond: its temperature up and down, its modes and its fan, as chips. */

@@ -1234,6 +1234,13 @@
   #home .hlevel input { width: 100%; height: 44px; margin: 0; accent-color: var(--accent); cursor: pointer; }
   #home .hacts :is(.hlevel, .htyped), #home .hmember .hlevel { flex: 1 0 100%; }
   #home .hmember { flex-wrap: wrap; }
+  /* A light's colours (ui/HomeMore.ts): swatches, the nearest ringed while it is on, and its whites from warm to cool. */
+  #home .hcolour { display: grid; gap: 8px; }
+  #home .hmember .hcolour { flex: 1 0 100%; }
+  #home .hswatches { display: flex; flex-wrap: wrap; gap: 8px; }
+  #home .hcolour .hswatches button { width: 44px; min-height: 44px; padding: 0; border: 1px solid var(--hair); border-radius: 50%; color: #000; cursor: pointer; }
+  #home .hcolour .hswatches button[aria-pressed=true] { outline: 2px solid var(--accent); outline-offset: 2px; }
+  #home .hlevel.hwhite { grid-template-columns: auto minmax(0, 1fr) auto 7ch; }
   #home .htyped { display: flex; gap: 8px; min-width: 0; }
   /* width 0: an input's own width (about twenty characters) would otherwise hold the row wider than its tile. */
   #home .htyped input { flex: 1; width: 0; min-width: 0; min-height: 44px; padding: 0 14px; border: 1px solid var(--hair); border-radius: 12px;
