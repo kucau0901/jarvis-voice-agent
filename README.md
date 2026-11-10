@@ -208,6 +208,23 @@ Or put Cloudflare Tunnel or Tailscale in front instead. Behind any proxy, set
 `PUBLIC_URL` (in `.env` or the settings panel) so Google and Spotify sign-in
 return to the right address.
 
+**A browser Jarvis can drive** (optional): a full Chrome beside Jarvis, for
+websites that have to be worked like a person does: signed-in pages, forms,
+portals.
+
+```bash
+echo "BROWSER_URL=http://127.0.0.1:9222" >> .env
+docker compose --profile browser up -d
+```
+
+It needs about 500 MB of memory idle and is given up to 2 GB. Nobody can use it
+until an admin gives them the **browser** reach (Family, or a device's scopes):
+it is signed in wherever you signed it in. Jarvis reads pages as text, presses
+and fills by number, never types a password and never answers an "are you
+human" check; it tells you, and you do that part yourself. None of the
+browser's ports is published: only Jarvis reaches it. Why it is built this
+way: [DESIGN.md](docs/DESIGN.md#the-browser).
+
 **Backups:** everything is in the `jarvis-data` volume.
 
 ```bash

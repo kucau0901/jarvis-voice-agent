@@ -1755,6 +1755,44 @@ address takes a message of the bot's own (its
 routines' news), to whoever made it and nobody else, under its name, as an
 answer is.
 
+## The browser
+
+Some things are only on a website, behind a sign-in, with no API: a school
+portal, a utility's bills, a shop's order page. For those Jarvis drives a full
+Chrome (`lib/browser.ts`, `tools/browser.ts`), run beside it
+(`docker-compose.yml`, the `browser` profile).
+
+- **Text, not pictures.** Jarvis asks the page for its words and a numbered
+  list of what can be pressed or filled, and presses or fills by number. No
+  screenshot goes to a model, so there is no second, dearer model and it
+  works on a ChatGPT plan alone. What it cannot do this way (a canvas, a
+  drag) it says it cannot.
+- **Chrome's own debugging port, nothing in between.** The Worker speaks to
+  it directly over a WebSocket: no driver library, no helper service. Each
+  call connects, does one thing and hangs up; the browser itself remembers
+  its tab and the numbers left on the page (`data-jarvis`).
+- **Real input.** A press is a mouse press at the element's place and typing
+  is the browser's own text input, not a script calling `click()`, so pages
+  see what they would from a person.
+- **A page is a stranger.** Its words, its title, its address and the names
+  of its buttons come back inside `asQuotedData()`. Only `http` and `https`
+  are opened, never `file:` or `chrome:`, which are the browser's own
+  machine.
+- **Its own scope, never by default.** The browser is signed in wherever the
+  family signed it in, so whoever may use it may act as them there. Like
+  Hermes, `browser` is in no role but an admin's, no device preset and no
+  pass, and is taken out of whatever runs with nobody there: a routine, an
+  approved step of a job, a habit, and Telegram.
+- **Two things it never does.** It types no password: a password box is
+  refused in code, whatever the model was asked, and the person signs in
+  themselves, once, in the browser. And it answers no "are you human" check:
+  the reading says the page has one and tells the model to stop and hand
+  over. Passing one for the person is exactly what the check exists to stop.
+- **Nothing published.** In Docker the browser lives inside Jarvis's own
+  network (`network_mode: service:jarvis`), so Jarvis reaches its debugging
+  port and its screen on 127.0.0.1 and nothing else can. That port is the
+  whole browser: it must never be on a network.
+
 ## Architecture
 
 One Cloudflare Worker serves both the app and `/api/*`, so the app needs no CORS

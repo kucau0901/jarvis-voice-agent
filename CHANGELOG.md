@@ -19,6 +19,16 @@ of every release, and in the [README](README.md#updating).
 
 ### Added
 
+- **A browser Jarvis can drive.** With a full Chrome running beside it
+  (`docker compose --profile browser up -d`, and `BROWSER_URL` in Settings →
+  Browser), Jarvis opens a website, reads it, and presses and fills what is on
+  it: "open the school portal and tell me what homework is due". It reads
+  pages as text, so it costs what any other answer does and needs no extra
+  model. It never types a password and never answers an "are you human"
+  check: it says the page wants one, and you do that part yourself in the
+  browser, which stays signed in. A new scope, `browser`, decides who may use
+  it: no role has it but an admin's, and no device unless ticked; routines,
+  jobs and Telegram never do. See the README, "Run with Docker".
 - **Moving a whole Jarvis to another place**, from Cloudflare to Docker or one
   server to the next: **Settings → Move another Jarvis here** on the new one
   brings over everything the old one keeps: the family and how they sign in,

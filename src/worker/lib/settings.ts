@@ -29,6 +29,7 @@ export type Group =
   | "car"
   | "home"
   | "hermes"
+  | "browser"
   | "google"
   | "spotify"
   | "maps"
@@ -156,6 +157,14 @@ export const GROUPS: readonly GroupDef[] = [
     intro: "Optional: a Hermes agent reachable over HTTPS, and the Cloudflare Access service token in front of it if there is one.",
     needs: ["HERMES_BASE_URL", "HERMES_API_KEY"],
     testable: true,
+  },
+  {
+    id: "browser",
+    title: "Browser",
+    intro:
+      "Optional: a full Chrome that Jarvis opens pages in, reads, presses and fills for whoever an admin gives the browser reach to (Family, or a device's scopes). Nobody has it until then. Jarvis never types a password and never answers an \"are you human\" check: sign in yourself in that browser once, and it stays signed in. With Docker, `docker compose --profile browser up -d` runs one beside Jarvis.",
+    needs: ["BROWSER_URL"],
+    testable: false,
   },
   {
     id: "google",
@@ -336,6 +345,21 @@ export const SETTINGS: readonly SettingDef[] = [
     name: "CF_ACCESS_CLIENT_SECRET", group: "hermes", kind: "secret",
     label: "Access client secret", help: "The other half of the service token.",
     validate: (v) => (v.endsWith(".access") ? "ends in .access, so it is the ID, not the secret" : noSpaces(v)),
+  },
+
+  // --- Browser
+  {
+    name: "BROWSER_URL", group: "browser", kind: "url",
+    label: "Debugging address", help: "Where that Chrome's remote debugging port answers, by IP address or localhost: Chrome refuses a name. With the Docker profile: http://127.0.0.1:9222. Anyone who can reach this address controls the browser, so keep it off the network.",
+    validate: (v) => {
+      try {
+        const u = new URL(v);
+        if (u.protocol !== "http:" && u.protocol !== "https:") return "must start with http:// or https://";
+        return /^(localhost|\[[0-9a-f:]+\]|\d{1,3}(\.\d{1,3}){3})$/i.test(u.hostname) ? null : "must be an IP address or localhost: Chrome's debugging port refuses a name";
+      } catch {
+        return "is not a URL";
+      }
+    },
   },
 
   // --- Google

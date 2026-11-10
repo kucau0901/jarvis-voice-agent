@@ -84,6 +84,7 @@ const SCOPE_WORDS: Record<string, string> = {
   "car.control": "operate the car",
   home: "the house and cameras",
   hermes: "Hermes (runs commands)",
+  browser: "the browser (signed in as you left it)",
   media: "Spotify",
   mail: "mail",
   calendar: "calendar",

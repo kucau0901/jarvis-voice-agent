@@ -71,6 +71,9 @@ export interface Env {
   /** Model name the Hermes api_server expects; defaults to "hermes". */
   HERMES_MODEL?: string;
 
+  /** Where a browser Jarvis may drive answers: Chrome's debugging address, by IP address or localhost (lib/browser.ts). */
+  BROWSER_URL?: string;
+
   /**
    * Backend model that routes delegations. The settings panel overrides this,
    * and it overrides the default in lib/router-model.ts. Kept as the way to set

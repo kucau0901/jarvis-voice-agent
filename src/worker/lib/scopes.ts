@@ -24,6 +24,12 @@ export const SCOPES = [
    * before it existed, with `home`, keep it (lib/devices.ts).
    */
   "hermes",
+  /**
+   * A browser Jarvis drives (lib/browser.ts): it is signed in wherever the
+   * family signed it in, so, like Hermes, it is its own scope and never part
+   * of a role, a device preset or a pass. Only who an admin gives it has it.
+   */
+  "browser",
   "media",
   "mail",
   "calendar",

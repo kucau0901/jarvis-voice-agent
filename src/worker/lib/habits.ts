@@ -58,8 +58,8 @@ export interface Habit {
 export const houseOnly = (r: { by: string; tools: readonly string[] }): boolean =>
   r.by === "home-assistant" || (r.tools.length > 0 && r.tools.every((t) => t.includes("__ha_")));
 
-/** What a routine's question runs without (routes/routines.ts askForRoutine): nothing to draw on, and never Hermes. */
-const UNATTENDED: readonly Scope[] = ["screen", "hermes"];
+/** What a routine's question runs without (routes/routines.ts askForRoutine): nothing to draw on, and never Hermes or the browser. */
+const UNATTENDED: readonly Scope[] = ["screen", "hermes", "browser"];
 
 /**
  * Whether a finished turn may be noted (lib/router.ts record): answered, for someone who may have routines, with only

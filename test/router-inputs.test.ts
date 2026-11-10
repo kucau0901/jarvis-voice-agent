@@ -13,7 +13,7 @@ const CONFIG = { get: async (k: string) => kv.get(k) ?? null, put: async (k: str
 const people = [{ person: "owner", name: "Adam", role: "admin", chat: true }, { person: "u_sara", name: "Sara", role: "adult", chat: true }, { person: "u_siti", name: "Siti", role: "guest", chat: false }];
 const stub = new Proxy({}, { get: (_t, m) => (m === "then" ? undefined : async () => (m === "familyPeople" ? people : m === "relaysAwaiting" ? [{ id: "r_1", kind: "ask", fromName: "Adam", text: "Coming for dinner?" }] : undefined)) });
 const base = { CONFIG, OPENAI_API_KEY: "sk-test", TIMEZONE: "Asia/Kuala_Lumpur", STATE: { idFromName: () => "j", get: () => stub } };
-const rich = { ...base, TESSIE_TOKEN: "t", TESSIE_VIN: "5YJTEST0000000001", HA_BASE_URL: "https://ha.example", HA_TOKEN: "h", GOOGLE_CLIENT_ID: "g", GOOGLE_CLIENT_SECRET: "s", SPOTIFY_CLIENT_ID: "a", SPOTIFY_CLIENT_SECRET: "b", GOOGLE_MAPS_API_KEY: "m", HERMES_BASE_URL: "https://hermes.example", HERMES_API_KEY: "k", JARVIS_FAMILY: "fam:s1", JARVIS_AGENT_NAME: "Friday" };
+const rich = { ...base, TESSIE_TOKEN: "t", TESSIE_VIN: "5YJTEST0000000001", HA_BASE_URL: "https://ha.example", HA_TOKEN: "h", GOOGLE_CLIENT_ID: "g", GOOGLE_CLIENT_SECRET: "s", SPOTIFY_CLIENT_ID: "a", SPOTIFY_CLIENT_SECRET: "b", GOOGLE_MAPS_API_KEY: "m", HERMES_BASE_URL: "https://hermes.example", HERMES_API_KEY: "k", BROWSER_URL: "http://127.0.0.1:9222", JARVIS_FAMILY: "fam:s1", JARVIS_AGENT_NAME: "Friday" };
 const cars = JSON.stringify([{ id: "family", name: "Adam's Model Y", level: "see", mine: false, vin: "5YJTEST0000000001", token: "t" }]);
 const cases: [string, Record<string, unknown>, string[]][] = [
   ["owner key, nothing set up", base, ["*"]],
@@ -60,6 +60,7 @@ const PROMPT_SHA256 = "ca9ae682da7e82a9d110cc7936180ac53ec84c1bcaafd152ffeb1fa8d
 // skill_add and skill_remove (tools/skills.ts, scope skills): the owner key and admins only (30 Oct 2026).
 // skill_address (tools/skills.ts, scope skills, a screen in front): the owner key and admins only (31 Oct 2026).
 // house_watch (tools/house.ts, scope home, with Home Assistant): admin and adult (2 Nov 2026).
+// browser_open, browser_read, browser_press and browser_fill (tools/browser.ts, scope browser, with a browser set up): admins only (10 Nov 2026).
 const EXPECTED: Record<string, { model: string; tools: string[]; input: string }> = {
  "owner key, nothing set up": {
   "model": "gpt-6-luna",
@@ -97,6 +98,10 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
    "alert_talk",
    "answer_message",
    "ask_hermes",
+   "browser_fill",
+   "browser_open",
+   "browser_press",
+   "browser_read",
    "calendar_add",
    "calendar_change",
    "calendar_check",

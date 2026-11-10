@@ -37,6 +37,7 @@ const MEANING: Record<string, string> = {
   "car.control": "operate the car, including unlock",
   home: "the house and cameras",
   hermes: "Hermes, your own agent: it can run commands on its machine",
+  browser: "a browser Jarvis drives, signed in wherever you signed it in",
   media: "Spotify",
   screen: "maps on the screen, and its owner's Home panels",
   voice: "live voice sessions",

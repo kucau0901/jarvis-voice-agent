@@ -29,6 +29,7 @@ import { familyTools } from "./family.ts";
 import { passTool } from "./pass.ts";
 import { panelTools } from "./panels.ts";
 import { skillTools } from "./skills.ts";
+import { browserTools } from "./browser.ts";
 import { stateStub } from "../lib/state-client.ts";
 import { voiceWho } from "../lib/context.ts";
 import { researchFor, type Job } from "../lib/jobs.ts";
@@ -281,6 +282,7 @@ const ALL: Tool[] = [
   ...panelTools,
   houseWatch,
   ...skillTools,
+  ...browserTools,
   askHermes,
   controlHome,
 ];

@@ -16,12 +16,39 @@ services:
       # public address, not the proxy's plain http hop.
       PUBLIC_URL: ${PUBLIC_URL:-}
       # Only while moving this Jarvis elsewhere (README: Moving Jarvis).
+      # With the browser profile below: http://127.0.0.1:9222 (or set it in the settings panel).
+      BROWSER_URL: ${BROWSER_URL:-}
       MOVE_KEY: ${MOVE_KEY:-}
       JARVIS_STANDBY: ${JARVIS_STANDBY:-}
     ports:
       - "${JARVIS_PORT:-8787}:8787"
     volumes:
       - jarvis-data:/data
+
+  # A full browser for Jarvis to drive, and for a person to take over when a
+  # page asks for one: `--profile browser`. It lives inside Jarvis's own network
+  # (network_mode), so Jarvis reaches it on 127.0.0.1 (the browser's debugging
+  # port 9222, its screen on 3000) and nothing else can: none of its ports is
+  # published. Anyone who reached that screen would be signed in as the family.
+  browser:
+    image: lscr.io/linuxserver/chromium:latest
+    profiles: ["browser"]
+    restart: unless-stopped
+    depends_on: [jarvis]
+    network_mode: "service:jarvis"
+    environment:
+      TZ: ${TIMEZONE:-Etc/UTC}
+      # Chrome only opens the debugging port for a profile that is not its default one.
+      CHROME_CLI: --remote-debugging-port=9222 --user-data-dir=/config/profile
+      # No terminal, no sudo, no closing the browser from its screen.
+      HARDEN_DESKTOP: "true"
+      HARDEN_OPENBOX: "true"
+      TITLE: Jarvis browser
+    volumes:
+      - browser-data:/config
+    # Chrome keeps page memory in /dev/shm; the default 64 MB crashes modern sites.
+    shm_size: "1gb"
+    mem_limit: 2g
 
   caddy:
     image: caddy:2
@@ -39,4 +66,5 @@ services:
 
 volumes:
   jarvis-data:
+  browser-data:
   caddy-data:
