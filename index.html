@@ -1060,6 +1060,22 @@
   .bcard { width: min(100%, 720px); }
   .bcard .bscreen { margin: 0; }
   #browser .bwhere { margin: 8px 0 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  /* The screen and its controls. As written the controls come first, in one element, so that full screen can stand
+     them beside the picture; in the panel they sit round it: address, picture, typing. */
+  .bstage { display: flex; flex-direction: column; }
+  .bside { display: contents; }
+  .bstage .bscreen { order: 1; }
+  .bstage .bkeys, .bstage .msg { order: 2; }
+  .bstage.full { position: fixed; inset: 0; z-index: 5; overflow-y: auto; background: var(--bg);
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+  .bstage.full .bscreen { order: -1; flex: none; width: auto; height: auto; max-width: 100%; max-height: 60dvh; margin: 0 auto; border-radius: 0; }
+  .bstage.full .bwhere { display: none; }
+  .bstage.full .rform { margin: 8px 8px 0; }
+  @media (orientation: landscape) {
+    .bstage.full { flex-direction: row; overflow: hidden; }
+    .bstage.full .bside { order: 2; display: flex; flex-direction: column; flex: none; width: 200px; overflow-y: auto; padding-bottom: 8px; }
+    .bstage.full .bscreen { max-width: calc(100% - 200px); max-height: 100%; margin: auto; }
+  }
   .panel .rform input:not([type=checkbox]), .panel .rform textarea {
     background: var(--field); color: var(--fg); border: 1px solid transparent; border-radius: 14px;
     padding: 11px 14px; font: inherit; font-size: 16px; width: 100%; }

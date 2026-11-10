@@ -34,7 +34,8 @@ of every release, and in the [README](README.md#updating).
   person who saved it, and never shown to the model. An "are you human"
   check is always yours to do: when a page needs you, or Jarvis is stuck on
   it, the browser's live screen is put in the conversation to press and type
-  on, with Enlarge for the whole panel. A new scope, `browser`, decides who may use
+  on, with Enlarge for the whole panel, and Full screen there, which turns a
+  phone on its side where the phone allows it. A new scope, `browser`, decides who may use
   it: no role has it but an admin's, and no device unless ticked; routines,
   jobs and Telegram never do. See the README, "Run with Docker".
 - **Moving a whole Jarvis to another place**, from Cloudflare to Docker or one
