@@ -14,7 +14,7 @@ fi
 # environment: PATH, HOSTNAME and the like are not the Worker's business.
 envfile="$(mktemp)"
 chmod 600 "$envfile"
-env | grep -E '^(JARVIS_SHARED_SECRET|JARVIS_ALLOWED_ORIGINS|OPENAI_API_KEY|ROUTER_MODEL|DISABLE_WEB_SEARCH|PUBLIC_URL|TIMEZONE|COUNTRY|LOCALE|UNITS|DEVICE_DAILY_LIMIT|HA_[A-Z_]+|TESSIE_[A-Z_]+|HERMES_[A-Z_]+|CF_ACCESS_[A-Z_]+|GOOGLE_[A-Z_]+|SPOTIFY_[A-Z_]+|G2_[A-Z_]+)=' > "$envfile" || true
+env | grep -E '^(JARVIS_SHARED_SECRET|MOVE_KEY|JARVIS_ALLOWED_ORIGINS|OPENAI_API_KEY|ROUTER_MODEL|DISABLE_WEB_SEARCH|PUBLIC_URL|TIMEZONE|COUNTRY|LOCALE|UNITS|DEVICE_DAILY_LIMIT|HA_[A-Z_]+|TESSIE_[A-Z_]+|HERMES_[A-Z_]+|CF_ACCESS_[A-Z_]+|GOOGLE_[A-Z_]+|SPOTIFY_[A-Z_]+|G2_[A-Z_]+)=' > "$envfile" || true
 
 config="$(ls dist/*/wrangler.json | head -n 1)"
 echo "jarvis: starting on port ${PORT:-8787}, data in ${DATA_DIR:-/data}"

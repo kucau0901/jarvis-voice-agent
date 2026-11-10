@@ -56,6 +56,8 @@ export interface Env {
   CHATGPT_FALLBACK?: string;
   /** Shared secret gating every /api/* route. */
   JARVIS_SHARED_SECRET: string;
+  /** Set only while moving this Jarvis elsewhere: what the new one presents to be given everything (lib/move.ts). */
+  MOVE_KEY?: string;
 
   /** Hermes agent (Nous Research hermes-agent api_server). */
   HERMES_BASE_URL?: string;

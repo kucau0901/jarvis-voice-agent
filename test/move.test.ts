@@ -1,0 +1,217 @@
+// Moving a whole Jarvis to another place (lib/move.ts): what the old one gives
+// out and to whom, and how the new one takes it in.
+import { asMovePage, Move, MOVE_KEY_MIN, moveKeyOk, movePage, moveStep, type KvEntry, type MoveInDeps, type MoveKv, type MovePage } from "../src/worker/lib/move.ts";
+import { requiredScope } from "../src/worker/lib/scopes.ts";
+
+let pass = 0;
+let fail = 0;
+function check(name: string, cond: boolean, got?: unknown) {
+  if (cond) {
+    pass++;
+    console.log(`  ok   ${name}`);
+  } else {
+    fail++;
+    console.log(`  FAIL ${name}`, got !== undefined ? JSON.stringify(got).slice(0, 300) : "");
+  }
+}
+
+/** The state object's storage: ordered by key, as the real one lists. */
+function fakeStorage(seed: Record<string, unknown> = {}) {
+  const m = new Map<string, unknown>(Object.entries(seed));
+  return {
+    list: async ({ startAfter, limit }: { startAfter?: string; limit?: number }) =>
+      new Map([...m].sort(([a], [b]) => (a < b ? -1 : 1)).filter(([k]) => startAfter === undefined || k > startAfter).slice(0, limit ?? Infinity)),
+    put: async (entries: Record<string, unknown>) => void Object.entries(entries).forEach(([k, v]) => m.set(k, structuredClone(v))),
+    deleteAll: async () => m.clear(),
+    _m: m,
+  };
+}
+
+/** KV, listing `per` keys at a time. */
+function fakeKv(seed: KvEntry[] = [], per = 1000): MoveKv & { _m: Map<string, KvEntry>; gone: Set<string> } {
+  const m = new Map(seed.map((e) => [e.key, e]));
+  const gone = new Set<string>();
+  return {
+    list: async ({ cursor, limit }) => {
+      const names = [...m.keys()].sort();
+      const from = cursor ? Number(cursor) : 0;
+      const to = from + Math.min(limit ?? per, per);
+      return {
+        keys: names.slice(from, to).map((name) => ({ name, ...(m.get(name)!.expiration ? { expiration: m.get(name)!.expiration } : {}), ...(m.get(name)!.metadata !== undefined ? { metadata: m.get(name)!.metadata } : {}) })),
+        list_complete: to >= names.length,
+        ...(to < names.length ? { cursor: String(to) } : {}),
+      };
+    },
+    get: async (key) => (gone.has(key) ? null : (m.get(key)?.value ?? null)),
+    put: async (key, value, options) => void m.set(key, { key, value, ...options }),
+    delete: async (key) => void m.delete(key),
+    _m: m,
+    gone,
+  };
+}
+
+const KEY = "MOVEKEY-0123456789-ABCDEFGH";
+const NOW = 1_790_000_000_000;
+
+console.log("who is given a page");
+{
+  check("the move key", await moveKeyOk({ MOVE_KEY: KEY }, KEY));
+  check("not another", !(await moveKeyOk({ MOVE_KEY: KEY }, KEY + "x")));
+  check("not nothing", !(await moveKeyOk({ MOVE_KEY: KEY }, null)) && !(await moveKeyOk({ MOVE_KEY: KEY }, "")));
+  check("nobody, where no move key is set", !(await moveKeyOk({}, "")) && !(await moveKeyOk({}, "anything")));
+  const short = "x".repeat(MOVE_KEY_MIN - 1);
+  check("nor under a key too short to guard every secret", !(await moveKeyOk({ MOVE_KEY: short }, short)));
+  check("taking a move in is the owner's alone", requiredScope("/api/move/import", "POST") === "owner");
+}
+
+console.log("the state object's entries, a page at a time");
+{
+  const seed: Record<string, unknown> = {};
+  for (let i = 0; i < 150; i++) seed[`k${String(i).padStart(3, "0")}`] = { n: i, tags: ["a", null], nested: { ok: true } };
+  const move = new Move(fakeStorage(seed));
+  const seen: [string, unknown][] = [];
+  let pages = 0;
+  for (let after: string | undefined; ; ) {
+    const p = await move.page(after);
+    seen.push(...p.entries);
+    pages++;
+    if (p.next === null) break;
+    after = p.next;
+  }
+  check("every entry once, in order", seen.length === 150 && seen.every(([k], i) => k === `k${String(i).padStart(3, "0")}`), seen.length);
+  check("over more than one page", pages === 3, pages);
+  check("as they were", JSON.stringify(seen[7]![1]) === JSON.stringify(seed.k007));
+
+  const big = new Move(fakeStorage({ a: "x".repeat(600_000), b: "y".repeat(600_000), c: "z" }));
+  const first = await big.page();
+  check("a page stops once it is large", first.entries.length === 2 && first.next === "b", first.entries.length);
+  const rest = await big.page(first.next!);
+  check("and the next goes on from there", rest.entries.length === 1 && rest.entries[0]![0] === "c" && rest.next === null);
+
+  check("nothing kept: one empty page", JSON.stringify(await new Move(fakeStorage()).page()) === JSON.stringify({ entries: [], next: null }));
+  check("which holds nothing", !(await new Move(fakeStorage()).holdsAnything()) && (await move.holdsAnything()));
+
+  for (const [name, bad] of [["a date", new Date(NOW)], ["a map", new Map([["a", 1]])], ["bytes", new Uint8Array(3)], ["not a number", { n: NaN }]] as const) {
+    let said = "";
+    try {
+      await new Move(fakeStorage({ fine: 1, odd: bad })).page();
+    } catch (e) {
+      said = e instanceof Error ? e.message : String(e);
+    }
+    check(`${name} stops the move, named, where JSON would have changed it`, /"odd"/.test(said), said);
+  }
+  check("an undefined property is what JSON leaves out anyway", (await new Move(fakeStorage({ a: { x: undefined, y: 1 } })).page()).entries.length === 1);
+}
+
+console.log("a page out: the state first, then the settings store");
+{
+  const storage = fakeStorage({ mem: { facts: ["likes tea"] }, "settings:v1": { HA_TOKEN: { v: "secret-token" } } });
+  const kv = fakeKv(
+    [
+      { key: "dev:tok:abc", value: '{"id":"d1"}' },
+      { key: "google:refresh:ann", value: "refresh-token" },
+      { key: "mcp:catalog:x", value: "[]", expiration: NOW / 1000 + 3600, metadata: { at: 5 } },
+      { key: "oauth:state:y", value: "s" },
+    ],
+    3,
+  );
+  const deps = { version: "9.9.9", statePage: (after?: string) => new Move(storage).page(after), kv };
+  const one = await movePage(deps, null);
+  check("the state's entries, secrets among them", one.state.length === 2 && one.kv.length === 0 && JSON.stringify(one.state).includes("secret-token"), one);
+  check("then on to the store", one.next === "k:" && one.version === "9.9.9", one.next);
+  kv.gone.add("oauth:state:y");
+  const two = await movePage(deps, one.next);
+  check("its first keys, with when they run out and what is noted on them", two.kv.length === 3 && two.kv[2]!.expiration === NOW / 1000 + 3600 && JSON.stringify(two.kv[2]!.metadata) === '{"at":5}', two.kv);
+  check("and a place to go on from", two.next === "k:3", two.next);
+  const three = await movePage(deps, two.next);
+  check("one that ran out since it was listed is left behind, and that is the end", three.kv.length === 0 && three.next === null, three);
+  let said = "";
+  try {
+    await movePage(deps, "elsewhere");
+  } catch (e) {
+    said = e instanceof Error ? e.message : String(e);
+  }
+  check("a place that is no place in a move is refused", /not a place/.test(said), said);
+}
+
+console.log("a move in, a step at a time");
+{
+  // The old Jarvis, behind its export.
+  const oldSeed: Record<string, unknown> = {};
+  for (let i = 0; i < 70; i++) oldSeed[`e${String(i).padStart(2, "0")}`] = { i };
+  const oldStorage = fakeStorage(oldSeed);
+  const oldKv = fakeKv([
+    { key: "dev:tok:abc", value: "device" },
+    { key: "soon", value: "nearly gone", expiration: NOW / 1000 + 30 },
+    { key: "later", value: "kept a while", expiration: NOW / 1000 + 3600, metadata: { at: 1 } },
+  ]);
+  const asked: (string | null)[] = [];
+  const page = async (after: string | null): Promise<MovePage> => {
+    asked.push(after);
+    return movePage({ version: "2.9.0", statePage: (a) => new Move(oldStorage).page(a), kv: oldKv }, after);
+  };
+  const run = async (deps: MoveInDeps, replace: boolean) => {
+    const steps = [];
+    for (let after: string | null = null; ; ) {
+      const s = await moveStep(deps, after, replace);
+      steps.push(s);
+      if (typeof s === "string" || s.next === null) return steps;
+      after = s.next;
+    }
+  };
+  const fresh = (storage = fakeStorage(), kv = fakeKv()) => {
+    const move = new Move(storage);
+    const settled: number[] = [];
+    const deps: MoveInDeps = { page, holdsAnything: () => move.holdsAnything(), clear: () => move.clear(), put: (e) => move.put(e), settle: async () => void settled.push(storage._m.size), kv, now: NOW };
+    return { storage, kv, deps, settled };
+  };
+
+  const a = fresh();
+  const steps = await run(a.deps, false);
+  check("into an empty Jarvis: every step a page", steps.every((s) => typeof s !== "string") && steps.length === 3, steps);
+  check("everything the old one kept is here", a.storage._m.size === 70 && JSON.stringify(a.storage._m.get("e42")) === '{"i":42}', a.storage._m.size);
+  check("and its store, but for what was about to run out", a.kv._m.size === 2 && !a.kv._m.has("soon") && a.kv._m.get("dev:tok:abc")!.value === "device", [...a.kv._m.keys()]);
+  check("expiry and what was noted come too", a.kv._m.get("later")!.expiration === NOW / 1000 + 3600 && JSON.stringify(a.kv._m.get("later")!.metadata) === '{"at":1}', a.kv._m.get("later"));
+  check("settled once, at the end, with everything in", a.settled.length === 1 && a.settled[0] === 70, a.settled);
+  const last = steps[steps.length - 1];
+  check("each step says what it took and from which version", typeof last !== "string" && last!.kv === 2 && last!.version === "2.9.0" && last!.next === null, last);
+
+  const b = fresh(fakeStorage({ mine: "kept" }), fakeKv([{ key: "mine", value: "kept" }]));
+  const refused = await moveStep(b.deps, null, false);
+  check("a Jarvis that holds something refuses", typeof refused === "string" && /already holds data/.test(refused), refused);
+  check("and keeps it", b.storage._m.get("mine") === "kept" && b.kv._m.has("mine") && b.settled.length === 0);
+  await run(b.deps, true);
+  check("told to replace, it is emptied first: nothing of before is left", !b.storage._m.has("mine") && !b.kv._m.has("mine") && b.storage._m.size === 70 && b.kv._m.size === 2, [...b.kv._m.keys()]);
+
+  const c = fresh(fakeStorage({ mine: "kept" }));
+  c.deps.page = async () => {
+    throw new Error("the other Jarvis has no move open under that key");
+  };
+  let said = "";
+  try {
+    await moveStep(c.deps, null, true);
+  } catch (e) {
+    said = e instanceof Error ? e.message : String(e);
+  }
+  check("a wrong key or address fails before anything here is erased", /no move open/.test(said) && c.storage._m.get("mine") === "kept", said);
+}
+
+console.log("what counts as a page");
+{
+  const ok = { version: "2.9.0", state: [["a", 1]], kv: [{ key: "k", value: "v" }], next: null };
+  check("a page", asMovePage(ok) !== null);
+  check("with more to come", asMovePage({ ...ok, next: "s:a" })?.next === "s:a");
+  for (const [name, bad] of [
+    ["nothing", null],
+    ["an error", { error: "not found" }],
+    ["entries that are not pairs", { ...ok, state: [["a"]] }],
+    ["a key that is not text", { ...ok, state: [[1, 2]] }],
+    ["a stored value that is not text", { ...ok, kv: [{ key: "k", value: 1 }] }],
+    ["no place to go on from", { ...ok, next: 3 }],
+  ] as const) {
+    check(`not ${name}`, asMovePage(bad) === null);
+  }
+}
+
+console.log(`\n${pass} passed, ${fail} failed`);
+if (fail) process.exit(1);

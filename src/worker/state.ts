@@ -49,6 +49,7 @@ import { DEFAULT_ROUTER_MODEL } from "./lib/router-model.ts";
 import { budgetOf, budgetSays, costOf, dayOf } from "./lib/usage.ts";
 import { nextAllowed } from "./lib/access.ts";
 import { ChatGptPlan, type PlanFailure } from "./lib/chatgpt-plan.ts";
+import { Move } from "./lib/move.ts";
 
 /** Chore points, per person (lib/relays.ts award). */
 const POINTS = "chore:points";
@@ -784,6 +785,34 @@ export class JarvisState extends DurableObject<Env> {
 
   familyPeople() {
     return this.people.familyPeople();
+  }
+
+  /* ---------- moving a whole Jarvis to another place (lib/move.ts) ---------------- */
+
+  moveOut(after?: string) {
+    return new Move(this.ctx.storage).page(after);
+  }
+
+  moveIn(entries: [string, unknown][]) {
+    return new Move(this.ctx.storage).put(entries);
+  }
+
+  moveHolds() {
+    return new Move(this.ctx.storage).holdsAnything();
+  }
+
+  async moveClear() {
+    await this.ctx.storage.deleteAlarm();
+    await new Move(this.ctx.storage).clear();
+  }
+
+  // Everything is in, under the classes above that had already read what was here:
+  // the object ends itself so the next call starts from what was moved, and the
+  // alarm set first wakes it to find what is due.
+  async moveSettle() {
+    await this.ctx.storage.setAlarm(Date.now() + 1000);
+    await this.ctx.storage.sync();
+    setTimeout(() => this.ctx.abort("a move has replaced what this object had read"), 50);
   }
 
   /* ---------- panels on a person's Home tab (lib/panels.ts) ---------------------- */

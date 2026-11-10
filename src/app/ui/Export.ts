@@ -37,3 +37,61 @@ export function exportSection(key: string): HTMLElement {
   box.append(row, res);
   return box;
 }
+
+/**
+ * Settings → Move another Jarvis here: everything the other one keeps, secrets
+ * and sign-ins included, pulled by this one's server a page at a time
+ * (POST /api/move/import; lib/move.ts). Nothing of it comes to this page: only
+ * how much has been taken in.
+ */
+export function moveSection(key: string): HTMLElement {
+  const box = el("section", "svc move");
+  box.dataset.section = "move";
+  box.dataset.title = "Move another Jarvis here";
+  box.dataset.state = "on";
+  box.appendChild(el("h3", "", "Move another Jarvis here"));
+  box.appendChild(el("p", "note",
+    "Brings everything from a Jarvis running somewhere else to this one: the family and how they sign in, devices, memory, routines, " +
+    "panels, conversations, settings with their keys, and linked accounts. On the other Jarvis, set a MOVE_KEY secret first " +
+    "(24 characters or more) and remove it once the move is done."));
+  const from = el("input");
+  from.type = "text";
+  from.placeholder = "https://jarvis.example.com";
+  from.setAttribute("aria-label", "The other Jarvis's address");
+  const moveKey = el("input");
+  moveKey.type = "password";
+  moveKey.placeholder = "Its MOVE_KEY";
+  moveKey.autocomplete = "off";
+  moveKey.setAttribute("aria-label", "The other Jarvis's MOVE_KEY");
+  const replace = el("label", "on");
+  const replaceBox = el("input");
+  replaceBox.type = "checkbox";
+  replace.append(replaceBox, document.createTextNode(" Erase what this Jarvis holds first"));
+  const res = el("div", "res");
+  const go = button("Move it here", async () => {
+    go.disabled = true;
+    res.textContent = "Asking the other Jarvis…";
+    try {
+      let state = 0;
+      let kv = 0;
+      for (let after: string | null = null; ; ) {
+        const step = (await api(key, "POST", "/api/move/import", { from: from.value, key: moveKey.value, after, replace: replaceBox.checked })) as { state: number; kv: number; next: string | null; version: string };
+        state += step.state;
+        kv += step.kv;
+        res.textContent = `Moving from version ${step.version}: ${state + kv} entries so far…`;
+        if (step.next === null) break;
+        after = step.next;
+      }
+      moveKey.value = "";
+      res.textContent = `Moved ${state + kv} entries. Reload this page and sign in as you did on the other Jarvis; then remove its MOVE_KEY.`;
+    } catch (e) {
+      res.textContent = `Could not move: ${e instanceof Error ? e.message : String(e)}`;
+    } finally {
+      go.disabled = false;
+    }
+  }, "primary");
+  const row = el("div", "rowbtns");
+  row.appendChild(go);
+  box.append(from, moveKey, replace, row, res);
+  return box;
+}

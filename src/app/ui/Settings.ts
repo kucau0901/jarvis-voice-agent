@@ -5,14 +5,14 @@ import { LOUDNESS, loudness, setLoudness, type Loudness } from "../loud";
 import { speakText } from "../alerts";
 import { SectionMenu, type NavGroup } from "./sections";
 import { ChatGptPlan } from "./ChatGptPlan";
-import { exportSection } from "./Export";
+import { exportSection, moveSection } from "./Export";
 import { Skills } from "./Skills";
 
 /** The settings menu: groups, and the sections in each, by id. */
 const NAV: NavGroup[] = [
   ["Connections", ["chatgpt", "openai", "car", "home", "hermes", "google", "spotify", "maps", "cameras", "mcp", "skills"]],
   ["How Jarvis behaves", ["router", "voice", "screen", "alerts", "locale"]],
-  ["Access and advanced", ["usage", "owner", "devices", "export", "advanced"]],
+  ["Access and advanced", ["usage", "owner", "devices", "export", "move", "advanced"]],
 ];
 const SECTION_KEY = "jarvis.settings.section";
 const LOUD_LABEL: Record<Loudness, string> = { normal: "Normal", louder: "Louder", loudest: "Loudest" };
@@ -185,7 +185,7 @@ export class Settings {
     this.plan = new ChatGptPlan(key, () => this.buildNav());
     this.el.querySelector(".setbody")!.prepend(this.plan.el);
     this.skills = new Skills(key, () => this.buildNav());
-    this.el.querySelector(".setbody")!.append(this.skills.el, exportSection(key));
+    this.el.querySelector(".setbody")!.append(this.skills.el, exportSection(key), moveSection(key));
     this.renderLoud();
     this.el.querySelector(".hear")!.addEventListener("click", () => void this.hearLoud());
     this.buildNav();

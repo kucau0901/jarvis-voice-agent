@@ -872,6 +872,19 @@ change a setting, the list untouched, so this is decided on every call, as
 rule. A server that needs a token of its own has its address written out in
 full, or in a Worker secret.
 
+One thing does give every secret out, on purpose: moving a whole Jarvis to
+another place (`lib/move.ts`; the README, "Moving Jarvis"). A Jarvis that
+could not hand over its saved keys and linked accounts would leave each of the
+family to sign in and link again. So the old one gives a page of everything it
+keeps to whoever presents `MOVE_KEY`, and to nobody else: not the owner key,
+not an admin. `MOVE_KEY` is deploy-time only (`NOT_SETTINGS`), so opening a
+move takes what deploying takes, which could already put any code in front of
+those secrets; the owner key, which can change settings, still cannot read
+one. Shorter than 24 characters it counts as unset, a wrong key gets the same
+404 as no key, and the pages go from server to server, never to a browser.
+The new one takes them in only at its owner's word, and not over anything it
+already holds unless told to erase that first.
+
 MCP tools are registered **non-strict**. Strict mode demands
 `additionalProperties: false` and a full `required` list on every nested object,
 and rewriting a third-party server's schema to satisfy that risks changing what

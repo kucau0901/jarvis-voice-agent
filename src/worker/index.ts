@@ -19,6 +19,7 @@ import { handleMemory } from "./routes/memory.ts";
 import { handleMap } from "./routes/map.ts";
 import { handleImage } from "./routes/image.ts";
 import { handleExport } from "./routes/export.ts";
+import { handleMoveExport, handleMoveImport } from "./routes/move.ts";
 import { handleCamera } from "./routes/camera.ts";
 import { handleSpotify } from "./routes/spotify.ts";
 import { handleGoogle } from "./routes/google.ts";
@@ -110,6 +111,8 @@ export default {
     // A page Jarvis made (routes/page.ts): opened by its link, which carries its own proof, so by anyone it was given to.
     if (url.pathname.startsWith("/api/v1/p/")) return await handlePage(req, env);
     if (url.pathname === "/api/v1/oauth/token") return await handleToken(req, env);
+    // The Jarvis taking this one's place: it presents MOVE_KEY, which no gate below knows (routes/move.ts).
+    if (url.pathname === "/api/move/export") return await handleMoveExport(req, env);
     // A browser cannot put a header on a WebSocket, so an open screen presents
     // a one-time ticket it was issued over an authenticated request instead.
     // The Durable Object checks and spends it (routes/alerts.ts).
@@ -268,6 +271,8 @@ async function route(
       return await handleDiag(env);
     case "/api/export":
       return await handleExport(req, env, principal);
+    case "/api/move/import":
+      return await handleMoveImport(req, env);
     case "/api/router":
     case "/api/router/test":
       return await handleRouter(req, env);

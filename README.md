@@ -214,6 +214,31 @@ return to the right address.
 docker run --rm -v jarvis-voice-agent_jarvis-data:/data -v "$PWD":/b busybox tar czf /b/jarvis-backup.tgz -C /data .
 ```
 
+## Moving Jarvis
+
+To take a running Jarvis somewhere else (Cloudflare to Docker, or one server to
+another) with everything in it, so nobody signs in again or links an account
+twice:
+
+1. **Both on the same version**, the old one and the new one.
+2. **Open the old one to the move.** Give it a `MOVE_KEY` of 24 characters or
+   more: `npx wrangler secret put MOVE_KEY` on Cloudflare, or `MOVE_KEY=...` in
+   `.env` and `docker compose up -d` with Docker. It can only be set this way,
+   never in the settings panel, so the owner key alone opens nothing.
+3. **On the new one**, signed in with its owner key: **Settings → Move another
+   Jarvis here**, the old one's address and its `MOVE_KEY`. A Jarvis that
+   already holds something asks you to tick "Erase what this Jarvis holds
+   first".
+4. **Remove `MOVE_KEY`** from the old one (`npx wrangler secret delete
+   MOVE_KEY`), then point your address at the new one. Keep the same address
+   and passkeys, Google and Spotify sign-in go on working; with the same
+   `JARVIS_SHARED_SECRET`, so does Telegram.
+
+What moves is everything the old one keeps, saved keys and tokens included,
+from its server to the new one's: none of it passes through your browser.
+While `MOVE_KEY` is set, whoever holds it can read all of it, so make it long,
+tell nobody, and remove it when you are done. The old one is left as it was.
+
 ## Updating
 
 Jarvis is released in numbered versions, each with notes in
