@@ -22,8 +22,9 @@ of every release, and in the [README](README.md#updating).
 - **Moving a whole Jarvis to another place**, from Cloudflare to Docker or one
   server to the next: **Settings → Move another Jarvis here** on the new one
   brings over everything the old one keeps: the family and how they sign in,
-  devices, memory, routines, panels, conversations, settings with their keys,
-  and linked accounts. The old one gives it out only while a `MOVE_KEY`
+  devices, memory, routines, panels, conversations, settings with their keys
+  (those given at deploy time too), and linked accounts. The old one gives it
+  out only while a `MOVE_KEY`
   secret is set on it (24 characters or more, deploy-time only), never to the
   owner key, and server to server: no secret passes through a browser. See
   the README, "Moving Jarvis".

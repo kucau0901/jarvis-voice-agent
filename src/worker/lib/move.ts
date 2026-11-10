@@ -13,9 +13,15 @@
  * Entries are copied as they are, by key, with no idea what each one is, so
  * a feature added later is moved without a line changed here.
  *
+ * What the old Jarvis was given at deploy time is in no entry: a Worker's
+ * secrets, which Cloudflare shows to nobody. Those that are settings go too,
+ * read by the old one from its own environment, and the new one saves them as
+ * settings (`deployed()`); its owner key and its bindings stay where they are.
+ *
  * Free of `cloudflare:workers`, so Node tests it with Maps standing in.
  */
 import { safeEqual } from "./auth.ts";
+import { SETTINGS, type SavedSettings } from "./settings.ts";
 
 /** Shorter than this and MOVE_KEY is treated as not set: it guards every secret Jarvis has. */
 export const MOVE_KEY_MIN = 24;
@@ -56,6 +62,21 @@ export interface MovePage {
   state: [string, unknown][];
   kv: KvEntry[];
   next: string | null;
+  /** With the last page: the settings the old Jarvis had from its deployment, by name. */
+  settings?: Record<string, string>;
+}
+
+/**
+ * The settings this Jarvis has from its deployment and nowhere else: set in
+ * its environment and never saved in the panel, so no stored entry holds them.
+ */
+export function deployed(env: Record<string, unknown>, saved: SavedSettings): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const def of SETTINGS) {
+    const v = env[def.name];
+    if (typeof v === "string" && v && !saved[def.name]) out[def.name] = v;
+  }
+  return out;
 }
 
 /** Whether `presented` is this Jarvis's move key. Never, where none is set. */
@@ -119,6 +140,8 @@ export interface MoveOutDeps {
   version: string;
   statePage(after?: string): Promise<{ entries: [string, unknown][]; next: string | null }>;
   kv: MoveKv;
+  /** `deployed()` of this Jarvis. */
+  deployed(): Promise<Record<string, string>>;
 }
 
 /**
@@ -140,7 +163,8 @@ export async function movePage(deps: MoveOutDeps, after: string | null): Promise
     if (value === null) continue;
     kv.push({ key: k.name, value, ...(k.expiration ? { expiration: k.expiration } : {}), ...(k.metadata !== undefined && k.metadata !== null ? { metadata: k.metadata } : {}) });
   }
-  return { version: deps.version, state: [], kv, next: listed.list_complete || !listed.cursor ? null : `k:${listed.cursor}` };
+  const next = listed.list_complete || !listed.cursor ? null : `k:${listed.cursor}`;
+  return { version: deps.version, state: [], kv, next, ...(next === null ? { settings: await deps.deployed() } : {}) };
 }
 
 /** What the new Jarvis needs to take a page in. */
@@ -150,6 +174,13 @@ export interface MoveInDeps {
   holdsAnything(): Promise<boolean>;
   clear(): Promise<void>;
   put(entries: [string, unknown][]): Promise<void>;
+  /**
+   * Save what the old Jarvis had from its deployment as settings here, as old
+   * as a saved setting can be: a secret among them goes on being sent where
+   * the old one sent it, and one saved in the panel since is no older than
+   * the address it was saved for (`guarded()` in lib/settings.ts).
+   */
+  keep(settings: Record<string, string>): Promise<void>;
   /** Once everything is in: wake what is timed, and forget what was read before. */
   settle(): Promise<void>;
   kv: MoveKv;
@@ -198,6 +229,8 @@ export async function moveStep(deps: MoveInDeps, after: string | null, replace: 
     await deps.kv.put(e.key, e.value, { ...(e.expiration !== undefined ? { expiration: e.expiration } : {}), ...(e.metadata !== undefined ? { metadata: e.metadata } : {}) });
     kv++;
   }
+  // After every entry, the saved settings among them: these are only the names none of those hold.
+  if (page.settings && Object.keys(page.settings).length) await deps.keep(page.settings);
   if (page.next === null) await deps.settle();
   return { state: page.state.length, kv, next: page.next, version: page.version };
 }
@@ -210,5 +243,7 @@ export function asMovePage(v: unknown): MovePage | null {
   if (p.next !== null && typeof p.next !== "string") return null;
   if (!p.state.every((e) => Array.isArray(e) && e.length === 2 && typeof e[0] === "string")) return null;
   if (!p.kv.every((e) => e && typeof e === "object" && typeof e.key === "string" && typeof e.value === "string")) return null;
-  return { version: p.version, state: p.state, kv: p.kv, next: p.next };
+  const settings: unknown = p.settings;
+  if (settings !== undefined && (!settings || typeof settings !== "object" || Array.isArray(settings) || !Object.values(settings).every((x) => typeof x === "string"))) return null;
+  return { version: p.version, state: p.state, kv: p.kv, next: p.next, ...(settings !== undefined ? { settings: settings as Record<string, string> } : {}) };
 }

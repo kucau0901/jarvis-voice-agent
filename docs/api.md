@@ -1373,4 +1373,6 @@ key, never to the owner key or a device token: anything else is a 404, as it
 is with no move key set. Each answer is one page of everything this Jarvis
 keeps, saved keys and tokens among them, as
 `{ version, state: [[key, value], …], kv: [{ key, value, expiration?, metadata? }, …], next }`;
-`next` goes back as `after` until it is `null`.
+`next` goes back as `after` until it is `null`. The last page also has
+`settings`: the settings this deployment was given at deploy time and never
+saved in the panel, by name.

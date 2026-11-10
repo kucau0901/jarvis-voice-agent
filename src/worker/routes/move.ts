@@ -1,7 +1,8 @@
 import type { Env } from "../types.ts";
 import { err, json, readObject } from "../lib/http.ts";
 import { stateStub } from "../lib/state-client.ts";
-import { asMovePage, moveKeyOk, movePage, moveStep, type MoveKv } from "../lib/move.ts";
+import { _resetSettingsCache } from "../lib/settings-store.ts";
+import { asMovePage, deployed, moveKeyOk, movePage, moveStep, type MoveKv } from "../lib/move.ts";
 import { JARVIS_VERSION } from "./version.ts";
 
 /** A move's request is an address, a key and a place in it: nothing large. */
@@ -35,7 +36,16 @@ export async function handleMoveExport(req: Request, env: Env): Promise<Response
   const state = stateStub(env);
   if (!state) return err(503, "a move needs the STATE Durable Object");
   try {
-    const page = await movePage({ version: JARVIS_VERSION, statePage: (after) => state.moveOut(after), kv: kvOf(env) }, new URL(req.url).searchParams.get("after"));
+    const page = await movePage(
+      {
+        version: JARVIS_VERSION,
+        statePage: (after) => state.moveOut(after),
+        kv: kvOf(env),
+        // `env` here is the deployment's own: nothing saved has been laid over it (index.ts, before the gate).
+        deployed: async () => deployed({ ...env }, await state.getSettings()),
+      },
+      new URL(req.url).searchParams.get("after"),
+    );
     return json(page, { headers: { "cache-control": "no-store" } });
   } catch (e) {
     return err(500, e instanceof Error ? e.message : String(e));
@@ -85,6 +95,7 @@ export async function handleMoveImport(req: Request, env: Env): Promise<Response
         holdsAnything: () => state.moveHolds(),
         clear: () => state.moveClear(),
         put: (entries) => state.moveIn(entries),
+        keep: async (settings) => void (await state.putSettings(settings, 0)),
         settle: () => state.moveSettle(),
         kv: kvOf(env),
         now: Date.now(),
@@ -92,7 +103,10 @@ export async function handleMoveImport(req: Request, env: Env): Promise<Response
       after,
       body.replace === true,
     );
-    return typeof step === "string" ? err(409, step) : json(step);
+    if (typeof step === "string") return err(409, step);
+    // What this isolate remembers of the settings is from before the move.
+    if (step.next === null) _resetSettingsCache();
+    return json(step);
   } catch (e) {
     return err(502, e instanceof Error ? e.message : String(e));
   }

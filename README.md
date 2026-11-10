@@ -236,6 +236,10 @@ twice:
 
 What moves is everything the old one keeps, saved keys and tokens included,
 from its server to the new one's: none of it passes through your browser.
+Settings the old one was given at deploy time (Worker secrets, or its `.env`)
+come too, and are saved as settings on the new one, since Cloudflare shows a
+secret's value to nobody. Two things do not: the owner key, which the new one
+has its own of, and a `ROUTER_MODEL` set at deploy time.
 While `MOVE_KEY` is set, whoever holds it can read all of it, so make it long,
 tell nobody, and remove it when you are done. The old one is left as it was.
 

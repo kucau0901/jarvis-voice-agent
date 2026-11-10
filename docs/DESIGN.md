@@ -877,7 +877,10 @@ another place (`lib/move.ts`; the README, "Moving Jarvis"). A Jarvis that
 could not hand over its saved keys and linked accounts would leave each of the
 family to sign in and link again. So the old one gives a page of everything it
 keeps to whoever presents `MOVE_KEY`, and to nobody else: not the owner key,
-not an admin. `MOVE_KEY` is deploy-time only (`NOT_SETTINGS`), so opening a
+not an admin. With it go the settings it was given at deploy time, which the
+new one saves as old as a saved setting can be, so `guarded()` reads them
+there as it read the deployment's own here: a token still goes to the
+address it went to, and one that was withheld stays withheld. `MOVE_KEY` is deploy-time only (`NOT_SETTINGS`), so opening a
 move takes what deploying takes, which could already put any code in front of
 those secrets; the owner key, which can change settings, still cannot read
 one. Shorter than 24 characters it counts as unset, a wrong key gets the same
