@@ -124,6 +124,13 @@ const choose = (n: number, text: string): string => `(() => {
   return "true";
 })()`;
 
+/** The keys a hand can press besides typing: its Windows key code, and the character it types if any. */
+const KEYS = {
+  Enter: [13, "\r"], Tab: [9, ""], Backspace: [8, ""], Delete: [46, ""], Escape: [27, ""],
+  ArrowLeft: [37, ""], ArrowUp: [38, ""], ArrowRight: [39, ""], ArrowDown: [40, ""],
+} as const;
+export type ViewKey = keyof typeof KEYS;
+
 interface Reading {
   title: string;
   url: string;
@@ -271,11 +278,19 @@ class Tab {
     await this.call("Input.dispatchKeyEvent", { ...k, type: "keyUp" });
   }
 
-  async enter(): Promise<void> {
-    const k = { key: "Enter", code: "Enter", windowsVirtualKeyCode: 13 };
-    await this.call("Input.dispatchKeyEvent", { ...k, type: "rawKeyDown" });
-    await this.call("Input.dispatchKeyEvent", { ...k, type: "char", text: "\r" });
+  /** One key that is not a letter, pressed and let go. */
+  async key(name: ViewKey): Promise<void> {
+    const [windowsVirtualKeyCode, text] = KEYS[name];
+    const k = { key: name, code: name, windowsVirtualKeyCode };
+    await this.call("Input.dispatchKeyEvent", text ? { ...k, type: "keyDown", text } : { ...k, type: "rawKeyDown" });
     await this.call("Input.dispatchKeyEvent", { ...k, type: "keyUp" });
+  }
+
+  /** The mouse, as a hand on the browser's screen moves it: held down between "down" and "up". */
+  async mouse(type: "down" | "move" | "up", x: number, y: number): Promise<void> {
+    const at = { x, y, button: "left", clickCount: 1 };
+    if (type === "down") await this.call("Input.dispatchMouseEvent", { ...at, type: "mouseMoved", button: "none" });
+    await this.call("Input.dispatchMouseEvent", type === "down" ? { ...at, type: "mousePressed", buttons: 1 } : type === "up" ? { ...at, type: "mouseReleased" } : { ...at, type: "mouseMoved", buttons: 1 });
   }
 }
 
@@ -290,9 +305,9 @@ export function describe(r: Reading): string {
   }
   const notes: string[] = [];
   if (r.check)
-    notes.push("This page is asking whoever is there to prove they are human. Do not try to answer it, and press nothing on it: tell the user the page wants a human check, and that they must do it themselves in the browser.");
+    notes.push("This page is asking whoever is there to prove they are human. Do not try to answer it, and press nothing on it: tell the user the page wants a human check, and that they must do it themselves: in Jarvis's menu, Browser shows the page and takes their taps. When they say it is done, read the page again.");
   if (r.password)
-    notes.push("This page asks for a password. Passwords are never typed for the user: tell them to sign in themselves in the browser; it stays signed in afterwards.");
+    notes.push("This page asks for a password. Passwords are never typed for the user: tell them to sign in themselves, in Jarvis's menu under Browser; it stays signed in afterwards. When they say it is done, read the page again.");
   return [asQuotedData("web page", lines.join("\n"), "THE WEBSITE"), ...notes].join("\n\n");
 }
 
@@ -333,7 +348,7 @@ export const browserFill = (deps: BrowserDeps, n: number, text: string, enter: b
   withTab(deps, async (tab) => {
     const at = await tab.spot(n);
     if (!at) return GONE;
-    if (at.type === "password") return "Not typed: that is a password box, and passwords are never typed for the user. Tell them to sign in themselves in the browser.";
+    if (at.type === "password") return "Not typed: that is a password box, and passwords are never typed for the user. Tell them to sign in themselves, in Jarvis's menu under Browser.";
     if (at.tag === "select") {
       const chosen = await tab.run(choose(n, text));
       if (chosen !== "true") return `Not chosen: it has no such option. It offers: ${asQuotedData("options", String(chosen), "THE WEBSITE")}`;
@@ -344,7 +359,7 @@ export const browserFill = (deps: BrowserDeps, n: number, text: string, enter: b
     // What it held is replaced, as a person would: select all, then type over it.
     await tab.selectAll();
     await tab.call("Input.insertText", { text });
-    if (enter) await tab.enter();
+    if (enter) await tab.key("Enter");
   });
 
 /** The real connection: the runtime's own WebSocket (Workers and Node both have one). */
@@ -362,3 +377,86 @@ export const dialWebSocket: Dial = (url, onText, onClose) =>
     ws.addEventListener("close", () => (open ? onClose("the connection closed") : reject(new Error("the browser would not take a connection"))));
     ws.addEventListener("error", () => (open ? onClose("the connection failed") : reject(new Error("the browser would not take a connection"))));
   });
+
+/* ---------- the person's own hands on it (routes/browser.ts, src/app/ui/Browser.ts) ---------- */
+
+/**
+ * What a person does on the browser's screen themselves: signing in, passing
+ * a human check. It goes to the browser as real input and nowhere else: no
+ * model sees it, and nothing here keeps or logs it.
+ */
+export type ViewEvent =
+  | { kind: "mouse"; type: "down" | "move" | "up"; x: number; y: number }
+  | { kind: "wheel"; x: number; y: number; dy: number }
+  | { kind: "text"; text: string }
+  | { kind: "key"; key: ViewKey }
+  | { kind: "open"; address: string }
+  | { kind: "back" };
+
+/** As many events as one drag across the screen sends at once. */
+const EVENTS_MAX = 80;
+const coord = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 10_000;
+
+/** A request's events, checked: the list, or what is wrong with it. */
+export function asViewEvents(raw: unknown): ViewEvent[] | string {
+  if (!Array.isArray(raw) || !raw.length) return "send { events: [...] }";
+  if (raw.length > EVENTS_MAX) return `at most ${EVENTS_MAX} events at once`;
+  const out: ViewEvent[] = [];
+  for (const e of raw as unknown[]) {
+    if (!e || typeof e !== "object") return "each event is an object";
+    const v = e as Record<string, unknown>;
+    if (v.kind === "mouse" && (v.type === "down" || v.type === "move" || v.type === "up") && coord(v.x) && coord(v.y)) out.push({ kind: "mouse", type: v.type, x: v.x, y: v.y });
+    else if (v.kind === "wheel" && coord(v.x) && coord(v.y) && typeof v.dy === "number" && Number.isFinite(v.dy)) out.push({ kind: "wheel", x: v.x, y: v.y, dy: Math.max(-2000, Math.min(2000, v.dy)) });
+    else if (v.kind === "text" && typeof v.text === "string" && v.text.length > 0 && v.text.length <= 2000) out.push({ kind: "text", text: v.text });
+    else if (v.kind === "key" && typeof v.key === "string" && Object.hasOwn(KEYS, v.key)) out.push({ kind: "key", key: v.key as ViewKey });
+    else if (v.kind === "open" && typeof v.address === "string") out.push({ kind: "open", address: v.address });
+    else if (v.kind === "back") out.push({ kind: "back" });
+    else return "an event was not one of mouse, wheel, text, key, open or back";
+  }
+  return out;
+}
+
+/** Those events, done in order on the tab in front. An error's words when one could not be. */
+export async function browserInput(deps: BrowserDeps, events: readonly ViewEvent[]): Promise<string | null> {
+  const tab = await Tab.open(deps);
+  try {
+    for (const e of events) {
+      if (e.kind === "mouse") await tab.mouse(e.type, e.x, e.y);
+      else if (e.kind === "wheel") await tab.call("Input.dispatchMouseEvent", { type: "mouseWheel", x: e.x, y: e.y, deltaX: 0, deltaY: e.dy });
+      else if (e.kind === "text") await tab.call("Input.insertText", { text: e.text });
+      else if (e.kind === "key") await tab.key(e.key);
+      else if (e.kind === "back") await tab.run("history.back()");
+      else {
+        const url = webAddress(e.address);
+        if (typeof url === "string") return url;
+        const r = await tab.call("Page.navigate", { url: url.href });
+        if (typeof r.errorText === "string" && r.errorText) return `the browser could not open it: ${r.errorText}`;
+      }
+    }
+    return null;
+  } finally {
+    tab.close();
+  }
+}
+
+export interface Screen {
+  /** A JPEG of what the browser shows, base64. */
+  jpeg: string;
+  /** The size of that view in the page's own points: where a tap on the picture lands. */
+  width: number;
+  height: number;
+  url: string;
+  title: string;
+}
+
+/** What the browser shows now. */
+export async function browserScreen(deps: BrowserDeps): Promise<Screen> {
+  const tab = await Tab.open(deps);
+  try {
+    const at = JSON.parse(String(await tab.run("JSON.stringify({ width: innerWidth, height: innerHeight, url: location.href, title: document.title })"))) as Omit<Screen, "jpeg">;
+    const shot = await tab.call("Page.captureScreenshot", { format: "jpeg", quality: 55, optimizeForSpeed: true });
+    return { jpeg: String(shot.data ?? ""), width: Number(at.width) || 0, height: Number(at.height) || 0, url: String(at.url ?? ""), title: String(at.title ?? "").slice(0, 200) };
+  } finally {
+    tab.close();
+  }
+}

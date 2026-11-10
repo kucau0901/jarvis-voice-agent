@@ -2,11 +2,11 @@
 // of Chrome's debugging port, what it gives back, what it refuses, and who is
 // ever offered it. Chrome is a stand-in here; the scripts that run inside a
 // page were tried against a real one.
-import { browserFill, browserOpen, browserPress, browserRead, describe, webAddress, type BrowserDeps } from "../src/worker/lib/browser.ts";
+import { asViewEvents, browserFill, browserInput, browserOpen, browserPress, browserRead, browserScreen, describe, webAddress, type BrowserDeps } from "../src/worker/lib/browser.ts";
 import { browserTools } from "../src/worker/tools/browser.ts";
 import { baseTools } from "../src/worker/tools/registry.ts";
 import { ROLE_SCOPES } from "../src/worker/lib/hub.ts";
-import { SCOPES } from "../src/worker/lib/scopes.ts";
+import { requiredScope, SCOPES } from "../src/worker/lib/scopes.ts";
 import { TELEGRAM_REACH } from "../src/worker/lib/telegram.ts";
 import { runGrants } from "../src/worker/lib/proposals.ts";
 import { noteworthy } from "../src/worker/lib/habits.ts";
@@ -70,12 +70,14 @@ function chrome(f: Fake = {}) {
           if (m.method === f.hangUpOn) return void queueMicrotask(() => onClose("gone"));
           const answer = (result: unknown, error?: string) => queueMicrotask(() => onText(JSON.stringify(error ? { id: m.id, error: { message: error } } : { id: m.id, result })));
           if (m.method === "Page.navigate") return answer(f.navError ? { errorText: f.navError } : { frameId: "F" });
+          if (m.method === "Page.captureScreenshot") return answer({ data: "SkZJRg==" });
           if (m.method !== "Runtime.evaluate") return answer({});
           const x = String(m.params.expression);
           if (x === "document.readyState") {
             const s = states.shift() ?? "complete";
             return s === "throw" ? answer(null, "Cannot find context with specified id") : answer({ result: { value: s } });
           }
+          if (x.includes("innerWidth")) return answer({ result: { value: JSON.stringify({ width: 1280, height: 720, url: "https://shop.example/login", title: "Sign in" }) } });
           if (x.includes("scrollIntoView")) return answer({ result: { value: JSON.stringify(f.spot === undefined ? { x: 100, y: 50, tag: "input", type: "text", editable: true } : f.spot) } });
           if (x.includes("e.options")) return answer({ result: { value: f.chosen ?? "true" } });
           return answer({ result: { value: JSON.stringify(f.page ?? PAGE) } });
@@ -189,6 +191,41 @@ console.log("\nfilling");
   check("no such option: what it offers, quoted as the page's", /^Not chosen: it has no such option\. It offers: --- options:[0-9a-f]{8} /.test(offered) && offered.includes("Open ––– orders"), offered);
   const stale = chrome({ spot: null });
   check("a stale number: said, nothing typed", /Nothing on the page has that number now/.test(await browserFill(stale.deps, 9, "x", true)) && !stale.methods().some((x) => x.startsWith("Input.")));
+}
+
+console.log("\nthe person's own hands on it");
+{
+  const c = chrome();
+  const s = await browserScreen(c.deps);
+  check("the screen: a picture, its size in the page's points, and where it is", s.jpeg === "SkZJRg==" && s.width === 1280 && s.height === 720 && s.url === "https://shop.example/login" && s.title === "Sign in", s);
+  check("asked for as a JPEG, and the connection hung up", c.sent.find((x) => x.method === "Page.captureScreenshot")?.params.format === "jpeg" && c.closed() === 1);
+
+  const ok = asViewEvents([
+    { kind: "mouse", type: "down", x: 10, y: 20 }, { kind: "mouse", type: "move", x: 60, y: 20 }, { kind: "mouse", type: "up", x: 60, y: 20 },
+    { kind: "wheel", x: 5, y: 5, dy: 99999 }, { kind: "text", text: "hunter2" }, { kind: "key", key: "Enter" }, { kind: "back" }, { kind: "open", address: "shop.example" },
+  ]);
+  check("events are taken as they are, a wheel's turn kept sane", Array.isArray(ok) && ok.length === 8 && ok[3].kind === "wheel" && ok[3].dy === 2000, ok);
+  for (const [name, bad] of [
+    ["no list", undefined], ["an empty list", []], ["more than a drag's worth", Array.from({ length: 81 }, () => ({ kind: "back" }))],
+    ["a point off any screen", [{ kind: "mouse", type: "down", x: -1, y: 5 }]], ["a point that is not a number", [{ kind: "mouse", type: "down", x: "5", y: 5 }]],
+    ["a key that is not one of the few", [{ kind: "key", key: "F12" }]], ["a key that is an object's own", [{ kind: "key", key: "constructor" }]],
+    ["no text", [{ kind: "text", text: "" }]], ["a book of text", [{ kind: "text", text: "x".repeat(2001) }]],
+    ["a raw command for the browser", [{ kind: "cdp", method: "Network.getAllCookies" }]], ["not an object", ["back"]],
+  ] as const) {
+    check(`not ${name}`, typeof asViewEvents(bad) === "string");
+  }
+
+  const d = chrome();
+  check("done in order on one connection", Array.isArray(ok) && (await browserInput(d.deps, ok.slice(0, 6))) === null && d.dialled.length === 1 && d.closed() === 1);
+  const mouse = d.sent.filter((x) => x.method === "Input.dispatchMouseEvent").map((x) => `${x.params.type}@${x.params.x}${x.params.buttons ? "+" : ""}`);
+  check("a drag: down, moved while held, let go, then the wheel", mouse.join() === "mouseMoved@10,mousePressed@10+,mouseMoved@60+,mouseReleased@60,mouseWheel@5", mouse);
+  check("typing goes in as typed", d.sent.find((x) => x.method === "Input.insertText")?.params.text === "hunter2");
+  const keys = d.sent.filter((x) => x.method === "Input.dispatchKeyEvent").map((x) => `${x.params.type}:${x.params.key}`);
+  check("a key: pressed and let go", keys.join() === "keyDown:Enter,keyUp:Enter", keys);
+  const o = chrome();
+  check("an address: the web only, as for Jarvis", (await browserInput(o.deps, [{ kind: "open", address: "file:///etc/passwd" }])) === "only http and https addresses can be opened" && !o.methods().includes("Page.navigate"));
+  check("and opened when it is", (await browserInput(o.deps, [{ kind: "open", address: "shop.example" }])) === null && o.sent.find((x) => x.method === "Page.navigate")?.params.url === "https://shop.example/");
+  check("its screen and its input need the browser scope, and no path beside them is open", requiredScope("/api/browser/screen", "GET") === "browser" && requiredScope("/api/browser/input", "POST") === "browser" && requiredScope("/api/browser/other", "GET") === "owner");
 }
 
 console.log("\nwhat the model is told of a page");

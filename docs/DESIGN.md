@@ -1788,6 +1788,17 @@ Chrome (`lib/browser.ts`, `tools/browser.ts`), run beside it
   themselves, once, in the browser. And it answers no "are you human" check:
   the reading says the page has one and tells the model to stop and hand
   over. Passing one for the person is exactly what the check exists to stop.
+- **The person's own hands, through Jarvis.** Signing in and passing a check
+  are done in the app's Browser panel (`ui/Browser.ts`, `routes/browser.ts`):
+  the browser's screen as a picture fetched a few times a second, with taps,
+  drags and typing sent back as real input. It is plain authenticated
+  requests, behind the same `browser` scope: no socket, no cookie, no second
+  sign-in. The browser image has a remote desktop page of its own, which is
+  smoother; it is not used, because served from Jarvis's address it would be
+  someone else's code running where the owner key is kept, and served from
+  its own it would need its own way in. What is typed in the panel goes to
+  the browser and is not logged, kept or shown to a model. Only a few kinds
+  of event are taken (`asViewEvents`), never a raw command for the browser.
 - **Nothing published.** In Docker the browser lives inside Jarvis's own
   network (`network_mode: service:jarvis`), so Jarvis reaches its debugging
   port and its screen on 127.0.0.1 and nothing else can. That port is the

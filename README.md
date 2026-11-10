@@ -221,7 +221,9 @@ It needs about 500 MB of memory idle and is given up to 2 GB. Nobody can use it
 until an admin gives them the **browser** reach (Family, or a device's scopes):
 it is signed in wherever you signed it in. Jarvis reads pages as text, presses
 and fills by number, never types a password and never answers an "are you
-human" check; it tells you, and you do that part yourself. None of the
+human" check; it tells you, and you do that part yourself in the app's
+**Browser** panel, which shows the browser's screen and takes your taps and
+typing. None of the
 browser's ports is published: only Jarvis reaches it. Why it is built this
 way: [DESIGN.md](docs/DESIGN.md#the-browser).
 

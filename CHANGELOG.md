@@ -26,7 +26,8 @@ of every release, and in the [README](README.md#updating).
   pages as text, so it costs what any other answer does and needs no extra
   model. It never types a password and never answers an "are you human"
   check: it says the page wants one, and you do that part yourself in the
-  browser, which stays signed in. A new scope, `browser`, decides who may use
+  new **Browser** panel in the menu, which shows the browser's screen and
+  takes your taps, drags and typing; the browser stays signed in. A new scope, `browser`, decides who may use
   it: no role has it but an admin's, and no device unless ticked; routines,
   jobs and Telegram never do. See the README, "Run with Docker".
 - **Moving a whole Jarvis to another place**, from Cloudflare to Docker or one

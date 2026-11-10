@@ -247,6 +247,11 @@ export function requiredScope(pathname: string, method: string): RouteRequiremen
     case "/api/camera":
       return "home";
 
+    // The browser under a person's own hands: its screen, and their taps and typing (routes/browser.ts).
+    case "/api/browser/screen":
+    case "/api/browser/input":
+      return "browser";
+
     // Skills and their keys (routes/skills.ts): an admin's, as the settings are.
     case "/api/skills":
       return "owner";

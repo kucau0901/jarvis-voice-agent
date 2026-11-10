@@ -331,6 +331,8 @@ export async function handleHub(req: Request, env: Env, principal: Principal): P
       haAddress: me && !locked && allows(grantsOf(principal), "home") ? originOf(env.HA_BASE_URL) : null,
       // Whether a finished report may be offered to Hermes (Jobs): set up here, and theirs to ask.
       hermes: !locked && !!hermesConfig(env) && allows(grantsOf(principal), "hermes"),
+      // Whether the Browser panel is offered: one is set up, and theirs to use.
+      browser: !locked && !!env.BROWSER_URL && allows(grantsOf(principal), "browser"),
       // Live voice is GPT-Live, which only an OpenAI key runs: a ChatGPT plan has no part of it (lib/chatgpt-plan.ts).
       live: !!env.OPENAI_API_KEY,
       // What this person may reach, so the app offers only that.
