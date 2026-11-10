@@ -90,8 +90,37 @@ export function moveSection(key: string): HTMLElement {
       go.disabled = false;
     }
   }, "primary");
+  // After a move: the other Jarvis read again and compared with this one, nothing written.
+  const check = button("Check against it", async () => {
+    check.disabled = true;
+    res.textContent = "Comparing with the other Jarvis…";
+    try {
+      let same = 0;
+      const missing: string[] = [];
+      const differ: string[] = [];
+      for (let after: string | null = null; ; ) {
+        const step = (await api(key, "POST", "/api/move/import", { from: from.value, key: moveKey.value, after, check: true })) as { same: number; missing: string[]; differ: string[]; next: string | null };
+        same += step.same;
+        missing.push(...step.missing);
+        differ.push(...step.differ);
+        res.textContent = `Compared ${same + missing.length + differ.length} entries so far…`;
+        if (step.next === null) break;
+        after = step.next;
+      }
+      const lines = [`${same} entries are here as the other Jarvis has them.`];
+      if (missing.length) lines.push(`Not here (${missing.length}): ${missing.join(", ")}`);
+      if (differ.length) lines.push(`Different, as anything the other one has done since the move would be (${differ.length}): ${differ.join(", ")}`);
+      if (!missing.length && !differ.length) lines.push("Nothing is missing and nothing differs.");
+      res.textContent = lines.join("\n");
+    } catch (e) {
+      res.textContent = `Could not check: ${e instanceof Error ? e.message : String(e)}`;
+    } finally {
+      check.disabled = false;
+    }
+  });
   const row = el("div", "rowbtns");
-  row.appendChild(go);
+  row.append(go, check);
+  res.style.whiteSpace = "pre-wrap";
   box.append(from, moveKey, replace, row, res);
   return box;
 }

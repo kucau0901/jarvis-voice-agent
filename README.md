@@ -229,7 +229,11 @@ twice:
    Jarvis here**, the old one's address and its `MOVE_KEY`. A Jarvis that
    already holds something asks you to tick "Erase what this Jarvis holds
    first".
-4. **Remove `MOVE_KEY`** from the old one (`npx wrangler secret delete
+4. **Check it**, if you like: **Check against it**, beside the button that
+   moved it, reads the old one again and names anything that is not on the new
+   one, or differs, and writes nothing. What the old one has done since the
+   move (a conversation, a device last seen) shows as different.
+5. **Remove `MOVE_KEY`** from the old one (`npx wrangler secret delete
    MOVE_KEY`), then point your address at the new one. Keep the same address
    and passkeys, Google and Spotify sign-in go on working; with the same
    `JARVIS_SHARED_SECRET`, so does Telegram.

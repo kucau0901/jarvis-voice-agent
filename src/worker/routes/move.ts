@@ -2,7 +2,7 @@ import type { Env } from "../types.ts";
 import { err, json, readObject } from "../lib/http.ts";
 import { stateStub } from "../lib/state-client.ts";
 import { _resetSettingsCache } from "../lib/settings-store.ts";
-import { asMovePage, deployed, moveKeyOk, movePage, moveStep, type MoveKv } from "../lib/move.ts";
+import { asMovePage, deployed, moveCheck, moveKeyOk, movePage, moveStep, type MoveKv, type MovePage } from "../lib/move.ts";
 import { JARVIS_VERSION } from "./version.ts";
 
 /** A move's request is an address, a key and a place in it: nothing large. */
@@ -54,6 +54,7 @@ export async function handleMoveExport(req: Request, env: Env): Promise<Response
 
 /**
  *   POST /api/move/import   { from, key, after?, replace? }   one step of moving another Jarvis here
+ *   POST /api/move/import   { from, key, after?, check: true }   one step of checking a move, nothing written
  *
  * The owner's alone (lib/scopes.ts). `from` is the old Jarvis's address and
  * `key` its MOVE_KEY; the page that asks sends each answer's `next` back as
@@ -76,22 +77,33 @@ export async function handleMoveImport(req: Request, env: Env): Promise<Response
   if (!key) return err(400, "key must be the other Jarvis's MOVE_KEY");
   const after = typeof body.after === "string" && body.after ? body.after : null;
 
+  /** One page of the old Jarvis. */
+  const page = async (at: string | null): Promise<MovePage> => {
+    const url = new URL("/api/v1/move/export", from.origin);
+    if (at !== null) url.searchParams.set("after", at);
+    // Never followed elsewhere: the key goes to the address given and no other.
+    const r = await fetch(url, { headers: { authorization: `Bearer ${key}` }, redirect: "manual" });
+    if (r.status >= 300 && r.status < 400) throw new Error("that address sends callers elsewhere: give the other Jarvis's own address");
+    if (r.status === 404) throw new Error("the other Jarvis has no move open under that key: set MOVE_KEY there, and check the address");
+    const data: unknown = await r.json().catch(() => null);
+    if (!r.ok) throw new Error(`the other Jarvis said ${r.status}${data && typeof data === "object" && "error" in data ? `: ${String(data.error)}` : ""}`);
+    const got = asMovePage(data);
+    if (!got) throw new Error("the other Jarvis did not answer with a page of a move");
+    return got;
+  };
+
+  if (body.check === true) {
+    try {
+      return json(await moveCheck({ page, read: (keys) => state.moveRead(keys), saved: () => state.getSettings(), kv: kvOf(env), now: Date.now() }, after));
+    } catch (e) {
+      return err(502, e instanceof Error ? e.message : String(e));
+    }
+  }
+
   try {
     const step = await moveStep(
       {
-        page: async (at) => {
-          const url = new URL("/api/v1/move/export", from.origin);
-          if (at !== null) url.searchParams.set("after", at);
-          // Never followed elsewhere: the key goes to the address given and no other.
-          const r = await fetch(url, { headers: { authorization: `Bearer ${key}` }, redirect: "manual" });
-          if (r.status >= 300 && r.status < 400) throw new Error("that address sends callers elsewhere: give the other Jarvis's own address");
-          if (r.status === 404) throw new Error("the other Jarvis has no move open under that key: set MOVE_KEY there, and check the address");
-          const data: unknown = await r.json().catch(() => null);
-          if (!r.ok) throw new Error(`the other Jarvis said ${r.status}${data && typeof data === "object" && "error" in data ? `: ${String(data.error)}` : ""}`);
-          const page = asMovePage(data);
-          if (!page) throw new Error("the other Jarvis did not answer with a page of a move");
-          return page;
-        },
+        page,
         holdsAnything: () => state.moveHolds(),
         clear: () => state.moveClear(),
         put: (entries) => state.moveIn(entries),

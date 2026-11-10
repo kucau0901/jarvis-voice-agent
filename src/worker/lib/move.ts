@@ -35,6 +35,7 @@ const KV_SOONEST_S = 60;
 
 /** What of the state object's storage a move uses. */
 export interface MoveStorage {
+  get(keys: string[]): Promise<Map<string, unknown>>;
   list(options: { startAfter?: string; limit?: number }): Promise<Map<string, unknown>>;
   put(entries: Record<string, unknown>): Promise<void>;
   deleteAll(): Promise<void>;
@@ -123,6 +124,11 @@ export class Move {
 
   async put(entries: [string, unknown][]): Promise<void> {
     if (entries.length) await this.storage.put(Object.fromEntries(entries));
+  }
+
+  /** What is kept here under these keys: for checking a move, never for sending. */
+  read(keys: string[]): Promise<Map<string, unknown>> {
+    return keys.length ? this.storage.get(keys) : Promise.resolve(new Map());
   }
 
   /** Whether anything is kept here at all. */
@@ -233,6 +239,53 @@ export async function moveStep(deps: MoveInDeps, after: string | null, replace: 
   if (page.settings && Object.keys(page.settings).length) await deps.keep(page.settings);
   if (page.next === null) await deps.settle();
   return { state: page.state.length, kv, next: page.next, version: page.version };
+}
+
+/** What a check needs of the new Jarvis: to read, never to write. */
+export interface MoveCheckDeps {
+  page(after: string | null): Promise<MovePage>;
+  read(keys: string[]): Promise<Map<string, unknown>>;
+  saved(): Promise<SavedSettings>;
+  kv: Pick<MoveKv, "get">;
+  now: number;
+}
+
+export interface MoveChecked {
+  /** Entries of this page that are here as the old Jarvis has them. */
+  same: number;
+  /** Names of those that are not here, and of those that are here but differ. Names only, never what they hold. */
+  missing: string[];
+  differ: string[];
+  next: string | null;
+  version: string;
+}
+
+/**
+ * One step of checking a move: a page of the old Jarvis compared with what
+ * is here, and nothing written. What the old one went on doing since the move
+ * (a conversation, a count, a device last seen) shows as differing; a name
+ * missing is what did not arrive.
+ */
+export async function moveCheck(deps: MoveCheckDeps, after: string | null): Promise<MoveChecked> {
+  const page = await deps.page(after);
+  const out: MoveChecked = { same: 0, missing: [], differ: [], next: page.next, version: page.version };
+  const tell = (name: string, here: unknown, there: unknown) => {
+    if (here === undefined || here === null) out.missing.push(name);
+    else if (JSON.stringify(here) !== JSON.stringify(there)) out.differ.push(name);
+    else out.same++;
+  };
+  const here = await deps.read(page.state.map(([k]) => k));
+  for (const [key, value] of page.state) tell(key, here.get(key), value);
+  for (const e of page.kv) {
+    // Not carried by a move either: about to run out.
+    if (e.expiration !== undefined && e.expiration < deps.now / 1000 + KV_SOONEST_S) continue;
+    tell(`store: ${e.key}`, await deps.kv.get(e.key), e.value);
+  }
+  if (page.settings) {
+    const saved = await deps.saved();
+    for (const [name, value] of Object.entries(page.settings)) tell(`setting: ${name}`, saved[name]?.v, value);
+  }
+  return out;
 }
 
 /** A page as the old Jarvis sent it, or null if it is not one. */

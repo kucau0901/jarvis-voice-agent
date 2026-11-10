@@ -605,6 +605,7 @@ interface FamilyApi {
 interface MoveApi {
   moveOut(after?: string): Promise<{ entries: [string, unknown][]; next: string | null }>;
   moveIn(entries: [string, unknown][]): Promise<void>;
+  moveRead(keys: string[]): Promise<Map<string, unknown>>;
   moveHolds(): Promise<boolean>;
   moveClear(): Promise<void>;
   moveSettle(): Promise<void>;

@@ -1,6 +1,6 @@
 // Moving a whole Jarvis to another place (lib/move.ts): what the old one gives
 // out and to whom, and how the new one takes it in.
-import { asMovePage, deployed, Move, MOVE_KEY_MIN, moveKeyOk, movePage, moveStep, type KvEntry, type MoveInDeps, type MoveKv, type MovePage } from "../src/worker/lib/move.ts";
+import { asMovePage, deployed, Move, MOVE_KEY_MIN, moveCheck, moveKeyOk, movePage, moveStep, type KvEntry, type MoveInDeps, type MoveKv, type MovePage } from "../src/worker/lib/move.ts";
 import { applyChanges, guarded, type SavedSettings } from "../src/worker/lib/settings.ts";
 import { requiredScope } from "../src/worker/lib/scopes.ts";
 
@@ -22,6 +22,7 @@ function fakeStorage(seed: Record<string, unknown> = {}) {
   return {
     list: async ({ startAfter, limit }: { startAfter?: string; limit?: number }) =>
       new Map([...m].sort(([a], [b]) => (a < b ? -1 : 1)).filter(([k]) => startAfter === undefined || k > startAfter).slice(0, limit ?? Infinity)),
+    get: async (keys: string[]) => new Map(keys.filter((k) => m.has(k)).map((k) => [k, structuredClone(m.get(k))])),
     put: async (entries: Record<string, unknown>) => void Object.entries(entries).forEach(([k, v]) => m.set(k, structuredClone(v))),
     deleteAll: async () => m.clear(),
     _m: m,
@@ -208,6 +209,38 @@ console.log("a move in, a step at a time");
     said = e instanceof Error ? e.message : String(e);
   }
   check("a wrong key or address fails before anything here is erased", /no move open/.test(said) && c.storage._m.get("mine") === "kept", said);
+}
+
+console.log("checking a move, nothing written");
+{
+  const oldStorage = fakeStorage({ a: { n: 1 }, b: ["x"], c: "since changed there", d: "never arrived" });
+  const oldKv = fakeKv([
+    { key: "dev:tok:abc", value: "device" },
+    { key: "gone", value: "not here" },
+    { key: "soon", value: "nearly gone", expiration: NOW / 1000 + 30 },
+  ]);
+  const page = (after: string | null) => movePage({ version: "2.9.0", statePage: (x) => new Move(oldStorage).page(x), kv: oldKv, deployed: async () => ({ HA_TOKEN: "house-token", TESSIE_TOKEN: "car-token", TIMEZONE: "Asia/Kuala_Lumpur" }) }, after);
+  const here = fakeStorage({ a: { n: 1 }, b: ["x"], c: "as it was when moved", extra: "only here" });
+  const hereKv = fakeKv([{ key: "dev:tok:abc", value: "device" }]);
+  const before = JSON.stringify([[...here._m], [...hereKv._m]]);
+  const saved: SavedSettings = { HA_TOKEN: { v: "house-token", at: 0 }, TESSIE_TOKEN: { v: "another", at: 0 } };
+  const deps = { page, read: (keys: string[]) => new Move(here).read(keys), saved: async () => saved, kv: hereKv, now: NOW };
+  let same = 0;
+  const missing: string[] = [];
+  const differ: string[] = [];
+  for (let after: string | null = null; ; ) {
+    const s = await moveCheck(deps, after);
+    same += s.same;
+    missing.push(...s.missing);
+    differ.push(...s.differ);
+    if (s.next === null) break;
+    after = s.next;
+  }
+  check("what is here as the old one has it is counted", same === 4, same);
+  check("what never arrived is named: an entry, one of the store's, a setting", JSON.stringify(missing) === '["d","store: gone","setting: TIMEZONE"]', missing);
+  check("what differs is named, not shown", JSON.stringify(differ) === '["c","setting: TESSIE_TOKEN"]', differ);
+  check("what a move leaves behind is not called missing", !missing.includes("store: soon"));
+  check("and nothing here was written", JSON.stringify([[...here._m], [...hereKv._m]]) === before);
 }
 
 console.log("what the old Jarvis had from its deployment");

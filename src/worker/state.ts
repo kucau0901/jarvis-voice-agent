@@ -797,6 +797,10 @@ export class JarvisState extends DurableObject<Env> {
     return new Move(this.ctx.storage).put(entries);
   }
 
+  moveRead(keys: string[]) {
+    return new Move(this.ctx.storage).read(keys);
+  }
+
   moveHolds() {
     return new Move(this.ctx.storage).holdsAnything();
   }
