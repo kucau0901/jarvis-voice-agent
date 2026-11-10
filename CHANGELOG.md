@@ -24,7 +24,8 @@ of every release, and in the [README](README.md#updating).
   Browser), Jarvis opens a website, reads it, and presses and fills what is on
   it: "open the school portal and tell me what homework is due". It reads
   pages as text, so it costs what any other answer does and needs no extra
-  model. It never types a password and never answers an "are you human"
+  model. It reads inside a page's frames, follows a window the page opens,
+  reads a long page part by part, and can point at a menu to open it. It never types a password and never answers an "are you human"
   check: it says the page wants one, and you do that part yourself in the
   new **Browser** panel in the menu, which shows the browser's screen and
   takes your taps, drags and typing; the browser stays signed in. A new scope, `browser`, decides who may use

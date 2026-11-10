@@ -2,7 +2,7 @@
 // of Chrome's debugging port, what it gives back, what it refuses, and who is
 // ever offered it. Chrome is a stand-in here; the scripts that run inside a
 // page were tried against a real one.
-import { asViewEvents, browserFill, browserInput, browserOpen, browserPress, browserRead, browserScreen, describe, webAddress, type BrowserDeps } from "../src/worker/lib/browser.ts";
+import { asViewEvents, browserCloseTab, browserFill, browserInput, browserOpen, browserPress, browserRead, browserScreen, describe, webAddress, type BrowserDeps } from "../src/worker/lib/browser.ts";
 import { browserTools } from "../src/worker/tools/browser.ts";
 import { baseTools } from "../src/worker/tools/registry.ts";
 import { ROLE_SCOPES } from "../src/worker/lib/hub.ts";
@@ -24,12 +24,14 @@ function check(name: string, cond: boolean, got?: unknown) {
   }
 }
 
-const PAGE = { title: "Orders", url: "https://shop.example/orders", text: "You have 2 orders.", cut: false, items: [{ n: 1, kind: "link", name: "Sign in" }, { n: 2, kind: "box", name: "Search", holds: "old" }], more: 0, password: false, check: false };
+const PAGE = { title: "Orders", url: "https://shop.example/orders", text: "You have 2 orders.", cut: false, items: [{ n: 1, kind: "link", name: "Sign in" }, { n: 2, kind: "box", name: "Search", holds: "old" }], more: 0, part: 1, password: false, check: false };
 const TAB = { type: "page", url: "https://shop.example/", webSocketDebuggerUrl: "ws://127.0.0.1:9222/devtools/page/A" };
 
 interface Fake {
   /** What /json/list answers. */
   targets?: unknown[];
+  /** What it answers from the second time on: a window opened, or one closed. */
+  targetsLater?: unknown[];
   /** What the page's reading is. */
   page?: Record<string, unknown>;
   /** Where a numbered thing is, or null when the number is stale. */
@@ -55,8 +57,10 @@ function chrome(f: Fake = {}) {
     base: "http://127.0.0.1:9222/",
     fetch: async (url, init) => {
       fetched.push(`${init?.method ?? "GET"} ${url}`);
+      if (url.includes("/json/close/")) return { ok: true, status: 200, text: async () => "Target is closing" };
       if (url.endsWith("/json/list")) {
-        const l = f.list ?? { ok: true, status: 200, body: JSON.stringify(f.targets ?? [TAB]) };
+        const later = f.targetsLater && fetched.filter((x) => x.endsWith("/json/list")).length > 1;
+        const l = f.list ?? { ok: true, status: 200, body: JSON.stringify(later ? f.targetsLater : (f.targets ?? [TAB])) };
         return { ok: l.ok, status: l.status, text: async () => l.body };
       }
       return { ok: true, status: 200, text: async () => JSON.stringify({ ...TAB, webSocketDebuggerUrl: "ws://127.0.0.1:9222/devtools/page/NEW" }) };
@@ -108,7 +112,7 @@ console.log("\nopening a page");
 {
   const c = chrome({ states: ["loading", "throw", "interactive", "complete"] });
   const out = await browserOpen(c.deps, "shop.example/orders");
-  check("the tab in front is found and connected to", c.fetched.join() === "GET http://127.0.0.1:9222/json/list" && c.dialled.join() === TAB.webSocketDebuggerUrl, [c.fetched, c.dialled]);
+  check("the tab in front is found and connected to", c.fetched[0] === "GET http://127.0.0.1:9222/json/list" && c.dialled.join() === TAB.webSocketDebuggerUrl, [c.fetched, c.dialled]);
   check("it is sent there", c.sent[0].method === "Page.navigate" && c.sent[0].params.url === "https://shop.example/orders", c.sent[0]);
   check("and read only once it has loaded: a page mid-load is 'not yet'", c.sent.filter((s) => s.params.expression === "document.readyState").length === 4 && c.slept() >= 4);
   check("the page comes back as a stranger's words", /^--- web page:[0-9a-f]{8} \(CONTENT WRITTEN BY THE WEBSITE/.test(out) && out.includes("You have 2 orders.") && out.includes("Address: https://shop.example/orders"), out);
@@ -122,6 +126,41 @@ console.log("\nopening a page");
   const refused = chrome({ navError: "net::ERR_NAME_NOT_RESOLVED" });
   const said = await browserOpen(refused.deps, "https://nosuch.example/");
   check("an address that does not open: said, and nothing read", said === "The browser could not open it: net::ERR_NAME_NOT_RESOLVED." && refused.methods().join() === "Page.navigate" && refused.closed() === 1, said);
+}
+
+console.log("\na long page, and a page of frames");
+{
+  const c = chrome();
+  await browserRead(c.deps);
+  const scripts = () => c.sent.filter((s) => s.method === "Runtime.evaluate").map((s) => String(s.params.expression));
+  const reading = scripts().find((x) => x.includes("data-jarvis") && x.includes("innerText"))!;
+  check("the start: from the first word and the first thing", reading.includes("const first = 0, from = 0;") && !scripts().some((x) => x.includes("scrollHeight")), reading.slice(0, 80));
+  check("frames of the same site are read with the page, and found in by number", reading.includes("contentDocument") && reading.includes('querySelectorAll("iframe, frame")'));
+  const p3 = chrome({ page: { ...PAGE, part: 3, cut: true, more: 4 } });
+  const out = await browserRead(p3.deps, 3);
+  const s3 = p3.sent.filter((s) => s.method === "Runtime.evaluate").map((s) => String(s.params.expression));
+  check("a later part: down to the page's end first, so what loads when reached has loaded", s3.findIndex((x) => x.includes("scrollHeight")) >= 0 && s3.findIndex((x) => x.includes("scrollHeight")) < s3.findIndex((x) => x.includes("const first =")));
+  check("then from where that part starts", s3.some((x) => x.includes("const first = 240, from = 12000;")));
+  check("the reading says which part it is, and which to ask for next", out.includes("(part 3 of the page)") && out.includes("more words further down: read part 4") && out.includes("and 4 more further down: read part 4"), out);
+  const silly = chrome();
+  await browserRead(silly.deps, -7);
+  check("a part that is no part: the start", silly.sent.some((s) => String(s.params.expression).includes("const first = 0, from = 0;")));
+}
+
+console.log("\na window the page opened");
+{
+  const POP = { type: "page", id: "P", url: "https://shop.example/pop", webSocketDebuggerUrl: "ws://127.0.0.1:9222/devtools/page/P" };
+  const c = chrome({ targets: [{ ...TAB, id: "A" }], targetsLater: [POP, { ...TAB, id: "A" }] });
+  const out = await browserPress(c.deps, 1);
+  check("a press that opened one: the reading is of the new window, the newest", c.dialled.join() === `${TAB.webSocketDebuggerUrl},${POP.webSocketDebuggerUrl}` && c.closed() === 2, c.dialled);
+  check("and says another tab is behind it, and how to go back", out.includes("1 more is open behind it") && out.includes("browser_close_tab"), out.slice(-200));
+  const same = chrome();
+  check("nothing opened: read where it was, and no word of other tabs", (await browserPress(same.deps, 1)).includes("You have 2 orders.") && same.dialled.length === 1 && !(await browserRead(same.deps)).includes("behind it"));
+  const two = chrome({ targets: [POP, { ...TAB, id: "A" }] });
+  await browserCloseTab(two.deps);
+  check("closing the one in front: that one, by its id", two.fetched.includes("GET http://127.0.0.1:9222/json/close/P"), two.fetched);
+  const one = chrome({ targets: [{ ...TAB, id: "A" }] });
+  check("the only tab is never closed", (await browserCloseTab(one.deps)) === "Not closed: it is the browser's only tab." && !one.fetched.some((x) => x.includes("/json/close/")));
 }
 
 console.log("\nwhen the browser is not there");
@@ -154,8 +193,12 @@ console.log("\npressing");
   const out = await browserPress(c.deps, 1);
   const mouse = c.sent.filter((s) => s.method === "Input.dispatchMouseEvent");
   check("the mouse goes there and clicks once", mouse.map((m) => m.params.type).join() === "mouseMoved,mousePressed,mouseReleased" && mouse.every((m) => m.params.x === 310.5 && m.params.y === 42) && mouse[1].params.clickCount === 1, mouse);
-  check("it is found by its number", c.sent.some((s) => String(s.params.expression).includes('[data-jarvis="1"]')));
+  check("it is found by its number", c.sent.some((s) => String(s.params.expression).includes("find(1)")));
   check("then the page is read as it is afterwards", out.includes("You have 2 orders.") && c.methods().indexOf("Input.dispatchMouseEvent") < c.methods().lastIndexOf("Runtime.evaluate"));
+  const h = chrome({ spot: { x: 40, y: 12, tag: "a", type: "", editable: false } });
+  await browserPress(h.deps, 3, true);
+  const moved = h.sent.filter((s) => s.method === "Input.dispatchMouseEvent");
+  check("pointed at, not pressed: the mouse goes there and no button does", moved.length === 1 && moved[0].params.type === "mouseMoved" && moved[0].params.x === 40);
   const stale = chrome({ spot: null });
   const gone = await browserPress(stale.deps, 9);
   check("a number the page no longer has: said, and nothing pressed", /Nothing on the page has that number now/.test(gone) && !stale.methods().includes("Input.dispatchMouseEvent"), gone);
@@ -240,7 +283,7 @@ console.log("\nwhat the model is told of a page");
   const pw = describe({ ...PAGE, password: true });
   check("a password asked for: told the user signs in themselves", pw.indexOf("Passwords are never typed") > pw.search(/--- end web page:/));
   const long = describe({ ...PAGE, cut: true, more: 7, items: [{ n: 1, kind: "checkbox", name: "Gift", on: true }, { n: 2, kind: "button", name: "" }] });
-  check("more than was read: said", long.includes("more words further down") && long.includes("and 7 more further down"));
+  check("more than was read: said, with how to read on", long.includes("more words further down: read part 2") && long.includes("and 7 more further down: read part 2") && !long.includes("(part 1"));
   check("a ticked box, and a thing with no name", long.includes('[1] checkbox "Gift", ticked') && long.includes("[2] button\n"), long);
   check("a page with no words: said", describe({ ...PAGE, text: "", items: [] }).includes("(the page shows no words)"));
 }
@@ -249,12 +292,12 @@ console.log("\nwho is offered it");
 {
   const on = { BROWSER_URL: "http://127.0.0.1:9222" } as never;
   const names = (env: unknown, grants: readonly string[]) => baseTools(env as never, grants as never).map((t) => t.name).filter((n) => n.startsWith("browser_"));
-  check("four tools, all behind the browser scope", browserTools.length === 4 && browserTools.every((t) => t.scope === "browser" && t.pace === "slow"));
+  check("five tools, all behind the browser scope", browserTools.length === 5 && browserTools.every((t) => t.scope === "browser" && t.pace === "slow"));
   check("strict schemas: every property required, nothing extra", browserTools.every((t) => { const p = t.parameters as { properties: object; required: string[]; additionalProperties: boolean }; return p.additionalProperties === false && Object.keys(p.properties).join() === p.required.join(); }));
   check("none without a browser set up, even to the owner", names({}, ["*"]).length === 0);
-  check("the owner and admins (everything): all four", names(on, ["*"]).join() === "browser_open,browser_read,browser_press,browser_fill");
+  check("the owner and admins (everything): all five", names(on, ["*"]).join() === "browser_open,browser_read,browser_press,browser_fill,browser_close_tab");
   check("no role but the admin's has the scope", (["adult", "child", "guest"] as const).every((r) => !(ROLE_SCOPES[r] as readonly string[]).includes("browser") && names(on, ROLE_SCOPES[r]).length === 0));
-  check("an adult given it by an admin: offered", names(on, [...ROLE_SCOPES.adult, "browser"]).length === 4);
+  check("an adult given it by an admin: offered", names(on, [...ROLE_SCOPES.adult, "browser"]).length === 5);
   check("a device with every other scope: not offered", names(on, SCOPES.filter((s) => s !== "browser")).length === 0);
   check("never over Telegram", !TELEGRAM_REACH.includes("browser"));
   check("never by an approved step of a job, whoever approves", !runGrants(["*"], ["*"], ["*"])?.includes("browser") && runGrants(["*"], ["*"], ["*"])?.includes("home") === true);

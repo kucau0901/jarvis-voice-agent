@@ -52,24 +52,53 @@ export function webAddress(raw: string): URL | string {
 }
 
 /**
+ * Run in the page, before the scripts below. A page may be several documents:
+ * frames inside it, and frames inside those (an older system is often built
+ * so). `docs` is every one this page may read, which is its own and any frame
+ * from the same site; another site's frame (a payment box, a human check) is
+ * closed to it, and stays so. `find` is a numbered thing, wherever it is.
+ */
+const FRAMES = `
+  const docs = (doc, out) => {
+    out.push(doc);
+    for (const f of doc.querySelectorAll("iframe, frame")) {
+      let d = null;
+      try { d = f.contentDocument; } catch (e) {}
+      if (d && d.body) docs(d, out);
+    }
+    return out;
+  };
+  const find = (n) => {
+    for (const d of docs(document, [])) {
+      const e = d.querySelector('[data-jarvis="' + n + '"]');
+      if (e) return e;
+    }
+    return null;
+  };`;
+
+/**
  * Run in the page: its words, and each thing that can be pressed or filled,
  * numbered. The number is left on the element (data-jarvis), so a later press
- * finds the same one. A password box's contents are never read.
+ * finds the same one. A password box's contents are never read. A long page
+ * is read a part at a time: `part` 1 is its start.
  */
-const READ = `(() => {
+const read = (part: number): string => `(() => {${FRAMES}
   const clean = (s) => String(s || "").replace(/\\s+/g, " ").trim();
-  for (const e of document.querySelectorAll("[data-jarvis]")) e.removeAttribute("data-jarvis");
+  const all = docs(document, []);
+  for (const d of all) for (const e of d.querySelectorAll("[data-jarvis]")) e.removeAttribute("data-jarvis");
   const seen = (e) => {
     const r = e.getBoundingClientRect();
     if (r.width < 2 || r.height < 2) return false;
-    const s = getComputedStyle(e);
+    const s = e.ownerDocument.defaultView.getComputedStyle(e);
     return s.visibility !== "hidden" && s.display !== "none";
   };
   const nameOf = (e) => {
     const label = e.labels && e.labels[0] ? e.labels[0].innerText : "";
     const img = e.querySelector ? e.querySelector("img[alt]") : null;
-    return clean(e.getAttribute("aria-label") || label || e.innerText || (e.type === "password" ? "" : e.value) ||
-      e.getAttribute("placeholder") || e.getAttribute("title") || (img ? img.getAttribute("alt") : "") || e.getAttribute("name")).slice(0, 80);
+    // What it is called, not what it holds: a box's contents and a choice's options are said apart.
+    const own = /^(INPUT|TEXTAREA|SELECT)$/.test(e.tagName) ? (/^(submit|button|reset)$/.test(e.type) ? e.value : "") : e.innerText;
+    return clean(e.getAttribute("aria-label") || label || own || e.getAttribute("placeholder") || e.getAttribute("title") ||
+      (img ? img.getAttribute("alt") : "") || e.getAttribute("name")).slice(0, 80);
   };
   const kindOf = (e) => {
     const t = e.tagName.toLowerCase();
@@ -79,49 +108,71 @@ const READ = `(() => {
     if (t === "select") return "choice";
     return e.getAttribute("role") || "button";
   };
+  const first = ${(part - 1) * ITEMS_MAX}, from = ${(part - 1) * TEXT_MAX};
   const items = [];
-  let more = 0;
-  const all = document.querySelectorAll("a[href], button, input:not([type=hidden]), textarea, select, summary, [role=button], [role=link], [role=tab], [role=menuitem], [role=checkbox], [role=radio], [role=option], [contenteditable=true]");
-  for (const e of all) {
-    if (!seen(e)) continue;
-    if (items.length >= ${ITEMS_MAX}) { more++; continue; }
-    const n = items.length + 1;
-    e.setAttribute("data-jarvis", String(n));
-    const kind = kindOf(e);
-    const item = { n, kind, name: nameOf(e) };
-    if (kind === "box" && e.value) item.holds = clean(e.value).slice(0, 80);
-    if ((kind === "checkbox" || kind === "radio") && e.checked) item.on = true;
-    if (kind === "choice") item.holds = clean(e.selectedOptions && e.selectedOptions[0] ? e.selectedOptions[0].text : "");
-    items.push(item);
+  let n = 0, text = "", password = false, check = false;
+  for (const d of all) {
+    for (const e of d.querySelectorAll("a[href], button, input:not([type=hidden]), textarea, select, summary, [role=button], [role=link], [role=tab], [role=menuitem], [role=checkbox], [role=radio], [role=option], [contenteditable=true]")) {
+      if (!seen(e)) continue;
+      n++;
+      e.setAttribute("data-jarvis", String(n));
+      if (n <= first || items.length >= ${ITEMS_MAX}) continue;
+      const kind = kindOf(e);
+      const item = { n, kind, name: nameOf(e) };
+      if (kind === "box" && e.value) item.holds = clean(e.value).slice(0, 80);
+      if ((kind === "checkbox" || kind === "radio") && e.checked) item.on = true;
+      if (kind === "choice") item.holds = clean(e.selectedOptions && e.selectedOptions[0] ? e.selectedOptions[0].text : "");
+      items.push(item);
+    }
+    const words = (d.body && d.body.tagName !== "FRAMESET" ? d.body.innerText : "").replace(/[ \\t]+/g, " ").replace(/\\n\\s*\\n+/g, "\\n").trim();
+    if (words) text += (text ? "\\n" : "") + words;
+    password = password || !!d.querySelector("input[type=password]");
+    check = check || !!d.querySelector('iframe[src*="recaptcha"], iframe[src*="hcaptcha"], iframe[src*="challenges.cloudflare.com"], iframe[src*="arkoselabs"], .g-recaptcha, .h-captcha, .cf-turnstile, #challenge-form');
   }
-  const text = (document.body ? document.body.innerText : "").replace(/[ \\t]+/g, " ").replace(/\\n\\s*\\n+/g, "\\n").trim();
-  const check = !!document.querySelector('iframe[src*="recaptcha"], iframe[src*="hcaptcha"], iframe[src*="challenges.cloudflare.com"], iframe[src*="arkoselabs"], .g-recaptcha, .h-captcha, .cf-turnstile, #challenge-form');
-  return JSON.stringify({ title: clean(document.title).slice(0, 200), url: location.href, text: text.slice(0, ${TEXT_MAX}), cut: text.length > ${TEXT_MAX}, items, more,
-    password: !!document.querySelector("input[type=password]"), check });
+  return JSON.stringify({ title: clean(document.title).slice(0, 200), url: location.href, text: text.slice(from, from + ${TEXT_MAX}), cut: text.length > from + ${TEXT_MAX},
+    items, more: Math.max(0, n - first - items.length), part: ${part}, password, check });
 })()`;
 
-/** Run in the page: where number `n` is, brought into view, and what it is. A link that would open another tab opens here. */
-const where = (n: number): string => `(() => {
-  const e = document.querySelector('[data-jarvis="${n}"]');
+/** Run in the page: where number `n` is on the browser's screen, brought into view, and what it is. A link that would open another tab opens here. */
+const where = (n: number): string => `(() => {${FRAMES}
+  const e = find(${n});
   if (!e) return "null";
   const a = e.closest("a[target]");
-  if (a) a.removeAttribute("target");
+  // Unless it names a frame of this page (a menu that fills the frame beside it): that is this tab already.
+  const frame = a && docs(document, []).some((d) => [...d.querySelectorAll("iframe, frame")].some((f) => f.name === a.target));
+  if (a && !frame && !/^_(self|parent|top)$/.test(a.target)) a.removeAttribute("target");
   e.scrollIntoView({ block: "center", inline: "center" });
   const r = e.getBoundingClientRect();
+  let x = r.left + r.width / 2, y = r.top + r.height / 2;
+  // Inside a frame, a place is counted from the frame's own corner: add each frame's, out to the screen.
+  for (let w = e.ownerDocument.defaultView; w.frameElement; w = w.parent) {
+    const f = w.frameElement.getBoundingClientRect();
+    x += f.left + w.frameElement.clientLeft;
+    y += f.top + w.frameElement.clientTop;
+  }
   const t = e.tagName.toLowerCase();
-  return JSON.stringify({ x: r.left + r.width / 2, y: r.top + r.height / 2, tag: t, type: e.type || "", editable: t === "textarea" || e.isContentEditable || (t === "input" && !["checkbox", "radio", "submit", "button", "file", "image", "reset"].includes(e.type)) });
+  return JSON.stringify({ x, y, tag: t, type: e.type || "", editable: t === "textarea" || e.isContentEditable || (t === "input" && !["checkbox", "radio", "submit", "button", "file", "image", "reset"].includes(e.type)) });
 })()`;
 
 /** Run in the page: number `n`, a choice, set to the option that reads `text`. */
-const choose = (n: number, text: string): string => `(() => {
-  const e = document.querySelector('[data-jarvis="${n}"]');
+const choose = (n: number, text: string): string => `(() => {${FRAMES}
+  const e = find(${n});
   const want = ${JSON.stringify(text.trim().toLowerCase())};
   const o = [...e.options].find((o) => o.text.trim().toLowerCase() === want) || [...e.options].find((o) => o.text.toLowerCase().includes(want));
   if (!o) return JSON.stringify([...e.options].map((o) => o.text.trim()).slice(0, 40));
   e.value = o.value;
-  e.dispatchEvent(new Event("input", { bubbles: true }));
-  e.dispatchEvent(new Event("change", { bubbles: true }));
+  const Ev = e.ownerDocument.defaultView.Event;
+  e.dispatchEvent(new Ev("input", { bubbles: true }));
+  e.dispatchEvent(new Ev("change", { bubbles: true }));
   return "true";
+})()`;
+
+/** Run in the page: down to its end and back to where it was not, so what a page only loads when reached is there to read. */
+const TO_END = `(() => {${FRAMES}
+  for (const d of docs(document, [])) for (const el of [d.scrollingElement, ...d.querySelectorAll("*")]) {
+    if (el && el.scrollHeight > el.clientHeight + 200 && el.clientHeight > 200) el.scrollTop = el.scrollHeight;
+  }
+  return true;
 })()`;
 
 /** The keys a hand can press besides typing: its Windows key code, and the character it types if any. */
@@ -138,6 +189,10 @@ interface Reading {
   cut: boolean;
   items: { n: number; kind: string; name: string; holds?: string; on?: boolean }[];
   more: number;
+  /** Tabs open behind this one, when there are any. */
+  behind?: number;
+  /** Which part of a long page this is: 1 is its start. */
+  part: number;
   password: boolean;
   check: boolean;
 }
@@ -150,8 +205,55 @@ interface Spot {
   editable: boolean;
 }
 
+/** A tab, as the browser lists it. */
+interface Listed {
+  id: string;
+  webSocketDebuggerUrl: string;
+}
+
+/** What the browser's debugging port answers at a path, as text. */
+async function ask(deps: BrowserDeps, path: string, method = "GET"): Promise<string> {
+  const base = deps.base.replace(/\/+$/, "");
+  let r: Awaited<ReturnType<BrowserDeps["fetch"]>>;
+  try {
+    r = await deps.fetch(`${base}${path}`, { method, signal: deps.signal });
+  } catch (e) {
+    throw new Error(`the browser did not answer at ${base} (${e instanceof Error ? e.message : String(e)})`);
+  }
+  const body = await r.text();
+  // Chrome refuses a debugging address given by name: only an IP address or localhost.
+  if (!r.ok) throw new Error(`the browser said ${r.status}: ${body.slice(0, 200)}`);
+  return body;
+}
+
+function parsed(deps: BrowserDeps, body: string): unknown {
+  try {
+    const v: unknown = JSON.parse(body);
+    return Array.isArray(v) ? v : [v];
+  } catch {
+    throw new Error(`what answered at ${deps.base.replace(/\/+$/, "")} is not a browser's debugging port`);
+  }
+}
+
+/** The tabs among what the browser lists: pages, and not its own tools'. */
+function pages(v: unknown): Listed[] {
+  const out: Listed[] = [];
+  for (const t of Array.isArray(v) ? (v as unknown[]) : []) {
+    if (!t || typeof t !== "object") continue;
+    const { id, type, url, webSocketDebuggerUrl } = t as Record<string, unknown>;
+    if (type === "page" && typeof webSocketDebuggerUrl === "string" && !/^(devtools|chrome-extension):/.test(String(url))) out.push({ id: String(id ?? ""), webSocketDebuggerUrl });
+  }
+  return out;
+}
+
+/** The browser's tabs, the newest first: that is the order it lists them in. */
+const tabs = async (deps: BrowserDeps): Promise<Listed[]> => pages(parsed(deps, await ask(deps, "/json/list")));
+
 /** One tab, for the length of one call. */
 class Tab {
+  /** Which tab this is, and how many others are open behind it. */
+  at: Listed = { id: "", webSocketDebuggerUrl: "" };
+  behind = 0;
   private wire: Wire | null = null;
   private next = 1;
   private waiting = new Map<number, { resolve: (v: Record<string, unknown>) => void; reject: (e: Error) => void }>();
@@ -185,40 +287,16 @@ class Tab {
     this.waiting.clear();
   }
 
-  /** The tab in front, as the browser lists them; a new one when there is none. */
+  /** The tab in front: the newest the browser has, so a window a page opened is the one worked in. A new one when there is none. */
   static async open(deps: BrowserDeps): Promise<Tab> {
-    const base = deps.base.replace(/\/+$/, "");
-    const ask = async (path: string, method = "GET"): Promise<unknown> => {
-      let r: Awaited<ReturnType<BrowserDeps["fetch"]>>;
-      try {
-        r = await deps.fetch(`${base}${path}`, { method, signal: deps.signal });
-      } catch (e) {
-        throw new Error(`the browser did not answer at ${base} (${e instanceof Error ? e.message : String(e)})`);
-      }
-      const body = await r.text();
-      // Chrome refuses a debugging address given by name: only an IP address or localhost.
-      if (!r.ok) throw new Error(`the browser said ${r.status}: ${body.slice(0, 200)}`);
-      try {
-        return JSON.parse(body);
-      } catch {
-        throw new Error(`what answered at ${base} is not a browser's debugging port`);
-      }
-    };
-    const pages = (v: unknown): { webSocketDebuggerUrl: string }[] => {
-      const out: { webSocketDebuggerUrl: string }[] = [];
-      for (const t of Array.isArray(v) ? (v as unknown[]) : []) {
-        if (!t || typeof t !== "object") continue;
-        const { type, url, webSocketDebuggerUrl } = t as Record<string, unknown>;
-        if (type === "page" && typeof webSocketDebuggerUrl === "string" && !/^(devtools|chrome-extension):/.test(String(url))) out.push({ webSocketDebuggerUrl });
-      }
-      return out;
-    };
-    let page = pages(await ask("/json/list"))[0];
-    if (!page) page = pages([await ask("/json/new?about:blank", "PUT")])[0];
-    if (!page) throw new Error("the browser has no tab to use and would not open one");
-
+    let all = await tabs(deps);
+    if (!all.length) all = pages(parsed(deps, await ask(deps, "/json/new?about:blank", "PUT")));
+    const front = all[0];
+    if (!front) throw new Error("the browser has no tab to use and would not open one");
     const tab = new Tab(deps);
-    tab.wire = await deps.dial(page.webSocketDebuggerUrl, (text) => tab.heard(text), (why) => tab.lost(`the browser hung up: ${why}`));
+    tab.at = front;
+    tab.behind = all.length - 1;
+    tab.wire = await deps.dial(front.webSocketDebuggerUrl, (text) => tab.heard(text), (why) => tab.lost(`the browser hung up: ${why}`));
     deps.signal?.addEventListener("abort", () => tab.close(), { once: true });
     return tab;
   }
@@ -256,8 +334,8 @@ class Tab {
     }
   }
 
-  async read(): Promise<Reading> {
-    return JSON.parse(String(await this.run(READ))) as Reading;
+  async read(part = 1): Promise<Reading> {
+    return JSON.parse(String(await this.run(read(part)))) as Reading;
   }
 
   async spot(n: number): Promise<Spot | null> {
@@ -297,13 +375,15 @@ class Tab {
 /** A reading as the model gets it: ours outside the fence, the page's inside. */
 export function describe(r: Reading): string {
   const lines = [`Address: ${r.url}`, `Title: ${r.title || "(none)"}`, "", r.text || "(the page shows no words)"];
-  if (r.cut) lines.push("(…more words further down, not read)");
+  if (r.part > 1) lines.splice(2, 0, `(part ${r.part} of the page)`);
+  if (r.cut) lines.push(`(…more words further down: read part ${r.part + 1})`);
   if (r.items.length) {
     lines.push("", "What can be pressed or filled, by number:");
     for (const i of r.items) lines.push(`[${i.n}] ${i.kind}${i.name ? ` "${i.name}"` : ""}${i.holds ? `, holding "${i.holds}"` : ""}${i.on ? ", ticked" : ""}`);
-    if (r.more) lines.push(`(and ${r.more} more further down, not numbered)`);
+    if (r.more) lines.push(`(and ${r.more} more further down: read part ${r.part + 1})`);
   }
   const notes: string[] = [];
+  if (r.behind) notes.push(`This is the browser's newest tab; ${r.behind} more ${r.behind === 1 ? "is" : "are"} open behind it. browser_close_tab closes this one and goes back to the one behind.`);
   if (r.check)
     notes.push("This page is asking whoever is there to prove they are human. Do not try to answer it, and press nothing on it: tell the user the page wants a human check, and that they must do it themselves: in Jarvis's menu, Browser shows the page and takes their taps. When they say it is done, read the page again.");
   if (r.password)
@@ -312,16 +392,33 @@ export function describe(r: Reading): string {
 }
 
 /** One thing done in the browser's tab, then the page as it is afterwards. */
-async function withTab(deps: BrowserDeps, act: (tab: Tab) => Promise<string | void>): Promise<string> {
-  const tab = await Tab.open(deps);
+async function withTab(deps: BrowserDeps, act: (tab: Tab) => Promise<string | void>, part = 1): Promise<string> {
+  let tab = await Tab.open(deps);
   try {
     const refused = await act(tab);
     if (typeof refused === "string") return refused;
     await tab.settle();
-    return describe(await tab.read());
+    // What was done may have opened a window, or closed this one: the page to read is then the one in front now.
+    const front = (await tabs(deps))[0];
+    if (front && front.webSocketDebuggerUrl !== tab.at.webSocketDebuggerUrl) {
+      tab.close();
+      tab = await Tab.open(deps);
+      await tab.settle();
+    }
+    return describe({ ...(await tab.read(part)), behind: tab.behind });
   } finally {
     tab.close();
   }
+}
+
+/** The tab in front closed, and the one behind it read: for a window a page opened that is done with, or was never wanted. */
+export async function browserCloseTab(deps: BrowserDeps): Promise<string> {
+  const all = await tabs(deps);
+  const front = all[0];
+  if (!front || all.length < 2) return "Not closed: it is the browser's only tab.";
+  await ask(deps, `/json/close/${encodeURIComponent(front.id)}`);
+  await deps.sleep(300);
+  return browserRead(deps);
 }
 
 const GONE = "Nothing on the page has that number now: the page has changed. Read it again and use the numbers it gives.";
@@ -335,13 +432,19 @@ export const browserOpen = (deps: BrowserDeps, address: string): Promise<string>
   });
 };
 
-export const browserRead = (deps: BrowserDeps): Promise<string> => withTab(deps, async () => {});
+/** The page as it is; a later part of a long one after going down to its end, so what loads only when reached has loaded. */
+export const browserRead = (deps: BrowserDeps, part = 1): Promise<string> =>
+  withTab(deps, async (tab) => {
+    if (part > 1) await tab.run(TO_END);
+  }, Math.max(1, Math.min(50, Math.floor(part) || 1)));
 
-export const browserPress = (deps: BrowserDeps, n: number): Promise<string> =>
+/** Pressed, or only pointed at: a menu that opens under the mouse opens, and its entries are in the reading that follows. */
+export const browserPress = (deps: BrowserDeps, n: number, hover = false): Promise<string> =>
   withTab(deps, async (tab) => {
     const at = await tab.spot(n);
     if (!at) return GONE;
-    await tab.press(at);
+    if (hover) await tab.call("Input.dispatchMouseEvent", { type: "mouseMoved", x: at.x, y: at.y, button: "none" });
+    else await tab.press(at);
   });
 
 export const browserFill = (deps: BrowserDeps, n: number, text: string, enter: boolean): Promise<string> =>

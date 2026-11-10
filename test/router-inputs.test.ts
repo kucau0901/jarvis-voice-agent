@@ -61,6 +61,7 @@ const PROMPT_SHA256 = "ca9ae682da7e82a9d110cc7936180ac53ec84c1bcaafd152ffeb1fa8d
 // skill_address (tools/skills.ts, scope skills, a screen in front): the owner key and admins only (31 Oct 2026).
 // house_watch (tools/house.ts, scope home, with Home Assistant): admin and adult (2 Nov 2026).
 // browser_open, browser_read, browser_press and browser_fill (tools/browser.ts, scope browser, with a browser set up): admins only (10 Nov 2026).
+// browser_close_tab (tools/browser.ts, scope browser): as the other browser tools (10 Nov 2026).
 const EXPECTED: Record<string, { model: string; tools: string[]; input: string }> = {
  "owner key, nothing set up": {
   "model": "gpt-6-luna",
@@ -98,6 +99,7 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
    "alert_talk",
    "answer_message",
    "ask_hermes",
+   "browser_close_tab",
    "browser_fill",
    "browser_open",
    "browser_press",

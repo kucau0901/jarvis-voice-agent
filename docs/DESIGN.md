@@ -1771,6 +1771,19 @@ Chrome (`lib/browser.ts`, `tools/browser.ts`), run beside it
   it directly over a WebSocket: no driver library, no helper service. Each
   call connects, does one thing and hangs up; the browser itself remembers
   its tab and the numbers left on the page (`data-jarvis`).
+- **The whole page, as a person sees it.** An older system is often frames
+  inside frames: the reading goes into every frame that belongs to the same
+  site, numbers what is in them with the rest, and a press there is aimed
+  from the screen's corner, not the frame's. Another site's frame (a payment
+  box, a human check) is closed to the page's own scripts, and stays closed.
+  A long page is read a part at a time, after going down to its end so that
+  what loads only when reached has loaded. Pointing without pressing opens a
+  menu that opens under the mouse.
+- **The newest tab is the one in front.** Chrome lists its tabs newest
+  first, so a window a page opens is where the next call works, with nothing
+  for Jarvis to remember; the reading says when tabs are open behind it, and
+  `browser_close_tab` goes back. A link that would only open another tab is
+  opened in this one.
 - **Real input.** A press is a mouse press at the element's place and typing
   is the browser's own text input, not a script calling `click()`, so pages
   see what they would from a person.
