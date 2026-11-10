@@ -38,7 +38,8 @@ export async function handleBrowser(req: Request, env: Env): Promise<Response> {
     const refused = await browserInput(deps, events);
     return refused ? err(400, refused) : json({ ok: true });
   } catch (e) {
-    // The browser's own words (it is off, it hung up): never what was typed.
-    return err(502, e instanceof Error ? e.message : String(e));
+    // The browser's own words (it is off, it hung up): never what was typed. Not 502:
+    // a proxy in front (Cloudflare) answers that with a page of its own, and the words are lost.
+    return err(503, e instanceof Error ? e.message : String(e));
   }
 }

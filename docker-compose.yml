@@ -38,8 +38,10 @@ services:
     network_mode: "service:jarvis"
     environment:
       TZ: ${TIMEZONE:-Etc/UTC}
-      # Chrome only opens the debugging port for a profile that is not its default one.
-      CHROME_CLI: --remote-debugging-port=9222 --user-data-dir=/config/profile
+      # The profile stays where the image keeps it: there the image clears the lock a
+      # replaced container leaves behind. Anywhere else, the browser starts into "the
+      # profile is in use by another computer" and never opens its debugging port.
+      CHROME_CLI: --remote-debugging-port=9222
       # No terminal, no sudo, no closing the browser from its screen.
       HARDEN_DESKTOP: "true"
       HARDEN_OPENBOX: "true"
