@@ -1824,6 +1824,24 @@ Chrome (`lib/browser.ts`, `tools/browser.ts`), run beside it
   its own it would need its own way in. What is typed in the panel goes to
   the browser and is not logged, kept or shown to a model. Only a few kinds
   of event are taken (`asViewEvents`), never a raw command for the browser.
+- **Handed over where the talking is.** When a page needs the person, or
+  something on it will not work after two tries, the model calls
+  `browser_show`: a `display` event of kind `browser`, which the app draws
+  as a card in the conversation holding the same live screen
+  (`ui/BrowserView.ts`, shared with the panel), to press and type on there,
+  with Enlarge for the whole panel. It is live on the screen that asked and
+  is not kept: a browser's screen an hour ago is nobody's business.
+- **Typing replaces, and is checked.** A box is pressed, what it holds is
+  selected in the page, and the words typed as input. Then the box is looked
+  at: one that does not hold exactly what was typed (a date box that only
+  takes its calendar, one that rewrites or keeps what it had) is set to it
+  outright, with the events a page's code listens for.
+- **A message box never freezes it.** While a page has an alert or a
+  confirm up it answers nothing, and nobody is there to press its button.
+  Each is answered OK as it appears (one left up from before, when a call
+  begins), and what it said goes to the model, quoted: it chose the press
+  that raised it. Every step asked of the browser also has a time limit, so
+  a page that stops answering is said to have, not waited on.
 - **Nothing published.** In Docker the browser lives inside Jarvis's own
   network (`network_mode: service:jarvis`), so Jarvis reaches its debugging
   port and its screen on 127.0.0.1 and nothing else can. That port is the

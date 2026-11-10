@@ -64,7 +64,8 @@ export const browserTools: Tool[] = [
     name: "browser_open",
     scope: "browser",
     available,
-    pace: "slow",
+    // "fast" for what is said while waiting (lib/router.ts): the slow words are Hermes's, and name "home".
+    pace: "fast",
     description:
       "Open a web address in the family's own browser and read the page: its words, and a numbered list of what " +
       "can be pressed or filled. For a website that needs working like a person does (signed-in pages, forms, " +
@@ -81,7 +82,7 @@ export const browserTools: Tool[] = [
     name: "browser_read",
     scope: "browser",
     available,
-    pace: "slow",
+    pace: "fast",
     description:
       "Read the page the browser is on now, again: after the user says they have signed in or passed a check " +
       "there, when the numbers are stale, or for the next part of a long page. Gives the same words and numbered " +
@@ -98,7 +99,7 @@ export const browserTools: Tool[] = [
     name: "browser_press",
     scope: "browser",
     available,
-    pace: "slow",
+    pace: "fast",
     description:
       "Press one numbered thing on the browser's page (a link, a button, a tick box), or only point at it so a " +
       "menu that opens under the mouse opens; then read the page as it is afterwards." + RULES,
@@ -114,7 +115,7 @@ export const browserTools: Tool[] = [
     name: "browser_fill",
     scope: "browser",
     available,
-    pace: "slow",
+    pace: "fast",
     description:
       "Type into one numbered box on the browser's page, replacing what it held, or pick an option of a numbered " +
       "choice by its words; then read the page as it is afterwards." + RULES,
@@ -134,7 +135,7 @@ export const browserTools: Tool[] = [
     name: "browser_close_tab",
     scope: "browser",
     available,
-    pace: "slow",
+    pace: "fast",
     description:
       "Close the browser's tab in front (a window a page opened that is finished with, or was never wanted), " +
       "then read the tab behind it. Never closes the last tab.",
@@ -145,7 +146,7 @@ export const browserTools: Tool[] = [
     name: "browser_sign_in",
     scope: "browser",
     available,
-    pace: "slow",
+    pace: "fast",
     description:
       "Sign in on the page the browser is on, with the sign-in the user saved for that site in Jarvis (menu, " +
       "Browser). The only way a password is ever typed: you never see it, and it is used on no other site. Use it " +
@@ -158,5 +159,22 @@ export const browserTools: Tool[] = [
       additionalProperties: false,
     },
     run: (args, ctx) => attempt(browserSignIn(deps(ctx), savedFor(ctx.env, typeof args.login === "string" ? args.login : ""))),
+  },
+  {
+    name: "browser_show",
+    scope: "browser",
+    available,
+    pace: "fast",
+    description:
+      "Put the browser's live screen in front of the user, in the conversation, where they can watch, press and " +
+      "type on it themselves and enlarge it. Use it when the user asks to see the browser; when a page needs them " +
+      "(a human check, a one-time code, a choice only they can make); and when something on a page will not work " +
+      "after two tries (a date picker, a drag, a picture to click), instead of trying again. Say what you need " +
+      "them to do; when they say it is done, read the page again.",
+    parameters: { type: "object", properties: {}, required: [], additionalProperties: false },
+    async run(_args, ctx) {
+      ctx.display({ kind: "browser" });
+      return "The browser's screen is now in front of the user, to press and type on themselves. Tell them, briefly, what to do there. Read the page again when they say it is done.";
+    },
   },
 ];

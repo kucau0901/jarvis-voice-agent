@@ -37,6 +37,8 @@ export interface BrowserDeps {
 const TEXT_MAX = 6000;
 /** How many pressable things are listed. */
 const ITEMS_MAX = 120;
+/** How long one thing asked of the browser may take to be answered. */
+const CALL_MS = 20_000;
 /** How long a page may take to finish loading before it is read as it is. */
 const SETTLE_MS = 12_000;
 
@@ -205,6 +207,24 @@ const signIn = (which: "user" | "pass"): string => `(() => {${FRAMES}
   return JSON.stringify(out);
 })()`;
 
+/**
+ * Run in the page, before a line that uses them: the box that has the
+ * keyboard, in whichever frame it is; all it holds selected, so typing
+ * replaces it; and, after typing, made to hold exactly `text` when it does
+ * not, set the way a page's own code would see a person's typing.
+ */
+const FOCUSED = `
+  const focused = () => { let e = document.activeElement; while (e && e.contentDocument && e.contentDocument.activeElement) e = e.contentDocument.activeElement; return e; };
+  const select = (e) => { if (!e) return; if (typeof e.select === "function") e.select(); else if (e.isContentEditable) e.ownerDocument.getSelection().selectAllChildren(e); };
+  const hold = (e, text) => {
+    if (!e || !/^(INPUT|TEXTAREA)$/.test(e.tagName) || e.value === text) return;
+    const w = e.ownerDocument.defaultView;
+    Object.getOwnPropertyDescriptor(e.tagName === "INPUT" ? w.HTMLInputElement.prototype : w.HTMLTextAreaElement.prototype, "value").set.call(e, text);
+    e.dispatchEvent(new w.Event("input", { bubbles: true }));
+    e.dispatchEvent(new w.Event("change", { bubbles: true }));
+  };
+`;
+
 /** Run in the page: down to its end and back to where it was not, so what a page only loads when reached is there to read. */
 const TO_END = `(() => {${FRAMES}
   for (const d of docs(document, [])) for (const el of [d.scrollingElement, ...d.querySelectorAll("*")]) {
@@ -229,6 +249,8 @@ interface Reading {
   more: number;
   /** Tabs open behind this one, when there are any. */
   behind?: number;
+  /** Message boxes the page put up while this was done, each answered OK: what they said. */
+  boxes?: string[];
   /** Which part of a long page this is: 1 is its start. */
   part: number;
   password: boolean;
@@ -289,6 +311,8 @@ const tabs = async (deps: BrowserDeps): Promise<Listed[]> => pages(parsed(deps, 
 
 /** One tab, for the length of one call. */
 class Tab {
+  /** What message boxes the page put up during this call said (each was answered OK). */
+  boxes: string[] = [];
   /** Which tab this is, and how many others are open behind it. */
   at: Listed = { id: "", webSocketDebuggerUrl: "" };
   behind = 0;
@@ -304,10 +328,18 @@ class Tab {
   }
 
   private heard(text: string): void {
-    let m: { id?: unknown; error?: { message?: unknown }; result?: Record<string, unknown> };
+    let m: { id?: unknown; method?: unknown; params?: Record<string, unknown>; error?: { message?: unknown }; result?: Record<string, unknown> };
     try {
       m = JSON.parse(text);
     } catch {
+      return;
+    }
+    // A message box the page put up (alert, confirm, "leave this page?"). While one is up the page answers
+    // nothing at all, and nobody is there to press its button: it is answered OK, and what it said is kept
+    // to tell the model, which chose the press that raised it.
+    if (m.method === "Page.javascriptDialogOpening") {
+      this.boxes.push(String(m.params?.message ?? "").slice(0, 500));
+      void this.call("Page.handleJavaScriptDialog", { accept: true }).catch(() => {});
       return;
     }
     if (typeof m.id !== "number") return;
@@ -336,6 +368,9 @@ class Tab {
     tab.behind = all.length - 1;
     tab.wire = await deps.dial(front.webSocketDebuggerUrl, (text) => tab.heard(text), (why) => tab.lost(`the browser hung up: ${why}`));
     deps.signal?.addEventListener("abort", () => tab.close(), { once: true });
+    // To be told of a message box; and one left up from before is closed now, or nothing below would be answered.
+    await tab.call("Page.enable");
+    if (await tab.call("Page.handleJavaScriptDialog", { accept: true }).then(() => true, () => false)) tab.boxes.push("");
     return tab;
   }
 
@@ -348,7 +383,15 @@ class Tab {
     const id = this.next++;
     return new Promise((resolve, reject) => {
       if (this.gone || !this.wire) return reject(new Error(this.gone || "not connected"));
-      this.waiting.set(id, { resolve, reject });
+      // No step waits for ever: a page that has stopped answering is said to have, in time for the person to be told.
+      const late = setTimeout(() => {
+        this.waiting.delete(id);
+        reject(new Error("the page did not answer in time"));
+      }, CALL_MS);
+      this.waiting.set(id, {
+        resolve: (v) => (clearTimeout(late), resolve(v)),
+        reject: (e) => (clearTimeout(late), reject(e)),
+      });
       this.wire.send(JSON.stringify({ id, method, params }));
     });
   }
@@ -387,23 +430,23 @@ class Tab {
     await this.call("Input.dispatchMouseEvent", { ...point, type: "mouseReleased" });
   }
 
-  /** Everything in the box in front selected, so typing replaces it: the browser's own command, the same on every system. */
-  async selectAll(): Promise<void> {
-    const k = { key: "a", code: "KeyA", windowsVirtualKeyCode: 65, modifiers: 2 };
-    await this.call("Input.dispatchKeyEvent", { ...k, type: "rawKeyDown", commands: ["selectAll"] });
-    await this.call("Input.dispatchKeyEvent", { ...k, type: "keyUp" });
-  }
-
   /** Where the page asks who you are (the script above). */
   async asks(which: "user" | "pass"): Promise<{ origin: string; user: boolean; pass: boolean; x: number; y: number }> {
     return JSON.parse(String(await this.run(signIn(which))));
   }
 
-  /** A box pressed, emptied and typed in, as a person would. */
+  /**
+   * A box pressed and typed in, what it held replaced. Typed as a person
+   * types; then looked at, and if the box does not hold exactly that (a date
+   * box that only takes its calendar, one that rewrites what is typed, one
+   * that kept what it had), it is set to it outright, with the events a page
+   * listens for.
+   */
   async type(at: { x: number; y: number }, text: string): Promise<void> {
     await this.press({ x: at.x, y: at.y, tag: "input", type: "", editable: true });
-    await this.selectAll();
+    await this.run(`(() => {${FOCUSED}select(focused()); })()`);
     await this.call("Input.insertText", { text });
+    await this.run(`(() => {${FOCUSED}hold(focused(), ${JSON.stringify(text)}); })()`);
   }
 
   /** One key that is not a letter, pressed and let go. */
@@ -433,9 +476,11 @@ export function describe(r: Reading): string {
     if (r.more) lines.push(`(and ${r.more} more further down: read part ${r.part + 1})`);
   }
   const notes: string[] = [];
+  for (const said of r.boxes ?? [])
+    notes.push(said ? `The page put up a message box, which was answered OK. It said: ${asQuotedData("message box", said, "THE WEBSITE")}` : "A message box left open on the page was closed with OK.");
   if (r.behind) notes.push(`This is the browser's newest tab; ${r.behind} more ${r.behind === 1 ? "is" : "are"} open behind it. browser_close_tab closes this one and goes back to the one behind.`);
   if (r.check)
-    notes.push("This page is asking whoever is there to prove they are human. Do not try to answer it, and press nothing on it: tell the user the page wants a human check, and that they must do it themselves: in Jarvis's menu, Browser shows the page and takes their taps. When they say it is done, read the page again.");
+    notes.push("This page is asking whoever is there to prove they are human. Do not try to answer it, and press nothing on it: call browser_show, which puts the page in front of the user to do it themselves, and tell them it wants a human check. When they say it is done, read the page again.");
   if (r.password)
     notes.push("This page asks for a password. Use browser_sign_in: it signs in with what the user saved for this site, if they saved one. Never type a password any other way. If none is saved, tell them to sign in themselves, in Jarvis's menu under Browser (where a sign-in can also be saved for next time), and read the page again when they say it is done.");
   return [asQuotedData("web page", lines.join("\n"), "THE WEBSITE"), ...notes].join("\n\n");
@@ -450,12 +495,13 @@ async function withTab(deps: BrowserDeps, act: (tab: Tab) => Promise<string | vo
     await tab.settle();
     // What was done may have opened a window, or closed this one: the page to read is then the one in front now.
     const front = (await tabs(deps))[0];
+    const boxes = tab.boxes;
     if (front && front.webSocketDebuggerUrl !== tab.at.webSocketDebuggerUrl) {
       tab.close();
       tab = await Tab.open(deps);
       await tab.settle();
     }
-    return describe({ ...(await tab.read(part)), behind: tab.behind });
+    return describe({ ...(await tab.read(part)), behind: tab.behind, boxes: [...boxes, ...(tab.boxes === boxes ? [] : tab.boxes)] });
   } finally {
     tab.close();
   }
@@ -508,10 +554,7 @@ export const browserFill = (deps: BrowserDeps, n: number, text: string, enter: b
       return;
     }
     if (!at.editable) return "Not typed: that is not something to type in. Press it instead.";
-    await tab.press(at);
-    // What it held is replaced, as a person would: select all, then type over it.
-    await tab.selectAll();
-    await tab.call("Input.insertText", { text });
+    await tab.type(at, text);
     if (enter) await tab.key("Enter");
   });
 
@@ -651,5 +694,8 @@ export async function browserSignIn(deps: BrowserDeps, saved: SavedFor): Promise
     await tab.key("Enter");
   });
   // A site that puts what was typed in its address, or shows it back: taken out of what the model is given.
-  return secret ? out.split(secret).join("(hidden)").split(encodeURIComponent(secret)).join("(hidden)") : out;
+  // …as typed, and as an address spells it, either way a form may.
+  let clean = out;
+  for (const spelt of secret ? [secret, encodeURIComponent(secret), new URLSearchParams({ v: secret }).toString().slice(2)] : []) clean = clean.split(spelt).join("(hidden)");
+  return clean;
 }
