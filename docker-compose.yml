@@ -15,6 +15,9 @@ services:
       # Behind the https profile, Google and Spotify sign-in must return to the
       # public address, not the proxy's plain http hop.
       PUBLIC_URL: ${PUBLIC_URL:-}
+      # Only while moving this Jarvis elsewhere (README: Moving Jarvis).
+      MOVE_KEY: ${MOVE_KEY:-}
+      JARVIS_STANDBY: ${JARVIS_STANDBY:-}
     ports:
       - "${JARVIS_PORT:-8787}:8787"
     volumes:

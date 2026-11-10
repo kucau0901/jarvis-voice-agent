@@ -601,6 +601,16 @@ interface FamilyApi {
   resetPoints(): Promise<void>;
 }
 
+/** Moving a whole Jarvis to another place (lib/move.ts; state.ts). */
+interface MoveApi {
+  moveOut(after?: string): Promise<{ entries: [string, unknown][]; next: string | null }>;
+  moveIn(entries: [string, unknown][]): Promise<void>;
+  moveRead(keys: string[]): Promise<Map<string, unknown>>;
+  moveHolds(): Promise<boolean>;
+  moveClear(): Promise<void>;
+  moveSettle(): Promise<void>;
+}
+
 /** What each person put on their Home tab (lib/panels.ts; state.ts). */
 interface PanelApi {
   panelsOf(person: string): Promise<Panel[]>;
@@ -760,4 +770,5 @@ export type StateApi = Pick<
   SkillApi &
   PageApi &
   ProposalApi &
-  PlanApi;
+  PlanApi &
+  MoveApi;

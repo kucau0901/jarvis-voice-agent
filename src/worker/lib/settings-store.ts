@@ -42,7 +42,7 @@ export async function saveSettings(env: Env, changes: Changes): Promise<SavedSet
   return saved;
 }
 
-/** For tests: forget the cached copy. */
+/** Forget the cached copy: for tests, and once a move has replaced what was saved (routes/move.ts). */
 export function _resetSettingsCache(): void {
   cache = null;
 }

@@ -616,5 +616,23 @@ console.log("\nWatch the house, switched on in Settings, wakes the alarm (state.
   await jarvis.putSettings({ HOUSE_WATCH: null, HA_BASE_URL: null, HA_TOKEN: null });
 }
 
+console.log("\non standby (JARVIS_STANDBY): everything kept, nothing done on its own clock");
+{
+  const add = () => jarvis.addRoutine({ when: "daily", time: "07:00", say: "Stretch" }, { who: "owner", grants: ["*"] });
+  alarmAt = null;
+  const usual = await add();
+  check("as usual, a routine sets the alarm for its time", typeof usual !== "string" && alarmAt !== null, { usual, alarmAt });
+  Object.assign(env as object, { JARVIS_STANDBY: "1" });
+  const kept = await add();
+  check("on standby a routine is still kept, but the alarm is dropped and none set", typeof kept !== "string" && (await jarvis.listRoutines()).length >= 2 && alarmAt === null, { kept, alarmAt });
+  alarmAt = 1;
+  await jarvis.alarm();
+  check("an alarm left from before passes without setting another", alarmAt === 1);
+  Object.assign(env as object, { JARVIS_STANDBY: "" });
+  await jarvis.alarm();
+  check("off standby, the alarm is set again for what was kept", alarmAt !== null && alarmAt > 1, alarmAt);
+  for (const r of [usual, kept]) if (typeof r !== "string") await jarvis.removeRoutine(r.id);
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

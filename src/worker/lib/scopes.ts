@@ -245,8 +245,9 @@ export function requiredScope(pathname: string, method: string): RouteRequiremen
     case "/api/skills":
       return "owner";
 
-    // Diagnostics, the stored probe runs and the data export are the owner's business.
+    // Diagnostics, the stored probe runs, the data export and moving another Jarvis here are the owner's business.
     case "/api/export":
+    case "/api/move/import":
     case "/api/diag":
     case "/api/probe":
       return "owner";

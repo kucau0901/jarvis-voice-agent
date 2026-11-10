@@ -569,6 +569,8 @@ export const NOT_SETTINGS: Readonly<Record<string, string>> = {
   DEVICE_LIMIT: "a binding",
   AI: "a binding (Workers AI), added in wrangler.jsonc",
   JARVIS_SHARED_SECRET: "the owner key: deploy-time only, so login never depends on storage",
+  JARVIS_STANDBY: "puts this Jarvis aside once another has taken its place: deploy-time only, as what stands in for it is decided where it is deployed",
+  MOVE_KEY: "opens this Jarvis to being moved elsewhere, secrets and all: deploy-time only, so the owner key alone can never set it",
   JARVIS_PERSON: "per request: whose data (lib/context.ts)",
   JARVIS_USER: "per request: the person signed in, if one is (index.ts)",
   JARVIS_DEVICE: "per request: the device asking, if one is (index.ts)",

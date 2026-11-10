@@ -214,6 +214,44 @@ return to the right address.
 docker run --rm -v jarvis-voice-agent_jarvis-data:/data -v "$PWD":/b busybox tar czf /b/jarvis-backup.tgz -C /data .
 ```
 
+## Moving Jarvis
+
+To take a running Jarvis somewhere else (Cloudflare to Docker, or one server to
+another) with everything in it, so nobody signs in again or links an account
+twice:
+
+1. **Both on the same version**, the old one and the new one.
+2. **Open the old one to the move.** Give it a `MOVE_KEY` of 24 characters or
+   more: `npx wrangler secret put MOVE_KEY` on Cloudflare, or `MOVE_KEY=...` in
+   `.env` and `docker compose up -d` with Docker. It can only be set this way,
+   never in the settings panel, so the owner key alone opens nothing.
+3. **On the new one**, signed in with its owner key: **Settings → Move another
+   Jarvis here**, the old one's address and its `MOVE_KEY`. A Jarvis that
+   already holds something asks you to tick "Erase what this Jarvis holds
+   first".
+4. **Check it**, if you like: **Check against it**, beside the button that
+   moved it, reads the old one again and names anything that is not on the new
+   one, or differs, and writes nothing. What the old one has done since the
+   move (a conversation, a device last seen) shows as different.
+5. **Put the old one on standby** if you are keeping it to go back to: give it
+   `JARVIS_STANDBY=1` the same way. It keeps everything and stops acting on its
+   own clock (routines, watches, jobs), which taking its address away does not
+   do; two Jarvises with the same routines would each run them. Remove it to
+   bring the old one back.
+6. **Remove `MOVE_KEY`** from the old one (`npx wrangler secret delete
+   MOVE_KEY`), then point your address at the new one. Keep the same address
+   and passkeys, Google and Spotify sign-in go on working; with the same
+   `JARVIS_SHARED_SECRET`, so does Telegram.
+
+What moves is everything the old one keeps, saved keys and tokens included,
+from its server to the new one's: none of it passes through your browser.
+Settings the old one was given at deploy time (Worker secrets, or its `.env`)
+come too, and are saved as settings on the new one, since Cloudflare shows a
+secret's value to nobody. Two things do not: the owner key, which the new one
+has its own of, and a `ROUTER_MODEL` set at deploy time.
+While `MOVE_KEY` is set, whoever holds it can read all of it, so make it long,
+tell nobody, and remove it when you are done. The old one is left as it was.
+
 ## Updating
 
 Jarvis is released in numbered versions, each with notes in
