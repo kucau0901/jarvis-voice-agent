@@ -1,5 +1,6 @@
 import { api } from "../key";
 import { button, el } from "./util";
+import { browserLogins } from "./BrowserLogins";
 
 /**
  * The browser Jarvis works in, under your own hands (src/worker/routes/browser.ts):
@@ -34,6 +35,7 @@ export class Browser {
   private moves: ViewEvent[] = [];
   /** What is being sent, one request after another, so nothing overtakes. */
   private sending: Promise<void> = Promise.resolve();
+  private logins: ReturnType<typeof browserLogins>;
 
   constructor(key: string) {
     this.key = key;
@@ -46,7 +48,7 @@ export class Browser {
     sheet.appendChild(head);
     sheet.appendChild(el("p", "note",
       "The browser Jarvis works in. Sign in here yourself, or pass an \"are you human\" check, and it stays signed in. " +
-      "Jarvis never types a password. What you type here goes to the browser only. On a phone, pinch to zoom in."));
+      "What you type here goes to the browser only. On a phone, pinch to zoom in."));
 
     const bar = el("div", "rform bbar");
     const address = el("input");
@@ -101,6 +103,8 @@ export class Browser {
     keys.append(text, show, row);
     sheet.appendChild(keys);
     sheet.appendChild(el("div", "msg"));
+    this.logins = browserLogins(key);
+    sheet.appendChild(this.logins.el);
     this.el.appendChild(sheet);
     document.body.appendChild(this.el);
     this.el.addEventListener("click", (e) => {
@@ -151,6 +155,7 @@ export class Browser {
 
   show(): void {
     this.el.classList.add("open");
+    void this.logins.load();
     void this.tick();
   }
 
@@ -202,6 +207,7 @@ export class Browser {
         this.screen = s;
         this.img.src = `data:image/jpeg;base64,${s.jpeg}`;
         this.where.textContent = s.title ? `${s.title} · ${s.url}` : s.url;
+        if (/^https?:/.test(s.url)) this.logins.site(new URL(s.url).origin);
       } catch (e) {
         this.msg(e instanceof Error ? e.message : String(e), true);
       }

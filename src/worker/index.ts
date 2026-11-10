@@ -283,7 +283,8 @@ async function route(
       return await handleSkills(req, env, principal);
     case "/api/browser/screen":
     case "/api/browser/input":
-      return await handleBrowser(req, env);
+    case "/api/browser/logins":
+      return await handleBrowser(req, env, principal);
     case "/api/health":
       return new Response(JSON.stringify({ ok: true, ts: Date.now(), version: JARVIS_VERSION }), {
         headers: { "content-type": "application/json" },

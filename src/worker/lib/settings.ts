@@ -162,7 +162,7 @@ export const GROUPS: readonly GroupDef[] = [
     id: "browser",
     title: "Browser",
     intro:
-      "Optional: a full Chrome that Jarvis opens pages in, reads, presses and fills for whoever an admin gives the browser reach to (Family, or a device's scopes). Nobody has it until then. Jarvis never types a password and never answers an \"are you human\" check: sign in yourself in that browser once, and it stays signed in. With Docker, `docker compose --profile browser up -d` runs one beside Jarvis.",
+      "Optional: a full Chrome that Jarvis opens pages in, reads, presses and fills for whoever an admin gives the browser reach to (Family, or a device's scopes). Nobody has it until then. You sign in yourself, in the Browser panel, and it stays signed in; a sign-in you save there is the only password Jarvis ever types, and only on its own site. It never answers an \"are you human\" check. With Docker, `docker compose --profile browser up -d` runs one beside Jarvis.",
     needs: ["BROWSER_URL"],
     testable: false,
   },

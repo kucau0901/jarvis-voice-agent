@@ -32,9 +32,11 @@ These come from the owner and hold for every change.
   sharing the house or `READ_TOOLS`.
 - **The browser is signed in as the family.** The `browser` scope follows
   the same rule as `hermes`, and is also kept from whatever runs with nobody
-  there (routines, jobs, Telegram). Jarvis never types a password and never
-  answers an "are you human" check: the person does that part
-  (`docs/DESIGN.md`, "The browser").
+  there (routines, jobs, Telegram). The only password Jarvis ever types is
+  one a person saved for that site themselves (`lib/vault.ts`): found and
+  typed by code, on that site's origin only, never given to a model, never
+  sent to the app. It never answers an "are you human" check: the person
+  does that part (`docs/DESIGN.md`, "The browser").
 - **The repository is public.** Never commit the owner's real data (family
   names, addresses, domain, emails, KV or account ids, keys, tokens) in code,
   tests, docs, example configs, CHANGELOG, commit messages or PR descriptions:

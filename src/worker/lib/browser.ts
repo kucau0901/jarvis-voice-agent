@@ -119,7 +119,7 @@ const read = (part: number): string => `(() => {${FRAMES}
       if (n <= first || items.length >= ${ITEMS_MAX}) continue;
       const kind = kindOf(e);
       const item = { n, kind, name: nameOf(e) };
-      if (kind === "box" && e.value) item.holds = clean(e.value).slice(0, 80);
+      if (kind === "box" && e.value && !e.hasAttribute("data-jarvis-secret")) item.holds = clean(e.value).slice(0, 80);
       if ((kind === "checkbox" || kind === "radio") && e.checked) item.on = true;
       if (kind === "choice") item.holds = clean(e.selectedOptions && e.selectedOptions[0] ? e.selectedOptions[0].text : "");
       items.push(item);
@@ -165,6 +165,44 @@ const choose = (n: number, text: string): string => `(() => {${FRAMES}
   e.dispatchEvent(new Ev("input", { bubbles: true }));
   e.dispatchEvent(new Ev("change", { bubbles: true }));
   return "true";
+})()`;
+
+/**
+ * Run in the page: where it asks who you are. The password box (the first one
+ * in view) and the box for the login name before it; or, on a page that asks
+ * for the name first, that box alone. `which` is brought into view and its
+ * place given. `origin` is the site of the document the boxes are in: what a
+ * saved sign-in must be for. The password box is marked, so that a page that
+ * later shows it as plain text is still never read back.
+ */
+const signIn = (which: "user" | "pass"): string => `(() => {${FRAMES}
+  const seen = (e) => { const r = e.getBoundingClientRect(); const s = e.ownerDocument.defaultView.getComputedStyle(e); return r.width > 2 && r.height > 2 && s.visibility !== "hidden" && s.display !== "none"; };
+  const typed = (e) => e.tagName === "INPUT" && ["text", "email", "tel", "number", ""].includes(e.getAttribute("type") || "") && !e.readOnly && !e.disabled && seen(e);
+  let pass = null, user = null;
+  for (const d of docs(document, [])) {
+    pass = [...d.querySelectorAll("input[type=password]")].find(seen) || null;
+    if (!pass) continue;
+    const around = [...(pass.form || d).querySelectorAll("input")];
+    user = around.slice(0, around.indexOf(pass)).filter(typed).pop() || null;
+    break;
+  }
+  if (!pass) for (const d of docs(document, [])) {
+    user = [...d.querySelectorAll("input")].filter(typed).find((e) => e.type === "email" || /username|email/.test(e.autocomplete || "") || /user|login|email|ident|account|staff/i.test((e.name || "") + " " + (e.id || ""))) || null;
+    if (user) break;
+  }
+  const e = ${which === "pass" ? "pass" : "user"};
+  const out = { origin: (pass || user) ? (pass || user).ownerDocument.location.origin : "", user: !!user, pass: !!pass, x: 0, y: 0 };
+  if (pass) pass.setAttribute("data-jarvis-secret", "");
+  if (!e) return JSON.stringify(out);
+  e.scrollIntoView({ block: "center", inline: "center" });
+  const r = e.getBoundingClientRect();
+  out.x = r.left + r.width / 2; out.y = r.top + r.height / 2;
+  for (let w = e.ownerDocument.defaultView; w.frameElement; w = w.parent) {
+    const f = w.frameElement.getBoundingClientRect();
+    out.x += f.left + w.frameElement.clientLeft;
+    out.y += f.top + w.frameElement.clientTop;
+  }
+  return JSON.stringify(out);
 })()`;
 
 /** Run in the page: down to its end and back to where it was not, so what a page only loads when reached is there to read. */
@@ -356,6 +394,18 @@ class Tab {
     await this.call("Input.dispatchKeyEvent", { ...k, type: "keyUp" });
   }
 
+  /** Where the page asks who you are (the script above). */
+  async asks(which: "user" | "pass"): Promise<{ origin: string; user: boolean; pass: boolean; x: number; y: number }> {
+    return JSON.parse(String(await this.run(signIn(which))));
+  }
+
+  /** A box pressed, emptied and typed in, as a person would. */
+  async type(at: { x: number; y: number }, text: string): Promise<void> {
+    await this.press({ x: at.x, y: at.y, tag: "input", type: "", editable: true });
+    await this.selectAll();
+    await this.call("Input.insertText", { text });
+  }
+
   /** One key that is not a letter, pressed and let go. */
   async key(name: ViewKey): Promise<void> {
     const [windowsVirtualKeyCode, text] = KEYS[name];
@@ -387,7 +437,7 @@ export function describe(r: Reading): string {
   if (r.check)
     notes.push("This page is asking whoever is there to prove they are human. Do not try to answer it, and press nothing on it: tell the user the page wants a human check, and that they must do it themselves: in Jarvis's menu, Browser shows the page and takes their taps. When they say it is done, read the page again.");
   if (r.password)
-    notes.push("This page asks for a password. Passwords are never typed for the user: tell them to sign in themselves, in Jarvis's menu under Browser; it stays signed in afterwards. When they say it is done, read the page again.");
+    notes.push("This page asks for a password. Use browser_sign_in: it signs in with what the user saved for this site, if they saved one. Never type a password any other way. If none is saved, tell them to sign in themselves, in Jarvis's menu under Browser (where a sign-in can also be saved for next time), and read the page again when they say it is done.");
   return [asQuotedData("web page", lines.join("\n"), "THE WEBSITE"), ...notes].join("\n\n");
 }
 
@@ -451,7 +501,7 @@ export const browserFill = (deps: BrowserDeps, n: number, text: string, enter: b
   withTab(deps, async (tab) => {
     const at = await tab.spot(n);
     if (!at) return GONE;
-    if (at.type === "password") return "Not typed: that is a password box, and passwords are never typed for the user. Tell them to sign in themselves, in Jarvis's menu under Browser.";
+    if (at.type === "password") return "Not typed: that is a password box. browser_sign_in signs in with what the user saved for this site; a password is never typed any other way.";
     if (at.tag === "select") {
       const chosen = await tab.run(choose(n, text));
       if (chosen !== "true") return `Not chosen: it has no such option. It offers: ${asQuotedData("options", String(chosen), "THE WEBSITE")}`;
@@ -562,4 +612,44 @@ export async function browserScreen(deps: BrowserDeps): Promise<Screen> {
   } finally {
     tab.close();
   }
+}
+
+/* ---------- signing in with what a person saved (lib/vault.ts) ---------- */
+
+/** What the person saved for a site, opened; a string says why there is none to use. */
+export type SavedFor = (origin: string) => Promise<{ user: string; password: string } | string>;
+
+/**
+ * Signs in on the page in front, with the person's own saved sign-in for
+ * that page's site and no other: `saved` is asked for the site the boxes
+ * are on, as the browser reports it, never one a model or the page named.
+ * The password goes to the browser as typing; it is in nothing this returns.
+ */
+export async function browserSignIn(deps: BrowserDeps, saved: SavedFor): Promise<string> {
+  let secret = "";
+  const out = await withTab(deps, async (tab) => {
+    if ((await tab.read()).check) return "Not signed in: the page wants a human check first. Tell the user to do it themselves, in Jarvis's menu under Browser, and to say when it is done.";
+    let at = await tab.asks("user");
+    if (!at.user && !at.pass) return "Not signed in: this page has nowhere to sign in. Open the site's sign-in page first.";
+    const site = at.origin;
+    const login = await saved(site);
+    if (typeof login === "string") return login;
+    secret = login.password;
+    if (at.user) await tab.type(at, login.user);
+    if (!at.pass) {
+      // A site that asks for the name first, and the password on the page after.
+      await tab.key("Enter");
+      // The page after may take a moment to come: looked for a few times, not once.
+      for (let tries = 0; tries < 8 && !at.pass; tries++) {
+        await tab.settle();
+        at = await tab.asks("pass").catch(() => at);
+      }
+      if (!at.pass) return "The login name was typed, but the page did not then ask for a password. Read the page to see what it wants.";
+      if (at.origin !== site) return `Not signed in: the password is asked for by another site (${at.origin}) than the sign-in was saved for. Nothing was typed there.`;
+    }
+    await tab.type(await tab.asks("pass"), login.password);
+    await tab.key("Enter");
+  });
+  // A site that puts what was typed in its address, or shows it back: taken out of what the model is given.
+  return secret ? out.split(secret).join("(hidden)").split(encodeURIComponent(secret)).join("(hidden)") : out;
 }

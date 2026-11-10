@@ -25,10 +25,14 @@ of every release, and in the [README](README.md#updating).
   it: "open the school portal and tell me what homework is due". It reads
   pages as text, so it costs what any other answer does and needs no extra
   model. It reads inside a page's frames, follows a window the page opens,
-  reads a long page part by part, and can point at a menu to open it. It never types a password and never answers an "are you human"
-  check: it says the page wants one, and you do that part yourself in the
-  new **Browser** panel in the menu, which shows the browser's screen and
-  takes your taps, drags and typing; the browser stays signed in. A new scope, `browser`, decides who may use
+  reads a long page part by part, and can point at a menu to open it. You
+  sign in yourself in the new **Browser** panel in the menu, which shows the
+  browser's screen and takes your taps, drags and typing; the browser stays
+  signed in. For a site that signs you out after a while, save its sign-in
+  in that panel: Jarvis then signs back in when asked to work there. A saved
+  sign-in is sealed, used only on the site it was saved for and only for the
+  person who saved it, and never shown to the model. An "are you human"
+  check is always yours to do. A new scope, `browser`, decides who may use
   it: no role has it but an admin's, and no device unless ticked; routines,
   jobs and Telegram never do. See the README, "Run with Docker".
 - **Moving a whole Jarvis to another place**, from Cloudflare to Docker or one

@@ -1795,10 +1795,22 @@ Chrome (`lib/browser.ts`, `tools/browser.ts`), run beside it
   family signed it in, so whoever may use it may act as them there. Like
   Hermes, `browser` is in no role but an admin's, no device preset and no
   pass, and is taken out of whatever runs with nobody there: a routine, an
-  approved step of a job, a habit, and Telegram.
-- **Two things it never does.** It types no password: a password box is
-  refused in code, whatever the model was asked, and the person signs in
-  themselves, once, in the browser. And it answers no "are you human" check:
+  approved step of a job, a habit, and Telegram. A device given the scope
+  uses its owner's saved sign-ins, as it uses the rest that is theirs.
+- **A password is the person's, and the model never has one.** A password
+  box is refused to the model in code, whatever it was asked. A person signs
+  in themselves, in the Browser panel. Some sites sign you out by the clock
+  whatever the browser keeps, so a person may also save a sign-in
+  (`lib/vault.ts`): `browser_sign_in` takes no password and no site, only
+  "sign in here". Code looks up what that person saved for the origin the
+  page's own sign-in boxes are on, as the browser reports it, and types it;
+  on any other origin there is nothing to type, however the page or the
+  model asks. What is saved is sealed (AES-GCM) under a key made from the
+  owner key, bound to the person and the site, never sent to the app, and
+  not in an export; a move carries it sealed, and it opens at the new place
+  only under the same owner key. What a tool gives back never holds it, even
+  from a site that shows it back.
+- **One thing it never does.** It answers no "are you human" check:
   the reading says the page has one and tells the model to stop and hand
   over. Passing one for the person is exactly what the check exists to stop.
 - **The person's own hands, through Jarvis.** Signing in and passing a check

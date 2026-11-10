@@ -248,8 +248,10 @@ export function requiredScope(pathname: string, method: string): RouteRequiremen
       return "home";
 
     // The browser under a person's own hands: its screen, and their taps and typing (routes/browser.ts).
+    // …and the sign-ins they saved for it, which a device never sees (the route checks).
     case "/api/browser/screen":
     case "/api/browser/input":
+    case "/api/browser/logins":
       return "browser";
 
     // Skills and their keys (routes/skills.ts): an admin's, as the settings are.

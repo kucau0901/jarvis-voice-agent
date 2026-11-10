@@ -2,7 +2,7 @@
 // of Chrome's debugging port, what it gives back, what it refuses, and who is
 // ever offered it. Chrome is a stand-in here; the scripts that run inside a
 // page were tried against a real one.
-import { asViewEvents, browserCloseTab, browserFill, browserInput, browserOpen, browserPress, browserRead, browserScreen, describe, webAddress, type BrowserDeps } from "../src/worker/lib/browser.ts";
+import { asViewEvents, browserCloseTab, browserFill, browserInput, browserOpen, browserPress, browserRead, browserScreen, browserSignIn, describe, webAddress, type BrowserDeps } from "../src/worker/lib/browser.ts";
 import { browserTools } from "../src/worker/tools/browser.ts";
 import { baseTools } from "../src/worker/tools/registry.ts";
 import { ROLE_SCOPES } from "../src/worker/lib/hub.ts";
@@ -39,6 +39,8 @@ interface Fake {
   /** document.readyState, call by call; "throw" is a page mid-load. */
   states?: string[];
   navError?: string;
+  /** Where the page asks who you are, call by call (the last repeats). */
+  asks?: Record<string, unknown>[];
   /** What choosing an option answers. */
   chosen?: string;
   /** The connection drops when this is asked. */
@@ -53,6 +55,7 @@ function chrome(f: Fake = {}) {
   let closed = 0;
   let slept = 0;
   const states = [...(f.states ?? [])];
+  const asks = [...(f.asks ?? [{ origin: "https://hr.example", user: true, pass: true, x: 200, y: 100 }])];
   const deps: BrowserDeps = {
     base: "http://127.0.0.1:9222/",
     fetch: async (url, init) => {
@@ -82,6 +85,10 @@ function chrome(f: Fake = {}) {
             return s === "throw" ? answer(null, "Cannot find context with specified id") : answer({ result: { value: s } });
           }
           if (x.includes("innerWidth")) return answer({ result: { value: JSON.stringify({ width: 1280, height: 720, url: "https://shop.example/login", title: "Sign in" }) } });
+          if (x.includes("data-jarvis-secret") && x.includes("origin")) {
+            const a = asks.length > 1 ? asks.shift() : asks[0];
+            return answer({ result: { value: JSON.stringify(a) } });
+          }
           if (x.includes("scrollIntoView")) return answer({ result: { value: JSON.stringify(f.spot === undefined ? { x: 100, y: 50, tag: "input", type: "text", editable: true } : f.spot) } });
           if (x.includes("e.options")) return answer({ result: { value: f.chosen ?? "true" } });
           return answer({ result: { value: JSON.stringify(f.page ?? PAGE) } });
@@ -268,7 +275,49 @@ console.log("\nthe person's own hands on it");
   const o = chrome();
   check("an address: the web only, as for Jarvis", (await browserInput(o.deps, [{ kind: "open", address: "file:///etc/passwd" }])) === "only http and https addresses can be opened" && !o.methods().includes("Page.navigate"));
   check("and opened when it is", (await browserInput(o.deps, [{ kind: "open", address: "shop.example" }])) === null && o.sent.find((x) => x.method === "Page.navigate")?.params.url === "https://shop.example/");
-  check("its screen and its input need the browser scope, and no path beside them is open", requiredScope("/api/browser/screen", "GET") === "browser" && requiredScope("/api/browser/input", "POST") === "browser" && requiredScope("/api/browser/other", "GET") === "owner");
+  check("its screen and its input need the browser scope, and no path beside them is open", requiredScope("/api/browser/screen", "GET") === "browser" && requiredScope("/api/browser/input", "POST") === "browser" && requiredScope("/api/browser/logins", "POST") === "browser" && requiredScope("/api/browser/other", "GET") === "owner");
+}
+
+console.log("\nsigning in with what the person saved");
+{
+  const HR = { user: "staff01", password: "s3cret-Pa55" };
+  const asked: string[] = [];
+  const saved = async (origin: string) => { asked.push(origin); return origin === "https://hr.example" ? HR : `Not signed in: the user has saved no sign-in for ${origin}.`; };
+  const c = chrome();
+  const out = await browserSignIn(c.deps, saved);
+  const typed = c.sent.filter((s) => s.method === "Input.insertText").map((s) => s.params.text);
+  check("the saved one is asked for by the site the boxes are on, as the browser says it", asked.join() === "https://hr.example");
+  check("the name, then the password, typed as a person would, then Enter", typed.join() === "staff01,s3cret-Pa55" && c.sent.findIndex((s) => s.params.key === "Enter") > c.methods().lastIndexOf("Input.insertText"), typed);
+  check("the password is in nothing given back", !out.includes("s3cret-Pa55") && out.includes("You have 2 orders."), out.slice(0, 200));
+  const echo = chrome({ page: { ...PAGE, url: "https://hr.example/in?pw=s3cret-Pa55%21x", text: "You typed s3cret-Pa55" } });
+  const echoed = await browserSignIn(echo.deps, async () => ({ user: "staff01", password: "s3cret-Pa55" }));
+  check("a site that shows it back, or puts it in its address: taken out of what is given back", !echoed.includes("s3cret-Pa55") && echoed.includes("You typed (hidden)") && echoed.includes("pw=(hidden)"), echoed.slice(0, 300));
+
+  const evil = chrome({ asks: [{ origin: "https://hr.example.evil.test", user: true, pass: true, x: 1, y: 1 }] });
+  const no = await browserSignIn(evil.deps, saved);
+  check("a page of another site: nothing saved for it, and nothing typed", /saved no sign-in for https:\/\/hr\.example\.evil\.test/.test(no) && !evil.methods().some((m) => m.startsWith("Input.")), [no, evil.methods()]);
+  check("and the password never left", !JSON.stringify(evil.sent).includes("s3cret-Pa55"));
+
+  const none = chrome({ asks: [{ origin: "", user: false, pass: false, x: 0, y: 0 }] });
+  check("a page with nowhere to sign in: said, nobody's sign-in looked up", /nowhere to sign in/.test(await browserSignIn(none.deps, async () => { throw new Error("looked up"); })) && !none.methods().some((m) => m.startsWith("Input.")));
+
+  const human = chrome({ page: { ...PAGE, check: true } });
+  check("a human check on the page: handed to the person, nothing typed", /human check first/.test(await browserSignIn(human.deps, saved)) && !human.methods().some((m) => m.startsWith("Input.")));
+
+  // A site that asks for the name, then the password on the next page.
+  const two = chrome({ asks: [{ origin: "https://hr.example", user: true, pass: false, x: 5, y: 5 }, { origin: "https://hr.example", user: false, pass: true, x: 9, y: 9 }] });
+  await browserSignIn(two.deps, saved);
+  const order = two.sent.filter((s) => s.method === "Input.insertText" || s.params.key === "Enter").map((s) => (s.method === "Input.insertText" ? s.params.text : `${s.params.type}`));
+  check("name first, Enter, then the password on the page after", order.join() === "staff01,keyDown,keyUp,s3cret-Pa55,keyDown,keyUp", order);
+  const hop = chrome({ asks: [{ origin: "https://hr.example", user: true, pass: false, x: 5, y: 5 }, { origin: "https://elsewhere.test", user: false, pass: true, x: 9, y: 9 }] });
+  const hopped = await browserSignIn(hop.deps, saved);
+  check("…but never when that next page is another site's", /another site \(https:\/\/elsewhere\.test\)/.test(hopped) && !JSON.stringify(hop.sent).includes("s3cret-Pa55"), hopped);
+
+  const fill = chrome({ spot: { x: 1, y: 1, tag: "input", type: "password", editable: true } });
+  check("browser_fill still never types in a password box, and says what does", /browser_sign_in/.test(await browserFill(fill.deps, 5, "s3cret-Pa55", true)) && !fill.methods().some((m) => m.startsWith("Input.")));
+  check("a password page: the model is pointed at browser_sign_in, and told no other way", /Use browser_sign_in/.test(describe({ ...PAGE, password: true })) && /Never type a password any other way/.test(describe({ ...PAGE, password: true })));
+  const reading = String(c.sent.find((s) => String(s.params.expression).includes("const first ="))?.params.expression);
+  check("a box a password went into is never read back, whatever the page turns it into", reading.includes('!e.hasAttribute("data-jarvis-secret")'));
 }
 
 console.log("\nwhat the model is told of a page");
@@ -281,7 +330,7 @@ console.log("\nwhat the model is told of a page");
   const fenceEnd = human.search(/--- end web page:[0-9a-f]{8} ---/);
   check("a human check: told to stop and hand over, in our words, outside the fence", human.indexOf("prove they are human") > fenceEnd && /Do not try to answer it/.test(human), human.slice(-300));
   const pw = describe({ ...PAGE, password: true });
-  check("a password asked for: told the user signs in themselves", pw.indexOf("Passwords are never typed") > pw.search(/--- end web page:/));
+  check("a password asked for: told how, in our words, outside the fence", pw.indexOf("This page asks for a password") > pw.search(/--- end web page:/));
   const long = describe({ ...PAGE, cut: true, more: 7, items: [{ n: 1, kind: "checkbox", name: "Gift", on: true }, { n: 2, kind: "button", name: "" }] });
   check("more than was read: said, with how to read on", long.includes("more words further down: read part 2") && long.includes("and 7 more further down: read part 2") && !long.includes("(part 1"));
   check("a ticked box, and a thing with no name", long.includes('[1] checkbox "Gift", ticked') && long.includes("[2] button\n"), long);
@@ -292,12 +341,12 @@ console.log("\nwho is offered it");
 {
   const on = { BROWSER_URL: "http://127.0.0.1:9222" } as never;
   const names = (env: unknown, grants: readonly string[]) => baseTools(env as never, grants as never).map((t) => t.name).filter((n) => n.startsWith("browser_"));
-  check("five tools, all behind the browser scope", browserTools.length === 5 && browserTools.every((t) => t.scope === "browser" && t.pace === "slow"));
+  check("six tools, all behind the browser scope", browserTools.length === 6 && browserTools.every((t) => t.scope === "browser" && t.pace === "slow"));
   check("strict schemas: every property required, nothing extra", browserTools.every((t) => { const p = t.parameters as { properties: object; required: string[]; additionalProperties: boolean }; return p.additionalProperties === false && Object.keys(p.properties).join() === p.required.join(); }));
   check("none without a browser set up, even to the owner", names({}, ["*"]).length === 0);
-  check("the owner and admins (everything): all five", names(on, ["*"]).join() === "browser_open,browser_read,browser_press,browser_fill,browser_close_tab");
+  check("the owner and admins (everything): all six", names(on, ["*"]).join() === "browser_open,browser_read,browser_press,browser_fill,browser_close_tab,browser_sign_in");
   check("no role but the admin's has the scope", (["adult", "child", "guest"] as const).every((r) => !(ROLE_SCOPES[r] as readonly string[]).includes("browser") && names(on, ROLE_SCOPES[r]).length === 0));
-  check("an adult given it by an admin: offered", names(on, [...ROLE_SCOPES.adult, "browser"]).length === 5);
+  check("an adult given it by an admin: offered", names(on, [...ROLE_SCOPES.adult, "browser"]).length === 6);
   check("a device with every other scope: not offered", names(on, SCOPES.filter((s) => s !== "browser")).length === 0);
   check("never over Telegram", !TELEGRAM_REACH.includes("browser"));
   check("never by an approved step of a job, whoever approves", !runGrants(["*"], ["*"], ["*"])?.includes("browser") && runGrants(["*"], ["*"], ["*"])?.includes("home") === true);

@@ -1,6 +1,9 @@
 import type { Tool, ToolContext } from "./registry.ts";
 import type { Env } from "../types.ts";
-import { browserCloseTab, browserFill, browserOpen, browserPress, browserRead, dialWebSocket, type BrowserDeps } from "../lib/browser.ts";
+import { browserCloseTab, browserFill, browserOpen, browserPress, browserRead, browserSignIn, dialWebSocket, type BrowserDeps, type SavedFor } from "../lib/browser.ts";
+import { OWNER } from "../lib/context.ts";
+import { stateStub } from "../lib/state-client.ts";
+import { unseal } from "../lib/vault.ts";
 
 /**
  * "Open the school portal and tell me what homework is due."
@@ -28,11 +31,32 @@ const attempt = async (work: Promise<string>): Promise<string> => {
   }
 };
 
+/**
+ * The asker's own saved sign-in for a site (lib/vault.ts), opened here and
+ * handed only to the code that types it. `named` picks one when they saved
+ * several for the site.
+ */
+const savedFor = (env: Env, named: string): SavedFor => async (origin) => {
+  const state = stateStub(env);
+  const person = env.JARVIS_PERSON || OWNER;
+  const here = state ? (await state.vaultAll(person)).filter((l) => l.origin === origin) : [];
+  if (!here.length) return `Not signed in: the user has saved no sign-in for ${origin}. Tell them they can save one in Jarvis's menu under Browser, or sign in there themselves this once.`;
+  const want = named.trim().toLowerCase();
+  const one = want ? here.find((l) => l.user.toLowerCase() === want) : here.length === 1 ? here[0] : undefined;
+  if (!one) return want
+    ? `Not signed in: the user has saved no sign-in for ${origin} under that login name.`
+    : `Not signed in: the user has ${here.length} sign-ins saved for ${origin}. Ask which login name to use, then call again with it.`;
+  const password = await unseal(env.JARVIS_SHARED_SECRET ?? "", person, origin, one.sealed);
+  if (password === null) return `Not signed in: the sign-in saved for ${origin} can no longer be opened (the owner key has changed since). Tell the user to save it again in Jarvis's menu under Browser.`;
+  return { user: one.user, password };
+};
+
 const number = { type: "integer", description: "The thing's number, from the square brackets in the latest reading of the page." };
 
 const RULES =
-  " Never type a password, a card number or a one-time code, and never try to answer an 'are you human' check: " +
-  "when a page asks for one, stop and tell the user to do that part themselves in the browser. Before pressing " +
+  " Never type a password (browser_sign_in is the only way one is used), a card number or a one-time code, and " +
+  "never try to answer an 'are you human' check: when a page asks for one, stop and tell the user to do that part " +
+  "themselves in the browser. Before pressing " +
   "anything that buys, pays, sends, posts, books or deletes, say what it will do and wait for the user to say yes.";
 
 export const browserTools: Tool[] = [
@@ -116,5 +140,23 @@ export const browserTools: Tool[] = [
       "then read the tab behind it. Never closes the last tab.",
     parameters: { type: "object", properties: {}, required: [], additionalProperties: false },
     run: (_args, ctx) => attempt(browserCloseTab(deps(ctx))),
+  },
+  {
+    name: "browser_sign_in",
+    scope: "browser",
+    available,
+    pace: "slow",
+    description:
+      "Sign in on the page the browser is on, with the sign-in the user saved for that site in Jarvis (menu, " +
+      "Browser). The only way a password is ever typed: you never see it, and it is used on no other site. Use it " +
+      "when a page asks to sign in, or has signed the user out. If none is saved, it says so; a one-time code or " +
+      "an 'are you human' check after it is still the user's to do.",
+    parameters: {
+      type: "object",
+      properties: { login: { type: ["string", "null"], description: "Which login name, only when the user has several saved for this site. Null otherwise." } },
+      required: ["login"],
+      additionalProperties: false,
+    },
+    run: (args, ctx) => attempt(browserSignIn(deps(ctx), savedFor(ctx.env, typeof args.login === "string" ? args.login : ""))),
   },
 ];

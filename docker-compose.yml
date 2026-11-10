@@ -41,7 +41,9 @@ services:
       # The profile stays where the image keeps it: there the image clears the lock a
       # replaced container leaves behind. Anywhere else, the browser starts into "the
       # profile is in use by another computer" and never opens its debugging port.
-      CHROME_CLI: --remote-debugging-port=9222
+      # Restoring its last session keeps a sign-in that a site holds only while the
+      # browser is open (an older system's), across a restart of this container.
+      CHROME_CLI: --remote-debugging-port=9222 --restore-last-session
       # No terminal, no sudo, no closing the browser from its screen.
       HARDEN_DESKTOP: "true"
       HARDEN_OPENBOX: "true"
