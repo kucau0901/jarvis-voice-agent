@@ -18,12 +18,15 @@ function kvOf(env: Env): MoveKv {
 }
 
 /**
- *   GET /api/move/export?after=…   one page of everything this Jarvis keeps
+ *   GET /api/v1/move/export?after=…   one page of everything this Jarvis keeps
  *
  * For the Jarvis that is taking this one's place, and it alone: the caller
  * presents MOVE_KEY, not the owner key or a device's, so index.ts answers this
  * before its gate. Without a move key set there is nothing here: the same 404
  * a wrong key gets, so the path says nothing about whether a move is open.
+ * Under /api/v1/ with the rest of what machines call, so a deployment that
+ * keeps a sign-in wall in front of the app and lets /api/v1/ through needs
+ * nothing opened for a move.
  */
 export async function handleMoveExport(req: Request, env: Env): Promise<Response> {
   const presented = /^Bearer (.+)$/.exec(req.headers.get("authorization") ?? "")?.[1] ?? null;
@@ -67,7 +70,7 @@ export async function handleMoveImport(req: Request, env: Env): Promise<Response
     const step = await moveStep(
       {
         page: async (at) => {
-          const url = new URL("/api/move/export", from.origin);
+          const url = new URL("/api/v1/move/export", from.origin);
           if (at !== null) url.searchParams.set("after", at);
           // Never followed elsewhere: the key goes to the address given and no other.
           const r = await fetch(url, { headers: { authorization: `Bearer ${key}` }, redirect: "manual" });

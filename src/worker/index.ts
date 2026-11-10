@@ -112,7 +112,7 @@ export default {
     if (url.pathname.startsWith("/api/v1/p/")) return await handlePage(req, env);
     if (url.pathname === "/api/v1/oauth/token") return await handleToken(req, env);
     // The Jarvis taking this one's place: it presents MOVE_KEY, which no gate below knows (routes/move.ts).
-    if (url.pathname === "/api/move/export") return await handleMoveExport(req, env);
+    if (url.pathname === "/api/v1/move/export") return await handleMoveExport(req, env);
     // A browser cannot put a header on a WebSocket, so an open screen presents
     // a one-time ticket it was issued over an authenticated request instead.
     // The Durable Object checks and spends it (routes/alerts.ts).

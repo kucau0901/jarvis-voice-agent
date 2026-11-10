@@ -1358,3 +1358,19 @@ limits, and the chat's recent turns. A forwarded message is quoted as someone
 else's words: it never goes to Home Assistant's Assist, nor saves a
 specialty. It comes within about 20 seconds, or says to ask for a background
 job.
+
+## Moving to another Jarvis
+
+```http
+GET /api/v1/move/export?after=<next>
+Authorization: Bearer <MOVE_KEY>
+```
+
+What a new Jarvis calls on the one it is taking over from (the README,
+"Moving Jarvis"); nothing else should. It answers only while `MOVE_KEY` is set
+on this deployment (24 characters or more, deploy-time only) and only to that
+key, never to the owner key or a device token: anything else is a 404, as it
+is with no move key set. Each answer is one page of everything this Jarvis
+keeps, saved keys and tokens among them, as
+`{ version, state: [[key, value], …], kv: [{ key, value, expiration?, metadata? }, …], next }`;
+`next` goes back as `after` until it is `null`.
