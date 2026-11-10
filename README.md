@@ -233,7 +233,12 @@ twice:
    moved it, reads the old one again and names anything that is not on the new
    one, or differs, and writes nothing. What the old one has done since the
    move (a conversation, a device last seen) shows as different.
-5. **Remove `MOVE_KEY`** from the old one (`npx wrangler secret delete
+5. **Put the old one on standby** if you are keeping it to go back to: give it
+   `JARVIS_STANDBY=1` the same way. It keeps everything and stops acting on its
+   own clock (routines, watches, jobs), which taking its address away does not
+   do; two Jarvises with the same routines would each run them. Remove it to
+   bring the old one back.
+6. **Remove `MOVE_KEY`** from the old one (`npx wrangler secret delete
    MOVE_KEY`), then point your address at the new one. Keep the same address
    and passkeys, Google and Spotify sign-in go on working; with the same
    `JARVIS_SHARED_SECRET`, so does Telegram.

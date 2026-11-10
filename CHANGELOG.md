@@ -28,7 +28,9 @@ of every release, and in the [README](README.md#updating).
   secret is set on it (24 characters or more, deploy-time only), never to the
   owner key, and server to server: no secret passes through a browser. See
   the README, "Moving Jarvis". **Check against it** then compares the two
-  and names anything that did not arrive, writing nothing.
+  and names anything that did not arrive, writing nothing. `JARVIS_STANDBY=1`
+  (deploy-time) puts the old one aside afterwards: everything kept, nothing
+  run on its own clock, so the two never both act for one family.
 
 ## [2.9.0] - 2026-11-06
 

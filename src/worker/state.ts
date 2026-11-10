@@ -540,6 +540,8 @@ export class JarvisState extends DurableObject<Env> {
 
   /** Point the one alarm at whatever is due first: an approved call, a routine, a job, a relay or a held alert. */
   private async rearm(): Promise<void> {
+    // On standby nothing wakes: what is due stays due, for whenever this Jarvis is the one again.
+    if (this.env.JARVIS_STANDBY === "1") return void (await this.ctx.storage.deleteAlarm());
     const held = [...(await this.ctx.storage.list<{ until: number }>({ prefix: HELD })).values()].map((h) => h.until);
     // Watched only with Home Assistant to watch: without it, the setting wakes nothing.
     const houseEnv = await this.localEnv();
@@ -553,6 +555,8 @@ export class JarvisState extends DurableObject<Env> {
   }
 
   async alarm() {
+    // An alarm set before standby began: let it pass, and set no other (types.ts JARVIS_STANDBY).
+    if (this.env.JARVIS_STANDBY === "1") return;
     // Each catches per item, so this only throws on a storage failure — and then
     // the runtime retries, which is what is wanted.
     // Approved calls beside the rest: someone is waiting on them, and a car waking holds up nothing due now.
