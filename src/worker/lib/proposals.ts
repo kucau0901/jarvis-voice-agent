@@ -875,8 +875,8 @@ export function held(tools: readonly Tool[], file: File, finish: Finish): Tool[]
   });
 }
 
-/** What an approval may run with: the job's, no more than its maker may now, nor than the one approving, and never Hermes or a screen. */
-const REACH: readonly Grant[] = SCOPES.filter((s) => s !== "hermes" && s !== "screen");
+/** What an approval may run with: the job's, no more than its maker may now, nor than the one approving, and never Hermes, the browser or a screen. */
+const REACH: readonly Grant[] = SCOPES.filter((s) => s !== "hermes" && s !== "browser" && s !== "screen");
 export function runGrants(stored: readonly Grant[], scopesNow: readonly Grant[] | null | undefined, approver: readonly Grant[]): Grant[] | null {
   if (!scopesNow) return null;
   return narrow(narrow(narrow(stored, scopesNow), approver), REACH);

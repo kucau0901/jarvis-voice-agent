@@ -36,6 +36,7 @@ import type { Job } from "./jobs.ts";
 import type { Relay, RelayKind } from "./relays.ts";
 import type { ChatMessage } from "./chat.ts";
 import type { Panel, PanelItem, Reading } from "./panels.ts";
+import type { LoginView, SavedLogin } from "./vault.ts";
 import type { Said } from "./conversation.ts";
 import type { PlanFailure, PlanStatus } from "./chatgpt-plan.ts";
 import type { Grant } from "./scopes.ts";
@@ -611,6 +612,14 @@ interface MoveApi {
   moveSettle(): Promise<void>;
 }
 
+/** Sign-ins a person saved for the browser, the passwords sealed (lib/vault.ts; state.ts). */
+interface VaultApi {
+  vaultAll(person: string): Promise<SavedLogin[]>;
+  vaultList(person: string): Promise<LoginView[]>;
+  vaultSave(person: string, login: Pick<SavedLogin, "origin" | "user" | "sealed">): Promise<LoginView | string>;
+  vaultRemove(person: string, id: string): Promise<boolean>;
+}
+
 /** What each person put on their Home tab (lib/panels.ts; state.ts). */
 interface PanelApi {
   panelsOf(person: string): Promise<Panel[]>;
@@ -771,4 +780,5 @@ export type StateApi = Pick<
   PageApi &
   ProposalApi &
   PlanApi &
-  MoveApi;
+  MoveApi &
+  VaultApi;

@@ -18,11 +18,11 @@ const MAX_REPLY = 4096;
 const MAX_TEXT = 4000;
 
 /**
- * What a message from Telegram may reach: the person's own, less Hermes
- * (never granted by default, and a Telegram account is easier to take than a
- * passkey) and the screen (there is none).
+ * What a message from Telegram may reach: the person's own, less Hermes and
+ * the browser (never granted by default, and a Telegram account is easier to
+ * take than a passkey) and the screen (there is none).
  */
-export const TELEGRAM_REACH: readonly Grant[] = SCOPES.filter((s) => s !== "hermes" && s !== "screen");
+export const TELEGRAM_REACH: readonly Grant[] = SCOPES.filter((s) => s !== "hermes" && s !== "browser" && s !== "screen");
 
 /**
  * The secret Telegram is told to send with each update, and checked against.

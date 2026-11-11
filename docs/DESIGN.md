@@ -1755,6 +1755,98 @@ address takes a message of the bot's own (its
 routines' news), to whoever made it and nobody else, under its name, as an
 answer is.
 
+## The browser
+
+Some things are only on a website, behind a sign-in, with no API: a school
+portal, a utility's bills, a shop's order page. For those Jarvis drives a full
+Chrome (`lib/browser.ts`, `tools/browser.ts`), run beside it
+(`docker-compose.yml`, the `browser` profile).
+
+- **Text, not pictures.** Jarvis asks the page for its words and a numbered
+  list of what can be pressed or filled, and presses or fills by number. No
+  screenshot goes to a model, so there is no second, dearer model and it
+  works on a ChatGPT plan alone. What it cannot do this way (a canvas, a
+  drag) it says it cannot.
+- **Chrome's own debugging port, nothing in between.** The Worker speaks to
+  it directly over a WebSocket: no driver library, no helper service. Each
+  call connects, does one thing and hangs up; the browser itself remembers
+  its tab and the numbers left on the page (`data-jarvis`).
+- **The whole page, as a person sees it.** An older system is often frames
+  inside frames: the reading goes into every frame that belongs to the same
+  site, numbers what is in them with the rest, and a press there is aimed
+  from the screen's corner, not the frame's. Another site's frame (a payment
+  box, a human check) is closed to the page's own scripts, and stays closed.
+  A long page is read a part at a time, after going down to its end so that
+  what loads only when reached has loaded. Pointing without pressing opens a
+  menu that opens under the mouse.
+- **The newest tab is the one in front.** Chrome lists its tabs newest
+  first, so a window a page opens is where the next call works, with nothing
+  for Jarvis to remember; the reading says when tabs are open behind it, and
+  `browser_close_tab` goes back. A link that would only open another tab is
+  opened in this one.
+- **Real input.** A press is a mouse press at the element's place and typing
+  is the browser's own text input, not a script calling `click()`, so pages
+  see what they would from a person.
+- **A page is a stranger.** Its words, its title, its address and the names
+  of its buttons come back inside `asQuotedData()`. Only `http` and `https`
+  are opened, never `file:` or `chrome:`, which are the browser's own
+  machine.
+- **Its own scope, never by default.** The browser is signed in wherever the
+  family signed it in, so whoever may use it may act as them there. Like
+  Hermes, `browser` is in no role but an admin's, no device preset and no
+  pass, and is taken out of whatever runs with nobody there: a routine, an
+  approved step of a job, a habit, and Telegram. A device given the scope
+  uses its owner's saved sign-ins, as it uses the rest that is theirs.
+- **A password is the person's, and the model never has one.** A password
+  box is refused to the model in code, whatever it was asked. A person signs
+  in themselves, in the Browser panel. Some sites sign you out by the clock
+  whatever the browser keeps, so a person may also save a sign-in
+  (`lib/vault.ts`): `browser_sign_in` takes no password and no site, only
+  "sign in here". Code looks up what that person saved for the origin the
+  page's own sign-in boxes are on, as the browser reports it, and types it;
+  on any other origin there is nothing to type, however the page or the
+  model asks. What is saved is sealed (AES-GCM) under a key made from the
+  owner key, bound to the person and the site, never sent to the app, and
+  not in an export; a move carries it sealed, and it opens at the new place
+  only under the same owner key. What a tool gives back never holds it, even
+  from a site that shows it back.
+- **One thing it never does.** It answers no "are you human" check:
+  the reading says the page has one and tells the model to stop and hand
+  over. Passing one for the person is exactly what the check exists to stop.
+- **The person's own hands, through Jarvis.** Signing in and passing a check
+  are done in the app's Browser panel (`ui/Browser.ts`, `routes/browser.ts`):
+  the browser's screen as a picture fetched a few times a second, with taps,
+  drags and typing sent back as real input. It is plain authenticated
+  requests, behind the same `browser` scope: no socket, no cookie, no second
+  sign-in. The browser image has a remote desktop page of its own, which is
+  smoother; it is not used, because served from Jarvis's address it would be
+  someone else's code running where the owner key is kept, and served from
+  its own it would need its own way in. What is typed in the panel goes to
+  the browser and is not logged, kept or shown to a model. Only a few kinds
+  of event are taken (`asViewEvents`), never a raw command for the browser.
+- **Handed over where the talking is.** When a page needs the person, or
+  something on it will not work after two tries, the model calls
+  `browser_show`: a `display` event of kind `browser`, which the app draws
+  as a card in the conversation holding the same live screen
+  (`ui/BrowserView.ts`, shared with the panel), to press and type on there,
+  with Enlarge for the whole panel. It is live on the screen that asked and
+  is not kept: a browser's screen an hour ago is nobody's business.
+- **Typing replaces, and is checked.** A box is pressed, what it holds is
+  selected in the page, and the words typed as input. Then the box is looked
+  at: one that does not hold exactly what was typed (a date box that only
+  takes its calendar, one that rewrites or keeps what it had) is set to it
+  outright, with the events a page's code listens for.
+- **A message box never freezes it.** While a page has an alert or a
+  confirm up it answers nothing, and nobody is there to press its button.
+  Each is answered OK as it appears (one left up from before, when a call
+  begins), and what it said goes to the model, quoted: it chose the press
+  that raised it. Every step asked of the browser also has a time limit, so
+  a page that stops answering is said to have, not waited on.
+- **Nothing published.** In Docker the browser lives inside Jarvis's own
+  network (`network_mode: service:jarvis`), so Jarvis reaches its debugging
+  port and its screen on 127.0.0.1 and nothing else can. That port is the
+  whole browser: it must never be on a network.
+
 ## Architecture
 
 One Cloudflare Worker serves both the app and `/api/*`, so the app needs no CORS

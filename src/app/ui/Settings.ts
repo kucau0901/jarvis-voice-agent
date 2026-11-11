@@ -10,7 +10,7 @@ import { Skills } from "./Skills";
 
 /** The settings menu: groups, and the sections in each, by id. */
 const NAV: NavGroup[] = [
-  ["Connections", ["chatgpt", "openai", "car", "home", "hermes", "google", "spotify", "maps", "cameras", "mcp", "skills"]],
+  ["Connections", ["chatgpt", "openai", "car", "home", "hermes", "browser", "google", "spotify", "maps", "cameras", "mcp", "skills"]],
   ["How Jarvis behaves", ["router", "voice", "screen", "alerts", "locale"]],
   ["Access and advanced", ["usage", "owner", "devices", "export", "move", "advanced"]],
 ];

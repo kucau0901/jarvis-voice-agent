@@ -6,6 +6,8 @@ import { Devices } from "./ui/Devices";
 import { Memory } from "./ui/Memory";
 import { Routines } from "./ui/Routines";
 import { Jobs } from "./ui/Jobs";
+import { Browser } from "./ui/Browser";
+import { browserCard } from "./ui/BrowserView";
 import { Connect } from "./ui/Connect";
 import { ThemePanel } from "./ui/ThemePanel";
 import { Home } from "./ui/Home";
@@ -322,7 +324,7 @@ function onEvent(ev: ServerEvent) {
           think: (t, id) => session?.thinking(t, id),
           log: (type, data) => logEvent({ type, ...data }),
           display: (payload) => {
-            if (!key) return;
+            if (!key || browserShown(payload)) return;
             voicePages.seen(payload);
             stage ??= new Stage(key);
             void stage.show(payload as unknown as DisplayPayload);
@@ -1112,6 +1114,20 @@ function openJob(id?: string) {
 }
 $("openJobs").addEventListener("click", () => openJob());
 
+let browser: Browser | null = null;
+function openBrowser() {
+  if (!key) { requireKey(); return; }
+  browser ??= new Browser(key);
+  browser.show();
+}
+$("openBrowser").addEventListener("click", openBrowser);
+/** The browser handed over in the conversation (the browser_show tool): its screen as a card, live, on this screen only. */
+function browserShown(payload: Record<string, unknown>): boolean {
+  if (payload.kind !== "browser") return false;
+  if (key) showCard(browserCard(key, openBrowser));
+  return true;
+}
+
 let search: Search | null = null;
 /** A message found by Search, shown where it is in the chat; false when this screen does not have it. */
 function showSaid(id: string): boolean {
@@ -1194,7 +1210,7 @@ function pushToTalk(): PushToTalk {
       if (!ok) errorFlash = 1;
     },
     display: (payload) => {
-      if (!key) return;
+      if (!key || browserShown(payload)) return;
       voicePages.seen(payload);
       stage ??= new Stage(key);
       void stage.show(payload as unknown as DisplayPayload);
@@ -1447,6 +1463,7 @@ async function sendTyped() {
       els.transcript.scrollTop = els.transcript.scrollHeight;
     },
     display: (payload) => {
+      if (browserShown(payload)) return;
       // A page Jarvis made goes under the answer, as a card to open (pageCard.ts), not on the stage.
       if (pages.seen(payload)) return;
       stage ??= new Stage(key);
@@ -1547,6 +1564,7 @@ async function whoAmI() {
       hasPin: boolean;
       locked: boolean;
       live?: boolean;
+      browser?: boolean;
     };
     if (me.space?.agentName) document.title = me.space.agentName;
     // No OpenAI key, only the ChatGPT plan: no Live voice; push-to-talk answers on the plan.
@@ -1574,6 +1592,8 @@ async function whoAmI() {
     for (const b of document.querySelectorAll<HTMLElement>("#topbtns [data-need], #tabs [data-need]")) b.hidden = !may(b.dataset.need!);
     // The family's chat is for people in a family.
     $("openChat").hidden = !me.space || !isSession(key) || !may("chat");
+    // The browser, where one is set up and theirs to use (routes/hub.ts).
+    $("openBrowser").hidden = !me.browser;
     void unreadChat();
   } catch {
     // Offline: the menu stays as it is.

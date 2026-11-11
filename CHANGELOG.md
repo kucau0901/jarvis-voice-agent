@@ -19,6 +19,25 @@ of every release, and in the [README](README.md#updating).
 
 ### Added
 
+- **A browser Jarvis can drive.** With a full Chrome running beside it
+  (`docker compose --profile browser up -d`, and `BROWSER_URL` in Settings →
+  Browser), Jarvis opens a website, reads it, and presses and fills what is on
+  it: "open the school portal and tell me what homework is due". It reads
+  pages as text, so it costs what any other answer does and needs no extra
+  model. It reads inside a page's frames, follows a window the page opens,
+  reads a long page part by part, and can point at a menu to open it. You
+  sign in yourself in the new **Browser** panel in the menu, which shows the
+  browser's screen and takes your taps, drags and typing; the browser stays
+  signed in. For a site that signs you out after a while, save its sign-in
+  in that panel: Jarvis then signs back in when asked to work there. A saved
+  sign-in is sealed, used only on the site it was saved for and only for the
+  person who saved it, and never shown to the model. An "are you human"
+  check is always yours to do: when a page needs you, or Jarvis is stuck on
+  it, the browser's live screen is put in the conversation to press and type
+  on, with Enlarge for the whole panel, and Full screen there, which turns a
+  phone on its side where the phone allows it. A new scope, `browser`, decides who may use
+  it: no role has it but an admin's, and no device unless ticked; routines,
+  jobs and Telegram never do. See the README, "Run with Docker".
 - **Moving a whole Jarvis to another place**, from Cloudflare to Docker or one
   server to the next: **Settings → Move another Jarvis here** on the new one
   brings over everything the old one keeps: the family and how they sign in,
@@ -31,6 +50,32 @@ of every release, and in the [README](README.md#updating).
   and names anything that did not arrive, writing nothing. `JARVIS_STANDBY=1`
   (deploy-time) puts the old one aside afterwards: everything kept, nothing
   run on its own clock, so the two never both act for one family.
+
+### Fixed
+
+- **With Docker, a question or a tap now and then failed with "server said
+  500".** The runtime's own proxy lost a request sent just as it closed a
+  connection that had been quiet for five seconds, and tried again only for
+  what reads. It now tries once more for everything, when the request was
+  lost before Jarvis saw it. Rebuild the image to have it.
+- **Jarvis gave up half way through a form in the browser** ("I got stuck
+  working that one out"): it stopped after six steps whatever it was doing.
+  Work in the browser now has twenty.
+- **Three things a portal's leave form did to Jarvis in the browser.** A row
+  pressed through a link with no words was listed as a bare "link", forty
+  alike: it now takes the words of its row. A calendar left open by a date
+  box took the next press, and what was typed after went into the date box:
+  the calendar is now closed first, and what is typed for a box goes into
+  that box whatever has the keyboard. And an entry of a
+  menu that had closed again was pressed where it no longer was: it now says
+  so.
+- **Asked to approve something on a website, Jarvis handed it to Hermes**
+  instead of using the browser, where the sign-in is saved. Work on a
+  website, like signing in to a portal and filling in or approving something
+  there, is now the browser's whenever a browser is set up.
+- **A device with no screen was told the browser was in front of you.**
+  Handing the browser's screen over is now offered only where there is a
+  screen to put it on; the rest of the browser works from anywhere, as before.
 
 ## [2.9.0] - 2026-11-06
 

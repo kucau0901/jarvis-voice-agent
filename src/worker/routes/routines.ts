@@ -152,8 +152,8 @@ export async function askForRoutine(
 ): Promise<{ ok: boolean; text: string }> {
   if (!(await canAsk(env))) return { ok: false, text: "no ChatGPT plan or OpenAI key is set" };
   const sink = new Collector();
-  // Nothing to show a map on: screen tools are left out rather than offered and lost; Hermes too (above).
-  const unattended = (grants.includes(WILDCARD) ? SCOPES : grants).filter((g) => g !== "screen" && g !== "hermes");
+  // Nothing to show a map on: screen tools are left out rather than offered and lost; Hermes too (above), and the browser: nobody is there to sign in or pass a human check.
+  const unattended = (grants.includes(WILDCARD) ? SCOPES : grants).filter((g) => g !== "screen" && g !== "hermes" && g !== "browser");
   await run(env, [{ role: "user", text: prompt }], sink, AbortSignal.timeout(120_000), unattended, {
     surface: "routine",
     // Nor Home Assistant's own configuration: an automation is written when someone asks, in the conversation.

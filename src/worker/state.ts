@@ -50,6 +50,7 @@ import { budgetOf, budgetSays, costOf, dayOf } from "./lib/usage.ts";
 import { nextAllowed } from "./lib/access.ts";
 import { ChatGptPlan, type PlanFailure } from "./lib/chatgpt-plan.ts";
 import { Move } from "./lib/move.ts";
+import { Vault, type SavedLogin } from "./lib/vault.ts";
 
 /** Chore points, per person (lib/relays.ts award). */
 const POINTS = "chore:points";
@@ -330,6 +331,7 @@ export class JarvisState extends DurableObject<Env> {
     await this.scheduler.forget(person);
     await this.relays.forget(person);
     await this.panels.forget(person);
+    await new Vault(this.ctx.storage).forget(person);
     await this.conversation.clear(person);
     await this.images.clear(person);
     await this.pages.clear(person);
@@ -680,10 +682,10 @@ export class JarvisState extends DurableObject<Env> {
         const v = await view(person);
         return !!v?.scopes && allows(v.scopes, "screen");
       },
-      // As them, with what they may reach, less the house (no MCP to discover on an alarm) and Hermes.
+      // As them, with what they may reach, less the house (no MCP to discover on an alarm), Hermes and the browser.
       look: async (person, text) => {
         const v = await view(person);
-        const grants = narrow(v?.scopes ?? [], SCOPES.filter((s) => s !== "home" && s !== "hermes"));
+        const grants = narrow(v?.scopes ?? [], SCOPES.filter((s) => s !== "home" && s !== "hermes" && s !== "browser"));
         return lookUp(await this.personEnv(env, person), text, grants, AbortSignal.timeout(90_000));
       },
     };
@@ -789,6 +791,24 @@ export class JarvisState extends DurableObject<Env> {
 
   familyPeople() {
     return this.people.familyPeople();
+  }
+
+  /* ---------- sign-ins a person saved for the browser (lib/vault.ts) ---------------- */
+
+  vaultAll(person: string) {
+    return new Vault(this.ctx.storage).all(person);
+  }
+
+  vaultList(person: string) {
+    return new Vault(this.ctx.storage).list(person);
+  }
+
+  vaultSave(person: string, login: Pick<SavedLogin, "origin" | "user" | "sealed">) {
+    return new Vault(this.ctx.storage).save(person, login);
+  }
+
+  vaultRemove(person: string, id: string) {
+    return new Vault(this.ctx.storage).remove(person, id);
   }
 
   /* ---------- moving a whole Jarvis to another place (lib/move.ts) ---------------- */

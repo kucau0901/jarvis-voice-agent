@@ -185,6 +185,8 @@ export const placeTools: Tool[] = [showPlace, hideDisplay];
  * The tools that need a screen in front of the person. Where there is none
  * (a device's text or voice) only these are left out: the `screen` scope's
  * other tools, a person's panels, keep working from anywhere (lib/router.ts).
- * skill_address puts its card there (tools/skills.ts).
+ * skill_address puts its card there (tools/skills.ts), and browser_show the
+ * browser's own screen (tools/browser.ts): without one it would tell the
+ * model the page is in front of somebody when nothing is.
  */
-export const DRAWS_ON_SCREEN: readonly string[] = [showPlace.name, hideDisplay.name, "make_image", "make_page", "skill_address"];
+export const DRAWS_ON_SCREEN: readonly string[] = [showPlace.name, hideDisplay.name, "make_image", "make_page", "skill_address", "browser_show"];

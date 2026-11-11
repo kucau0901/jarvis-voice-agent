@@ -7,8 +7,8 @@ import { DEFAULT_ROUTER_MODEL, shouldFallBack } from "./router-model.ts";
  * The router's loop: from a conversation to an answer.
  *
  * Home Assistant's Assist first where asked for; then up to MAX_STEPS model
- * hops, running the tools each hop asks for, until the model answers in
- * words. Everything with a side effect (the model, the tools, memory, the
+ * hops (BROWSER_MAX_STEPS in the browser), running the tools each hop asks
+ * for, until the model answers in words. Everything with a side effect (the model, the tools, memory, the
  * house connections) comes in through `deps`, so Node can test the loop with
  * fakes (test/router-loop.test.ts). routes/delegate.ts `run()` builds the real
  * ones.
@@ -16,6 +16,11 @@ import { DEFAULT_ROUTER_MODEL, shouldFallBack } from "./router-model.ts";
 
 /** Hard ceiling on tool hops, so a confused router cannot loop forever. */
 export const MAX_STEPS = 6;
+/**
+ * The ceiling once it is working in the browser: signing in, finding a form
+ * and filling it is a press or a box a hop, and six ran out half way through.
+ */
+export const BROWSER_MAX_STEPS = 20;
 
 /** What a question cost, summed over every hop, and reported with the answer. */
 interface Usage {
@@ -143,7 +148,8 @@ export async function routerLoop(deps: LoopDeps): Promise<void> {
   let previousResponseId: string | undefined;
 
   try {
-    for (let step = 0; step < MAX_STEPS; step++) {
+    const most = () => (used.some((name) => name.startsWith("browser_")) ? BROWSER_MAX_STEPS : MAX_STEPS);
+    for (let step = 0; step < most(); step++) {
       if (signal.aborted) {
         // Cut off between hops: what the hops so far spent still counts.
         if (usage.hops) settle(model, false, "That request was cut off.");

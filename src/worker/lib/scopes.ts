@@ -24,6 +24,12 @@ export const SCOPES = [
    * before it existed, with `home`, keep it (lib/devices.ts).
    */
   "hermes",
+  /**
+   * A browser Jarvis drives (lib/browser.ts): it is signed in wherever the
+   * family signed it in, so, like Hermes, it is its own scope and never part
+   * of a role, a device preset or a pass. Only who an admin gives it has it.
+   */
+  "browser",
   "media",
   "mail",
   "calendar",
@@ -240,6 +246,13 @@ export function requiredScope(pathname: string, method: string): RouteRequiremen
       return "home";
     case "/api/camera":
       return "home";
+
+    // The browser under a person's own hands: its screen, and their taps and typing (routes/browser.ts).
+    // …and the sign-ins they saved for it, which a device never sees (the route checks).
+    case "/api/browser/screen":
+    case "/api/browser/input":
+    case "/api/browser/logins":
+      return "browser";
 
     // Skills and their keys (routes/skills.ts): an admin's, as the settings are.
     case "/api/skills":

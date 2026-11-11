@@ -153,6 +153,7 @@ existence, or argued around.
 | `car.control` | `car_command` — including unlock and sending a destination. |
 | `home` | Home Assistant, `show_camera`, `look_at_camera`, `/api/camera`. |
 | `hermes` | `ask_hermes`, `control_home`: Hermes can run commands on its machine, so sharing the house never shares it. A device made before 2.0 with `home` keeps it. |
+| `browser` | `browser_open`, `browser_read`, `browser_press`, `browser_fill`, `browser_close_tab`, `browser_sign_in`, `browser_show`, and the app's Browser panel (`/api/browser/screen`, `/api/browser/input`, and `/api/browser/logins` for a person's saved sign-ins, never a device's): a full browser Jarvis drives, signed in wherever the family signed it in ([DESIGN.md](DESIGN.md#the-browser)). No role has it but an admin's and no device has it unless ticked (a `*` device has every scope, this one too); never in a routine, an approved step of a job, or over Telegram. |
 | `media` | Spotify. |
 | `mail` | Gmail: `mail_check`, `mail_search`, `mail_send`, `mail_manage`, `contacts_lookup`. Reads, sends, replies, drafts, trashes and archives — there is no read-only half. Also reads Google Contacts to turn a name into an address. |
 | `calendar` | Google Calendar: `calendar_check`, `calendar_add`, `calendar_change`. Reads the diary **and creates, moves, renames and removes events**. |
@@ -805,6 +806,14 @@ meantime. Most devices should not bother.
   admin-only `PATCH /api/skills`. It carries no address or key; a client
   without a screen skips it.
 - `display` may be `{kind: "page", page, label}`: a page Jarvis made (below).
+- `display` may be `{kind: "browser"}`: Jarvis is handing over its browser,
+  because the page wants a person (a human check, a sign-in, a choice). It
+  carries nothing else. A client that can show it reads the browser's screen
+  from `GET /api/browser/screen` and sends what the person does there to
+  `POST /api/browser/input` ("The browser's screen", below). One that cannot
+  skips it; it is never sent where the request has no screen. Work in the
+  browser takes up to twenty steps, each a `tool` event, and can outlast
+  `/api/v1/ask`'s wait: ask it over the stream.
 - `result` may carry `links: [{url, title}]`, the https pages the answer cited
   (up to six), for showing beside it. The answer's words are complete without them.
 - Exactly one of `result` or `error` is terminal — **except when the turn is
@@ -814,6 +823,30 @@ meantime. Most devices should not bother.
 `EventSource` cannot be used: it is GET-only and cannot set headers. Use a real
 HTTP client and read the body as it arrives — `src/app/delegate.ts` is the
 reference implementation.
+
+## The browser's screen
+
+For a client that shows the browser when Jarvis hands it over (`display`
+`kind: "browser"`, above). Both need the `browser` scope, and answer 404 when
+no browser is set up (`BROWSER_URL`) and 503 when it does not answer.
+
+- `GET /api/browser/screen` → `{"jpeg", "width", "height", "url", "title"}`:
+  the screen as it is now, a base64 JPEG, with its size in the browser's own
+  points. Ask again for the next picture: about twice a second while it is
+  being looked at, and not at all while it is not.
+- `POST /api/browser/input` with `{"events": [...]}`, at most 80 at once, each
+  one of:
+  - `{"kind":"mouse","type":"down"|"move"|"up","x","y"}`: a press, a drag, a
+    release, in the browser's points (a tap at a place on the picture is
+    `x / shownWidth * width`). A tap is `down` then `up`.
+  - `{"kind":"wheel","x","y","dy"}`: scrolling.
+  - `{"kind":"text","text"}`: typed into whatever has the keyboard.
+  - `{"kind":"key","key"}`: `Enter`, `Tab`, `Backspace`, `Delete`, `Escape` or
+    an arrow (`ArrowLeft` …).
+  - `{"kind":"open","address"}` and `{"kind":"back"}`.
+
+What is sent goes to the browser as real input and nowhere else: no model
+sees it and nothing keeps it. `src/app/ui/BrowserView.ts` is the reference.
 
 ## Even Realities G2 glasses
 
