@@ -51,6 +51,7 @@ import { nextAllowed } from "./lib/access.ts";
 import { ChatGptPlan, type PlanFailure } from "./lib/chatgpt-plan.ts";
 import { Move } from "./lib/move.ts";
 import { Vault, type SavedLogin } from "./lib/vault.ts";
+import { Spots } from "./lib/spots.ts";
 
 /** Chore points, per person (lib/relays.ts award). */
 const POINTS = "chore:points";
@@ -332,6 +333,7 @@ export class JarvisState extends DurableObject<Env> {
     await this.relays.forget(person);
     await this.panels.forget(person);
     await new Vault(this.ctx.storage).forget(person);
+    await new Spots(this.ctx.storage).forget(person);
     await this.conversation.clear(person);
     await this.images.clear(person);
     await this.pages.clear(person);
@@ -809,6 +811,20 @@ export class JarvisState extends DurableObject<Env> {
 
   vaultRemove(person: string, id: string) {
     return new Vault(this.ctx.storage).remove(person, id);
+  }
+
+  /* ---------- a person's places, where their phone says they arrived or left (lib/spots.ts) ---------------- */
+
+  spotsList(person: string) {
+    return new Spots(this.ctx.storage).list(person);
+  }
+
+  spotSave(person: string, input: { name?: unknown; lat?: unknown; lng?: unknown; radius?: unknown }) {
+    return new Spots(this.ctx.storage).save(person, input);
+  }
+
+  spotRemove(person: string, slug: string) {
+    return new Spots(this.ctx.storage).remove(person, slug);
   }
 
   /* ---------- moving a whole Jarvis to another place (lib/move.ts) ---------------- */

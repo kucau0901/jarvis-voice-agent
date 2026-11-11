@@ -567,6 +567,39 @@ The field mask is minimal on purpose: the Routes API **bills by requested
 fields**, and adding `routes.polyline` for debugging moves the call to a more
 expensive tier.
 
+## Where they are
+
+"When I get to the grocer, tell me my shopping list." Jarvis knew where the
+car was and whether Home Assistant had someone at home, and nothing else.
+
+**The phone watches; Jarvis is only told.** A person saves a place in the
+Jarvis app on their phone, standing there. The phone hands the list to its
+own system as geofences and, when one is crossed, sends `arrived:<slug>` or
+`left:<slug>` to `/api/v1/trigger`. That is all Jarvis ever learns: no
+position is sent, none is asked for, and there is no trail to keep, lose or
+hand over. What is stored (`lib/spots.ts`, `spot:<person>`) is the places a
+person chose, as an address is in their memory.
+
+**Nothing new fires.** An arrival is an event, and a routine for it is the
+`event` routine there always was: it runs with nobody there, with its
+maker's tools and no screen, and its answer is an alert to that person. The
+routines tool only learned the words (`arrive_place`, `leave_place`) and to
+refuse a place the person has not saved, rather than guess where "the
+office" is.
+
+**Each person's own, off until they turn it on.** The switch is on the
+phone, with the phone's own permission behind it. A member's phone sets off
+only that member's routines, as with any event.
+
+**An offer nobody asked for costs an answer.** "When I arrive anywhere, tell
+me one useful thing or stay quiet" is a routine like any other
+(`if-important`), set off by the bare `arrived`. The phone sends that only
+when the person turned it on there: every arrival is then a model call.
+
+Not here: Home Assistant's zones (it would need Home Assistant, and zones
+made by hand), and places Jarvis picks by itself, such as where today's
+meetings are.
+
 ## Memory
 
 Jarvis remembers across drives. The only durable memory used to be Hermes's,

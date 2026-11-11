@@ -2,9 +2,10 @@ import type { Tool } from "./registry.ts";
 import { stateStub } from "../lib/state-client.ts";
 import { localeOf } from "../lib/locale.ts";
 import { describeAction, describeTrigger, whenSaid, type Routine } from "../lib/routines.ts";
-import { callerWho, mayWork } from "../lib/context.ts";
+import { callerWho, mayWork, OWNER } from "../lib/context.ts";
 import { MAX_ASK } from "../lib/habits.ts";
-import { tidy } from "../lib/quote.ts";
+import { asQuotedData, tidy } from "../lib/quote.ts";
+import { findSpot, placeEvent } from "../lib/spots.ts";
 import { PRESENCE } from "../lib/later.ts";
 import { haConfig } from "../lib/ha.ts";
 import { allows } from "../lib/scopes.ts";
@@ -94,12 +95,18 @@ const routineAdd: Tool = {
     "notice=true and neither say nor ask, e.g. '0 10,13,16 * * *'; Jarvis reads what a brief reads and speaks only when " +
     "something is worth the interruption, at most four times a day. One each: another replaces its schedule, so 'check " +
     "less often' or 'more often' is a new schedule, and 'stop checking' is routine_remove. Each look costs a small answer. " +
+    "At a place that is not home ('when I get to the supermarket, tell me my shopping list', 'when I leave the " +
+    "office, tell me the best way home'): when=arrive_place or leave_place with place, its name as they said it, and " +
+    "say or ask. Their phone tells Jarvis when they arrive at or leave a place they saved in the Jarvis app there, " +
+    "with location turned on in its settings; nothing else knows where they are. place=null is anywhere they arrive " +
+    "or leave, for 'when I get somewhere, tell me one useful thing about it or stay quiet' (ask, with " +
+    "notify=if-important): the ask is then given the place's name. " +
     "Afterwards read back what was set and when it will next happen.",
   parameters: {
     type: "object",
     properties: {
       name: { type: ["string", "null"], description: "A few words to title it by. Null to use the message." },
-      when: { type: "string", enum: ["once", "daily", "cron", "event", "leave", "watch", "arrive_home", "leave_home"] },
+      when: { type: "string", enum: ["once", "daily", "cron", "event", "leave", "watch", "arrive_home", "leave_home", "arrive_place", "leave_place"] },
       local_time: {
         type: ["string", "null"],
         description: "once: the user's local date and time, YYYY-MM-DDTHH:MM, from RIGHT NOW in the instructions.",
@@ -116,6 +123,10 @@ const routineAdd: Tool = {
         description: "cron: minute hour day month weekday, e.g. '0 8,12 * * *' or '0 9 1 * *'. One number for the minute. Only when daily cannot say it.",
       },
       event: { type: ["string", "null"], description: "event: its name, lower case, e.g. doorbell." },
+      place: {
+        type: ["string", "null"],
+        description: "arrive_place, leave_place: the place's name as the user said it, one they saved in the Jarvis app on their phone. Null for anywhere they arrive or leave. Null otherwise.",
+      },
       buffer_min: { type: ["integer", "null"], description: "leave: minutes to spare on top of the drive. Null for 10." },
       condition: {
         type: ["string", "null"],
@@ -147,7 +158,7 @@ const routineAdd: Tool = {
         description: "With pass_to: how long they have to answer before the user (or family) is told; nudged halfway. Null for the family's usual (an hour). Medicine might be 20.",
       },
     },
-    required: ["name", "when", "local_time", "in_minutes", "time", "days", "cron", "event", "buffer_min", "condition", "for_minutes", "say", "ask", "brief", "meetings", "notice", "notify", "pass_to", "pass_kind", "points", "escalate", "answer_within_minutes"],
+    required: ["name", "when", "local_time", "in_minutes", "time", "days", "cron", "event", "place", "buffer_min", "condition", "for_minutes", "say", "ask", "brief", "meetings", "notice", "notify", "pass_to", "pass_kind", "points", "escalate", "answer_within_minutes"],
     additionalProperties: false,
   },
   async run(args, ctx) {
@@ -158,6 +169,22 @@ const routineAdd: Tool = {
     // Without Home Assistant, or for someone who may not read the house, getting home is an event their own automation or phone sends, as before.
     const byEvent = home && (!haConfig(ctx.env) || !allows(ctx.grants, "home"));
     const watched = home && !byEvent;
+    // Somewhere else: their phone watches the places they saved in it and sends the event (lib/spots.ts).
+    const elsewhere = args.when === "arrive_place" || args.when === "leave_place";
+    let placeEventName: string | null = null;
+    if (elsewhere) {
+      const said = typeof args.place === "string" ? args.place.trim() : "";
+      const spots = said ? await state.spotsList(ctx.env.JARVIS_PERSON || OWNER) : [];
+      const spot = said ? findSpot(spots, said) : null;
+      if (said && !spot) {
+        const have = spots.length ? `The places they have saved: ${asQuotedData("places", spots.map((s) => s.name).join(", "), "THE USER'S SAVED PLACES")}` : "They have saved no places yet.";
+        return (
+          "Not set up: Jarvis does not know where that is. A place is saved from the Jarvis app on their phone, standing there: " +
+          `Settings, Location, "Save where I am now", with location turned on there. ${have} Tell them that plainly, and offer to set this up once it is saved.`
+        );
+      }
+      placeEventName = placeEvent(spot ? spot.slug : null, args.when === "arrive_place");
+    }
     const presence = ctx.env.JARVIS_PERSON_PRESENCE ?? "";
     if (watched && !PRESENCE.test(presence)) {
       return (
@@ -168,13 +195,13 @@ const routineAdd: Tool = {
     const r = await state.addRoutine(
       {
         name: args.name,
-        when: watched ? "watch" : byEvent ? "event" : args.when,
+        when: watched ? "watch" : byEvent || elsewhere ? "event" : args.when,
         localTime: args.local_time,
         inMinutes: args.in_minutes,
         time: args.time,
         days: args.days,
         cron: args.cron,
-        event: byEvent ? (arrive ? "arrived_home" : "left_home") : args.event,
+        event: placeEventName ?? (byEvent ? (arrive ? "arrived_home" : "left_home") : args.event),
         bufferMin: args.buffer_min,
         condition: watched ? homeCondition(presence, arrive) : args.condition,
         forMinutes: watched ? (args.for_minutes ?? HOME_FOR_MIN) : args.for_minutes,

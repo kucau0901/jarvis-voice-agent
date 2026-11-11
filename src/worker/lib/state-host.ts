@@ -37,6 +37,7 @@ import type { Relay, RelayKind } from "./relays.ts";
 import type { ChatMessage } from "./chat.ts";
 import type { Panel, PanelItem, Reading } from "./panels.ts";
 import type { LoginView, SavedLogin } from "./vault.ts";
+import type { Spot } from "./spots.ts";
 import type { Said } from "./conversation.ts";
 import type { PlanFailure, PlanStatus } from "./chatgpt-plan.ts";
 import type { Grant } from "./scopes.ts";
@@ -620,6 +621,13 @@ interface VaultApi {
   vaultRemove(person: string, id: string): Promise<boolean>;
 }
 
+/** A person's places, each with a position (lib/spots.ts; state.ts). */
+interface SpotsApi {
+  spotsList(person: string): Promise<Spot[]>;
+  spotSave(person: string, input: { name?: unknown; lat?: unknown; lng?: unknown; radius?: unknown }): Promise<Spot | string>;
+  spotRemove(person: string, slug: string): Promise<boolean>;
+}
+
 /** What each person put on their Home tab (lib/panels.ts; state.ts). */
 interface PanelApi {
   panelsOf(person: string): Promise<Panel[]>;
@@ -781,4 +789,5 @@ export type StateApi = Pick<
   ProposalApi &
   PlanApi &
   MoveApi &
-  VaultApi;
+  VaultApi &
+  SpotsApi;

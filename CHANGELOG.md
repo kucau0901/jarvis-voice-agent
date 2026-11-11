@@ -19,6 +19,14 @@ of every release, and in the [README](README.md#updating).
 
 ### Added
 
+- **Routines where you are.** "When I get to the grocer, tell me my shopping
+  list"; "when I leave the office, tell me the best way home". A person saves
+  a place in the Jarvis app on their phone, and the phone tells Jarvis when
+  they arrive there or leave: only that, never where they are in between, and
+  nothing is kept of it. Off until they turn it on, on their own phone. Needs
+  a phone app that does it; for one, three new calls under `/api/v1/places`
+  and two event names for `/api/v1/trigger` (`docs/api.md`, "Places").
+
 - **A browser Jarvis can drive.** With a full Chrome running beside it
   (`docker compose --profile browser up -d`, and `BROWSER_URL` in Settings →
   Browser), Jarvis opens a website, reads it, and presses and fills what is on

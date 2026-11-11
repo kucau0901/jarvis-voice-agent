@@ -15,6 +15,7 @@ import { handleRoutines } from "./routines.ts";
 import { handleVoice } from "./voice.ts";
 import { handleJobs } from "./jobs.ts";
 import { handleHouse } from "./house.ts";
+import { handleSpots } from "./spots.ts";
 
 import * as devices from "../lib/devices.ts";
 import { handleLiveUsage } from "./usage.ts";
@@ -502,6 +503,10 @@ export async function handleV1(
   // The house: what Jarvis's component in Home Assistant watches, and what changed.
   const house = await handleHouse(req, env, url, principal);
   if (house) return house;
+
+  // A person's places, for their phone to tell Jarvis they arrived at or left.
+  const spots = await handleSpots(req, env, url, principal);
+  if (spots) return spots;
 
   return err(404, `no route for ${url.pathname}`);
 }
