@@ -58,6 +58,9 @@ of every release, and in the [README](README.md#updating).
   connection that had been quiet for five seconds, and tried again only for
   what reads. It now tries once more for everything, when the request was
   lost before Jarvis saw it. Rebuild the image to have it.
+- **Jarvis gave up half way through a form in the browser** ("I got stuck
+  working that one out"): it stopped after six steps whatever it was doing.
+  Work in the browser now has twenty.
 
 ## [2.9.0] - 2026-11-06
 

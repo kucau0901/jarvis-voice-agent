@@ -1,4 +1,4 @@
-import { MAX_STEPS, routerLoop, spokenFailure, type LoopDeps, type LoopRecord, type Reply } from "../src/worker/lib/router-loop.ts";
+import { BROWSER_MAX_STEPS, MAX_STEPS, routerLoop, spokenFailure, type LoopDeps, type LoopRecord, type Reply } from "../src/worker/lib/router-loop.ts";
 import { DEFAULT_ROUTER_MODEL } from "../src/worker/lib/router-model.ts";
 
 let pass = 0;
@@ -157,6 +157,19 @@ console.log("\nfailures, said plainly");
   const h = harness(answers);
   await routerLoop(h.deps);
   check(`stops after ${MAX_STEPS} hops`, h.asks.length === MAX_STEPS && /got stuck/.test(String(last(h.events).text)), h.asks.length);
+}
+{
+  // Signing in and filling a form is a hop a press: more of them, once it is in the browser.
+  const steps = [call("web"), call("browser_open"), ...Array.from({ length: 10 }, () => call("browser_fill"))];
+  const h = harness([...steps.map((c, i) => reply(`r${i}`, { output: [c] })), reply("done", { output_text: "Filled in, not sent." })]);
+  await routerLoop(h.deps);
+  check(`work in the browser goes on past ${MAX_STEPS} hops`, h.asks.length === 13 && last(h.events).type === "result", h.asks.length);
+}
+{
+  const answers = Array.from({ length: BROWSER_MAX_STEPS + 2 }, (_, i) => reply(`r${i}`, { output: [call("browser_press")] }));
+  const h = harness(answers);
+  await routerLoop(h.deps);
+  check(`but stops after ${BROWSER_MAX_STEPS}`, h.asks.length === BROWSER_MAX_STEPS && /got stuck/.test(String(last(h.events).text)), h.asks.length);
 }
 {
   const h = harness([status(429, "rate limit reached")]);
