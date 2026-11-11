@@ -95,13 +95,14 @@ console.log("\nbut only once, and only that");
   check("and wrangler is told", r.notes.length === 1 && r.notes[0]!.includes("failed after 2 attempts"), r.notes);
 }
 {
-  // Jarvis had the request for a while before the connection went: it may have acted on it.
-  const r = await through("POST", () => {
+  // A busy Jarvis closes the quiet connection seconds after the request was put on it: lost all the same, and not acted on.
+  const r = await through("POST", (_req, n) => {
+    if (n > 0) return Promise.resolve(new Response("done"));
     const sent = realNow();
     Date.now = () => sent + 20_000;
     return lost();
   }, "{}");
-  check("lost part way through an answer: not sent again", r.status === 0 && r.got.length === 1, r);
+  check("noticed only seconds later: still sent again", r.status === 200 && r.got.length === 2, r);
 }
 {
   const r = await through("POST", () => Promise.reject(new Error("internal error")), "{}");

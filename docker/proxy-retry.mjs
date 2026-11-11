@@ -8,9 +8,15 @@
 // or an event from the house failed with a 500
 // (https://github.com/cloudflare/workers-sdk/issues/14641).
 //
-// This gives every other method one more try, and only when the loss came
-// within a second of sending: that is the closed connection, not Jarvis
-// failing part way through an answer, which must not be run twice.
+// This gives every other method one more try when the connection is lost,
+// however long it took to notice. It first did so only within a second of
+// sending, and on a busy machine missed one: Jarvis, in the middle of other
+// work, gets round to closing the quiet connection seconds after the request
+// was put on it, unread. A request Jarvis has begun on does not lose its
+// connection this way (the five seconds count only between requests), so a
+// lost one was not acted on, and sending it again does not do it twice.
+// Telling the proxy to close its connection after each request was tried
+// and changes nothing: the runtime keeps the connection all the same.
 //
 // It replaces exact text in the wrangler version the lockfile pins, and fails
 // loudly when that text is not there: after a wrangler update, look at its
@@ -26,12 +32,11 @@ const EDITS = [
     `const again = request.method === "GET" || request.method === "HEAD";
       // The first try uses up what was sent with the request: keep a copy for the second.
       const spare = again ? null : request.clone();
-      let sentAt = 0;
-      const attemptUserWorkerFetch = (attempt = 0) => void (sentAt = Date.now(), fetch(userWorkerUrl, new Request(attempt > 0 && spare ? spare : request, { headers }))).then(`,
+      const attemptUserWorkerFetch = (attempt = 0) => void fetch(userWorkerUrl, new Request(attempt > 0 && spare ? spare : request, { headers })).then(`,
   ],
   [
     `) && (request.method === "GET" || request.method === "HEAD") && attempt < 2) {`,
-    `) && (again ? attempt < 2 : attempt < 1 && Date.now() - sentAt < 1e3 && /connection lost/i.test(String(error?.message)))) {`,
+    `) && (again ? attempt < 2 : attempt < 1 && /connection lost/i.test(String(error?.message)))) {`,
   ],
 ];
 
