@@ -765,6 +765,38 @@ first person's (Home Assistant's, say), it is the house's event and starts
 everyone's. Sent by anyone else, or a device of theirs, it starts only their
 own.
 
+### Places: arriving and leaving
+
+A person's phone can tell Jarvis when they arrive at or leave a place of
+theirs, which sets off the routines they made for it ("when I get to the
+grocer, tell me my shopping list"). The phone does the watching: it keeps
+this list as geofences and sends one event when one is crossed. Jarvis is
+never told where anyone is between those, and keeps no trail.
+
+```
+GET    /api/v1/places          {"places": [{"slug", "name", "lat", "lng", "radius", "at"}]}
+POST   /api/v1/places          {"name", "lat", "lng", "radius"?}  → {"place": {...}}
+DELETE /api/v1/places?slug=
+```
+
+All three need `routines` and are the caller's own: a member's, or a member's
+device's. `radius` is in metres, 150 when left out, kept between 100 and
+1000. The same `name` again moves that place and keeps its `slug`. A person
+keeps at most 20.
+
+When one is crossed, the phone sends the event that routines wait for:
+
+```
+POST /api/v1/trigger
+{"event": "arrived:corner_grocer", "text": "Corner Grocer"}
+```
+
+`arrived:<slug>` or `left:<slug>`, with the place's name as `text`. To let a
+person have "when I arrive anywhere, tell me one useful thing or stay quiet",
+a client may also send the bare `arrived` or `left` with the name as `text`:
+only if they turned that on, since each one is an answer paid for. An event
+no routine waits for starts nothing.
+
 ### Leave now
 
 With a `leave` routine on, the calendar is read every 15 minutes for the next

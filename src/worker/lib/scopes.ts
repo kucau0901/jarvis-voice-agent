@@ -230,6 +230,8 @@ export function requiredScope(pathname: string, method: string): RouteRequiremen
     case "/api/v1/routines/run":
     case "/api/v1/routines/runs":
     case "/api/v1/trigger":
+    // A person's places, which their phone sets routines off at (routes/spots.ts).
+    case "/api/v1/places":
       return "routines";
 
     // Background jobs. A job asks things, so `ask`; one for Hermes also needs
