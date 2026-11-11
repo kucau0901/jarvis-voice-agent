@@ -99,8 +99,11 @@ const read = (part: number): string => `(() => {${FRAMES}
     const img = e.querySelector ? e.querySelector("img[alt]") : null;
     // What it is called, not what it holds: a box's contents and a choice's options are said apart.
     const own = /^(INPUT|TEXTAREA|SELECT)$/.test(e.tagName) ? (/^(submit|button|reset)$/.test(e.type) ? e.value : "") : e.innerText;
-    return clean(e.getAttribute("aria-label") || label || own || e.getAttribute("placeholder") || e.getAttribute("title") ||
-      (img ? img.getAttribute("alt") : "") || e.getAttribute("name")).slice(0, 80);
+    const named = clean(e.getAttribute("aria-label") || label || own || e.getAttribute("placeholder") || e.getAttribute("title") ||
+      (img ? img.getAttribute("alt") : "") || e.getAttribute("name"));
+    // A link or button with no words of its own (a table's row pressed through an empty link): the words of its row.
+    const row = named || /^(INPUT|TEXTAREA|SELECT)$/.test(e.tagName) ? null : e.closest("tr, li, [role=row]");
+    return (named || clean(row ? row.innerText : "")).slice(0, 80);
   };
   const kindOf = (e) => {
     const t = e.tagName.toLowerCase();
@@ -143,17 +146,35 @@ const where = (n: number): string => `(() => {${FRAMES}
   // Unless it names a frame of this page (a menu that fills the frame beside it): that is this tab already.
   const frame = a && docs(document, []).some((d) => [...d.querySelectorAll("iframe, frame")].some((f) => f.name === a.target));
   if (a && !frame && !/^_(self|parent|top)$/.test(a.target)) a.removeAttribute("target");
-  e.scrollIntoView({ block: "center", inline: "center" });
-  const r = e.getBoundingClientRect();
-  let x = r.left + r.width / 2, y = r.top + r.height / 2;
-  // Inside a frame, a place is counted from the frame's own corner: add each frame's, out to the screen.
-  for (let w = e.ownerDocument.defaultView; w.frameElement; w = w.parent) {
-    const f = w.frameElement.getBoundingClientRect();
-    x += f.left + w.frameElement.clientLeft;
-    y += f.top + w.frameElement.clientTop;
+  const own = e.ownerDocument, view = own.defaultView;
+  let r, x, y;
+  const place = () => {
+    r = e.getBoundingClientRect();
+    x = r.left + r.width / 2; y = r.top + r.height / 2;
+    // Inside a frame, a place is counted from the frame's own corner: add each frame's, out to the screen.
+    for (let w = view; w.frameElement; w = w.parent) {
+      const f = w.frameElement.getBoundingClientRect();
+      x += f.left + w.frameElement.clientLeft;
+      y += f.top + w.frameElement.clientTop;
+    }
+  };
+  place();
+  // Only when it is out of sight: moving the page under the mouse closes a menu the mouse was holding open.
+  if (r.top < 0 || r.left < 0 || r.bottom > own.documentElement.clientHeight || r.right > own.documentElement.clientWidth || x < 0 || y < 0 || x > document.documentElement.clientWidth || y > document.documentElement.clientHeight) {
+    e.scrollIntoView({ block: "center", inline: "center" });
+    place();
   }
+  const s = view.getComputedStyle(e);
+  const shown = r.width >= 2 && r.height >= 2 && s.visibility !== "hidden" && s.display !== "none";
+  // What a press there would land on: the thing itself, part of it, what it is part of, or its label. Anything else is in the way.
+  const top = shown ? own.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) : null;
+  const label = top ? top.closest("label") : null;
+  const covered = !!top && top !== e && !e.contains(top) && !top.contains(e) && !(label && label.control === e);
+  // In the way because a box has the keyboard: its calendar, or its list of suggestions.
+  const busy = own.activeElement;
+  const popup = covered && !!busy && busy !== e && /^(INPUT|TEXTAREA)$/.test(busy.tagName);
   const t = e.tagName.toLowerCase();
-  return JSON.stringify({ x, y, tag: t, type: e.type || "", editable: t === "textarea" || e.isContentEditable || (t === "input" && !["checkbox", "radio", "submit", "button", "file", "image", "reset"].includes(e.type)) });
+  return JSON.stringify({ x, y, shown, popup, tag: t, type: e.type || "", editable: t === "textarea" || e.isContentEditable || (t === "input" && !["checkbox", "radio", "submit", "button", "file", "image", "reset"].includes(e.type)) });
 })()`;
 
 /** Run in the page: number `n`, a choice, set to the option that reads `text`. */
@@ -260,6 +281,10 @@ interface Reading {
 interface Spot {
   x: number;
   y: number;
+  /** It can be seen: not an entry of a menu that has closed. */
+  shown: boolean;
+  /** Something a box with the keyboard put up (its calendar, its suggestions) is over it. */
+  popup: boolean;
   tag: string;
   type: string;
   editable: boolean;
@@ -423,7 +448,7 @@ class Tab {
     return JSON.parse(String(await this.run(where(n)))) as Spot | null;
   }
 
-  async press(at: Spot): Promise<void> {
+  async press(at: { x: number; y: number }): Promise<void> {
     const point = { x: at.x, y: at.y, button: "left", clickCount: 1 };
     await this.call("Input.dispatchMouseEvent", { ...point, type: "mouseMoved", button: "none" });
     await this.call("Input.dispatchMouseEvent", { ...point, type: "mousePressed" });
@@ -443,7 +468,7 @@ class Tab {
    * listens for.
    */
   async type(at: { x: number; y: number }, text: string): Promise<void> {
-    await this.press({ x: at.x, y: at.y, tag: "input", type: "", editable: true });
+    await this.press(at);
     await this.run(`(() => {${FOCUSED}select(focused()); })()`);
     await this.call("Input.insertText", { text });
     await this.run(`(() => {${FOCUSED}hold(focused(), ${JSON.stringify(text)}); })()`);
@@ -518,6 +543,22 @@ export async function browserCloseTab(deps: BrowserDeps): Promise<string> {
 }
 
 const GONE = "Nothing on the page has that number now: the page has changed. Read it again and use the numbers it gives.";
+const SHUT =
+  "Not pressed: that is not showing now. If it is an entry of a menu that opens under the mouse, the menu has closed: point at the menu again (hover), then press the entry from the reading that gives.";
+
+/**
+ * Where number `n` is, clear to press. A calendar or a list of suggestions
+ * left open by the box typed in before would take the press instead, and set
+ * that box to whatever day lay under it: Tab moves on from that box, which
+ * closes what it put up.
+ */
+async function reach(tab: Tab, n: number, sleep: BrowserDeps["sleep"]): Promise<Spot | null> {
+  const at = await tab.spot(n);
+  if (!at?.popup) return at;
+  await tab.key("Tab");
+  await sleep(200);
+  return tab.spot(n);
+}
 
 export const browserOpen = (deps: BrowserDeps, address: string): Promise<string> => {
   const url = webAddress(address);
@@ -537,15 +578,16 @@ export const browserRead = (deps: BrowserDeps, part = 1): Promise<string> =>
 /** Pressed, or only pointed at: a menu that opens under the mouse opens, and its entries are in the reading that follows. */
 export const browserPress = (deps: BrowserDeps, n: number, hover = false): Promise<string> =>
   withTab(deps, async (tab) => {
-    const at = await tab.spot(n);
+    const at = hover ? await tab.spot(n) : await reach(tab, n, deps.sleep);
     if (!at) return GONE;
+    if (!at.shown) return SHUT;
     if (hover) await tab.call("Input.dispatchMouseEvent", { type: "mouseMoved", x: at.x, y: at.y, button: "none" });
     else await tab.press(at);
   });
 
 export const browserFill = (deps: BrowserDeps, n: number, text: string, enter: boolean): Promise<string> =>
   withTab(deps, async (tab) => {
-    const at = await tab.spot(n);
+    const at = await reach(tab, n, deps.sleep);
     if (!at) return GONE;
     if (at.type === "password") return "Not typed: that is a password box. browser_sign_in signs in with what the user saved for this site; a password is never typed any other way.";
     if (at.tag === "select") {
@@ -554,6 +596,7 @@ export const browserFill = (deps: BrowserDeps, n: number, text: string, enter: b
       return;
     }
     if (!at.editable) return "Not typed: that is not something to type in. Press it instead.";
+    if (!at.shown) return "Not typed: that box is not showing now. Read the page again.";
     await tab.type(at, text);
     if (enter) await tab.key("Enter");
   });

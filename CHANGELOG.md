@@ -61,6 +61,13 @@ of every release, and in the [README](README.md#updating).
 - **Jarvis gave up half way through a form in the browser** ("I got stuck
   working that one out"): it stopped after six steps whatever it was doing.
   Work in the browser now has twenty.
+- **Three things a portal's leave form did to Jarvis in the browser.** A row
+  pressed through a link with no words was listed as a bare "link", forty
+  alike: it now takes the words of its row. A calendar left open by a date
+  box took the next press, and what was typed after went into the date box:
+  Jarvis now moves on from that box first, which closes it. And an entry of a
+  menu that had closed again was pressed where it no longer was: it now says
+  so.
 
 ## [2.9.0] - 2026-11-06
 

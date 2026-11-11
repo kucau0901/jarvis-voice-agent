@@ -43,6 +43,8 @@ interface Fake {
   asks?: Record<string, unknown>[];
   /** A message box the page puts up when this is asked: what it says. */
   boxOn?: { method: string; says: string };
+  /** Where a thing is, call by call, before `spot` answers the rest. */
+  spots?: unknown[];
   /** One is already up when the call begins. */
   boxUp?: boolean;
   /** What choosing an option answers. */
@@ -59,6 +61,7 @@ function chrome(f: Fake = {}) {
   let closed = 0;
   let slept = 0;
   const states = [...(f.states ?? [])];
+  const spots = [...(f.spots ?? [])];
   let boxes = f.boxUp ? 1 : 0;
   let boxed = false;
   const asks = [...(f.asks ?? [{ origin: "https://hr.example", user: true, pass: true, x: 200, y: 100 }])];
@@ -101,7 +104,7 @@ function chrome(f: Fake = {}) {
             const a = asks.length > 1 ? asks.shift() : asks[0];
             return answer({ result: { value: JSON.stringify(a) } });
           }
-          if (x.includes("scrollIntoView")) return answer({ result: { value: JSON.stringify(f.spot === undefined ? { x: 100, y: 50, tag: "input", type: "text", editable: true } : f.spot) } });
+          if (x.includes("scrollIntoView")) return answer({ result: { value: JSON.stringify(spots.length ? spots.shift() : f.spot === undefined ? { x: 100, y: 50, shown: true, popup: false, tag: "input", type: "text", editable: true } : f.spot) } });
           if (x.includes("e.options")) return answer({ result: { value: f.chosen ?? "true" } });
           return answer({ result: { value: JSON.stringify(f.page ?? PAGE) } });
         },
@@ -222,19 +225,33 @@ console.log("\nwhen the browser is not there");
 
 console.log("\npressing");
 {
-  const c = chrome({ spot: { x: 310.5, y: 42, tag: "a", type: "", editable: false } });
+  const c = chrome({ spot: { x: 310.5, y: 42, shown: true, popup: false, tag: "a", type: "", editable: false } });
   const out = await browserPress(c.deps, 1);
   const mouse = c.sent.filter((s) => s.method === "Input.dispatchMouseEvent");
   check("the mouse goes there and clicks once", mouse.map((m) => m.params.type).join() === "mouseMoved,mousePressed,mouseReleased" && mouse.every((m) => m.params.x === 310.5 && m.params.y === 42) && mouse[1].params.clickCount === 1, mouse);
   check("it is found by its number", c.sent.some((s) => String(s.params.expression).includes("find(1)")));
   check("then the page is read as it is afterwards", out.includes("You have 2 orders.") && c.methods().indexOf("Input.dispatchMouseEvent") < c.methods().lastIndexOf("Runtime.evaluate"));
-  const h = chrome({ spot: { x: 40, y: 12, tag: "a", type: "", editable: false } });
+  const h = chrome({ spot: { x: 40, y: 12, shown: true, popup: false, tag: "a", type: "", editable: false } });
   await browserPress(h.deps, 3, true);
   const moved = h.sent.filter((s) => s.method === "Input.dispatchMouseEvent");
   check("pointed at, not pressed: the mouse goes there and no button does", moved.length === 1 && moved[0].params.type === "mouseMoved" && moved[0].params.x === 40);
   const stale = chrome({ spot: null });
   const gone = await browserPress(stale.deps, 9);
   check("a number the page no longer has: said, and nothing pressed", /Nothing on the page has that number now/.test(gone) && !stale.methods().includes("Input.dispatchMouseEvent"), gone);
+  const shut = chrome({ spot: { x: 0, y: 0, shown: false, popup: false, tag: "a", type: "", editable: false } });
+  const not = await browserPress(shut.deps, 4);
+  check("an entry of a menu that has closed: said, and not pressed where it is not", /^Not pressed: that is not showing now/.test(not) && !shut.methods().includes("Input.dispatchMouseEvent"), not);
+
+  // The box typed in before left its calendar open over the next thing.
+  const under = { x: 220, y: 300, shown: true, tag: "textarea", type: "textarea", editable: true };
+  const cal = chrome({ spots: [{ ...under, popup: true }, { ...under, popup: false }] });
+  await browserFill(cal.deps, 6, "A day off", false);
+  const did = cal.sent.map((x) => (x.method === "Input.dispatchKeyEvent" ? `key ${x.params.key}` : x.method));
+  check("a calendar over it: Tab moves on from the box that put it up, before the press", did.indexOf("key Tab") >= 0 && did.indexOf("key Tab") < did.indexOf("Input.dispatchMouseEvent"), did);
+  check("and it is found again afterwards", cal.sent.filter((x) => String(x.params.expression).includes("scrollIntoView")).length === 2);
+  const clear = chrome();
+  await browserFill(clear.deps, 2, "x", false);
+  check("nothing over it: no Tab", !clear.sent.some((x) => x.params.key === "Tab"));
 }
 
 console.log("\nfilling");
@@ -253,19 +270,19 @@ console.log("\nfilling");
   await browserFill(e.deps, 2, "red shoes", true);
   check("Enter when asked, after the words", e.sent.findIndex((s) => s.params.key === "Enter") > e.methods().indexOf("Input.insertText"));
 
-  const pw = chrome({ spot: { x: 1, y: 1, tag: "input", type: "password", editable: true } });
+  const pw = chrome({ spot: { x: 1, y: 1, shown: true, popup: false, tag: "input", type: "password", editable: true } });
   const no = await browserFill(pw.deps, 5, "hunter2", true);
   check("a password box: never typed in, whoever asks", /^Not typed: that is a password box/.test(no) && !pw.methods().some((x) => x.startsWith("Input.")), [no, pw.methods()]);
   check("and what it was asked to type goes nowhere", !JSON.stringify(pw.sent).includes("hunter2"));
 
-  const btn = chrome({ spot: { x: 1, y: 1, tag: "button", type: "submit", editable: false } });
+  const btn = chrome({ spot: { x: 1, y: 1, shown: true, popup: false, tag: "button", type: "submit", editable: false } });
   check("a button: not typed at", /^Not typed: that is not something to type in/.test(await browserFill(btn.deps, 3, "x", false)) && !btn.methods().some((x) => x.startsWith("Input.")));
 
-  const sel = chrome({ spot: { x: 1, y: 1, tag: "select", type: "select-one", editable: false } });
+  const sel = chrome({ spot: { x: 1, y: 1, shown: true, popup: false, tag: "select", type: "select-one", editable: false } });
   const picked = await browserFill(sel.deps, 3, 'Open "orders"', false);
   const script = String(sel.sent.find((s) => String(s.params.expression).includes("e.options"))?.params.expression);
   check("a choice: its option picked by its words, not typed", picked.includes("You have 2 orders.") && !sel.methods().some((x) => x.startsWith("Input.")) && script.includes(JSON.stringify('open "orders"')), script.slice(0, 200));
-  const nosuch = chrome({ spot: { x: 1, y: 1, tag: "select", type: "select-one", editable: false }, chosen: '["All","Open --- orders"]' });
+  const nosuch = chrome({ spot: { x: 1, y: 1, shown: true, popup: false, tag: "select", type: "select-one", editable: false }, chosen: '["All","Open --- orders"]' });
   const offered = await browserFill(nosuch.deps, 3, "Closed", false);
   check("no such option: what it offers, quoted as the page's", /^Not chosen: it has no such option\. It offers: --- options:[0-9a-f]{8} /.test(offered) && offered.includes("Open ––– orders"), offered);
   const stale = chrome({ spot: null });
@@ -342,7 +359,7 @@ console.log("\nsigning in with what the person saved");
   const hopped = await browserSignIn(hop.deps, saved);
   check("…but never when that next page is another site's", /another site \(https:\/\/elsewhere\.test\)/.test(hopped) && !JSON.stringify(hop.sent).includes("s3cret-Pa55"), hopped);
 
-  const fill = chrome({ spot: { x: 1, y: 1, tag: "input", type: "password", editable: true } });
+  const fill = chrome({ spot: { x: 1, y: 1, shown: true, popup: false, tag: "input", type: "password", editable: true } });
   check("browser_fill still never types in a password box, and says what does", /browser_sign_in/.test(await browserFill(fill.deps, 5, "s3cret-Pa55", true)) && !fill.methods().some((m) => m.startsWith("Input.")));
   check("a password page: the model is pointed at browser_sign_in, and told no other way", /Use browser_sign_in/.test(describe({ ...PAGE, password: true })) && /Never type a password any other way/.test(describe({ ...PAGE, password: true })));
   const reading = String(c.sent.find((s) => String(s.params.expression).includes("const first ="))?.params.expression);
