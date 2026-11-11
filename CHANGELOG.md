@@ -65,7 +65,8 @@ of every release, and in the [README](README.md#updating).
   pressed through a link with no words was listed as a bare "link", forty
   alike: it now takes the words of its row. A calendar left open by a date
   box took the next press, and what was typed after went into the date box:
-  Jarvis now moves on from that box first, which closes it. And an entry of a
+  the calendar is now closed first, and what is typed for a box goes into
+  that box whatever has the keyboard. And an entry of a
   menu that had closed again was pressed where it no longer was: it now says
   so.
 

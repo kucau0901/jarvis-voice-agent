@@ -246,12 +246,21 @@ console.log("\npressing");
   const under = { x: 220, y: 300, shown: true, tag: "textarea", type: "textarea", editable: true };
   const cal = chrome({ spots: [{ ...under, popup: true }, { ...under, popup: false }] });
   await browserFill(cal.deps, 6, "A day off", false);
-  const did = cal.sent.map((x) => (x.method === "Input.dispatchKeyEvent" ? `key ${x.params.key}` : x.method));
-  check("a calendar over it: Tab moves on from the box that put it up, before the press", did.indexOf("key Tab") >= 0 && did.indexOf("key Tab") < did.indexOf("Input.dispatchMouseEvent"), did);
+  const did = cal.sent.map((x) => (x.method === "Runtime.evaluate" && String(x.params.expression).includes('"mousedown", "mouseup", "click"') ? "elsewhere" : x.method));
+  check("a calendar over it: the page is pressed elsewhere first, which closes it, then the box", did.indexOf("elsewhere") >= 0 && did.indexOf("elsewhere") < did.indexOf("Input.dispatchMouseEvent"), did);
   check("and it is found again afterwards", cal.sent.filter((x) => String(x.params.expression).includes("scrollIntoView")).length === 2);
+  check("never Tab, which would open the next box's calendar", !cal.sent.some((x) => x.params.key === "Tab"));
+  const stuck = chrome({ spot: { ...under, popup: true } });
+  await browserFill(stuck.deps, 6, "A day off", false);
+  check("still over it: typed into the box all the same, with no press to land on the calendar",
+    !stuck.methods().includes("Input.dispatchMouseEvent") && stuck.sent.find((s) => s.method === "Input.insertText")?.params.text === "A day off" &&
+      stuck.sent.some((x) => String(x.params.expression).includes("const e = find(6); if (!e) return; if (focused() !== e) e.focus()")), stuck.methods());
+  const over = chrome({ spot: { x: 30, y: 400, shown: true, popup: true, tag: "input", type: "button", editable: false } });
+  const refused = await browserPress(over.deps, 8);
+  check("a button still under one: not pressed, and said", /^Not pressed: something a box on the page put up/.test(refused) && !over.methods().includes("Input.dispatchMouseEvent"), refused);
   const clear = chrome();
   await browserFill(clear.deps, 2, "x", false);
-  check("nothing over it: no Tab", !clear.sent.some((x) => x.params.key === "Tab"));
+  check("nothing over it: the page is left alone", !clear.sent.some((x) => String(x.params.expression).includes('"mousedown", "mouseup", "click"')));
 }
 
 console.log("\nfilling");
@@ -260,10 +269,10 @@ console.log("\nfilling");
   await browserFill(c.deps, 2, "red shoes", false);
   const m = c.methods();
   const scripts = c.sent.map((x) => (x.method === "Runtime.evaluate" ? String(x.params.expression) : x.method));
-  const picked0 = scripts.findIndex((x) => x.endsWith("select(focused()); })()"));
-  const held = scripts.findIndex((x) => x.endsWith('hold(focused(), "red shoes"); })()'));
-  check("pressed, what it held selected, then typed over", m.indexOf("Input.dispatchMouseEvent") < picked0 && picked0 < m.indexOf("Input.insertText"), m);
-  check("then looked at, and made to hold exactly that if the box did not take it", held > m.indexOf("Input.insertText") && scripts[held].includes('new w.Event("change"'));
+  const picked0 = scripts.findIndex((x) => x.endsWith("const e = find(2); if (!e) return; if (focused() !== e) e.focus(); select(e); })()"));
+  const held = scripts.findIndex((x) => x.endsWith('hold(find(2), "red shoes"); })()'));
+  check("pressed, the numbered box itself given the keyboard and what it held selected, then typed over", m.indexOf("Input.dispatchMouseEvent") < picked0 && picked0 < m.indexOf("Input.insertText"), m);
+  check("then that box looked at, and made to hold exactly that if it did not take it", held > m.indexOf("Input.insertText") && scripts[held].includes('new w.Event("change"'));
   check("the words go in as given", c.sent.find((s) => s.method === "Input.insertText")?.params.text === "red shoes");
   check("no Enter unless asked", !c.sent.some((s) => s.params.key === "Enter"));
   const e = chrome();

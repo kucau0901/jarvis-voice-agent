@@ -474,6 +474,21 @@ class Tab {
     await this.run(`(() => {${FOCUSED}hold(focused(), ${JSON.stringify(text)}); })()`);
   }
 
+  /**
+   * The same, for a numbered box: what is typed goes into that box and no
+   * other. A press that landed elsewhere (on a calendar still fading away
+   * over it) leaves the keyboard where it was, and the words went into
+   * whichever box that happened to be: so the box is given the keyboard
+   * itself before typing, and it is that box that is looked at afterwards.
+   * `press` false when something is over it, and a press would land on that.
+   */
+  async fill(n: number, at: { x: number; y: number }, text: string, press: boolean): Promise<void> {
+    if (press) await this.press(at);
+    await this.run(`(() => {${FRAMES}${FOCUSED}const e = find(${n}); if (!e) return; if (focused() !== e) e.focus(); select(e); })()`);
+    await this.call("Input.insertText", { text });
+    await this.run(`(() => {${FRAMES}${FOCUSED}hold(find(${n}), ${JSON.stringify(text)}); })()`);
+  }
+
   /** One key that is not a letter, pressed and let go. */
   async key(name: ViewKey): Promise<void> {
     const [windowsVirtualKeyCode, text] = KEYS[name];
@@ -546,17 +561,29 @@ const GONE = "Nothing on the page has that number now: the page has changed. Rea
 const SHUT =
   "Not pressed: that is not showing now. If it is an entry of a menu that opens under the mouse, the menu has closed: point at the menu again (hover), then press the entry from the reading that gives.";
 
+const UNDER =
+  "Not pressed: something a box on the page put up (a calendar, a list of suggestions) is over it, and a press would land on that instead. Read the page again.";
+
+/** Run in the page: a press on the page itself, nowhere in particular, as its own code would see one. What closes on a press elsewhere closes. */
+const elsewhere = (n: number): string => `(() => {${FRAMES}
+  const e = find(${n});
+  if (!e) return;
+  const d = e.ownerDocument, w = d.defaultView;
+  for (const type of ["mousedown", "mouseup", "click"]) d.body.dispatchEvent(new w.MouseEvent(type, { bubbles: true, cancelable: true, view: w }));
+})()`;
+
 /**
  * Where number `n` is, clear to press. A calendar or a list of suggestions
  * left open by the box typed in before would take the press instead, and set
- * that box to whatever day lay under it: Tab moves on from that box, which
- * closes what it put up.
+ * that box to whatever day lay under it. Such things close on a press
+ * elsewhere, so the page is given one, and time to take it away. (Not Tab:
+ * that moves on to the next box, whose own calendar then opens.)
  */
 async function reach(tab: Tab, n: number, sleep: BrowserDeps["sleep"]): Promise<Spot | null> {
   const at = await tab.spot(n);
   if (!at?.popup) return at;
-  await tab.key("Tab");
-  await sleep(200);
+  await tab.run(elsewhere(n));
+  await sleep(500);
   return tab.spot(n);
 }
 
@@ -581,6 +608,7 @@ export const browserPress = (deps: BrowserDeps, n: number, hover = false): Promi
     const at = hover ? await tab.spot(n) : await reach(tab, n, deps.sleep);
     if (!at) return GONE;
     if (!at.shown) return SHUT;
+    if (at.popup && !hover) return UNDER;
     if (hover) await tab.call("Input.dispatchMouseEvent", { type: "mouseMoved", x: at.x, y: at.y, button: "none" });
     else await tab.press(at);
   });
@@ -597,7 +625,7 @@ export const browserFill = (deps: BrowserDeps, n: number, text: string, enter: b
     }
     if (!at.editable) return "Not typed: that is not something to type in. Press it instead.";
     if (!at.shown) return "Not typed: that box is not showing now. Read the page again.";
-    await tab.type(at, text);
+    await tab.fill(n, at, text, !at.popup);
     if (enter) await tab.key("Enter");
   });
 
