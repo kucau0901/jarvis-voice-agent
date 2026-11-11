@@ -73,6 +73,9 @@ of every release, and in the [README](README.md#updating).
   instead of using the browser, where the sign-in is saved. Work on a
   website, like signing in to a portal and filling in or approving something
   there, is now the browser's whenever a browser is set up.
+- **A device with no screen was told the browser was in front of you.**
+  Handing the browser's screen over is now offered only where there is a
+  screen to put it on; the rest of the browser works from anywhere, as before.
 
 ## [2.9.0] - 2026-11-06
 

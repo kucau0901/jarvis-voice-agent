@@ -11,6 +11,7 @@ import { TELEGRAM_REACH } from "../src/worker/lib/telegram.ts";
 import { runGrants } from "../src/worker/lib/proposals.ts";
 import { noteworthy } from "../src/worker/lib/habits.ts";
 import { settingDef } from "../src/worker/lib/settings.ts";
+import { DRAWS_ON_SCREEN } from "../src/worker/tools/place.ts";
 
 let pass = 0;
 let fail = 0;
@@ -405,6 +406,7 @@ console.log("\nwho is offered it");
   const shown: unknown[] = [];
   const said = await browserTools.find((t) => t.name === "browser_show")!.run({}, { env: on, display: (p: unknown) => void shown.push(p) } as never);
   check("browser_show: the screen is put in front of the person, and the model told to hand over", JSON.stringify(shown) === '[{"kind":"browser"}]' && /in front of the user/.test(String(said)));
+  check("where there is no screen, the hand-over is not offered; the rest of the browser is", DRAWS_ON_SCREEN.includes("browser_show") && browserTools.filter((t) => DRAWS_ON_SCREEN.includes(t.name)).length === 1);
   check("a human check: the model is told to show the page, not to try", /call browser_show/.test(describe({ ...PAGE, check: true })));
   check("a device with every other scope: not offered", names(on, SCOPES.filter((s) => s !== "browser")).length === 0);
   check("never over Telegram", !TELEGRAM_REACH.includes("browser"));
