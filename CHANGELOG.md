@@ -69,6 +69,10 @@ of every release, and in the [README](README.md#updating).
   that box whatever has the keyboard. And an entry of a
   menu that had closed again was pressed where it no longer was: it now says
   so.
+- **Asked to approve something on a website, Jarvis handed it to Hermes**
+  instead of using the browser, where the sign-in is saved. Work on a
+  website, like signing in to a portal and filling in or approving something
+  there, is now the browser's whenever a browser is set up.
 
 ## [2.9.0] - 2026-11-06
 

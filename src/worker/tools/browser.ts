@@ -69,7 +69,8 @@ export const browserTools: Tool[] = [
     description:
       "Open a web address in the family's own browser and read the page: its words, and a numbered list of what " +
       "can be pressed or filled. For a website that needs working like a person does (signed-in pages, forms, " +
-      "portals, shops); for a plain question about the world, search the web instead, which is quicker." + RULES,
+      "portals, shops, a request there to fill in, send or approve): this is the tool for that, not the agent at " +
+      "home. For a plain question about the world, search the web instead, which is quicker." + RULES,
     parameters: {
       type: "object",
       properties: { address: { type: "string", description: "The web address, e.g. https://example.com/orders." } },
