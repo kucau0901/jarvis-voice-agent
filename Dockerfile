@@ -24,8 +24,11 @@ WORKDIR /app
 # Only the runtime, at the exact version the lockfile pins — not the whole
 # toolchain the build needed.
 COPY --from=build /app/package-lock.json ./
+COPY docker/proxy-retry.mjs ./docker/
+# Then its proxy is taught to send a lost request again (docker/proxy-retry.mjs).
 RUN npm install -g "wrangler@$(node -p "require('./package-lock.json').packages['node_modules/wrangler'].version")" \
- && npm cache clean --force
+ && npm cache clean --force \
+ && node docker/proxy-retry.mjs "$(npm root -g)/wrangler/wrangler-dist/ProxyWorker.js"
 COPY --from=build /app/dist ./dist
 COPY docker/entrypoint.sh /usr/local/bin/jarvis-entrypoint
 # The runtime writes scratch files next to its config (dist/*/.wrangler) and in

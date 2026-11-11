@@ -51,6 +51,14 @@ of every release, and in the [README](README.md#updating).
   (deploy-time) puts the old one aside afterwards: everything kept, nothing
   run on its own clock, so the two never both act for one family.
 
+### Fixed
+
+- **With Docker, a question or a tap now and then failed with "server said
+  500".** The runtime's own proxy lost a request sent just as it closed a
+  connection that had been quiet for five seconds, and tried again only for
+  what reads. It now tries once more for everything, when the request was
+  lost before Jarvis saw it. Rebuild the image to have it.
+
 ## [2.9.0] - 2026-11-06
 
 ### Added
