@@ -40,11 +40,18 @@ export const SCOPES = [
   /** Talk with the family: its chat, direct messages, and passing things on (lib/relays.ts). */
   "chat",
   /**
-   * Skills: adding outside services and MCP servers in chat, and sending
-   * requests to the services (lib/skills.ts). A service may act on the house
-   * or send things, so no role but an admin's (`*`) has it.
+   * Skills: adding outside services in chat, and sending requests to them
+   * (lib/skills.ts); an MCP server asked for there is added as a component,
+   * waiting for an admin's approval (lib/components.ts). A service may act
+   * on the house or send things, so no role but an admin's (`*`) has it.
    */
   "skills",
+  /**
+   * Components: outside systems an admin plugged in (lib/components.ts). Only
+   * the ceiling, as the car scopes are: what someone reaches of a component
+   * is what was shared with them, and an admin needs a share too.
+   */
+  "components",
 ] as const;
 
 export type Scope = (typeof SCOPES)[number];
@@ -215,7 +222,8 @@ export function requiredScope(pathname: string, method: string): RouteRequiremen
 
     // Receiving alerts, and raising one. The same scope for both: a device
     // that may be told things may also ask to be told something. A skill's
-    // answer, /api/v1/bot/<token>, is served before this gate, as a page is.
+    // answer, /api/v1/bot/<token>, is served before this gate, as a page is;
+    // so is what a component reports, /api/v1/component/events.
     case "/api/v1/events":
     case "/api/v1/events/ticket":
     case "/api/v1/push":
@@ -258,6 +266,9 @@ export function requiredScope(pathname: string, method: string): RouteRequiremen
 
     // Skills and their keys (routes/skills.ts): an admin's, as the settings are.
     case "/api/skills":
+      return "owner";
+    // Components, their keys, what each offers and who reaches it (routes/components.ts): an admin's too.
+    case "/api/components":
       return "owner";
 
     // Diagnostics, the stored probe runs, the data export and moving another Jarvis here are the owner's business.

@@ -7,10 +7,11 @@ import { SectionMenu, type NavGroup } from "./sections";
 import { ChatGptPlan } from "./ChatGptPlan";
 import { exportSection, moveSection } from "./Export";
 import { Skills } from "./Skills";
+import { Components } from "./Components";
 
 /** The settings menu: groups, and the sections in each, by id. */
 const NAV: NavGroup[] = [
-  ["Connections", ["chatgpt", "openai", "car", "home", "hermes", "browser", "google", "spotify", "maps", "cameras", "mcp", "skills"]],
+  ["Connections", ["chatgpt", "openai", "car", "home", "hermes", "browser", "google", "spotify", "maps", "cameras", "mcp", "skills", "components"]],
   ["How Jarvis behaves", ["router", "voice", "screen", "alerts", "locale"]],
   ["Access and advanced", ["usage", "owner", "devices", "export", "move", "advanced"]],
 ];
@@ -91,6 +92,8 @@ export class Settings {
   private plan: ChatGptPlan;
   /** Outside services added in chat, and their keys (ui/Skills.ts). */
   private skills: Skills;
+  /** Other systems plugged in, what each offers, and who reaches it (ui/Components.ts). */
+  private components: Components;
   /** The version line under the menu, filled by loadVersion(). */
   private versionLine = node("p", "");
   private menu: SectionMenu;
@@ -185,7 +188,8 @@ export class Settings {
     this.plan = new ChatGptPlan(key, () => this.buildNav());
     this.el.querySelector(".setbody")!.prepend(this.plan.el);
     this.skills = new Skills(key, () => this.buildNav());
-    this.el.querySelector(".setbody")!.append(this.skills.el, exportSection(key), moveSection(key));
+    this.components = new Components(key, () => this.buildNav());
+    this.el.querySelector(".setbody")!.append(this.skills.el, this.components.el, exportSection(key), moveSection(key));
     this.renderLoud();
     this.el.querySelector(".hear")!.addEventListener("click", () => void this.hearLoud());
     this.buildNav();
@@ -371,6 +375,7 @@ export class Settings {
     void this.services.load();
     void this.plan.load();
     void this.skills.load();
+    void this.components.load();
     void this.loadRouter();
     void this.loadVersion();
     void this.loadUsage();
@@ -419,6 +424,7 @@ export class Settings {
   hide() {
     this.el.classList.remove("open");
     this.skills.forget();
+    this.components.forget();
   }
 
   /* ---------- router model ------------------------------------------------ */

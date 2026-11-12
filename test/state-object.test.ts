@@ -573,6 +573,69 @@ console.log("skills, through the object");
   await jarvis.skillRemove("Zephyr");
 }
 
+// Components (lib/components.ts), through the object: each pass-through forwards what it is given, the clock too.
+console.log("components, through the object");
+{
+  const tools = [{ name: "get_absent", description: "Who is absent." }, { name: "apply_relief", description: "Apply a relief plan." }];
+  const listed = { url: "https://school.example.com/mcp", version: "1.0.0", tools, manifest: JSON.stringify({ jarvis: 1, events: [{ type: "leave_filed", says: "A teacher filed leave" }] }) };
+  check("  a label an MCP server has is refused, as the Worker names them", typeof (await jarvis.componentAdd({ name: "School", url: listed.url, label: "notes" }, "u_sara", ["notes"], 1_000)) === "string");
+  const c = await jarvis.componentAdd({ name: "School", url: listed.url, label: "school" }, "u_sara", ["notes"], 1_000);
+  const id = typeof c === "string" ? "" : c.id;
+  check("  added, at the time given, as whoever added it", typeof c !== "string" && c.createdAt === 1_000 && c.createdBy === "u_sara" && c.label === "school", c);
+  const k = await jarvis.componentKey(id, "school-key-0123456789", 2_000);
+  check("  its key set, at the time given, and never in the list", typeof k !== "string" && k.hasKey && k.updatedAt === 2_000 && !JSON.stringify(await jarvis.componentsList("2026-11-12")).includes("school-key"));
+  check("  where to check it, with its key, for the Worker", (await jarvis.componentTarget(id))?.key === "school-key-0123456789");
+  const l = await jarvis.componentListed(id, listed, 3_000);
+  const hash = typeof l === "string" ? "" : (l.component.waiting?.hash ?? "");
+  check("  what it listed waits, as at the time given", typeof l !== "string" && l.component.waiting?.at === 3_000 && l.component.waiting.tools.length === 2, l);
+  // Who asks goes through too: making a reading tool of one that acts is the owner's alone (lib/components.ts).
+  check("  approving an acting tool as reading: refused when the Worker says it is not the owner asking", typeof (await jarvis.componentApprove(id, hash, { apply_relief: "reads" }, false, 4_000)) === "string" && !(await jarvis.componentsList("2026-11-12"))[0]?.pinned);
+  const a = await jarvis.componentApprove(id, hash, { get_absent: "off", apply_relief: "reads" }, true, 4_000);
+  check("  approved by its hash, with the classes chosen, at the time given, as the owner", typeof a !== "string" && a.pinned?.at === 4_000 && a.pinned.tools.find((t) => t.name === "get_absent")?.off === true && a.pinned.tools.find((t) => t.name === "apply_relief")?.reads === true, a);
+  const cl = await jarvis.componentClasses(id, { get_absent: "reads", apply_relief: "acts" }, false, 5_000);
+  check("  a class changed, at the time given", typeof cl !== "string" && cl.updatedAt === 5_000 && !cl.pinned?.tools.find((t) => t.name === "get_absent")?.off && cl.pinned?.tools.find((t) => t.name === "apply_relief")?.reads === false, cl);
+  const kept = await jarvis.componentClasses(id, { apply_relief: "reads" }, false, 5_050);
+  const back = await jarvis.componentClasses(id, { apply_relief: "reads" }, true, 5_100);
+  check("  …an acting tool to reading only when the Worker says it is the owner asking", typeof kept === "string" && typeof back !== "string" && back.updatedAt === 5_100 && back.pinned?.tools.find((t) => t.name === "apply_relief")?.reads === true, { kept, back });
+  await jarvis.componentClasses(id, { apply_relief: "acts" }, false, 5_200);
+  const al = await jarvis.componentAlone(id, { apply_relief: true }, 6_000);
+  check("  a tool let run by itself, at the time given", typeof al !== "string" && al.updatedAt === 6_000 && al.pinned?.tools.find((t) => t.name === "apply_relief")?.alone === true, al);
+  check("  shared only with the people the Worker names", typeof (await jarvis.componentShares(id, { u_ana: { level: "use" } }, ["owner"], 7_000)) === "string");
+  const sh = await jarvis.componentShares(id, { u_ana: { level: "use", tell: true, as: "T1" } }, ["owner", "u_ana"], 7_000);
+  check("  shared, at the time given", typeof sh !== "string" && sh.updatedAt === 7_000 && sh.shares.u_ana?.as === "T1", sh);
+  const off = await jarvis.componentEnabled(id, false, 8_000);
+  check("  switched off, at the time given", typeof off !== "string" && !off.enabled && off.updatedAt === 8_000);
+  await jarvis.componentEnabled(id, true, 8_100);
+  const rn = await jarvis.componentRename(id, "The School", 9_000);
+  check("  renamed, at the time given", typeof rn !== "string" && rn.name === "The School" && rn.updatedAt === 9_000);
+  const made = await jarvis.componentNewAddress(id, 10_000);
+  check("  its reporting address made, at the time given", typeof made !== "string" && made.component.address?.at === 10_000 && made.token.startsWith("jcp1_"), made);
+  const dropped = await jarvis.componentDropAddress(id, 11_000);
+  check("  and stopped, at the time given", typeof dropped !== "string" && !dropped.address && dropped.updatedAt === 11_000);
+  check("  listed for the day asked", (await jarvis.componentsList("2026-11-12"))[0]?.today.told === 0);
+  // What the Worker's tools and its reporting route call: whose, which tool, the arguments, and the clock, forwarded.
+  const mine = await jarvis.componentsFor("u_ana");
+  check("  what one person is offered, with its key for the Worker", mine.length === 1 && mine[0]!.key === "school-key-0123456789" && mine[0]!.as === "T1" && (await jarvis.componentsFor("u_ben")).length === 0, mine);
+  check("  a tool about to run with nobody there: allowed for the one the owner set, with those arguments", (await jarvis.componentActs(id, "apply_relief", { date: "2026-11-13" }, Date.now())) === null && typeof (await jarvis.componentActs(id, "get_absent", {}, Date.now())) === "string" && /too long/.test(String(await jarvis.componentActs(id, "apply_relief", { date: "x".repeat(400) }, Date.now()))));
+  await jarvis.componentDid(id, "apply_relief", { date: "2026-11-13" }, true, ["u_ana", "u_ben"], Date.now());
+  const saidTo = (await jarvis.deliveries()).map((d) => d.alert).filter((a) => a.skill?.id === id);
+  check("  what it did, told to the people named, by its tool and arguments", saidTo.map((a) => a.for).sort().join() === "u_ana,u_ben" && saidTo.every((a) => a.text === "Done by itself: school (apply_relief): date 2026-11-13" && a.title === "The School"), saidTo);
+  const again = await jarvis.componentNewAddress(id, 12_000);
+  const digest = typeof again === "string" ? "" : await sha256Hex(again.token);
+  check("  whose reporting address a digest is", (await jarvis.componentInbox(digest))?.id === id && (await jarvis.componentInbox("0".repeat(64))) === null);
+  const took = await jarvis.componentReport(digest, { events: [{ type: "leave_filed", text: "A notice.", level: "notice" }, { type: "nope" }] }, Date.now());
+  check("  a report at it: taken with its body, as that component", took !== "gone" && took !== "bad" && took.reply.name === "The School" && took.reply.taken === 1 && took.reply.refused[0]?.index === 1, took);
+  check("  no report at all, and no such address", (await jarvis.componentReport(digest, { nothing: 1 }, Date.now())) === "bad" && (await jarvis.componentReport("0".repeat(64), { events: [{ type: "leave_filed" }] }, Date.now())) === "gone");
+  // Its events come only from its own address: a routine on one is its holders' alone, and no trigger starts it.
+  check("  a routine on its event: not for someone it is not shared with", typeof (await jarvis.addRoutine({ when: "event", event: "school:leave_filed", say: "x" }, { who: "u_ben", grants: ["*"] })) === "string");
+  const onIt = await jarvis.addRoutine({ when: "event", event: "school:leave_filed", say: "Leave filed." }, { who: "u_ana", grants: ["*"] });
+  check("  one for someone it is shared with is made, and a trigger sending that event starts nothing", typeof onIt !== "string" && (await jarvis.fireEvent("school:leave_filed", "spoofed")).length === 0, onIt);
+  if (typeof onIt !== "string") await jarvis.removeRoutine(onIt.id);
+  await jarvis.forgetMember("u_ana");
+  check("  someone who left: nothing stays shared with them", !("u_ana" in ((await jarvis.componentsList("2026-11-12"))[0]?.shares ?? { u_ana: 1 })));
+  check("  removed", (await jarvis.componentRemove(id)) && (await jarvis.componentsList("2026-11-12")).length === 0);
+}
+
 console.log("\nWatch the house, switched on in Settings, wakes the alarm (state.ts putSettings)");
 {
   const inside: { houseDeps(): Promise<{ mode: string }> } = jarvis as never;

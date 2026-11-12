@@ -23,7 +23,8 @@ import { canAsk } from "../lib/openai-auth.ts";
  *   DELETE /api/v1/routines?id=      remove one
  *   POST   /api/v1/routines/run      {id} — run it now
  *   GET    /api/v1/routines/runs?id= its last 20 runs, newest first
- *   POST   /api/v1/trigger           {event, text?} — sets off event routines
+ *   POST   /api/v1/trigger           {event, text?} — sets off event routines; never a component's own event
+ *                                    (label:type), which only it reports, at its own address (routes/components.ts)
  *
  * The routines live in, and run from, the Durable Object; these only relay.
  */
@@ -157,7 +158,8 @@ export async function askForRoutine(
   await run(env, [{ role: "user", text: prompt }], sink, AbortSignal.timeout(120_000), unattended, {
     surface: "routine",
     // Nor Home Assistant's own configuration: an automation is written when someone asks, in the conversation.
-    toolFilter: (t) => !WRITES_HOUSE_CONFIG.test(t.name) && (!only || only(t)),
+    // Nor a tool classed as acting (a component's, lib/components.ts), unless the owner lets it run by itself.
+    toolFilter: (t) => !WRITES_HOUSE_CONFIG.test(t.name) && (t.reads !== false || t.alone === true) && (!only || only(t)),
     routineName: routine.name,
     ...(routine.action.kind === "ask" && routine.action.notify === "if-important" ? { routineIfImportant: true } : {}),
   });

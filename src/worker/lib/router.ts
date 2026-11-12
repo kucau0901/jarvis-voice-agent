@@ -24,6 +24,8 @@ import { bookOf, callerWho, OWNER } from "./context.ts";
 import { OFFER, procedureOf, specialtyBlock, type Procedure, type Specialty } from "./specialties.ts";
 import { botAsks, botHides, type Skill } from "./skills.ts";
 import { askSkill } from "../tools/skills.ts";
+import { componentTools, eventsSaid } from "../tools/components.ts";
+import type { Offered } from "./components.ts";
 import { episodeOfAnswer, episodeOfChain, pastBlock } from "./episodes.ts";
 import { localeOf } from "./locale.ts";
 import { allows, type Grant } from "./scopes.ts";
@@ -198,7 +200,11 @@ export async function prepareRouter(
   // Where the microphone hears whoever is near (the glasses, a spoken open microphone), what is around the wearer
   // (lib/around.ts). Not a live voice's handoff: the live voice has already judged it was said to Jarvis.
   const near = opts.surface === "glasses" || (opts.surface === "voice" && opts.openMic === true);
-  const [, mcp, chosen, shared, family, recalled, ready, said, around] = await Promise.all([
+  // The components shared with them (lib/components.ts), for those who hold the ceiling: never a bot, which cannot.
+  const parted = allows(grants, "components");
+  // Nobody is there to ask or to answer: what a component's acting tools do then is the owner's choice (tools/components.ts).
+  const unattended = opts.surface === "routine" || opts.surface === "job" || opts.surface === "research";
+  const [, mcp, chosen, shared, family, recalled, ready, said, around, parts] = await Promise.all([
     memory.load().catch((e) => {
       console.warn("memory unavailable:", e instanceof Error ? e.message : String(e));
     }),
@@ -215,10 +221,16 @@ export async function prepareRouter(
     skilled ? (stateStub(env)?.skillsReady() ?? Promise.resolve([] as Skill[])).catch(() => [] as Skill[]) : Promise.resolve([] as Skill[]),
     since !== null ? (stateStub(env)?.conversationOf(env.JARVIS_PERSON || OWNER, Date.now()) ?? Promise.resolve([] as Said[])).catch(() => [] as Said[]) : Promise.resolve([] as Said[]),
     near ? aroundUser(env, grants, opts.waitUntil).catch(() => "") : Promise.resolve(""),
+    parted ? (stateStub(env)?.componentsFor(env.JARVIS_PERSON || OWNER) ?? Promise.resolve([] as Offered[])).catch(() => [] as Offered[]) : Promise.resolve([] as Offered[]),
   ]);
   const earlier = since !== null ? earlierOnGlasses(said ?? [], since, Date.now(), localeOf(env).timeZone) : "";
   const elsewhere = [sharedBlock(shared, Date.now()), family].filter(Boolean).join("\n\n");
   tools.push(...mcp, ...askSkill(ready ?? []));
+  // A component never takes the name of a tool already here (an MCP server given its label since).
+  const taken = new Set(tools.map((t) => t.name));
+  tools.push(...componentTools(parts ?? [], !unattended, sessions).filter((t) => !taken.has(t.name)));
+  // What those components report, for whoever can make a routine on it by asking.
+  const reported = !unattended && allows(grants, "routines") ? eventsSaid(parts ?? []) : "";
   if (opts.toolFilter || opts.screenless || opts.bot) {
     const keep = tools.filter(
       (t) => (!opts.toolFilter || opts.toolFilter(t)) && !(opts.screenless && DRAWS_ON_SCREEN.includes(t.name)) && !(opts.bot && botHides(t)),
@@ -329,6 +341,8 @@ export async function prepareRouter(
     ...(elsewhere ? [{ role: "user" as const, content: elsewhere }] : []),
     // What Jarvis read of what is around them: a note, never an instruction, with what is playing quoted as data.
     ...(around ? [{ role: "user" as const, content: around }] : []),
+    // What their components report, in the components' own words: quoted as data, like the rest.
+    ...(reported ? [{ role: "user" as const, content: reported }] : []),
     { role: "user" as const, content: `Conversation so far:\n\n${conversation}` },
     ...(opts.images?.length || opts.files?.length
       ? [
@@ -414,6 +428,10 @@ export async function runTool(
   const sessions = mcpSessions();
   try {
     if (!tool && name.includes("__") && allows(grants, "home")) tool = (await mcpTools(env, sessions)).find((t) => t.name === name);
+    // Or a component's, if it is shared with them now (lib/components.ts): their own tap is someone asking.
+    if (!tool && name.includes("__") && allows(grants, "components")) {
+      tool = componentTools((await stateStub(env)?.componentsFor(env.JARVIS_PERSON || OWNER)) ?? [], true, sessions).find((t) => t.name === name);
+    }
     if (!tool) return null;
     // As the router does: a tool that needs no memory still runs when it cannot be loaded.
     const memory = memoryFor(env, grants);

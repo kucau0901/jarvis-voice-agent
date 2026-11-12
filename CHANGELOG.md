@@ -19,6 +19,31 @@ of every release, and in the [README](README.md#updating).
 
 ### Added
 
+- **Components: other systems plugged into Jarvis.** A school's timetable, a
+  shop's till, anything with a world of its own can be a component: an MCP
+  server whose tools Jarvis may use. In the new **Settings → Components**, an
+  admin adds one by its public https address, has Jarvis list what it offers,
+  and approves it; that approved list is what Jarvis is shown from then on,
+  and anything the component changes later waits to be approved again. It is
+  shared person by person, to look only or to use, as a car is, under a new
+  permission, `components`, which adults and children hold and a guest does
+  not (an admin needs a share too; a device made with named permissions
+  needs it ticked). With nobody there (a routine, a background job), a
+  component's tool that acts asks first, unless the owner set that one tool
+  to run by itself: Jarvis then says what it did, each time, and stops at 20
+  a day. A tool that only reads is used there without asking, so any admin
+  may class a tool as acting or switch it off, and only the owner may class
+  as reading one that Jarvis took to act. A component can also be given an
+  address of its own to report what happened
+  (`POST /api/v1/component/events`): a report starts the routines
+  people made for it ("when the school says a teacher is on leave, tell me
+  who covers"), is told to those who chose to be told, under the component's
+  name, and may suggest something to do, which arrives as a card to approve.
+  No model reads a report as it arrives, and a routine a report starts runs
+  with that component's tools and nothing else. For whoever builds one:
+  `docs/components.md`, and a made-up school to copy from in
+  `docs/components/school/`.
+
 - **Routines where you are.** "When I get to the grocer, tell me my shopping
   list"; "when I leave the office, tell me the best way home". A person saves
   a place in the Jarvis app on their phone, and the phone tells Jarvis when
@@ -58,6 +83,16 @@ of every release, and in the [README](README.md#updating).
   and names anything that did not arrive, writing nothing. `JARVIS_STANDBY=1`
   (deploy-time) puts the old one aside afterwards: everything kept, nothing
   run on its own clock, so the two never both act for one family.
+
+### Changed
+
+- **An MCP server added in chat now waits for your approval.** "Add a skill:
+  Weather Tools, an MCP server, at https://…" used to connect it at once and
+  offer its tools to everyone who may reach the house. It is now added as a
+  component: nothing of it is used until an admin opens **Settings →
+  Components**, reads what it offers, approves it and shares it. Its key, if
+  it needs one, goes there too. Servers added in chat before this are still
+  under **Settings → MCP servers** and work as they did.
 
 ### Fixed
 

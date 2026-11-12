@@ -142,7 +142,12 @@ console.log("\nroles and reach");
   const old = scopesOf({ space, user: "u_x", role: "adult", scopes: ["ask", "home"], addedAt: 0, addedBy: "owner" });
   check("a hand-made list from before still gets what the role gained since", old.includes("chat") && old.includes("mail") && old.includes("home"));
   const fresh = ok(await hub.updateMember(space, memberId, { scopes: ["ask", "home"] }));
-  check("one made now keeps what was taken away", !scopesOf(fresh).includes("chat") && fresh.scopesV === 3);
+  check("one made now keeps what was taken away", !scopesOf(fresh).includes("chat") && !scopesOf(fresh).includes("components") && fresh.scopesV === 4);
+  // Components (lib/components.ts): the ceiling adults and children gained; a share decides the rest.
+  check("an adult and a child may be given a component; a guest may not", ROLE_SCOPES.adult.includes("components") && ROLE_SCOPES.child.includes("components") && !ROLE_SCOPES.guest.includes("components"));
+  const beforeIt = scopesOf({ space, user: "u_y", role: "child", scopes: ["ask", "chat"], scopesV: 3, addedAt: 0, addedBy: "owner" });
+  check("a list set before components existed gains it, and nothing it had taken away", beforeIt.join() === "ask,chat,components", beforeIt);
+  check("a guest's hand-made list does not", !scopesOf({ space, user: "u_z", role: "guest", scopes: ["ask"], scopesV: 3, addedAt: 0, addedBy: "owner" }).includes("components"));
   ok(await hub.updateMember(space, memberId, { scopes: null }));
   check("the last admin cannot step down", errorOf(await hub.updateMember(space, adminId, { role: "adult" })).includes("needs an admin"));
   check("nor be removed", errorOf(await hub.removeMember(space, adminId)).includes("cannot be removed"));

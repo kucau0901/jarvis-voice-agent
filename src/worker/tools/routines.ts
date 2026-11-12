@@ -9,6 +9,7 @@ import { findSpot, placeEvent } from "../lib/spots.ts";
 import { PRESENCE } from "../lib/later.ts";
 import { haConfig } from "../lib/ha.ts";
 import { allows } from "../lib/scopes.ts";
+import { unattendedSaid } from "./components.ts";
 
 /**
  * Making routines by voice (lib/routines.ts). The routine keeps the caller's
@@ -225,9 +226,17 @@ const routineAdd: Tool = {
     if (typeof r === "string") return `Not set up: ${r}.`;
     const tz = localeOf(ctx.env).timeZone;
     const forMin = r.trigger.kind === "watch" ? r.trigger.forMin : 0;
+    // The components shared with them (lib/components.ts): one whose event starts this, and what an ask may do with any of them.
+    // A place's event (arrived:…, left:…) is their phone's, never a component's.
+    const onEvent = !elsewhere && r.trigger.kind === "event" && r.trigger.event.includes(":") ? r.trigger.event : "";
+    const parts = (onEvent || r.action.kind === "ask") && allows(ctx.grants, "components") ? await state.componentsFor(ctx.env.JARVIS_PERSON || OWNER).catch(() => []) : [];
+    const from = onEvent ? parts.find((p) => onEvent.startsWith(`${p.label}:`)) : undefined;
+    const alone = r.action.kind === "ask" ? unattendedSaid(parts, from?.label) : "";
     const extra = watched
       ? ` It is said each time Home Assistant sees ${presence} ${arrive ? "get home" : "leave home"}` +
         `${forMin ? ` for ${forMin} minute${forMin === 1 ? "" : "s"}` : ""} (checked every minute), not now.`
+      : from
+        ? ` It runs each time ${from.name} reports that event.${alone}`
       : r.trigger.kind === "event"
         ? ` It runs when something sends the event "${r.trigger.event}" to Jarvis (POST /api/v1/trigger) — a Home Assistant automation or a phone shortcut, set up once.`
         : r.trigger.kind === "leave" && !(ctx.env.GOOGLE_CLIENT_ID && ctx.env.GOOGLE_CLIENT_SECRET)
@@ -235,11 +244,13 @@ const routineAdd: Tool = {
           : r.trigger.kind === "watch"
             ? " Home Assistant is checked every minute, at no cost; it speaks once each time the condition comes true."
             : "";
+    // Truthfully, for any other routine that asks: what it may do with their components when nobody is there.
+    const told = from ? "" : alone;
     return r.action.kind === "relay"
       ? `Set up: ${said(r, tz)}${extra} Each time, it reaches them on their own screens and phone, and what they say comes back to the user.`
       : r.action.kind === "ask" && r.action.notify === "if-important"
-        ? `Set up: ${said(r, tz)}${extra} It will reach the user as an alert only when there is something worth telling.`
-        : `Set up: ${said(r, tz)}${extra} It will reach the user as an alert.`;
+        ? `Set up: ${said(r, tz)}${extra} It will reach the user as an alert only when there is something worth telling.${told}`
+        : `Set up: ${said(r, tz)}${extra} It will reach the user as an alert.${told}`;
   },
 };
 

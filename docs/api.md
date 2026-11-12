@@ -162,7 +162,9 @@ existence, or argued around.
 | `ask` (jobs) | `/api/v1/jobs`, `/api/v1/jobs/cancel`, `start_job`. A job for Hermes also needs `hermes`. Each job runs with its creator's grants, no more than they hold now; it reads with their reading tools, and what it would do is proposed for their tap (or done at once, for a reversible kind they allowed). |
 | `routines` | `/api/v1/routines`, `/api/v1/routines/run`, `/api/v1/routines/runs`, `/api/v1/trigger`; `routine_add`, `routine_list`, `routine_remove`. A routine's question runs with **its creator's** grants, never more. A device sees, runs and changes only the routines it made, or ones no stronger than itself; revoking or deleting it stops the routines it made, and narrowing it narrows them. |
 | `alerts` | Receiving alerts (`/api/v1/events`, `/api/v1/push`, `/api/v1/alerts`), raising one (`/api/v1/notify`), and `send_note`. The same scope both ways: a device that may be told things may ask to be told something. |
-| `skills` | `skill_add`, `skill_remove` (outside services and MCP servers added in chat), `skill_address` (a card for a bot's own address, on an admin's screen) and `ask_skill` (sending a request to a service). A service may act on the house or send things, so no role has it but an admin's. Each service's key is set in Settings → Skills, never by a device. A bot's own address never holds it, nor `alerts`, `chat`, `voice`, `screen` or `routines` ([Bots](#bots-skills-both-ways)). |
+| `skills` | `skill_add`, `skill_remove` (outside services added in chat; an MCP server asked for there is added as a [component](components.md), which offers nothing until an admin approves it), `skill_address` (a card for a bot's own address, on an admin's screen) and `ask_skill` (sending a request to a service). A service may act on the house or send things, so no role has it but an admin's. Each service's key is set in Settings → Skills, never by a device. A bot's own address never holds it, nor `alerts`, `chat`, `voice`, `screen` or `routines` ([Bots](#bots-skills-both-ways)). |
+
+| `components` | The tools of components an admin plugged in (Settings → Components) and shared with the token's person ([components.md](components.md)). Only the ceiling: with it and no share, nothing is offered; adults and children hold it, a guest does not, and a bot's own address never can. A device needs it ticked (a `*` device has it). |
 
 Ask for something out of reach and you get a normal answer explaining it is not
 available — not an error. `tools` will be empty.
@@ -765,6 +767,10 @@ first person's (Home Assistant's, say), it is the house's event and starts
 everyone's. Sent by anyone else, or a device of theirs, it starts only their
 own.
 
+A component's own events (`school:leave_filed`: its label, a colon, the
+event) are never sent here: only the component reports them, at
+[its own address](#components-reporting). Sent here, one starts nothing.
+
 ### Places: arriving and leaving
 
 A person's phone can tell Jarvis when they arrive at or leave a place of
@@ -1166,6 +1172,51 @@ the exchange is kept in your Chat as "Zephyr asked" and Jarvis's answer.
 `403` with `need: "ask"` means it is not ticked to ask. Every refusal of the
 address is the same `404`: not one, never made, stopped, its skill removed,
 or its maker gone. Removing the skill stops it.
+
+## Components reporting
+
+A component is an outside system an admin plugged in under **Settings →
+Components**: an MCP server whose tools Jarvis may use, and, if the admin made
+one, an address of its own here to report what happened. The token is shown
+once, as a device's is, and kept only as a digest. The whole contract, for
+whoever builds one, is in [components.md](components.md), with an
+[example](components/school/).
+
+```bash
+curl -X POST https://jarvis.example.com/api/v1/component/events \
+     -H "Authorization: Bearer jcp1_…" -H "Content-Type: application/json" \
+     -d '{"events": [{"type": "leave_filed", "level": "notice", "id": "leave-4412",
+                      "text": "Ms Devi is on leave tomorrow. Periods 1, 3 and 4 need cover.",
+                      "to": ["T1"],
+                      "actions": [{"tool": "apply_relief", "args": {"date": "2026-11-13", "plan": "A"}}]}]}'
+```
+
+```json
+{"ok": true, "name": "School", "taken": 1, "refused": []}
+```
+
+| Field | |
+|---|---|
+| `type` | Required. One of the events its approved manifest declares. |
+| `text` | Its own words, up to 500 characters. Required to tell anyone. |
+| `level` | `info` (the default): only routines hear it. `notice`: also told to the people who ticked "tell me". `urgent` is told as `notice`. |
+| `to` | Optional: the people it is for, by the ids an admin mapped for them. Only they hear it. |
+| `id` | Optional: its own id for the event. Sent again the same day, it is taken once. |
+| `actions` | Optional, up to 3: each `{tool, args}` names one of **its own** approved tools that acts, with arguments up to 2 KB. One becomes a card for one person to approve; or, if the owner set that tool to run by itself, it is done after this request is answered, and told. |
+
+Up to 10 events and 32 KB a request. Each event is taken or refused on its
+own: `refused` lists `{index, error}` for those that were not (an event not
+declared, an action that is not its own acting tool, nobody to ask). The
+address answers `404` whenever it is not one (never made, stopped, its
+component switched off or removed), `405` to anything but `POST`, `400` to a
+body that is not a small object with 1 to 10 events, and `429` with
+`Retry-After` at its allowance, which is a device's. People are told at most
+30 things a day from one component; past that its routines still hear it.
+
+An event starts the routines people made for it (`school:leave_filed`), for
+those it is shared with. No model reads a report as it arrives, and what it
+says is never an instruction: a routine it starts is handed its words as
+quoted data, and runs with that component's tools and nothing else.
 
 ## Live voice
 

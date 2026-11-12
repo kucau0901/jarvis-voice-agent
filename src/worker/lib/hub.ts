@@ -40,13 +40,15 @@ export const ROLES: readonly Role[] = ["admin", "adult", "child", "guest"];
  * own (lib/context.ts): an adult has all of theirs, and changes what the
  * family shares; a child their memory, calendar, alerts and routines. Cars
  * are reached only as far as their owner shares them ("see" or "drive"), so
- * the car scopes are only the ceiling. Hermes stays the admin's, and a guest
- * only asks. An admin can widen or narrow anyone, as with a device.
+ * the car scopes are only the ceiling; so is `components`, for what an admin
+ * plugged in and shared with them (lib/components.ts). Hermes stays the
+ * admin's, and a guest only asks. An admin can widen or narrow anyone, as
+ * with a device.
  */
 export const ROLE_SCOPES: Readonly<Record<Role, readonly Grant[]>> = {
   admin: [WILDCARD],
-  adult: ["ask", "home", "voice", "screen", "memory.read", "memory.write", "family", "mail", "calendar", "media", "alerts", "routines", "car.read", "car.control", "chat"],
-  child: ["ask", "voice", "screen", "memory.read", "memory.write", "calendar", "alerts", "routines", "car.read", "car.control", "chat"],
+  adult: ["ask", "home", "voice", "screen", "memory.read", "memory.write", "family", "mail", "calendar", "media", "alerts", "routines", "car.read", "car.control", "chat", "components"],
+  child: ["ask", "voice", "screen", "memory.read", "memory.write", "calendar", "alerts", "routines", "car.read", "car.control", "chat", "components"],
   guest: ["ask", "voice"],
 };
 
@@ -367,8 +369,9 @@ const GAINS: { v: number; roles: Role[]; scopes: Grant[] }[] = [
   { v: 1, roles: ["child"], scopes: ["memory.read", "memory.write", "calendar", "alerts", "routines"] },
   { v: 2, roles: ["adult", "child"], scopes: ["car.read", "car.control"] },
   { v: 3, roles: ["adult", "child"], scopes: ["chat"] },
+  { v: 4, roles: ["adult", "child"], scopes: ["components"] },
 ];
-const SCOPES_V = 3;
+const SCOPES_V = 4;
 
 export function scopesOf(m: Member): Grant[] {
   if (m.role === "admin") return [WILDCARD];

@@ -85,6 +85,14 @@ enough) or run it yourself with **Docker**.
   [Hermes](https://github.com/NousResearch/hermes-agent) agent at home, which
   can also build what research found and deploy it.
   [Hermes guide](docs/hermes.md).
+- **Components** — plug another system into Jarvis: a school's timetable, a
+  shop's till. It is an MCP server an admin approves tool by tool and shares
+  person by person, and it can report what happened ("a teacher filed
+  leave") for Jarvis to tell, or to start a routine. Jarvis asks before
+  acting through one when nobody is there, unless you set that one tool to
+  run by itself, and then it tells you each time.
+  [Building a component](docs/components.md), with a
+  [worked example](docs/components/school/).
 - **Smart glasses** — on Even Realities G2, say *"Hi Even"* and ask: Jarvis
   takes the place of the glasses' built-in assistant, so there is no app to
   open, hands-free. Unlike an agent such as OpenClaw or Hermes connected
@@ -351,8 +359,8 @@ signing in with OAuth or a device token, and reach only what you allow:
   scoped (`car.read`, `home`, `mail`, …), rate-limited and individually
   revocable; administration is for the owner key and family admins.
 - Credentials stay on the server. Text written by other people — email bodies,
-  calendar invitations, reviews — is fenced as data and never followed as an
-  instruction.
+  calendar invitations, reviews, what a component returns or reports — is
+  fenced as data and never followed as an instruction.
 - The server-rendered pages send a Content-Security-Policy that allows no
   script.
 

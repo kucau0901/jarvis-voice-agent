@@ -290,7 +290,9 @@ const READ_TOOLS = new Set([
 const WRITES = /(set|call|control|create|update|delete|remove|send|write|turn|toggle|eval|run|exec|bulk|start|stop|lock|open|close|move|add|play|pause|arm)/;
 const READS = /(^|_)(get|list|search|find|query|read|history|overview|lookup|state|todo)(_|$)/;
 
-export function jobTool(t: { name: string }): boolean {
+export function jobTool(t: { name: string; reads?: boolean }): boolean {
+  // A component's tool is what an admin classed it as (lib/components.ts), whatever its name.
+  if (t.reads !== undefined) return t.reads;
   if (READ_TOOLS.has(t.name)) return true;
   const i = t.name.indexOf("__");
   if (i < 0) return false;

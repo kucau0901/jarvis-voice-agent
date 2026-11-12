@@ -10,6 +10,8 @@ import {
 import type { StoredImage } from "./images.ts";
 import type { Procedure, Specialty } from "./specialties.ts";
 import type { Skill, SkillView } from "./skills.ts";
+import type { ComponentView, Listed, Offered } from "./components.ts";
+import type { ReportReply, Suggested } from "./component-reports.ts";
 import type { StoredPage } from "./pages.ts";
 import type { Episode } from "./episodes.ts";
 import type { Proposal, ProposalInput } from "./proposals.ts";
@@ -694,6 +696,35 @@ interface SkillApi {
   skillAnswer(digest: string, body: Record<string, unknown>, now: number): Promise<{ alert: Alert; at: number; holdUntil?: number } | { refused: 400 | 404 | 429; why: string }>;
 }
 
+/** Components (lib/components.ts): outside systems plugged in, set up in Settings → Components (routes/components.ts). */
+interface ComponentApi {
+  componentsList(day: string): Promise<(ComponentView & { today: { told: number; acted: number } })[]>;
+  componentAdd(input: { name: unknown; url: unknown; label?: unknown }, by: string, taken: readonly string[], now: number): Promise<ComponentView | string>;
+  componentKey(id: string, key: unknown, now: number): Promise<ComponentView | string>;
+  componentTarget(id: string): Promise<{ label: string; name: string; url: string; key?: string } | null>;
+  componentListed(id: string, listed: Listed, now: number): Promise<{ component: ComponentView; skipped: { name: string; why: string }[] } | string>;
+  /** `owner`: whether the owner asks (routes/components.ts isOwner), who alone classes as reading a tool Jarvis took to act. */
+  componentApprove(id: string, hash: unknown, classes: unknown, owner: boolean, now: number): Promise<ComponentView | string>;
+  componentClasses(id: string, classes: unknown, owner: boolean, now: number): Promise<ComponentView | string>;
+  componentAlone(id: string, alone: unknown, now: number): Promise<ComponentView | string>;
+  componentShares(id: string, shares: unknown, people: readonly string[], now: number): Promise<ComponentView | string>;
+  componentEnabled(id: string, enabled: unknown, now: number): Promise<ComponentView | string>;
+  componentRename(id: string, name: unknown, now: number): Promise<ComponentView | string>;
+  componentNewAddress(id: string, now: number): Promise<{ component: ComponentView; token: string } | string>;
+  componentDropAddress(id: string, now: number): Promise<ComponentView | string>;
+  componentRemove(id: string): Promise<boolean>;
+  /** What one person is offered (tools/components.ts), keys included: never past the Worker. */
+  componentsFor(person: string): Promise<Offered[]>;
+  /** An acting tool about to run with nobody there: null to go ahead, counted; else why not. */
+  componentActs(id: string, tool: string, args: Record<string, unknown>, now: number): Promise<string | null>;
+  /** What it then did, told to `people` in words written from the call. */
+  componentDid(id: string, tool: string, args: Record<string, unknown>, ok: boolean, people: readonly string[], now: number): Promise<void>;
+  /** Whose reporting address a token's digest is. */
+  componentInbox(digest: string): Promise<{ id: string } | null>;
+  /** A report taken (lib/component-reports.ts): what to answer, and what to do by itself after answering. */
+  componentReport(digest: string, body: Record<string, unknown>, now: number): Promise<{ reply: ReportReply; alone: Suggested[] } | "gone" | "bad">;
+}
+
 /** What jobs propose for a person's tap (lib/proposals.ts; routes/proposals.ts). */
 interface ProposalApi {
   proposalsOf(person: string, now: number): Promise<Proposal[]>;
@@ -785,6 +816,7 @@ export type StateApi = Pick<
   ImageApi &
   RecallApi &
   SkillApi &
+  ComponentApi &
   PageApi &
   ProposalApi &
   PlanApi &

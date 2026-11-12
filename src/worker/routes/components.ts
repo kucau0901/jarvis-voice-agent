@@ -1,0 +1,159 @@
+import type { Env } from "../types.ts";
+import { err, json, publicOrigin, readObject, readObjectOrEmpty } from "../lib/http.ts";
+import { credentialOf, personOf, type Principal } from "../lib/auth.ts";
+import { stateStub } from "../lib/state-client.ts";
+import { hubStub, personView } from "../lib/hub-client.ts";
+import { allows } from "../lib/scopes.ts";
+import { readServersForUi } from "../lib/config-store.ts";
+import { OWNER } from "../lib/context.ts";
+import { localeOf } from "../lib/locale.ts";
+import { dayOf } from "../lib/usage.ts";
+import { listRemote } from "../tools/mcp.ts";
+import { failureOf, remoteOf, runSuggested } from "../tools/components.ts";
+import { looksLikeToken, sha256Hex } from "../lib/devices.ts";
+import { INBOX_PREFIX, OWNERS_ONLY } from "../lib/components.ts";
+import { MAX_BODY, MAX_EVENTS } from "../lib/component-reports.ts";
+import * as limits from "../lib/limits.ts";
+
+/**
+ * Settings → Components (lib/components.ts), for the owner key and admins:
+ *
+ *   GET    /api/components       {components, people, owner}: each as Settings shows it, never a key or a digest;
+ *                                the family, as shares name them, and whether each holds `components`, without
+ *                                which a share gives them nothing; whether this caller may set "by itself"
+ *   POST   /api/components       {name, url, label?}: added by its public https address. With the label of one
+ *                                already here, that one is renamed and moved there: its key and its reporting
+ *                                address are dropped, and what it offers is checked and approved again
+ *   PUT    /api/components       {id, key}: its key, never shown again
+ *   PATCH  /api/components       {id, check: true}: ask it what it offers; what differs from what is approved waits
+ *                                {id, approve: hash, classes?}: approve what waits, as it was shown
+ *                                {id, classes}: {tool: "reads" | "acts" | "off"} for approved tools
+ *                                {id, alone}: {tool: true | false}, an acting tool run with nobody there. Only the
+ *                                owner key or the person who set Jarvis up
+ *                                In approve and classes, "reads" for a tool Jarvis took to act is theirs alone too
+ *                                (403 for another admin): a reading tool is used with nobody there, unasked
+ *                                {id, shares}: {person: {level: "see" | "use", tell?, as?} | null}
+ *                                {id, enabled} · {id, name}
+ *                                {id, address: true}: a reporting address of its own, its token shown once;
+ *                                {id, address: false}: stopped
+ *   DELETE /api/components?id=   one removed, with its key and its reporting address
+ *
+ * Nothing a component lists is offered to anyone until an admin has approved
+ * it here, and nothing it says changes who may reach it.
+ */
+
+/**
+ * Whether this caller says what may run with nobody there: the owner key, or
+ * the person who set Jarvis up, as routes/hub.ts keeps that person's
+ * sign-ins from other admins. Jarvis then acts in the owner's name with
+ * nobody watching, which one admin does not decide for the household:
+ * neither by letting a tool run by itself, nor by classing as reading one
+ * Jarvis took to act (lib/components.ts decides that, told who asks).
+ */
+const isOwner = async (env: Env, p: Principal): Promise<boolean> =>
+  p.kind === "owner" || (p.kind === "member" && p.id === (await hubStub(env)?.firstPerson().catch(() => null)));
+
+/**
+ * The family, as shares name them ("owner" for the first person), and whether
+ * each holds `components` now: without it a share gives them nothing. Before
+ * there is a family, the first person alone.
+ */
+async function peopleOf(env: Env): Promise<{ person: string; name: string; role: string; holds: boolean }[]> {
+  const family = (await hubStub(env)?.familyPeople().catch(() => null)) ?? [];
+  if (!family.length) return [{ person: OWNER, name: "", role: "admin", holds: true }];
+  return Promise.all(family.map(async (p) => ({ person: p.person, name: p.name, role: p.role, holds: allows((await personView(env, p.person)).scopes ?? [], "components") })));
+}
+
+export async function handleComponents(req: Request, env: Env, principal: Principal): Promise<Response> {
+  const state = stateStub(env);
+  if (!state) return err(503, "components need the STATE Durable Object");
+  const now = Date.now();
+  const said = <T>(r: T | string, status = 200) => (typeof r === "string" ? err(r === "no such component" ? 404 : r.startsWith(OWNERS_ONLY) ? 403 : 400, r) : json({ component: r }, { status }));
+
+  if (req.method === "GET") {
+    return json({ components: await state.componentsList(dayOf(now, localeOf(env).timeZone)), people: await peopleOf(env), owner: await isOwner(env, principal) });
+  }
+  if (req.method === "DELETE") {
+    const id = new URL(req.url).searchParams.get("id") ?? "";
+    return (await state.componentRemove(id)) ? json({ ok: true }) : err(404, "no such component");
+  }
+  if (req.method !== "POST" && req.method !== "PUT" && req.method !== "PATCH") return err(405, "method not allowed");
+  const b = await readObjectOrEmpty(req);
+
+  if (req.method === "POST") {
+    // Its tools are named by its label, so never one an MCP server has, on or off.
+    const taken = (await readServersForUi(env)).servers.map((s) => s.label);
+    return said(await state.componentAdd({ name: b.name, url: b.url, label: b.label }, personOf(principal), taken, now), 201);
+  }
+  if (typeof b.id !== "string") return err(400, "id is required");
+  if (req.method === "PUT") return said(await state.componentKey(b.id, b.key, now));
+
+  if (b.check === true) {
+    const at = await state.componentTarget(b.id);
+    if (!at) return err(404, "no such component");
+    try {
+      const r = await state.componentListed(b.id, await listRemote(remoteOf(at)), now);
+      return typeof r === "string" ? err(400, r) : json(r);
+    } catch (e) {
+      // What it answered, shown to the admin who asked: never its key.
+      return err(502, `It could not be checked: ${failureOf(e, at.key)}`);
+    }
+  }
+  if (b.approve !== undefined) return said(await state.componentApprove(b.id, b.approve, b.classes, await isOwner(env, principal), now));
+  if (b.alone !== undefined) {
+    if (!(await isOwner(env, principal))) return err(403, `${OWNERS_ONLY} decides what runs by itself`);
+    return said(await state.componentAlone(b.id, b.alone, now));
+  }
+  if (b.classes !== undefined) return said(await state.componentClasses(b.id, b.classes, await isOwner(env, principal), now));
+  if (b.shares !== undefined) return said(await state.componentShares(b.id, b.shares, (await peopleOf(env)).map((p) => p.person), now));
+  if (b.enabled !== undefined) return said(await state.componentEnabled(b.id, b.enabled, now));
+  if (b.name !== undefined) return said(await state.componentRename(b.id, b.name, now));
+  if (b.address === true) {
+    const made = await state.componentNewAddress(b.id, now);
+    if (typeof made === "string") return said(made);
+    // Shown this once: where it posts, and the token it posts with.
+    return json({ ...made, url: `${publicOrigin(env, new URL(req.url).origin)}/api/v1/component/events` }, { status: 201 });
+  }
+  if (b.address === false) return said(await state.componentDropAddress(b.id, now));
+  return err(400, "nothing to change");
+}
+
+/**
+ *   POST /api/v1/component/events   Authorization: Bearer jcp1_…
+ *        {events: [{type, text?, level?: "info" | "notice" | "urgent", to?: [id], id?, actions?: [{tool, args}]}]}
+ *     →  200 {ok: true, name, taken, refused: [{index, error}]}
+ *
+ * What a component reports (lib/component-reports.ts), at the address made
+ * for it in Settings → Components. Served before the gate (index.ts), as a
+ * bot's address is: the token is the proof, kept only as a digest. Every
+ * refusal of the address is the same 404 (not one, never made, stopped, its
+ * component switched off or removed); 405 for anything but POST; 429 at its
+ * allowance, which is a device's; 400 for a body that is not a small object
+ * holding 1 to 10 events. Nothing here asks a model anything. What the owner
+ * lets it do by itself is done after it has its answer, so it is never
+ * called while it is still waiting on this request.
+ */
+export async function handleReport(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  const nowhere = () => err(404, "no such address");
+  const token = credentialOf(req);
+  // Its shape first: nothing malformed reaches storage.
+  if (!looksLikeToken(token, INBOX_PREFIX)) return nowhere();
+  if (req.method !== "POST") return err(405, "POST only");
+  const state = stateStub(env);
+  const digest = await sha256Hex(token);
+  const at = state ? await state.componentInbox(digest) : null;
+  if (!state || !at) return nowhere();
+  const verdict = await limits.check(env, `c_${at.id}`);
+  if (!verdict.ok) {
+    const headers = new Headers({ "content-type": "application/json" });
+    if (verdict.retryAfter) headers.set("retry-after", String(verdict.retryAfter));
+    return new Response(JSON.stringify({ ok: false, error: verdict.reason, text: limits.limitMessage(verdict.reason) }), { status: 429, headers });
+  }
+  if (!verdict.counted) ctx.waitUntil(limits.charge(env, `c_${at.id}`));
+  const body = await readObject(req, MAX_BODY);
+  const taken = body ? await state.componentReport(digest, body, Date.now()) : "bad";
+  if (taken === "gone") return nowhere();
+  if (taken === "bad") return err(400, `body must be a small JSON object with 1 to ${MAX_EVENTS} events`);
+  if (taken.alone.length) ctx.waitUntil(runSuggested(env, taken.alone));
+  return json(taken.reply);
+}

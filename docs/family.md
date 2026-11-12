@@ -40,8 +40,8 @@ only to them.
 | Role | Can, until you change it |
 |---|---|
 | **Admin** | Everything, and manage the family: invite, remove, change roles, settings, devices, Hermes. |
-| **Adult** | The house (Home Assistant); their own memory, mail, calendar, Spotify, alerts and reminders; changing what the family shares; cars, as far as their owners share them; live voice, maps. |
-| **Child** | Their own memory, calendar, alerts and reminders; cars, as far as their owners share them; live voice, maps. |
+| **Adult** | The house (Home Assistant); their own memory, mail, calendar, Spotify, alerts and reminders; changing what the family shares; cars, as far as their owners share them; components, as far as an admin shares them; live voice, maps. |
+| **Child** | Their own memory, calendar, alerts and reminders; cars, as far as their owners share them; components, as far as an admin shares them; live voice, maps. |
 | **Guest** | Ask questions and live voice. |
 
 An admin can widen or narrow any member, one item at a time: in
@@ -261,6 +261,10 @@ only the owner key can.
   family's**. **Move to the family's** moves one of your own there. Everyone
   who may read memory sees it; adults (the `family` permission) change it.
 - **The house**, through Home Assistant: adults get it by default.
+- **Components** (a school's timetable, a shop's till: **Settings →
+  Components**, for admins): shared person by person, to look only or to
+  use, as a car is. Adults and children can be given one; a guest cannot,
+  and an admin has to be given it too.
 - **The assistant's name, and the family's defaults** (Settings, for admins).
 
 **Cars are their owners'**, shared as far as the owner chooses. In

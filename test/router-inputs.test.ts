@@ -64,6 +64,9 @@ const PROMPT_SHA256 = "ca9ae682da7e82a9d110cc7936180ac53ec84c1bcaafd152ffeb1fa8d
 // browser_close_tab (tools/browser.ts, scope browser): as the other browser tools (10 Nov 2026).
 // browser_sign_in (tools/browser.ts, scope browser): as the other browser tools (10 Nov 2026).
 // browser_show (tools/browser.ts, scope browser): as the other browser tools (10 Nov 2026).
+// skill_add (tools/skills.ts): asked for an MCP server, it now adds a component that waits for an admin's approval
+// (lib/components.ts), where it used to join the MCP list. Its name, its scope and who is offered it are as before, and
+// a tool's description is not among what is pinned here, so no entry below changes (12 Nov 2026).
 const EXPECTED: Record<string, { model: string; tools: string[]; input: string }> = {
  "owner key, nothing set up": {
   "model": "gpt-6-luna",

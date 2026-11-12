@@ -30,6 +30,8 @@ import { alertSaid, Conversation, type Said } from "./lib/conversation.ts";
 import { Images, type StoredImage } from "./lib/images.ts";
 import { Specialties, type Procedure } from "./lib/specialties.ts";
 import { heldToRelease, Skills } from "./lib/skills.ts";
+import { Components, didAlert, type Listed } from "./lib/components.ts";
+import { sealed, takeReport, type ReportDeps } from "./lib/component-reports.ts";
 import { Pages, type StoredPage } from "./lib/pages.ts";
 import { Episodes, episodeOfJob, type Episode } from "./lib/episodes.ts";
 import { cardOf, Proposals, type LaterDeps, type Proposal, type ProposalInput } from "./lib/proposals.ts";
@@ -86,6 +88,8 @@ export class JarvisState extends DurableObject<Env> {
   private specialties: Specialties;
   /** The family's skills: outside services added in chat (lib/skills.ts). */
   private skills: Skills;
+  /** Outside systems plugged in (lib/components.ts). */
+  private components: Components;
   private pages: Pages;
   private episodes: Episodes;
   private proposals: Proposals;
@@ -107,6 +111,7 @@ export class JarvisState extends DurableObject<Env> {
     this.images = new Images(ctx.storage);
     this.specialties = new Specialties(ctx.storage);
     this.skills = new Skills(ctx.storage);
+    this.components = new Components(ctx.storage);
     this.pages = new Pages(ctx.storage);
     this.episodes = new Episodes(ctx.storage);
     this.proposals = new Proposals(ctx.storage);
@@ -343,6 +348,7 @@ export class JarvisState extends DurableObject<Env> {
     await this.meetingsSeen.forget(person);
     await this.noticed.forget(person);
     await this.habits.forget(person);
+    await this.components.forget(person);
     await this.rearm();
   }
 
@@ -395,7 +401,13 @@ export class JarvisState extends DurableObject<Env> {
         // No further than its maker may reach now: something an admin took from them is taken from their routines too.
         const now = reachNow(grants, await this.people.personView(personOfWho(routine.createdBy)).catch(() => null));
         if (!now) return { ok: false, text: "whoever made it is no longer in the family" };
-        return askForRoutine(await this.personEnv(env, routine.createdBy), prompt, now, routine);
+        const penv = await this.personEnv(env, routine.createdBy);
+        // What a component reports can only move that same component (lib/component-reports.ts): a routine it starts runs
+        // with that component's tools and nothing else. No memory, mail, calendar, house, web or other component, whose
+        // contents its words could otherwise have Jarvis read out or hand back, and no acting anywhere else.
+        const part = routine.trigger.kind === "event" ? await this.components.ofEvent(routine.trigger.event) : null;
+        if (part) return askForRoutine(sealed(penv), prompt, narrow(now, ["ask", "components"]), routine, (t) => t.scope === "components" && t.name.startsWith(`${part.label}__`));
+        return askForRoutine(penv, prompt, now, routine);
       },
       events: async (now, person) => upcomingEvents(await this.personEnv(env, person), now),
       travel: async (destination, person) => travelFor(await this.personEnv(env, person), destination),
@@ -1009,6 +1021,117 @@ export class JarvisState extends DurableObject<Env> {
     return r;
   }
 
+  /* ---------- components: outside systems plugged in (lib/components.ts) ---------------- */
+
+  componentsList(day: string) {
+    return this.components.list(day);
+  }
+
+  componentAdd(input: { name: unknown; url: unknown; label?: unknown }, by: string, taken: readonly string[], now: number) {
+    return this.components.add(input, by, taken, now);
+  }
+
+  componentKey(id: string, key: unknown, now: number) {
+    return this.components.setKey(id, key, now);
+  }
+
+  componentTarget(id: string) {
+    return this.components.target(id);
+  }
+
+  componentListed(id: string, listed: Listed, now: number) {
+    return this.components.listed(id, listed, now);
+  }
+
+  componentApprove(id: string, hash: unknown, classes: unknown, owner: boolean, now: number) {
+    return this.components.approve(id, hash, classes, owner, now);
+  }
+
+  componentClasses(id: string, classes: unknown, owner: boolean, now: number) {
+    return this.components.setClasses(id, classes, owner, now);
+  }
+
+  componentAlone(id: string, alone: unknown, now: number) {
+    return this.components.setAlone(id, alone, now);
+  }
+
+  componentShares(id: string, shares: unknown, people: readonly string[], now: number) {
+    return this.components.setShares(id, shares, people, now);
+  }
+
+  componentEnabled(id: string, enabled: unknown, now: number) {
+    return this.components.setEnabled(id, enabled, now);
+  }
+
+  componentRename(id: string, name: unknown, now: number) {
+    return this.components.rename(id, name, now);
+  }
+
+  componentNewAddress(id: string, now: number) {
+    return this.components.newAddress(id, now);
+  }
+
+  componentDropAddress(id: string, now: number) {
+    return this.components.dropAddress(id, now);
+  }
+
+  componentRemove(id: string) {
+    return this.components.remove(id);
+  }
+
+  componentsFor(person: string) {
+    return this.components.offeredTo(person);
+  }
+
+  // By the household's day, as its usage is counted.
+  async componentActs(id: string, tool: string, args: Record<string, unknown>, now: number) {
+    return this.components.acts(id, tool, args, dayOf(now, localeOf(await this.localEnv()).timeZone));
+  }
+
+  // Told under the component's name: to whose routine or job it was, or to who its report was for.
+  async componentDid(id: string, tool: string, args: Record<string, unknown>, ok: boolean, people: readonly string[], now: number) {
+    const c = await this.components.stored(id);
+    if (!c) return;
+    const env = await this.localEnv();
+    for (const person of new Set(people)) {
+      const alert = didAlert(c, tool, args, ok, now, person);
+      if (alert) await deliver(env, this, alert);
+    }
+  }
+
+  /** Whose reporting address this is (routes/components.ts handleReport), while it is switched on: for its allowance. */
+  async componentInbox(digest: string) {
+    const c = await this.components.byToken(digest);
+    return c ? { id: c.id } : null;
+  }
+
+  /** A report at a component's own address (lib/component-reports.ts): "gone" when it is no longer one, "bad" for no report at all. */
+  async componentReport(digest: string, body: Record<string, unknown>, now: number) {
+    const c = await this.components.byToken(digest);
+    if (!c) return "gone" as const;
+    return (await takeReport(this.components, c, body, await this.reportDeps(now), now)) ?? ("bad" as const);
+  }
+
+  /** What taking a report needs (lib/component-reports.ts), wired as houseDeps is. */
+  private async reportDeps(now: number): Promise<ReportDeps> {
+    const env = await this.localEnv();
+    const view = (person: string) => this.people.personView(person).catch(() => null);
+    return {
+      day: dayOf(now, localeOf(env).timeZone),
+      holds: async (person) => allows((await view(person))?.scopes ?? [], "components"),
+      nameOf: async (person) => (await view(person))?.name ?? "",
+      fire: async (event, line, only) => {
+        if ((await this.scheduler.fireEvent(event, line, now, only)).length) await this.rearm();
+      },
+      // Filed inside the object, as the house's are (houseDeps act): the Worker's proposalAdd is a job's, and asks whether its job still runs.
+      card: async (person, from, action, says) => {
+        const p = await this.proposals.add({ who: person, person, from: { kind: "suggestion", ...from }, action, weighed: { risk: "irreversible", says }, grants: ["ask", "components"] }, now);
+        return typeof p === "string" ? p : cardOf(p);
+      },
+      tell: (alert) => deliver(env, this, alert),
+    };
+  }
+
   episodesOf(person: string, now: number) {
     return this.episodes.of(person, now);
   }
@@ -1297,6 +1420,11 @@ export class JarvisState extends DurableObject<Env> {
       }
       input = { ...input, passTo: to };
     }
+    // On a component's event: only for someone it is shared with, and an event it declares (lib/components.ts).
+    if (typeof input.when === "string" && input.when.trim().toLowerCase() === "event" && typeof input.event === "string") {
+      const why = await this.components.eventFor(input.event.trim().toLowerCase(), personOfWho(by.who), allows(by.grants, "components"));
+      if (why) return why;
+    }
     const r = await this.scheduler.add(input, by);
     await this.rearm();
     return r;
@@ -1335,8 +1463,10 @@ export class JarvisState extends DurableObject<Env> {
     return this.scheduler.runs(id);
   }
 
+  // A component's events (label:type) come only from its own address (componentReport): sent here, they start nothing.
   async fireEvent(event: string, data?: string, only?: string) {
-    const started = await this.scheduler.fireEvent(event, data, Date.now(), only);
+    if (await this.components.ofEvent(event)) return [];
+    const started = await this.scheduler.fireEvent(event, data, Date.now(), only === undefined ? undefined : [only]);
     if (started.length) await this.rearm();
     return started;
   }

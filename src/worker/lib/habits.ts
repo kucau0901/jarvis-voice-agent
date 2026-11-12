@@ -67,10 +67,11 @@ const UNATTENDED: readonly Scope[] = ["screen", "hermes", "browser"];
  * sends or changes, the house's and the car's included, but nothing that draws on a screen or asks Hermes, which a
  * routine runs without. The routine is made only on their tap, with no more than they could reach.
  */
-export const noteworthy = (r: { ok: boolean; tools: readonly string[] }, grants: readonly Grant[], offered: readonly { name: string; scope?: Scope }[]): boolean =>
+export const noteworthy = (r: { ok: boolean; tools: readonly string[] }, grants: readonly Grant[], offered: readonly { name: string; scope?: Scope; reads?: boolean; alone?: true }[]): boolean =>
   r.ok && allows(grants, "routines") && r.tools.every((name) => {
     const t = offered.find((o) => o.name === name);
-    return !!t && !(t.scope && UNATTENDED.includes(t.scope));
+    // Nor a component's acting tool the owner has not let run by itself (routes/routines.ts): a routine is not offered it.
+    return !!t && !(t.scope && UNATTENDED.includes(t.scope)) && (t.reads !== false || t.alone === true);
   });
 
 const minuteOf = (at: number, timeZone: string) => {
