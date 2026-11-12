@@ -139,6 +139,15 @@ of every release, and in the [README](README.md#updating).
   Jarvis cannot tell reads from its name stops showing it too: put it on a
   button, or plug that server in as a component, where the owner can class
   such a tool as reading.
+- **A reading Jarvis looks up is no longer put to Home Assistant's Assist
+  first.** A tile's looked-up reading ("the air quality in Springfield")
+  went the way a typed question does while Home was open: to Assist, then to
+  the model. Assist does what it understands, and nobody had pressed
+  anything, so a reading that Assist took for a command would have been
+  carried out each time it was looked up. No case of it is known, and with
+  the words Jarvis adds to such a question Assist is unlikely to have
+  understood one. It now goes to the model alone, with reading tools only,
+  as it already did with Home closed.
 
 ## [2.9.0] - 2026-11-06
 

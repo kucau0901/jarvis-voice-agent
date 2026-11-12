@@ -404,11 +404,6 @@ function attachedSaid(opts: RunOptions): string {
 }
 
 /**
- * A reading for a panel's tile, asked with nobody pressing anything: with
- * reading tools only, as a background job has (lib/jobs.ts jobTool). Its
- * words. For Home (routes/panels.ts) and the alarm (lib/panels.ts refresh).
- */
-/**
  * One of a person's tools, run outside any question, as the router would
  * offer it to them now: a Home tile's button (routes/panels.ts), an approved
  * proposal (routes/proposals.ts). Null when it is not theirs to use now.
@@ -468,9 +463,16 @@ export async function readTool(
   return acts ? ACTS : out;
 }
 
+/**
+ * A reading for a panel's tile, asked with nobody pressing anything: with
+ * reading tools only, as a background job has (lib/jobs.ts jobTool), and
+ * never put to Home Assistant's Assist first, which does what it understands
+ * (lib/assist.ts). Its words. For Home (routes/panels.ts) and the alarm
+ * (lib/panels.ts refresh).
+ */
 export async function lookUp(env: Env, text: string, grants: readonly Grant[], signal: AbortSignal): Promise<string> {
   const sink = new Collector();
-  await run(env, [{ role: "user", text }], sink, signal, grants, { surface: "chat", assist: true, toolFilter: jobTool });
+  await run(env, [{ role: "user", text }], sink, signal, grants, { surface: "chat", toolFilter: jobTool });
   return sink.finish().text;
 }
 

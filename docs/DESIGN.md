@@ -549,7 +549,10 @@ so a question that is not about panels costs no more.
   left, through the same claim so Home and the alarm never both pay; with
   reading tools only and without the house (no MCP to discover with nobody
   waiting); after a look that found nothing, again in a quarter hour, then
-  less often; and nothing at all with no plan and no key.
+  less often; and nothing at all with no plan and no key. Either way the
+  question goes to the model alone, never to Assist first as a typed
+  question does: Assist does what it understands, and nobody pressed
+  anything.
 - **Alerts from a panel.** "Alert me", in an opened tile, makes a routine of
   its person's (lib/panel-alerts.ts; POST /api/hub/panels/alert), so it
   needs `routines` and is changed or removed in Routines. A thing in the

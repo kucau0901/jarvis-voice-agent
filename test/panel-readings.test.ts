@@ -8,7 +8,7 @@
 import { objectWith, fakeModel, settings, type Person, type Step } from "./fake-object.ts";
 import { fakeSchool, schemaOf, serve, type FakeComponent } from "./fake-component.ts";
 import { handlePanels } from "../src/worker/routes/panels.ts";
-import { readTool, run } from "../src/worker/lib/router.ts";
+import { lookUp, readTool, run } from "../src/worker/lib/router.ts";
 import { ACTS, parseTile } from "../src/worker/lib/panel-tiles.ts";
 import { tileKey, type PanelItem } from "../src/worker/lib/panels.ts";
 import { writeServers } from "../src/worker/lib/config-store.ts";
@@ -47,8 +47,15 @@ const house: FakeComponent = {
 /** What the scripted model does next, when it is asked. */
 let next: Step = { say: "Nothing to do." };
 const model = fakeModel(() => next);
+/** Home Assistant's Assist, which does what it understands: this one switches the porch light on, whatever it is asked. */
+const assisted: string[] = [];
+const assist = (url: string, init: RequestInit): Response | null => {
+  if (url !== "https://ha.example/api/conversation/process") return null;
+  assisted.push(String((JSON.parse(String(init.body)) as { text?: unknown }).text));
+  return Response.json({ response: { response_type: "action_done", data: { success: [{ name: "Porch light" }] }, speech: { plain: { speech: "Turned on the porch light." } } } });
+};
 const strays: string[] = [];
-const restore = serve([school, house], { strays, also: model.handle });
+const restore = serve([school, house], { strays, also: (url, init) => model.handle(url, init) ?? assist(url, init) });
 const signal = new AbortController().signal;
 
 /** The calls that reached a component or a server, by its tools' own names. */
@@ -73,9 +80,9 @@ const tile = (label: string, read: Call | null, buttons: [label: string, ...call
 const make = (title: string, ...items: unknown[]) => ask({ call: "panel_set", args: { title, mode: "add", items } });
 
 /** The Home tab's own requests, as the owner. */
-const home = async (path: string, body?: unknown): Promise<{ status: number; text: string }> => {
+const home = async (path: string, body?: unknown, as = env): Promise<{ status: number; text: string }> => {
   const req = new Request(`https://jarvis.example.com${path}`, body ? { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) } : {});
-  const res = (await handlePanels(req, env, { kind: "owner" }))!;
+  const res = (await handlePanels(req, as, { kind: "owner" }))!;
   const said = (await res.json()) as { text?: string; error?: string };
   return { status: res.status, text: said.text ?? said.error ?? "" };
 };
@@ -190,6 +197,22 @@ try {
     check("an MCP server's acting tool too", off.status === 200 && calls(house) === "ha_call_service", { off, house: calls(house) });
     const note = await press("Doing", "Relief", "b2");
     check("and one of Jarvis's own", note.status === 200 && o.told.length === 1 && o.told[0]!.text === "Home by seven.", { note, told: o.told });
+  }
+
+  console.log("\na reading Jarvis looks up: the model's to answer, never Assist's to do");
+  {
+    // The same deployment with the house connected, so a typed question would be put to Assist first (lib/assist.ts).
+    const withHouse = { ...(env as object), HA_BASE_URL: "https://ha.example", HA_TOKEN: "h" } as never;
+    const asking: PanelItem = { kind: "tile", ref: JSON.stringify({ read: { ask: "Turn on the porch light", every: 60 }, buttons: [{ label: "On", ask: "Turn on the porch light" }] }), label: "Porch" };
+    await o.jarvis.panelSet("owner", "Asked", [asking], "replace");
+    const { panel, key } = await keyOn("Asked", "Porch");
+    next = { say: "Porch light: off" };
+    const looked = await home(`/api/hub/panels/read?panel=${panel}&key=${key}`, undefined, withHouse);
+    check("a looked-up reading is answered by the model, and Assist, which would have done it, is never asked",
+      looked.status === 200 && looked.text === "Porch light: off" && assisted.length === 0, { looked, assisted });
+    check("…asked of the router itself too, whatever its words", (await lookUp(withHouse, "Turn on the porch light", ["*"], signal)) === "Porch light: off" && assisted.length === 0, assisted);
+    const pressed = await home("/api/hub/panels/act", { panel, key, action: "b0" }, withHouse);
+    check("a button that asks is a person asking: Assist first, as a typed question", pressed.status === 200 && pressed.text === "Turned on the porch light." && assisted.join() === "Turn on the porch light", { pressed, assisted });
   }
 } finally {
   restore();

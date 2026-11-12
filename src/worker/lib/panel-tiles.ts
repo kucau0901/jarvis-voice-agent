@@ -167,7 +167,8 @@ export interface TileSources {
   /**
    * A reading looked up by Jarvis, with its reading tools only (lib/jobs.ts
    * jobTool): it is asked with nobody pressing anything, whenever Home is
-   * open, so it may read but never act, nor hand anything to Hermes.
+   * open, so it may read but never act, nor hand anything to Hermes or to
+   * Home Assistant's Assist.
    */
   look: (text: string) => Promise<string>;
   /** An asked reading as kept (lib/panels.ts), by the tile's key. */
