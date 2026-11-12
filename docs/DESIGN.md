@@ -486,6 +486,25 @@ so a question that is not about panels costs no more.
   reading comes on its own (GET
   /api/hub/panels/read), once a minute, so a slow tool or someone else's
   service never holds up the house.
+- **A reading only reads.** A tile's buttons wait for a press; its reading
+  does not. It is run every time Home shows the tile, about once a minute
+  while the tab is open, with nobody asking. So it may only be a tool that
+  only reads (lib/jobs.ts `readsOnly`): one of Jarvis's own that says so
+  (`reads` on the tool: the music, the calendar, mail, the car's state, a
+  camera's look, the family's messages), an MCP server's whose name says it
+  reads, by the rule a job's tools go by, or a component's classed as reading
+  (Components). Until 12 Nov 2026 it could be any tool its person was
+  offered, so a tile made with one that acts as its reading called a service
+  in the house, or sent a note, each time Home was opened. It is refused
+  twice, in code: when the tile is made, in words the model passes on (the
+  action belongs on a button), and each time it is read, against the tool as
+  it is then (lib/router.ts `readTool`), so a tile kept from before, or a
+  component's tool classed as acting since, is left alone and the tile says
+  why. `reads` on Jarvis's own tools decides this and nothing else: what a
+  background job is handed is still `READ_TOOLS`, which leaves some readers
+  out. An MCP tool whose name does not say it reads cannot be a reading: the
+  safe way to be wrong, and a component is where the owner can class one by
+  hand.
 - **Lists, charts and maps.** A looked-up reading can carry, beside its
   figures, a short list (lines starting "- ": a forecast's days, the
   headlines), a trend ("Chart: <title>: x=y; …", drawn as a line) and a
@@ -530,7 +549,10 @@ so a question that is not about panels costs no more.
   left, through the same claim so Home and the alarm never both pay; with
   reading tools only and without the house (no MCP to discover with nobody
   waiting); after a look that found nothing, again in a quarter hour, then
-  less often; and nothing at all with no plan and no key.
+  less often; and nothing at all with no plan and no key. Either way the
+  question goes to the model alone, never to Assist first as a typed
+  question does: Assist does what it understands, and nobody pressed
+  anything.
 - **Alerts from a panel.** "Alert me", in an opened tile, makes a routine of
   its person's (lib/panel-alerts.ts; POST /api/hub/panels/alert), so it
   needs `routines` and is changed or removed in Routines. A thing in the
@@ -1848,8 +1870,9 @@ would let Jarvis act by itself under another name; and who lets it do that
 is the one choice the owner kept (below). What the owner classed so stays so
 while the tool does not change, whoever approves the list again; changed, it
 starts from the first guess. Two fields on `Tool` carry the class to the
-three places that decide what runs with nobody there: `reads`, which
-`jobTool` honours before a name, and `alone`.
+three places that decide what runs with nobody there, and to a Home tile's
+reading, which nobody presses (Panels): `reads`, which `readsOnly` (and so
+`jobTool`) honours before a name, and `alone`.
 
 **Acting by itself, where the owner set it.** With somebody asking, a tool
 shared with them is theirs to use. With nobody there (a routine, a job, a

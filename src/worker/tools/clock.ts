@@ -9,6 +9,7 @@ import { timeAt } from "../lib/locale.ts";
 export const timeIn: Tool = {
   name: "time_in",
   pace: "fast",
+  reads: true,
   description:
     "The day and time now somewhere else, by its IANA time zone. Use it for any question about the " +
     "time or date in another city or country; never work it out yourself: daylight saving changes it.",

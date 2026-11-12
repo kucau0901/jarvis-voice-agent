@@ -23,6 +23,7 @@ export const lookBackTool: Tool = {
   name: "look_back",
   scope: "memory.read",
   pace: "fast",
+  reads: true,
   description:
     "Search the user's earlier conversation with you, kept for 30 days (the last 200 " +
     "messages). Use it when they refer to something said before that is not in the " +

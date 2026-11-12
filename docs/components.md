@@ -117,6 +117,7 @@ When nobody is there, the class decides:
 | A routine | Used | Not offered |
 | A background job | Used | Proposed: a card someone approves |
 | Research | Used | Never |
+| A reading on someone's Home tab, shown without a press | Used | Never: there it can only be a button |
 | A suggestion in your own report | (cannot be suggested) | A card someone approves |
 
 **Name a tool for what it does.** A tool that acts but is named like a

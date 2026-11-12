@@ -62,8 +62,11 @@ export interface ToolContext {
    * never later do more than the person or device that asked for it.
    */
   grants: readonly Grant[];
-  /** The tools the router was offered for this question, by name: what a panel's tile may be wired to (tools/panels.ts). */
-  offered?: readonly string[];
+  /**
+   * The tools the router was offered for this question: what a panel's tile
+   * may be wired to, its reading only to one that only reads (tools/panels.ts).
+   */
+  offered?: readonly Pick<Tool, "name" | "reads">[];
   /** The user's latest message, as they said it: what only they can ask for must be in it (tools/specialties.ts). */
   asked?: string;
   /** The steps the answer before this question offered to save (lib/specialties.ts): all specialty_save may keep. */
@@ -130,10 +133,15 @@ export interface Tool {
    */
   propose?(args: Record<string, unknown>, env: Env): Weighed | null;
   /**
-   * Whether it only reads, where its name does not decide it: a component's
-   * tool is what an admin classed it as (lib/components.ts). True, it is a
-   * reading tool wherever those are offered (lib/jobs.ts jobTool); false, it
-   * acts, and with nobody there it is proposed, never run. Not sent to the model.
+   * Whether it only reads, where its name does not decide it (lib/jobs.ts
+   * readsOnly). True on Jarvis's own tools that only look something up: only
+   * a tool that reads may be a Home tile's reading, which is run with nobody
+   * pressing anything (lib/panel-tiles.ts); what a job is handed is still
+   * READ_TOOLS's to say (lib/jobs.ts). A component's tool is what an admin
+   * classed it as (lib/components.ts): true, it is a reading tool wherever
+   * those are offered (jobTool); false, it acts, and with nobody there it is
+   * proposed, never run. Never false on one of Jarvis's own: a routine is not
+   * offered a tool that says it acts. Not sent to the model.
    */
   reads?: boolean;
   /**

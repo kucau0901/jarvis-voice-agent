@@ -107,6 +107,7 @@ const textOf = (j: Job): string => {
 const jobResults: Tool = {
   name: "job_results",
   pace: "fast",
+  reads: true,
   description:
     "Read the user's own background jobs and what they came back with: Hermes's answers (ask_hermes " +
     "runs as one), research reports and start_job results, newest first. Use it whenever they ask " +

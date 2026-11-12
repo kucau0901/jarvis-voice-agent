@@ -120,6 +120,35 @@ of every release, and in the [README](README.md#updating).
   Handing the browser's screen over is now offered only where there is a
   screen to put it on; the rest of the browser works from anywhere, as before.
 
+### Security
+
+- **A tile on Home could act just by being shown.** What a tile shows (its
+  reading) is fetched by itself whenever Home is open, about once a minute,
+  and it could be any tool its person was offered. A tile made with a tool
+  that does something as its reading (a service call in the house, a note, a
+  component's acting tool) ran it each time, with nobody pressing anything.
+  A reading may now only be a tool that only looks something up: Jarvis's
+  own reading tools (the music, the calendar, mail, the car's state, a
+  camera, the family's messages and the like), an MCP server's tool whose
+  name says it reads, by the rule background jobs already go by, and a
+  component's tool classed as reading. Jarvis no longer makes a tile whose
+  reading would act: what acts goes on a button. A tile already made that
+  way no longer runs its reading and says so on the tile ("Not shown: … Ask
+  Jarvis to make this tile again, with that on a button"). Buttons are as
+  before: a press is you asking. A tile whose reading is an MCP tool that
+  Jarvis cannot tell reads from its name stops showing it too: put it on a
+  button, or plug that server in as a component, where the owner can class
+  such a tool as reading.
+- **A reading Jarvis looks up is no longer put to Home Assistant's Assist
+  first.** A tile's looked-up reading ("the air quality in Springfield")
+  went the way a typed question does while Home was open: to Assist, then to
+  the model. Assist does what it understands, and nobody had pressed
+  anything, so a reading that Assist took for a command would have been
+  carried out each time it was looked up. No case of it is known, and with
+  the words Jarvis adds to such a question Assist is unlikely to have
+  understood one. It now goes to the model alone, with reading tools only,
+  as it already did with Home closed.
+
 ## [2.9.0] - 2026-11-06
 
 ### Added

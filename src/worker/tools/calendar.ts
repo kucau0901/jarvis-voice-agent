@@ -147,6 +147,7 @@ export const calendarCheck: Tool = {
   name: "calendar_check",
   scope: "calendar",
   pace: "fast",
+  reads: true,
   available,
   description:
     "Read the user's Google Calendar: what is on today, what is next, whether they are " +

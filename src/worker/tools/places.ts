@@ -189,6 +189,7 @@ export const placeInfo: Tool = {
   name: "place_info",
   scope: "ask",
   pace: "fast",
+  reads: true,
   available: (env) => !!env.GOOGLE_MAPS_API_KEY,
   description:
     "What a business or landmark is actually like: rating, how many people rated it, " +

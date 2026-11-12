@@ -276,6 +276,7 @@ export const mailCheck: Tool = {
   name: "mail_check",
   scope: "mail",
   pace: "fast",
+  reads: true,
   available,
   description:
     "Check the user's Gmail inbox: how many unread, and who the most recent messages are " +
@@ -384,6 +385,7 @@ export const mailSearch: Tool = {
   name: "mail_search",
   scope: "mail",
   pace: "fast",
+  reads: true,
   available,
   description:
     "Search the user's Gmail and optionally read the top result in full. Use for 'did X " +
@@ -847,6 +849,7 @@ export const contactsLookup: Tool = {
   name: "contacts_lookup",
   scope: "mail",
   pace: "fast",
+  reads: true,
   available,
   description:
     "Look up someone's email address in the user's Google Contacts. Use when they ASK for " +
