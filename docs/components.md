@@ -103,6 +103,12 @@ The admin classes each tool as it is approved: **reads**, **acts**, or
 (`get_…`, `list_…`, `find_…`, `search_…`, `…_state`, and the like) and that
 does not say `readOnlyHint: false`. Everything else starts as *acts*.
 
+Any admin may make that stricter: *acts*, or *off*. Making a reading tool of
+one Jarvis took to act is the owner's alone, as *by itself* is below, because
+it comes to the same thing: a tool that reads is used with nobody there
+without asking, and is neither counted nor told. What the owner classed so
+stays so until the tool's description or schema changes.
+
 When someone is asking, a tool shared with them is theirs to use either way.
 When nobody is there, the class decides:
 

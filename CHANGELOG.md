@@ -31,8 +31,11 @@ of every release, and in the [README](README.md#updating).
   needs it ticked). With nobody there (a routine, a background job), a
   component's tool that acts asks first, unless the owner set that one tool
   to run by itself: Jarvis then says what it did, each time, and stops at 20
-  a day. A component can also be given an address of its own to report what
-  happened (`POST /api/v1/component/events`): a report starts the routines
+  a day. A tool that only reads is used there without asking, so any admin
+  may class a tool as acting or switch it off, and only the owner may class
+  as reading one that Jarvis took to act. A component can also be given an
+  address of its own to report what happened
+  (`POST /api/v1/component/events`): a report starts the routines
   people made for it ("when the school says a teacher is on leave, tell me
   who covers"), is told to those who chose to be told, under the component's
   name, and may suggest something to do, which arrives as a card to approve.

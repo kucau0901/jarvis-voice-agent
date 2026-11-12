@@ -30,7 +30,8 @@ import { makeAlert, type Alert } from "./alerts.ts";
  * Each tool reads or acts. One that acts asks first when nobody is there (a
  * report's suggestion, a routine, a job), unless the owner set it to run by
  * itself (`alone`), which goes back to asking when the tool's description or
- * arguments change.
+ * arguments change. One that reads is used there unasked, so making a reading
+ * tool of one Jarvis took to act is the owner's alone as well.
  *
  * Its key is typed only in Settings, sent only to its address, and dropped
  * when that address changes; its reporting address is kept only as a digest.
@@ -67,6 +68,8 @@ const AS = /^[A-Za-z0-9._@:-]{1,64}$/;
 const RESERVED = new Set(["arrived", "left", "home-assistant", "jarvis", "house", "home", "family", "car"]);
 /** A reporting address's token (lib/devices.ts mintToken): kept only as its digest, shown once. */
 export const INBOX_PREFIX = "jcp1_";
+/** How a refusal starts when the choice is the owner's alone: what Jarvis may do with nobody there (routes/components.ts answers 403). */
+export const OWNERS_ONLY = "only the owner key, or the person who set Jarvis up,";
 
 const C = "component:";
 /** What it listed last that is not what is pinned: waiting for an admin. Not under "component:", which list() reads. */
@@ -129,8 +132,11 @@ export interface Component {
  * A tool as Settings shows it: its arguments by name, never its whole schema.
  * `looksUp`: its own name reads like a look-up, so classed as acting it is
  * never proposed or run with nobody there (lib/proposals.ts classify).
+ * `takenToAct`: Jarvis itself takes it for a tool that acts (its name does
+ * not read, or it says itself that it does not only read), so only the owner
+ * classes it as reading.
  */
-export type ToolView = Omit<PinnedTool, "inputSchema"> & { args: string[]; looksUp?: true; change?: "new" | "changed" };
+export type ToolView = Omit<PinnedTool, "inputSchema"> & { args: string[]; looksUp?: true; takenToAct?: true; change?: "new" | "changed" };
 export interface CatalogView {
   hash: string;
   at: number;
@@ -191,6 +197,8 @@ const cut = (s: unknown, max: number) => (typeof s === "string" ? wellFormed(tid
 
 /** Whether a tool reads, by its own name alone: lib/jobs.ts jobTool's rule for an MCP tool. */
 const readsByName = (name: string) => jobTool({ name: `c__${name}` });
+/** A tool's own first class: Jarvis takes it to read only if its name reads and it does not say otherwise itself (`hint`). */
+const takenToRead = (name: string, hint?: boolean) => readsByName(name) && hint !== false;
 
 const classOf = (t: PinnedTool): ToolClass => (t.off ? "off" : t.reads ? "reads" : "acts");
 const sameTool = (a: PinnedTool, b: PinnedTool) => a.description === b.description && canonical(a.inputSchema) === canonical(b.inputSchema);
@@ -273,7 +281,7 @@ export async function catalogOf(listed: Listed, at: number): Promise<{ catalog: 
       else if (tools.length >= MAX_TOOLS) skip(`more than ${MAX_TOOLS} tools`);
       else {
         const hint = typeof t.readOnly === "boolean" ? t.readOnly : undefined;
-        tools.push({ name, description: cut(t.description, MAX_DESCRIPTION) || name, inputSchema, reads: readsByName(name) && hint !== false, ...(hint !== undefined ? { hint } : {}) });
+        tools.push({ name, description: cut(t.description, MAX_DESCRIPTION) || name, inputSchema, reads: takenToRead(name, hint), ...(hint !== undefined ? { hint } : {}) });
       }
     }
   }
@@ -314,8 +322,28 @@ function classesOf(raw: unknown, tools: readonly PinnedTool[]): Record<string, T
   return out;
 }
 
+/**
+ * Why these classes are not for an admin who is not the owner to choose; null
+ * when they are. A reading tool is used with nobody there (a routine, a job,
+ * research) unasked, and is neither counted nor told. So making one of a tool
+ * Jarvis took to act lets Jarvis act by itself, which is the owner's alone,
+ * as `alone` is. `tools`: each as it stands, so one the owner made a reading
+ * tool stays one whoever approves it again unchanged. Any admin may class any
+ * tool acts or off, and reads where that is its own first class.
+ */
+function ownersAlone(chosen: Record<string, ToolClass>, tools: readonly PinnedTool[]): string | null {
+  const t = tools.find((t) => chosen[t.name] === "reads" && classOf(t) !== "reads" && !takenToRead(t.name, t.hint));
+  if (!t) return null;
+  return `${OWNERS_ONLY} can class ${t.name} as reads: Jarvis took it for a tool that acts, and a tool that reads is used with nobody there without asking. Any admin can class it as acts, or off`;
+}
+
 const argsOf = (schema: Record<string, unknown>): string[] => (plain(schema.properties) ? Object.keys(schema.properties).slice(0, 12).map((k) => cut(k, 40)) : []);
-const toolView = ({ inputSchema, ...t }: PinnedTool): ToolView => ({ ...t, args: argsOf(inputSchema), ...(readsByName(t.name) ? { looksUp: true as const } : {}) });
+const toolView = ({ inputSchema, ...t }: PinnedTool): ToolView => ({
+  ...t,
+  args: argsOf(inputSchema),
+  ...(readsByName(t.name) ? { looksUp: true as const } : {}),
+  ...(takenToRead(t.name, t.hint) ? {} : { takenToAct: true as const }),
+});
 const catalogView = (c: Catalog): CatalogView => ({ hash: c.hash, at: c.at, ...(c.version ? { version: c.version } : {}), tools: c.tools.map(toolView), events: c.events });
 
 export class Components {
@@ -452,9 +480,11 @@ export class Components {
   /**
    * What waits, approved: by its hash, so what is pinned is what the admin was
    * shown and nothing listed since. `classes`: any tool's class chosen
-   * otherwise (reads, acts or off).
+   * otherwise (reads, acts or off). `owner`: whether it is the owner who asks
+   * (routes/components.ts), who alone classes as reading a tool Jarvis took to
+   * act; anyone else asking that is refused, and nothing is approved.
    */
-  async approve(id: string, hash: unknown, classes: unknown, now: number): Promise<ComponentView | string> {
+  async approve(id: string, hash: unknown, classes: unknown, owner: boolean, now: number): Promise<ComponentView | string> {
     const c = await this.get(id);
     if (!c) return "no such component";
     const waiting = await this.storage.get<Catalog>(NEW + id);
@@ -462,18 +492,26 @@ export class Components {
     if (waiting.hash !== hash) return "what it offers changed since you looked: look again";
     const chosen = classesOf(classes, waiting.tools);
     if (typeof chosen === "string") return chosen;
+    const theirs = owner ? null : ownersAlone(chosen, settle(waiting, c.pinned));
+    if (theirs) return theirs;
     const next: Component = { ...c, pinned: { ...waiting, at: now, tools: settle(waiting, c.pinned, chosen) }, updatedAt: now };
     await this.storage.put(C + id, next);
     await this.storage.delete(NEW + id);
     return this.view(next);
   }
 
-  /** A pinned tool's class changed. One that no longer acts keeps no leave to run by itself. */
-  setClasses(id: string, classes: unknown, now: number): Promise<ComponentView | string> {
+  /**
+   * A pinned tool's class changed. One that no longer acts keeps no leave to
+   * run by itself. `owner`: as for approve, who alone makes a reading tool of
+   * one Jarvis took to act.
+   */
+  setClasses(id: string, classes: unknown, owner: boolean, now: number): Promise<ComponentView | string> {
     return this.change(id, now, (c) => {
       if (!c.pinned) return "it has nothing approved yet";
       const chosen = classesOf(classes, c.pinned.tools);
       if (typeof chosen === "string") return chosen;
+      const theirs = owner ? null : ownersAlone(chosen, c.pinned.tools);
+      if (theirs) return theirs;
       const tools = c.pinned.tools.map((t): PinnedTool => {
         const cls = chosen[t.name];
         if (!cls) return t;

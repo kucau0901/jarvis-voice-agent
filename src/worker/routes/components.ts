@@ -11,7 +11,7 @@ import { dayOf } from "../lib/usage.ts";
 import { listRemote } from "../tools/mcp.ts";
 import { failureOf, remoteOf, runSuggested } from "../tools/components.ts";
 import { looksLikeToken, sha256Hex } from "../lib/devices.ts";
-import { INBOX_PREFIX } from "../lib/components.ts";
+import { INBOX_PREFIX, OWNERS_ONLY } from "../lib/components.ts";
 import { MAX_BODY, MAX_EVENTS } from "../lib/component-reports.ts";
 import * as limits from "../lib/limits.ts";
 
@@ -30,6 +30,8 @@ import * as limits from "../lib/limits.ts";
  *                                {id, classes}: {tool: "reads" | "acts" | "off"} for approved tools
  *                                {id, alone}: {tool: true | false}, an acting tool run with nobody there. Only the
  *                                owner key or the person who set Jarvis up
+ *                                In approve and classes, "reads" for a tool Jarvis took to act is theirs alone too
+ *                                (403 for another admin): a reading tool is used with nobody there, unasked
  *                                {id, shares}: {person: {level: "see" | "use", tell?, as?} | null}
  *                                {id, enabled} · {id, name}
  *                                {id, address: true}: a reporting address of its own, its token shown once;
@@ -44,7 +46,9 @@ import * as limits from "../lib/limits.ts";
  * Whether this caller says what may run with nobody there: the owner key, or
  * the person who set Jarvis up, as routes/hub.ts keeps that person's
  * sign-ins from other admins. Jarvis then acts in the owner's name with
- * nobody watching, which one admin does not decide for the household.
+ * nobody watching, which one admin does not decide for the household:
+ * neither by letting a tool run by itself, nor by classing as reading one
+ * Jarvis took to act (lib/components.ts decides that, told who asks).
  */
 const isOwner = async (env: Env, p: Principal): Promise<boolean> =>
   p.kind === "owner" || (p.kind === "member" && p.id === (await hubStub(env)?.firstPerson().catch(() => null)));
@@ -64,7 +68,7 @@ export async function handleComponents(req: Request, env: Env, principal: Princi
   const state = stateStub(env);
   if (!state) return err(503, "components need the STATE Durable Object");
   const now = Date.now();
-  const said = <T>(r: T | string, status = 200) => (typeof r === "string" ? err(r === "no such component" ? 404 : 400, r) : json({ component: r }, { status }));
+  const said = <T>(r: T | string, status = 200) => (typeof r === "string" ? err(r === "no such component" ? 404 : r.startsWith(OWNERS_ONLY) ? 403 : 400, r) : json({ component: r }, { status }));
 
   if (req.method === "GET") {
     return json({ components: await state.componentsList(dayOf(now, localeOf(env).timeZone)), people: await peopleOf(env), owner: await isOwner(env, principal) });
@@ -95,12 +99,12 @@ export async function handleComponents(req: Request, env: Env, principal: Princi
       return err(502, `It could not be checked: ${failureOf(e, at.key)}`);
     }
   }
-  if (b.approve !== undefined) return said(await state.componentApprove(b.id, b.approve, b.classes, now));
+  if (b.approve !== undefined) return said(await state.componentApprove(b.id, b.approve, b.classes, await isOwner(env, principal), now));
   if (b.alone !== undefined) {
-    if (!(await isOwner(env, principal))) return err(403, "only the owner key, or the person who set Jarvis up, decides what runs by itself");
+    if (!(await isOwner(env, principal))) return err(403, `${OWNERS_ONLY} decides what runs by itself`);
     return said(await state.componentAlone(b.id, b.alone, now));
   }
-  if (b.classes !== undefined) return said(await state.componentClasses(b.id, b.classes, now));
+  if (b.classes !== undefined) return said(await state.componentClasses(b.id, b.classes, await isOwner(env, principal), now));
   if (b.shares !== undefined) return said(await state.componentShares(b.id, b.shares, (await peopleOf(env)).map((p) => p.person), now));
   if (b.enabled !== undefined) return said(await state.componentEnabled(b.id, b.enabled, now));
   if (b.name !== undefined) return said(await state.componentRename(b.id, b.name, now));

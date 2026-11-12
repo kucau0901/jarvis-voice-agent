@@ -8,6 +8,7 @@ import {
   MAX_COMPONENTS,
   MAX_DESCRIPTION,
   MAX_TOOLS,
+  OWNERS_ONLY,
   TOLD_PER_DAY,
   catalogOf,
   manifestEvents,
@@ -68,6 +69,9 @@ const ok = <T,>(v: T | string): T => {
   return v;
 };
 const tool = (v: ComponentView | undefined, name: string, of: "pinned" | "waiting" = "pinned") => v?.[of]?.tools.find((t) => t.name === name);
+/** Who asks, as the route tells the store: the owner (the owner key, or the person who set Jarvis up), or another admin. */
+const AS_OWNER = true;
+const AS_ADMIN = false;
 
 console.log("adding one");
 const storage = fakeStorage();
@@ -158,15 +162,15 @@ let hash = "";
   check("shown with its arguments by name, never its whole schema", JSON.stringify(tool(first.component, "apply_relief", "waiting")?.args) === '["date","plan"]' && !JSON.stringify(first.component).includes("inputSchema"));
   await parts.setShares(id, { owner: { level: "use" } }, ["owner"], 5_500);
   check("nothing is offered before an admin approves it", (await parts.offeredTo("owner")).length === 0);
-  check("approving something else than was shown is refused", /changed since you looked/.test(String(await parts.approve(id, "0".repeat(64), null, 6_000))));
-  check("so is a class that is not one", typeof (await parts.approve(id, hash, { apply_relief: "maybe" }, 6_000)) === "string");
-  check("and a class for a tool it does not have", /no tool/.test(String(await parts.approve(id, hash, { delete_school: "off" }, 6_000))));
-  const done = ok(await parts.approve(id, hash, { get_timetable: "off" }, 6_000));
+  check("approving something else than was shown is refused", /changed since you looked/.test(String(await parts.approve(id, "0".repeat(64), null, AS_OWNER, 6_000))));
+  check("so is a class that is not one", typeof (await parts.approve(id, hash, { apply_relief: "maybe" }, AS_OWNER, 6_000)) === "string");
+  check("and a class for a tool it does not have", /no tool/.test(String(await parts.approve(id, hash, { delete_school: "off" }, AS_OWNER, 6_000))));
+  const done = ok(await parts.approve(id, hash, { get_timetable: "off" }, AS_ADMIN, 6_000));
   check("approved: pinned, in force, nothing waiting", done.pinned?.inForce === true && done.pinned.hash === hash && !done.waiting && done.pinned.at === 6_000, done);
   check("a tool can be approved as switched off", tool(done, "get_timetable")?.off === true);
   const mine = (await parts.offeredTo("owner"))[0]!;
   check("offered to who it is shared with: what is on, with its key for the Worker", mine.label === "school" && mine.key === KEY && mine.tools.map((t) => t.name).join() === "apply_relief,find_relief,get_absent" && mine.events[0]?.type === "leave_filed", mine);
-  check("approving again with nothing waiting: refused", /nothing waits/.test(String(await parts.approve(id, hash, null, 6_500))));
+  check("approving again with nothing waiting: refused", /nothing waits/.test(String(await parts.approve(id, hash, null, AS_OWNER, 6_500))));
   const again = ok(await parts.listed(id, school(), 7_000));
   check("checked again and unchanged: nothing waits", !again.component.waiting && again.component.pinned?.hash === hash);
 }
@@ -198,19 +202,64 @@ console.log("\nacting by itself");
   check("nor one switched off", /switched off/.test(String(await parts.setAlone(id, { get_timetable: true }, 9_000))));
   check("nor one it does not have", /no tool/.test(String(await parts.setAlone(id, { delete_school: true }, 9_000))));
   // Classed as acting by an admin, but named like a look-up: never proposed (lib/proposals.ts classify), so never by itself either.
-  ok(await parts.setClasses(id, { find_relief: "acts" }, 9_000));
+  ok(await parts.setClasses(id, { find_relief: "acts" }, AS_ADMIN, 9_000));
   check("nor an acting tool named like a look-up, which there are no words to tell in", /named like a look-up/.test(String(await parts.setAlone(id, { find_relief: true }, 9_000))));
-  ok(await parts.setClasses(id, { find_relief: "reads" }, 9_000));
+  ok(await parts.setClasses(id, { find_relief: "reads" }, AS_ADMIN, 9_000));
   const set = ok(await parts.setAlone(id, { apply_relief: true }, 9_000));
   check("an acting tool can be let run by itself", tool(set, "apply_relief")?.alone === true && (await parts.offeredTo("owner"))[0]!.tools.find((t) => t.name === "apply_relief")?.alone === true);
-  const read = ok(await parts.setClasses(id, { apply_relief: "reads" }, 9_100));
-  check("made a reading tool, it keeps no leave", tool(read, "apply_relief")?.reads === true && !tool(read, "apply_relief")?.alone);
-  const acts = ok(await parts.setClasses(id, { apply_relief: "acts", get_timetable: "reads" }, 9_200));
+  const read = ok(await parts.setClasses(id, { apply_relief: "reads" }, AS_OWNER, 9_100));
+  check("made a reading tool by the owner, it keeps no leave", tool(read, "apply_relief")?.reads === true && !tool(read, "apply_relief")?.alone);
+  const acts = ok(await parts.setClasses(id, { apply_relief: "acts", get_timetable: "reads" }, AS_ADMIN, 9_200));
   check("made an acting tool again, it asks first", tool(acts, "apply_relief")?.reads === false && !tool(acts, "apply_relief")?.alone && !tool(acts, "get_timetable")?.off);
   ok(await parts.setAlone(id, { apply_relief: true }, 9_300));
   const cleared = ok(await parts.setAlone(id, { apply_relief: false }, 9_400));
   check("and the leave can be taken back", !tool(cleared, "apply_relief")?.alone);
   ok(await parts.setAlone(id, { apply_relief: true }, 9_500));
+}
+
+console.log("\na reading tool of one Jarvis took to act: the owner's alone");
+{
+  // A reading tool is used with nobody there, unasked and untold: classing an acting tool so lets Jarvis act by itself.
+  const own = new Components(fakeStorage());
+  const cid = ok(await own.add({ name: "School", url: URL_A }, "u_sara", [], 1_000)).id;
+  const listing = school({ tools: [...school().tools, { name: "get_grades", description: "Grades, marked as seen.", readOnly: false }] });
+  const w = ok(await own.listed(cid, listing, 2_000)).component;
+  check("each tool is shown as Jarvis took it: to act if its name does not read, or it says itself that it does not only read", tool(w, "apply_relief", "waiting")?.takenToAct === true && tool(w, "get_grades", "waiting")?.takenToAct === true && !tool(w, "get_absent", "waiting")?.takenToAct && !tool(w, "get_timetable", "waiting")?.takenToAct, w.waiting);
+  const first = w.waiting!.hash;
+
+  const refused = await own.approve(cid, first, { apply_relief: "reads" }, AS_ADMIN, 3_000);
+  check("another admin approving an acting tool as reading is refused: why, and who can", typeof refused === "string" && refused.startsWith(OWNERS_ONLY) && /apply_relief/.test(refused) && /nobody there/.test(refused), refused);
+  check("…and nothing was approved", !(await own.list(DAY))[0]!.pinned && !!(await own.list(DAY))[0]!.waiting);
+  check("so is one named like a look-up that says itself it does not only read", String(await own.approve(cid, first, { get_grades: "reads" }, AS_ADMIN, 3_000)).startsWith(OWNERS_ONLY));
+  const tight = ok(await own.approve(cid, first, { get_timetable: "acts", find_relief: "off", get_absent: "reads", apply_relief: "acts" }, AS_ADMIN, 3_100));
+  check("the same approval without it goes through: any admin classes a tool acts or off, and reads where Jarvis took it to read", tight.pinned?.inForce === true && tool(tight, "get_timetable")?.reads === false && tool(tight, "find_relief")?.off === true && tool(tight, "get_absent")?.reads === true && tool(tight, "apply_relief")?.reads === false, tight.pinned);
+
+  const after = await own.setClasses(cid, { apply_relief: "reads" }, AS_ADMIN, 4_000);
+  check("nor afterwards", typeof after === "string" && after.startsWith(OWNERS_ONLY) && String(await own.setClasses(cid, { get_absent: "acts", get_grades: "reads" }, AS_ADMIN, 4_000)).startsWith(OWNERS_ONLY), after);
+  check("…and a refusal changes nothing, not even the rest of what was asked", tool((await own.list(DAY))[0], "apply_relief")?.reads === false && tool((await own.list(DAY))[0], "get_absent")?.reads === true);
+  const loosened = ok(await own.setClasses(cid, { get_timetable: "reads", find_relief: "reads" }, AS_ADMIN, 4_100));
+  check("a tool named like a look-up can be made a reading one again by any admin", tool(loosened, "get_timetable")?.reads === true && tool(loosened, "find_relief")?.reads === true && !tool(loosened, "find_relief")?.off, loosened.pinned);
+
+  const mine = ok(await own.setClasses(cid, { apply_relief: "reads" }, AS_OWNER, 5_000));
+  check("the owner can", tool(mine, "apply_relief")?.reads === true && tool(mine, "apply_relief")?.takenToAct === true);
+  check("naming the class it already has is no change, whoever asks", typeof (await own.setClasses(cid, { apply_relief: "reads" }, AS_ADMIN, 5_100)) !== "string");
+
+  const more = ok(await own.listed(cid, { ...listing, tools: [...listing.tools, { name: "get_term", description: "Term dates." }] }, 6_000)).component;
+  check("what the owner made a reading tool is shown as one in a list where it did not change", tool(more, "apply_relief", "waiting")?.reads === true && !tool(more, "apply_relief", "waiting")?.change, more.waiting);
+  // The panel sends every tool's class as it was shown (src/app/ui/Components.ts).
+  const shown = Object.fromEntries(more.waiting!.tools.map((t) => [t.name, t.off ? "off" : t.reads ? "reads" : "acts"]));
+  const kept = ok(await own.approve(cid, more.waiting!.hash, shown, AS_ADMIN, 6_100));
+  check("and stays one when another admin approves that list as shown", tool(kept, "apply_relief")?.reads === true && tool(kept, "get_term")?.reads === true && tool(kept, "get_grades")?.reads === false, kept.pinned);
+
+  const changed = { ...listing, tools: listing.tools.map((t) => (t.name === "apply_relief" ? { ...t, description: "Apply a relief plan for a date. Also emails every parent." } : t)) };
+  const held = ok(await own.listed(cid, changed, 7_000)).component;
+  check("changed, it starts from its own class again: acting", tool(held, "apply_relief", "waiting")?.change === "changed" && tool(held, "apply_relief", "waiting")?.reads === false, held.waiting);
+  check("which another admin cannot approve as reading", String(await own.approve(cid, held.waiting!.hash, { apply_relief: "reads" }, AS_ADMIN, 7_100)).startsWith(OWNERS_ONLY));
+  const again = ok(await own.approve(cid, held.waiting!.hash, { apply_relief: "reads" }, AS_OWNER, 7_200));
+  check("and the owner can", tool(again, "apply_relief")?.reads === true);
+
+  ok(await own.setClasses(cid, { apply_relief: "off" }, AS_ADMIN, 8_000));
+  check("switched off by any admin, it is the owner's to make a reading tool again", String(await own.setClasses(cid, { apply_relief: "reads" }, AS_ADMIN, 8_100)).startsWith(OWNERS_ONLY) && tool(ok(await own.setClasses(cid, { apply_relief: "acts" }, AS_ADMIN, 8_200)), "apply_relief")?.reads === false);
 }
 
 console.log("\na changed description is held, and the pinned one stays");
@@ -224,12 +273,12 @@ console.log("\na changed description is held, and the pinned one stays");
   check("it waits: what changed, what is new, what it no longer lists", tool(held.component, "apply_relief", "waiting")?.change === "changed" && tool(held.component, "get_rooms", "waiting")?.change === "new" && !tool(held.component, "get_absent", "waiting")?.change && JSON.stringify(w.gone) === '["find_relief"]', w);
   check("the pinned list stays in force meanwhile", held.component.pinned?.hash === hash && (await parts.offeredTo("owner"))[0]!.tools.find((t) => t.name === "apply_relief")?.description === "Apply a relief plan for a date.");
   check("a changed tool is shown as it would be approved: asking first", !tool(held.component, "apply_relief", "waiting")?.alone);
-  const done = ok(await parts.approve(id, w.hash, null, 11_000));
+  const done = ok(await parts.approve(id, w.hash, null, AS_ADMIN, 11_000));
   check("approved: the changed tool goes back to asking first", tool(done, "apply_relief")?.reads === false && !tool(done, "apply_relief")?.alone && tool(done, "apply_relief")?.description.endsWith("every parent."));
   check("an unchanged one keeps the class it was given", tool(done, "get_timetable")?.reads === true && tool(done, "get_absent")?.reads === true && !tool(done, "find_relief"));
   ok(await parts.setAlone(id, { apply_relief: true }, 11_100));
   const same = ok(await parts.listed(id, { ...changed, tools: [...changed.tools, { name: "get_term", description: "Term dates." }] }, 11_200));
-  const kept = ok(await parts.approve(id, same.component.waiting!.hash, null, 11_300));
+  const kept = ok(await parts.approve(id, same.component.waiting!.hash, null, AS_ADMIN, 11_300));
   check("a tool that did not change keeps its leave through another approval", tool(kept, "apply_relief")?.alone === true);
 }
 
@@ -243,7 +292,7 @@ console.log("\nmoved to another address");
   check("nothing can be let run by itself until it is approved there", /approve/.test(String(await parts.setAlone(id, { apply_relief: true }, 12_100))));
   const there = ok(await parts.listed(id, school({ url: NEW_URL }), 12_200));
   check("checked there: every tool is new", there.component.waiting!.tools.every((t) => t.change === "new"));
-  const done = ok(await parts.approve(id, there.component.waiting!.hash, null, 12_300));
+  const done = ok(await parts.approve(id, there.component.waiting!.hash, null, AS_ADMIN, 12_300));
   check("approved there: nothing keeps leave to run by itself, and each tool has its own first class", done.pinned!.tools.every((t) => !t.alone) && tool(done, "apply_relief")?.reads === false && tool(done, "get_timetable")?.reads === true && done.pinned!.inForce);
   const back = ok(await parts.add({ name: "School", url: NEW_URL, label: "school" }, "owner", [], 12_400));
   check("the same address again only renames it", back.name === "School" && back.pinned?.inForce === true);
@@ -397,9 +446,16 @@ console.log("\nSettings → Components");
     await call("PATCH", { id, check: true });
 
     check("approving what was not shown: refused", (await call("PATCH", { id, approve: "0".repeat(64) })).status === 400);
+    const grab = await call("PATCH", { id, approve: waiting.hash, classes: { apply_relief: "reads" } }, ADMIN);
+    check("an admin who is not the owner approving an acting tool as reading: refused, and nothing is approved", grab.status === 403 && /owner key/.test(grab.body.error ?? "") && !(await store.list(DAY))[0]!.pinned, grab);
     const approved = await call("PATCH", { id, approve: waiting.hash, classes: { get_timetable: "acts" } }, ADMIN);
     check("approved as it was shown, by any admin", approved.status === 200 && approved.body.component?.pinned?.inForce === true && tool(approved.body.component, "get_timetable")?.reads === false, approved);
-    check("a class changed afterwards", tool((await call("PATCH", { id, classes: { get_timetable: "reads" } })).body.component, "get_timetable")?.reads === true);
+    check("a class changed afterwards, by any admin: a tool named like a look-up, to reading", tool((await call("PATCH", { id, classes: { get_timetable: "reads" } }, ADMIN)).body.component, "get_timetable")?.reads === true);
+    const later = await call("PATCH", { id, classes: { apply_relief: "reads" } }, ADMIN);
+    check("…but not an acting tool to reading", later.status === 403 && /owner key/.test(later.body.error ?? "") && tool((await store.list(DAY))[0], "apply_relief")?.reads === false, later);
+    const firsts = await call("PATCH", { id, classes: { apply_relief: "reads" } }, FIRST);
+    check("the person who set Jarvis up can, and so can the owner key", firsts.status === 200 && tool(firsts.body.component, "apply_relief")?.reads === true && (await call("PATCH", { id, classes: { apply_relief: "acts" } })).status === 200 && tool((await call("PATCH", { id, classes: { apply_relief: "reads" } })).body.component, "apply_relief")?.reads === true, firsts);
+    await call("PATCH", { id, classes: { apply_relief: "acts" } });
 
     const refused = await call("PATCH", { id, alone: { apply_relief: true } }, ADMIN);
     check("by itself: another admin cannot set it", refused.status === 403 && /owner key/.test(refused.body.error ?? "") && !(await store.list(DAY))[0]!.pinned!.tools.some((t) => t.alone), refused);

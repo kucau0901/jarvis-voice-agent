@@ -1839,10 +1839,17 @@ whose safety lives in Home Assistant, and wrong for a stranger's system:
 
 **Reads, or acts.** Each tool is classed when it is approved. The first
 guess is `jobTool`'s rule for an MCP tool (a name that reads, and nothing in
-it that writes) and the tool's own `readOnlyHint`; the admin has the last
-word, in either direction, and a tool can be approved as off. Two fields on
-`Tool` carry it to the three places that decide what runs with nobody there:
-`reads`, which `jobTool` honours before a name, and `alone`.
+it that writes) and the tool's own `readOnlyHint`. Any admin has the last
+word towards caution: a tool can be classed as acting, or approved as off.
+The other way is the owner's alone, at approval and afterwards. A tool that
+reads is offered to a routine, a job and research with nobody there, neither
+counted nor told, so classing as reading a tool the first guess took to act
+would let Jarvis act by itself under another name; and who lets it do that
+is the one choice the owner kept (below). What the owner classed so stays so
+while the tool does not change, whoever approves the list again; changed, it
+starts from the first guess. Two fields on `Tool` carry the class to the
+three places that decide what runs with nobody there: `reads`, which
+`jobTool` honours before a name, and `alone`.
 
 **Acting by itself, where the owner set it.** With somebody asking, a tool
 shared with them is theirs to use. With nobody there (a routine, a job, a

@@ -8,10 +8,11 @@ import { copyLine } from "../botAddress";
  * offers, and approved: every tool's name and description is read before any
  * of it is used, and what it changes later waits here again. Here too each
  * tool is classed (reads, acts, off), an acting tool is set to ask first or
- * to run by itself (the owner's choice alone), the component is shared
- * person by person, its key is typed, and its reporting address is made,
- * shown once. Built with textContent throughout: what a component says of
- * itself is shown as text, never run.
+ * to run by itself, the component is shared person by person, its key is
+ * typed, and its reporting address is made, shown once. What Jarvis does
+ * with nobody there is the owner's choice alone: by itself, and Reads only
+ * for a tool Jarvis took to act. Built with textContent throughout: what a
+ * component says of itself is shown as text, never run.
  */
 
 interface ToolView {
@@ -25,6 +26,8 @@ interface ToolView {
   hint?: boolean;
   /** Named like a look-up: with nobody there it is neither proposed nor run. */
   looksUp?: true;
+  /** Jarvis took it for a tool that acts: only the owner makes it Reads only. */
+  takenToAct?: true;
   change?: "new" | "changed";
 }
 
@@ -92,7 +95,7 @@ export class Components {
   /** The component the last thing said is about: said in its row, where it was done, not at the foot of a long list. */
   private about: string | null = null;
   private people: Person[] = [];
-  /** Whether this screen's person decides what runs by itself (the owner key, or whoever set Jarvis up). */
+  /** Whether this screen's person decides what runs with nobody there (the owner key, or whoever set Jarvis up). */
   private owner = false;
   /** A new reporting address, shown this once, in its component's row: kept there when the list is drawn again. */
   private shown: { card: HTMLElement; id: string } | null = null;
@@ -235,6 +238,18 @@ export class Components {
     }
   }
 
+  /**
+   * A tool's class, to choose. A tool that reads is used with nobody there
+   * without asking, so for one Jarvis took to act, Reads only is the owner's
+   * to pick: for anyone else it is not there to pick, and tool() says why.
+   */
+  private classed(t: ToolView): HTMLSelectElement {
+    const pick = choice(Object.entries(CLASS_WORDS) as [ToolClass, string][], classOf(t), `${t.name} is`);
+    const reads = pick.querySelector<HTMLOptionElement>('option[value="reads"]');
+    if (reads && t.takenToAct && !this.owner) reads.disabled = true;
+    return pick;
+  }
+
   /** One tool, as it would be or is approved: its name and arguments, its own description, and its class to choose. */
   private tool(t: ToolView, classed: HTMLSelectElement, extra: HTMLElement[] = []): HTMLElement {
     const box = el("div", "ctool");
@@ -244,6 +259,7 @@ export class Components {
     const hints = [
       ...(t.hint === true ? ["It says it only reads."] : t.hint === false ? ["It says it changes things."] : []),
       ...(t.looksUp && classOf(t) === "acts" ? ["Named like a look-up: with nobody there, Jarvis will neither propose it nor run it."] : []),
+      ...(t.takenToAct && !this.owner ? ["Only the owner key, or the person who set Jarvis up, can make it Reads only: a tool that reads is used with nobody there, without asking."] : []),
     ];
     box.append(name, classed, el("div", "csaid", t.description), ...(hints.length ? [el("div", "csaid dim", hints.join(" "))] : []), ...extra);
     return box;
@@ -257,7 +273,7 @@ export class Components {
       el("p", "note", "Read each one: its description is what Jarvis is shown, and nothing here is used until you approve it. " +
         "A tool that only looks things up can be Reads only; anything that changes, sends or books is Acts, and then asks first when nobody is there."),
       ...w.tools.map((t) => {
-        const pick = choice(Object.entries(CLASS_WORDS) as [ToolClass, string][], classOf(t), `${t.name} is`);
+        const pick = this.classed(t);
         picks.set(t.name, pick);
         return this.tool(t, pick);
       }),
@@ -275,7 +291,7 @@ export class Components {
     const box = el("div", "cpart");
     box.appendChild(el("h4", "", "What Jarvis may use"));
     for (const t of p.tools) {
-      const pick = choice(Object.entries(CLASS_WORDS) as [ToolClass, string][], classOf(t), `${t.name} is`);
+      const pick = this.classed(t);
       pick.addEventListener("change", () => void this.change(c, { classes: { [t.name]: pick.value } }, `${t.name} is now: ${CLASS_WORDS[pick.value as ToolClass].toLowerCase()}.`));
       const extra: HTMLElement[] = [];
       // An acting tool: whether Jarvis may run it with nobody there. The owner's choice alone.

@@ -1043,12 +1043,12 @@ export class JarvisState extends DurableObject<Env> {
     return this.components.listed(id, listed, now);
   }
 
-  componentApprove(id: string, hash: unknown, classes: unknown, now: number) {
-    return this.components.approve(id, hash, classes, now);
+  componentApprove(id: string, hash: unknown, classes: unknown, owner: boolean, now: number) {
+    return this.components.approve(id, hash, classes, owner, now);
   }
 
-  componentClasses(id: string, classes: unknown, now: number) {
-    return this.components.setClasses(id, classes, now);
+  componentClasses(id: string, classes: unknown, owner: boolean, now: number) {
+    return this.components.setClasses(id, classes, owner, now);
   }
 
   componentAlone(id: string, alone: unknown, now: number) {
