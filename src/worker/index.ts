@@ -15,7 +15,7 @@ import { handleDelegate } from "./routes/delegate.ts";
 import { handleTts } from "./routes/tts.ts";
 import { handleMcp } from "./routes/mcp.ts";
 import { handleBot, handleSkills } from "./routes/skills.ts";
-import { handleComponents } from "./routes/components.ts";
+import { handleComponents, handleReport } from "./routes/components.ts";
 import { handleBrowser } from "./routes/browser.ts";
 import { handleMemory } from "./routes/memory.ts";
 import { handleMap } from "./routes/map.ts";
@@ -123,6 +123,8 @@ export default {
     if (url.pathname === TELEGRAM_PATH) return await handleTelegram(req, await withSettings(env), ctx, forPerson);
     // A skill's answer, or its bot's own address (routes/skills.ts): the secret in it is the proof, as a page's link is.
     if (url.pathname === "/api/v1/bot" || url.pathname.startsWith("/api/v1/bot/")) return await handleBot(req, await withSettings(env), ctx, forPerson);
+    // What a component reports (routes/components.ts): the token of its own address is the proof, as a bot's is.
+    if (url.pathname === "/api/v1/component/events") return await handleReport(req, await withSettings(env), ctx);
     // Signing in, which by its nature comes before a credential (routes/hub.ts).
     if (url.pathname.startsWith("/api/auth/")) {
       try {

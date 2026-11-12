@@ -1,6 +1,6 @@
 import type { Env } from "../types.ts";
-import { err, json, publicOrigin, readObjectOrEmpty } from "../lib/http.ts";
-import { personOf, type Principal } from "../lib/auth.ts";
+import { err, json, publicOrigin, readObject, readObjectOrEmpty } from "../lib/http.ts";
+import { credentialOf, personOf, type Principal } from "../lib/auth.ts";
 import { stateStub } from "../lib/state-client.ts";
 import { hubStub, personView } from "../lib/hub-client.ts";
 import { allows } from "../lib/scopes.ts";
@@ -9,7 +9,11 @@ import { OWNER } from "../lib/context.ts";
 import { localeOf } from "../lib/locale.ts";
 import { dayOf } from "../lib/usage.ts";
 import { listRemote } from "../tools/mcp.ts";
-import { failureOf, remoteOf } from "../tools/components.ts";
+import { failureOf, remoteOf, runSuggested } from "../tools/components.ts";
+import { looksLikeToken, sha256Hex } from "../lib/devices.ts";
+import { INBOX_PREFIX } from "../lib/components.ts";
+import { MAX_BODY, MAX_EVENTS } from "../lib/component-reports.ts";
+import * as limits from "../lib/limits.ts";
 
 /**
  * Settings → Components (lib/components.ts), for the owner key and admins:
@@ -108,4 +112,44 @@ export async function handleComponents(req: Request, env: Env, principal: Princi
   }
   if (b.address === false) return said(await state.componentDropAddress(b.id, now));
   return err(400, "nothing to change");
+}
+
+/**
+ *   POST /api/v1/component/events   Authorization: Bearer jcp1_…
+ *        {events: [{type, text?, level?: "info" | "notice" | "urgent", to?: [id], id?, actions?: [{tool, args}]}]}
+ *     →  200 {ok: true, name, taken, refused: [{index, error}]}
+ *
+ * What a component reports (lib/component-reports.ts), at the address made
+ * for it in Settings → Components. Served before the gate (index.ts), as a
+ * bot's address is: the token is the proof, kept only as a digest. Every
+ * refusal of the address is the same 404 (not one, never made, stopped, its
+ * component switched off or removed); 405 for anything but POST; 429 at its
+ * allowance, which is a device's; 400 for a body that is not a small object
+ * holding 1 to 10 events. Nothing here asks a model anything. What the owner
+ * lets it do by itself is done after it has its answer, so it is never
+ * called while it is still waiting on this request.
+ */
+export async function handleReport(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  const nowhere = () => err(404, "no such address");
+  const token = credentialOf(req);
+  // Its shape first: nothing malformed reaches storage.
+  if (!looksLikeToken(token, INBOX_PREFIX)) return nowhere();
+  if (req.method !== "POST") return err(405, "POST only");
+  const state = stateStub(env);
+  const digest = await sha256Hex(token);
+  const at = state ? await state.componentInbox(digest) : null;
+  if (!state || !at) return nowhere();
+  const verdict = await limits.check(env, `c_${at.id}`);
+  if (!verdict.ok) {
+    const headers = new Headers({ "content-type": "application/json" });
+    if (verdict.retryAfter) headers.set("retry-after", String(verdict.retryAfter));
+    return new Response(JSON.stringify({ ok: false, error: verdict.reason, text: limits.limitMessage(verdict.reason) }), { status: 429, headers });
+  }
+  if (!verdict.counted) ctx.waitUntil(limits.charge(env, `c_${at.id}`));
+  const body = await readObject(req, MAX_BODY);
+  const taken = body ? await state.componentReport(digest, body, Date.now()) : "bad";
+  if (taken === "gone") return nowhere();
+  if (taken === "bad") return err(400, `body must be a small JSON object with 1 to ${MAX_EVENTS} events`);
+  if (taken.alone.length) ctx.waitUntil(runSuggested(env, taken.alone));
+  return json(taken.reply);
 }

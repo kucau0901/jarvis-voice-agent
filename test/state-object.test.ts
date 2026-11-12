@@ -607,6 +607,24 @@ console.log("components, through the object");
   const dropped = await jarvis.componentDropAddress(id, 11_000);
   check("  and stopped, at the time given", typeof dropped !== "string" && !dropped.address && dropped.updatedAt === 11_000);
   check("  listed for the day asked", (await jarvis.componentsList("2026-11-12"))[0]?.today.told === 0);
+  // What the Worker's tools and its reporting route call: whose, which tool, the arguments, and the clock, forwarded.
+  const mine = await jarvis.componentsFor("u_ana");
+  check("  what one person is offered, with its key for the Worker", mine.length === 1 && mine[0]!.key === "school-key-0123456789" && mine[0]!.as === "T1" && (await jarvis.componentsFor("u_ben")).length === 0, mine);
+  check("  a tool about to run with nobody there: allowed for the one the owner set, with those arguments", (await jarvis.componentActs(id, "apply_relief", { date: "2026-11-13" }, Date.now())) === null && typeof (await jarvis.componentActs(id, "get_absent", {}, Date.now())) === "string" && /too long/.test(String(await jarvis.componentActs(id, "apply_relief", { date: "x".repeat(400) }, Date.now()))));
+  await jarvis.componentDid(id, "apply_relief", { date: "2026-11-13" }, true, ["u_ana", "u_ben"], Date.now());
+  const saidTo = (await jarvis.deliveries()).map((d) => d.alert).filter((a) => a.skill?.id === id);
+  check("  what it did, told to the people named, by its tool and arguments", saidTo.map((a) => a.for).sort().join() === "u_ana,u_ben" && saidTo.every((a) => a.text === "Done by itself: school (apply_relief): date 2026-11-13" && a.title === "The School"), saidTo);
+  const again = await jarvis.componentNewAddress(id, 12_000);
+  const digest = typeof again === "string" ? "" : await sha256Hex(again.token);
+  check("  whose reporting address a digest is", (await jarvis.componentInbox(digest))?.id === id && (await jarvis.componentInbox("0".repeat(64))) === null);
+  const took = await jarvis.componentReport(digest, { events: [{ type: "leave_filed", text: "A notice.", level: "notice" }, { type: "nope" }] }, Date.now());
+  check("  a report at it: taken with its body, as that component", took !== "gone" && took !== "bad" && took.reply.name === "The School" && took.reply.taken === 1 && took.reply.refused[0]?.index === 1, took);
+  check("  no report at all, and no such address", (await jarvis.componentReport(digest, { nothing: 1 }, Date.now())) === "bad" && (await jarvis.componentReport("0".repeat(64), { events: [{ type: "leave_filed" }] }, Date.now())) === "gone");
+  // Its events come only from its own address: a routine on one is its holders' alone, and no trigger starts it.
+  check("  a routine on its event: not for someone it is not shared with", typeof (await jarvis.addRoutine({ when: "event", event: "school:leave_filed", say: "x" }, { who: "u_ben", grants: ["*"] })) === "string");
+  const onIt = await jarvis.addRoutine({ when: "event", event: "school:leave_filed", say: "Leave filed." }, { who: "u_ana", grants: ["*"] });
+  check("  one for someone it is shared with is made, and a trigger sending that event starts nothing", typeof onIt !== "string" && (await jarvis.fireEvent("school:leave_filed", "spoofed")).length === 0, onIt);
+  if (typeof onIt !== "string") await jarvis.removeRoutine(onIt.id);
   await jarvis.forgetMember("u_ana");
   check("  someone who left: nothing stays shared with them", !("u_ana" in ((await jarvis.componentsList("2026-11-12"))[0]?.shares ?? { u_ana: 1 })));
   check("  removed", (await jarvis.componentRemove(id)) && (await jarvis.componentsList("2026-11-12")).length === 0);

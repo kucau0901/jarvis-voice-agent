@@ -7,6 +7,8 @@
  */
 import { registerHooks } from "node:module";
 import type { Alert, Delivery } from "../src/worker/lib/alerts.ts";
+import type { ComponentView } from "../src/worker/lib/components.ts";
+import { handleComponents } from "../src/worker/routes/components.ts";
 
 registerHooks({
   resolve(spec, ctx, next) {
@@ -124,4 +126,26 @@ export function fakeModel(script: (a: Asked) => Step) {
     });
   };
   return { asked, handle };
+}
+
+/**
+ * Settings → Components as the owner key (routes/components.ts): `change`
+ * makes one request and gives back the component it answered with, or throws
+ * what it refused; `plug` adds one, has it checked, and approves what it listed.
+ */
+export function settings(env: never) {
+  const change = async (method: string, body: unknown): Promise<ComponentView> => {
+    const r = await handleComponents(new Request("https://jarvis.example.com/api/components", { method, body: JSON.stringify(body) }), env, { kind: "owner" });
+    const b = (await r.json()) as { component?: ComponentView; error?: string };
+    if (!b.component) throw new Error(`${method} ${JSON.stringify(body)}: ${b.error}`);
+    return b.component;
+  };
+  const plug = async (name: string, url: string, key?: string): Promise<string> => {
+    const c = await change("POST", { name, url });
+    if (key) await change("PUT", { id: c.id, key });
+    const checked = await change("PATCH", { id: c.id, check: true });
+    await change("PATCH", { id: c.id, approve: checked.waiting?.hash });
+    return c.id;
+  };
+  return { change, plug };
 }

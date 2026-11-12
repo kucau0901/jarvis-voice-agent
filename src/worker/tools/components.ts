@@ -4,6 +4,10 @@ import { asQuotedData } from "../lib/quote.ts";
 import { stateStub } from "../lib/state-client.ts";
 import { OWNER } from "../lib/context.ts";
 import type { Offered } from "../lib/components.ts";
+import type { Suggested } from "../lib/component-reports.ts";
+import { memoryFor } from "../lib/memory.ts";
+import { RUN_MS } from "../lib/proposals.ts";
+import type { Env } from "../types.ts";
 import type { Tool } from "./registry.ts";
 import { remoteTool, type mcpSessions, type Remote } from "./mcp.ts";
 
@@ -79,10 +83,65 @@ export function componentTools(parts: readonly Offered[], attended: boolean, ses
             const said = asQuotedData(`${part.label} error`, failureOf(e, part.key), `THE ${part.label.toUpperCase()} COMPONENT`);
             return `That failed: ${part.label} could not be reached, or answered with an error.\n${said}`;
           } finally {
-            if (byItself) await state?.componentDid(part.id, t.name, args, ok, ctx.env.JARVIS_PERSON || OWNER, Date.now()).catch(() => {});
+            if (byItself) await state?.componentDid(part.id, t.name, args, ok, [ctx.env.JARVIS_PERSON || OWNER], Date.now()).catch(() => {});
           }
         },
       };
     });
   });
+}
+
+/**
+ * What a report suggested that the owner lets run by itself (lib/component-reports.ts),
+ * made once the component has its answer: by code, with no model, nobody
+ * named to it, and told to the people its report was for in words written
+ * from the call. Each was counted against its day when the report was taken.
+ */
+export async function runSuggested(env: Env, calls: readonly Suggested[]): Promise<void> {
+  const state = stateStub(env);
+  for (const c of calls) {
+    let ok = false;
+    const ctx = { env, signal: AbortSignal.timeout(RUN_MS), progress() {}, display() {}, memory: memoryFor(env, []), grants: [], done: () => void (ok = true) };
+    await remoteTool(remoteOf(c.part), c.tool).run(c.args, ctx).catch((e: unknown) => console.warn(`component ${c.part.label}: ${failureOf(e, c.part.key)}`));
+    await state?.componentDid(c.part.id, c.tool.name, c.args, ok, c.tell, Date.now()).catch(() => {});
+  }
+}
+
+/**
+ * The events a person's components report, for the router, so a routine can
+ * be made on one by asking ("when the school says a teacher is on leave,
+ * …"): each named exactly, with what it means in the component's approved
+ * words, quoted as data.
+ */
+export function eventsSaid(parts: readonly Offered[]): string {
+  const lines = parts.flatMap((p) => p.events.map((e) => `${p.label}:${e.type} (${p.name}): ${e.says}`));
+  if (!lines.length) return "";
+  return (
+    "COMPONENTS SHARED WITH THE USER report the events below. For a routine that runs when one arrives, use routine_add " +
+    "with when=event and event set to its name, exactly as written.\n" +
+    asQuotedData("component events", lines.join("\n"), "THE COMPONENTS")
+  );
+}
+
+/**
+ * What a routine may do with these components when nobody is there, said
+ * truthfully to whoever is making one, so nobody is promised an act that
+ * will only be described. `only`: the label of the component whose event
+ * starts it, whose tools are then all it has.
+ */
+export function unattendedSaid(parts: readonly Offered[], only?: string): string {
+  const said = (only ? parts.filter((p) => p.label === only) : parts).flatMap((p) => {
+    const acts = p.tools.filter((t) => !t.reads);
+    if (!acts.length && !only) return [];
+    const alone = acts.filter((t) => t.alone).map((t) => t.name);
+    const asks = acts.filter((t) => !t.alone).map((t) => t.name);
+    return [
+      (only ? `It runs with ${p.name}'s tools and nothing else: no memory, mail, calendar, house or web. ` : "") +
+        `With nobody there it reads with ${p.name}'s tools` +
+        (alone.length ? `, and does by itself only what the owner set so: ${alone.join(", ")}` : acts.length ? ", and does nothing of theirs by itself" : "") +
+        (asks.length ? `. It is not given ${asks.join(", ")}: ${asks.length === 1 ? "that needs" : "those need"} someone's OK, so it can only say what it would do (the owner can let a tool run by itself in Settings → Components)` : "") +
+        ".",
+    ];
+  });
+  return said.length ? ` ${said.join(" ")}` : "";
 }

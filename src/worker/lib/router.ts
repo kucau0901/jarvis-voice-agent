@@ -24,7 +24,7 @@ import { bookOf, callerWho, OWNER } from "./context.ts";
 import { OFFER, procedureOf, specialtyBlock, type Procedure, type Specialty } from "./specialties.ts";
 import { botAsks, botHides, type Skill } from "./skills.ts";
 import { askSkill } from "../tools/skills.ts";
-import { componentTools } from "../tools/components.ts";
+import { componentTools, eventsSaid } from "../tools/components.ts";
 import type { Offered } from "./components.ts";
 import { episodeOfAnswer, episodeOfChain, pastBlock } from "./episodes.ts";
 import { localeOf } from "./locale.ts";
@@ -229,6 +229,8 @@ export async function prepareRouter(
   // A component never takes the name of a tool already here (an MCP server given its label since).
   const taken = new Set(tools.map((t) => t.name));
   tools.push(...componentTools(parts ?? [], !unattended, sessions).filter((t) => !taken.has(t.name)));
+  // What those components report, for whoever can make a routine on it by asking.
+  const reported = !unattended && allows(grants, "routines") ? eventsSaid(parts ?? []) : "";
   if (opts.toolFilter || opts.screenless || opts.bot) {
     const keep = tools.filter(
       (t) => (!opts.toolFilter || opts.toolFilter(t)) && !(opts.screenless && DRAWS_ON_SCREEN.includes(t.name)) && !(opts.bot && botHides(t)),
@@ -339,6 +341,8 @@ export async function prepareRouter(
     ...(elsewhere ? [{ role: "user" as const, content: elsewhere }] : []),
     // What Jarvis read of what is around them: a note, never an instruction, with what is playing quoted as data.
     ...(around ? [{ role: "user" as const, content: around }] : []),
+    // What their components report, in the components' own words: quoted as data, like the rest.
+    ...(reported ? [{ role: "user" as const, content: reported }] : []),
     { role: "user" as const, content: `Conversation so far:\n\n${conversation}` },
     ...(opts.images?.length || opts.files?.length
       ? [

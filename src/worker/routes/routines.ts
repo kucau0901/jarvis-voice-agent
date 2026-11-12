@@ -23,7 +23,8 @@ import { canAsk } from "../lib/openai-auth.ts";
  *   DELETE /api/v1/routines?id=      remove one
  *   POST   /api/v1/routines/run      {id} — run it now
  *   GET    /api/v1/routines/runs?id= its last 20 runs, newest first
- *   POST   /api/v1/trigger           {event, text?} — sets off event routines
+ *   POST   /api/v1/trigger           {event, text?} — sets off event routines; never a component's own event
+ *                                    (label:type), which only it reports, at its own address (routes/components.ts)
  *
  * The routines live in, and run from, the Durable Object; these only relay.
  */

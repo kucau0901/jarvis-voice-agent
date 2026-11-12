@@ -30,8 +30,15 @@ of every release, and in the [README](README.md#updating).
   share too; a device made with named permissions needs it ticked). With
   nobody there (a routine, a background job), a component's tool that acts
   asks first, unless the owner set that one tool to run by itself: Jarvis
-  then says what it did, each time, and stops at 20 a day. For now it is set
-  up through `/api/components`.
+  then says what it did, each time, and stops at 20 a day. A component can
+  also be given an address of its own to report what happened
+  (`POST /api/v1/component/events`): a report starts the routines people made
+  for it ("when the school says a teacher is on leave, tell me who covers"),
+  is told to those who chose to be told, under the component's name, and may
+  suggest something to do, which arrives as a card to approve. No model reads
+  a report as it arrives, and a routine a report starts runs with that
+  component's tools and nothing else. For now it is set up through
+  `/api/components`.
 
 - **Routines where you are.** "When I get to the grocer, tell me my shopping
   list"; "when I leave the office, tell me the best way home". A person saves

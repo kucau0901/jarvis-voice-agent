@@ -11,6 +11,7 @@ import type { StoredImage } from "./images.ts";
 import type { Procedure, Specialty } from "./specialties.ts";
 import type { Skill, SkillView } from "./skills.ts";
 import type { ComponentView, Listed, Offered } from "./components.ts";
+import type { ReportReply, Suggested } from "./component-reports.ts";
 import type { StoredPage } from "./pages.ts";
 import type { Episode } from "./episodes.ts";
 import type { Proposal, ProposalInput } from "./proposals.ts";
@@ -715,8 +716,12 @@ interface ComponentApi {
   componentsFor(person: string): Promise<Offered[]>;
   /** An acting tool about to run with nobody there: null to go ahead, counted; else why not. */
   componentActs(id: string, tool: string, args: Record<string, unknown>, now: number): Promise<string | null>;
-  /** What it then did, told to `person` in words written from the call. */
-  componentDid(id: string, tool: string, args: Record<string, unknown>, ok: boolean, person: string, now: number): Promise<void>;
+  /** What it then did, told to `people` in words written from the call. */
+  componentDid(id: string, tool: string, args: Record<string, unknown>, ok: boolean, people: readonly string[], now: number): Promise<void>;
+  /** Whose reporting address a token's digest is. */
+  componentInbox(digest: string): Promise<{ id: string } | null>;
+  /** A report taken (lib/component-reports.ts): what to answer, and what to do by itself after answering. */
+  componentReport(digest: string, body: Record<string, unknown>, now: number): Promise<{ reply: ReportReply; alone: Suggested[] } | "gone" | "bad">;
 }
 
 /** What jobs propose for a person's tap (lib/proposals.ts; routes/proposals.ts). */

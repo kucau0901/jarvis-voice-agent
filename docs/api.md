@@ -767,6 +767,10 @@ first person's (Home Assistant's, say), it is the house's event and starts
 everyone's. Sent by anyone else, or a device of theirs, it starts only their
 own.
 
+A component's own events (`school:leave_filed`: its label, a colon, the
+event) are never sent here: only the component reports them, at
+[its own address](#components-reporting). Sent here, one starts nothing.
+
 ### Places: arriving and leaving
 
 A person's phone can tell Jarvis when they arrive at or leave a place of
@@ -1168,6 +1172,49 @@ the exchange is kept in your Chat as "Zephyr asked" and Jarvis's answer.
 `403` with `need: "ask"` means it is not ticked to ask. Every refusal of the
 address is the same `404`: not one, never made, stopped, its skill removed,
 or its maker gone. Removing the skill stops it.
+
+## Components reporting
+
+A component is an outside system an admin plugged in under **Settings →
+Components**: an MCP server whose tools Jarvis may use, and, if the admin made
+one, an address of its own here to report what happened. The token is shown
+once, as a device's is, and kept only as a digest.
+
+```bash
+curl -X POST https://jarvis.example.com/api/v1/component/events \
+     -H "Authorization: Bearer jcp1_…" -H "Content-Type: application/json" \
+     -d '{"events": [{"type": "leave_filed", "level": "notice", "id": "leave-4412",
+                      "text": "T. Rahman is on leave tomorrow. Periods 2 and 5 need cover.",
+                      "to": ["T-ADMIN"],
+                      "actions": [{"tool": "apply_relief", "args": {"date": "2026-11-13", "plan": "A"}}]}]}'
+```
+
+```json
+{"ok": true, "name": "School", "taken": 1, "refused": []}
+```
+
+| Field | |
+|---|---|
+| `type` | Required. One of the events its approved manifest declares. |
+| `text` | Its own words, up to 500 characters. Required to tell anyone. |
+| `level` | `info` (the default): only routines hear it. `notice`: also told to the people who ticked "tell me". `urgent` is told as `notice`. |
+| `to` | Optional: the people it is for, by the ids an admin mapped for them. Only they hear it. |
+| `id` | Optional: its own id for the event. Sent again the same day, it is taken once. |
+| `actions` | Optional, up to 3: each `{tool, args}` names one of **its own** approved tools that acts, with arguments up to 2 KB. One becomes a card for one person to approve; or, if the owner set that tool to run by itself, it is done after this request is answered, and told. |
+
+Up to 10 events and 32 KB a request. Each event is taken or refused on its
+own: `refused` lists `{index, error}` for those that were not (an event not
+declared, an action that is not its own acting tool, nobody to ask). The
+address answers `404` whenever it is not one (never made, stopped, its
+component switched off or removed), `405` to anything but `POST`, `400` to a
+body that is not a small object with 1 to 10 events, and `429` with
+`Retry-After` at its allowance, which is a device's. People are told at most
+30 things a day from one component; past that its routines still hear it.
+
+An event starts the routines people made for it (`school:leave_filed`), for
+those it is shared with. No model reads a report as it arrives, and what it
+says is never an instruction: a routine it starts is handed its words as
+quoted data, and runs with that component's tools and nothing else.
 
 ## Live voice
 

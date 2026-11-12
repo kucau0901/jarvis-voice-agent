@@ -175,6 +175,8 @@ interface Counted {
   day: string;
   told: number;
   acted: number;
+  /** The ids of events taken that day, the newest last (lib/component-reports.ts). */
+  seen?: string[];
 }
 
 const ALPHABET = "0123456789abcdefghjkmnpqrstvwxyz";
@@ -618,12 +620,53 @@ export class Components {
     return null;
   }
 
+  private async today(id: string, day: string): Promise<Counted> {
+    const had = await this.storage.get<Counted>(DAY + id);
+    return had?.day === day ? had : { day, told: 0, acted: 0 };
+  }
+
   /** One more thing told, or done by itself, today: false at the day's limit, and then not counted. */
   async count(id: string, day: string, what: "told" | "acted", limit: number): Promise<boolean> {
-    const had = await this.storage.get<Counted>(DAY + id);
-    const today: Counted = had?.day === day ? had : { day, told: 0, acted: 0 };
+    const today = await this.today(id, day);
     if (today[what] >= limit) return false;
     await this.storage.put(DAY + id, { ...today, [what]: today[what] + 1 });
     return true;
+  }
+
+  /** How many more of them today's limit allows. */
+  async left(id: string, day: string, what: "told" | "acted", limit: number): Promise<number> {
+    return Math.max(0, limit - (await this.today(id, day))[what]);
+  }
+
+  /** Whether an event of this id was taken today already: one sent again is taken once. */
+  async seen(id: string, day: string, event: string): Promise<boolean> {
+    return (await this.today(id, day)).seen?.includes(event) === true;
+  }
+
+  /** An event's id, remembered for the day: the newest `max` of them. */
+  async saw(id: string, day: string, event: string, max: number): Promise<void> {
+    const today = await this.today(id, day);
+    await this.storage.put(DAY + id, { ...today, seen: [...(today.seen ?? []), event].slice(-max) });
+  }
+
+  /** The component an event's name is for (`label:type`), if its label is one's: only that component sends it. */
+  async ofEvent(event: string): Promise<Component | null> {
+    const i = event.indexOf(":");
+    return i > 0 ? ((await this.all()).find((c) => c.label === event.slice(0, i)) ?? null) : null;
+  }
+
+  /**
+   * Why a routine cannot be made for this event by `person`, when it is a
+   * component's: it must be shared with them, they must hold `components`
+   * (`holds`), and it must be an event its approved manifest declares. Null
+   * when it can, and for any event that is no component's.
+   */
+  async eventFor(event: string, person: string, holds: boolean): Promise<string | null> {
+    const c = await this.ofEvent(event);
+    if (!c) return null;
+    if (!holds || !c.shares[person] || !c.enabled) return `"${event}" is an event of ${c.name}, which is not shared with whoever is asking: an admin shares it in Settings → Components`;
+    const declared = c.pinned?.url === c.url ? c.pinned.events : [];
+    if (declared.some((e) => `${c.label}:${e.type}` === event)) return null;
+    return `${c.name} reports no event called "${event}"${declared.length ? `; it reports ${declared.map((e) => `${c.label}:${e.type}`).join(", ")}` : ""}`;
   }
 }

@@ -2,9 +2,8 @@
 // the real MCP client, against a made-up component in process: who is offered
 // them, what a call sends and brings back, and what an acting tool does when
 // nobody is there (lib/components.ts, tools/components.ts).
-import { objectWith, fakeModel, type Person, type Step } from "./fake-object.ts";
+import { objectWith, fakeModel, settings, type Person, type Step } from "./fake-object.ts";
 import { fakeSchool, schemaOf, serve } from "./fake-component.ts";
-import { handleComponents } from "../src/worker/routes/components.ts";
 import { prepareRouter, runCalls, runTool } from "../src/worker/lib/router.ts";
 import { askForRoutine } from "../src/worker/routes/routines.ts";
 import { classify, held, proposable, type Proposal, type ProposalInput } from "../src/worker/lib/proposals.ts";
@@ -12,7 +11,7 @@ import { jobTool } from "../src/worker/lib/jobs.ts";
 import { ROLE_SCOPES } from "../src/worker/lib/hub.ts";
 import { BOT_REACH, botGrants } from "../src/worker/lib/skills.ts";
 import { noteworthy } from "../src/worker/lib/habits.ts";
-import { ALONE_PER_DAY, type ComponentView } from "../src/worker/lib/components.ts";
+import { ALONE_PER_DAY } from "../src/worker/lib/components.ts";
 import { dayOf } from "../src/worker/lib/usage.ts";
 import type { Tool } from "../src/worker/tools/registry.ts";
 
@@ -50,19 +49,7 @@ const signal = new AbortController().signal;
 const quiet = { send() {}, isClosed: false };
 
 /** Settings → Components, as the owner key. */
-const admin = async (method: string, body: unknown) => {
-  const r = await handleComponents(new Request("https://jarvis.example.com/api/components", { method, body: JSON.stringify(body) }), o.envOf("owner"), { kind: "owner" });
-  const b = (await r.json()) as { component?: ComponentView; error?: string };
-  if (!b.component) throw new Error(`${method} ${JSON.stringify(body)}: ${b.error}`);
-  return b.component;
-};
-const plug = async (name: string, url: string, key?: string) => {
-  const c = await admin("POST", { name, url });
-  if (key) await admin("PUT", { id: c.id, key });
-  const checked = await admin("PATCH", { id: c.id, check: true });
-  await admin("PATCH", { id: c.id, approve: checked.waiting!.hash });
-  return c.id;
-};
+const { change: admin, plug } = settings(o.envOf("owner"));
 
 try {
   const id = await plug("School", school.url, KEY);

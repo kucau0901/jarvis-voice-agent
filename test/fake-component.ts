@@ -38,8 +38,8 @@ export interface FakeComponent {
   seen: Seen[];
   /** What a tool call answers. Throwing answers with a JSON-RPC error. */
   answer(tool: string, args: Record<string, unknown>): { text: string; isError?: boolean };
-  /** Answered to every request instead, while set: a redirect, an error page. */
-  instead?: (() => Response) | null;
+  /** Answered to every request instead, while set: a redirect, an error page, or nothing for as long as it likes. */
+  instead?: (() => Response | Promise<Response>) | null;
 }
 
 const str = { type: "string" };

@@ -306,12 +306,15 @@ export class Scheduler {
   }
 
   /** Something outside sent an event. Returns the routines it set off. */
-  /** `only`: just this person's routines (an event someone sent for themselves); absent, everyone's. */
-  async fireEvent(event: string, data: string | undefined, now = Date.now(), only?: string): Promise<string[]> {
+  /**
+   * `only`: just these people's routines (an event someone sent for themselves; a component's, for who it is shared
+   * with: lib/component-reports.ts); absent, everyone's.
+   */
+  async fireEvent(event: string, data: string | undefined, now = Date.now(), only?: readonly string[]): Promise<string[]> {
     const names: string[] = [];
     for (const r of await this.list()) {
       if (!r.enabled || r.trigger.kind !== "event" || r.trigger.event !== event) continue;
-      if (only !== undefined && personOfWho(r.createdBy) !== only) continue;
+      if (only !== undefined && !only.includes(personOfWho(r.createdBy))) continue;
       // A chattering sensor must not become a stream of alerts.
       if (r.pending || (r.lastRun && now - r.lastRun.at < EVENT_COOLDOWN_MS)) continue;
       r.pending = { at: now, ...(data ? { data } : {}) };
