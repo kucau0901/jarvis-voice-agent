@@ -5,9 +5,10 @@ most of the state (memory, the family, messages, routines, jobs, settings); KV
 holds device tokens, linked-account tokens, the MCP server list and the router
 model. Why it is built the way it is: `docs/DESIGN.md`, and for the family
 `docs/family.md`, for alerts `docs/notifications.md`, for the device API
-`docs/api.md`, for Hermes `docs/hermes.md` (its skills are in `docs/hermes/`).
-Before changing an area, read its section: most of what looks odd is a
-decision, with the reason written down.
+`docs/api.md`, for Hermes `docs/hermes.md` (its skills are in `docs/hermes/`),
+for components `docs/components.md` (an example of one is in
+`docs/components/school/`). Before changing an area, read its section: most
+of what looks odd is a decision, with the reason written down.
 
 ## Project rules
 
@@ -37,6 +38,14 @@ These come from the owner and hold for every change.
   typed by code, on that site's origin only, never given to a model, never
   sent to the app. It never answers an "are you human" check: the person
   does that part (`docs/DESIGN.md`, "The browser").
+- **A component's words are data.** A component (`lib/components.ts`) is an
+  outside system someone else runs: what it lists, returns and reports is
+  quoted or shown, never followed, and no model reads a report as it
+  arrives. Its tool list is pinned when an admin approves it: only that
+  stored list is ever shown to a model, and a changed one waits. With nobody
+  there it acts by itself only where the owner set that tool to, and code
+  tells what it did, never a model. What it reports moves nothing but its
+  own tools (`docs/DESIGN.md`, "Components").
 - **The repository is public.** Never commit the owner's real data (family
   names, addresses, domain, emails, KV or account ids, keys, tokens) in code,
   tests, docs, example configs, CHANGELOG, commit messages or PR descriptions:
@@ -78,6 +87,7 @@ Tests load source files straight into Node (type stripping), so:
 | `src/app/ui/` | One class per panel, built in code. |
 | `src/shared/` | Only what both halves need. |
 | `public/` | Copied as is, never compiled. `probe.html` has no dependencies on purpose. |
+| `docs/components.md`, `docs/components/` | The contract outside systems are built against, and an example of one. A system someone else runs (a school, a shop) is a component, plugged in from Settings → Components (`lib/components.ts`, `lib/component-reports.ts`, `tools/components.ts`): never a new file in `tools/`, and never a setting. |
 
 A few engines still live in `routes/`, used by `state.ts` and `lib/router.ts`:
 `jobEngine` (`routes/jobs.ts`), `askForRoutine` and `travelFor`
@@ -116,6 +126,13 @@ Add it to `ALL` in `tools/registry.ts`.
   changes what the router is told updates the matching `EXPECTED` field or
   `PROMPT_SHA256` in the same commit, with a short comment, and says so in the
   message. Anything else changing there is a regression.
+
+**Something for components.** What every component gets (a field in its
+record, a limit, a part of a report) goes in `lib/components.ts` or
+`lib/component-reports.ts`, with the same change to `docs/components.md`:
+that page is what other people build against, so a field added is a minor
+change and one changed or removed is a major release, as under `/api/v1/`.
+Nothing there may be for one component alone.
 
 **An endpoint.** In its area's file in `src/worker/routes/`, plus:
 

@@ -1788,6 +1788,113 @@ address takes a message of the bot's own (its
 routines' news), to whoever made it and nobody else, under its name, as an
 answer is.
 
+## Components
+
+Jarvis is the brain: people and roles, conversation, memory, telling and
+asking, routines, who may reach what. Anything else with a world of its own
+(a school's timetable, a shop's till) plugs into it as a **component**
+(`lib/components.ts`, `docs/components.md` for whoever builds one). The house
+and the family are still built in; a component is the shape for everything
+that is not, and the contract is one other people can build against without
+reading this repository.
+
+A component is three things, each carried by what carries it well. **Tools**
+are an MCP server: the standard, any language, and Jarvis already spoke it.
+**Reports** are a `POST` to an address of the component's own at Jarvis,
+because MCP carries badly what arrives when nobody is asking. A **manifest**,
+an MCP resource, names the events it reports. So a plain MCP server is
+already the smallest component.
+
+It is not the MCP list in Settings, and the difference is the point. An MCP
+server there is treated as part of the house: everyone with `home` is offered
+its tools, as whatever it lists that day. That is right for Home Assistant,
+whose safety lives in Home Assistant, and wrong for a stranger's system:
+
+- **Its tool list is pinned.** An admin has Jarvis ask it what it offers,
+  reads every tool's name and description, and approves. The approval is a
+  hash of its address, each tool's name, description and schema, and its
+  events; what the model is shown from then on is that stored list, with no
+  call to the component until a tool is used. What it lists later that
+  differs waits to be approved, and the pinned list stays in force meanwhile.
+  A tool cannot change under a household's feet, and a description, which is
+  the one thing of a component's that the model reads as more than quoted
+  data, is always one an admin read.
+- **Its words are data.** What a call returns is quoted as an MCP server's
+  is (`asQuotedData`); so is what it says as it fails, which used to reach
+  the model bare. Its `instructions` are never read. Its reports are never
+  read by a model at all as they arrive.
+- **Who reaches it is a share per person**, as a car's is: look only (its
+  reading tools) or use, whether they are told what it reports, and who they
+  are in its own system. The `components` scope is only the ceiling over
+  that, as the car scopes are, so an admin needs a share too: holding
+  everything is not the same as being a teacher at that school.
+- **It learns as little as it can.** A call carries its key and, when a
+  person is asking, the id an admin mapped for them (`X-Jarvis-Person`):
+  never a Jarvis id or a name, and nothing when Jarvis acts by itself. No
+  redirect is followed, and only Streamable HTTP is spoken, because the
+  older transport's first request would follow one with the key.
+
+**Reads, or acts.** Each tool is classed when it is approved. The first
+guess is `jobTool`'s rule for an MCP tool (a name that reads, and nothing in
+it that writes) and the tool's own `readOnlyHint`; the admin has the last
+word, in either direction, and a tool can be approved as off. Two fields on
+`Tool` carry it to the three places that decide what runs with nobody there:
+`reads`, which `jobTool` honours before a name, and `alone`.
+
+**Acting by itself, where the owner set it.** With somebody asking, a tool
+shared with them is theirs to use. With nobody there (a routine, a job, a
+component's own suggestion) a tool that acts asks first: a routine is not
+offered it, a job files a card, a suggestion becomes a card. Unless the
+owner set that one tool to **by itself**, which only the owner key or the
+person who set Jarvis up may do, as only they may sign a screen in as that
+person. It is not the existing "let Jarvis do this without asking", which is
+for reversible things of one narrow kind; a call to an outside tool is
+always treated as irreversible, and the owner's choice per tool is the
+deliberate way to say otherwise. It goes back to asking when the tool's
+description or schema changes: what was allowed is no longer what it is.
+Every such call is checked again as it runs, counted against 20 a day for
+that component (where a loop between Jarvis and a component stops), and told
+to the people concerned in words code writes from the call, never the
+model's account of it. The lesson is the toilet light (Watching the house):
+Jarvis must always be able to say what it did. One too long to tell whole is not made. `classify()`
+is as it was, so a tool that acts but is named like a look-up is never
+proposed and can never be set to run by itself: the safe way to be wrong.
+
+**Reports.** `POST /api/v1/component/events`, before the gate as a bot's
+address is, the token kept only as a digest; a device's allowance per
+component. Each event must be one the approved manifest declares. It starts
+the routines people made for it (`school:leave_filed`); at `notice` it is
+told to those who ticked "tell me", under the component's name, with the
+`skill` field every client already shows and fences, never urgent; and it
+may suggest up to three actions, each one of its own approved acting tools.
+A suggestion is a card, filed inside the object as the house's are, for the
+first person told who may use the component, and the others are told the
+question waits for them; or, by itself, it is done after the component has
+its answer, so it is never called back while it still waits on its own
+request. `to` names who an event is for, by mapped ids, and narrows both who
+is told and whose routines run. People are told at most 30 things a day from
+one component; past that only routines hear it.
+
+**What a component reports can only move that same component.** A routine
+on its event runs with that component's tools and nothing else: grants
+narrowed to `ask` and `components`, tools filtered to its label, no web
+search, and of the person only who it answers. Its report is its own words,
+and a component gone wrong could otherwise talk Jarvis into reading someone's
+mail and handing it back through a tool's arguments, or into acting somewhere
+else. The words arrive in one line written by code with every quote taken
+out, inside the scheduler's quote. And a component's events come only from
+its own address: `/api/v1/trigger` starts nothing for one, so a device
+holding only `routines` cannot set off a routine that acts by itself.
+Reactions across components ("a teacher is on leave, so put it on my
+calendar") wait for typed data instead of free text.
+
+One record each in the Durable Object, at most 20, under new keys; nothing in
+KV. Its key is typed only in Settings, goes only to its address, and is
+dropped when that address changes, with its reporting address. Not in this
+version: things and their state, a watch of Jarvis's own over a component, a
+component asking Jarvis, an address on the same network, and several
+households in one install.
+
 ## The browser
 
 Some things are only on a website, behind a sign-in, with no API: a school

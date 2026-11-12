@@ -164,7 +164,7 @@ existence, or argued around.
 | `alerts` | Receiving alerts (`/api/v1/events`, `/api/v1/push`, `/api/v1/alerts`), raising one (`/api/v1/notify`), and `send_note`. The same scope both ways: a device that may be told things may ask to be told something. |
 | `skills` | `skill_add`, `skill_remove` (outside services and MCP servers added in chat), `skill_address` (a card for a bot's own address, on an admin's screen) and `ask_skill` (sending a request to a service). A service may act on the house or send things, so no role has it but an admin's. Each service's key is set in Settings → Skills, never by a device. A bot's own address never holds it, nor `alerts`, `chat`, `voice`, `screen` or `routines` ([Bots](#bots-skills-both-ways)). |
 
-| `components` | The tools of components an admin plugged in (Settings → Components) and shared with the token's person. Only the ceiling: with it and no share, nothing is offered; adults and children hold it, a guest does not, and a bot's own address never can. A device needs it ticked (a `*` device has it). |
+| `components` | The tools of components an admin plugged in (Settings → Components) and shared with the token's person ([components.md](components.md)). Only the ceiling: with it and no share, nothing is offered; adults and children hold it, a guest does not, and a bot's own address never can. A device needs it ticked (a `*` device has it). |
 
 Ask for something out of reach and you get a normal answer explaining it is not
 available — not an error. `tools` will be empty.
@@ -1178,14 +1178,16 @@ or its maker gone. Removing the skill stops it.
 A component is an outside system an admin plugged in under **Settings →
 Components**: an MCP server whose tools Jarvis may use, and, if the admin made
 one, an address of its own here to report what happened. The token is shown
-once, as a device's is, and kept only as a digest.
+once, as a device's is, and kept only as a digest. The whole contract, for
+whoever builds one, is in [components.md](components.md), with an
+[example](components/school/).
 
 ```bash
 curl -X POST https://jarvis.example.com/api/v1/component/events \
      -H "Authorization: Bearer jcp1_…" -H "Content-Type: application/json" \
      -d '{"events": [{"type": "leave_filed", "level": "notice", "id": "leave-4412",
-                      "text": "T. Rahman is on leave tomorrow. Periods 2 and 5 need cover.",
-                      "to": ["T-ADMIN"],
+                      "text": "Ms Devi is on leave tomorrow. Periods 1, 3 and 4 need cover.",
+                      "to": ["T1"],
                       "actions": [{"tool": "apply_relief", "args": {"date": "2026-11-13", "plan": "A"}}]}]}'
 ```
 

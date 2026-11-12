@@ -37,7 +37,9 @@ of every release, and in the [README](README.md#updating).
   who covers"), is told to those who chose to be told, under the component's
   name, and may suggest something to do, which arrives as a card to approve.
   No model reads a report as it arrives, and a routine a report starts runs
-  with that component's tools and nothing else.
+  with that component's tools and nothing else. For whoever builds one:
+  `docs/components.md`, and a made-up school to copy from in
+  `docs/components/school/`.
 
 - **Routines where you are.** "When I get to the grocer, tell me my shopping
   list"; "when I leave the office, tell me the best way home". A person saves
