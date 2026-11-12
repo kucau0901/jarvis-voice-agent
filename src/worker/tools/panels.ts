@@ -7,6 +7,7 @@ import { pickCar } from "./tessie.ts";
 import { TOGETHER } from "../lib/panel-view.ts";
 import { areasOf, arrange, lightIds } from "../lib/panel-arrange.ts";
 import { isAsk, parseTile, tileSpec } from "../lib/panel-tiles.ts";
+import { readsOnly } from "../lib/jobs.ts";
 import { everyWords } from "../../shared/panels.ts";
 import { idsOf, ticked, type Panel, type PanelItem } from "../lib/panels.ts";
 
@@ -36,12 +37,25 @@ const why = (e: unknown) => (e instanceof Error ? e.message : String(e));
  * A tile wired to the asker's own tools: the tools must be ones they were
  * offered for this question (so ones they may use, MCP servers' included),
  * never the panel tools themselves; arguments come as JSON text.
+ *
+ * Its reading is run by itself every time Home shows the tile, with nobody
+ * pressing anything, so it must be a tool that only reads (lib/jobs.ts
+ * readsOnly): refused here, and again when it is read (lib/router.ts
+ * readTool). A button may act: a press is a person asking.
  */
 function tileFor(label: string, read: unknown, buttons: unknown, ctx: ToolContext): PanelItem | string {
   if (!label) return "a tile needs its name, in label.";
-  const offered = new Set((ctx.offered ?? []).filter((n) => !n.startsWith("panel_")));
-  const call = (tool: unknown, args: unknown): { tool: string; args: unknown } | string => {
-    if (typeof tool !== "string" || !offered.has(tool)) return `"${String(tool)}" is not one of the tools you can use.`;
+  const offered = (ctx.offered ?? []).filter((t) => !t.name.startsWith("panel_"));
+  const call = (tool: unknown, args: unknown, reading = false): { tool: string; args: unknown } | string => {
+    const one = offered.find((t) => t.name === tool);
+    if (typeof tool !== "string" || !one) return `"${String(tool)}" is not one of the tools you can use.`;
+    if (reading && !readsOnly(one)) {
+      return (
+        `${tool} cannot be a tile's reading: a reading is run by itself every time Home is shown, so it must be a tool that only ` +
+        "looks something up. Put it on a button, which runs only when it is pressed; for the reading use a tool that only reads, " +
+        "a question to look up (ask), or none."
+      );
+    }
     if (typeof args !== "string" || !args.trim()) return { tool, args: {} };
     try {
       return { tool, args: JSON.parse(args) };
@@ -51,7 +65,7 @@ function tileFor(label: string, read: unknown, buttons: unknown, ctx: ToolContex
   };
   const r = (read ?? null) as { tool?: unknown; args?: unknown; ask?: unknown; every_minutes?: unknown; refresh?: unknown } | null;
   // A question for Jarvis when no tool of theirs can read it (the air quality in a town): asked again when stale.
-  const readCall = !r ? undefined : typeof r.ask === "string" && r.ask.trim() ? { ask: r.ask, every: r.every_minutes, refresh: r.refresh } : call(r.tool, r.args);
+  const readCall = !r ? undefined : typeof r.ask === "string" && r.ask.trim() ? { ask: r.ask, every: r.every_minutes, refresh: r.refresh } : call(r.tool, r.args, true);
   if (typeof readCall === "string") return readCall;
   const wired = [];
   for (const b of Array.isArray(buttons) ? buttons : []) {
@@ -123,8 +137,9 @@ export const panelSet: Tool = {
     "for their usual one; usage — what they have used and spent; note — a line of text such as a " +
     "to-do, the text itself in label; tile — anything else you can read or do with your other tools (music, " +
     "the car's other controls, calendar, mail, cameras, routines, jobs, Hermes, connected services), named in " +
-    "label: read is one of your tools whose answer the tile shows, run each time the panel is shown (e.g. " +
-    "music_state with {}); or, for what no tool of yours can read (the air quality or weather in a town, a " +
+    "label: read is one of your tools that only looks something up, whose answer the tile shows, run by itself " +
+    "each time the panel is shown (e.g. music_state with {}), so never one that sends, changes, plays or " +
+    "switches anything: that goes on a button; or, for what no tool of yours can read (the air quality or weather in a town, a " +
     "price, the news), a question you will answer with web search (ask), looked up again when Home is open " +
     "and the answer is older than every_minutes (at least 60; e.g. 60 for air quality, 180 for weather), " +
     "or, only when they ask for it to stay up to date with Home closed (\"keep it updated\"), refresh hourly or daily, " +
@@ -170,7 +185,7 @@ export const panelSet: Tool = {
               type: ["object", "null"],
               description: "tile only: the tool whose answer is the tile's reading, or a question to look up. Null otherwise.",
               properties: {
-                tool: { type: ["string", "null"], description: "One of your tools, by name; null when the reading is asked." },
+                tool: { type: ["string", "null"], description: "One of your tools that only looks something up, by name; null when the reading is asked." },
                 args: { type: ["string", "null"], description: "Its arguments, a JSON object as text, e.g. {}; null when asked." },
                 ask: { type: ["string", "null"], description: "The question to look up, e.g. 'Latest air-quality reading (AQI) for Springfield'; null for a tool." },
                 every_minutes: { type: ["integer", "null"], description: "How stale the answer may get before it is looked up again, at least 60; null for a tool." },

@@ -30,7 +30,8 @@ import { episodeOfAnswer, episodeOfChain, pastBlock } from "./episodes.ts";
 import { localeOf } from "./locale.ts";
 import { allows, type Grant } from "./scopes.ts";
 import { DRAWS_ON_SCREEN } from "../tools/place.ts";
-import { isResearchCap, jobTool } from "./jobs.ts";
+import { isResearchCap, jobTool, readsOnly } from "./jobs.ts";
+import { ACTS } from "./panel-tiles.ts";
 import { houseOnly, noteworthy } from "./habits.ts";
 import { Collector } from "./collector.ts";
 import { clientFor, forKey, forPlan, modelAuth, planFailed, planRespond, refusalOf } from "./openai-auth.ts";
@@ -423,6 +424,8 @@ export async function runTool(
   also: readonly Tool[] = [],
   /** Told when the tool says its call did what was asked (ToolContext.done). */
   done?: () => void,
+  /** Run it only if this says so: one of theirs it refuses is not run, and the answer is null as for one that is not. */
+  only?: (t: Tool) => boolean,
 ): Promise<ToolOutput | null> {
   let tool = [...baseTools(env, grants), ...also.filter((t) => (!t.available || t.available(env)) && (!t.scope || allows(grants, t.scope)))].find((t) => t.name === name);
   const sessions = mcpSessions();
@@ -432,7 +435,7 @@ export async function runTool(
     if (!tool && name.includes("__") && allows(grants, "components")) {
       tool = componentTools((await stateStub(env)?.componentsFor(env.JARVIS_PERSON || OWNER)) ?? [], true, sessions).find((t) => t.name === name);
     }
-    if (!tool) return null;
+    if (!tool || (only && !only(tool))) return null;
     // As the router does: a tool that needs no memory still runs when it cannot be loaded.
     const memory = memoryFor(env, grants);
     await memory.load().catch((e) => console.warn(`${name}: memory unavailable:`, e instanceof Error ? e.message : String(e)));
@@ -442,6 +445,27 @@ export async function runTool(
   } finally {
     await sessions.close();
   }
+}
+
+/**
+ * The same for a Home tile's reading (routes/panels.ts), which nobody
+ * pressed: it is run every time Home shows the tile, so only if it is a tool
+ * that only reads (lib/jobs.ts readsOnly). ACTS for one of theirs that may do
+ * more: it is not run, whatever the tile was made with.
+ */
+export async function readTool(
+  env: Env,
+  grants: readonly Grant[],
+  name: string,
+  args: Record<string, unknown>,
+  signal: AbortSignal,
+): Promise<ToolOutput | null | typeof ACTS> {
+  let acts = false;
+  const out = await runTool(env, grants, name, args, signal, [], undefined, (t) => {
+    acts = !readsOnly(t);
+    return !acts;
+  });
+  return acts ? ACTS : out;
 }
 
 export async function lookUp(env: Env, text: string, grants: readonly Grant[], signal: AbortSignal): Promise<string> {
@@ -584,7 +608,7 @@ export async function run(
     runCalls: async (calls) => {
       made.push(...calls.map((c) => ({ name: c.name, arguments: c.arguments })));
       const out = await runCalls(calls as OpenAI.Responses.ResponseFunctionToolCall[], p!.byName, {
-        env, signal, memory: p!.memory, grants, offered: [...p!.byName.keys()], asked: ownWords(turns, opts), screenless: opts.screenless === true,
+        env, signal, memory: p!.memory, grants, offered: p!.tools, asked: ownWords(turns, opts), screenless: opts.screenless === true,
         ...(p!.procedure && !repliesToEarlier(turns) ? { procedure: p!.procedure } : {}),
       }, watched);
       // Tools that failed, for a past attempt (lib/episodes.ts): what callTool says when one throws.
@@ -690,7 +714,7 @@ export async function run(
 export async function runCalls(
   calls: OpenAI.Responses.ResponseFunctionToolCall[],
   byName: Map<string, Tool>,
-  { screenless, ...base }: { env: Env; signal: AbortSignal; memory: MemoryStore; grants: readonly Grant[]; offered?: readonly string[]; asked?: string; procedure?: Procedure; screenless?: boolean },
+  { screenless, ...base }: { env: Env; signal: AbortSignal; memory: MemoryStore; grants: readonly Grant[]; offered?: ToolContext["offered"]; asked?: string; procedure?: Procedure; screenless?: boolean },
   sse: EventSink,
 ): Promise<OpenAI.Responses.ResponseInput> {
   return Promise.all(

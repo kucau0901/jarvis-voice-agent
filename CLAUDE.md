@@ -117,6 +117,11 @@ Add it to `ALL` in `tools/registry.ts`.
   the model through `asQuotedData()` in `lib/quote.ts`.
 - Tools using a person's linked Google or Spotify account wrap their work in
   `guardTool()` (`lib/google.ts`).
+- A tool that only looks something up says `reads: true`, as `music_state`
+  does: only such a tool may be a Home tile's reading, which is run with
+  nobody pressing anything (`readsOnly` in `lib/jobs.ts`). Never on one that
+  sends, changes, switches, plays or remembers, and never `reads: false`,
+  which is a component's class: a routine is not offered a tool that says it.
 - Background jobs are offered only the local tools named in `READ_TOOLS`
   (`lib/jobs.ts`). Add a new tool there if it only reads and jobs should have
   it; never one that sends, changes or unlocks anything.

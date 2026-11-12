@@ -258,6 +258,7 @@ const routineList: Tool = {
   name: "routine_list",
   scope: "routines",
   pace: "fast",
+  reads: true,
   description: "List the routines and reminders that are set up, with ids, for 'what reminders do I have' or before removing one.",
   parameters: { type: "object", properties: {}, required: [], additionalProperties: false },
   async run(_args, ctx) {

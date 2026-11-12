@@ -272,7 +272,12 @@ export const FINDING_MAX = 500;
 
 /* ---------- what a job may use ------------------------------------------------ */
 
-/** Jarvis's own tools that only read. Anything that sends, books, switches or remembers is left out. */
+/**
+ * Jarvis's own tools that only read, as a job is handed them. Anything that
+ * sends, books, switches or remembers is left out; so are some that only
+ * read (music_state, family_messages), which say so themselves (`reads`,
+ * tools/registry.ts) for a Home tile and are still not a job's.
+ */
 const READ_TOOLS = new Set([
   "recall", "car_state", "directions", "place_info", "look_at_camera",
   "mail_check", "mail_search", "contacts_lookup", "calendar_check", "routine_list",
@@ -290,14 +295,24 @@ const READ_TOOLS = new Set([
 const WRITES = /(set|call|control|create|update|delete|remove|send|write|turn|toggle|eval|run|exec|bulk|start|stop|lock|open|close|move|add|play|pause|arm)/;
 const READS = /(^|_)(get|list|search|find|query|read|history|overview|lookup|state|todo)(_|$)/;
 
-export function jobTool(t: { name: string; reads?: boolean }): boolean {
-  // A component's tool is what an admin classed it as (lib/components.ts), whatever its name.
+/**
+ * Whether a tool only reads, for what runs it with nobody pressing anything
+ * (a Home tile's reading, lib/panel-tiles.ts). What it says of itself comes
+ * first (`reads`: Jarvis's own tools that only look something up, and a
+ * component's as an admin classed it, lib/components.ts, whatever its name);
+ * an MCP server's goes by its name, as above; anything else is taken to act.
+ */
+export function readsOnly(t: { name: string; reads?: boolean }): boolean {
   if (t.reads !== undefined) return t.reads;
-  if (READ_TOOLS.has(t.name)) return true;
   const i = t.name.indexOf("__");
   if (i < 0) return false;
   const own = t.name.slice(i + 2).toLowerCase();
   return !WRITES.test(own) && READS.test(own);
+}
+
+/** What a job is handed to read with: of Jarvis's own, those named above and no others; of the rest, what only reads. */
+export function jobTool(t: { name: string; reads?: boolean }): boolean {
+  return t.name.includes("__") ? readsOnly(t) : READ_TOOLS.has(t.name);
 }
 
 const ALPHABET = "0123456789abcdefghjkmnpqrstvwxyz";

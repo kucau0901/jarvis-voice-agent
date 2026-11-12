@@ -333,6 +333,7 @@ export class Panels {
       if (!paused && (await deps.may(t.person))) {
         await readTile(t.spec, {
           tool: async () => null,
+          reading: async () => null,
           ask: async () => "",
           look: (text) => deps.look(t.person, text),
           kept: (tile) => this.reading(t.person, tile),

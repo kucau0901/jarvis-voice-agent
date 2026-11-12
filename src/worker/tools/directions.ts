@@ -22,6 +22,7 @@ const directions: Tool = {
   name: "directions",
   scope: "car.read",
   pace: "fast",
+  reads: true,
   available: (env) => !!env.GOOGLE_MAPS_API_KEY,
   description:
     "How long it takes to drive somewhere, with live traffic. Use for 'how long to get " +

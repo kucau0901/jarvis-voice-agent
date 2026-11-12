@@ -56,6 +56,7 @@ export const lookAtCamera: Tool = {
   name: "look_at_camera",
   scope: "home",
   pace: "fast",
+  reads: true,
   available: camerasConfigured,
   description:
     // Not "is the gate open": given that as an example, the router looked at a

@@ -3,6 +3,7 @@ import {
   isResearchCap,
   Jobs,
   jobTool,
+  readsOnly,
   KEEP_JOBS,
   MAX_JOB_MS,
   MAX_RUNNING,
@@ -66,6 +67,24 @@ console.log("reading, not acting");
     "home-assistant__ha_eval_template": false, "other__do_something": false,
   };
   for (const [n, want] of Object.entries(ha)) check(`${n.split("__")[1]}: ${want ? "yes" : "no"}`, jobTool({ name: n }) === want);
+
+  // What only reads is wider than what a job is handed: a Home tile's reading may be any tool that only reads
+  // (lib/panel-tiles.ts), and Jarvis's own say so themselves (`reads`). That changes nothing a job is offered.
+  const everything = { TESSIE_TOKEN: "t", TESSIE_VIN: "5YJTEST0000000001", HA_BASE_URL: "https://ha.example", HA_TOKEN: "h", GOOGLE_CLIENT_ID: "g", GOOGLE_CLIENT_SECRET: "s", SPOTIFY_CLIENT_ID: "a", SPOTIFY_CLIENT_SECRET: "b", GOOGLE_MAPS_API_KEY: "m", HERMES_BASE_URL: "https://hermes.example", HERMES_API_KEY: "k", BROWSER_URL: "http://127.0.0.1:9222", JARVIS_FAMILY: "fam:s1", JARVIS_PASS: "[]" };
+  const own = baseTools(everything as never);
+  const names = (keep: (t: (typeof own)[number]) => boolean) => own.filter(keep).map((t) => t.name).sort().join();
+  const JOBS = "calendar_check,car_state,contacts_lookup,directions,job_results,look_at_camera,mail_check,mail_search,place_info,recall,routine_list,time_in";
+  check("of Jarvis's own, a job reads with these and no others, as before", names(jobTool) === JOBS && names((t) => jobTool({ name: t.name })) === JOBS, names(jobTool));
+  check("the ones that say they only read: those, and four a job is still not handed",
+    names((t) => t.reads === true) === "calendar_check,car_state,chore_points,contacts_lookup,directions,family_messages,job_results,look_at_camera,look_back,mail_check,mail_search,music_state,place_info,recall,routine_list,time_in" &&
+    names((t) => readsOnly(t) && !jobTool(t)) === "chore_points,family_messages,look_back,music_state", names((t) => t.reads === true));
+  check("none of Jarvis's own says it acts: a routine is not offered a tool that does (routes/routines.ts)", own.length > 50 && own.every((t) => t.reads !== false));
+  check("one of Jarvis's own that does not say so is taken to act, whatever it is called",
+    !readsOnly({ name: "music_control" }) && !readsOnly({ name: "get_state" }) && !readsOnly({ name: "panel_list" }) && !readsOnly({ name: "browser_read" }));
+  check("an MCP server's only reads by the same names as for a job", Object.entries(ha).every(([n, want]) => readsOnly({ name: n }) === want));
+  check("a component's is what an admin classed it as, whatever its name, for a job and a tile alike",
+    !readsOnly({ name: "school__get_and_reset_counter", reads: false }) && !jobTool({ name: "school__get_and_reset_counter", reads: false }) &&
+    readsOnly({ name: "school__timetable", reads: true }) && jobTool({ name: "school__timetable", reads: true }));
 }
 
 console.log("\nthe summary line");

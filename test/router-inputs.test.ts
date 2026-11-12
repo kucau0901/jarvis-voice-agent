@@ -67,6 +67,9 @@ const PROMPT_SHA256 = "ca9ae682da7e82a9d110cc7936180ac53ec84c1bcaafd152ffeb1fa8d
 // skill_add (tools/skills.ts): asked for an MCP server, it now adds a component that waits for an admin's approval
 // (lib/components.ts), where it used to join the MCP list. Its name, its scope and who is offered it are as before, and
 // a tool's description is not among what is pinned here, so no entry below changes (12 Nov 2026).
+// panel_set (tools/panels.ts): a tile's reading must be a tool that only looks something up, said in its description and
+// refused in code otherwise; sixteen of Jarvis's own tools say `reads: true`, which is not sent to the model. Names, scopes
+// and who is offered what are as before, so no entry below changes (12 Nov 2026).
 const EXPECTED: Record<string, { model: string; tools: string[]; input: string }> = {
  "owner key, nothing set up": {
   "model": "gpt-6-luna",

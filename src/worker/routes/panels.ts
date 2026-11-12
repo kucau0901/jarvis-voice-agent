@@ -13,10 +13,14 @@ import { actOn, historyOf, LIVE, readTileOf, viewPanels, type PanelSources } fro
 import { setAlert } from "../lib/panel-alerts.ts";
 import { keyOf } from "../lib/panels.ts";
 import { isTheirs } from "../lib/context.ts";
-import { outputText } from "../tools/registry.ts";
+import { outputText, type ToolOutput } from "../tools/registry.ts";
 import { Collector } from "../lib/collector.ts";
-import { lookUp, run, runTool } from "../lib/router.ts";
+import { lookUp, readTool, run, runTool } from "../lib/router.ts";
+import { ACTS } from "../lib/panel-tiles.ts";
 import type { PanelsReply } from "../../shared/panels.ts";
+
+/** What a tile shows of a tool's answer: its words, and its first picture. */
+const shownOf = (out: ToolOutput) => ({ text: outputText(out), ...(typeof out !== "string" && out.images[0] ? { image: out.images[0].url } : {}) });
 
 /**
  * A person's panels on their Home tab (lib/panels.ts, lib/panel-view.ts),
@@ -26,8 +30,9 @@ import type { PanelsReply } from "../../shared/panels.ts";
  *   GET  /api/hub/panels       your panels, each thing read now, with the buttons its state offers
  *   GET  /api/hub/panels/sky   {lat?, lng?, cloud, rain, haze}: what the sky behind the app is drawn
  *        from (lib/sky.ts): home's place and the weather with `home`, the air from a kept reading
- *   GET  /api/hub/panels/read?panel=&key=[&cached=1]   a tile's reading: one of your tools, run now, or
- *        its question's kept answer, looked up again when stale (cached=1: what was kept, at once)
+ *   GET  /api/hub/panels/read?panel=&key=[&cached=1]   a tile's reading: one of your tools that only
+ *        reads, run now, or its question's kept answer, looked up again when stale (cached=1: what
+ *        was kept, at once)
  *   GET  /api/hub/panels/history?panel=&key=   a number's last day from Home Assistant, for its chart
  *   POST /api/hub/panels/act   {panel, key, action, member?, code?, value?}: press one of them
  *   POST /api/hub/panels/alert {panel, key, when?, value?, condition?}: "Alert me" on a tile, made a
@@ -39,7 +44,8 @@ import type { PanelsReply } from "../../shared/panels.ts";
  *        off or back on (by its key), or the ticked ones cleared; no model
  *
  * A tile's tool runs as when you ask (lib/panel-tiles.ts): only from the
- * tools your grants offer, MCP ones only with `home`.
+ * tools your grants offer, MCP ones only with `home`. Its reading, which
+ * nobody pressed, only from one that only reads.
  */
 export async function handlePanels(req: Request, env: Env, principal: Principal): Promise<Response | null> {
   const p = new URL(req.url).pathname;
@@ -67,11 +73,15 @@ export async function handlePanels(req: Request, env: Env, principal: Principal)
       return { limit, spent: spentOf((await state.usageReport(dayOf(Date.now(), timeZone))).total) };
     },
     routines: async () => (await state.listRoutines()).filter((r) => isTheirs(r.createdBy, me)),
-    // One of this person's tools, as the router would offer it to them now.
+    // One of this person's tools, as the router would offer it to them now: a button they pressed.
     async tool(name, args) {
       const out = await runTool(env, grants, name, args, req.signal);
-      if (out === null) return null;
-      return { text: outputText(out), ...(typeof out !== "string" && out.images[0] ? { image: out.images[0].url } : {}) };
+      return out === null ? null : shownOf(out);
+    },
+    // The same for a reading, which nobody pressed: only a tool that only reads is run (lib/router.ts readTool).
+    async reading(name, args) {
+      const out = await readTool(env, grants, name, args, req.signal);
+      return out === null || out === ACTS ? out : shownOf(out);
     },
     // A tile's looked-up readings, kept in the state object (lib/panels.ts).
     kept: (tile) => state.panelReading(me, tile),

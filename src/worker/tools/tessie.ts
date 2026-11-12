@@ -310,6 +310,7 @@ export const carState: Tool = {
   name: "car_state",
   scope: "car.read",
   pace: "fast",
+  reads: true,
   available: (env) => !!tessieConfig(env),
   description:
     "Read the user's Tesla: battery, range, charging, climate, where it is, whether it " +

@@ -21,6 +21,13 @@ import { unquoted } from "./quote.ts";
  * person pressing may use it now: the same tools, filtered by the same
  * grants, as when they ask, so a tile can do nothing its person could not
  * ask for (and Hermes stays unreachable without `hermes`).
+ *
+ * A reading is run with nobody pressing anything, every time Home shows the
+ * tile, so its tool must be one that only reads (lib/jobs.ts readsOnly):
+ * checked when the tile is made (tools/panels.ts) and again each time it is
+ * read (lib/router.ts readTool), so a tile kept from before with a tool that
+ * acts as its reading no longer runs it, and says why. Acting is a button's:
+ * a press is a person asking.
  */
 
 export interface TileCall {
@@ -142,10 +149,19 @@ export function tileIcon(spec: TileSpec): PanelIcon {
   return spec.read && isAsk(spec.read) ? "web" : names.length ? "dot" : "chat";
 }
 
+/** A tool asked for a reading that may do more than read: it was not run. */
+export const ACTS = Symbol("acts");
+
 /** Where a tile's tools run and its sentences are asked; the route gives the real ones, the tests fakes. */
 export interface TileSources {
-  /** One of this person's tools, run as asked; null when they may not use it here. */
+  /** One of this person's tools, run as asked; null when they may not use it here. For a button pressed. */
   tool: (name: string, args: Record<string, unknown>) => Promise<{ text: string; image?: string } | null>;
+  /**
+   * The same for a tile's reading, which nobody pressed: run only if it is a
+   * tool that only reads (lib/jobs.ts readsOnly). ACTS for one of theirs
+   * that may do more: it is not run.
+   */
+  reading: (name: string, args: Record<string, unknown>) => Promise<{ text: string; image?: string } | null | typeof ACTS>;
   /** A sentence asked of Jarvis, as typed in Chat: its answer. For a button pressed. */
   ask: (text: string) => Promise<string>;
   /**
@@ -285,8 +301,12 @@ export async function readTile(spec: TileSpec, src: TileSources, key: string, ca
   if (!spec.read) return { status: 404, text: "This tile has no reading." };
   if (isAsk(spec.read)) return readAsked(spec.read, key, cached, src);
   try {
-    const out = await src.tool(spec.read.tool, spec.read.args);
+    const out = await src.reading(spec.read.tool, spec.read.args);
     if (!out) return { status: 403, text: `${spec.read.tool} is not yours to use here.` };
+    // A tile from before a reading had to only read, or a component's tool classed as acting since: left alone, and its person told what to do.
+    if (out === ACTS) {
+      return { status: 409, text: `Not shown: ${spec.read.tool} can do more than look something up, so Home no longer runs it by itself. Ask Jarvis to make this tile again, with that on a button.` };
+    }
     // A tool that answers in lines (today's events) keeps them, as a list under its first; what it quoted for the model, without the quotes.
     const lines = unquoted(out.text).split("\n").map((l) => l.replace(/^[\s>*\-•]+/, "").trim()).filter(Boolean);
     const list = lines.slice(1, 9).map((l) => clip(l, 140));

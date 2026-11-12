@@ -71,6 +71,7 @@ const musicState: Tool = {
   name: "music_state",
   scope: "media",
   pace: "fast",
+  reads: true,
   available,
   description:
     "What is playing on the user's Spotify, and on which device. Use for 'what's this song', " +

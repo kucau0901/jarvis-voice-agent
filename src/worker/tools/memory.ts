@@ -149,6 +149,7 @@ export const recall: Tool = {
   name: "recall",
   scope: "memory.read",
   pace: "fast",
+  reads: true,
   description:
     "Search everything saved about the user, including the reference material that is " +
     "deliberately kept out of the profile block — rosters, directories, lists. The " +

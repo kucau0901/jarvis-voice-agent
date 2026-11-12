@@ -148,6 +148,7 @@ const familyMessages: Tool = {
   name: "family_messages",
   scope: "chat",
   pace: "fast",
+  reads: true,
   available: (env) => !!env.JARVIS_FAMILY,
   description:
     "What the user has passed on to the family, and been sent, over the last week, and what became " +
@@ -172,6 +173,7 @@ const chorePoints: Tool = {
   name: "chore_points",
   scope: "chat",
   pace: "fast",
+  reads: true,
   available: (env) => !!env.JARVIS_FAMILY,
   description: "The family's chore points, earned by saying done to chores passed on by a rota: 'how many points has Aisyah got?', 'who's winning?'.",
   parameters: { type: "object", properties: {}, required: [], additionalProperties: false },
