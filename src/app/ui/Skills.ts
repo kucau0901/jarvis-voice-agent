@@ -53,7 +53,7 @@ export class Skills {
         "never shown again; a skill is used once it has one. One that answers later posts its answer to the replyUrl in each " +
         "request: it needs no token, and its answer shows in Chat under its name. Give one an address of its own to let it ask " +
         "Jarvis or message you, reaching only what you tick, here or by asking in chat (\"give Zephyr its own address\"). " +
-        "MCP servers added in chat are under MCP servers."),
+        "An MCP server asked for in chat is added as a component: it waits under Components for you to approve what it offers."),
       this.list,
       this.res,
     );

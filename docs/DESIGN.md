@@ -1722,7 +1722,10 @@ the watch's to find.
 
 "Add a skill: Zephyr, my Grok bot, for the house and the car, at https://…"
 keeps an outside service Jarvis can send requests to (`lib/skills.ts`), or,
-said as an MCP server, adds one to the MCP list. It is not a tool that POSTs
+said as an MCP server, adds a component that waits for an admin to approve
+what it offers (Components, below). It used to join the MCP list at once,
+where everyone who reaches the house was offered whatever it listed; servers
+added that way before stay there. It is not a tool that POSTs
 anywhere: a page or a mail the model reads could then send whatever it found to
 an address of its choosing. Instead the address comes from the person, in their
 own latest message, as asking for a specialty does (`skill_add` checks), and the

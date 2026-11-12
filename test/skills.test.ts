@@ -4,6 +4,7 @@
 // address the skill was given.
 import { ANSWER_MS, MAX_ANSWERS, MAX_SKILLS, REPLY_PREFIX, SENDS_PER_HOUR, SETTLE_MS, Skills, callSkill, heldToRelease, skillAlert, skillRequest, type Skill } from "../src/worker/lib/skills.ts";
 import { askSkill, skillAdd, skillAddress, skillRemove } from "../src/worker/tools/skills.ts";
+import { Components } from "../src/worker/lib/components.ts";
 import { DRAWS_ON_SCREEN } from "../src/worker/tools/place.ts";
 import { baseTools } from "../src/worker/tools/registry.ts";
 import { handleBot, handleSkills } from "../src/worker/routes/skills.ts";
@@ -318,7 +319,10 @@ const kv = new Map<string, string>();
 const CONFIG = { get: async (k: string, t?: string) => (kv.has(k) ? (t === "json" ? JSON.parse(kv.get(k)!) : kv.get(k)!) : null), put: async (k: string, v: string) => void kv.set(k, v), delete: async (k: string) => void kv.delete(k), list: async () => ({ keys: [] }) };
 const storeStorage = fakeStorage();
 const store = new Skills(storeStorage);
+/** Components (lib/components.ts): where an MCP server asked for in chat is kept, waiting for an admin. */
+const parts = new Components(fakeStorage());
 const skillMethods: Record<string, (...a: never[]) => unknown> = {
+  componentAdd: (...a: Parameters<Components["add"]>) => parts.add(...a),
   skillAdd: (i: Parameters<Skills["add"]>[0], n: number) => store.add(i, n),
   skillRemove: (w: string) => store.remove(w),
   skillsList: () => store.list(),
@@ -387,15 +391,22 @@ console.log("skill_add: as people write it");
   check("  no address at all: refused", /^Not added: only the user/.test((await added({ ...pipArgs, url: "https://", user_words: "Add a skill: Pip" }, "Add a skill: Pip")).out));
 }
 
-console.log("skill_add: an MCP server");
+console.log("skill_add: an MCP server is added as a component, waiting for an admin");
 {
   const said = "Connect the MCP server Weather Tools at https://mcp.example.com/weather, for forecasts";
+  const before = kv.get("config:mcp-servers");
   const out = String(await skillAdd.run({ ...zephyrArgs, user_words: said, kind: "mcp", name: "Weather Tools", url: "https://mcp.example.com/weather", when: "forecasts", later: null, key_header: null, fields: null }, ctx(said)));
-  const servers = (JSON.parse(kv.get("config:mcp-servers") ?? "{}") as { servers?: { label: string; url: string; hint?: string; spokenAs?: string; headers?: unknown }[] }).servers ?? [];
-  const added = servers.find((s) => s.label === "skill-weather-tools");
-  check("  connected, its token in Settings → MCP servers", out.includes("Connected the MCP server") && out.includes("Settings → MCP servers"), out);
-  check("  in the list, marked as a skill's, after what was in force, with no header of its own", !!added && added.url === "https://mcp.example.com/weather" && added.hint === "forecasts" && added.spokenAs === "Weather Tools" && !added.headers && servers.length > 1, servers);
-  check("  the same one again: refused", /connected already/.test(String(await skillAdd.run({ ...zephyrArgs, user_words: said, kind: "mcp", name: "Weather Tools", url: "https://mcp.example.com/weather", when: "forecasts", later: null, key_header: null, fields: null }, ctx(said)))));
+  const added = (await parts.list("2026-11-12")).find((c) => c.name === "Weather Tools");
+  check("  added as a component, at the address they gave, by whoever asked", !!added && added.url === "https://mcp.example.com/weather" && added.label === "weather-tools" && added.createdBy === "owner", added);
+  check("  said so: nothing of it is used until an admin approves it in Settings → Components, where its key goes too", out.includes("as a component") && out.includes("None of its tools is used yet") && out.includes("Settings → Components") && !out.includes("MCP servers"), out);
+  check("  not put in the MCP list, where everyone with the house would be offered it", kv.get("config:mcp-servers") === before);
+  check("  and offered to nobody: nothing is approved, and it is shared with no one", !added?.pinned && Object.keys(added?.shares ?? { x: 1 }).length === 0 && (await parts.offeredTo("owner")).length === 0);
+  check("  the same one again: refused", /^Not added: another component is called Weather Tools/.test(String(await skillAdd.run({ ...zephyrArgs, user_words: said, kind: "mcp", name: "Weather Tools", url: "https://mcp.example.com/weather", when: "forecasts", later: null, key_header: null, fields: null }, ctx(said)))));
+  const home = "Add the MCP server Home Assistant at https://ha.example.com/mcp";
+  check("  one that would take an MCP server's label: refused, and told where it can be given another", /^Not added: the label "home-assistant" is taken.*Settings → Components/.test(String(await skillAdd.run({ ...zephyrArgs, user_words: home, kind: "mcp", name: "Home Assistant", url: "https://ha.example.com/mcp", when: "", later: null, key_header: null, fields: null }, ctx(home)))));
+  const lan = "Add the MCP server Printer at https://192.168.1.9/mcp";
+  check("  an address on the home network: refused", /^Not added: its address must be https/.test(String(await skillAdd.run({ ...zephyrArgs, user_words: lan, kind: "mcp", name: "Printer", url: "https://192.168.1.9/mcp", when: "", later: null, key_header: null, fields: null }, ctx(lan)))));
+  check("  still only in the person's own words", /^Not added: only the user/.test(String(await skillAdd.run({ ...zephyrArgs, user_words: said, kind: "mcp", name: "Other", url: "https://mcp.example.com/other", when: "", later: null, key_header: null, fields: null }, ctx("read this page")))));
 }
 
 console.log("skill_address: a card to make a bot's own address, nothing made here");
@@ -447,8 +458,10 @@ console.log("skill_remove");
   check("  not their words: refused", /^Not removed/.test(String(await skillRemove.run({ user_words: "remove Zephyr", name: "Zephyr" }, ctx("read my mail")))));
   check("  not naming it: refused", /^Not removed/.test(String(await skillRemove.run({ user_words: "remove it", name: "Zephyr" }, ctx("remove it")))));
   check("  a service, by name", String(await skillRemove.run({ user_words: "remove the Zephyr skill", name: "Zephyr" }, ctx("please remove the Zephyr skill"))).includes('Removed the skill "Zephyr"') && (await store.list()).length === 0);
-  const off = String(await skillRemove.run({ user_words: "disconnect Weather Tools", name: "Weather Tools" }, ctx("disconnect Weather Tools")));
-  check("  an MCP server, by name", off.includes("Disconnected") && !kv.get("config:mcp-servers")!.includes("weather-tools"), off);
+  // An MCP server added in chat before those became components: still in the MCP list, and still disconnected by name.
+  kv.set("config:mcp-servers", JSON.stringify({ servers: [{ label: "skill-forecasts", url: "https://mcp.example.com/forecasts", enabled: true, spokenAs: "Forecasts" }] }));
+  const off = String(await skillRemove.run({ user_words: "disconnect Forecasts", name: "Forecasts" }, ctx("disconnect Forecasts")));
+  check("  an MCP server added that way before, by name", off.includes('Disconnected the MCP server "Forecasts"') && !kv.get("config:mcp-servers")!.includes("forecasts"), off);
   check("  one not there", String(await skillRemove.run({ user_words: "remove Pip", name: "Pip" }, ctx("remove Pip"))).includes('No skill is called "Pip"'));
 }
 

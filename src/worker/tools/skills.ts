@@ -1,7 +1,6 @@
 import type { Tool } from "./registry.ts";
 import { stateStub } from "../lib/state-client.ts";
-import { pageUrl } from "../lib/page-look.ts";
-import { addServer, removeServer } from "../lib/config-store.ts";
+import { readServersForUi, removeServer } from "../lib/config-store.ts";
 import { callSkill, nameOf, REPLY_PREFIX, SKILL_MCP, type Skill } from "../lib/skills.ts";
 import { mintToken, sha256Hex } from "../lib/devices.ts";
 import { publicOrigin } from "../lib/http.ts";
@@ -10,7 +9,12 @@ import { WILDCARD, allows } from "../lib/scopes.ts";
 
 /**
  * Adding and removing skills (lib/skills.ts): an outside service Jarvis
- * sends requests to, or an MCP server whose tools it uses.
+ * sends requests to. Asked for as an MCP server, it is added as a component
+ * instead (lib/components.ts), which offers nothing to anyone until an admin
+ * has read what it lists and approved it in Settings → Components. It used
+ * to join the MCP list, where everyone with `home` was offered whatever it
+ * listed that day; servers added that way before stay there, and
+ * skill_remove still disconnects them.
  *
  * A skill reaches past Jarvis, so only the person may add one: skill_add
  * takes their own words asking for it, the address in them, and they must be
@@ -35,7 +39,7 @@ function theirs(words: unknown, what: string, verb: RegExp, asked: string | unde
 
 /** A name as an MCP server's label is made of it: its tools' prefix (tools/mcp.ts toolName). */
 const slugOf = (name: string) => nameOf(name).replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 30);
-/** An MCP server added as a skill: marked so (SKILL_MCP), as another bot perhaps, never offered to a bot asking (lib/skills.ts botHides). */
+/** An MCP server added as a skill, before those became components: marked so (SKILL_MCP), as another bot perhaps, never offered to a bot asking (lib/skills.ts botHides). */
 const labelOf = (name: string) => (slugOf(name) ? SKILL_MCP + slugOf(name) : "");
 
 export const skillAdd: Tool = {
@@ -44,10 +48,11 @@ export const skillAdd: Tool = {
   pace: "fast",
   description:
     "Add a skill, or change one by giving its name again: an outside service Jarvis can send requests to " +
-    "(a bot, an automation, the user's own code), or an MCP server whose tools Jarvis can use. Only when " +
+    "(a bot, an automation, the user's own code), or an MCP server, which is added as a component: none of " +
+    "its tools is used until an admin has read what it offers and approved it in Settings → Components. Only when " +
     "the user asks you to, with its https address in their own words ('add a skill: Zephyr, my Grok bot, for " +
     "the house and the car, at https://…'). Never ask for or take its key in chat: once it is added, tell " +
-    "them its key goes in Settings → Skills (a service) or Settings → MCP servers (an MCP server, if it needs one). " +
+    "them its key goes in Settings → Skills (a service) or Settings → Components (an MCP server, if it needs one). " +
     "Asked for one without its address, however they put it ('a tool that POSTs to my bot', secrets they will " +
     "fill in), ask them for each one's https address: never hand it to Hermes or a job instead.",
   parameters: {
@@ -83,18 +88,18 @@ export const skillAdd: Tool = {
       return "Not added: only the user can add a skill, in their own latest message, with its address in it. Ask them for it.";
     }
     const name = typeof args.name === "string" ? args.name.trim() : "";
-    if (args.kind === "mcp") {
-      const at = pageUrl(url);
-      if (!at) return "Not added: its address must be https, and not one on the home network.";
-      const label = labelOf(name);
-      if (!label) return "Not added: its name needs a letter or a digit.";
-      const when = typeof args.when === "string" ? args.when.trim().slice(0, 300) : "";
-      const why = await addServer(ctx.env, { label, url: at.href, enabled: true, spokenAs: name.slice(0, 60), ...(when ? { hint: when } : {}) });
-      if (why) return `Not added: ${why}. Change it in Settings → MCP servers.`;
-      return `Connected the MCP server "${name}": its tools are offered from the next question, to whoever may reach the house. If it needs a token, it goes in Settings → MCP servers.`;
-    }
     const state = stateStub(ctx.env);
     if (!state) return "Skills cannot be kept on this deployment: it has no state object.";
+    if (args.kind === "mcp") {
+      // A component (lib/components.ts): added here, and offered to nobody until an admin has approved what it lists.
+      const taken = (await readServersForUi(ctx.env)).servers.map((s) => s.label);
+      const c = await state.componentAdd({ name, url }, ctx.env.JARVIS_PERSON ?? OWNER, taken, Date.now());
+      if (typeof c === "string") return `Not added: ${c}. It can be added in Settings → Components, where it can be given a label of its own.`;
+      return (
+        `Added "${c.name}" as a component. None of its tools is used yet: tell them an admin opens Settings → Components, has Jarvis ask it ` +
+        "what it offers, reads that, approves it, and shares it with whoever should use it. Its key, if it needs one, goes there too, never in chat."
+      );
+    }
     const s = await state.skillAdd({ name, url, when: args.when, later: args.later, keyHeader: args.key_header, fields: args.fields }, Date.now());
     if (typeof s === "string") return `Not added: ${s}.`;
     return s.hasKey

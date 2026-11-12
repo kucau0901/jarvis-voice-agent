@@ -40,9 +40,10 @@ export const SCOPES = [
   /** Talk with the family: its chat, direct messages, and passing things on (lib/relays.ts). */
   "chat",
   /**
-   * Skills: adding outside services and MCP servers in chat, and sending
-   * requests to the services (lib/skills.ts). A service may act on the house
-   * or send things, so no role but an admin's (`*`) has it.
+   * Skills: adding outside services in chat, and sending requests to them
+   * (lib/skills.ts); an MCP server asked for there is added as a component,
+   * waiting for an admin's approval (lib/components.ts). A service may act
+   * on the house or send things, so no role but an admin's (`*`) has it.
    */
   "skills",
   /**

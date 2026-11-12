@@ -81,6 +81,16 @@ of every release, and in the [README](README.md#updating).
   (deploy-time) puts the old one aside afterwards: everything kept, nothing
   run on its own clock, so the two never both act for one family.
 
+### Changed
+
+- **An MCP server added in chat now waits for your approval.** "Add a skill:
+  Weather Tools, an MCP server, at https://…" used to connect it at once and
+  offer its tools to everyone who may reach the house. It is now added as a
+  component: nothing of it is used until an admin opens **Settings →
+  Components**, reads what it offers, approves it and shares it. Its key, if
+  it needs one, goes there too. Servers added in chat before this are still
+  under **Settings → MCP servers** and work as they did.
+
 ### Fixed
 
 - **With Docker, a question or a tap now and then failed with "server said
