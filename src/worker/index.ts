@@ -15,6 +15,7 @@ import { handleDelegate } from "./routes/delegate.ts";
 import { handleTts } from "./routes/tts.ts";
 import { handleMcp } from "./routes/mcp.ts";
 import { handleBot, handleSkills } from "./routes/skills.ts";
+import { handleComponents } from "./routes/components.ts";
 import { handleBrowser } from "./routes/browser.ts";
 import { handleMemory } from "./routes/memory.ts";
 import { handleMap } from "./routes/map.ts";
@@ -281,6 +282,8 @@ async function route(
       return await handleAlertsAdmin(req, env);
     case "/api/skills":
       return await handleSkills(req, env, principal);
+    case "/api/components":
+      return await handleComponents(req, env, principal);
     case "/api/browser/screen":
     case "/api/browser/input":
     case "/api/browser/logins":

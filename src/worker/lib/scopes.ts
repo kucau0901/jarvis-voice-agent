@@ -259,6 +259,9 @@ export function requiredScope(pathname: string, method: string): RouteRequiremen
     // Skills and their keys (routes/skills.ts): an admin's, as the settings are.
     case "/api/skills":
       return "owner";
+    // Components, their keys, what each offers and who reaches it (routes/components.ts): an admin's too.
+    case "/api/components":
+      return "owner";
 
     // Diagnostics, the stored probe runs, the data export and moving another Jarvis here are the owner's business.
     case "/api/export":

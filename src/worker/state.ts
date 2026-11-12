@@ -30,6 +30,7 @@ import { alertSaid, Conversation, type Said } from "./lib/conversation.ts";
 import { Images, type StoredImage } from "./lib/images.ts";
 import { Specialties, type Procedure } from "./lib/specialties.ts";
 import { heldToRelease, Skills } from "./lib/skills.ts";
+import { Components, type Listed } from "./lib/components.ts";
 import { Pages, type StoredPage } from "./lib/pages.ts";
 import { Episodes, episodeOfJob, type Episode } from "./lib/episodes.ts";
 import { cardOf, Proposals, type LaterDeps, type Proposal, type ProposalInput } from "./lib/proposals.ts";
@@ -86,6 +87,8 @@ export class JarvisState extends DurableObject<Env> {
   private specialties: Specialties;
   /** The family's skills: outside services added in chat (lib/skills.ts). */
   private skills: Skills;
+  /** Outside systems plugged in (lib/components.ts). */
+  private components: Components;
   private pages: Pages;
   private episodes: Episodes;
   private proposals: Proposals;
@@ -107,6 +110,7 @@ export class JarvisState extends DurableObject<Env> {
     this.images = new Images(ctx.storage);
     this.specialties = new Specialties(ctx.storage);
     this.skills = new Skills(ctx.storage);
+    this.components = new Components(ctx.storage);
     this.pages = new Pages(ctx.storage);
     this.episodes = new Episodes(ctx.storage);
     this.proposals = new Proposals(ctx.storage);
@@ -343,6 +347,7 @@ export class JarvisState extends DurableObject<Env> {
     await this.meetingsSeen.forget(person);
     await this.noticed.forget(person);
     await this.habits.forget(person);
+    await this.components.forget(person);
     await this.rearm();
   }
 
@@ -1007,6 +1012,64 @@ export class JarvisState extends DurableObject<Env> {
     // Held in the same call, so Jarvis's reply cannot be kept between the two and miss it (conversationAdd).
     if ("alert" in r && r.holdUntil) await this.hold(r.alert, r.holdUntil, true);
     return r;
+  }
+
+  /* ---------- components: outside systems plugged in (lib/components.ts) ---------------- */
+
+  componentsList(day: string) {
+    return this.components.list(day);
+  }
+
+  componentAdd(input: { name: unknown; url: unknown; label?: unknown }, by: string, taken: readonly string[], now: number) {
+    return this.components.add(input, by, taken, now);
+  }
+
+  componentKey(id: string, key: unknown, now: number) {
+    return this.components.setKey(id, key, now);
+  }
+
+  componentTarget(id: string) {
+    return this.components.target(id);
+  }
+
+  componentListed(id: string, listed: Listed, now: number) {
+    return this.components.listed(id, listed, now);
+  }
+
+  componentApprove(id: string, hash: unknown, classes: unknown, now: number) {
+    return this.components.approve(id, hash, classes, now);
+  }
+
+  componentClasses(id: string, classes: unknown, now: number) {
+    return this.components.setClasses(id, classes, now);
+  }
+
+  componentAlone(id: string, alone: unknown, now: number) {
+    return this.components.setAlone(id, alone, now);
+  }
+
+  componentShares(id: string, shares: unknown, people: readonly string[], now: number) {
+    return this.components.setShares(id, shares, people, now);
+  }
+
+  componentEnabled(id: string, enabled: unknown, now: number) {
+    return this.components.setEnabled(id, enabled, now);
+  }
+
+  componentRename(id: string, name: unknown, now: number) {
+    return this.components.rename(id, name, now);
+  }
+
+  componentNewAddress(id: string, now: number) {
+    return this.components.newAddress(id, now);
+  }
+
+  componentDropAddress(id: string, now: number) {
+    return this.components.dropAddress(id, now);
+  }
+
+  componentRemove(id: string) {
+    return this.components.remove(id);
   }
 
   episodesOf(person: string, now: number) {

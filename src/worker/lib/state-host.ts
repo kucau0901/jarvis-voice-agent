@@ -10,6 +10,7 @@ import {
 import type { StoredImage } from "./images.ts";
 import type { Procedure, Specialty } from "./specialties.ts";
 import type { Skill, SkillView } from "./skills.ts";
+import type { ComponentView, Listed } from "./components.ts";
 import type { StoredPage } from "./pages.ts";
 import type { Episode } from "./episodes.ts";
 import type { Proposal, ProposalInput } from "./proposals.ts";
@@ -694,6 +695,24 @@ interface SkillApi {
   skillAnswer(digest: string, body: Record<string, unknown>, now: number): Promise<{ alert: Alert; at: number; holdUntil?: number } | { refused: 400 | 404 | 429; why: string }>;
 }
 
+/** Components (lib/components.ts): outside systems plugged in, set up in Settings → Components (routes/components.ts). */
+interface ComponentApi {
+  componentsList(day: string): Promise<(ComponentView & { today: { told: number; acted: number } })[]>;
+  componentAdd(input: { name: unknown; url: unknown; label?: unknown }, by: string, taken: readonly string[], now: number): Promise<ComponentView | string>;
+  componentKey(id: string, key: unknown, now: number): Promise<ComponentView | string>;
+  componentTarget(id: string): Promise<{ label: string; name: string; url: string; key?: string } | null>;
+  componentListed(id: string, listed: Listed, now: number): Promise<{ component: ComponentView; skipped: { name: string; why: string }[] } | string>;
+  componentApprove(id: string, hash: unknown, classes: unknown, now: number): Promise<ComponentView | string>;
+  componentClasses(id: string, classes: unknown, now: number): Promise<ComponentView | string>;
+  componentAlone(id: string, alone: unknown, now: number): Promise<ComponentView | string>;
+  componentShares(id: string, shares: unknown, people: readonly string[], now: number): Promise<ComponentView | string>;
+  componentEnabled(id: string, enabled: unknown, now: number): Promise<ComponentView | string>;
+  componentRename(id: string, name: unknown, now: number): Promise<ComponentView | string>;
+  componentNewAddress(id: string, now: number): Promise<{ component: ComponentView; token: string } | string>;
+  componentDropAddress(id: string, now: number): Promise<ComponentView | string>;
+  componentRemove(id: string): Promise<boolean>;
+}
+
 /** What jobs propose for a person's tap (lib/proposals.ts; routes/proposals.ts). */
 interface ProposalApi {
   proposalsOf(person: string, now: number): Promise<Proposal[]>;
@@ -785,6 +804,7 @@ export type StateApi = Pick<
   ImageApi &
   RecallApi &
   SkillApi &
+  ComponentApi &
   PageApi &
   ProposalApi &
   PlanApi &

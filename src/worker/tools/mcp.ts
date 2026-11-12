@@ -1,6 +1,7 @@
-import { Client, StreamableHTTPClientTransport, SSEClientTransport } from "@modelcontextprotocol/client";
+import { Client, ProtocolError, ProtocolErrorCode, StreamableHTTPClientTransport, SSEClientTransport } from "@modelcontextprotocol/client";
 import type { Env } from "../types.ts";
 import { loadServers, type McpServerConfig } from "../lib/config-store.ts";
+import type { Listed } from "../lib/components.ts";
 import type { Tool, ToolContext } from "./registry.ts";
 import { McpSessions, openWithin } from "../lib/mcp-sessions.ts";
 import { sha256Hex } from "../lib/devices.ts";
@@ -33,16 +34,28 @@ const CATALOG_FRESH_MS = 10 * 60_000;
 const CATALOG_STALE_MS = 24 * 3_600_000;
 const CATALOG_KEEP_S = 7 * 24 * 3_600;
 
-async function connect(server: McpServerConfig): Promise<Client> {
+/**
+ * What a connection is made to: a server from the MCP list, or a component
+ * (tools/components.ts). A component's key, and who is asking, go with every
+ * request to it, so no redirect is followed, and it speaks Streamable HTTP
+ * or nothing: the older transport's first request would follow one.
+ */
+export interface Remote extends McpServerConfig {
+  component?: true;
+}
+
+async function connect(server: Remote): Promise<Client> {
   const client = new Client({ name: "jarvis", version: "1.0.0" });
-  const opts = { requestInit: { headers: server.headers ?? {} } };
+  // The SDK hands requestInit to fetch with every request it makes.
+  const opts = { requestInit: { headers: server.headers ?? {}, ...(server.component ? { redirect: "manual" as const } : {}) } };
 
   const t0 = Date.now();
   try {
     await client.connect(new StreamableHTTPClientTransport(new URL(server.url), opts));
     console.log(`mcp: ${server.label} connected (http) ${Date.now() - t0}ms`);
     return client;
-  } catch {
+  } catch (e) {
+    if (server.component) throw e;
     // Home Assistant's MCP Server integration still speaks the older SSE
     // transport, so falling back is not optional here.
     const failedAfter = Date.now() - t0;
@@ -71,16 +84,57 @@ interface CatalogMeta {
   urlSha256?: string;
 }
 
-/** A question's connections, one per server (lib/mcp-sessions.ts). */
+/**
+ * A question's connections, one per server (lib/mcp-sessions.ts). A component
+ * and a server from the MCP list never share one, even under the same label.
+ */
 export const mcpSessions = () =>
-  new McpSessions<McpServerConfig, Client>((server) =>
-    openWithin(connect(server), CONNECT_TIMEOUT_MS, `connect to ${server.label}`));
+  new McpSessions<Remote, Client>(
+    (server) => openWithin(connect(server), CONNECT_TIMEOUT_MS, `connect to ${server.label}`),
+    (server) => (server.component ? `component:${server.label}` : server.label),
+  );
+
+/** Where a component says which events it reports: an MCP resource of this address (docs/components.md). */
+export const MANIFEST_URI = "jarvis://manifest";
+
+/**
+ * What a server offers, asked now and kept nowhere: its tools, and its
+ * `jarvis://manifest` resource if it has one (lib/components.ts). For a check
+ * from Settings → Components, where an admin reads every word of it before
+ * any is used. Never its `instructions`, which nothing here reads.
+ */
+export async function listRemote(server: Remote): Promise<Listed> {
+  const client = await openWithin(connect(server), CONNECT_TIMEOUT_MS, `connect to ${server.label}`);
+  try {
+    const offers = client.getServerCapabilities();
+    if (!offers?.tools) throw new Error("it does not say it has tools (capabilities.tools in its answer to initialize)");
+    const { tools } = await client.listTools();
+    let manifest: string | null = null;
+    if (offers.resources) {
+      const read = await client.readResource({ uri: MANIFEST_URI }).catch((e: unknown) => {
+        // No such resource: it has no manifest, which it need not. Anything else is a check that failed.
+        if (e instanceof ProtocolError && (e.code === ProtocolErrorCode.InvalidParams || e.code === ProtocolErrorCode.ResourceNotFound)) return null;
+        throw e;
+      });
+      const first = read?.contents[0];
+      manifest = first && "text" in first && typeof first.text === "string" ? first.text : null;
+    }
+    return {
+      url: server.url,
+      version: client.getServerVersion()?.version,
+      tools: tools.map((t) => ({ name: t.name, description: t.description, inputSchema: t.inputSchema as Record<string, unknown> | undefined, readOnly: t.annotations?.readOnlyHint })),
+      manifest,
+    };
+  } finally {
+    await client.close().catch(() => {});
+  }
+}
 
 /** Tool catalogs are cached: re-listing on every turn costs latency and CPU. See CATALOG_FRESH_MS. */
 async function listTools(
   env: Env,
   server: McpServerConfig,
-  sessions?: McpSessions<McpServerConfig, Client>,
+  sessions?: McpSessions<Remote, Client>,
   waitUntil?: (p: Promise<unknown>) => void,
 ): Promise<CatalogEntry[]> {
   const hit = await env.CONFIG
@@ -105,7 +159,7 @@ const catalogKey = (server: McpServerConfig) => `mcp:catalog:${server.label}`;
 async function fetchCatalog(
   env: Env,
   server: McpServerConfig,
-  sessions?: McpSessions<McpServerConfig, Client>,
+  sessions?: McpSessions<Remote, Client>,
 ): Promise<CatalogEntry[]> {
   const t0 = Date.now();
   const client = sessions
@@ -209,7 +263,7 @@ const toolName = (label: string, name: string) =>
  */
 export async function mcpTools(
   env: Env,
-  sessions?: McpSessions<McpServerConfig, Client>,
+  sessions?: McpSessions<Remote, Client>,
   waitUntil?: (p: Promise<unknown>) => void,
 ): Promise<Tool[]> {
   const servers = await loadServers(env);
@@ -234,19 +288,24 @@ export async function mcpTools(
 
       for (const entry of catalog) {
         if (allowed && !allowed.has(entry.name)) continue;
-        out.push({
-          name: toolName(server.label, entry.name),
-          description:
-            `[${server.spokenAs ?? server.label}] ${entry.description ?? entry.name}` +
-            (server.hint ? ` — ${server.hint}` : ""),
-          parameters: normaliseSchema(entry.inputSchema),
-          strict: false,
-          run: (args, ctx) => callRemote(server, entry.name, args, ctx, sessions),
-        });
+        out.push(remoteTool(server, entry, sessions));
       }
     }
   }
   return out;
+}
+
+/** One of a server's tools, as the router is offered it: named by the server's label, and run at the server. */
+export function remoteTool(server: Remote, entry: CatalogEntry, sessions?: McpSessions<Remote, Client>): Tool {
+  return {
+    name: toolName(server.label, entry.name),
+    description:
+      `[${server.spokenAs ?? server.label}] ${entry.description ?? entry.name}` +
+      (server.hint ? ` — ${server.hint}` : ""),
+    parameters: normaliseSchema(entry.inputSchema),
+    strict: false,
+    run: (args, ctx) => callRemote(server, entry.name, args, ctx, sessions),
+  };
 }
 
 /**
@@ -263,11 +322,11 @@ function normaliseSchema(schema?: Record<string, unknown>): Record<string, unkno
 }
 
 async function callRemote(
-  server: McpServerConfig,
+  server: Remote,
   name: string,
   args: Record<string, unknown>,
   ctx: ToolContext,
-  sessions?: McpSessions<McpServerConfig, Client>,
+  sessions?: McpSessions<Remote, Client>,
 ): Promise<string> {
   const refusal = refuseIfForbidden(name, args);
   if (refusal) {

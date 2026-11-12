@@ -36,18 +36,21 @@ export function openWithin<C extends Closable>(opening: Promise<C>, ms: number, 
 export class McpSessions<S extends { label: string }, C extends Closable> {
   private open = new Map<string, Promise<C>>();
   private readonly connect: (server: S) => Promise<C>;
+  private readonly keyOf: (server: S) => string;
 
-  constructor(connect: (server: S) => Promise<C>) {
+  /** `keyOf`: what tells one server from another, when its label alone does not (tools/mcp.ts). */
+  constructor(connect: (server: S) => Promise<C>, keyOf: (server: S) => string = (s) => s.label) {
     this.connect = connect;
+    this.keyOf = keyOf;
   }
 
   client(server: S): Promise<C> {
-    let c = this.open.get(server.label);
+    let c = this.open.get(this.keyOf(server));
     if (!c) {
       const opening = this.connect(server);
       // A connection that never opened is tried again by the next call.
       opening.catch(() => this.forget(server, opening));
-      this.open.set(server.label, opening);
+      this.open.set(this.keyOf(server), opening);
       c = opening;
     }
     return c;
@@ -60,9 +63,9 @@ export class McpSessions<S extends { label: string }, C extends Closable> {
 
   /** A connection that failed mid-question is not handed out again. */
   forget(server: S, which?: Promise<C>): void {
-    const c = this.open.get(server.label);
+    const c = this.open.get(this.keyOf(server));
     if (c && (!which || c === which)) {
-      this.open.delete(server.label);
+      this.open.delete(this.keyOf(server));
       c.then((cl) => cl.close()).catch(() => {});
     }
   }
