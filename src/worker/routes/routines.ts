@@ -157,7 +157,8 @@ export async function askForRoutine(
   await run(env, [{ role: "user", text: prompt }], sink, AbortSignal.timeout(120_000), unattended, {
     surface: "routine",
     // Nor Home Assistant's own configuration: an automation is written when someone asks, in the conversation.
-    toolFilter: (t) => !WRITES_HOUSE_CONFIG.test(t.name) && (!only || only(t)),
+    // Nor a tool classed as acting (a component's, lib/components.ts), unless the owner lets it run by itself.
+    toolFilter: (t) => !WRITES_HOUSE_CONFIG.test(t.name) && (t.reads !== false || t.alone === true) && (!only || only(t)),
     routineName: routine.name,
     ...(routine.action.kind === "ask" && routine.action.notify === "if-important" ? { routineIfImportant: true } : {}),
   });

@@ -129,7 +129,7 @@ export const START_MS = 20 * 60_000;
 export const STUCK_MS = START_MS + RUN_MS + 3 * 60_000;
 const MAX_ARGS = 4096;
 /** A call is shown whole or not filed: cut short, its last words could be the ones that matter ("…unlock"). */
-const MAX_SAYS = 300;
+export const MAX_SAYS = 300;
 /**
  * What a job's email can be, so one already drafted is never refused here:
  * mail_send's longest (4,000) with the household's footer (200), and its
@@ -794,7 +794,7 @@ export function weigh(tool: Pick<Tool, "name" | "propose">, args: Record<string,
 }
 
 /** Whether a job may be handed this tool to propose with: Jarvis's own that say how, and an MCP tool that writes. */
-export const proposable = (t: Pick<Tool, "name" | "propose">): boolean => !!t.propose || (t.name.includes("__") && !jobTool(t));
+export const proposable = (t: Pick<Tool, "name" | "propose" | "reads">): boolean => !!t.propose || (t.name.includes("__") && !jobTool(t));
 
 export const PROPOSE_ONLY = "PROPOSE ONLY: calling this does not do it; it asks the user, who approves with a tap. ";
 
@@ -828,11 +828,13 @@ function withLater(parameters: Tool["parameters"]): Tool["parameters"] | null {
  * A job's tools: those that read as they are; each that writes, a copy with
  * the same name and arguments whose run files the call instead (`file`);
  * any other, left out. The real run is never among a job's tools, so no step
- * can reach it.
+ * can reach it. The one exception is the owner's own: a component's tool
+ * they set to run by itself (`alone`, lib/components.ts) is the job's as it
+ * is, and counts and tells each call itself (tools/components.ts).
  */
 export function held(tools: readonly Tool[], file: File, finish: Finish): Tool[] {
   return tools.flatMap((t): Tool[] => {
-    if (jobTool(t)) return [t];
+    if (jobTool(t) || t.alone) return [t];
     if (!proposable(t)) return [];
     // With `later`, it can be put to them at a time, before an event, or when they get home or leave (lib/later.ts).
     const later = withLater(t.parameters);

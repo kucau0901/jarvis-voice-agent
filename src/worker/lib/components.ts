@@ -4,8 +4,9 @@ import { pageUrl } from "./page-look.ts";
 import { tidy, wellFormed } from "./quote.ts";
 import { hintOf, mintToken, sha256Hex } from "./devices.ts";
 import { jobTool } from "./jobs.ts";
-import { canonical } from "./proposals.ts";
+import { canonical, classify, MAX_SAYS } from "./proposals.ts";
 import { nameOf } from "./skills.ts";
+import { makeAlert, type Alert } from "./alerts.ts";
 
 /**
  * Components (docs/components.md): outside systems plugged into Jarvis. A
@@ -44,7 +45,8 @@ export const MAX_DESCRIPTION = 500;
 export const MAX_SCHEMA = 4096;
 export const MAX_MANIFEST = 8192;
 export const MAX_EVENTS = 16;
-export const MAX_SAYS = 100;
+/** What an event means, in its manifest's words. */
+export const EVENT_SAYS = 100;
 /** Things told from its reports in a day; routines still fire past it. */
 export const TOLD_PER_DAY = 30;
 /** Things done by itself in a day, however they start: where a loop between Jarvis and a component stops. */
@@ -211,11 +213,33 @@ export function manifestEvents(text: string | null): { type: string; says: strin
     const type = plain(e) && typeof e.type === "string" ? e.type : "";
     if (!EVENT_TYPE.test(type)) return `an event's type is lower-case letters, digits and _, at most 24 (${cut(plain(e) ? String(e.type) : String(e), 40)})`;
     if (out.some((o) => o.type === type)) return `the event ${type} is declared twice`;
-    const says = cut(plain(e) ? e.says : "", MAX_SAYS);
+    const says = cut(plain(e) ? e.says : "", EVENT_SAYS);
     if (!says) return `the event ${type} needs says: a few words on what it means`;
     out.push({ type, says });
   }
   return out.sort((a, b) => (a.type < b.type ? -1 : 1));
+}
+
+/**
+ * A call of one of its tools, in words code writes from the call itself
+ * (lib/proposals.ts classify): what its card says, and what is told when it
+ * is done by itself. Null for one that cannot be said whole, or whose own
+ * name reads like a look-up, which is never proposed.
+ */
+export function saysOf(label: string, tool: string, args: Record<string, unknown>): string | null {
+  const w = classify(`${label}__${tool}`, args);
+  return w && w.says.length <= MAX_SAYS ? w.says : null;
+}
+
+/**
+ * What it did with nobody there, as an alert for `person`: under its name, in
+ * words written here from the call, never a model's account of it. Shown, not
+ * spoken: whatever started it says its own piece.
+ */
+export function didAlert(c: Pick<Component, "id" | "name" | "label">, tool: string, args: Record<string, unknown>, ok: boolean, now: number, person: string): Alert | null {
+  const says = saysOf(c.label, tool, args);
+  const a = says ? makeAlert({ title: c.name, text: `${ok ? "Done by itself" : "Tried by itself, and it did not work"}: ${says}`, speak: false }, "api", now, person) : null;
+  return a && { ...a, skill: { id: c.id, name: c.name } };
 }
 
 /** What an approval covers: the address, every tool's name, description and arguments, and the events. Not how each is classed. */
@@ -469,6 +493,8 @@ export class Components {
         if (!t) return `it has no tool called ${cut(name, 60)}`;
         if (typeof on !== "boolean") return `${name} must be true or false`;
         if (on && (t.off || t.reads)) return t.off ? `${name} is switched off` : `${name} only reads: it asks nobody already`;
+        // Named like a look-up, it is never proposed (lib/proposals.ts classify), so there are no words to tell it in.
+        if (on && readsByName(name)) return `${name} is named like a look-up, so Jarvis never runs it with nobody there: have the component rename it`;
         const { alone: _a, ...base } = t;
         tools[i] = on ? { ...base, alone: true } : base;
       }
@@ -574,6 +600,22 @@ export class Components {
   /** One by its id, as stored: for the object's own work on it (state.ts). */
   async stored(id: string): Promise<Component | null> {
     return (await this.get(id)) ?? null;
+  }
+
+  /**
+   * Whether one of its tools may run now with nobody there (a routine, a job:
+   * tools/components.ts): only an acting tool the owner lets run by itself,
+   * as it is approved now, whose call can be told whole, and within the day's
+   * limit, against which it is counted. Null to go ahead; else why not, for
+   * the model whose step it was.
+   */
+  async acts(id: string, tool: string, args: Record<string, unknown>, day: string): Promise<string | null> {
+    const c = await this.get(id);
+    const t = c?.enabled && c.pinned?.url === c.url ? c.pinned.tools.find((x) => x.name === tool) : undefined;
+    if (!c || !t || t.off || t.reads || !t.alone) return "Not done: that is not something Jarvis does with nobody there. Say in your answer what you would do.";
+    if (!saysOf(c.label, tool, args)) return "Not done: that call is too long to tell the user whole, so it is not made with nobody there. Say in your answer what you would do.";
+    if (!(await this.count(id, day, "acted", ALONE_PER_DAY))) return `Not done: ${c.name} has done ${ALONE_PER_DAY} things by itself today, which is its limit. Say in your answer that this was not done.`;
+    return null;
   }
 
   /** One more thing told, or done by itself, today: false at the day's limit, and then not counted. */

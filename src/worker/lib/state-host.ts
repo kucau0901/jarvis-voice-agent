@@ -10,7 +10,7 @@ import {
 import type { StoredImage } from "./images.ts";
 import type { Procedure, Specialty } from "./specialties.ts";
 import type { Skill, SkillView } from "./skills.ts";
-import type { ComponentView, Listed } from "./components.ts";
+import type { ComponentView, Listed, Offered } from "./components.ts";
 import type { StoredPage } from "./pages.ts";
 import type { Episode } from "./episodes.ts";
 import type { Proposal, ProposalInput } from "./proposals.ts";
@@ -711,6 +711,12 @@ interface ComponentApi {
   componentNewAddress(id: string, now: number): Promise<{ component: ComponentView; token: string } | string>;
   componentDropAddress(id: string, now: number): Promise<ComponentView | string>;
   componentRemove(id: string): Promise<boolean>;
+  /** What one person is offered (tools/components.ts), keys included: never past the Worker. */
+  componentsFor(person: string): Promise<Offered[]>;
+  /** An acting tool about to run with nobody there: null to go ahead, counted; else why not. */
+  componentActs(id: string, tool: string, args: Record<string, unknown>, now: number): Promise<string | null>;
+  /** What it then did, told to `person` in words written from the call. */
+  componentDid(id: string, tool: string, args: Record<string, unknown>, ok: boolean, person: string, now: number): Promise<void>;
 }
 
 /** What jobs propose for a person's tap (lib/proposals.ts; routes/proposals.ts). */

@@ -2,7 +2,8 @@ import type { Env } from "../types.ts";
 import { err, json, publicOrigin, readObjectOrEmpty } from "../lib/http.ts";
 import { personOf, type Principal } from "../lib/auth.ts";
 import { stateStub } from "../lib/state-client.ts";
-import { hubStub } from "../lib/hub-client.ts";
+import { hubStub, personView } from "../lib/hub-client.ts";
+import { allows } from "../lib/scopes.ts";
 import { readServersForUi } from "../lib/config-store.ts";
 import { OWNER } from "../lib/context.ts";
 import { localeOf } from "../lib/locale.ts";
@@ -14,7 +15,8 @@ import { failureOf, remoteOf } from "../tools/components.ts";
  * Settings → Components (lib/components.ts), for the owner key and admins:
  *
  *   GET    /api/components       {components, people, owner}: each as Settings shows it, never a key or a digest;
- *                                the family, as shares name them; whether this caller may set "by itself"
+ *                                the family, as shares name them, and whether each holds `components`, without
+ *                                which a share gives them nothing; whether this caller may set "by itself"
  *   POST   /api/components       {name, url, label?}: added by its public https address. With the label of one
  *                                already here, that one is renamed and moved there: its key and its reporting
  *                                address are dropped, and what it offers is checked and approved again
@@ -43,10 +45,15 @@ import { failureOf, remoteOf } from "../tools/components.ts";
 const isOwner = async (env: Env, p: Principal): Promise<boolean> =>
   p.kind === "owner" || (p.kind === "member" && p.id === (await hubStub(env)?.firstPerson().catch(() => null)));
 
-/** The family, as shares name them ("owner" for the first person). Before there is one, the first person alone. */
-async function peopleOf(env: Env): Promise<{ person: string; name: string; role: string }[]> {
+/**
+ * The family, as shares name them ("owner" for the first person), and whether
+ * each holds `components` now: without it a share gives them nothing. Before
+ * there is a family, the first person alone.
+ */
+async function peopleOf(env: Env): Promise<{ person: string; name: string; role: string; holds: boolean }[]> {
   const family = (await hubStub(env)?.familyPeople().catch(() => null)) ?? [];
-  return family.length ? family.map((p) => ({ person: p.person, name: p.name, role: p.role })) : [{ person: OWNER, name: "", role: "admin" }];
+  if (!family.length) return [{ person: OWNER, name: "", role: "admin", holds: true }];
+  return Promise.all(family.map(async (p) => ({ person: p.person, name: p.name, role: p.role, holds: allows((await personView(env, p.person)).scopes ?? [], "components") })));
 }
 
 export async function handleComponents(req: Request, env: Env, principal: Principal): Promise<Response> {

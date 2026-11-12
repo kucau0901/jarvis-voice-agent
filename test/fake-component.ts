@@ -107,15 +107,18 @@ async function answer(c: FakeComponent, init: RequestInit): Promise<Response> {
 
 /**
  * These components in place of the network, until the returned function is
- * called: a request anywhere else fails, and is kept in `strays`.
+ * called. `also` answers what is not one of them (a scripted model, say); a
+ * request anywhere else fails, and is kept in `strays`.
  */
-export function serve(parts: readonly FakeComponent[], strays: string[] = []): () => void {
+export function serve(parts: readonly FakeComponent[], o: { strays?: string[]; also?: (url: string, init: RequestInit) => Response | null } = {}): () => void {
   const real = globalThis.fetch;
   globalThis.fetch = (async (input: string | URL | Request, init: RequestInit = {}) => {
     const url = String(input instanceof Request ? input.url : input);
     const c = parts.find((p) => p.url === url);
     if (c) return answer(c, init);
-    strays.push(url);
+    const other = o.also?.(url, init);
+    if (other) return other;
+    o.strays?.push(url);
     throw new Error(`nothing is at ${url}`);
   }) as typeof fetch;
   return () => void (globalThis.fetch = real);

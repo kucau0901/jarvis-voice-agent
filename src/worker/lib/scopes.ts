@@ -45,6 +45,12 @@ export const SCOPES = [
    * or send things, so no role but an admin's (`*`) has it.
    */
   "skills",
+  /**
+   * Components: outside systems an admin plugged in (lib/components.ts). Only
+   * the ceiling, as the car scopes are: what someone reaches of a component
+   * is what was shared with them, and an admin needs a share too.
+   */
+  "components",
 ] as const;
 
 export type Scope = (typeof SCOPES)[number];

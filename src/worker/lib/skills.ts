@@ -128,10 +128,10 @@ export const ADDRESS_PREFIX = "jbt1_";
 /**
  * What a bot's address may never reach, however it is ticked: skills (so a
  * bot asking never makes Jarvis send to a bot), the person's alerts, the
- * family's chat, live voice, the screen, and routines, which would go on
- * running in its name.
+ * family's chat, live voice, the screen, routines, which would go on
+ * running in its name, and components, which act in worlds of their own.
  */
-export const NEVER_FOR_BOTS: readonly Grant[] = ["skills", "alerts", "chat", "voice", "screen", "routines"];
+export const NEVER_FOR_BOTS: readonly Grant[] = ["skills", "alerts", "chat", "voice", "screen", "routines", "components"];
 /** What may be ticked for one: Hermes among them, never unless ticked. */
 export const BOT_REACH: readonly Grant[] = SCOPES.filter((s) => !NEVER_FOR_BOTS.includes(s));
 /** A new address may ask questions, and no more until more is ticked. */

@@ -1,6 +1,11 @@
 import { SdkHttpError } from "@modelcontextprotocol/client";
 import { redact } from "../lib/http.ts";
-import type { Remote } from "./mcp.ts";
+import { asQuotedData } from "../lib/quote.ts";
+import { stateStub } from "../lib/state-client.ts";
+import { OWNER } from "../lib/context.ts";
+import type { Offered } from "../lib/components.ts";
+import type { Tool } from "./registry.ts";
+import { remoteTool, type mcpSessions, type Remote } from "./mcp.ts";
 
 /**
  * A component's MCP server, as Jarvis reaches it (lib/components.ts,
@@ -31,4 +36,53 @@ export function failureOf(e: unknown, key?: string): string {
   }
   const said = e instanceof Error ? e.message : String(e);
   return redact(key ? said.split(key).join("***") : said).slice(0, MAX_FAILURE);
+}
+
+/**
+ * What a person is offered of the components shared with them (lib/components.ts
+ * offeredTo), as tools: each as an admin approved it, with no call to the
+ * component until one is used. The pinned description is what the model
+ * reads; what a call returns, or says as it fails, is the component's own
+ * words, quoted as data.
+ *
+ * `attended`: someone is asking, now. Then who they are in the component's
+ * own system goes with each call (X-Jarvis-Person), and its acting tools are
+ * theirs to use. With nobody there (a routine, a job) nobody is named to it,
+ * and an acting tool runs only by the owner's leave (`alone`): checked again
+ * as it runs, counted against the component's day, and told to whose work it
+ * was in words code writes from the call (state.ts componentDid).
+ */
+export function componentTools(parts: readonly Offered[], attended: boolean, sessions?: ReturnType<typeof mcpSessions>): Tool[] {
+  return parts.flatMap((part) => {
+    const remote = remoteOf(part, attended ? part.as : undefined);
+    return part.tools.map((t): Tool => {
+      const tool = remoteTool(remote, t, sessions);
+      return {
+        ...tool,
+        scope: "components",
+        reads: t.reads,
+        ...(t.alone ? { alone: true as const } : {}),
+        async run(args, ctx) {
+          const byItself = !attended && !t.reads;
+          const state = byItself ? stateStub(ctx.env) : null;
+          if (byItself) {
+            const why = state ? await state.componentActs(part.id, t.name, args, Date.now()) : "Not done: nothing here can count what Jarvis does by itself.";
+            if (why) return why;
+          }
+          let ok = false;
+          try {
+            const out = await tool.run(args, { ...ctx, done: () => void ((ok = true), ctx.done?.()) });
+            // Its own key, quoted back in what it returned, goes no further.
+            return typeof out === "string" && part.key ? out.split(part.key).join("***") : out;
+          } catch (e) {
+            // What its failure says is its own words too (an error page, a message), and may quote its key back.
+            const said = asQuotedData(`${part.label} error`, failureOf(e, part.key), `THE ${part.label.toUpperCase()} COMPONENT`);
+            return `That failed: ${part.label} could not be reached, or answered with an error.\n${said}`;
+          } finally {
+            if (byItself) await state?.componentDid(part.id, t.name, args, ok, ctx.env.JARVIS_PERSON || OWNER, Date.now()).catch(() => {});
+          }
+        },
+      };
+    });
+  });
 }

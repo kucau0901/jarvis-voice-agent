@@ -30,7 +30,7 @@ import { alertSaid, Conversation, type Said } from "./lib/conversation.ts";
 import { Images, type StoredImage } from "./lib/images.ts";
 import { Specialties, type Procedure } from "./lib/specialties.ts";
 import { heldToRelease, Skills } from "./lib/skills.ts";
-import { Components, type Listed } from "./lib/components.ts";
+import { Components, didAlert, type Listed } from "./lib/components.ts";
 import { Pages, type StoredPage } from "./lib/pages.ts";
 import { Episodes, episodeOfJob, type Episode } from "./lib/episodes.ts";
 import { cardOf, Proposals, type LaterDeps, type Proposal, type ProposalInput } from "./lib/proposals.ts";
@@ -1070,6 +1070,22 @@ export class JarvisState extends DurableObject<Env> {
 
   componentRemove(id: string) {
     return this.components.remove(id);
+  }
+
+  componentsFor(person: string) {
+    return this.components.offeredTo(person);
+  }
+
+  // By the household's day, as its usage is counted.
+  async componentActs(id: string, tool: string, args: Record<string, unknown>, now: number) {
+    return this.components.acts(id, tool, args, dayOf(now, localeOf(await this.localEnv()).timeZone));
+  }
+
+  // Told under the component's name, to whose routine or job it was.
+  async componentDid(id: string, tool: string, args: Record<string, unknown>, ok: boolean, person: string, now: number) {
+    const c = await this.components.stored(id);
+    const alert = c && didAlert(c, tool, args, ok, now, person);
+    if (alert) await deliver(await this.localEnv(), this, alert);
   }
 
   episodesOf(person: string, now: number) {

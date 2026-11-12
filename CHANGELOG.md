@@ -19,6 +19,20 @@ of every release, and in the [README](README.md#updating).
 
 ### Added
 
+- **Components: other systems plugged into Jarvis.** A school's timetable, a
+  shop's till, anything with a world of its own can be a component: an MCP
+  server whose tools Jarvis may use. An admin adds one by its public https
+  address, has Jarvis list what it offers, and approves it; that approved
+  list is what Jarvis is shown from then on, and anything the component
+  changes later waits to be approved again. It is shared person by person,
+  to look only or to use, as a car is, under a new permission, `components`,
+  which adults and children hold and a guest does not (an admin needs a
+  share too; a device made with named permissions needs it ticked). With
+  nobody there (a routine, a background job), a component's tool that acts
+  asks first, unless the owner set that one tool to run by itself: Jarvis
+  then says what it did, each time, and stops at 20 a day. For now it is set
+  up through `/api/components`.
+
 - **Routines where you are.** "When I get to the grocer, tell me my shopping
   list"; "when I leave the office, tell me the best way home". A person saves
   a place in the Jarvis app on their phone, and the phone tells Jarvis when

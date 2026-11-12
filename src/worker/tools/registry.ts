@@ -129,6 +129,19 @@ export interface Tool {
    * Without it, a job is never handed the tool. Not sent to the model.
    */
   propose?(args: Record<string, unknown>, env: Env): Weighed | null;
+  /**
+   * Whether it only reads, where its name does not decide it: a component's
+   * tool is what an admin classed it as (lib/components.ts). True, it is a
+   * reading tool wherever those are offered (lib/jobs.ts jobTool); false, it
+   * acts, and with nobody there it is proposed, never run. Not sent to the model.
+   */
+  reads?: boolean;
+  /**
+   * An acting tool the owner lets run with nobody there (a routine, a job),
+   * counted and told by code each time it does (tools/components.ts). Not
+   * sent to the model.
+   */
+  alone?: true;
   /** What the card shows of the thing the call acts on, looked up when it is filed (an email's sender and subject). Shown only. */
   detail?(args: Record<string, unknown>, ctx: ToolContext): Promise<string | null>;
   run(args: Record<string, unknown>, ctx: ToolContext): Promise<ToolOutput>;
