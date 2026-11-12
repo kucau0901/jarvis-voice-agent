@@ -316,7 +316,7 @@ function classesOf(raw: unknown, tools: readonly PinnedTool[]): Record<string, T
 
 const argsOf = (schema: Record<string, unknown>): string[] => (plain(schema.properties) ? Object.keys(schema.properties).slice(0, 12).map((k) => cut(k, 40)) : []);
 const toolView = ({ inputSchema, ...t }: PinnedTool): ToolView => ({ ...t, args: argsOf(inputSchema), ...(readsByName(t.name) ? { looksUp: true as const } : {}) });
-const catalogView = (c: Catalog, tools: readonly PinnedTool[] = c.tools): CatalogView => ({ hash: c.hash, at: c.at, ...(c.version ? { version: c.version } : {}), tools: tools.map(toolView), events: c.events });
+const catalogView = (c: Catalog): CatalogView => ({ hash: c.hash, at: c.at, ...(c.version ? { version: c.version } : {}), tools: c.tools.map(toolView), events: c.events });
 
 export class Components {
   private storage: Storage;
@@ -362,10 +362,11 @@ export class Components {
     }));
   }
 
-  private async change(id: string, now: number, how: (c: Component) => Component | string | Promise<Component | string>): Promise<ComponentView | string> {
+  /** One component changed as `how` says, or why not. */
+  private async change(id: string, now: number, how: (c: Component) => Component | string): Promise<ComponentView | string> {
     const c = await this.get(id);
     if (!c) return "no such component";
-    const next = await how(c);
+    const next = how(c);
     if (typeof next === "string") return next;
     await this.storage.put(C + id, { ...next, updatedAt: now });
     return this.view({ ...next, updatedAt: now });
