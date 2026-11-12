@@ -200,6 +200,24 @@ await call("Adam", adam.token, "DELETE", "/api/hub/members", { user: idOf("Nenek
 await call("Nenek (removed)", nenek.token, "GET", "/api/hub/me");
 await call("Sara", sara.token, "DELETE", "/api/hub/members", { user: idOf("Adam").user });
 
+/* ---------- components: an admin's to plug in, and what one may report (added last, so every earlier request keeps its place) ---------- */
+await call("Sara", sara.token, "GET", "/api/components");
+await call("Adam", adam.token, "GET", "/api/components");
+await call("Adam", adam.token, "POST", "/api/components", { name: "Shop", url: "http://192.168.1.5/mcp" });
+const school = await call("Adam", adam.token, "POST", "/api/components", { name: "School", url: "https://school.example.com/mcp" });
+const schoolId = str((school.body.component as J | undefined)?.id);
+await call("Adam", adam.token, "PATCH", "/api/components", { id: schoolId, shares: { [idOf("Sara").person]: { level: "see", tell: true, as: "T1" } } });
+// Nothing is approved yet (nothing answers at that address here), so nothing may be let run by itself, and no event is taken.
+await call("Adam", adam.token, "PATCH", "/api/components", { id: schoolId, alone: { apply_relief: true } });
+const reporting = await call("Adam", adam.token, "PATCH", "/api/components", { id: schoolId, address: true });
+await call("School", str(reporting.body.token), "POST", "/api/v1/component/events", { events: [{ type: "leave_filed", text: "T. Rahman is on leave tomorrow.", level: "notice" }] });
+await call("School", str(reporting.body.token), "GET", "/api/v1/component/events");
+await call("no component", `jcp1_${"a".repeat(32)}`, "POST", "/api/v1/component/events", { events: [{ type: "leave_filed" }] });
+// Stopped again, so the screens (ui.mjs) show no address, whose hint is new every run.
+await call("Adam", adam.token, "PATCH", "/api/components", { id: schoolId, address: false });
+await call("School (stopped)", str(reporting.body.token), "POST", "/api/v1/component/events", { events: [{ type: "leave_filed" }] });
+await call("Adam", adam.token, "GET", "/api/components");
+
 /* ---------- what the stand-ins saw ---------- */
 const model = await (await fetch(`${OPENAI}/__log`)).json();
 const house = await (await fetch(`${HA}/__calls`)).json();

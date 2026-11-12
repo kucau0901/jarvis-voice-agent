@@ -92,7 +92,7 @@ export function restore(all: Said[], rows: Rows, history: History): void {
       continue;
     }
     if (s.skill && !s.skill.answered) {
-      if (rows.skill({ id: s.id, at: s.at, text: s.text, skill: s.skill })) history.add("assistant", skillHistory(s.skill, s.text), s.at);
+      if (rows.skill({ id: s.id, at: s.at, text: s.text, skill: s.skill, ...(s.proposals ? { proposals: s.proposals } : {}) })) history.add("assistant", skillHistory(s.skill, s.text), s.at);
       continue;
     }
     if (s.page && isApart(s)) {

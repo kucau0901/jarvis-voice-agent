@@ -94,7 +94,7 @@ export function shownOnce(box: HTMLElement, name: string, m: Made, done: () => v
   const show = (k: (typeof all)[number]) => {
     open = k;
     for (const b of choices.children) b.classList.toggle("primary", b.textContent === k.name);
-    lines.replaceChildren(...k.lines.map((l) => line(l, said)), el("p", "", k.note));
+    lines.replaceChildren(...k.lines.map((l) => copyLine(l, said)), el("p", "", k.note));
     // What was copied was another kind's lines: never left looking copied.
     copyAll.classList.remove("copied");
     copyAll.textContent = "Copy all";
@@ -117,7 +117,8 @@ export function shownOnce(box: HTMLElement, name: string, m: Made, done: () => v
   show(open);
 }
 
-function line(l: Line, said: HTMLElement): HTMLElement {
+/** One thing to copy, under what it is, with its own Copy; `said` is where a refused clipboard is explained. For ui/Components.ts too. */
+export function copyLine(l: Line, said: HTMLElement): HTMLElement {
   const row = el("div", "tok");
   const code = el("code", "", l.value);
   const b = button("Copy", () => void copy(l.value, b, said, code), "docopen");

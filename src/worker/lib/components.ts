@@ -125,8 +125,12 @@ export interface Component {
   updatedAt: number;
 }
 
-/** A tool as Settings shows it: its arguments by name, never its whole schema. */
-export type ToolView = Omit<PinnedTool, "inputSchema"> & { args: string[]; change?: "new" | "changed" };
+/**
+ * A tool as Settings shows it: its arguments by name, never its whole schema.
+ * `looksUp`: its own name reads like a look-up, so classed as acting it is
+ * never proposed or run with nobody there (lib/proposals.ts classify).
+ */
+export type ToolView = Omit<PinnedTool, "inputSchema"> & { args: string[]; looksUp?: true; change?: "new" | "changed" };
 export interface CatalogView {
   hash: string;
   at: number;
@@ -311,7 +315,7 @@ function classesOf(raw: unknown, tools: readonly PinnedTool[]): Record<string, T
 }
 
 const argsOf = (schema: Record<string, unknown>): string[] => (plain(schema.properties) ? Object.keys(schema.properties).slice(0, 12).map((k) => cut(k, 40)) : []);
-const toolView = ({ inputSchema, ...t }: PinnedTool): ToolView => ({ ...t, args: argsOf(inputSchema) });
+const toolView = ({ inputSchema, ...t }: PinnedTool): ToolView => ({ ...t, args: argsOf(inputSchema), ...(readsByName(t.name) ? { looksUp: true as const } : {}) });
 const catalogView = (c: Catalog, tools: readonly PinnedTool[] = c.tools): CatalogView => ({ hash: c.hash, at: c.at, ...(c.version ? { version: c.version } : {}), tools: tools.map(toolView), events: c.events });
 
 export class Components {
