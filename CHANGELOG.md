@@ -101,6 +101,12 @@ of every release, and in the [README](README.md#updating).
   connection that had been quiet for five seconds, and tried again only for
   what reads. It now tries once more for everything, when the request was
   lost before Jarvis saw it. Rebuild the image to have it.
+- **A page that froze took the whole browser with it.** When the tab in front
+  hung, every later request failed after twenty seconds ("the page did not
+  answer in time") whatever address was asked for, and the browser's screen in
+  the app stayed empty, until the browser was restarted by hand. Jarvis now
+  gives that tab a few seconds, closes it, carries on in a new one and says
+  that it did.
 - **Jarvis gave up half way through a form in the browser** ("I got stuck
   working that one out"): it stopped after six steps whatever it was doing.
   Work in the browser now has twenty.

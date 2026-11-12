@@ -53,6 +53,8 @@ interface Fake {
   /** The connection drops when this is asked. */
   hangUpOn?: string;
   list?: { ok: boolean; status: number; body: string };
+  /** The tab at this address has hung: it takes a connection and answers nothing. */
+  hung?: string;
 }
 
 function chrome(f: Fake = {}) {
@@ -84,6 +86,7 @@ function chrome(f: Fake = {}) {
         send: (text) => {
           const m = JSON.parse(text) as { id: number; method: string; params: Record<string, unknown> };
           sent.push({ method: m.method, params: m.params });
+          if (url === f.hung) return;
           if (m.method === f.hangUpOn) return void queueMicrotask(() => onClose("gone"));
           const answer = (result: unknown, error?: string) => queueMicrotask(() => onText(JSON.stringify(error ? { id: m.id, error: { message: error } } : { id: m.id, result })));
           if (m.method === "Page.handleJavaScriptDialog") return boxes-- > 0 ? answer({}) : answer(null, "No dialog is showing");
@@ -129,6 +132,27 @@ console.log("what may be opened");
   check("nonsense: said so", ok("http://") === "that is not a web address");
   const c = chrome();
   check("and the browser is never asked", /^Not opened: only http and https/.test(await browserOpen(c.deps, "file:///config/profile/Cookies")) && c.fetched.length === 0 && c.sent.length === 0);
+}
+
+console.log("\na tab that has hung");
+{
+  const HUNG = { type: "page", id: "H", url: "https://frozen.example/", webSocketDebuggerUrl: "ws://127.0.0.1:9222/devtools/page/H" };
+  const OLDER = { type: "page", id: "O", url: "https://shop.example/", webSocketDebuggerUrl: "ws://127.0.0.1:9222/devtools/page/O" };
+  const c = chrome({ targets: [HUNG, OLDER], targetsLater: [{ ...TAB, id: "N", webSocketDebuggerUrl: "ws://127.0.0.1:9222/devtools/page/NEW" }, OLDER], hung: HUNG.webSocketDebuggerUrl });
+  const began = Date.now();
+  const out = await browserOpen(c.deps, "shop.example/orders");
+  check("it is given a few seconds, not the whole of a step's time", Date.now() - began < 12_000, Date.now() - began);
+  check("then a new one is opened and the hung one closed", c.fetched[1] === "PUT http://127.0.0.1:9222/json/new?about:blank" && c.fetched[2] === "GET http://127.0.0.1:9222/json/close/H", c.fetched);
+  check("the work goes on in the new one", c.dialled.join() === `${HUNG.webSocketDebuggerUrl},ws://127.0.0.1:9222/devtools/page/NEW` && c.sent.at(-1)?.method === "Runtime.evaluate" && out.includes("You have 2 orders."), [c.dialled, c.methods()]);
+  check("the model is told the old tab is gone, outside the page's own words", /\n---[^\n]*\n\nThe tab that was open had hung/.test(out) && out.includes("1 more is open behind it"), out.slice(-700));
+  check("both connections are hung up", c.closed() === 2);
+
+  const fine = chrome();
+  check("a tab that answers is never replaced, nor said to have been", !(await browserRead(fine.deps)).includes("had hung") && !fine.fetched.some((x) => x.includes("/json/new") || x.includes("/json/close/")), fine.fetched);
+
+  const dropped = chrome({ hangUpOn: "Page.enable" });
+  const why = await browserRead(dropped.deps).catch((e: Error) => e.message);
+  check("a browser that hangs up is another thing: said so, and no tab opened", /hung up/.test(why) && !dropped.fetched.some((x) => x.includes("/json/new")), [why, dropped.fetched]);
 }
 
 console.log("\nopening a page");

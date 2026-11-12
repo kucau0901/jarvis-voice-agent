@@ -39,6 +39,9 @@ const TEXT_MAX = 6000;
 const ITEMS_MAX = 120;
 /** How long one thing asked of the browser may take to be answered. */
 const CALL_MS = 20_000;
+/** How long the tab in front has to say it is there at all, before it is taken to have hung and is replaced. */
+const HUNG_MS = 8_000;
+const LATE = "the page did not answer in time";
 /** How long a page may take to finish loading before it is read as it is. */
 const SETTLE_MS = 12_000;
 
@@ -272,6 +275,8 @@ interface Reading {
   behind?: number;
   /** Message boxes the page put up while this was done, each answered OK: what they said. */
   boxes?: string[];
+  /** The tab that was in front had hung, and this is the new one opened in its place. */
+  replaced?: boolean;
   /** Which part of a long page this is: 1 is its start. */
   part: number;
   password: boolean;
@@ -341,6 +346,8 @@ class Tab {
   /** Which tab this is, and how many others are open behind it. */
   at: Listed = { id: "", webSocketDebuggerUrl: "" };
   behind = 0;
+  /** The tab that was in front answered nothing, and was closed: this one was opened in its place. */
+  replaced = false;
   private wire: Wire | null = null;
   private next = 1;
   private waiting = new Map<number, { resolve: (v: Record<string, unknown>) => void; reject: (e: Error) => void }>();
@@ -382,10 +389,8 @@ class Tab {
     this.waiting.clear();
   }
 
-  /** The tab in front: the newest the browser has, so a window a page opened is the one worked in. A new one when there is none. */
-  static async open(deps: BrowserDeps): Promise<Tab> {
-    let all = await tabs(deps);
-    if (!all.length) all = pages(parsed(deps, await ask(deps, "/json/new?about:blank", "PUT")));
+  /** Connected to the first of `all`. */
+  private static async dial(deps: BrowserDeps, all: Listed[]): Promise<Tab> {
     const front = all[0];
     if (!front) throw new Error("the browser has no tab to use and would not open one");
     const tab = new Tab(deps);
@@ -393,8 +398,37 @@ class Tab {
     tab.behind = all.length - 1;
     tab.wire = await deps.dial(front.webSocketDebuggerUrl, (text) => tab.heard(text), (why) => tab.lost(`the browser hung up: ${why}`));
     deps.signal?.addEventListener("abort", () => tab.close(), { once: true });
-    // To be told of a message box; and one left up from before is closed now, or nothing below would be answered.
-    await tab.call("Page.enable");
+    return tab;
+  }
+
+  /**
+   * The tab in front: the newest the browser has, so a window a page opened is the one worked in. A new one
+   * when there is none, or when that one has hung.
+   */
+  static async open(deps: BrowserDeps): Promise<Tab> {
+    let all = await tabs(deps);
+    if (!all.length) all = pages(parsed(deps, await ask(deps, "/json/new?about:blank", "PUT")));
+    let tab = await Tab.dial(deps, all);
+    // To be told of a message box. A tab that does not answer even this has hung (a page that froze or
+    // crashed), and would fail everything asked of the browser from now on, whatever address was opened:
+    // it is closed, and a new one works in its place.
+    const hung = await tab.call("Page.enable", {}, HUNG_MS).then(
+      () => false,
+      (e: Error) => {
+        if (e.message !== LATE) throw e;
+        return true;
+      },
+    );
+    if (hung) {
+      tab.close();
+      all = [...pages(parsed(deps, await ask(deps, "/json/new?about:blank", "PUT"))), ...all.slice(1)];
+      // The browser may not manage to close what has hung; the new one is in front all the same.
+      await ask(deps, `/json/close/${encodeURIComponent(tab.at.id)}`).catch(() => {});
+      tab = await Tab.dial(deps, all);
+      tab.replaced = true;
+      await tab.call("Page.enable");
+    }
+    // A message box left up from before is closed now, or nothing below would be answered.
     if (await tab.call("Page.handleJavaScriptDialog", { accept: true }).then(() => true, () => false)) tab.boxes.push("");
     return tab;
   }
@@ -404,15 +438,15 @@ class Tab {
     this.lost("stopped");
   }
 
-  call(method: string, params: Record<string, unknown> = {}): Promise<Record<string, unknown>> {
+  call(method: string, params: Record<string, unknown> = {}, within = CALL_MS): Promise<Record<string, unknown>> {
     const id = this.next++;
     return new Promise((resolve, reject) => {
       if (this.gone || !this.wire) return reject(new Error(this.gone || "not connected"));
       // No step waits for ever: a page that has stopped answering is said to have, in time for the person to be told.
       const late = setTimeout(() => {
         this.waiting.delete(id);
-        reject(new Error("the page did not answer in time"));
-      }, CALL_MS);
+        reject(new Error(LATE));
+      }, within);
       this.waiting.set(id, {
         resolve: (v) => (clearTimeout(late), resolve(v)),
         reject: (e) => (clearTimeout(late), reject(e)),
@@ -518,6 +552,8 @@ export function describe(r: Reading): string {
   const notes: string[] = [];
   for (const said of r.boxes ?? [])
     notes.push(said ? `The page put up a message box, which was answered OK. It said: ${asQuotedData("message box", said, "THE WEBSITE")}` : "A message box left open on the page was closed with OK.");
+  if (r.replaced)
+    notes.push("The tab that was open had hung and answered nothing, so it was closed and this new one opened in its place. Whatever was on the old one is gone: open its address again if it is still wanted, and tell the user the browser had to start a fresh tab.");
   if (r.behind) notes.push(`This is the browser's newest tab; ${r.behind} more ${r.behind === 1 ? "is" : "are"} open behind it. browser_close_tab closes this one and goes back to the one behind.`);
   if (r.check)
     notes.push("This page is asking whoever is there to prove they are human. Do not try to answer it, and press nothing on it: call browser_show, which puts the page in front of the user to do it themselves, and tell them it wants a human check. When they say it is done, read the page again.");
@@ -536,12 +572,13 @@ async function withTab(deps: BrowserDeps, act: (tab: Tab) => Promise<string | vo
     // What was done may have opened a window, or closed this one: the page to read is then the one in front now.
     const front = (await tabs(deps))[0];
     const boxes = tab.boxes;
+    const replaced = tab.replaced;
     if (front && front.webSocketDebuggerUrl !== tab.at.webSocketDebuggerUrl) {
       tab.close();
       tab = await Tab.open(deps);
       await tab.settle();
     }
-    return describe({ ...(await tab.read(part)), behind: tab.behind, boxes: [...boxes, ...(tab.boxes === boxes ? [] : tab.boxes)] });
+    return describe({ ...(await tab.read(part)), behind: tab.behind, replaced: replaced || tab.replaced, boxes: [...boxes, ...(tab.boxes === boxes ? [] : tab.boxes)] });
   } finally {
     tab.close();
   }
