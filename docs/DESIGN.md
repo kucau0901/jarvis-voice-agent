@@ -832,7 +832,7 @@ Google asks of it.
 ### More than one account
 
 A person may link several Google accounts: a work one beside their own
-(Family → Accounts → Link another). Linking never asks which
+(Family → Accounts → Add an account → Connect). Linking never asks which
 is which. The account chosen at Google says: one already linked is that link
 renewed, anything else is one more. The first keeps the key a single account
 always had, so a link made before there could be two is the first and needs

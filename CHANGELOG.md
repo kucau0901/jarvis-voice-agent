@@ -20,8 +20,9 @@ of every release, and in the [README](README.md#updating).
 ### Added
 
 - **More than one Google account each.** A work account beside your own: in
-  Family → Accounts, **Link another**, choose it at Google, and
-  it is listed under the first with its address. "Any new mail" and "what's on
+  Family → Accounts, under **Add an account**, press **Connect** beside
+  Google and choose it there: it is listed with the first, each a card with
+  its address and Unlink. "Any new mail" and "what's on
   today" then cover every account and say which each item is in; a reply goes
   from the account the mail came to, and "from my work email" picks one. The
   account already linked stays as it is. The morning brief, invitations found

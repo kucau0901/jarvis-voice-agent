@@ -506,9 +506,11 @@
   .panel .fieldfoot { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
   .panel .fieldfoot .help { font-size: 12px; color: var(--faint); }
   .panel .fieldfoot button { min-height: 34px; padding: 4px 12px; font-size: 13px; }
-  .panel .m-accounts { display: grid; gap: 8px; }
-  .panel .m-accounts .rowbtns { flex: none; }
-  .panel .m-accounts .note { margin: 0; }
+  .panel .m-accounts .rlist { margin-top: 0; }
+  .panel .m-accounts .rtop b { flex: none; }
+  .panel .m-accounts .rtop .rowbtns { justify-content: flex-end; }
+  .panel .m-accounts h4 { margin: 16px 0 8px; }
+  .panel .m-accounts .note { margin: 12px 0 0; }
   .panel .cmd { display: block; padding: 8px 10px; font-size: 13px; overflow-x: auto; white-space: nowrap; }
 
   /* Devices. Minting a credential is a phone-or-laptop job, never a driving one. */
