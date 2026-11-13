@@ -19,6 +19,15 @@ of every release, and in the [README](README.md#updating).
 
 ### Added
 
+- **More than one Google account each.** A work account beside your own: in
+  Family → Accounts, **Link another**, choose it at Google, and
+  it is listed under the first with its address. "Any new mail" and "what's on
+  today" then cover every account and say which each item is in; a reply goes
+  from the account the mail came to, and "from my work email" picks one. The
+  account already linked stays as it is. The morning brief, invitations found
+  in mail and Chat's search still read the first account only. A work or
+  school account links only if its administrator allows apps it has not
+  approved.
 - **Components: other systems plugged into Jarvis.** A school's timetable, a
   shop's till, anything with a world of its own can be a component: an MCP
   server whose tools Jarvis may use. In the new **Settings → Components**, an

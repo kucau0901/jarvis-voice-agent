@@ -829,6 +829,36 @@ auto-forwarding rule and turn a mistake into ongoing exfiltration. Note that
 `gmail.readonly` in, so this widened what the app can do without widening what
 Google asks of it.
 
+### More than one account
+
+A person may link several Google accounts: a work one beside their own
+(Family → Accounts → Link another). Linking never asks which
+is which. The account chosen at Google says: one already linked is that link
+renewed, anything else is one more. The first keeps the key a single account
+always had, so a link made before there could be two is the first and needs
+nothing done; when the first is unlinked the next takes its place, so "the
+first" is always an account that is there (`lib/google.ts`).
+
+What is asked in words covers them all (`lib/google-accounts.ts`):
+
+- **A read covers every account**, each under its address: `mail_check`,
+  `mail_search`, `calendar_check`, `contacts_lookup`.
+- **An action goes to one.** The account the model names (every tool takes
+  `account`: an address or a distinctive part of one), else the account that
+  has the message or event acted on, found by asking each, else the first. So
+  a reply leaves from the mailbox the mail came to, and the answer says which.
+- **With one account nothing changes**: the same calls, the same words.
+
+The addresses are the person's own, given by Google at linking, so they are
+said to the model plainly; no label is typed, and no model picks an account
+for anyone by guessing. What runs with nobody asking still reads the first
+account only: the morning brief, invitations found in mail, leaving in time,
+bulk tidying, and Chat's search.
+
+A work or school account is the organisation's to allow. Where its
+administrator blocks apps it has not approved, Google refuses at the consent
+screen, and nothing here can change that.
+
 ## The diary
 
 `calendar_check` and `calendar_add` ride the same Google grant as Gmail — one

@@ -48,6 +48,14 @@ type OwnHa = "yours" | "again" | "";
 /** What Jarvis will do with the car for them: nothing to do with who can drive it, which is the Tesla app's or key's. */
 const LEVEL_WORDS: Record<string, string> = { "": "not shared", see: "can check it", drive: "can control it" };
 
+/** One linked Google account, as GET /api/google/status lists it; `id` "" is their first. */
+interface Linked {
+  id: string;
+  account: string | null;
+  working: boolean;
+  problem: string | null;
+}
+
 const ACCOUNTS: { id: "google" | "spotify"; name: string; what: string }[] = [
   { id: "google", name: "Google", what: "your mail, calendar and contacts" },
   { id: "spotify", name: "Spotify", what: "your music" },
@@ -374,7 +382,12 @@ export class Mine {
           text.textContent = `${a.name}: not set up for the family yet (an admin adds it in Settings).`;
           continue;
         }
-        const s = (await res.json()) as { linked?: boolean; account?: string | null };
+        const s = (await res.json()) as { linked?: boolean; account?: string | null; accounts?: Linked[] };
+        if (a.id === "google" && s.accounts?.length) {
+          row.remove();
+          this.googleRows(box, s.accounts);
+          continue;
+        }
         text.textContent = s.linked
           ? `${a.name}: linked${s.account ? ` as ${s.account}` : ""}. Jarvis reads ${a.what}.`
           : `${a.name}: not linked. Link yours so Jarvis can reach ${a.what}.`;
@@ -384,6 +397,32 @@ export class Mine {
         text.textContent = `${a.name}: could not check.`;
       }
     }
+  }
+
+  /** A row for each Google account linked (GET /api/google/status), then the way to link one more: a work account beside their own. */
+  private googleRows(box: HTMLElement, accounts: Linked[]): void {
+    const row = (says: string, ...btns: HTMLButtonElement[]) => {
+      const text = el("span", "help", says);
+      const side = el("div", "rowbtns");
+      side.append(...btns);
+      const r = el("div", "fieldfoot");
+      r.append(text, side);
+      box.appendChild(r);
+    };
+    for (const g of accounts) {
+      const name = g.account ?? "an account";
+      const remove = this.button("Unlink", () => void this.unlink("google", g.id));
+      if (g.working) row(`Google: ${name}. Jarvis reads its mail, calendar and contacts.`, remove);
+      else row(`Google: ${name} is not working. ${g.problem ?? "It needs linking again."}`, this.button("Link again", () => void this.link("google"), true), remove);
+    }
+    row("Another Google account, such as the one for work: its mail and calendar are read beside these.", this.button("Link another", () => void this.link("google")));
+    box.appendChild(
+      el(
+        "p",
+        "note",
+        "Google says it has not verified this app: choose Advanced, then continue. A work or school account links the same way, unless its administrator blocks apps it has not approved.",
+      ),
+    );
   }
 
   private button(label: string, go: () => void, primary = false): HTMLButtonElement {
@@ -406,8 +445,8 @@ export class Mine {
     }
   }
 
-  private async unlink(id: string): Promise<void> {
-    await this.said(fetch(`/api/${id}/unlink`, { method: "POST", headers: authHeaders(this.key), body: "{}" }), "Unlinked.");
+  private async unlink(id: string, account = ""): Promise<void> {
+    await this.said(fetch(`/api/${id}/unlink`, { method: "POST", headers: authHeaders(this.key), body: JSON.stringify(account ? { account } : {}) }), "Unlinked.");
     await this.accounts();
   }
 

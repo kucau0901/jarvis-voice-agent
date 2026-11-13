@@ -1,6 +1,7 @@
 import type { Env } from "../types.ts";
 import { localeOf } from "../lib/locale.ts";
 import { CALENDAR, call, explain, googleConfig, guardTool, type GoogleConfig } from "../lib/google.ts";
+import { ACCOUNT_PARAM, onEach, onOne } from "../lib/google-accounts.ts";
 import { dayBegins, localParts, zonedToUtc } from "../lib/routines.ts";
 import { asQuotedData, tidy } from "../lib/quote.ts";
 import { clampLimit } from "./args.ts";
@@ -64,6 +65,9 @@ function guard<T>(fn: () => Promise<T>): Promise<T | string> {
     prefix: "Calendar error",
   });
 }
+
+/** Where an event is, for a change that names it and no account (lib/google-accounts.ts). */
+const hasEvent = (id: string) => ({ path: `/calendars/primary/events/${encodeURIComponent(id)}`, base: CALENDAR });
 
 /* ---------- time ---------------------------------------------------------- */
 
@@ -170,13 +174,14 @@ export const calendarCheck: Tool = {
         type: ["integer", "null"],
         description: `How many events, 1 to ${MAX_EVENTS}. Default ${DEFAULT_EVENTS}. Keep it small; this is read aloud.`,
       },
+      account: ACCOUNT_PARAM,
     },
-    required: ["range", "limit"],
+    required: ["range", "limit", "account"],
     additionalProperties: false,
   },
   async run(args, ctx) {
     const tz = localeOf(ctx.env).timeZone;
-    return (await guard(async () => {
+    return onEach(ctx, args.account, (ctx) => guard(async () => {
       const cfg = cfgOf(ctx);
       const range = (RANGES as readonly string[]).includes(String(args.range)) ? String(args.range) : "next";
       const limit = clampLimit(args.limit, DEFAULT_EVENTS, MAX_EVENTS);
@@ -268,8 +273,9 @@ export const calendarAdd: Tool = {
         type: ["string", "null"],
         description: "Where, if the user said. A street address is better than a nickname.",
       },
+      account: ACCOUNT_PARAM,
     },
-    required: ["title", "start", "duration_minutes", "location"],
+    required: ["title", "start", "duration_minutes", "location", "account"],
     additionalProperties: false,
   },
   // Proposed by a job (lib/proposals.ts): an event in the user's own calendar, which they can delete,
@@ -286,7 +292,7 @@ export const calendarAdd: Tool = {
   },
   async run(args, ctx) {
     const tz = localeOf(ctx.env).timeZone;
-    return (await guard(async () => {
+    return onOne(ctx, args.account, (ctx) => guard(async () => {
       const cfg = cfgOf(ctx);
       const title = tidy(String(args.title ?? "")).slice(0, MAX_TEXT);
       const start = String(args.start ?? "").trim();
@@ -402,8 +408,9 @@ export const calendarRsvp: Tool = {
       organizer: { type: "string" },
       response: { type: "string", enum: Object.keys(RESPONSES) },
       recurring: { type: "boolean" },
+      account: ACCOUNT_PARAM,
     },
-    required: ["event_id", "start", "title", "organizer", "response", "recurring"],
+    required: ["event_id", "start", "title", "organizer", "response", "recurring", "account"],
     additionalProperties: false,
   },
   propose(args, env) {
@@ -413,7 +420,7 @@ export const calendarRsvp: Tool = {
   async run(args, ctx) {
     const r = rsvpOf(args, ctx.env);
     if (!r) return "That is not an invitation, so nothing was sent.";
-    return (await guard(async () => {
+    return onOne(ctx, args.account, (ctx) => guard(async () => {
       const cfg = cfgOf(ctx);
       const path = `/calendars/primary/events/${encodeURIComponent(r.id)}`;
       const got = await call(ctx.env, cfg, path, { base: CALENDAR, signal: ctx.signal });
@@ -443,7 +450,7 @@ export const calendarRsvp: Tool = {
       if (res.status !== 200) return `Nothing was sent: Google returned ${res.status}.`;
       ctx.done?.();
       return `${r.verb === "Accept" ? "Accepted" : "Declined"} “${r.title}”; the organiser is told.`;
-    }));
+    }), hasEvent(r.id));
   },
 };
 
@@ -488,8 +495,9 @@ export const calendarChange: Tool = {
       },
       title: { type: ["string", "null"], description: "The new title. Null keeps it." },
       location: { type: ["string", "null"], description: "The new place. Null keeps it." },
+      account: ACCOUNT_PARAM,
     },
-    required: ["event_id", "action", "start", "title", "location"],
+    required: ["event_id", "action", "start", "title", "location", "account"],
     additionalProperties: false,
   },
   async run(args, ctx) {
@@ -513,7 +521,7 @@ export const calendarChange: Tool = {
       return `That works out to ${whenSpoken(tz, { dateTime: start })}, which is in the past. Nothing was changed — check the date with the user.`;
     }
 
-    return (await guard(async () => {
+    return onOne(ctx, args.account, (ctx) => guard(async () => {
       const cfg = cfgOf(ctx);
       const path = `/calendars/primary/events/${encodeURIComponent(id)}`;
       const got = await call(ctx.env, cfg, path, { base: CALENDAR, signal: ctx.signal });
@@ -565,7 +573,7 @@ export const calendarChange: Tool = {
       ctx.done?.();
       const said = [moved && `moved to ${moved}`, title && `renamed “${title}”`, location && `now at ${location}`].filter(Boolean).join(", ");
       return `Changed the event ${when}: ${said}.${after}`;
-    }));
+    }), hasEvent(id));
   },
 };
 

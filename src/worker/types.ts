@@ -17,6 +17,8 @@ export interface Env {
    * kept before families; a member's own id otherwise.
    */
   JARVIS_PERSON?: string;
+  /** Which of that person's linked Google accounts a call is for, when not their first (lib/google.ts). */
+  GOOGLE_ACCOUNT?: string;
   /** The signed-in person's own id, the first person's too; absent for the owner key and devices (tools/alerts.ts). */
   JARVIS_USER?: string;
   /** The device asking, as its routines and jobs record it (lib/context.ts deviceWho); absent for a person. */
