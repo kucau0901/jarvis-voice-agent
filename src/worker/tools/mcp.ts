@@ -6,6 +6,7 @@ import type { Tool, ToolContext } from "./registry.ts";
 import { McpSessions, openWithin } from "../lib/mcp-sessions.ts";
 import { sha256Hex } from "../lib/devices.ts";
 import { asQuotedData } from "../lib/quote.ts";
+import { VIDEO_SHOWN, videoOf } from "../lib/component-video.ts";
 
 /**
  * Third-party MCP servers, exposed to the delegation router as ordinary tools.
@@ -355,7 +356,9 @@ async function callRemote(
     const said = (t: string) => asQuotedData(`${server.label} result`, t, `THE ${server.label.toUpperCase()} SERVER`);
     if (result.isError) return `${server.label} reported an error: ${text ? said(text) : "no detail"}`;
     ctx.done?.();
-    return text ? said(text) : "That returned nothing.";
+    // A component's video is shown, not read: the model is told only that it is on the screen, in code's words.
+    const shown = server.component && ctx.onScreen ? showVideo(server, result.content ?? [], ctx) : false;
+    return (text ? said(text) : "That returned nothing.") + (shown ? `\n${VIDEO_SHOWN}` : "");
   } catch (e) {
     // Not retried here: the call may already have acted. The next call connects afresh.
     sessions?.forget(server);
@@ -363,4 +366,17 @@ async function callRemote(
   } finally {
     if (!sessions) await client.close().catch(() => {});
   }
+}
+
+/**
+ * A component's video, put on the screen of whoever asked (lib/component-video.ts):
+ * whether it is there now. A link dropped for its address is logged by the
+ * component's label alone, never the address, which can carry a token.
+ */
+function showVideo(server: Remote, content: readonly unknown[], ctx: ToolContext): boolean {
+  const { video, dropped } = videoOf(content, server.url, server.spokenAs ?? server.label);
+  if (dropped) console.warn(`mcp: ${server.label}: ${dropped} video link(s) not at its own https address, dropped`);
+  if (!video) return false;
+  ctx.display({ kind: "video", ...video });
+  return true;
 }

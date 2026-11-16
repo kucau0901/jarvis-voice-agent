@@ -44,6 +44,17 @@ of every release, and in the [README](README.md#updating).
   `docs/components.md`, and a made-up school to copy from in
   `docs/components/school/`.
 
+- **A component can show a video.** A tool's result may carry video links
+  (MCP `resource_link`, `video/mp4`, with a poster), and Jarvis plays one on
+  the screen of whoever asked: the smaller on a narrow screen, the larger
+  otherwise, captioned with the component's name. Only links at the
+  component's own https address are taken; the model is told only that the
+  video is showing, never its address, and nothing is shown for a routine, a
+  job, a Home tile's reading or a device without a screen. A device on `/api/v1/stream` with the
+  `screen` permission receives it as a new `display` kind, `video`
+  (`docs/api.md`), and one that does not know it skips it.
+  `docs/components.md`, "Showing a video".
+
 - **Routines where you are.** "When I get to the grocer, tell me my shopping
   list"; "when I leave the office, tell me the best way home". A person saves
   a place in the Jarvis app on their phone, and the phone tells Jarvis when

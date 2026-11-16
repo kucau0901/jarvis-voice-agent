@@ -143,6 +143,55 @@ So a tool that may be let run by itself must **check again as it acts**
 (the world may have moved on since the plan was made) and be **safe to call
 twice**. Jarvis does not know your world; you do.
 
+## Showing a video
+
+A tool's result may carry a video for the person asking to watch: MCP
+`resource_link` parts beside its `text`, the videos **largest first**, and a
+poster if you have one.
+
+```json
+{"content": [
+  {"type": "text", "text": "Here is the recording from 07:11."},
+  {"type": "resource_link", "uri": "https://school.example.com/v/abc123/hd.mp4#t=553.8", "name": "hd.mp4", "title": "Assembly, Tue 10 Nov 07:11", "mimeType": "video/mp4"},
+  {"type": "resource_link", "uri": "https://school.example.com/v/abc123/sd.mp4#t=553.8", "name": "sd.mp4", "title": "Assembly, Tue 10 Nov 07:11", "mimeType": "video/mp4"},
+  {"type": "resource_link", "uri": "https://school.example.com/v/abc123/poster.jpg", "name": "poster.jpg", "mimeType": "image/jpeg"}
+]}
+```
+
+- **What counts.** A video is a `resource_link` whose `mimeType` is exactly
+  `video/mp4`; a poster, one with `image/jpeg`, `image/png` or `image/webp`.
+  Only in a result without `isError`. Every other link, and every other part,
+  is ignored as before.
+- **Where it may be.** Each `uri` must be `https`, carry no user name or
+  password, be at most 2048 characters, and be at the **same origin**
+  (scheme, host and port) as the address the admin added. Anything else is
+  dropped without a word to anyone; Jarvis logs that it dropped one, under
+  your label, never the address. So serve the files from your MCP server's
+  own host, and put what grants access in the address itself (a signed,
+  short-lived path): the screen fetches it directly, with no key or
+  credential of Jarvis's. The browser may still send Jarvis's own origin
+  as `Referer` (its default policy), so your host can learn which Jarvis
+  asked; answer those addresses with `Referrer-Policy: no-referrer` too.
+- **How many.** The first 3 videos that pass, and the first poster. With no
+  video, nothing is shown, poster or not.
+- **Which plays.** On a screen narrower than 900 CSS pixels (a car's
+  driving split, a phone), the last; otherwise the first. One that cannot be
+  played gives way to the next, each tried once; if none plays, the caption
+  says so. A `#t=SECONDS` fragment starts it there, as a browser does.
+- **Its caption** is your component's name, then the first video's `title`
+  (its `name` without one), on one line and cut to 80 characters. Shown as
+  text, never as markup.
+- **Who sees it.** Only someone asking from a screen Jarvis can draw on: the
+  app, or a device that has one and the `screen` permission. Never a
+  routine, a job, or anything with nobody there; there only your text is
+  read.
+- **What the model reads** is your text, quoted as always, and, when the
+  video is on the screen, one line Jarvis adds after it: *Jarvis is now
+  showing this video on the user's screen; do not show anything else for
+  it.* It never sees the addresses, and they are not kept in the
+  conversation, memory or logs. Say in your text what the video is, for
+  where it cannot be shown.
+
 ## The manifest
 
 Optional. An MCP resource at `jarvis://manifest`, JSON, at most 8 KB:
@@ -231,6 +280,7 @@ urgent alert, or cause anything outside your own component.
 | Tools, each component | 30; description 500 characters; schema 4 KB |
 | Manifest | 8 KB; 16 events; `says` 100 characters |
 | A report | 32 KB; 10 events; `text` 500 characters; 3 actions; `args` 2 KB |
+| A video in a result | 3 videos and 1 poster, each address 2048 characters, at your own origin |
 | Requests to your address at Jarvis | A device's allowance: 20 a minute, 500 a day |
 | Told to people | 30 events a day; routines still hear the rest |
 | Done by itself | 20 a day |
@@ -254,3 +304,4 @@ leave room for each: unknown manifest keys are ignored, and the labels
 - [ ] Anything that acts checks again as it acts, and is safe to call twice.
 - [ ] Your own rules for who may do what are enforced by you, from `X-Jarvis-Person`.
 - [ ] If you report: a manifest declares each event, and each report carries an `id`.
+- [ ] If you return a video: `video/mp4` links largest first, at your own https origin, with words in `text` that stand without it.

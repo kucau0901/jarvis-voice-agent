@@ -595,6 +595,12 @@
   #stage .frame.camera img:not([src]) { width: min(var(--stageW), 640px); aspect-ratio: 16 / 9; }
   #stage iframe { display: block; border: 0; background: var(--surface);
     width: min(1000px, 92vw); height: min(560px, 58vh); }
+  /* A component's video (ui/Stage.ts showVideo): as large as a camera, its
+     caption along the top, since its own controls run along its bottom edge. */
+  #stage video { display: block; width: min(var(--stageW), 1280px); max-height: var(--stageH);
+    aspect-ratio: 16 / 9; background: #000; }
+  #stage .frame.video .cap { top: 0; bottom: auto; padding: 12px 120px 26px 16px; pointer-events: none;
+    background: linear-gradient(rgba(0,0,0,.72), transparent); }
   #stage .frame { width: auto; }
   #stage .cap { position: absolute; left: 0; right: 0; bottom: 0;
     padding: 26px 16px 12px; font-size: 15px; color: #fff;

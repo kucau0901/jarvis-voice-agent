@@ -51,6 +51,14 @@ export interface ToolContext {
   memory: MemoryStore;
   /** Put something on the car's screen. Separate from what Jarvis says aloud. */
   display(payload: Record<string, unknown>): void;
+  /**
+   * Someone is in front of a screen this call may draw on: the request has one
+   * (RunOptions.screenless) and the caller holds `screen`, as a picture Jarvis
+   * makes needs. Never a routine or a job, whose grants have no `screen`. Only
+   * a component's video asks it (tools/mcp.ts); what other tools display goes
+   * out as it always has.
+   */
+  onScreen?: true;
   /** A background job was started (start_job, ask_hermes): typed chat shows it as a pill until its result comes (src/app/fromRoutine.ts). */
   started?(job: { id: string; title: string; engine: string }): void;
   /** A Gmail draft waiting for the person's tap (lib/mail-draft.ts): the screen shows it as a card with Send (src/app/draft.ts). */

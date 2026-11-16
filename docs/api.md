@@ -844,6 +844,18 @@ meantime. Most devices should not bother.
   admin-only `PATCH /api/skills`. It carries no address or key; a client
   without a screen skips it.
 - `display` may be `{kind: "page", page, label}`: a page Jarvis made (below).
+- `display` may be `{kind: "video", sources, poster?, label}`: a video a
+  component returned (`docs/components.md`, "Showing a video"). `sources`
+  are one to three `https` addresses of MP4 files, largest first: play the
+  last on a small screen and the first on a large one, and try the next if
+  one fails. `poster` is a picture for before it plays, and `label` its
+  caption, the component's words, to be shown as text only. The addresses
+  are fetched as they are, with no credential of Jarvis's (the browser
+  may send the app's origin as `Referer`), and a `#t=`
+  fragment says where to start. Sent only where the request has a screen
+  and the `screen` scope.
+- A `display` whose `kind` a client does not know is skipped: more may be
+  added.
 - `display` may be `{kind: "browser"}`: Jarvis is handing over its browser,
   because the page wants a person (a human check, a sign-in, a choice). It
   carries nothing else. A client that can show it reads the browser's screen

@@ -13,6 +13,7 @@ import { ACTS, parseTile } from "../src/worker/lib/panel-tiles.ts";
 import { tileKey, type PanelItem } from "../src/worker/lib/panels.ts";
 import { writeServers } from "../src/worker/lib/config-store.ts";
 import { Collector } from "../src/worker/lib/collector.ts";
+import { VIDEO_SHOWN } from "../src/worker/lib/component-video.ts";
 
 let pass = 0;
 let fail = 0;
@@ -211,6 +212,20 @@ try {
     check("a looked-up reading is answered by the model, and Assist, which would have done it, is never asked",
       looked.status === 200 && looked.text === "Porch light: off" && assisted.length === 0, { looked, assisted });
     check("…asked of the router itself too, whatever its words", (await lookUp(withHouse, "Turn on the porch light", ["*"], signal)) === "Porch light: off" && assisted.length === 0, assisted);
+    // A component's reading tool that answers with a video: a tile has nowhere to play it, and nobody may be there to see it.
+    const realAnswer = school.answer;
+    school.answer = (tool, args) => ({
+      text: `${tool} ${JSON.stringify(args)}`,
+      parts: [{ type: "resource_link", uri: "https://school.example.com/v/clip.mp4", name: "clip.mp4", mimeType: "video/mp4" }],
+    });
+    try {
+      next = { call: "school__get_absent", args: DAY };
+      const video = await lookUp(env, "Who is absent today?", ["*"], signal);
+      check("a looked-up reading never shows a component's video, nor tells the model one is playing, even for someone holding `screen`",
+        video.includes("get_absent") && !video.includes(VIDEO_SHOWN), video);
+    } finally {
+      school.answer = realAnswer;
+    }
     const pressed = await home("/api/hub/panels/act", { panel, key, action: "b0" }, withHouse);
     check("a button that asks is a person asking: Assist first, as a typed question", pressed.status === 200 && pressed.text === "Turned on the porch light." && assisted.join() === "Turn on the porch light", { pressed, assisted });
   }

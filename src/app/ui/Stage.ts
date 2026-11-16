@@ -2,13 +2,17 @@ import { authHeaders } from "../key";
 import { MAP_STYLE_VERSION } from "../../shared/version";
 
 export interface DisplayPayload {
-  kind: "map" | "streetview" | "camera" | "image" | "page" | "close";
+  kind: "map" | "streetview" | "camera" | "image" | "page" | "video" | "close";
   /** camera only. */
   entity?: string;
   /** image only: the picture Jarvis made, by id (GET /api/image, tools/image.ts). */
   image?: string;
   /** page only: the page Jarvis made, by id (GET /api/page, tools/page.ts). */
   page?: string;
+  /** video only: a component's video, largest first, at its own https address (lib/component-video.ts). */
+  sources?: string[];
+  /** video only: the picture shown before it plays. */
+  poster?: string;
   lat: number;
   lng: number;
   label?: string;
@@ -33,6 +37,11 @@ export class Stage {
   private caption: HTMLElement;
   /** A made picture's Download: only while one is shown. */
   private dl: HTMLAnchorElement;
+  private video: HTMLVideoElement;
+  /** A video is on the stage: its events move the fuse only then, not as it is torn down. */
+  private videoOn = false;
+  /** The video is waiting for data ("waiting", "stalled") rather than playing. */
+  private videoStuck = false;
   private objectUrl: string | null = null;
   private token = 0;
   private embedTimer = 0;
@@ -51,6 +60,7 @@ export class Stage {
         <img alt="">
         <iframe title="Map" referrerpolicy="origin" loading="eager"
                 allow="fullscreen" style="display:none"></iframe>
+        <video controls playsinline autoplay muted preload="metadata" style="display:none"></video>
         <div class="cap"></div>
         <button class="close" aria-label="Close">Close</button>
         <a class="dl" hidden>Download</a>
@@ -60,6 +70,15 @@ export class Stage {
     this.frame = this.el.querySelector("iframe")!;
     this.caption = this.el.querySelector(".cap")!;
     this.dl = this.el.querySelector(".dl")!;
+    this.video = this.el.querySelector("video")!;
+    // Not cleared while it plays; paused, over or stuck waiting for data, the usual fuse again
+    // (a stream that stalls raises no error, and must not leave the panel up for ever).
+    for (const ev of ["playing", "pause", "ended", "waiting", "stalled"]) {
+      this.video.addEventListener(ev, () => {
+        this.videoStuck = ev === "waiting" || ev === "stalled";
+        if (this.videoOn) this.armDismiss();
+      });
+    }
     this.el.querySelector(".close")!.addEventListener("click", () => this.hide());
     // Touching the panel means it is still wanted, so restart the fuse.
     this.el.addEventListener("pointerdown", () => {
@@ -74,6 +93,7 @@ export class Stage {
     }
 
     const mine = ++this.token;
+    this.stopVideo();
     this.caption.textContent = p.label ?? "";
     const what = p.kind === "camera" ? `camera:${p.entity}` : p.kind === "image" ? `image:${p.image}` : "";
     this.dl.hidden = true;
@@ -85,6 +105,7 @@ export class Stage {
     clearTimeout(this.refreshTimer);
     this.armDismiss();
     this.el.querySelector(".frame")!.classList.toggle("camera", p.kind === "camera");
+    this.el.querySelector(".frame")!.classList.toggle("video", p.kind === "video");
 
     if (p.kind === "camera") {
       await this.showCamera(p, mine);
@@ -96,6 +117,10 @@ export class Stage {
     }
     if (p.kind === "page") {
       await this.showPage(p, mine);
+      return;
+    }
+    if (p.kind === "video") {
+      this.showVideo(p, mine);
       return;
     }
     if (p.embedUrl) {
@@ -117,6 +142,61 @@ export class Stage {
     } catch {
       if (mine === this.token) this.caption.textContent = `${p.label ?? "The page"}: it could not be opened here.`;
     }
+  }
+
+  /**
+   * A component's video, played from its own address (lib/component-video.ts).
+   * Its sources come largest first: a narrow screen (the driving split, a
+   * phone) plays the last, anything wider the first. One that fails gives way
+   * to the next, each tried once. The caption is the component's words, set
+   * as text only.
+   */
+  private showVideo(p: DisplayPayload, mine: number): void {
+    this.frame.style.display = "none";
+    this.frame.src = "about:blank";
+    this.img.style.display = "none";
+    const all = p.sources ?? [];
+    const order = window.innerWidth < 900 ? [...all.slice(-1), ...all.slice(0, -1)] : all;
+    let next = 0;
+    const play = () => {
+      if (mine !== this.token) return;
+      const src = order[next++];
+      if (src) {
+        this.video.src = src;
+        return;
+      }
+      this.videoOn = false;
+      this.video.onerror = null;
+      this.unload();
+      this.caption.textContent = `${p.label ?? "The video"}: the video could not be played here.`;
+      this.armDismiss();
+    };
+    // A stale error, from the source before, finds the new one without one.
+    this.video.onerror = () => {
+      if (this.video.error) play();
+    };
+    if (p.poster) this.video.poster = p.poster;
+    this.video.style.display = "block";
+    this.videoOn = true;
+    this.videoStuck = false;
+    play();
+  }
+
+  /** Closed or replaced: paused, and its source let go, so nothing goes on streaming behind it. */
+  private stopVideo(): void {
+    this.videoOn = false;
+    this.videoStuck = false;
+    this.video.onerror = null;
+    this.video.style.display = "none";
+    this.video.removeAttribute("poster");
+    this.unload();
+  }
+
+  private unload(): void {
+    this.video.pause();
+    if (!this.video.hasAttribute("src")) return;
+    this.video.removeAttribute("src");
+    this.video.load();
   }
 
   /**
@@ -195,6 +275,8 @@ export class Stage {
    */
   private armDismiss(): void {
     clearTimeout(this.dismissTimer);
+    // A video playing is being watched: its pause or end arms the fuse again.
+    if (this.videoOn && !this.video.paused && !this.video.ended && !this.videoStuck) return;
     const driving = window.innerWidth < 900 && !document.body.classList.contains("typing");
     this.dismissTimer = setTimeout(
       () => this.hide(),
@@ -278,6 +360,7 @@ export class Stage {
 
   hide(): void {
     this.token++;
+    this.stopVideo();
     this.dl.hidden = true;
     this.dl.removeAttribute("href");
     clearTimeout(this.embedTimer);
