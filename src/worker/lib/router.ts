@@ -472,7 +472,8 @@ export async function readTool(
  */
 export async function lookUp(env: Env, text: string, grants: readonly Grant[], signal: AbortSignal): Promise<string> {
   const sink = new Collector();
-  await run(env, [{ role: "user", text }], sink, signal, grants, { surface: "chat", toolFilter: jobTool });
+  // Screenless: a tile has nowhere to draw, and the alarm's refresh has nobody there (no video, no draft card).
+  await run(env, [{ role: "user", text }], sink, signal, grants, { surface: "chat", toolFilter: jobTool, screenless: true });
   return sink.finish().text;
 }
 
@@ -735,6 +736,7 @@ export async function runCalls(
           // A draft's card only where a screen will draw it (src/app/draft.ts): otherwise it waits in Drafts.
           ...(screenless ? {} : { drafted: (d: DraftCard) => sse.send({ type: "draft", ...d }) }),
           ...(screenless ? {} : { offerAddress: (s: { id: string; name: string }) => sse.send({ type: "address", ...s }) }),
+          ...(screenless || !allows(base.grants, "screen") ? {} : { onScreen: true as const }),
         }, sse)
         : `No such tool: ${call.name}`;
 

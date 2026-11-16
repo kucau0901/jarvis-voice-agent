@@ -1921,6 +1921,21 @@ holding only `routines` cannot set off a routine that acts by itself.
 Reactions across components ("a teacher is on leave, so put it on my
 calendar") wait for typed data instead of free text.
 
+**A video it returns is shown, not read** (`lib/component-video.ts`). A
+result's `resource_link` parts that are MP4 files (three at most, and one
+poster) are played on the screen of whoever asked, and the model is told in
+code's words that it is there, so it does not reach for a camera as well. The
+addresses never reach the model, the conversation or the logs: a link can be
+the only thing that grants access to it. Only addresses at the component's
+own approved origin are taken, so a result cannot point the screen anywhere
+the admin did not add, and none is shown where nobody is (a routine, a job)
+or with no screen: the same rule as a picture Jarvis makes (`onScreen` on
+the tool's context). The screen fetches the file itself, with no key or
+credential of Jarvis's (the browser's default policy may still send Jarvis's
+origin as `Referer`: the app sets none app-wide, since the browser Maps key
+is restricted by referrer), which is why it must be at the component's own
+host.
+
 One record each in the Durable Object, at most 20, under new keys; nothing in
 KV. Its key is typed only in Settings, goes only to its address, and is
 dropped when that address changes, with its reporting address. Not in this

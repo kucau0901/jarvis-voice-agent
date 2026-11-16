@@ -36,8 +36,8 @@ export interface FakeComponent {
   /** It does not say it has tools at all. */
   noTools?: true;
   seen: Seen[];
-  /** What a tool call answers. Throwing answers with a JSON-RPC error. */
-  answer(tool: string, args: Record<string, unknown>): { text: string; isError?: boolean };
+  /** What a tool call answers, and any other content parts after its text. Throwing answers with a JSON-RPC error. */
+  answer(tool: string, args: Record<string, unknown>): { text: string; isError?: boolean; parts?: Record<string, unknown>[] };
   /** Answered to every request instead, while set: a redirect, an error page, or nothing for as long as it likes. */
   instead?: (() => Response | Promise<Response>) | null;
 }
@@ -95,7 +95,7 @@ async function answer(c: FakeComponent, init: RequestInit): Promise<Response> {
       seen.args = (params.arguments ?? {}) as Record<string, unknown>;
       try {
         const said = c.answer(seen.tool, seen.args);
-        return reply(msg.id, { content: [{ type: "text", text: said.text }], isError: said.isError === true });
+        return reply(msg.id, { content: [{ type: "text", text: said.text }, ...(said.parts ?? [])], isError: said.isError === true });
       } catch (e) {
         return refuse(msg.id, -32603, e instanceof Error ? e.message : String(e));
       }
