@@ -631,8 +631,12 @@ second for reference material, and retrieval by words (BM25-lite) and by
 meaning (embeddings), merged.
 
 **Specialties: the user's own way, saved.** An answer that took two tools or
-more, to a question asked from a screen or device, ends by offering to keep
-its steps, as Hark offers after a solved problem; "save this as my Monday
+more, to a question asked from a screen or device, has its steps kept for the
+person's next message, as Hark offers after a solved problem. It ends by
+saying how to keep them only when it took three tools or more, and once a
+day for each person: said after every answer of two tools it trailed most of
+what was asked, which was the first thing the owner noticed with two mail
+accounts. "Save this as my Monday
 report" in the next message keeps them (`lib/specialties.ts`), and a later
 question that names it, or shares two words with it, gets them beside the
 profile. Steps are followed, so they are a standing instruction of the

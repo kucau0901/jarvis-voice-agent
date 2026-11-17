@@ -26,6 +26,14 @@ const MAX_WHY = 300;
 /** Steps offered and not taken by a next question within this long (one Assist answered, say) are let go. */
 const OFFER_MS = 30 * 60_000;
 
+/**
+ * How to keep them is said only after an answer that took this many tools,
+ * and once in this long: said after every answer of two, it trailed most of
+ * what a person asked. The steps are kept for their next question either way.
+ */
+export const OFFER_TOOLS = 3;
+export const OFFER_SAID_MS = 24 * 60 * 60_000;
+
 /** Said at the end of an answer whose steps are offered: how to keep them. */
 export const OFFER = 'Say "save this as" and a name, and I will do it the same way next time.';
 
@@ -50,6 +58,7 @@ export interface Specialty {
 
 const key = (person: string) => `specialties:${person}`;
 const offerKey = (person: string) => `specialty-offer:${person}`;
+const saidKey = (person: string) => `specialty-offer-said:${person}`;
 /** A name as compared: its letters and digits, in any script. */
 const nameOf = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
 const ALPHABET = "0123456789abcdefghjkmnpqrstvwxyz";
@@ -197,8 +206,15 @@ export class Specialties {
   }
 
   /** The steps of the answer just given, kept for the person's next question to save (lib/router.ts). */
-  async offer(person: string, p: Procedure, now: number): Promise<void> {
+  /** `said`: the answer ended by saying how to keep them (OFFER), which is not said again for a while. */
+  async offer(person: string, p: Procedure, now: number, said: boolean): Promise<void> {
     await this.storage.put(offerKey(person), { asked: p.asked, steps: p.steps, at: now });
+    if (said) await this.storage.put(saidKey(person), now);
+  }
+
+  /** When an answer of theirs last said how to keep its steps; 0 when none has. */
+  async offerSaid(person: string): Promise<number> {
+    return (await this.storage.get<number>(saidKey(person))) ?? 0;
   }
 
   /** What was offered after their last answer, taken: their next question saves it or lets it go. */
@@ -212,6 +228,7 @@ export class Specialties {
   async clear(person: string): Promise<void> {
     await this.storage.delete(key(person));
     await this.storage.delete(offerKey(person));
+    await this.storage.delete(saidKey(person));
   }
 }
 

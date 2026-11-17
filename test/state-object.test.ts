@@ -492,11 +492,18 @@ console.log("\nevery pass-through to StateHost forwards what it is given");
 console.log("steps offered to save, through the object");
 {
   const offered = { asked: "what's my week", steps: ["calendar_check", "weather"] };
-  await jarvis.specialtyOffer("u_sara", offered, Date.now());
+  await jarvis.specialtyOffer("u_sara", offered, Date.now(), false);
+  check("  kept without saying how: nothing said is recorded", (await jarvis.recallFor("u_sara", "what's my week", false)).offerSaid === 0);
   check("  a routine's or a job's question leaves them", (await jarvis.recallFor("u_sara", "what's my week", false)).procedure === null);
   check("  another person's question does not take them", (await jarvis.recallFor("owner", "what's my week", true)).procedure === null);
   check("  their own question takes them, once", JSON.stringify((await jarvis.recallFor("u_sara", "what's my week", true)).procedure) === JSON.stringify(offered) &&
     (await jarvis.recallFor("u_sara", "what's my week", true)).procedure === null);
+  // How to keep them is said once a day (lib/router.ts): when it was said is the person's own, and outlives the steps being taken.
+  const saidAt = Date.now();
+  await jarvis.specialtyOffer("u_sara", offered, saidAt, true);
+  await jarvis.recallFor("u_sara", "what's my week", true);
+  check("  said how: when is kept for that person, after the steps are taken", (await jarvis.recallFor("u_sara", "what's my week", true)).offerSaid === saidAt);
+  check("  and for nobody else", (await jarvis.recallFor("owner", "what's my week", true)).offerSaid === 0);
 }
 
 // The family's skills (lib/skills.ts), through the object: each pass-through forwards what it is given, the key and the clock too.

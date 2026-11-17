@@ -107,6 +107,11 @@ of every release, and in the [README](README.md#updating).
 
 ### Changed
 
+- **"Save this as" is said far less often.** Jarvis ended every answer that
+  used two tools with how to save its steps as a specialty. Now it says so
+  only after an answer that used three or more, and once a day for each
+  person. Saying "save this as" and a name after any multi-step answer still
+  works as before.
 - **An MCP server added in chat now waits for your approval.** "Add a skill:
   Weather Tools, an MCP server, at https://…" used to connect it at once and
   offer its tools to everyone who may reach the house. It is now added as a
