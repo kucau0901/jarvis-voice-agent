@@ -596,6 +596,7 @@ export const NOT_SETTINGS: Readonly<Record<string, string>> = {
   JARVIS_STANDBY: "puts this Jarvis aside once another has taken its place: deploy-time only, as what stands in for it is decided where it is deployed",
   MOVE_KEY: "opens this Jarvis to being moved elsewhere, secrets and all: deploy-time only, so the owner key alone can never set it",
   JARVIS_PERSON: "per request: whose data (lib/context.ts)",
+  GOOGLE_ACCOUNT: "per call: which of their linked Google accounts (lib/google.ts)",
   JARVIS_USER: "per request: the person signed in, if one is (index.ts)",
   JARVIS_DEVICE: "per request: the device asking, if one is (index.ts)",
   JARVIS_PERSON_NAME: "per request: who is asking (lib/context.ts)",

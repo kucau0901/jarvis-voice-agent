@@ -11,6 +11,7 @@ import {
   // Explicit .ts, as in lib/auth.ts: the tests load this file through Node's
   // own resolver rather than the bundler, and that resolver wants the extension.
 } from "../lib/google.ts";
+import { ACCOUNT_PARAM, onEach, onOne, theAccount } from "../lib/google-accounts.ts";
 import { resolveContact } from "../lib/contacts.ts";
 import { asQuotedData } from "../lib/quote.ts";
 import { clampLimit } from "./args.ts";
@@ -241,6 +242,10 @@ function line(m: Message, i: number, tz: string): string {
  */
 export const MESSAGE_ID = /^[A-Za-z0-9_-]{5,64}$/;
 
+/** Where a message is, for an action that names it and no account (lib/google-accounts.ts). */
+const hasMessage = (id: unknown) =>
+  typeof id === "string" && MESSAGE_ID.test(id.trim()) ? { path: `/users/me/messages/${id.trim()}?format=minimal` } : undefined;
+
 /** Fetch message details in bounded parallel — the list call returns only ids. */
 export async function hydrate(
   ctx: Pick<ToolContext, "env" | "signal">,
@@ -294,12 +299,13 @@ export const mailCheck: Tool = {
         type: ["integer", "null"],
         description: `How many to list, 1 to ${MAX_RESULTS}. Default ${DEFAULT_RESULTS}. Keep it small; this is read aloud.`,
       },
+      account: ACCOUNT_PARAM,
     },
-    required: ["unread_only", "limit"],
+    required: ["unread_only", "limit", "account"],
     additionalProperties: false,
   },
   async run(args, ctx) {
-    return (await guard(async () => {
+    return onEach(ctx, args.account, (ctx) => guard(async () => {
       const cfg = cfgOf(ctx);
       const unreadOnly = args.unread_only !== false;
       const limit = clampLimit(args.limit, DEFAULT_RESULTS, MAX_RESULTS);
@@ -409,12 +415,13 @@ export const mailSearch: Tool = {
         type: ["integer", "null"],
         description: `How many results, 1 to ${MAX_RESULTS}. Default ${DEFAULT_RESULTS}.`,
       },
+      account: ACCOUNT_PARAM,
     },
-    required: ["query", "open", "limit"],
+    required: ["query", "open", "limit", "account"],
     additionalProperties: false,
   },
   async run(args, ctx) {
-    return (await guard(async () => {
+    return onEach(ctx, args.account, (ctx) => guard(async () => {
       const cfg = cfgOf(ctx);
       const query = typeof args.query === "string" ? args.query.trim() : "";
       if (!query) return "No search terms were supplied.";
@@ -625,12 +632,13 @@ export const mailSend: Tool = {
         type: ["boolean", "null"],
         description: "True to save as a draft rather than send it. Default false.",
       },
+      account: ACCOUNT_PARAM,
     },
-    required: ["body", "to", "subject", "reply_to", "draft"],
+    required: ["body", "to", "subject", "reply_to", "draft", "account"],
     additionalProperties: false,
   },
   async run(args, ctx) {
-    return (await guard(async () => {
+    return onOne(ctx, args.account, (ctx) => guard(async () => {
       const cfg = cfgOf(ctx);
       const body = String(args.body ?? "").replace(/\r\n/g, "\n").trim();
       // Draft first (Settings → Google): the person sends it, never the model (lib/mail-draft.ts).
@@ -732,7 +740,7 @@ export const mailSend: Tool = {
           : `Saved a draft to ${who}, subject "${subject}". It is in Drafts, not sent.`;
       }
       return replyId ? `Replied to ${who}.` : `Sent to ${who}, subject "${subject}".`;
-    }));
+    }), hasMessage(args.reply_to));
   },
 };
 
@@ -779,8 +787,9 @@ export const mailManage: Tool = {
         enum: Object.keys(ACTIONS),
         description: "What to do with it.",
       },
+      account: ACCOUNT_PARAM,
     },
-    required: ["message_id", "action"],
+    required: ["message_id", "action", "account"],
     additionalProperties: false,
   },
   // Proposed by a job (lib/proposals.ts): each action is undone by another, but trash always asks.
@@ -795,11 +804,12 @@ export const mailManage: Tool = {
   // Which email it is, for the card: the id alone says nothing to the person.
   async detail(args, ctx) {
     const id = typeof args.message_id === "string" ? args.message_id.trim() : "";
-    const [m] = MESSAGE_ID.test(id) ? await hydrate(ctx, cfgOf(ctx), [id], "metadata") : [];
+    const one = MESSAGE_ID.test(id) ? await theAccount(ctx, args.account, hasMessage(id)) : "";
+    const [m] = typeof one === "string" ? [] : await hydrate(one.ctx, cfgOf(ctx), [id], "metadata");
     return m ? ["From", "Subject", "Date"].map((h) => `${h}: ${tidy(headerOf(m, h)).slice(0, 300)}`).join("\n") : null;
   },
   async run(args, ctx) {
-    return (await guard(async () => {
+    return onOne(ctx, args.account, (ctx) => guard(async () => {
       const cfg = cfgOf(ctx);
       const id = String(args.message_id ?? "").trim();
       const name = String(args.action ?? "");
@@ -830,7 +840,7 @@ export const mailManage: Tool = {
       return name === "trash"
         ? "Moved to the trash. Say so within the next few seconds and I can restore it."
         : `Done — ${spec.said}.`;
-    }));
+    }), hasMessage(args.message_id));
   },
 };
 
@@ -862,12 +872,13 @@ export const contactsLookup: Tool = {
         type: "string",
         description: "The person's name, in the user's own words.",
       },
+      account: ACCOUNT_PARAM,
     },
-    required: ["name"],
+    required: ["name", "account"],
     additionalProperties: false,
   },
   async run(args, ctx) {
-    return (await guard(async () => {
+    return onEach(ctx, args.account, (ctx) => guard(async () => {
       const cfg = cfgOf(ctx);
       const name = String(args.name ?? "").trim();
       if (!name) return "No name was supplied.";

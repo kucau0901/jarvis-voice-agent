@@ -2,7 +2,7 @@ import { authHeaders } from "../key";
 import { speakText } from "../alerts";
 import { AlertsPanel } from "./AlertsPanel";
 import { Profile } from "./Profile";
-import { el, esc } from "./util";
+import { arm, el, esc } from "./util";
 
 /**
  * What is a person's own, in Family → You (lib/context.ts on the server):
@@ -48,9 +48,17 @@ type OwnHa = "yours" | "again" | "";
 /** What Jarvis will do with the car for them: nothing to do with who can drive it, which is the Tesla app's or key's. */
 const LEVEL_WORDS: Record<string, string> = { "": "not shared", see: "can check it", drive: "can control it" };
 
+/** One linked Google account, as GET /api/google/status lists it; `id` "" is their first. */
+interface Linked {
+  id: string;
+  account: string | null;
+  working: boolean;
+  problem: string | null;
+}
+
 const ACCOUNTS: { id: "google" | "spotify"; name: string; what: string }[] = [
-  { id: "google", name: "Google", what: "your mail, calendar and contacts" },
-  { id: "spotify", name: "Spotify", what: "your music" },
+  { id: "google", name: "Google", what: "mail, calendar and contacts" },
+  { id: "spotify", name: "Spotify", what: "music" },
 ];
 
 export class Mine {
@@ -354,36 +362,61 @@ export class Mine {
     }
   }
 
-  /** Each account: set up for the family or not, and whether this person has linked theirs. */
+  /**
+   * The accounts this person has linked, each a card with its address and
+   * Unlink; then what can be added, each with Connect. Google stays there
+   * however many are linked: a work account beside their own.
+   */
   private async accounts(): Promise<void> {
     const box = this.box.querySelector<HTMLElement>(".m-accounts")!;
-    box.innerHTML = "";
+    const have = el("div", "rlist");
+    const add = el("div", "rlist");
+    const card = (into: HTMLElement, title: string, under: string, bad: string, ...btns: HTMLButtonElement[]) => {
+      const top = el("div", "rtop");
+      const side = el("div", "rowbtns");
+      side.append(...btns);
+      top.append(el("b", "", title), side);
+      const row = el("div", "routine");
+      row.append(top, el("div", "rwhen", under));
+      if (bad) row.appendChild(el("div", "rfacts bad", bad));
+      into.appendChild(row);
+    };
+    const unlink = (id: string, account = "") => {
+      const b = this.button("Unlink", () => {});
+      arm(b, "Unlink it?", () => this.unlink(id, account));
+      return b;
+    };
     for (const a of ACCOUNTS) {
-      const row = document.createElement("div");
-      row.className = "fieldfoot";
-      const text = document.createElement("span");
-      text.className = "help";
-      const btns = document.createElement("div");
-      btns.className = "rowbtns";
-      row.appendChild(text);
-      row.appendChild(btns);
-      box.appendChild(row);
+      const connect = this.button("Connect", () => void this.link(a.id), true);
       try {
         const res = await fetch(`/api/${a.id}/status`, { headers: authHeaders(this.key) });
         if (res.status === 503) {
-          text.textContent = `${a.name}: not set up for the family yet (an admin adds it in Settings).`;
+          card(add, a.name, "Not set up for the family yet: an admin adds it in Settings.", "");
           continue;
         }
-        const s = (await res.json()) as { linked?: boolean; account?: string | null };
-        text.textContent = s.linked
-          ? `${a.name}: linked${s.account ? ` as ${s.account}` : ""}. Jarvis reads ${a.what}.`
-          : `${a.name}: not linked. Link yours so Jarvis can reach ${a.what}.`;
-        btns.appendChild(this.button(s.linked ? "Link again" : `Link my ${a.name}`, () => void this.link(a.id), !s.linked));
-        if (s.linked) btns.appendChild(this.button("Unlink", () => void this.unlink(a.id)));
+        const s = (await res.json()) as { linked?: boolean; account?: string | null; accounts?: Linked[] };
+        // One card each: Google's are listed (GET /api/google/status); Spotify is one, or none.
+        const linked: Linked[] = s.accounts ?? (s.linked ? [{ id: "", account: s.account ?? null, working: true, problem: null }] : []);
+        for (const g of linked) {
+          const again = g.working ? [] : [this.button("Connect again", () => void this.link(a.id), true)];
+          card(have, a.name, g.account ?? `Connected: your ${a.what}.`, g.working ? "" : (g.problem ?? "It needs connecting again."), ...again, unlink(a.id, g.id));
+        }
+        if (a.id === "google") card(add, a.name, linked.length ? "Another one, such as your work account: its mail and calendar are read beside the others." : `Your ${a.what}.`, "", connect);
+        else if (!linked.length) card(add, a.name, `Your ${a.what}.`, "", connect);
       } catch {
-        text.textContent = `${a.name}: could not check.`;
+        card(add, a.name, "Could not check.", "");
       }
     }
+    box.replaceChildren();
+    if (have.children.length) box.appendChild(have);
+    if (add.children.length) box.append(el("h4", "", have.children.length ? "Add an account" : "Connect an account"), add);
+    box.appendChild(
+      el(
+        "p",
+        "note",
+        "Connecting Google: it says it has not verified this app. Choose Advanced, then continue. A work or school account connects the same way, unless its administrator blocks apps it has not approved.",
+      ),
+    );
   }
 
   private button(label: string, go: () => void, primary = false): HTMLButtonElement {
@@ -401,13 +434,15 @@ export class Mine {
       if (!body.url) throw new Error(body.error ?? `the server said ${r.status}`);
       window.open(body.url, "_blank", "noopener");
       this.say("Finish signing in in the new tab, then come back here.");
+      // Back from that tab, the list shows what was linked there.
+      window.addEventListener("focus", () => void this.accounts(), { once: true });
     } catch (e) {
       this.say(e instanceof Error ? e.message : String(e), true);
     }
   }
 
-  private async unlink(id: string): Promise<void> {
-    await this.said(fetch(`/api/${id}/unlink`, { method: "POST", headers: authHeaders(this.key), body: "{}" }), "Unlinked.");
+  private async unlink(id: string, account = ""): Promise<void> {
+    await this.said(fetch(`/api/${id}/unlink`, { method: "POST", headers: authHeaders(this.key), body: JSON.stringify(account ? { account } : {}) }), "Unlinked.");
     await this.accounts();
   }
 

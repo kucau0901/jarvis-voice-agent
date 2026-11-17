@@ -1,5 +1,5 @@
 import type { Env } from "../types.ts";
-import { call, explain, googleConfig, type GoogleConfig } from "./google.ts";
+import { accountsOf, asAccount, call, explain, googleConfig, type GoogleConfig } from "./google.ts";
 import { canonical, filed, PROPOSE_ONLY, weigh, type File, type Proposal } from "./proposals.ts";
 import { sha256Hex } from "./devices.ts";
 import type { Tool } from "../tools/registry.ts";
@@ -34,9 +34,12 @@ export const withFooter = (body: string, env: Pick<Env, "MAIL_FOOTER">): string 
 /** A draft of theirs sent, as Gmail has it now; why not, in words, when it was not. */
 export async function sendDraft(env: Env, cfg: GoogleConfig, id: string, signal?: AbortSignal): Promise<string | null> {
   if (!DRAFT_ID.test(id)) return "That is not a draft's id.";
-  const res = await call(env, cfg, "/users/me/drafts/send", { method: "POST", body: { id }, ...(signal ? { signal } : {}) });
-  if (res.status === 404) return "That draft is no longer in Drafts: sent already, or deleted.";
-  return explain(res) ?? (res.status === 200 ? null : `Gmail returned ${res.status}.`);
+  // A draft is in the account that wrote it: each of the person's is asked until one has it.
+  for (const a of await accountsOf(env)) {
+    const res = await call(asAccount(env, a.id), cfg, "/users/me/drafts/send", { method: "POST", body: { id }, ...(signal ? { signal } : {}) });
+    if (res.status !== 404) return explain(res) ?? (res.status === 200 ? null : `Gmail returned ${res.status}.`);
+  }
+  return "That draft is no longer in Drafts: sent already, or deleted.";
 }
 
 /**

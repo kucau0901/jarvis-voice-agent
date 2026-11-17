@@ -1,9 +1,10 @@
 import type { Env } from "../types.ts";
-import { err, escapeHtml, HTML_PAGE_HEADERS, json, readObject } from "../lib/http.ts";
+import { err, escapeHtml, HTML_PAGE_HEADERS, json, readObject, readObjectOrEmpty } from "../lib/http.ts";
 import { sendDraft } from "../lib/mail-draft.ts";
 import { withSettings } from "../lib/settings-store.ts";
 import { callbackFields, confirmLink, nameOf } from "../lib/link-confirm.ts";
 import {
+  asAccount,
   beginAuth,
   call,
   consumeState,
@@ -11,7 +12,7 @@ import {
   exchangeCode,
   explain,
   googleConfig,
-  isLinked,
+  linkedAccounts,
   NeedsRelink,
   unlink,
 } from "../lib/google.ts";
@@ -87,8 +88,8 @@ export async function handleGoogle(req: Request, env: Env): Promise<Response> {
     if (!r.ok) return page("Not linked", `<p>${escapeHtml(r.detail)}</p>`, false);
 
     return page(
-      "Gmail linked",
-      "<p>Jarvis can read and send your mail now. You can close this tab.</p>",
+      "Google linked",
+      `<p>${r.email ? `<code>${escapeHtml(r.email)}</code> is linked. ` : ""}Jarvis can read and send its mail and see its calendar now. You can close this tab.</p>`,
       true,
     );
   }
@@ -122,60 +123,46 @@ export async function handleGoogle(req: Request, env: Env): Promise<Response> {
     );
   }
 
+  // One of the person's accounts, by its id from /status; with none given, their first.
   if (url.pathname === "/api/google/unlink") {
-    await unlink(env);
-    return new Response(JSON.stringify({ ok: true, linked: false }), {
-      headers: { "content-type": "application/json" },
-    });
+    const b = await readObjectOrEmpty(req);
+    const id = typeof b.account === "string" ? b.account : "";
+    if (id && !/^[a-f0-9]{8}$/.test(id)) return err(400, "That is not one of your accounts.");
+    await unlink(env, id);
+    return json({ ok: true, linked: (await linkedAccounts(env, cfg)).list.length > 0 });
   }
 
   if (url.pathname === "/api/google/status") {
-    if (!(await isLinked(env))) {
-      return new Response(JSON.stringify({ linked: false }), {
-        headers: { "content-type": "application/json" },
-      });
-    }
+    const { list } = await linkedAccounts(env, cfg);
+    if (!list.length) return json({ linked: false, accounts: [] });
 
     /*
-     * A live call, not just "a refresh token exists in KV". The interesting
-     * failures — a token revoked by a password change, or expired because the
-     * consent screen is still in Testing — are invisible until something uses
-     * it, and this endpoint exists precisely to find out.
+     * A live call to each, not just "a refresh token exists in KV". The
+     * interesting failures (a token revoked by a password change, or expired
+     * because the consent screen is still in Testing) are invisible until
+     * something uses it, and this endpoint exists precisely to find out.
      *
      * A THROWN failure is kept separate from an HTTP one. Refreshing the access
      * token happens before the request goes out, so NeedsRelink arrives as an
-     * exception with no status at all — and `explain()` only speaks for a
+     * exception with no status at all, and `explain()` only speaks for a
      * response. Folding the two together reported `problem: null` alongside
      * `working: false`, which is the "failed with no reason given" this
      * codebase refuses to do anywhere else.
      */
-    let status = 0;
-    let body: unknown = null;
-    let thrown: string | null = null;
-    try {
-      const r = await call(env, cfg, "/users/me/profile");
-      status = r.status;
-      body = r.body;
-    } catch (e) {
-      thrown = e instanceof Error ? e.message : String(e);
-    }
-
-    const p = body as { emailAddress?: string; messagesTotal?: number } | null;
-
-    return new Response(
-      JSON.stringify(
-        {
-          linked: true,
-          working: status === 200,
-          account: p?.emailAddress ?? null,
-          messagesTotal: p?.messagesTotal ?? null,
-          problem: thrown ?? explain({ status, body }),
-        },
-        null,
-        2,
-      ),
-      { headers: { "content-type": "application/json" } },
+    const accounts = await Promise.all(
+      list.map(async (a) => {
+        try {
+          const r = await call(asAccount(env, a.id), cfg, "/users/me/profile");
+          const p = r.body as { emailAddress?: string; messagesTotal?: number } | null;
+          return { id: a.id, account: p?.emailAddress ?? (a.email || null), working: r.status === 200, messagesTotal: p?.messagesTotal ?? null, problem: explain(r) };
+        } catch (e) {
+          return { id: a.id, account: a.email || null, working: false, messagesTotal: null, problem: e instanceof Error ? e.message : String(e) };
+        }
+      }),
     );
+    // The first's fields as they always were, for what reads only those; every account after them.
+    const { id: _first, ...first } = accounts[0]!;
+    return json({ linked: true, ...first, accounts });
   }
 
   // A draft Jarvis wrote, sent by the person's own tap (lib/mail-draft.ts): the draft is in their mailbox alone.

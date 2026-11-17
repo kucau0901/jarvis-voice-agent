@@ -212,7 +212,9 @@ console.log("\na Google link names whose Jarvis it goes to, and links only when 
   const state = new URL(url).searchParams.get("state")!;
   let traded = 0;
   const realFetch = globalThis.fetch;
-  globalThis.fetch = (async () => (traded++, Response.json({ access_token: "a", refresh_token: "r", expires_in: 3600 }))) as typeof fetch;
+  // The code traded for tokens is what is counted; Google is then asked whose account it is (lib/google.ts), which trades nothing.
+  globalThis.fetch = (async (u: RequestInfo | URL) =>
+    String(u).endsWith("/token") ? (traded++, Response.json({ access_token: "a", refresh_token: "r", expires_in: 3600 })) : Response.json({ emailAddress: "sara@example.com" })) as typeof fetch;
   try {
     const back = await handleGoogle(new Request(`https://j.test/api/google/callback?code=c0de&state=${state}`), env as never);
     const page = await back.text();

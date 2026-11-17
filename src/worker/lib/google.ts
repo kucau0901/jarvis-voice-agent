@@ -24,14 +24,80 @@ export const PEOPLE = "https://people.googleapis.com/v1";
 
 const REFRESH_KEY = "google:refresh";
 const ACCESS_KEY = "google:access";
+const INDEX_KEY = "google:accounts";
 const STATE_PREFIX = "google:state:";
 
 /**
  * Each person links their own Google (lib/context.ts): their mail, their
  * calendar. The first person's link keeps the name it always had.
+ *
+ * A person may link several (a work account beside their own). The first
+ * keeps the key one account always had, so a link made before there could be
+ * two is the first and needs nothing done. Another is `GOOGLE_ACCOUNT`: an
+ * id after the person's (empty for the first person, hence `::`).
  */
-const refreshKey = (env: Env) => (bookOf(env.JARVIS_PERSON) ? `${REFRESH_KEY}:${bookOf(env.JARVIS_PERSON)}` : REFRESH_KEY);
-const accessKey = (env: Env) => (bookOf(env.JARVIS_PERSON) ? `${ACCESS_KEY}:${bookOf(env.JARVIS_PERSON)}` : ACCESS_KEY);
+const personKey = (base: string, env: Env) => (bookOf(env.JARVIS_PERSON) ? `${base}:${bookOf(env.JARVIS_PERSON)}` : base);
+const keyOf = (base: string, env: Env) => (env.GOOGLE_ACCOUNT ? `${base}:${bookOf(env.JARVIS_PERSON)}:${env.GOOGLE_ACCOUNT}` : personKey(base, env));
+const refreshKey = (env: Env) => keyOf(REFRESH_KEY, env);
+const accessKey = (env: Env) => keyOf(ACCESS_KEY, env);
+
+/** One of a person's linked Google accounts. `id` "" is their first. */
+export interface GoogleAccount {
+  id: string;
+  /** Its address, lower case; "" until Google has said (a link older than this list). */
+  email: string;
+}
+
+/** The same request, for one of the person's accounts. */
+export const asAccount = (env: Env, id: string): Env => ({ ...env, GOOGLE_ACCOUNT: id || undefined });
+
+/**
+ * The person's accounts, the first first. With no list kept yet: one unnamed
+ * first, linked or not, which is what there was before there could be two.
+ */
+export async function accountsOf(env: Env): Promise<GoogleAccount[]> {
+  try {
+    const kept = await env.CONFIG.get(personKey(INDEX_KEY, env));
+    const list = kept ? (JSON.parse(kept) as GoogleAccount[]) : [];
+    if (Array.isArray(list) && list.length) return list;
+  } catch {
+    // Unread or unreadable is no list.
+  }
+  return [{ id: "", email: "" }];
+}
+
+const keepAccounts = (env: Env, list: GoogleAccount[]): Promise<void> =>
+  list.length ? env.CONFIG.put(personKey(INDEX_KEY, env), JSON.stringify(list)) : env.CONFIG.delete(personKey(INDEX_KEY, env));
+
+/** An account's own address, as Google gives it for this access token; "" when it does not. */
+async function addressFor(token: string): Promise<string> {
+  try {
+    const res = await fetch(`${GMAIL}/users/me/profile`, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(10_000) });
+    const body = (await res.json().catch(() => null)) as { emailAddress?: unknown } | null;
+    return res.ok && typeof body?.emailAddress === "string" ? body.emailAddress.toLowerCase() : "";
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * The accounts that are linked, none when none is. The first's address is
+ * learned here the first time, for a link older than the list. `lapsed`:
+ * the first's link is dead, so Google will not say whose it was.
+ */
+export async function linkedAccounts(env: Env, cfg: GoogleConfig): Promise<{ list: GoogleAccount[]; lapsed: boolean }> {
+  if (!(await isLinked(env))) return { list: [], lapsed: false };
+  const list = await accountsOf(env);
+  const first = list[0]!;
+  if (first.id || first.email) return { list, lapsed: false };
+  try {
+    first.email = await addressFor(await accessToken(asAccount(env, ""), cfg));
+  } catch (e) {
+    return { list, lapsed: e instanceof NeedsRelink };
+  }
+  if (first.email) await keepAccounts(env, list).catch(() => {});
+  return { list, lapsed: false };
+}
 
 /**
  * Everything a person does with mail, except destroying it.
@@ -192,7 +258,7 @@ export async function exchangeCode(
   env: Env,
   cfg: GoogleConfig,
   code: string,
-): Promise<{ ok: true } | { ok: false; detail: string }> {
+): Promise<{ ok: true; email: string } | { ok: false; detail: string }> {
   const res = await fetch(TOKEN, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -224,42 +290,78 @@ export async function exchangeCode(
     return { ok: false, detail };
   }
 
-  await env.CONFIG.put(refreshKey(env), body.refresh_token);
-  if (body.access_token) await cacheAccess(env, body.access_token, body.expires_in);
-  return { ok: true };
+  /*
+   * Which of the person's accounts this is. Linking never asks: the account
+   * chosen at Google says. One already linked is that link renewed; the
+   * first when none is, or when the first's link is dead and so cannot say
+   * whose it was; otherwise one more beside those there.
+   */
+  const email = body.access_token ? await addressFor(body.access_token) : "";
+  const { list, lapsed } = await linkedAccounts(env, cfg);
+  const same = email ? list.find((a) => a.email === email) : undefined;
+  const id = same ? same.id : !list.length || lapsed ? "" : crypto.randomUUID().slice(0, 8);
+  const at = asAccount(env, id);
+
+  await env.CONFIG.put(refreshKey(at), body.refresh_token);
+  if (body.access_token) await cacheAccess(at, body.access_token, body.expires_in);
+  await keepAccounts(env, [...list.filter((a) => a.id !== id), { id, email }].sort((a, b) => Number(!!a.id) - Number(!!b.id)));
+  return { ok: true, email };
 }
 
+/** Whether the person has a Google account linked: their first, which there always is while any is (unlink). */
 export async function isLinked(env: Env): Promise<boolean> {
-  return !!(await env.CONFIG.get(refreshKey(env)).catch(() => null));
+  return !!(await env.CONFIG.get(refreshKey(asAccount(env, ""))).catch(() => null));
 }
 
-export async function unlink(env: Env): Promise<void> {
-  const refresh = await env.CONFIG.get(refreshKey(env)).catch(() => null);
+// Best effort: tell Google too, so the grant disappears from the account's
+// permissions page rather than lingering as a live token nobody is holding.
+const revoke = (token: string | null): Promise<unknown> =>
+  token
+    ? fetch(REVOKE, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ token }),
+        signal: AbortSignal.timeout(5_000),
+      }).catch(() => {})
+    : Promise.resolve();
+
+/**
+ * One of the person's accounts unlinked: their first, unless `id` says which.
+ * When the first goes and another is linked, that one becomes the first, so
+ * "the first" is always an account that is there.
+ */
+export async function unlink(env: Env, id = ""): Promise<void> {
+  const at = asAccount(env, id);
+  const refresh = await env.CONFIG.get(refreshKey(at)).catch(() => null);
   await Promise.all([
-    env.CONFIG.delete(refreshKey(env)).catch(() => {}),
-    env.CONFIG.delete(accessKey(env)).catch(() => {}),
+    env.CONFIG.delete(refreshKey(at)).catch(() => {}),
+    env.CONFIG.delete(accessKey(at)).catch(() => {}),
   ]);
-  // Best effort: tell Google too, so the grant disappears from the account's
-  // permissions page rather than lingering as a live token nobody is holding.
-  if (refresh) {
-    await fetch(REVOKE, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({ token: refresh }),
-      signal: AbortSignal.timeout(5_000),
-    }).catch(() => {});
+  const rest = (await accountsOf(env)).filter((a) => a.id !== id);
+  const next = id ? undefined : rest[0];
+  if (next?.id) {
+    const from = asAccount(env, next.id);
+    const token = await env.CONFIG.get(refreshKey(from)).catch(() => null);
+    if (token) await env.CONFIG.put(refreshKey(at), token);
+    await Promise.all([env.CONFIG.delete(refreshKey(from)).catch(() => {}), env.CONFIG.delete(accessKey(from)).catch(() => {})]);
+    if (token) rest[0] = { id: "", email: next.email };
+    else rest.shift();
   }
+  await keepAccounts(env, rest).catch(() => {});
+  await revoke(refresh);
 }
 
 /**
- * Every person's link, for a change of OAuth client: tokens the old client
- * issued are no use to the new one, whoever linked them.
+ * Every person's every link, for a change of OAuth client: tokens the old
+ * client issued are no use to the new one, whoever linked them.
  */
 export async function unlinkEveryone(env: Env): Promise<void> {
   for (const key of await keysStartingWith(env, REFRESH_KEY)) {
-    const person = key === REFRESH_KEY ? undefined : key.slice(REFRESH_KEY.length + 1);
-    await unlink({ ...env, JARVIS_PERSON: person });
+    const refresh = await env.CONFIG.get(key).catch(() => null);
+    await Promise.all([env.CONFIG.delete(key).catch(() => {}), env.CONFIG.delete(ACCESS_KEY + key.slice(REFRESH_KEY.length)).catch(() => {})]);
+    await revoke(refresh);
   }
+  for (const key of await keysStartingWith(env, INDEX_KEY)) await env.CONFIG.delete(key).catch(() => {});
 }
 
 /** Every KV key under a prefix, across pages. */
