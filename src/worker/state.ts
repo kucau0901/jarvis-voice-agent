@@ -970,8 +970,8 @@ export class JarvisState extends DurableObject<Env> {
     return this.specialties.forget(person, which);
   }
 
-  specialtyOffer(person: string, p: Procedure, now: number) {
-    return this.specialties.offer(person, p, now);
+  specialtyOffer(person: string, p: Procedure, now: number, said: boolean) {
+    return this.specialties.offer(person, p, now, said);
   }
 
   skillsList() {
@@ -1216,12 +1216,13 @@ export class JarvisState extends DurableObject<Env> {
    */
   async recallFor(person: string, ask: string, take: boolean) {
     const now = Date.now();
-    const [specialty, past, procedure] = await Promise.all([
+    const [specialty, past, procedure, offerSaid] = await Promise.all([
       this.specialties.match(person, ask),
       this.episodes.match(person, ask, now),
       take ? this.specialties.take(person, now) : null,
+      this.specialties.offerSaid(person),
     ]);
-    return { specialty, past, procedure };
+    return { specialty, past, procedure, offerSaid };
   }
 
   conversationOf(person: string, now: number) {

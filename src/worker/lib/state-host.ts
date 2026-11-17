@@ -674,11 +674,11 @@ interface RecallApi {
   specialtiesOf(person: string): Promise<Specialty[]>;
   specialtySave(person: string, input: { name: unknown; when: unknown; steps: unknown; why?: unknown }, now: number): Promise<Specialty | string>;
   specialtyForget(person: string, which: string): Promise<boolean>;
-  specialtyOffer(person: string, p: Procedure, now: number): Promise<void>;
+  specialtyOffer(person: string, p: Procedure, now: number, said: boolean): Promise<void>;
   episodesOf(person: string, now: number): Promise<Episode[]>;
   episodeAdd(person: string, e: Omit<Episode, "at" | "keys" | "seen">, now: number): Promise<void>;
   episodeForget(person: string, id: string): Promise<boolean>;
-  recallFor(person: string, ask: string, take: boolean): Promise<{ specialty: Specialty | null; past: Episode[]; procedure: Procedure | null }>;
+  recallFor(person: string, ask: string, take: boolean): Promise<{ specialty: Specialty | null; past: Episode[]; procedure: Procedure | null; offerSaid: number }>;
 }
 
 /** The family's skills (lib/skills.ts): added in chat, keys set in Settings → Skills. */

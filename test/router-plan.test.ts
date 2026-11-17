@@ -24,7 +24,7 @@ const kv = new Map<string, string>();
 const CONFIG = { get: async (k: string) => kv.get(k) ?? null, put: async (k: string, v: string) => void kv.set(k, v), delete: async () => {}, list: async () => ({ keys: [] }) };
 
 /** One question: the plan's and the key's answers in turn, and what was sent to each. */
-async function ask(opts: { plan: boolean; plans: Answer[]; keys?: Answer[]; fallback?: "0" | "1"; grants?: string[]; text?: string; origin?: boolean; run?: Record<string, unknown>; recalled?: { specialty?: unknown; procedure?: unknown }; env?: Record<string, unknown>; before?: { role: "user" | "assistant"; text: string }[] }) {
+async function ask(opts: { plan: boolean; plans: Answer[]; keys?: Answer[]; fallback?: "0" | "1"; grants?: string[]; text?: string; origin?: boolean; run?: Record<string, unknown>; recalled?: { specialty?: unknown; procedure?: unknown; offerSaid?: number }; env?: Record<string, unknown>; before?: { role: "user" | "assistant"; text: string }[] }) {
   const sent: { by: "plan" | "key"; body: Body }[] = [];
   const failed: string[] = [];
   const recorded: { by: string }[] = [];
@@ -32,6 +32,8 @@ async function ask(opts: { plan: boolean; plans: Answer[]; keys?: Answer[]; fall
   // Specialties (lib/specialties.ts): steps offered, what each question asked to recall, and what was saved.
   const offers: Record<string, unknown>[] = [];
   const offeredTo: unknown[] = [];
+  /** Whether each offer's answer said how to keep it (specialtyOffer's `said`). */
+  const toldHow: unknown[] = [];
   const recalls: unknown[][] = [];
   const saved: Record<string, unknown>[] = [];
   const stub = new Proxy({}, {
@@ -44,9 +46,9 @@ async function ask(opts: { plan: boolean; plans: Answer[]; keys?: Answer[]; fall
             if (m === "recordUsage") return void recorded.push(args[0] as { by: string });
             if (m === "episodeAdd") return void episodes.push(args[1] as Record<string, unknown>);
             if (m === "recentShared") return [];
-            if (m === "specialtyOffer") return void (offers.push(args[1] as Record<string, unknown>), offeredTo.push(args[0]));
+            if (m === "specialtyOffer") return void (offers.push(args[1] as Record<string, unknown>), offeredTo.push(args[0]), toldHow.push(args[3]));
             // Taken only when asked to, as Specialties.take is.
-            if (m === "recallFor") return (recalls.push(args), { specialty: opts.recalled?.specialty ?? null, past: [], procedure: args[2] ? opts.recalled?.procedure ?? null : null });
+            if (m === "recallFor") return (recalls.push(args), { specialty: opts.recalled?.specialty ?? null, past: [], procedure: args[2] ? opts.recalled?.procedure ?? null : null, offerSaid: opts.recalled?.offerSaid ?? 0 });
             if (m === "specialtySave") return (saved.push(args[1] as Record<string, unknown>), { ...(args[1] as object), id: "s1" });
             if (m === "createJob") return { id: "j1", title: "Look into it", engine: "jarvis" };
             return undefined;
@@ -91,7 +93,7 @@ async function ask(opts: { plan: boolean; plans: Answer[]; keys?: Answer[]; fall
     globalThis.fetch = realFetch;
   }
   const result = said.find((e) => e.type === "result" || e.type === "error");
-  return { sent, failed, recorded, result, said, episodes, offers, offeredTo, recalls, saved };
+  return { sent, failed, recorded, result, said, episodes, offers, offeredTo, toldHow, recalls, saved };
 }
 
 const call = { type: "function_call", id: "fc_1", call_id: "call_1", name: "recall", namespace: "jarvis", arguments: JSON.stringify({ query: "dentist" }), status: "completed" };
@@ -235,7 +237,7 @@ console.log("past attempts: a question whose tools failed is kept by the person'
     routine.episodes.length === 1 && routine.episodes[0]?.goal === "Check my notes for the dentist every morning", routine.episodes);
 }
 
-console.log("specialties (lib/specialties.ts): an answer of two tools offers its steps");
+console.log("specialties (lib/specialties.ts): an answer of two tools keeps its steps; one of three says how to save them, once a day");
 {
   const asked = "what time is it in Asia/Tokyo now, and clear the screen";
   const clock = { ...call, id: "fc_2", call_id: "call_2", name: "time_in", arguments: JSON.stringify({ zone: "Asia/Tokyo" }) };
@@ -243,8 +245,16 @@ console.log("specialties (lib/specialties.ts): an answer of two tools offers its
   const two = (over: Partial<Parameters<typeof ask>[0]> = {}) =>
     ask({ plan: false, plans: [], origin: true, text: asked, keys: [{ items: [clock, clear] }, { items: [answer("It is 3 PM in Tokyo. Cleared.")] }], ...over });
   const none = (r: Awaited<ReturnType<typeof ask>>) => r.result?.type === "result" && !String(r.result.text).includes(OFFER) && !r.offers.length;
+  const points = { ...call, id: "fc_9", call_id: "call_9", name: "chore_points", arguments: "{}" };
+  const three = (over: Partial<Parameters<typeof ask>[0]> = {}) => two({ keys: [{ items: [clock, clear, points] }, { items: [answer("It is 3 PM in Tokyo. Cleared.")] }], ...over });
+  const r3 = await three();
+  check("three tools, asked from a device: how to save them said once, at the end of the answer", r3.result?.text === `It is 3 PM in Tokyo. Cleared.\n\n${OFFER}` && r3.offers.length === 1 && r3.toldHow[0] === true, r3.result);
+  const today = await three({ recalled: { offerSaid: Date.now() - 60 * 60_000 } });
+  check("…said already today: not said again, the steps kept all the same", today.result?.text === "It is 3 PM in Tokyo. Cleared." && today.offers.length === 1 && today.toldHow[0] === false, today.result);
+  const nextDay = await three({ recalled: { offerSaid: Date.now() - 25 * 60 * 60_000 } });
+  check("…and said again a day on", String(nextDay.result?.text).endsWith(OFFER) && nextDay.toldHow[0] === true, nextDay.result);
   const r = await two();
-  check("asked from a device: offered once, at the end of the answer", r.result?.text === `It is 3 PM in Tokyo. Cleared.\n\n${OFFER}`, r.result);
+  check("two tools: nothing said after the answer", r.result?.text === "It is 3 PM in Tokyo. Cleared." && r.toldHow[0] === false, r.result);
   check("…and its steps kept: their words, the tools in order with only the values they said",
     r.offers.length === 1 && r.offers[0]?.asked === asked && JSON.stringify(r.offers[0]?.steps) === JSON.stringify(["time_in: Asia/Tokyo", "hide_display"]), r.offers);
   // A code the first tool found, passed to the second, and in the answer: the person's to read, never kept.
@@ -258,7 +268,7 @@ console.log("specialties (lib/specialties.ts): an answer of two tools offers its
   const sara = await two({ env: { JARVIS_PERSON: "u_sara" } });
   check("kept for the person who asked", JSON.stringify(sara.offeredTo) === JSON.stringify(["u_sara"]), sara.offeredTo);
   const long = "what time is it in Asia/Tokyo now, and clear the screen, then tell me whether that is too late to call my aunt there";
-  const longer = await two({ text: long });
+  const longer = await three({ text: long });
   check("a long question: offered as one that can be saved, ended at a word", longer.offers[0]?.asked === "what time is it in Asia/Tokyo now, and clear the screen," && String(longer.result?.text).endsWith(OFFER), longer.offers);
   const one = await ask({ plan: false, plans: [], origin: true, text: asked, keys: [{ items: [clock] }, { items: [answer("3 PM.")] }] });
   check("one tool: not offered", none(one), one.result);

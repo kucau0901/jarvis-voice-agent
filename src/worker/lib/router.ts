@@ -21,7 +21,7 @@ import { sharedBlock, type Origin, type SharedTurn } from "./shared.ts";
 import { stateStub } from "./state-client.ts";
 import { memoryFor, type MemoryStore } from "./memory.ts";
 import { bookOf, callerWho, OWNER } from "./context.ts";
-import { OFFER, procedureOf, specialtyBlock, type Procedure, type Specialty } from "./specialties.ts";
+import { OFFER, OFFER_SAID_MS, OFFER_TOOLS, procedureOf, specialtyBlock, type Procedure, type Specialty } from "./specialties.ts";
 import { botAsks, botHides, type Skill } from "./skills.ts";
 import { askSkill } from "../tools/skills.ts";
 import { componentTools, eventsSaid } from "../tools/components.ts";
@@ -159,6 +159,8 @@ export interface Prepared {
   specialty: Specialty | null;
   /** The steps the person's last answer offered to save, taken by this question of theirs (lib/specialties.ts). */
   procedure: Procedure | null;
+  /** When an answer of theirs last said how to keep its steps (lib/specialties.ts OFFER); 0 when none has. */
+  offerSaid: number;
 }
 
 export async function prepareRouter(
@@ -363,7 +365,7 @@ export async function prepareRouter(
         ]
       : []),
   ];
-  return { model, instructions, input, tools, byName, memory, specialty: recalled?.specialty ?? null, procedure: recalled?.procedure ?? null };
+  return { model, instructions, input, tools, byName, memory, specialty: recalled?.specialty ?? null, procedure: recalled?.procedure ?? null, offerSaid: recalled?.offerSaid ?? 0 };
 }
 
 /**
@@ -524,6 +526,7 @@ export async function run(
     },
   };
   let offered: Procedure | null = null;
+  let saidHow = false;
   const onPlanHop = async (model: string, input: OpenAI.Responses.ResponseInput) => {
     const ask = (withEffort: boolean) =>
       planRespond(plan!.client, {
@@ -634,7 +637,9 @@ export async function run(
       if (!own || !opts.origin || opts.surface === "glasses" || !allows(grants, "memory.write") || !allows(grants, "memory.read") || !stateStub(env)) return null;
       if (tools.length < 2 || failed.length || startedJob || p?.specialty) return null;
       offered = procedureOf(own, made);
-      return offered ? OFFER : null;
+      // Kept after any such answer, so "save this as" works; how is said only after one of more tools, and not again for a day.
+      saidHow = !!offered && tools.length >= OFFER_TOOLS && Date.now() - (p?.offerSaid ?? 0) >= OFFER_SAID_MS;
+      return saidHow ? OFFER : null;
     },
     // Settings → Usage: after the answer, where the request allows, so the
     // glasses and push-to-talk do not wait on the write.
@@ -654,12 +659,12 @@ export async function run(
         if (worked) writes.push((stateStub(env)?.episodeAdd(env.JARVIS_PERSON || OWNER, worked, Date.now()) ?? Promise.resolve()).catch(() => {}));
       }
       // The steps just offered, until their next question (lib/specialties.ts).
-      if (offered) writes.push((stateStub(env)?.specialtyOffer(env.JARVIS_PERSON || OWNER, offered, Date.now()) ?? Promise.resolve()).catch(() => {}));
+      if (offered) writes.push((stateStub(env)?.specialtyOffer(env.JARVIS_PERSON || OWNER, offered, Date.now(), saidHow) ?? Promise.resolve()).catch(() => {}));
       // Heard by an open microphone but not said to Jarvis, and nothing done (lib/glasses.ts): no part of any conversation,
       // and its words, perhaps a stranger's, not kept in Usage either.
       const ignored = (opts.surface === "glasses" || !!opts.openMic) && overheard(r);
       // It took the steps their last answer offered (prepareRouter) before it was judged: they go back, for their next question.
-      if (ignored && p?.procedure) writes.push((stateStub(env)?.specialtyOffer(env.JARVIS_PERSON || OWNER, p.procedure, Date.now()) ?? Promise.resolve()).catch(() => {}));
+      if (ignored && p?.procedure) writes.push((stateStub(env)?.specialtyOffer(env.JARVIS_PERSON || OWNER, p.procedure, Date.now(), false) ?? Promise.resolve()).catch(() => {}));
       // One conversation across devices (lib/shared.ts): what was asked here, and answered.
       const asked = lastAsk(turns);
       if (opts.origin && allows(grants, "memory.read") && r.ok && asked && !ignored) {
