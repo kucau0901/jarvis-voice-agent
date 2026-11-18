@@ -994,7 +994,7 @@ export class JarvisState extends DurableObject<Env> {
     return this.skills.remove(which);
   }
 
-  skillAsked(input: { skill: string; person: string; about: string; digest: string }, now: number) {
+  skillAsked(input: { skill: string; person: string; about: string; digest: string; unasked?: boolean }, now: number) {
     return this.skills.asked(input, now);
   }
 

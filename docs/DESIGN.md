@@ -1847,6 +1847,23 @@ address takes a message of the bot's own (its
 routines' news), to whoever made it and nobody else, under its name, as an
 answer is.
 
+Such a message is not only shown: Jarvis reads it against what it already
+knows (`lib/bot-read.ts`). The owner asked for it after a bot said a leave
+request was waiting for approval an hour after Jarvis had approved it. Its
+person's Chat of the past three hours, the window a question is asked in,
+and the message, both quoted as data, go to the cheapest model with no
+tools, which writes at most a note for the person ("already approved at
+15:05") and a reply for the bot; nothing in Chat to read it against, no
+call. The note is kept under the message as Jarvis's words, drawn and read
+as its answer to a bot is. The reply is sent by code, as a request to that
+skill, only while whoever made the address may send to skills, and the note
+says what was sent. So a bot's words can make Jarvis tell that bot
+something, and nothing else: no tool, no other bot, nothing approved. Where
+a loop of the two answering each other stops: Jarvis tells a skill at most
+3 things an hour by itself (`UNASKED_PER_HOUR`, within its 20), and what
+the bot answers at that request's reply address is shown, never read
+again. A message held for quiet hours is not read.
+
 ## Components
 
 Jarvis is the brain: people and roles, conversation, memory, telling and

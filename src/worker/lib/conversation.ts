@@ -135,6 +135,15 @@ export function skillExchangeSaid(id: string, skill: { id: string; name: string 
   ];
 }
 
+/**
+ * What Jarvis made of a bot's message of its own (lib/bot-read.ts), kept under it: Jarvis's words, drawn and
+ * read as its answer to a bot is (skillExchangeSaid), so neither shows it as the bot's.
+ */
+export function botNoteSaid(alertId: string, skill: { id: string; name: string }, text: string, at: number): Said | null {
+  const s = asSaid({ id: `${alertId}_n`, role: "assistant", text }, at);
+  return s && { ...s, skill: { id: skill.id, name: skill.name, answered: true } };
+}
+
 /** What one message takes of the person's MAX_CHARS: its words, and its links. */
 const size = (s: Said) => s.text.length + (s.links ?? []).reduce((n, l) => n + l.url.length + l.title.length, 0);
 

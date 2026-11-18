@@ -31,7 +31,9 @@ import { narrow, saneGrants, SCOPES, type Grant } from "./scopes.ts";
  * its own name and within what was ticked for it, and to message the person
  * who made it. Kept only as its digest, shown once; removing the skill stops
  * it. What it may reach never holds `skills`, so a bot asking can never make
- * Jarvis send to a bot: the hard stop on a loop between them.
+ * Jarvis send to a bot. A message of its own is read against the person's
+ * Chat (lib/bot-read.ts), and Jarvis may tell the bot what it knows about it,
+ * at most UNASKED_PER_HOUR times an hour: where a loop between them stops.
  *
  * One list for the family, under one key; the requests sent, under another.
  */
@@ -59,6 +61,12 @@ const MAX_ASKED = 200;
  * Jarvis and a bot, or a routine gone wrong, stops.
  */
 export const SENDS_PER_HOUR = 20;
+/**
+ * Of those, the ones Jarvis sends a skill by itself, telling its bot what it
+ * knows about a message the bot sent (lib/bot-read.ts): where a loop of the
+ * two answering each other stops, whatever either says.
+ */
+export const UNASKED_PER_HOUR = 3;
 const HOUR = 3_600_000;
 /** What of a request is kept, to show under its answer. */
 const MAX_ABOUT = 200;
@@ -106,6 +114,8 @@ export interface Asked {
   at: number;
   /** Answers taken so far. */
   uses: number;
+  /** Sent by Jarvis itself, about a message of the bot's (lib/bot-read.ts), not asked by anyone: UNASKED_PER_HOUR. */
+  unasked?: true;
 }
 
 /** Every request's body has these; a fixed field of one of these names is left out, as Jarvis sets it. */
@@ -313,17 +323,31 @@ export class Skills {
 
   /**
    * A request about to be sent to a skill, for `person`, its reply address's
-   * digest kept: its id, or why not (SENDS_PER_HOUR). Those past ANSWER_MS go.
+   * digest kept: its id, or why not (SENDS_PER_HOUR, and UNASKED_PER_HOUR for
+   * one Jarvis sends by itself). Those past ANSWER_MS go.
    */
-  async asked(input: { skill: string; person: string; about: string; digest: string }, now: number): Promise<{ id: string } | string> {
+  async asked(input: { skill: string; person: string; about: string; digest: string; unasked?: boolean }, now: number): Promise<{ id: string } | string> {
     const s = (await this.all()).find((x) => x.id === input.skill);
     if (!s) return "no such skill";
     const live = ((await this.storage.get<Asked[]>(ASKED_KEY)) ?? []).filter((a) => now - a.at < ANSWER_MS);
-    if (live.filter((a) => a.skill === s.id && now - a.at < HOUR).length >= SENDS_PER_HOUR) {
+    const hour = live.filter((a) => a.skill === s.id && now - a.at < HOUR);
+    if (hour.length >= SENDS_PER_HOUR) {
       return `${s.name} has been sent ${SENDS_PER_HOUR} requests in the past hour; ask again later`;
     }
+    if (input.unasked && hour.filter((a) => a.unasked).length >= UNASKED_PER_HOUR) {
+      return `Jarvis has told ${s.name} ${UNASKED_PER_HOUR} things by itself in the past hour`;
+    }
     const id = `jarvis-${Math.floor(now / 1000)}-${random(6)}`;
-    const a: Asked = { id, digest: input.digest, skill: s.id, person: input.person, about: tidy(input.about).slice(0, MAX_ABOUT), at: now, uses: 0 };
+    const a: Asked = {
+      id,
+      digest: input.digest,
+      skill: s.id,
+      person: input.person,
+      about: tidy(input.about).slice(0, MAX_ABOUT),
+      at: now,
+      uses: 0,
+      ...(input.unasked ? { unasked: true as const } : {}),
+    };
     await this.storage.put(ASKED_KEY, [...live, a].slice(-MAX_ASKED));
     return { id };
   }

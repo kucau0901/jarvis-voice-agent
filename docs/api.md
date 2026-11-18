@@ -1172,6 +1172,14 @@ else; `200`, or `502` when no channel took it, or `202` with `heldUntil` when
 it waits for their quiet hours to end. It counts against the bot's
 allowance, after the address is checked.
 
+Jarvis then reads it against that person's Chat of the past three hours. If
+something there bears on it (what it asks for was already done, say), Jarvis
+adds a note under it in Chat, and may tell the bot so with a request to the
+skill's own URL, as when it asks it something, with a `replyUrl` of its own:
+only if the skill has a key and whoever made the address may send to skills,
+and at most 3 such requests an hour. An answer at that `replyUrl` is shown,
+not read again.
+
 It asks as the person who made the address, as a device of theirs would:
 their hours (`403` with `outside`), a device's allowance (`429`), and no
 further than what was ticked for it and they may now. What it may reach

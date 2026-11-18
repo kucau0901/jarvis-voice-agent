@@ -2,7 +2,9 @@ import type { Env } from "../types.ts";
 import { err, json, publicOrigin, readObject, readObjectOrEmpty } from "../lib/http.ts";
 import { stateStub } from "../lib/state-client.ts";
 import { looksLikeToken, sha256Hex } from "../lib/devices.ts";
-import { deliver, type Alert, type AlertState } from "../lib/alerts.ts";
+import { deliver, type Alert } from "../lib/alerts.ts";
+import { readBotMessage } from "../lib/bot-read.ts";
+import { recordUsage } from "./usage.ts";
 import { ADDRESS_PREFIX, BOT_REACH, botGrants, REPLY_PREFIX, skillAlert } from "../lib/skills.ts";
 import { credentialOf, personOf, type Principal } from "../lib/auth.ts";
 import { personView } from "../lib/hub-client.ts";
@@ -61,6 +63,9 @@ const MAX_BODY = 16 * 1024;
 /** What a bot's own address serves, after it: itself, asking (as /api/v1/ask), MCP, and the OpenAI chat API. */
 const SERVED = new Set(["", "ask", "mcp", "chat/completions"]);
 const nowhere = () => err(404, "no such address");
+/** A bot's message read (lib/bot-read.ts), in Settings → Usage as its person's. */
+const usageOf = (env: Env, person: string, name: string) => (u: { model: string; ok: boolean; ms: number; input: number; output: number }) =>
+  recordUsage(env, { at: Date.now(), surface: "chat", by: u.model, ok: u.ok, ms: u.ms, input: u.input, cached: 0, written: 0, output: u.output, searches: 0, tools: [], ask: `${name}'s message`.slice(0, 80), who: person });
 
 /**
  *   POST /api/v1/bot/<jrp1_…>   {text, title?, speak?, expiresAt?}: a skill's answer to one request
@@ -121,7 +126,13 @@ export async function handleBot(req: Request, env: Env, ctx: ExecutionContext, a
     if (!b) return err(400, "body must be a small JSON object");
     const alert = skillAlert(bot, b, Date.now(), bot.person);
     if (!alert) return err(400, "text is required");
-    return delivered(env, state, alert);
+    const d = await deliver(env, state, alert);
+    // Read against their Chat once it is there, and answered if Jarvis knows better (lib/bot-read.ts); not one held for quiet hours.
+    if (!d.heldUntil) {
+      const deps = { env, state, timeZone: localeOf(env).timeZone, usage: usageOf(env, bot.person, bot.name) };
+      ctx.waitUntil(readBotMessage(deps, bot, alert, bot.person, allows(view.scopes, "skills"), Date.now()).catch((e) => console.warn("bot message not read:", e)));
+    }
+    return outcome(alert, d);
   }
   // As a device of theirs: their data, their memory as far as it was ticked, a thread of its own (routes/v1.ts botOf).
   const principal: Principal = {
@@ -153,7 +164,7 @@ async function answered(req: Request, env: Env, parts: string[]): Promise<Respon
   if ("refused" in r) return err(r.refused, r.why);
   // Before Jarvis's own reply to the question: held by the object until that is in Chat (state.ts), so it shows after it.
   if (r.holdUntil) return json({ ok: true, id: r.alert.id, heldUntil: r.holdUntil }, { status: 202 });
-  return delivered(env, state, r.alert);
+  return outcome(r.alert, await deliver(env, state, r.alert));
 }
 
 /**
@@ -161,8 +172,7 @@ async function answered(req: Request, env: Env, parts: string[]): Promise<Respon
  * went, as POST /api/v1/notify says: a bot holds no alerts token, and which screen is in front of its person
  * is not its business.
  */
-async function delivered(env: Env, state: AlertState, alert: Alert): Promise<Response> {
-  const d = await deliver(env, state, alert);
+function outcome(alert: Alert, d: Awaited<ReturnType<typeof deliver>>): Response {
   if (d.heldUntil) return json({ ok: true, id: alert.id, heldUntil: d.heldUntil }, { status: 202 });
   return json({ ok: !!d.deliveredBy, id: alert.id }, { status: d.deliveredBy ? 200 : 502 });
 }

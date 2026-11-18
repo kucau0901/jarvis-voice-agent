@@ -688,7 +688,7 @@ interface SkillApi {
   skillAdd(input: { name: unknown; url: unknown; when: unknown; later: unknown; keyHeader: unknown; fields: unknown }, now: number): Promise<SkillView | string>;
   skillKey(id: string, key: unknown, now: number, origin?: string): Promise<SkillView | string>;
   skillRemove(which: string): Promise<SkillView | null>;
-  skillAsked(input: { skill: string; person: string; about: string; digest: string }, now: number): Promise<{ id: string } | string>;
+  skillAsked(input: { skill: string; person: string; about: string; digest: string; unasked?: boolean }, now: number): Promise<{ id: string } | string>;
   skillNewAddress(id: string, person: string, reach: unknown, now: number): Promise<{ skill: SkillView; token: string } | string>;
   skillDropAddress(id: string, now: number): Promise<SkillView | string>;
   skillReach(id: string, reach: unknown, now: number): Promise<SkillView | string>;

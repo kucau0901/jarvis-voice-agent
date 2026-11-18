@@ -19,6 +19,15 @@ of every release, and in the [README](README.md#updating).
 
 ### Added
 
+- **A bot's message is read, not just shown.** When a bot you gave its own
+  address messages you ("Dana's leave is waiting for your approval"),
+  Jarvis reads it against your Chat of the past three hours. If something
+  there bears on it, it adds a note under it ("already approved at 3:05")
+  and, if you may send to skills, tells the bot too, saying what it sent.
+  It only writes: it never acts on what a bot says. At most 3 such replies
+  to one bot an hour, and what the bot answers to one is shown, not read
+  again. One small model call per message, none when Chat is empty.
+
 - **More than one Google account each.** A work account beside your own: in
   Family → Accounts, under **Add an account**, press **Connect** beside
   Google and choose it there: it is listed with the first, each a card with
