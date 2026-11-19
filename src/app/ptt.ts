@@ -3,6 +3,7 @@ import { authHeaders } from "./key";
 import type { VoiceLevels } from "./audio";
 import type { Turn } from "./history";
 import { originHere } from "./alerts";
+import { desktop } from "./desktop";
 import { asDraft, type Draft } from "./draft";
 import { asAddress, type Addressee } from "./botAddress";
 
@@ -205,7 +206,8 @@ export class PushToTalk {
     const cfg = await this.loadConfig();
     const Recognition = (window as unknown as { SpeechRecognition?: new () => SpeechRecognitionLike; webkitSpeechRecognition?: new () => SpeechRecognitionLike })
       .SpeechRecognition ?? (window as unknown as { webkitSpeechRecognition?: new () => SpeechRecognitionLike }).webkitSpeechRecognition;
-    if (cfg.stt === "browser" && Recognition) return this.listenInBrowser(new Recognition(), cfg);
+    // The desktop app has the object, but not Google's service behind it: recorded here instead (desktop.ts).
+    if (cfg.stt === "browser" && Recognition && !desktop) return this.listenInBrowser(new Recognition(), cfg);
 
     try {
       this.stream = await navigator.mediaDevices.getUserMedia({

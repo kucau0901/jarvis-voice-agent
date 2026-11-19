@@ -47,6 +47,7 @@ import { lookActions } from "./look";
 import { proposalCards } from "./proposal";
 import { hubStatus, inviteInfo, joinWithInvite, pairThisScreen, signInWithPasskey } from "./account";
 import { passkeyError, passkeysSupported } from "./passkey";
+import { desktop } from "./desktop";
 import { describe, dropPerson, endSignIn, keepPerson, loadPeople, lockPerson, unlockPerson, type Person } from "./people";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -1309,6 +1310,11 @@ els.orb.addEventListener("click", () => {
   p.setKey(key);
   void p.press();
 });
+// The desktop app's talk shortcut (desktop.ts): Chat in front, then as the orb's click.
+desktop?.onTalk(() => {
+  showTab("chat");
+  els.orb.click();
+});
 /* ---------- typing ------------------------------------------------------ */
 /*
  * The conversation so far goes to the router as text and the answer comes
@@ -1322,6 +1328,8 @@ const sendBtn = $<HTMLButtonElement>("send");
 const tray = $("tray");
 const attachments = new Attachments(tray, $<HTMLButtonElement>("attach"), $("attachMenu"), $<HTMLInputElement>("attachInput"), (t) => status(t, true));
 const reply = new Reply(tray, typed);
+// Files dropped while Jarvis or Home is in front: Chat comes forward, where attach.ts takes them.
+document.addEventListener("drop", (e) => e.dataTransfer?.types.includes("Files") && showTab("chat"));
 // Shared from another app (share.ts): into Chat's box and tray, never sent.
 if (key) void takeShared().then((shared) => {
   if (!shared) return;

@@ -2,6 +2,7 @@ import { authHeaders } from "./key";
 import type { Said } from "./conversation";
 import { routeElement } from "./loud";
 import { inCar } from "./client";
+import { desktop, seenHere } from "./desktop";
 
 /**
  * This screen's end of alerts: a live socket to the Worker while the page is
@@ -103,7 +104,9 @@ export class LiveLink {
     this.onSignedOut = onSignedOut;
     this.onCleared = onCleared;
     this.onSaid = onSaid;
-    addEventListener("visibilitychange", () => this.presence());
+    addEventListener("visibilitychange", () => void this.presence());
+    // In the desktop app, the computer going idle or locked, or back in use (desktop.ts).
+    desktop?.onPresence(() => void this.presence());
     addEventListener("online", () => {
       if (!this.stopped && !this.ws) {
         this.attempt = 0;
@@ -159,7 +162,7 @@ export class LiveLink {
 
     ws.onopen = () => {
       this.attempt = 0;
-      this.presence();
+      void this.presence();
       clearInterval(this.pingTimer);
       this.pingTimer = setInterval(() => ws.readyState === WebSocket.OPEN && ws.send("ping"), PING_MS);
     };
@@ -175,10 +178,16 @@ export class LiveLink {
       if (msg.type === "conversation.said") return Array.isArray(msg.said) ? this.onSaid(msg.said) : undefined;
       if (msg.type !== "alert" || !msg.alert) return;
       // Confirm only if someone can see it: a hidden tab saying "got it" would
-      // stop the alert reaching the phone in your pocket.
-      const visible = document.visibilityState === "visible";
-      ws.send(JSON.stringify({ type: "ack", id: msg.alert.id, visible }));
-      this.onAlert(msg.alert);
+      // stop the alert reaching the phone in your pocket. The desktop app
+      // answers inUse() at once, well inside the server's wait for an ack.
+      const a = msg.alert;
+      const shown = document.visibilityState === "visible";
+      const ack = (inUse?: boolean) => ws.send(JSON.stringify({ type: "ack", id: a.id, visible: seenHere(shown, inUse) }));
+      if (desktop) void desktop.inUse().then(ack, () => ack());
+      else ack();
+      // Behind other windows in the desktop app: a notification of its own, as Web Push would give.
+      if (!shown && desktop) desktop.notify({ id: a.id, title: a.title, text: a.text });
+      this.onAlert(a);
     };
     ws.onclose = (e) => {
       clearInterval(this.pingTimer);
@@ -197,20 +206,23 @@ export class LiveLink {
     this.retryTimer = setTimeout(() => void this.connect(), wait);
   }
 
-  private presence(): void {
+  private async presence(): Promise<void> {
+    const visible = seenHere(document.visibilityState === "visible", await desktop?.inUse().catch(() => false));
     if (this.ws?.readyState !== WebSocket.OPEN) return;
-    this.ws.send(JSON.stringify({ type: "presence", visible: document.visibilityState === "visible" }));
+    this.ws.send(JSON.stringify({ type: "presence", visible }));
   }
 }
 
 /* ---------- notifications ---------------------------------------------------- */
 
-export type PushState = "on" | "off" | "blocked" | "unsupported" | "needs-install";
+/** "desktop": in the desktop app, which has no Web Push and shows alerts from the socket itself. */
+export type PushState = "on" | "off" | "blocked" | "unsupported" | "needs-install" | "desktop";
 
 const isIos = () => /iPhone|iPad/i.test(navigator.userAgent);
 const standalone = () => matchMedia("(display-mode: standalone)").matches || (navigator as { standalone?: boolean }).standalone === true;
 
 export async function pushState(): Promise<PushState> {
+  if (desktop) return "desktop";
   if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
     // iOS only offers push to a web app added to the Home Screen.
     return isIos() && !standalone() ? "needs-install" : "unsupported";
@@ -274,7 +286,7 @@ export async function enablePush(key: string): Promise<void> {
  */
 export async function syncPush(key: string): Promise<void> {
   try {
-    if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) return;
+    if (desktop || !("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) return;
     if (Notification.permission !== "granted") return;
     const reg = await navigator.serviceWorker.getRegistration();
     let sub = await reg?.pushManager.getSubscription();

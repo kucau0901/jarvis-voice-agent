@@ -18,7 +18,8 @@ Jarvis tries, in order, and stops at the first that reaches you:
    aloud if you are talked to about alerts (below) and that screen may speak
    (**Settings → Alerts → This device**). It counts only
    if the screen confirms within four seconds; a tab in the background does
-   not.
+   not. The desktop app counts while the computer is in use, its window
+   behind others or not, and shows the alert as a notification.
 2. **Notifications**, on every device of yours where you turned them on, all
    at once. With a family, each person's go only to their own devices.
 3. **The optional extras** set up in **Settings → Alerts**: Telegram, ntfy, a
