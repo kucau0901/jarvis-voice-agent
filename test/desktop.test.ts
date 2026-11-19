@@ -12,7 +12,7 @@ function check(name: string, cond: boolean, got?: unknown) {
 console.log("seen here");
 {
   check("visible, in use: seen", seenHere(true, true) === true);
-  check("visible, idle or locked: seen", seenHere(true, false) === true);
+  check("visible, idle or locked: not seen (nobody at the desk)", seenHere(true, false) === false);
   check("visible, no bridge: seen", seenHere(true, undefined) === true);
   check("hidden, in use: seen (the desktop app shows it)", seenHere(false, true) === true);
   check("hidden, idle or locked: not seen", seenHere(false, false) === false);

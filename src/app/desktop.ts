@@ -31,10 +31,12 @@ const found = typeof window === "undefined" ? undefined : window.jarvisDesktop;
 export const desktop: DesktopBridge | null = found?.version === 1 ? (found as DesktopBridge) : null;
 
 /**
- * Whether someone can see this screen: the page is in front, or the desktop
- * app says the computer is in use. Idle or locked is not seen, so an alert
- * still goes on to the phone ("Open is not seen", docs/DESIGN.md).
+ * Whether someone can see this screen. In a browser, whether the page is in
+ * front. In the desktop app (`inUse` known), whether the computer is in use,
+ * its window in front or not: idle or locked is not seen however open the
+ * window, so an alert still goes on to the phone ("Open is not seen",
+ * docs/DESIGN.md).
  */
 export function seenHere(docVisible: boolean, inUse: boolean | undefined): boolean {
-  return docVisible || inUse === true;
+  return inUse === undefined ? docVisible : inUse;
 }
