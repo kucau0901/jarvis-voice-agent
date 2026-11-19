@@ -2143,6 +2143,40 @@ The page itself is a PWA. Open it on a phone, add to home screen, and it launche
 standalone. The service worker caches the shell and never `/api/*` — every answer
 there is live state, and a cached one is a wrong one.
 
+### The desktop app
+
+The desktop app (Mac and Windows, its own repository) is a Chromium window on
+the person's own Jarvis address: it loads the live origin rather than a copy
+of the app, so every feature, fix and sign-in is the web app's, with nothing
+to keep in step. What a browser cannot do it adds through a bridge its preload
+puts on the page, on that origin only, as `window.jarvisDesktop`. The page
+uses it only when `version` is 1 (`src/app/desktop.ts`); without it nothing
+changes. Version 1, which the other repository builds against:
+
+- `version: 1`
+- `inUse(): Promise<boolean>`: the computer was used in the last 120 s and
+  is not locked.
+- `onPresence(cb)`: `inUse()` has changed.
+- `notify({ id, title, text })`: a native notification. Electron has no Web
+  Push, so alerts come over the events socket and the page shows them this
+  way while its window is behind others; the Alerts panel says so instead
+  of offering notifications.
+- `onTalk(cb)`: the global talk shortcut was pressed. Chat comes forward and
+  it does what tapping the orb does.
+- `passkeys: boolean`: false where the platform passkey cannot work
+  (Electron on a Mac). The page then offers no passkey, and pairing signs the
+  window in.
+
+Push-to-talk records and sends the audio there even where the browser's own
+recognition is chosen: Electron has the object but not Google's service
+behind it.
+
+A screen counts as seen, for the socket's presence and its ack, when the page
+is in front or the computer is in use. A window behind others on a computer
+someone is using is seen: the notification is in front of them. An idle or
+locked computer is not, however open the window, or an alert would stop at a
+desk nobody is at instead of going on to the phone.
+
 ## Security
 
 Every `/api/*` route is gated by the owner key or a device token. The

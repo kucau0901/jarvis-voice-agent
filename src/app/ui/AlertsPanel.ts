@@ -31,6 +31,7 @@ const STATE_TEXT: Record<PushState, string> = {
   blocked: "Notifications are blocked for this site in the browser's settings.",
   unsupported: "This browser cannot receive notifications.",
   "needs-install": "On iPhone and iPad, notifications need Jarvis added to the Home Screen first (Share → Add to Home Screen).",
+  desktop: "The desktop app shows alerts as notifications while it is open.",
 };
 
 export class AlertsPanel {

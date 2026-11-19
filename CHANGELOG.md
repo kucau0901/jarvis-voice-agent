@@ -19,6 +19,14 @@ of every release, and in the [README](README.md#updating).
 
 ### Added
 
+- **Drop files on Jarvis to attach them.** Photos, PDFs and text files
+  dropped anywhere on the page go with your next typed question, as the
+  "+" in the message box does.
+- **Ready for the desktop app.** In the Jarvis desktop app for Mac and
+  Windows, alerts show as the computer's own notifications, and its talk
+  shortcut brings Chat forward and asks aloud, as tapping the orb does. An
+  idle or locked computer does not count as seen, so alerts still go on to
+  your phone. In a browser nothing changes.
 - **A bot's message is read, not just shown.** When a bot you gave its own
   address messages you ("Dana's leave is waiting for your approval"),
   Jarvis reads it against your Chat of the past three hours. If something

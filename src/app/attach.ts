@@ -136,6 +136,14 @@ export class Attachments {
       input.value = "";
       void this.add(files);
     });
+    // Files dropped anywhere on the page are attached, not opened in its place. Other drags are left alone.
+    const carriesFiles = (e: DragEvent) => !!e.dataTransfer?.types.includes("Files");
+    document.addEventListener("dragover", (e) => carriesFiles(e) && e.preventDefault());
+    document.addEventListener("drop", (e) => {
+      if (!carriesFiles(e)) return;
+      e.preventDefault();
+      void this.add([...(e.dataTransfer?.files ?? [])]);
+    });
   }
 
   /** Files picked: each taken as a photo, a PDF or text, or said why not. */

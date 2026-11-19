@@ -7,6 +7,8 @@
  * browsers (the car's among them) do not have.
  */
 
+import { desktop } from "./desktop";
+
 const toBytes = (s: string): Uint8Array<ArrayBuffer> => {
   const bin = atob(s.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((s.length + 3) % 4));
   const out = new Uint8Array(bin.length);
@@ -22,6 +24,8 @@ const toB64u = (b: ArrayBuffer | null): string => {
 };
 
 export function passkeysSupported(): boolean {
+  // Electron on a Mac has the API but not the platform passkey (desktop.ts): pairing signs it in.
+  if (desktop?.passkeys === false) return false;
   return typeof window !== "undefined" && !!window.PublicKeyCredential && !!navigator.credentials?.create;
 }
 
