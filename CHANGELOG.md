@@ -19,6 +19,13 @@ of every release, and in the [README](README.md#updating).
 
 ### Added
 
+- **Routines can work in the browser on sites you choose.** In the Browser
+  panel, under **Sites your routines may use on their own**, list the sites
+  (Facebook, Shopee…) where a routine of yours may open, press, type and
+  sign in with nobody there: "every morning, reply to new comments on my
+  page", "check my order and tell me when it ships". Only there, checked on
+  every step; with none listed a routine has no browser, as before.
+
 - **Drop files on Jarvis to attach them.** Photos, PDFs and text files
   dropped anywhere on the page go with your next typed question, as the
   "+" in the message box does.

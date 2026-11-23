@@ -299,6 +299,7 @@ interface Spot {
 interface Listed {
   id: string;
   webSocketDebuggerUrl: string;
+  url: string;
 }
 
 /** What the browser's debugging port answers at a path, as text. */
@@ -331,7 +332,7 @@ function pages(v: unknown): Listed[] {
   for (const t of Array.isArray(v) ? (v as unknown[]) : []) {
     if (!t || typeof t !== "object") continue;
     const { id, type, url, webSocketDebuggerUrl } = t as Record<string, unknown>;
-    if (type === "page" && typeof webSocketDebuggerUrl === "string" && !/^(devtools|chrome-extension):/.test(String(url))) out.push({ id: String(id ?? ""), webSocketDebuggerUrl });
+    if (type === "page" && typeof webSocketDebuggerUrl === "string" && !/^(devtools|chrome-extension):/.test(String(url))) out.push({ id: String(id ?? ""), webSocketDebuggerUrl, url: String(url ?? "") });
   }
   return out;
 }
@@ -339,12 +340,15 @@ function pages(v: unknown): Listed[] {
 /** The browser's tabs, the newest first: that is the order it lists them in. */
 const tabs = async (deps: BrowserDeps): Promise<Listed[]> => pages(parsed(deps, await ask(deps, "/json/list")));
 
+/** The address of the tab in front, "" with none: where the next call acts (tools/browser.ts checks it for a routine). */
+export const browserFront = async (deps: BrowserDeps): Promise<string> => (await tabs(deps))[0]?.url ?? "";
+
 /** One tab, for the length of one call. */
 class Tab {
   /** What message boxes the page put up during this call said (each was answered OK). */
   boxes: string[] = [];
   /** Which tab this is, and how many others are open behind it. */
-  at: Listed = { id: "", webSocketDebuggerUrl: "" };
+  at: Listed = { id: "", webSocketDebuggerUrl: "", url: "" };
   behind = 0;
   /** The tab that was in front answered nothing, and was closed: this one was opened in its place. */
   replaced = false;

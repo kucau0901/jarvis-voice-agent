@@ -262,6 +262,7 @@ export function requiredScope(pathname: string, method: string): RouteRequiremen
     case "/api/browser/screen":
     case "/api/browser/input":
     case "/api/browser/logins":
+    case "/api/browser/alone":
       return "browser";
 
     // Skills and their keys (routes/skills.ts): an admin's, as the settings are.

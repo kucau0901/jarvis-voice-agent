@@ -1,6 +1,6 @@
 // Sign-ins a person saved for the browser (lib/vault.ts): how they are
 // sealed, what opens them, whose they are, and what is ever shown of them.
-import { LOGINS_MAX, passwordOk, seal, siteOf, unseal, Vault } from "../src/worker/lib/vault.ts";
+import { ALONE_MAX, LOGINS_MAX, onSites, passwordOk, seal, siteOf, unseal, Vault } from "../src/worker/lib/vault.ts";
 import { browserTools } from "../src/worker/tools/browser.ts";
 
 let pass = 0;
@@ -88,6 +88,28 @@ console.log("\nkept");
   const full = new Vault(fakeStorage());
   for (let i = 0; i < LOGINS_MAX; i++) await full.save("owner", { origin: HR, user: `u${i}`, sealed });
   check(`no more than ${LOGINS_MAX} each`, typeof (await full.save("owner", { origin: HR, user: "one-more", sealed })) === "string" && typeof (await full.save("owner", { origin: HR, user: "u3", sealed })) !== "string");
+}
+
+console.log("\nsites a person's routines may use the browser on by themselves");
+{
+  const storage = fakeStorage();
+  const v = new Vault(storage);
+  const SHOP = "https://shop.example.com";
+  check("none to begin with: a routine then has no browser", (await v.aloneSites("owner")).length === 0);
+  check("a bare name or one of its pages: kept as the site", JSON.stringify(await v.aloneAdd("owner", "shop.example.com/orders?x=1")) === JSON.stringify([SHOP]));
+  check("the same site again: kept once", JSON.stringify(await v.aloneAdd("owner", `${SHOP}/cart`)) === JSON.stringify([SHOP]));
+  check("not a web address: why not, and nothing kept", typeof (await v.aloneAdd("owner", "file:///etc/passwd")) === "string" && (await v.aloneSites("owner")).length === 1);
+  check("each person's own", (await v.aloneSites("sam")).length === 0);
+  check("removed by any address of it", (await v.aloneRemove("owner", `${SHOP}/x`)) && (await v.aloneSites("owner")).length === 0);
+  check("removing one not there: false", !(await v.aloneRemove("owner", SHOP)));
+  for (let i = 0; i < ALONE_MAX; i++) await v.aloneAdd("owner", `s${i}.example.com`);
+  check(`no more than ${ALONE_MAX} each`, typeof (await v.aloneAdd("owner", "one-more.example.com")) === "string" && (await v.aloneSites("owner")).length === ALONE_MAX);
+  await v.save("owner", { origin: HR, user: "u", sealed: "x" });
+  await v.forget("owner");
+  check("someone who leaves: their sites go with their sign-ins", storage._m.size === 0, [...storage._m.keys()]);
+  check("a page on a chosen site: on", onSites([SHOP], `${SHOP}/user/purchase?id=1`));
+  check("a look-alike, another port or plain http: not on", !onSites([SHOP], "https://shop.example.com.evil.test/") && !onSites([SHOP], "https://shop.example.com:8443/") && !onSites([SHOP], "http://shop.example.com/"));
+  check("a blank tab or nothing: on none", !onSites([SHOP], "about:blank") && !onSites([SHOP], ""));
 }
 
 console.log("\nused by the tool");

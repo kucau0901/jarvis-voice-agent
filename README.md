@@ -232,7 +232,9 @@ and fills by number. You sign in yourself in the app's **Browser** panel,
 which shows the browser's screen and takes your taps and typing. For a site
 that signs you out after a while, save the sign-in there: it is kept sealed,
 used only on that site and only for you, and the assistant itself never sees
-the password. An "are you human" check is always yours to do. None of the
+the password. An "are you human" check is always yours to do. A routine uses
+the browser only on the sites you list there for routines, and none until you
+do. None of the
 browser's ports is published: only Jarvis reaches it. Why it is built this
 way: [DESIGN.md](docs/DESIGN.md#the-browser).
 

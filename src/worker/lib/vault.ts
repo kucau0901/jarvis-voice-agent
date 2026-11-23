@@ -19,6 +19,11 @@
  *   another. It is never sent to the app, and is not in an export.
  *
  * A one-time code and an "are you human" check are still the person's.
+ *
+ * Beside them, the sites a person lets their routines use the browser on by
+ * themselves (`aloneSites`): only there may a routine open, press, type or
+ * sign in, which code checks on every call (tools/browser.ts), whatever a
+ * page or the model asks. None chosen, and a routine has no browser at all.
  */
 import type { Storage } from "./state-host.ts";
 
@@ -37,8 +42,11 @@ export interface SavedLogin {
 export type LoginView = Pick<SavedLogin, "id" | "origin" | "user" | "at">;
 
 const KEY = (person: string) => `vault:${person}`;
+const ALONE_KEY = (person: string) => `browser-alone:${person}`;
 /** A person's, at most. */
 export const LOGINS_MAX = 40;
+/** Sites a person's routines may use the browser on by themselves, at most. */
+export const ALONE_MAX = 20;
 const USER_MAX = 200;
 const PASSWORD_MAX = 500;
 
@@ -52,6 +60,12 @@ export function siteOf(address: string): string {
   }
   return u.protocol === "https:" || u.protocol === "http:" ? u.origin : "";
 }
+
+/** Whether a page at `address` is on one of `sites` (origins, as siteOf gives them): a blank tab is on none. */
+export const onSites = (sites: readonly string[], address: string): boolean => {
+  const site = siteOf(address);
+  return site !== "" && sites.includes(site);
+};
 
 const b64 = (bytes: Uint8Array): string => btoa(String.fromCharCode(...bytes));
 const unb64 = (s: string): Uint8Array<ArrayBuffer> => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
@@ -127,9 +141,35 @@ export class Vault {
     return true;
   }
 
+  /** The sites their routines may use the browser on by themselves (routes/routines.ts askForRoutine). */
+  async aloneSites(person: string): Promise<string[]> {
+    return (await this.storage.get<string[]>(ALONE_KEY(person))) ?? [];
+  }
+
+  /** Let their routines use one more site; all of them now, or a string that says why not. */
+  async aloneAdd(person: string, site: string): Promise<string[] | string> {
+    const origin = siteOf(site);
+    if (!origin) return "A site is given by its address, like https://shop.example.com.";
+    const all = await this.aloneSites(person);
+    if (all.includes(origin)) return all;
+    if (all.length >= ALONE_MAX) return `There are already ${ALONE_MAX} sites; remove one first.`;
+    const next = [...all, origin];
+    await this.storage.put(ALONE_KEY(person), next);
+    return next;
+  }
+
+  async aloneRemove(person: string, site: string): Promise<boolean> {
+    const all = await this.aloneSites(person);
+    const left = all.filter((s) => s !== siteOf(site));
+    if (left.length === all.length) return false;
+    await (left.length ? this.storage.put(ALONE_KEY(person), left) : this.storage.delete(ALONE_KEY(person)));
+    return true;
+  }
+
   /** Someone who has left the family: theirs go with them. */
   async forget(person: string): Promise<void> {
     await this.storage.delete(KEY(person));
+    await this.storage.delete(ALONE_KEY(person));
   }
 }
 

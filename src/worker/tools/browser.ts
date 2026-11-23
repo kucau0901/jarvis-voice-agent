@@ -1,9 +1,9 @@
 import type { Tool, ToolContext } from "./registry.ts";
 import type { Env } from "../types.ts";
-import { browserCloseTab, browserFill, browserOpen, browserPress, browserRead, browserSignIn, dialWebSocket, type BrowserDeps, type SavedFor } from "../lib/browser.ts";
+import { browserCloseTab, browserFill, browserFront, browserOpen, browserPress, browserRead, browserSignIn, dialWebSocket, type BrowserDeps, type SavedFor } from "../lib/browser.ts";
 import { OWNER } from "../lib/context.ts";
 import { stateStub } from "../lib/state-client.ts";
-import { unseal } from "../lib/vault.ts";
+import { onSites, siteOf, unseal } from "../lib/vault.ts";
 
 /**
  * "Open the school portal and tell me what homework is due."
@@ -29,6 +29,23 @@ const attempt = async (work: Promise<string>): Promise<string> => {
   } catch (e) {
     return `The browser could not do that: ${e instanceof Error ? e.message : String(e)}.`;
   }
+};
+
+/**
+ * A routine's call (ToolContext.browserSites) acts only on a site its maker
+ * chose for routines (lib/vault.ts): checked here, in code, before every call
+ * but closing a tab, on the page in front or the address to open, wherever a
+ * page or the model would have it go. Anyone else's call goes ahead.
+ */
+const gated = async (ctx: ToolContext, work: () => Promise<string>, address?: string): Promise<string> => {
+  const sites = ctx.browserSites;
+  if (!sites) return work();
+  const at = address ?? (await browserFront(deps(ctx)));
+  if (onSites(sites, at)) return work();
+  return (
+    `Not done: a routine may use the browser only on the sites chosen for it (${sites.join(", ")}), and ` +
+    `${siteOf(at) || "the page in front"} is not one of them. If a page opened it, close that tab; otherwise stop and say so.`
+  );
 };
 
 /**
@@ -77,7 +94,7 @@ export const browserTools: Tool[] = [
       required: ["address"],
       additionalProperties: false,
     },
-    run: (args, ctx) => attempt(browserOpen(deps(ctx), String(args.address ?? ""))),
+    run: (args, ctx) => attempt(gated(ctx, () => browserOpen(deps(ctx), String(args.address ?? "")), String(args.address ?? ""))),
   },
   {
     name: "browser_read",
@@ -94,7 +111,7 @@ export const browserTools: Tool[] = [
       required: ["part"],
       additionalProperties: false,
     },
-    run: (args, ctx) => attempt(browserRead(deps(ctx), Number(args.part) || 1)),
+    run: (args, ctx) => attempt(gated(ctx, () => browserRead(deps(ctx), Number(args.part) || 1))),
   },
   {
     name: "browser_press",
@@ -110,7 +127,7 @@ export const browserTools: Tool[] = [
       required: ["number", "hover"],
       additionalProperties: false,
     },
-    run: (args, ctx) => attempt(browserPress(deps(ctx), Number(args.number), args.hover === true)),
+    run: (args, ctx) => attempt(gated(ctx, () => browserPress(deps(ctx), Number(args.number), args.hover === true))),
   },
   {
     name: "browser_fill",
@@ -130,7 +147,7 @@ export const browserTools: Tool[] = [
       required: ["number", "text", "enter"],
       additionalProperties: false,
     },
-    run: (args, ctx) => attempt(browserFill(deps(ctx), Number(args.number), String(args.text ?? ""), args.enter === true)),
+    run: (args, ctx) => attempt(gated(ctx, () => browserFill(deps(ctx), Number(args.number), String(args.text ?? ""), args.enter === true))),
   },
   {
     name: "browser_close_tab",
@@ -159,7 +176,7 @@ export const browserTools: Tool[] = [
       required: ["login"],
       additionalProperties: false,
     },
-    run: (args, ctx) => attempt(browserSignIn(deps(ctx), savedFor(ctx.env, typeof args.login === "string" ? args.login : ""))),
+    run: (args, ctx) => attempt(gated(ctx, () => browserSignIn(deps(ctx), savedFor(ctx.env, typeof args.login === "string" ? args.login : "")))),
   },
   {
     name: "browser_show",

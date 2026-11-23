@@ -2033,9 +2033,30 @@ Chrome (`lib/browser.ts`, `tools/browser.ts`), run beside it
 - **Its own scope, never by default.** The browser is signed in wherever the
   family signed it in, so whoever may use it may act as them there. Like
   Hermes, `browser` is in no role but an admin's, no device preset and no
-  pass, and is taken out of whatever runs with nobody there: a routine, an
-  approved step of a job, a habit, and Telegram. A device given the scope
-  uses its owner's saved sign-ins, as it uses the rest that is theirs.
+  pass, and is taken out of an approved step of a job, a habit, and
+  Telegram. A device given the scope uses its owner's saved sign-ins, as it
+  uses the rest that is theirs.
+- **A routine works only on the sites its maker chose.** The owner wanted
+  what their other assistant bots did, with nobody there: read the comments on their
+  pages and reply, follow an order, buy. So a person who has the scope may
+  list sites in the Browser panel (`aloneSites`, `lib/vault.ts`, at most 20),
+  and a routine of theirs is given the browser for those and nothing else:
+  every call but closing a tab first reads the address of the tab in front,
+  or the address to be opened, and refuses it off those sites
+  (`gated()`, tools/browser.ts), wherever a page, a pop-up or the model
+  would take it. With none chosen a routine is not offered the browser at
+  all, and never `browser_show`: there is no screen. On those sites the
+  routine's own words are the person's standing yes for what they ask
+  (reply, post, buy), and it acts without asking; what pages, comments and
+  listings say is strangers' words, quoted and never followed. That is the
+  risk the person takes when they add a site: text a stranger wrote can try
+  to steer a run that nobody watches, as it can steer a person's own
+  request, so the list is theirs to keep short. Looking only (no pressing
+  or typing) and pressing only were weighed and left out at the owner's
+  choice: neither could reply to a comment. A human check or a one-time
+  code still stops the run, which says what is needed. Known limit: a
+  routine works in the browser's front tab, so one that runs while a person
+  is using the browser shares it with them.
 - **A password is the person's, and the model never has one.** A password
   box is refused to the model in code, whatever it was asked. A person signs
   in themselves, in the Browser panel. Some sites sign you out by the clock

@@ -32,8 +32,10 @@ These come from the owner and hold for every change.
   never granted by default: not in a role, a device preset, a guest's pass,
   sharing the house or `READ_TOOLS`.
 - **The browser is signed in as the family.** The `browser` scope follows
-  the same rule as `hermes`, and is also kept from whatever runs with nobody
-  there (routines, jobs, Telegram). The only password Jarvis ever types is
+  the same rule as `hermes`, and is kept from jobs, habits and Telegram. A
+  routine has it only on the sites its maker chose for routines in the
+  Browser panel (`aloneSites` in `lib/vault.ts`), checked in code on every
+  call (`gated()` in `tools/browser.ts`); none chosen, none at all. The only password Jarvis ever types is
   one a person saved for that site themselves (`lib/vault.ts`): found and
   typed by code, on that site's origin only, never given to a model, never
   sent to the app. It never answers an "are you human" check: the person

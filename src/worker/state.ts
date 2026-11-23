@@ -825,6 +825,18 @@ export class JarvisState extends DurableObject<Env> {
     return new Vault(this.ctx.storage).remove(person, id);
   }
 
+  vaultAloneSites(person: string) {
+    return new Vault(this.ctx.storage).aloneSites(person);
+  }
+
+  vaultAloneAdd(person: string, site: string) {
+    return new Vault(this.ctx.storage).aloneAdd(person, site);
+  }
+
+  vaultAloneRemove(person: string, site: string) {
+    return new Vault(this.ctx.storage).aloneRemove(person, site);
+  }
+
   /* ---------- a person's places, where their phone says they arrived or left (lib/spots.ts) ---------------- */
 
   spotsList(person: string) {
