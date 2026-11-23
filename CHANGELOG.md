@@ -184,6 +184,14 @@ of every release, and in the [README](README.md#updating).
 
 ### Security
 
+- **A page in Jarvis's browser could take over that browser.** The browser
+  image (Docker, `--profile browser`) also runs a web desktop. Jarvis never
+  uses it: its Browser panel works through the debugging port. But the
+  desktop listens without a login, and the image let a page of any site open
+  its control socket. A page the browser opened could have pressed and typed
+  in it, signed in as the family. Now only the desktop's own address may
+  open it, and its file transfers and sharing links are off. Updating as
+  usual recreates the browser container with this.
 - **A tile on Home could act just by being shown.** What a tile shows (its
   reading) is fetched by itself whenever Home is open, about once a minute,
   and it could be any tool its person was offered. A tile made with a tool

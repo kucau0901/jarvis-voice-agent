@@ -2118,6 +2118,22 @@ Chrome (`lib/browser.ts`, `tools/browser.ts`), run beside it
   network (`network_mode: service:jarvis`), so Jarvis reaches its debugging
   port and its screen on 127.0.0.1 and nothing else can. That port is the
   whole browser: it must never be on a network.
+- **Nor through the image's own desktop.** The image (linuxserver's
+  Chromium, on Selkies) also serves a web desktop on 3000, and Selkies'
+  control socket on 8082. Jarvis uses neither. Both listen without a login,
+  and the image lets a page of any origin open that socket
+  (`SELKIES_ALLOWED_ORIGINS="*"`). Since the browser shares Jarvis's network,
+  a page it opened could reach 127.0.0.1:8082 and drive it. The compose file
+  sets that to empty, which Selkies reads as the desktop's own origin only,
+  and turns off file transfers and sharing links. A password would not help:
+  NGINX holds it for 3000 only, and 8082 is reached directly.
+- **What is left.** The image starts Chromium with `--no-sandbox`, always, in
+  its own launcher, so one bug in a page's renderer is enough to run code in
+  the container, which holds the family's sign-ins. That is why routines may
+  only work on sites their maker chose, and why the browser is not for
+  browsing strange sites. A site that resolves its own name to 127.0.0.1
+  (DNS rebinding) would pass the desktop's origin check; Chromium's own
+  limits on public pages reaching local addresses are what stands there.
 
 ## Architecture
 

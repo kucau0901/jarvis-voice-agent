@@ -48,6 +48,13 @@ services:
       HARDEN_DESKTOP: "true"
       HARDEN_OPENBOX: "true"
       TITLE: Jarvis browser
+      # Jarvis never uses the image's web desktop (its panel goes through port 9222), but
+      # it listens all the same, without a login, and the image lets a page of ANY site
+      # open its control socket ("*"). Empty is the desktop's own origin only: a page this
+      # browser opens cannot drive the browser through it. No files in or out, no links.
+      SELKIES_ALLOWED_ORIGINS: ""
+      SELKIES_FILE_TRANSFERS: none
+      SELKIES_ENABLE_SHARING: "false"
     volumes:
       - browser-data:/config
     # Chrome keeps page memory in /dev/shm; the default 64 MB crashes modern sites.
