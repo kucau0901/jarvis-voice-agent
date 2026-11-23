@@ -440,6 +440,39 @@ console.log("\nwho is offered it");
   check("a job is never handed them: none can be proposed", browserTools.every((t) => !t.propose));
 }
 
+console.log("\na routine's browser: only on the sites its maker chose");
+{
+  const real = globalThis.fetch;
+  const asked: string[] = [];
+  let front = "https://evil.example.net/post/1";
+  globalThis.fetch = (async (url: string | URL) => {
+    asked.push(String(url));
+    if (String(url).endsWith("/json/list")) return new Response(JSON.stringify([{ id: "1", type: "page", url: front, webSocketDebuggerUrl: "ws://127.0.0.1:1/devtools/page/1" }]));
+    throw new Error("connection refused");
+  }) as typeof fetch;
+  const ctx = (sites?: string[]) => ({ env: { BROWSER_URL: "http://127.0.0.1:9222" }, signal: AbortSignal.timeout(5000), ...(sites ? { browserSites: sites } : {}) }) as never;
+  const tool = (n: string) => browserTools.find((t) => t.name === n)!;
+  const sites = ["https://shop.example.com"];
+  const refused = (out: unknown) => /^Not done: a routine may use the browser only on the sites chosen for it \(https:\/\/shop\.example\.com\)/.test(String(out));
+  const press = await tool("browser_press").run({ number: 1, hover: false }, ctx(sites));
+  const fill = await tool("browser_fill").run({ number: 2, text: "Buy it", enter: true }, ctx(sites));
+  const read = await tool("browser_read").run({ part: 1 }, ctx(sites));
+  const signIn = await tool("browser_sign_in").run({ login: null }, ctx(sites));
+  check("on another site: pressing, typing, reading and signing in are refused", [press, fill, read, signIn].every(refused) && String(press).includes("https://evil.example.net is not one"), [press, fill, read, signIn]);
+  check("and nothing but the list of tabs is asked of the browser", asked.length > 0 && asked.every((u) => u.endsWith("/json/list")), asked);
+  asked.length = 0;
+  const open = await tool("browser_open").run({ address: "https://evil.example.net/" }, ctx(sites));
+  const alike = await tool("browser_open").run({ address: "https://shop.example.com.evil.test/" }, ctx(sites));
+  check("opening another site, or a look-alike: refused before the browser is asked anything", refused(open) && refused(alike) && asked.length === 0, [open, alike, asked]);
+  check("closing a tab a page opened elsewhere: never refused", !refused(await tool("browser_close_tab").run({}, ctx(sites))));
+  front = "https://shop.example.com/user/purchase";
+  check("on a chosen site: it goes ahead", !refused(await tool("browser_press").run({ number: 1, hover: false }, ctx(sites))) && !refused(await tool("browser_open").run({ address: "https://shop.example.com/cart" }, ctx(sites))));
+  front = "https://evil.example.net/post/1";
+  check("a person's own call (no sites given): goes ahead anywhere, as before", !refused(await tool("browser_press").run({ number: 1, hover: false }, ctx())));
+  check("an empty list: refused everywhere", /^Not done/.test(String(await tool("browser_open").run({ address: "https://shop.example.com/" }, ctx([])))));
+  globalThis.fetch = real;
+}
+
 console.log("\nthe setting");
 {
   const v = settingDef("BROWSER_URL")!.validate!;

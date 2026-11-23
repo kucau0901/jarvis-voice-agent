@@ -18,8 +18,11 @@ const BODY_MAX = 32_768;
  *   GET    /api/browser/logins        the sign-ins you saved: { logins: [{ id, origin, user, at }] }, never a password
  *   POST   /api/browser/logins        { site, user, password }: save one for that site (lib/vault.ts)
  *   DELETE /api/browser/logins?id=    remove one
+ *   GET    /api/browser/alone         the sites your routines may use the browser on by themselves: { sites: [origin] }
+ *   POST   /api/browser/alone         { site }: add one (lib/vault.ts)
+ *   DELETE /api/browser/alone?site=   remove one
  *
- * Saved sign-ins are a person's own: never a device's to see or change.
+ * Saved sign-ins and those sites are a person's own: never a device's to see or change.
  *
  * What is typed here goes to the browser and nowhere else: it is not logged,
  * kept, or shown to a model.
@@ -27,6 +30,7 @@ const BODY_MAX = 32_768;
 export async function handleBrowser(req: Request, env: Env, principal: Principal): Promise<Response> {
   if (!env.BROWSER_URL) return err(404, "no browser is set up: Settings → Browser");
   if (new URL(req.url).pathname === "/api/browser/logins") return logins(req, env, principal);
+  if (new URL(req.url).pathname === "/api/browser/alone") return alone(req, env, principal);
   const deps: BrowserDeps = {
     base: env.BROWSER_URL,
     fetch: (url, init) => fetch(url, init),
@@ -72,4 +76,20 @@ async function logins(req: Request, env: Env, principal: Principal): Promise<Res
   // Sealed here, before it is stored: what is kept does not open without the owner key.
   const saved = await state.vaultSave(me, { origin, user: body.user, sealed: await seal(env.JARVIS_SHARED_SECRET, me, origin, body.password) });
   return typeof saved === "string" ? err(400, saved) : json({ login: saved });
+}
+
+async function alone(req: Request, env: Env, principal: Principal): Promise<Response> {
+  if (principal.kind === "device") return err(403, "that is for a person, not a device");
+  const state = stateStub(env);
+  if (!state) return err(503, "routines' sites need the STATE Durable Object");
+  const me = personOf(principal);
+  if (req.method === "GET") return json({ sites: await state.vaultAloneSites(me) });
+  if (req.method === "DELETE") {
+    const site = new URL(req.url).searchParams.get("site") ?? "";
+    return (await state.vaultAloneRemove(me, site)) ? json({ sites: await state.vaultAloneSites(me) }) : err(404, "that site is not on the list");
+  }
+  if (req.method !== "POST") return err(405, "GET, POST or DELETE");
+  const body = await readObject(req, BODY_MAX);
+  const sites = await state.vaultAloneAdd(me, typeof body?.site === "string" ? body.site : "");
+  return typeof sites === "string" ? err(400, sites) : json({ sites });
 }

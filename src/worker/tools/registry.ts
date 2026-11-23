@@ -71,6 +71,12 @@ export interface ToolContext {
    */
   grants: readonly Grant[];
   /**
+   * A routine's run with the browser (routes/routines.ts askForRoutine): the
+   * only sites its maker let routines use it on (lib/vault.ts), which
+   * tools/browser.ts checks on every call. Absent for everyone else.
+   */
+  browserSites?: readonly string[];
+  /**
    * The tools the router was offered for this question: what a panel's tile
    * may be wired to, its reading only to one that only reads (tools/panels.ts).
    */

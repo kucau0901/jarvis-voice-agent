@@ -621,6 +621,10 @@ interface VaultApi {
   vaultList(person: string): Promise<LoginView[]>;
   vaultSave(person: string, login: Pick<SavedLogin, "origin" | "user" | "sealed">): Promise<LoginView | string>;
   vaultRemove(person: string, id: string): Promise<boolean>;
+  /** The sites their routines may use the browser on by themselves. */
+  vaultAloneSites(person: string): Promise<string[]>;
+  vaultAloneAdd(person: string, site: string): Promise<string[] | string>;
+  vaultAloneRemove(person: string, site: string): Promise<boolean>;
 }
 
 /** A person's places, each with a position (lib/spots.ts; state.ts). */

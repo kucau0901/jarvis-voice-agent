@@ -289,6 +289,7 @@ async function route(
     case "/api/browser/screen":
     case "/api/browser/input":
     case "/api/browser/logins":
+    case "/api/browser/alone":
       return await handleBrowser(req, env, principal);
     case "/api/health":
       return new Response(JSON.stringify({ ok: true, ts: Date.now(), version: JARVIS_VERSION }), {

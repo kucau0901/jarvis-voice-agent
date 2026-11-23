@@ -1,6 +1,6 @@
 import type { Env } from "../types.ts";
 import { whoOf, grantsOf, isAdmin, personOf, type Principal } from "../lib/auth.ts";
-import { mayWork } from "../lib/context.ts";
+import { OWNER, mayWork } from "../lib/context.ts";
 import { err, json, readObject } from "../lib/http.ts";
 import { stateStub } from "../lib/state-client.ts";
 import { localeOf } from "../lib/locale.ts";
@@ -9,7 +9,7 @@ import { memoryFor } from "../lib/memory.ts";
 import { carWaypoint, drive } from "../lib/travel.ts";
 import { EVENT_NAME, describeAction, describeTrigger, type Routine } from "../lib/routines.ts";
 import type { Travel } from "../lib/scheduler.ts";
-import { SCOPES, WILDCARD, type Grant } from "../lib/scopes.ts";
+import { SCOPES, WILDCARD, allows, type Grant } from "../lib/scopes.ts";
 import { run } from "../lib/router.ts";
 import type { Tool } from "../tools/registry.ts";
 import { canAsk } from "../lib/openai-auth.ts";
@@ -141,7 +141,9 @@ export const WRITES_HOUSE_CONFIG = /__ha_config_(set|remove)_/;
  * no screen. Two minutes at most: nobody is waiting, but nothing should run
  * away with an alarm either. Never Hermes: it runs with nobody present, often
  * over text strangers wrote ("check my email every morning"), and Hermes can
- * run commands on its machine.
+ * run commands on its machine. The browser only on the sites its maker chose
+ * for routines (lib/vault.ts), checked in code on every call (tools/browser.ts):
+ * none chosen, and it has no browser at all.
  */
 export async function askForRoutine(
   env: Env,
@@ -153,14 +155,16 @@ export async function askForRoutine(
 ): Promise<{ ok: boolean; text: string }> {
   if (!(await canAsk(env))) return { ok: false, text: "no ChatGPT plan or OpenAI key is set" };
   const sink = new Collector();
-  // Nothing to show a map on: screen tools are left out rather than offered and lost; Hermes too (above), and the browser: nobody is there to sign in or pass a human check.
-  const unattended = (grants.includes(WILDCARD) ? SCOPES : grants).filter((g) => g !== "screen" && g !== "hermes" && g !== "browser");
+  const sites = env.BROWSER_URL && allows(grants, "browser") ? ((await stateStub(env)?.vaultAloneSites(env.JARVIS_PERSON || OWNER).catch(() => [])) ?? []) : [];
+  // Nothing to show a map on: screen tools are left out rather than offered and lost; Hermes too (above), and the browser without sites chosen.
+  const unattended = (grants.includes(WILDCARD) ? SCOPES : grants).filter((g) => g !== "screen" && g !== "hermes" && (g !== "browser" || sites.length > 0));
   await run(env, [{ role: "user", text: prompt }], sink, AbortSignal.timeout(120_000), unattended, {
     surface: "routine",
     // Nor Home Assistant's own configuration: an automation is written when someone asks, in the conversation.
     // Nor a tool classed as acting (a component's, lib/components.ts), unless the owner lets it run by itself.
-    toolFilter: (t) => !WRITES_HOUSE_CONFIG.test(t.name) && (t.reads !== false || t.alone === true) && (!only || only(t)),
+    toolFilter: (t) => !WRITES_HOUSE_CONFIG.test(t.name) && t.name !== "browser_show" && (t.reads !== false || t.alone === true) && (!only || only(t)),
     routineName: routine.name,
+    ...(sites.length ? { browserSites: sites } : {}),
     ...(routine.action.kind === "ask" && routine.action.notify === "if-important" ? { routineIfImportant: true } : {}),
   });
   const c = sink.finish();
