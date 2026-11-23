@@ -1479,12 +1479,24 @@ deployment's zone as a daily one's is. Its minute is one number, so it runs at
 most hourly: an `ask` is a paid answer each time.
 
 **A log beside the routine.** Routines → Past runs shows a routine's last 20
-runs, with the start of what each said, kept under `runs:<id>` rather than in
+runs, with what each said, kept under `runs:<id>` rather than in
 the routine: the routine's stored shape stays as it was, and `lastRun` stays
 too, because `GET /api/v1/routines` returns it and the event cooldown reads it.
 A leave routine's calendar reads ("calendar read 10:15: …") are shown as its
 last run but not kept among its runs, or a read every 15 minutes would push
 the warnings out.
+
+**It is also what an if-important ask remembers.** Each run is a fresh
+answer, so "anything important in my mail in the last hour?" found the same
+message every hour it stayed in the inbox and told it again. Such an ask is
+now given, after its question, what its runs of the past 36 hours told (a
+day and a half, so a daily one sees yesterday's), fenced as data, and told
+not to say any of it again unless it changed (`toldBefore()` in
+`lib/scheduler.ts`). Only what reached someone counts: a message that was
+not delivered may be said again. It is the routine's own log, not memory:
+memory holds facts about the family, not what was said to them, and costs
+no extra answer. A run keeps up to 1,500 characters of what it said, enough
+for a whole message.
 
 **What a routine says is in the conversation too**, as Hark shows what its
 checks found: under a pill with the routine's name, on the asking side, hooked
