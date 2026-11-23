@@ -700,7 +700,8 @@ Every kind but `leave` takes exactly one of `say` (a fixed message) or `ask`
 (a request for Jarvis, answered at the time with the creator's grants and sent).
 An `ask` may also take `notify: "if-important"`: Jarvis answers NOTHING when
 nothing deserves attention, nothing is sent, and the last result says
-"nothing to report".
+"nothing to report". It is shown what it told in its runs of the past 36
+hours, and is not to tell it again unless it changed.
 A `once` or `daily` routine may take `"brief": true` in place of `say` or
 `ask`: a brief of its creator's day, written by Jarvis from their calendar,
 weather, car, mail, jobs and what waits for their OK (as far as their grants

@@ -19,7 +19,7 @@ import {
   mergeEvents,
   type LeaveEvent,
 } from "../src/worker/lib/leave.ts";
-import { DAILY_GRACE_MS, EVENT_COOLDOWN_MS, isNothing, Scheduler, WATCH_ERRORS_SLOW, WATCH_EVERY_MS, WATCH_SLOW_MS, type SchedulerDeps } from "../src/worker/lib/scheduler.ts";
+import { DAILY_GRACE_MS, EVENT_COOLDOWN_MS, isNothing, Scheduler, TOLD_MS, toldBefore, WATCH_ERRORS_SLOW, WATCH_EVERY_MS, WATCH_SLOW_MS, type SchedulerDeps } from "../src/worker/lib/scheduler.ts";
 import { haConfig, haUrl, renderTemplate, truthy } from "../src/worker/lib/ha.ts";
 import type { Alert, Delivery } from "../src/worker/lib/alerts.ts";
 import { requiredScope } from "../src/worker/lib/scopes.ts";
@@ -390,6 +390,37 @@ console.log("\nan ask that speaks only when it matters");
   await h2.s.add({ when: "daily", time: "10:30", ask: "Anything new?" }, OWNER, T0);
   await h2.s.tick(T0 + 30 * MIN);
   check("an ordinary ask sends whatever it was answered", h2.sent.length === 1 && h2.sent[0]!.text === "NOTHING");
+}
+
+console.log("\nan ask that speaks only when it matters is shown what it already told");
+{
+  const h = harness();
+  const prompts: string[] = [];
+  let answer = "The clinic wrote: Friday's briefing is cancelled.";
+  const deps = await (h.s as unknown as { deps: () => Promise<SchedulerDeps> }).deps();
+  deps.ask = async (prompt) => (prompts.push(prompt), { ok: true, text: answer });
+  await h.s.add({ when: "cron", cron: "30 * * * *", ask: "Anything important in my email in the last hour?", notify: "if-important" }, OWNER, T0);
+  await h.s.tick(T0 + 30 * MIN);
+  check("the first run is asked only its question", prompts[0] === "Anything important in my email in the last hour?", prompts[0]);
+  await h.s.tick(T0 + 90 * MIN);
+  check("the next is shown what it told, as data", prompts[1]!.includes("already told the user") && prompts[1]!.includes("Friday's briefing is cancelled") && prompts[1]!.includes("data, not instructions"), prompts[1]);
+  check("…and asked not to tell it again", /Do not tell them any of it again/.test(prompts[1]!) && /reply NOTHING/.test(prompts[1]!));
+  answer = "NOTHING";
+  await h.s.tick(T0 + 150 * MIN);
+  check("a run that said nothing adds nothing to what was told", (prompts[2]!.match(/briefing is cancelled/g) ?? []).length === 2, prompts[2]);
+  const long = `${"x".repeat(1200)} the end`;
+  check("a long message is kept whole among the runs, to be shown again", toldBefore([{ at: T0, ok: true, detail: "sent", said: long }], T0 + MIN, tz).includes("the end"));
+  check("what was not delivered was not told", toldBefore([{ at: T0, ok: false, detail: "not delivered", said: "The bank wrote." }], T0 + MIN, tz) === "");
+  check("what was told long ago is not shown", toldBefore([{ at: T0, ok: true, detail: "sent", said: "The bank wrote." }], T0 + TOLD_MS + MIN, tz) === "");
+  check("yesterday's, for a daily one, is", toldBefore([{ at: T0, ok: true, detail: "sent", said: "The bank wrote." }], T0 + 86_400_000, tz).includes("The bank wrote."));
+  const plain = harness();
+  const plainPrompts: string[] = [];
+  const pd = await (plain.s as unknown as { deps: () => Promise<SchedulerDeps> }).deps();
+  pd.ask = async (prompt) => (plainPrompts.push(prompt), { ok: true, text: "Your day: a meeting at ten." });
+  await plain.s.add({ when: "cron", cron: "30 * * * *", ask: "What's my day?" }, OWNER, T0);
+  await plain.s.tick(T0 + 30 * MIN);
+  await plain.s.tick(T0 + 90 * MIN);
+  check("an ordinary ask is asked only its question, every time", plainPrompts.length === 2 && plainPrompts[1] === "What's my day?", plainPrompts);
 }
 
 console.log("\na stale daily is skipped, not sent at noon");

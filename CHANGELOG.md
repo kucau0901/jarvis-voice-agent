@@ -146,6 +146,12 @@ of every release, and in the [README](README.md#updating).
 
 ### Fixed
 
+- **A routine that speaks only when something matters no longer repeats
+  itself.** An hourly "anything important in my email?" told the same
+  message every hour it stayed in the inbox, since each run started afresh.
+  It is now shown what it told in the past day and a half and says only
+  what is new or has changed. Past runs keep a whole message, not its first
+  300 characters.
 - **With Docker, a question or a tap now and then failed with "server said
   500".** The runtime's own proxy lost a request sent just as it closed a
   connection that had been quiet for five seconds, and tried again only for
