@@ -659,7 +659,10 @@ everything under `/api/hub/` is a person's. A proposal waits a day (a
 one-off invitation's, no later than its start; an all-day one's, until its
 day is out; one put to them later, no later than half an hour past its
 time, or its event's start). At most 3 run at once and 30 are started a
-day; one is stopped after 25 steps or 20 minutes.
+day. One that reaches 25 steps, an hour, 40 web searches or two dollars of the
+API key is told to write what it has: its status is then `failed`, its `error`
+says what ran out, and it has a `summary` and a `result` (titled **Part done** in
+its alert). One that failed outright has none.
 
 ### Handing research to Hermes
 

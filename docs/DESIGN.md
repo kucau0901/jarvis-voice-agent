@@ -1385,6 +1385,22 @@ a day (`DAILY_PLAN_TOKENS`, counted by code, since OpenAI gives no figure for wh
 is left), six run in the house at once, and three are looked at at once. What
 the numbers should be is a guess until there is a month of real use.
 
+**Out of its budget, a job writes what it has.** One that reached its 25 steps
+or its 20 minutes was stopped, and everything it had found went with it: a job
+that had read forty pages and one that had read none both came back as "it took
+more than 25 steps". Now each limit (`outOf` in `lib/job-guards.ts`: its steps,
+an hour, 40 searches, two dollars of the key) is kept on the job as `cut` before
+the step in hand is looked at. If that step turns out to be its answer, it is an
+answer. If it asked for more tools, none is run, and one more call, with no tools
+allowed, is told what ran out and to write what it has, what is missing first.
+What comes of it is **Part done**, a failed job with a result, whatever the model
+calls it: the alert, Jobs, the brief, Usage and past attempts all say so, because
+a report that stopped half way reads exactly like one that did not. Told once
+and still asking for tools, it is stopped as before. The step a job is on when
+its time is up is let finish, at most fifteen minutes. A research report written
+this way is checked like any other; a team's chains keep their own limits, since
+their merge is that last call already.
+
 **Read; propose, never act.** A job runs with nobody watching and reads text
 written by others — web pages, mail — so it reads with Jarvis's reading tools
 and the MCP tools whose names say they read (`ha_get_state` in,

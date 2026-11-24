@@ -22,6 +22,7 @@ import {
   TEAM_ANGLES,
   TEAM_MAX_STEPS,
   TEAM_MS,
+  WRAP_MS,
   addUsage,
   limitsOf,
   newTeam,
@@ -38,8 +39,9 @@ import {
 import type { Alert, Delivery } from "../src/worker/lib/alerts.ts";
 import type { UsageEntry } from "../src/worker/lib/usage.ts";
 import { MAX_TRIES, beginCalls } from "../src/worker/lib/job-chain.ts";
+import { KEY_DOLLARS, MAX_SEARCHES, NOT_RUN } from "../src/worker/lib/job-guards.ts";
 import { HERMES_LONG_WORK, jobEngine, jobView } from "../src/worker/routes/jobs.ts";
-import { MERGE_INSTRUCTIONS, PLAN_INSTRUCTIONS, RESEARCH_CHECK, TEAM_INSTRUCTIONS } from "../src/worker/lib/router-prompt.ts";
+import { MERGE_INSTRUCTIONS, PLAN_INSTRUCTIONS, RESEARCH_CHECK, TEAM_INSTRUCTIONS, wrapUp } from "../src/worker/lib/router-prompt.ts";
 import { angleMessage, mergeMaterial, shareReply, shareTool, teamView } from "../src/worker/lib/research-team.ts";
 import { allows, reachNow, requiredScope, withoutScreen } from "../src/worker/lib/scopes.ts";
 import { baseTools } from "../src/worker/tools/registry.ts";
@@ -269,23 +271,50 @@ console.log("\nwhen it goes wrong");
 
 console.log("\nlimits");
 {
-  const loop: Step[] = Array.from({ length: MAX_STEPS + 5 }, (_, i) => ({ kind: "continued" as const, responseId: `r${i}` }));
-  const h = harness(loop);
-  const j = (await h.jobs.create({ task: "loop" }, BY, T0)) as Job;
-  let now = T0;
-  for (let i = 0; i < MAX_STEPS + 5; i++) {
-    await h.jobs.tick(now);
-    now = (await h.jobs.get(j.id))!.nextAt ?? now + 1000;
-  }
-  const cur = (await h.jobs.get(j.id))!;
-  check(`stopped after ${MAX_STEPS} steps`, cur.status === "failed" && /steps/.test(cur.error!) && cur.steps === MAX_STEPS, cur);
-  check("and stopped at OpenAI", h.log.some((l) => l.startsWith("cancel")));
+  const more = (n: number): Step[] => Array.from({ length: n }, (_, i) => ({ kind: "continued" as const, responseId: `r${i}` }));
+  // Each look is handed the job as it stands: told to write what it has from the look its budget is gone.
+  const asked: (string | undefined)[] = [];
+  const watch = (h: ReturnType<typeof harness>) => {
+    const poll = h.deps.poll;
+    h.deps.poll = (j, t, stop) => (asked.push(j.cut?.why), poll(j, t, stop));
+    return h;
+  };
+  const wrote: Step = { kind: "done", text: "SUMMARY: Not finished: two of the three shops are missing.\n\nShop A has it at RM700." };
+  const h = watch(harness([...more(MAX_STEPS), wrote]));
+  const cur = await drive(h, ((await h.jobs.create({ title: "Shops", task: "loop" }, BY, T0)) as Job).id);
+  check(`after ${MAX_STEPS} steps it is told to write what it has, once`, asked.filter(Boolean).length === 2 && asked.indexOf(`it took its ${MAX_STEPS} steps`) === MAX_STEPS - 1 && cur.steps === MAX_STEPS + 1, { asked, steps: cur.steps });
+  check("what it had is kept, and is part done: never called done",
+    cur.status === "failed" && cur.result === "Shop A has it at RM700." && /^Part done: it took its 25 steps/.test(cur.error ?? "") &&
+      h.sent.length === 1 && h.sent[0]!.title === "Part done: Shops" && h.sent[0]!.text.startsWith("Not finished"), { cur, sent: h.sent });
+  check("…in Usage and to the next question like it too", h.recorded[0]?.ok === false && h.episodes[0]?.status === "failed");
 
-  const t = harness();
+  asked.length = 0;
+  const own = watch(harness([...more(MAX_STEPS - 1), { kind: "done", text: "SUMMARY: All three compared." }]));
+  const ownDone = await drive(own, ((await own.jobs.create({ task: "just in time" }, BY, T0)) as Job).id);
+  check("its own answer on its last step is an answer: done", ownDone.status === "done" && ownDone.error === undefined && own.sent[0]!.title.startsWith("Done: "), ownDone);
+
+  const deaf = harness(more(MAX_STEPS + 5));
+  const deafEnd = await drive(deaf, ((await deaf.jobs.create({ task: "loop" }, BY, T0)) as Job).id);
+  check("told so and still going: stopped, at OpenAI too", deafEnd.status === "failed" && /was stopped/.test(deafEnd.error!) && deafEnd.result === undefined && deaf.log.some((l) => l.startsWith("cancel")), deafEnd);
+
+  const t = harness([{ kind: "wait" }, { kind: "wait" }]);
   const k = (await t.jobs.create({ task: "slow" }, BY, T0)) as Job;
   await t.jobs.tick(T0);
   await t.jobs.tick(T0 + MAX_JOB_MS + 1);
-  check("stopped when it runs too long", (await t.jobs.get(k.id))!.status === "failed" && t.log.includes("cancel resp_1"));
+  const late = (await t.jobs.get(k.id))!;
+  check("out of time: the step it is on is let finish", late.status === "running" && late.cut?.why === `it ran for its ${MAX_JOB_MS / 60_000} minutes` && !t.log.some((l) => l.startsWith("cancel")), late);
+  await t.jobs.tick(T0 + MAX_JOB_MS + WRAP_MS + 1);
+  check("…but not for ever", (await t.jobs.get(k.id))!.status === "failed" && t.log.includes("cancel resp_1"));
+
+  const spent = async (usage: NonNullable<Job["usage"]>) => {
+    const s = harness([{ kind: "continued", responseId: "r1", usage }, { kind: "continued", responseId: "r2" }, wrote]);
+    return drive(s, ((await s.jobs.create({ task: "x" }, BY, T0)) as Job).id);
+  };
+  const luna = { input: 0, cached: 0, output: 0, model: "gpt-6-luna" };
+  check(`${MAX_SEARCHES} web searches: the same`, /40 web searches/.test((await spent({ ...luna, searches: MAX_SEARCHES })).error ?? ""));
+  const sol = { input: 2_000_000, cached: 0, output: 0, model: "gpt-6-sol" };
+  check(`$${KEY_DOLLARS} of the key: the same`, /\$2 of the API key/.test((await spent(sol)).error ?? ""), (await spent(sol)).error);
+  check("…and nothing, on the plan", (await spent({ ...sol, model: "chatgpt:gpt-6-sol" })).status === "done");
 
   const r = harness();
   for (let i = 0; i < MAX_RUNNING; i++) await r.jobs.create({ task: `t${i}` }, BY, T0);
@@ -656,8 +685,8 @@ console.log("\nresearch in depth");
   const done = await drive(h, j.id);
   check("finishes like any job, with its model's usage", done.status === "done" && done.usage?.model === "gpt-6-sol", done);
   check("announced as research", h.sent[0]?.title === "Research done: Home chargers", h.sent[0]?.title);
-  check("more time and more steps than a job", limitsOf("research").maxMs === RESEARCH_MAX_MS && limitsOf("research").maxSteps === RESEARCH_MAX_STEPS &&
-    RESEARCH_MAX_MS > MAX_JOB_MS && RESEARCH_MAX_STEPS > MAX_STEPS && limitsOf("jarvis").maxSteps === MAX_STEPS);
+  check("more steps than a job", limitsOf("research").maxMs === RESEARCH_MAX_MS && limitsOf("research").maxSteps === RESEARCH_MAX_STEPS &&
+    RESEARCH_MAX_STEPS > MAX_STEPS && limitsOf("jarvis").maxSteps === MAX_STEPS && limitsOf("jarvis").maxMs === MAX_JOB_MS);
   check("anything else asked for is an ordinary job", ((await h.jobs.create({ task: "x", engine: "deep" }, BY, T0)) as Job).engine === "jarvis");
 }
 {
@@ -763,7 +792,16 @@ console.log("\na research report is checked before anyone is told");
   const wj = await research(w);
   await w.jobs.tick(T0);
   await w.jobs.tick(T0 + RESEARCH_MAX_MS + 1);
-  check("research not yet written gets no extra ten minutes", (await w.jobs.get(wj.id))!.status === "failed" && w.log.includes("cancel resp_1"), w.log);
+  const wLate = (await w.jobs.get(wj.id))!;
+  check("research not yet written at its time is let finish its step and write what it has", wLate.status === "running" && /45 minutes/.test(wLate.cut?.why ?? ""), wLate);
+  await w.jobs.tick(T0 + RESEARCH_MAX_MS + WRAP_MS + 1);
+  check("…and is stopped if it has not", (await w.jobs.get(wj.id))!.status === "failed" && w.log.includes("cancel resp_1"), w.log);
+  // What it wrote out of time is checked like any report, and is still part done.
+  const wp = harness([{ kind: "continued", responseId: "resp_wrap" }, wrote, { kind: "done", text: checked }]);
+  const wpj = await research(wp);
+  await wp.storage.put(`job:${wpj.id}`, { ...wpj, steps: RESEARCH_MAX_STEPS, responseId: "resp_40", nextAt: T0 });
+  const wpDone = await drive(wp, wpj.id);
+  check("a report written out of its budget is checked, and sent as part done", wpDone.status === "failed" && wp.log.some((l) => l.startsWith("check")) && resultOf(wpDone).includes("RM3,199") && wp.sent[0]!.title.startsWith("Part done: "), { status: wpDone.status, log: wp.log, sent: wp.sent.map((a) => a.title) });
 
   // E: the report came on the last step: the check is let go when it asks for more.
   const e = harness([wrote, { kind: "continued", responseId: "resp_42" }]);
@@ -1749,6 +1787,20 @@ console.log("\njobs on the owner's ChatGPT plan (routes/jobs.ts): streamed here,
     const gaveUp = await engine.start(jl);
     check(`a step cut short ${MAX_TRIES} times is given up on`, "error" in gaveUp && /interrupted 5 times at the same step/.test(gaveUp.error) && sent.length === spent, gaveUp);
 
+    // Out of its budget (lib/job-guards.ts): what it asked for is not run, and it writes what it has with no tools.
+    const jout = { ...job, id: "jout" };
+    answers.push([{ ...tool, call_id: "call_out" }]);
+    await engine.start(jout);
+    answers.push([{ type: "message", id: "mo", role: "assistant", status: "completed", content: [{ type: "output_text", text: "SUMMARY: Not finished.", annotations: [] }] }]);
+    const wrapped = await engine.poll({ ...jout, responseId: "plan_m.0", cut: { why: "it took its 25 steps" } });
+    const last = sent.at(-1)!.body;
+    check("out of its budget: its calls are not run, and it is asked to write what it has, with no tools",
+      wrapped.kind === "continued" && last.tool_choice === "none" && JSON.stringify(last.input.at(-1)) === JSON.stringify({ role: "developer", content: wrapUp("it took its 25 steps") }) &&
+        last.input.at(-2)!.type === "function_call_output" && last.input.at(-2)!.output === NOT_RUN, last.input.slice(-2));
+    const nw = sent.length;
+    const wrappedAgain = await engine.poll({ ...jout, responseId: "plan_m.0", cut: { why: "it took its 25 steps" } });
+    check("…once, though cut short before that was noted", wrappedAgain.kind === "continued" && sent.length === nw);
+
     // A job that was running across the update that brought the rows.
     await kept.put("jobplan:plan_old", { at: T0, input: [{ role: "user", content: "the old exchange" }, tool], response: { model: "gpt-6-luna", status: "completed", output: [tool], output_text: "" } });
     answers.push([{ type: "message", id: "m8", role: "assistant", status: "completed", content: [{ type: "output_text", text: "Done.", annotations: [] }] }]);
@@ -1826,7 +1878,7 @@ console.log("\nwaiting for the ChatGPT plan");
   cur = (await h.jobs.get(j.id))!;
   check("then it goes on and finishes, and nobody was told it failed", cur.status === "done" && cur.parked === undefined && h.sent.length === 1 && h.sent[0]!.title.startsWith("Done"), cur);
 
-  // The wait is not its time: a job limited to twenty minutes is not stopped for having waited an hour.
+  // The wait is not its time: a job limited to an hour is not stopped for having waited one.
   const long = harness([{ kind: "parked", until: T0 + HOUR }, { kind: "wait" }, { kind: "wait" }]);
   const l = (await long.jobs.create({ task: "x" }, BY, T0)) as Job;
   await long.jobs.tick(T0);
@@ -1834,7 +1886,7 @@ console.log("\nwaiting for the ChatGPT plan");
   await long.jobs.tick(T0 + HOUR);
   check("what it waited is not counted as its time", (await long.jobs.get(l.id))!.status === "running" && (await long.jobs.get(l.id))!.waited === HOUR - 10_000, (await long.jobs.get(l.id))!.waited);
   await long.jobs.tick(T0 + HOUR + MAX_JOB_MS);
-  check("what it worked still is", (await long.jobs.get(l.id))!.status === "failed");
+  check("what it worked still is", !!(await long.jobs.get(l.id))!.cut);
 
   // Parked at the very start, and by its person moved to the key.
   const m = harness([{ kind: "done", text: "SUMMARY: Done." }]);

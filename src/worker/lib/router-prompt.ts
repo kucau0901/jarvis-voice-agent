@@ -404,6 +404,17 @@ export const jobInstructions = (reach: Reach): string =>
   "text; short headings and \"- \" lists are fine, tables are not.";
 
 /**
+ * The last turn of a job out of its budget (lib/job-guards.ts outOf): no tools,
+ * and what it has. It is delivered as part done whatever this says.
+ */
+export const wrapUp = (why: string): string =>
+  "THIS JOB HAS RUN OUT\n" +
+  `No more tools: ${why}. Write the final answer now, from what you already have, in the form ` +
+  "asked for above. Say first, in the SUMMARY line, that it is not finished, and what is missing. " +
+  "Give everything found so far that the user can use, and say plainly which parts were never " +
+  "looked at or could not be checked. Do not fill a gap with a guess.";
+
+/**
  * For a research job (lib/jobs.ts "research"): asked for in depth, read later,
  * on a phone. Its sources are added from the searches' own citations, so the
  * model is told not to list them from memory.

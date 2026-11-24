@@ -238,7 +238,7 @@ export class Jobs {
     row.dataset.id = j.id;
     const top = el("div", "rtop");
     top.appendChild(el("b", "", j.title));
-    top.appendChild(el("span", `chip ${j.status === "done" ? "on" : "off"}`, j.waiting ? "waiting" : STATUS[j.status]));
+    top.appendChild(el("span", `chip ${j.status === "done" ? "on" : "off"}`, j.waiting ? "waiting" : j.status === "failed" && j.hasResult ? "part done" : STATUS[j.status]));
     row.appendChild(top);
 
     const facts: string[] = [j.team ? "Research team" : j.engine === "hermes" ? "Hermes" : j.engine === "research" ? "Research" : "Jarvis", `started ${when(j.createdAt)}`];

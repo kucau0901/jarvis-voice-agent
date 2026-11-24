@@ -148,7 +148,7 @@ const jobResults: Tool = {
       return `This person has no ${kind}background jobs${want.length ? ` matching '${args.about}'` : ""}. Nothing is waiting to be read.`;
     }
     const now = Date.now();
-    const whole = jobs.find((j) => j.status === "done");
+    const whole = jobs.find((j) => j.status === "done" || !!j.result);
     return jobs.map((j, i) => {
       const head = `${i + 1}. "${j.title}" (${KIND[j.engine]})`;
       if (j.status === "running") {
@@ -156,11 +156,12 @@ const jobResults: Tool = {
       }
       if (j.status === "cancelled") return `${head}: cancelled ${since(j.finishedAt ?? j.updatedAt, now)}.`;
       const when = since(j.finishedAt ?? j.updatedAt, now);
-      if (j.status === "failed") return `${head}: did not finish (${when}).\n${asQuotedData("job error", j.error ?? "no reason given", WRITER[j.engine])}`;
+      if (j.status === "failed" && !j.result) return `${head}: did not finish (${when}).\n${asQuotedData("job error", j.error ?? "no reason given", WRITER[j.engine])}`;
+      const ended = j.status === "failed" ? `only part done, not finished (${when}${j.cut ? `; ${j.cut.why}` : ""})` : `finished ${when}`;
       let text = j === whole ? textOf(j) : (j.summary ?? "");
-      if (!text) return `${head}: finished ${when}.`;
+      if (!text) return `${head}: ${ended}.`;
       if (text.length > RESULT_CUT) text = `${text.slice(0, RESULT_CUT)}… (cut; the whole result is in Jobs)`;
-      return `${head}: finished ${when}.\n${asQuotedData("job result", text, WRITER[j.engine])}`;
+      return `${head}: ${ended}.\n${asQuotedData("job result", text, WRITER[j.engine])}`;
     }).join("\n");
   },
 };

@@ -5,8 +5,9 @@ import { emptied, parseTablePlan, tableOf, tableResult } from "./research-table.
 import { makeAlert, type Alert, type Delivery } from "./alerts.ts";
 import { personOfWho } from "./context.ts";
 import { tidy } from "./quote.ts";
-import type { UsageEntry } from "./usage.ts";
+import { costOf, type UsageEntry } from "./usage.ts";
 import { clearChain } from "./job-chain.ts";
+import { outOf } from "./job-guards.ts";
 
 /**
  * Background jobs: things that take minutes, answered later.
@@ -117,6 +118,8 @@ export interface Job {
   waited?: number;
   /** Moved to the API key by its person's tap, rather than wait. */
   onKey?: true;
+  /** Out of its budget (lib/job-guards.ts outOf): of what, and whether it has been told to write what it has. */
+  cut?: { why: string; sent?: true };
 }
 
 /** A page the web search cited: what a report's Sources list is made of. */
@@ -259,7 +262,7 @@ export const DAILY_PLAN_TOKENS = 5_000_000;
 const TOKENS = (person: string) => `jobs:tokens:${person}`;
 export const DAILY_JOBS = 30;
 export const KEEP_JOBS = 30;
-/** A router job that has run this many steps is stopped: something is looping. */
+/** Steps a job gets; then it writes what it has (lib/job-guards.ts). */
 export const MAX_STEPS = 25;
 export const RESEARCH_MAX_STEPS = 40;
 export const RESEARCH_MAX_MS = 45 * 60_000;
@@ -269,8 +272,10 @@ export const RESEARCH_MONTHLY_DEFAULT = 10;
 const RESEARCH_MONTH = "jobs:research:month";
 /** Whether start_job was refused for the month's research cap (create, below), so typed chat can show it as a limit, not a failure. */
 export const isResearchCap = (said: string): boolean => /research jobs (for this month have been used|are switched off)/.test(said);
-/** And this long, whatever it is doing. */
-export const MAX_JOB_MS = 20 * 60_000;
+/** And this long. */
+export const MAX_JOB_MS = 60 * 60_000;
+/** Out of time, it is let finish the step it is on and write what it has for this long more, and is then stopped. */
+export const WRAP_MS = 15 * 60_000;
 const MAX_TASK = 4000;
 /** Kept whole in the Jobs panel; the alert carries only the summary. */
 const MAX_RESULT = 20_000;
@@ -810,11 +815,19 @@ export class Jobs {
       j = resumed(j, now);
       await this.save(j);
     }
-    const { maxSteps } = limitsOf(j.engine);
-    const maxMs = limitsOf(j.engine).maxMs + (j.draft ? RESEARCH_CHECK_MS : 0);
+    const limits = limitsOf(j.engine);
+    // One chain, still working: out of its budget it can write what it has. A team's merge, or a report's check, is that already.
+    const wraps = !j.team && !j.draft;
+    const maxMs = limits.maxMs + (j.draft ? RESEARCH_CHECK_MS : wraps ? WRAP_MS : 0);
     if (now - j.createdAt - (j.waited ?? 0) > maxMs) {
       for (const id of responseIdsOf(j)) await deps.cancel({ ...j, responseId: id }).catch(() => {});
       return this.finish(j, deps, now, { error: `it ran for over ${maxMs / 60_000} minutes and was stopped` });
+    }
+    // Kept before the step is looked at: cut short while it is told so, it is still known to be out.
+    const out = wraps && !j.cut && j.responseId ? outOf(j, limits, j.usage ? costOf(usageEntry(j, true, now)) : 0, now) : null;
+    if (out) {
+      j = { ...j, cut: { why: out } };
+      await this.save(j);
     }
     // Research as a team: while a team is working, the job is its teams.
     if (j.team?.chains.some((c) => c.state === "working")) return this.advanceTeams(j, deps, now, stop);
@@ -885,10 +898,12 @@ export class Jobs {
       return this.save(j);
     }
     if (step.kind === "continued") {
-      if (j.steps + 1 > maxSteps) {
+      // Told to write what it has, it did not: there is no third time.
+      if (wraps ? j.cut?.sent : j.steps + 1 > limits.maxSteps) {
         await deps.cancel({ ...j, responseId: step.responseId }).catch(() => {});
-        return this.finish(j, deps, now, { error: `it took more than ${maxSteps} steps and was stopped` });
+        return this.finish(j, deps, now, { error: `${j.cut?.why ?? `it took more than ${limits.maxSteps} steps`} and was stopped` });
       }
+      if (j.cut) j.cut = { ...j.cut, sent: true };
       j.responseId = step.responseId;
       j.steps += 1;
       j.updatedAt = now;
@@ -1042,13 +1057,16 @@ export class Jobs {
     let alert: Alert;
     if ("text" in out && out.text.trim()) {
       const { summary, result, whole } = splitResult(out.text);
-      done.status = "done";
+      // Out of its budget, what it wrote is what it had: part done, and never called done.
+      const short = done.cut?.sent ? done.cut.why : null;
+      done.status = short ? "failed" : "done";
+      if (short) done.error = `Part done: ${short}, and this is what it had by then.`;
       done.summary = summary;
       done.result = result.slice(0, MAX_RESULT);
       alert = {
         ...makeAlert(
           {
-            title: j.engine === "hermes" ? "Hermes answered" : j.engine === "research" ? `Research done: ${j.title}` : `Done: ${j.title}`,
+            title: short ? `Part done: ${j.title}` : j.engine === "hermes" ? "Hermes answered" : j.engine === "research" ? `Research done: ${j.title}` : `Done: ${j.title}`,
             text: whole.length <= ALERT_WHOLE ? whole : `${summary}\n\nThe full result is in Jobs.`,
           },
           "job",

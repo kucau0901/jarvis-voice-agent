@@ -144,6 +144,11 @@ of every release, and in the [README](README.md#updating).
   it needs one, goes there too. Servers added in chat before this are still
   under **Settings → MCP servers** and work as they did.
 
+- **A background job that runs out no longer loses what it found.** Out of
+  steps, time (now an hour, was 20 minutes), searches or two dollars of your
+  API key, it writes what it has and what is missing, and comes back as **Part
+  done**. It used to be stopped with nothing. Devices that read
+  `/api/v1/jobs`: such a job has the status `failed`, and a `result`.
 - **A background job now looks at your own things, or at the web, not both.**
   Jarvis says which when it starts one, the Jobs panel shows it, and **New job**
   there asks. A job on the web has nothing of yours but what its brief says

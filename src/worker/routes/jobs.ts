@@ -12,10 +12,11 @@ import { builtinTools, explicitCache, researchModel } from "../lib/router-model.
 import { toToolSchema } from "../tools/registry.ts";
 import * as hermes from "../tools/hermes.ts";
 import { INTERRUPTED, JobChain, beginCalls, stepId, stepOf, type Answered } from "../lib/job-chain.ts";
+import { NOT_RUN } from "../lib/job-guards.ts";
 import { RESEARCH_MONTHLY_DEFAULT, jobTool, reachOf, webTool, sharesLeft, usageEntry, type Job, type JobDeps, type Step } from "../lib/jobs.ts";
 import { citationsOf } from "../lib/links.ts";
 import { toCsv } from "../lib/research-table.ts";
-import { MERGE_INSTRUCTIONS, PLAN_INSTRUCTIONS, RESEARCH_CHECK, TABLE_CHECK, TABLE_MERGE_INSTRUCTIONS, TABLE_PLAN_INSTRUCTIONS, TABLE_TEAM_INSTRUCTIONS, TEAM_INSTRUCTIONS } from "../lib/router-prompt.ts";
+import { MERGE_INSTRUCTIONS, PLAN_INSTRUCTIONS, RESEARCH_CHECK, TABLE_CHECK, TABLE_MERGE_INSTRUCTIONS, TABLE_PLAN_INSTRUCTIONS, TABLE_TEAM_INSTRUCTIONS, TEAM_INSTRUCTIONS, wrapUp } from "../lib/router-prompt.ts";
 import { SHARE, angleMessage, mergeMaterial, shareReply, shareTool, teamView } from "../lib/research-team.ts";
 import { prepareRouter, runCalls, type Prepared } from "../lib/router.ts";
 import { held, proposable, type File, type Finish } from "../lib/proposals.ts";
@@ -361,8 +362,14 @@ export function jobEngine(
         if (e instanceof PlanParked) return { kind: "parked", until: e.until };
         throw e;
       };
-      const resumed = onPlan ? await pickUp(req, { after: id }).catch(parked) : null;
+      const resumed = onPlan ? await pickUp(req, { after: id }, job.cut ? "none" : "auto").catch(parked) : null;
       if (resumed) return "kind" in resumed ? resumed : { kind: "continued", responseId: resumed.responseId, usage };
+      // Out of its budget: nothing more is run, and it writes what it has.
+      if (job.cut) {
+        const unrun = calls.map((c) => ({ type: "function_call_output" as const, call_id: c.call_id, output: NOT_RUN }));
+        const last = await send(req, [...unrun, { role: "developer", content: wrapUp(job.cut.why) }], { after: id }, "none").catch(parked);
+        return "kind" in last ? last : { kind: "continued", responseId: last.responseId, usage };
+      }
       // A team's share_findings: posted by lib/jobs.ts teamStep, answered with what the others shared.
       const shared: string[] = [];
       const byName = t === undefined ? p.byName : new Map(p.byName).set(SHARE.name, shareTool(shareReply(job, t), shared, sharesLeft(job, t)));
@@ -416,7 +423,8 @@ const MAX_BODY = 16 * 1024;
  * waiting for the plan, whether whoever is looking may move it to the key, with what its tokens so far would have cost there.
  */
 export function jobView(j: Job, whole = false, mayKey = false) {
-  const { grants: _g, responseId: _r, draft: _d, team: _t, waited: _w, parked, ...rest } = j;
+  const { grants: _g, responseId: _r, draft: _d, team: _t, waited: _w, cut: _c, parked, ...rest } = j;
+  void _c;
   void _g;
   void _r;
   void _d;
