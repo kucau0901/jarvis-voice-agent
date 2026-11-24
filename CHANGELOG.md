@@ -17,6 +17,8 @@ of every release, and in the [README](README.md#updating).
 
 ## [Unreleased]
 
+## [2.11.0] - 2026-11-24
+
 ### Added
 
 - **A background job can ask you, and you can tell it things.** When something
@@ -1757,7 +1759,8 @@ updating to this one needs nothing doing.
 - A camera picture in Type mode was drawn under the chat; the chat now keeps
   its newest message in view above the phone's keyboard.
 
-[Unreleased]: https://github.com/kucau0901/jarvis-voice-agent/compare/v2.10.0...HEAD
+[Unreleased]: https://github.com/kucau0901/jarvis-voice-agent/compare/v2.11.0...HEAD
+[2.11.0]: https://github.com/kucau0901/jarvis-voice-agent/compare/v2.10.0...v2.11.0
 [2.10.0]: https://github.com/kucau0901/jarvis-voice-agent/compare/v2.9.0...v2.10.0
 [2.9.0]: https://github.com/kucau0901/jarvis-voice-agent/compare/v2.8.0...v2.9.0
 [2.8.0]: https://github.com/kucau0901/jarvis-voice-agent/compare/v2.7.0...v2.8.0
