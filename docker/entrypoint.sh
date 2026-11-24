@@ -16,6 +16,15 @@ envfile="$(mktemp)"
 chmod 600 "$envfile"
 env | grep -E '^(JARVIS_SHARED_SECRET|MOVE_KEY|JARVIS_STANDBY|JARVIS_ALLOWED_ORIGINS|OPENAI_API_KEY|ROUTER_MODEL|DISABLE_WEB_SEARCH|PUBLIC_URL|TIMEZONE|COUNTRY|LOCALE|UNITS|DEVICE_DAILY_LIMIT|HA_[A-Z_]+|TESSIE_[A-Z_]+|HERMES_[A-Z_]+|BROWSER_URL|CF_ACCESS_[A-Z_]+|GOOGLE_[A-Z_]+|SPOTIFY_[A-Z_]+|G2_[A-Z_]+)=' > "$envfile" || true
 
+# `wrangler dev` is a developer's tool, and two of its helpers are on unless
+# told otherwise. One keeps a trace of every call the runtime makes, in a
+# database beside Jarvis's own that is never emptied: everything waits for the
+# disk behind it, a question, a job's every step, and it holds the addresses
+# asked for. The other is a page of everything stored, with no key, for whoever
+# reaches this port and says they are "localhost". Jarvis uses neither.
+export X_LOCAL_EXPLORER=false X_LOCAL_OBSERVABILITY=false
+rm -rf "${DATA_DIR:-/data}/v3/observability"
+
 config="$(ls dist/*/wrangler.json | head -n 1)"
 echo "jarvis: starting on port ${PORT:-8787}, data in ${DATA_DIR:-/data}"
 exec wrangler dev \

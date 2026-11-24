@@ -201,6 +201,11 @@ of every release, and in the [README](README.md#updating).
 
 ### Fixed
 
+- **On Docker, Jarvis no longer waits for the disk at every call.** The runtime
+  kept a trace of each one in a database that only grew: on a NAS a question took
+  seconds to begin, and the house's fast answers timed out while a background job
+  worked. It is off, and the traces kept so far are removed when the container
+  starts.
 - **A routine that speaks only when something matters no longer repeats
   itself.** An hourly "anything important in my email?" told the same
   message every hour it stayed in the inbox, since each run started afresh.
@@ -253,6 +258,13 @@ of every release, and in the [README](README.md#updating).
 
 ### Security
 
+- **On Docker, everything stored could be read without a key from the same
+  network.** The runtime Jarvis runs on has a developer's page of all that is
+  stored, linked accounts' tokens among it, and it answered whoever reached
+  Jarvis's port directly and called themselves `localhost`. It is off. A tunnel
+  or proxy that passes on your own address never let it through. Every Docker
+  version so far has it: update, and if people you do not trust could reach that
+  port, link your accounts and make your devices' tokens again.
 - **A job on the web is not told who you are.** Jarvis writes such a job's
   brief, and could put your name or street in it though the work did not need
   them. A brief with your name or your family's, the house or street of an
