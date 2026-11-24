@@ -57,6 +57,13 @@ jobs:
           test "$(c -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8787/api/health -H 'X-Jarvis-Key: WRONGKEY')" = 401
           c -fs http://127.0.0.1:8787/api/health -H "X-Jarvis-Key: $KEY"
 
+          # The runtime's developer page of everything stored answers "localhost" with no key, and it keeps a trace
+          # of every call: both off (docker/entrypoint.sh). What is there instead is the app.
+          for p in /cdn-cgi/local/explorer /cdn-cgi/local/explorer/api/local/workers; do
+            c -fsL http://127.0.0.1:8787$p -H 'Host: localhost' | grep -q '<title>Jarvis</title>'
+          done
+          docker exec jarvis sh -c 'test -d /data/v3/do && test ! -e /data/v3/observability'
+
           c -fs -X PUT http://127.0.0.1:8787/api/settings -H "X-Jarvis-Key: $KEY" \
             -H 'Content-Type: application/json' -d '{"changes":{"TIMEZONE":"Europe/London"}}' >/dev/null
 

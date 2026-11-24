@@ -2338,6 +2338,20 @@ key never reaches the car.
 
 See the [README](../README.md): Cloudflare Workers or Docker.
 
+**In Docker the runtime is `wrangler dev`, with its developer's helpers off**
+(`docker/entrypoint.sh`). Two are on by default. The trace store writes every call the
+runtime makes (a request, each call to the Durable Object, an alarm) to a database of
+its own under `/data`, which nothing empties: 161 plain requests that read and wrote
+nothing made 188 commits there, and 2 in Jarvis's own, and the runtime does nothing else
+while the disk is waited for. Measured on a NAS with hard disks: a signed-in request took
+1.7 seconds with it and 5 milliseconds without, and Home Assistant's fast path, while a
+background job worked, ran out of its three seconds with it and took a tenth of one
+without. It also holds the addresses asked for. The local explorer is a
+page (`/cdn-cgi/local/explorer`) of everything stored, which asks for no key: the runtime
+lets through whoever says `Host: localhost`, which stops a page in a browser and nobody
+on the same network. `test/docker-entry.test.ts` fails if wrangler renames either, and
+CI looks at the running image.
+
 ## Other things that talk to it
 
 The car is no longer the only client. A microcontroller, a pair of smartglasses or
