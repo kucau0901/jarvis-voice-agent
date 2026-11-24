@@ -47,13 +47,14 @@ const t9 = Date.now();
 const rc = await send("file", { job: A, op: "list" });
 check("its own start-up files are nobody's", rc.status === 200 && !JSON.stringify(rc.files).includes("sourced") && Date.now() - t9 < 10_000, rc);
 await run("rm -f .bashrc .profile .bash_profile .home/.*rc .home/.profile");
-check("no compiler, and no way to fetch one", (await run("for t in gcc cc g++ make pip pip3 npm npx yarn curl wget ssh git apt-get; do command -v $t; done | grep -v apt-get | wc -l")).out.trim() === "0");
+const build = await run("for t in gcc cc g++ c++ cpp ld as make pip pip3 npm npx yarn corepack curl wget ssh git; do command -v $t; done; ls /usr/bin | grep -E 'gcc|g[+][+]|-ld$'; ls -d /usr/lib/gcc/*/*/cc1* 2>/dev/null; echo none");
+check("no compiler, and no way to fetch one", build.out === "none\n", build);
 check("no Docker, and nothing of Jarvis's", (await run("ls /var/run/docker.sock /data /app 2>&1 | grep -vc 'No such'; env | grep -ci 'token\\|secret'")).out.trim() === "0\n0");
 
 console.log("its limits");
 const t0 = Date.now();
-const mem = await run("python3 -c \"a=[bytearray(10**7) for _ in range(300)]; print('GOT IT')\"", A, { seconds: 100 });
-check("out of memory: ended, soon", mem.code !== 0 && !/GOT IT/.test(mem.out) && Date.now() - t0 < 90_000, { mem, ms: Date.now() - t0 });
+const mem = await run("python3 -c \"a=[bytearray(10**7) for _ in range(300)]; print('GOT' + ' IT')\"", A, { seconds: 100 });
+check("out of memory: ended, soon", mem.code === 137 && !/GOT IT/.test(mem.out) && Date.now() - t0 < 90_000, { mem, ms: Date.now() - t0 });
 check("…and the workshop goes on", (await run("echo still here")).out === "still here\n");
 const bomb = await run("for i in $(seq 1 900); do sleep 4 & done 2>/dev/null; jobs -p | wc -l", A, { seconds: 30 });
 check("a great many processes: held", Number(bomb.out) < 320 || bomb.code !== 0, bomb);
@@ -65,8 +66,8 @@ check("a folder too full: stopped", full.full === true && !/ALL/.test(full.out),
 check("…and it may remove what it wrote", (await run("rm -f f*; echo gone")).out === "gone\n" && (await send("file", { job: A, op: "write", path: "x", text: "x" })).size === 1);
 check("a file too big: stopped", /exceeded|too large/i.test((await run("head -c 400000000 /dev/zero > big; ls -l big | awk '{print $5}'; rm -f big")).out));
 check("time: stopped", (await run("while :; do :; done", A, { seconds: 2 })).late === true);
-const own = await run("kill -9 -1; echo not said");
-check("it may end only its own", !/not said/.test(own.out) && (await run("echo both", B)).out === "both\n");
+await run("sleep 30 & kill -9 -1; kill -9 1; true");
+check("it may end only its own", (await run("echo both", B)).out === "both\n" && (await run("echo mine")).out === "mine\n");
 
 console.log("one job at a time, and nothing outlives its turn");
 const others = "for f in /proc/[0-9]*/status; do awk '/^Uid:/ {print $2}' $f; done 2>/dev/null | awk '$1 >= 20000' | sort -u";
@@ -75,7 +76,7 @@ const after = await run(others, B);
 check("what a command left, however it left it, and whatever it did to stay", after.out.trim().split("\n").length === 1 && after.out.trim() !== String(uid), after);
 await run("sleep 4; echo slept", A, { background: true });
 const t8 = Date.now();
-const seen = await run(`${others}; cat /proc/[0-9]*/cmdline 2>/dev/null | tr '\\0' ' ' | grep -c 'sleep 4'`, B);
+const seen = await run(`${others}; cat /proc/[0-9]*/cmdline 2>/dev/null | tr '\\0' ' ' | grep -c 'slee[p] 4'`, B);
 check("another job's begins when this one's has ended, and sees nothing of it", Date.now() - t8 > 2500 && seen.out.trim().split("\n").length === 2 && seen.out.trim().endsWith("0"), { seen, ms: Date.now() - t8 });
 
 console.log("what there is to work with");

@@ -247,8 +247,8 @@ echo "WORKSHOP_TOKEN=$(openssl rand -hex 24)" >> .env
 docker compose --profile workshop up -d --build
 ```
 
-The first build downloads about 1 GB of programs (Python, pandas, pandoc and
-the like); after that it has **no network at all**, no password or key, and
+The first build downloads about 350 MB of programs (Python, pandas, pandoc and
+the like) and keeps about 1.5 GB on disk; after that it has **no network at all**, no password or key, and
 nothing of Jarvis's but what a job was given. It is given 1.2 GB of memory.
 Nobody but an admin has the **workshop** reach until you give it (Family, or a
 device's scopes), and no routine or Telegram chat ever does. What a job made is
