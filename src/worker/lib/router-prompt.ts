@@ -403,6 +403,17 @@ export const jobInstructions = (reach: Reach): string =>
   "be read aloud on their own. Then the full result, organised and complete, in plain " +
   "text; short headings and \"- \" lists are fine, tables are not.";
 
+/**
+ * The last hop of a question out of hops (lib/router-loop.ts): no tools, and an
+ * answer from what they found. `offer`: to carry on as a background job, which
+ * is never the house's or the car's work (a job cannot act).
+ */
+export const outOfSteps = (offer: boolean): string =>
+  "OUT OF STEPS\n" +
+  "No more tools for this. Answer now, in the form asked for above, from what you have found and done. " +
+  "Say plainly what was not done or not found, and never that something was done which no tool said was done." +
+  (offer ? " If more looking up would finish it, end by offering, in one short question, to carry on with it in the background." : "");
+
 /** How an ordinary job works (lib/job-tools.ts), after jobInstructions. */
 export const JOB_WORK =
   "\n\nHOW TO WORK\n" +

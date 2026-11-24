@@ -198,6 +198,15 @@ and invented a task: asked about tomorrow's calendar, it started a background
 job looking for payroll dates. So `ROUTER_EFFORT` stays at the model's
 default; the setting is there for a heavier router model, where it may matter.
 
+**Out of steps, it answers from what it found.** A question has six hops of tools
+(twenty once it is in the browser, fifteen in a routine, which nobody is waiting
+for). Past them it used to say "I got stuck", with everything its tools had found
+thrown away. Now one more hop, with no tools allowed, is told it is out of steps
+and answers from that, saying what was not done (`lib/router-loop.ts`). To someone
+who may start a job, and not after work in the house or on the car, which no job
+does, it may offer to carry on in the background; a yes starts an ordinary job. Such
+an answer's steps are not kept as a way that worked.
+
 ## Paying for it: the ChatGPT plan first
 
 Many owners already pay for ChatGPT, and since DevDay 2026 OpenAI lets an

@@ -164,6 +164,10 @@ of every release, and in the [README](README.md#updating).
   it needs one, goes there too. Servers added in chat before this are still
   under **Settings → MCP servers** and work as they did.
 
+- **No more "I got stuck working that one out".** A question that runs out of
+  steps is answered from what was found, saying what was not, and may offer to
+  carry on as a background job. A routine's question gets fifteen steps, from
+  six.
 - **A background job that runs out no longer loses what it found.** Out of
   steps, time (now an hour, was 20 minutes), searches or two dollars of your
   API key, it writes what it has and what is missing, and comes back as **Part

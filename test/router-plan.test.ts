@@ -207,6 +207,26 @@ console.log("what someone else wrote is not remembered in the same turn (lib/mem
   check("a routine goes by its maker's words, not what came with the event", /^Not saved/.test(outputOf(routine)), outputOf(routine));
 }
 
+console.log("out of hops: one more, with no tools, from what was found (lib/router-loop.ts)");
+{
+  const six = Array.from({ length: 6 }, (_, i) => ({ items: [{ ...call, id: `fc_${i}`, call_id: `call_${i}`, arguments: JSON.stringify({ query: `dentist ${i}` }) }] }));
+  const r = await ask({ plan: true, plans: [...six, { items: [answer("I found one of the two.")] }], origin: true, run: { surface: "chat" } });
+  const end = r.sent.at(-1)!.body as Body & { tool_choice?: string };
+  check("on the plan: the whole exchange, no tools, and told so last",
+    r.result?.type === "result" && r.result.text === "I found one of the two." && r.sent.length === 7 && end.tool_choice === "none" && end.input.at(-1)!.role === "developer" && end.input.at(-2)!.type === "function_call_output" &&
+      r.sent.slice(0, 6).every((s) => (s.body as { tool_choice?: string }).tool_choice === "auto"), { n: r.sent.length, end: end.input.slice(-2) });
+  const told = String(end.input.at(-1)!.content);
+  check("…and it may offer to carry on as a job", /never that something was done/.test(told) && /carry on with it in the background/.test(told), told);
+  check("…its steps not kept as a way that worked", r.episodes.every((e) => e.outcome !== "ok") && r.offers.length === 0, r.episodes);
+  const k = await ask({ plan: false, plans: [], keys: [...six.map((s) => ({ items: s.items.map(({ namespace: _n, ...c }) => c) })), { items: [answer("On the key.")] }] });
+  const kend = k.sent.at(-1)!.body as Body & { tool_choice?: string; previous_response_id?: string };
+  check("on the key: chained, no tools, told so", k.result?.text === "On the key." && kend.tool_choice === "none" && kend.previous_response_id === "resp_6" && kend.input.length === 2 && kend.input[1]!.role === "developer", kend.input);
+  const routine = await ask({ plan: true, plans: [...Array.from({ length: 15 }, (_, i) => ({ items: [{ ...call, id: `fr_${i}`, call_id: `cr_${i}` }] })), { items: [answer("What there was.")] }], run: { surface: "routine" } });
+  check("a routine has fifteen, and offers nothing: nobody is there", routine.sent.length === 16 && routine.result?.text === "What there was." && !/in the background/.test(String(routine.sent.at(-1)!.body.input.at(-1)!.content)), routine.sent.length);
+  const house = await ask({ plan: true, plans: [...six.slice(0, 5), { items: [{ ...call, id: "fh", call_id: "ch", name: "car_command", arguments: JSON.stringify({ command: "lock", value: null, temperature: null, percent: null, car: null }) }] }, { items: [answer("The car did not answer.")] }], env: { TESSIE_TOKEN: "t", TESSIE_VIN: "5YJTEST0000000001" } });
+  check("nor after work in the house or the car, which no job does", house.sent.length === 7 && !/in the background/.test(String(house.sent.at(-1)!.body.input.at(-1)!.content)), String(house.sent.at(-1)?.body.input.at(-1)?.content));
+}
+
 console.log("past attempts (lib/episodes.ts): an answer that took two tools is kept");
 {
   // Two that need nothing set up here, so neither fails (recall does: there is no memory to search).
