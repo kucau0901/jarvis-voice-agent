@@ -321,6 +321,20 @@ console.log("\ncancelling");
   check("removed", (await h.jobs.remove(j.id)) && (await h.jobs.get(j.id)) === undefined);
 }
 
+console.log("\nremoved while its result is being told");
+{
+  const h = harness([{ kind: "done", text: "SUMMARY: Done." }]);
+  const j = (await h.jobs.create({ task: "x" }, BY, T0)) as Job;
+  const deliver = h.deps.deliver;
+  h.deps.deliver = async (a) => {
+    await h.jobs.remove(j.id); // the user, in the panel, while the push goes out
+    return deliver(a);
+  };
+  await h.jobs.tick(T0);
+  await h.jobs.tick(T0 + 10_000);
+  check("told once, and it does not come back", h.sent.length === 1 && (await h.jobs.get(j.id)) === undefined && (await h.jobs.list()).length === 0, await h.jobs.list());
+}
+
 console.log("\na question for Hermes");
 {
   const h = harness();

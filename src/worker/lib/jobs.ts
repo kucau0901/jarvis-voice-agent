@@ -926,7 +926,8 @@ export class Jobs {
     await this.save(done); // before delivering: a retried alarm must not tell the user twice
     const d = await deps.deliver(alert).catch(() => null);
     done.deliveredBy = d?.deliveredBy ?? null;
-    await this.save(done);
+    // Removed while it was being told (a push can take seconds): gone stays gone.
+    if (await this.get(done.id)) await this.save(done);
     await deps.record?.(usageEntry(done, done.status === "done", now)).catch(() => {});
     // How it went, for next time (lib/episodes.ts): not Hermes still working past the wait, which has not failed.
     if (!("late" in out && out.late)) await deps.episode?.(done).catch(() => {});
