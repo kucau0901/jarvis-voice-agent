@@ -1442,6 +1442,11 @@ export class JarvisState extends DurableObject<Env> {
     return j;
   }
 
+  // Nothing becomes due: what they changed goes with its next step.
+  changeJobCard(id: string, input: { outcome?: unknown; limits?: unknown; assumptions?: unknown }) {
+    return this.jobs.changeCard(id, input);
+  }
+
   async removeJob(id: string) {
     const j = await this.jobs.get(id);
     const ok = await this.jobs.remove(id);

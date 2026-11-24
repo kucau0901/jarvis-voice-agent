@@ -619,6 +619,16 @@ be complete on its own: a job never sees a conversation. `GET /api/v1/jobs`
 lists them (a device sees its own); `GET ?id=` returns one with its whole
 result; `POST /api/v1/jobs/cancel {id}` stops one; `DELETE ?id=` removes it.
 
+An ordinary job of any size sets itself a card, `card: {outcome, limits,
+assumptions}`, and a checklist, `todo: [{text, state, why?}]` with `state`
+`open`, `doing`, `done` or `dropped`. While it runs its view also carries
+`doing`, the tools its step is running (empty or absent while it thinks),
+`limits: {steps, going, minutes}`, what it may take, and, once it is out of
+that, `wrapping`, what of. `POST /api/v1/jobs/card {id, outcome?, limits?,
+assumptions?}` changes the card of one still working (each list is given whole);
+what was changed reaches the job at its next step, and `told: [{at, text,
+taken?}]` says which changes it has had.
+
 At most three run at once for a person and six in the house, besides questions
 for Hermes. On the owner's ChatGPT plan, one person's jobs may use five million
 tokens of it a day. At the plan's limit a job waits and goes on by itself when the
@@ -659,10 +669,10 @@ everything under `/api/hub/` is a person's. A proposal waits a day (a
 one-off invitation's, no later than its start; an all-day one's, until its
 day is out; one put to them later, no later than half an hour past its
 time, or its event's start). At most 3 run at once and 30 are started a
-day. One that reaches 25 steps, an hour, 40 web searches or two dollars of the
-API key is told to write what it has: its status is then `failed`, its `error`
-says what ran out, and it has a `summary` and a `result` (titled **Part done** in
-its alert). One that failed outright has none.
+day. One that reaches 25 steps (60 while its checklist moves), an hour, 40 web
+searches or two dollars of the API key is told to write what it has: its status
+is then `failed`, its `error` says what ran out, and it has a `summary` and a
+`result` (titled **Part done** in its alert). One that failed outright has none.
 
 ### Handing research to Hermes
 

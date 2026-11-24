@@ -1401,6 +1401,24 @@ its time is up is let finish, at most fifteen minutes. A research report written
 this way is checked like any other; a team's chains keep their own limits, since
 their merge is that last call already.
 
+**A job's card is its person's, its checklist its own.** A job of any size first
+calls `job_plan` (`lib/job-tools.ts`): what they will have, the limits it keeps
+to, what it assumes since nobody can be asked, and a short checklist; it then
+ticks lines as it goes with `job_tick`. Both are kept while the step runs (`say`,
+`Jobs.note`), not when it ends: on the plan a step streams for minutes, and
+somebody may be watching. There is no approval and no step editor. It starts at
+once, and the card may be changed while it works: what they type reaches it at
+its next step as their own message, and nothing else does. A line of the card
+was the job's own words, perhaps taken from a page it read, so a line struck out
+goes quoted, one left as it was is not repeated, and the job may set the card
+only once. An answer given before it has heard them is not the end, nor is one
+that leaves lines of its checklist neither done nor dropped, which it is asked
+about once: that much code can check, and a vaguer "are you sure" only makes
+work. The checklist is also what its budget goes by: past 25 steps it goes on,
+to 60, only while a line was ticked in the last ten (`outOf`). The model ticks
+its own lines, so this can be gamed; 60 steps and the hour are the limits that
+hold. What a job may do is said on the card by code, from what it was handed.
+
 **A job does not go round in a circle, or carry what it has no use for.** The
 same call with the same answer three times running has that said in the answer,
 the fifth is not made, and at eight the job has nothing left to try and writes

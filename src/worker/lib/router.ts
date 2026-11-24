@@ -48,7 +48,7 @@ import {
   recordFallback,
   resolveRouterModel,
 } from "./router-model.ts";
-import { CHAT_INSTRUCTIONS, jobInstructions, RESEARCH_INSTRUCTIONS, ROUTER_PROMPT, familyBlock, nowLine } from "./router-prompt.ts";
+import { CHAT_INSTRUCTIONS, JOB_WORK, jobInstructions, RESEARCH_INSTRUCTIONS, ROUTER_PROMPT, familyBlock, nowLine } from "./router-prompt.ts";
 
 /**
  * Escalating notes while a tool is still working.
@@ -288,6 +288,7 @@ export async function prepareRouter(
     (opts.surface === "voice" ? spokenReplyInstructions(env.JARVIS_AGENT_NAME) : "") +
     (opts.openMic ? OVERHEARD_RULE : "") +
     (opts.surface === "job" || opts.surface === "research" ? jobInstructions(opts.surface === "research" ? "web" : (opts.reach ?? "private")) : "") +
+    (opts.surface === "job" ? JOB_WORK : "") +
     (opts.surface === "research" ? RESEARCH_INSTRUCTIONS : "") +
     (opts.surface === "chat" ? CHAT_INSTRUCTIONS : "") +
     (opts.bot ? botAsks(opts.bot) : "") +

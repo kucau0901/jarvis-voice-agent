@@ -7,7 +7,8 @@ import { personOfWho } from "./context.ts";
 import { tidy } from "./quote.ts";
 import { costOf, type UsageEntry } from "./usage.ts";
 import { clearChain } from "./job-chain.ts";
-import { outOf } from "./job-guards.ts";
+import { outOf, type Limits } from "./job-guards.ts";
+import { MAX_TOLD, changeCard, doneLines, type JobCard, type Said, type Todo, type Told } from "./job-tools.ts";
 
 /**
  * Background jobs: things that take minutes, answered later.
@@ -122,7 +123,26 @@ export interface Job {
   cut?: { why: string; sent?: true };
   /** Going round in a circle (lib/job-guards.ts runGuarded). */
   stuck?: true;
+  /** What it set out to do, and its checklist (lib/job-tools.ts). */
+  card?: JobCard;
+  todo?: Todo[];
+  /** The step a line was last ticked at. */
+  ticked?: number;
+  /** The tools its step is running now; none, and it is thinking. */
+  doing?: string[];
+  /** What its person told it while it worked. */
+  told?: Told[];
+  /** Asked once already to finish its checklist. */
+  nudged?: true;
 }
+
+/** What is kept while a step runs (note), not by whoever is looking at the job: never saved over by a record read before it. */
+const live = ({ card, todo, ticked, told }: Job): Partial<Job> => ({
+  ...(card ? { card } : {}),
+  ...(todo ? { todo } : {}),
+  ...(ticked !== undefined ? { ticked } : {}),
+  ...(told ? { told } : {}),
+});
 
 /** A page the web search cited: what a report's Sources list is made of. */
 export type Cited = { url: string; title?: string };
@@ -210,8 +230,11 @@ export function usageEntry(j: Job, ok: boolean, now: number): UsageEntry {
 /** One look at a running jarvis job, as the engine reports it. */
 export type Step =
   | { kind: "wait"; usage?: Job["usage"] }
-  /** `shared`: what a team passed to share_findings in this hop. `stuck`: it keeps asking the same thing (lib/job-guards.ts). */
-  | { kind: "continued"; responseId: string; usage?: Job["usage"]; shared?: string[]; stuck?: true }
+  /**
+   * `shared`: what a team passed to share_findings in this hop. `stuck`: it keeps asking the same thing (lib/job-guards.ts).
+   * `took`: how much of what its person told it the step now has. `nudged`: it was asked to finish its checklist.
+   */
+  | { kind: "continued"; responseId: string; usage?: Job["usage"]; shared?: string[]; stuck?: true; took?: number; nudged?: true }
   | { kind: "done"; text: string; cited?: Cited[]; usage?: Job["usage"] }
   /** The plan is at its limit: nothing was asked, and it goes on from here then. */
   | { kind: "parked"; until: number }
@@ -223,15 +246,15 @@ export type Started = { responseId: string } | { parked: number } | { error: str
 /** `stop`, where a step streams here for minutes (the ChatGPT plan, Hermes): aborted when the person stops the job. */
 export interface JobDeps {
   /** Start a jarvis job's first step, or team `team`'s of a research team; its response id, or why it could not start. */
-  start(job: Job, team?: number, stop?: AbortSignal): Promise<Started>;
+  start(job: Job, team?: number, stop?: AbortSignal, say?: (s: Said) => Promise<void>): Promise<Started>;
   /** research: start the check of a written report, continuing from `after`; its response id, or why not. */
   check(job: Job, after: string, stop?: AbortSignal): Promise<Started>;
   /** research as a team: start planning the teams' angles; its response id, or why not. */
   plan(job: Job, stop?: AbortSignal): Promise<Started>;
   /** research as a team: start merging the teams' reports into one; its response id, or why not. */
   merge(job: Job, stop?: AbortSignal): Promise<Started>;
-  /** Look at the running step (team `team`'s, of a research team); run any tools it asked for and start the next. */
-  poll(job: Job, team?: number, stop?: AbortSignal): Promise<Step>;
+  /** Look at the running step (team `team`'s, of a research team); run any tools it asked for and start the next. `say`: what it says of itself meanwhile. */
+  poll(job: Job, team?: number, stop?: AbortSignal, say?: (s: Said) => Promise<void>): Promise<Step>;
   /** Stop a running step at OpenAI. Best effort. */
   cancel(job: Job): Promise<void>;
   /** Ask Hermes, waiting as long as it takes; `reference`, a research report handed over with the question. */
@@ -264,8 +287,9 @@ export const DAILY_PLAN_TOKENS = 5_000_000;
 const TOKENS = (person: string) => `jobs:tokens:${person}`;
 export const DAILY_JOBS = 30;
 export const KEEP_JOBS = 30;
-/** Steps a job gets; then it writes what it has (lib/job-guards.ts). */
+/** Steps a job gets, and with its checklist moving; then it writes what it has (lib/job-guards.ts). */
 export const MAX_STEPS = 25;
+export const MAX_STEPS_GOING = 60;
 export const RESEARCH_MAX_STEPS = 40;
 export const RESEARCH_MAX_MS = 45 * 60_000;
 /** The check of a research report gets this long more, however late the report was written. */
@@ -370,10 +394,10 @@ const newJobId = () => {
  * enough to send as it is.
  */
 /** How long, and how many steps, a job of each kind may take. */
-export function limitsOf(engine: JobEngine): { maxMs: number; maxSteps: number } {
+export function limitsOf(engine: JobEngine): Limits {
   return engine === "research"
-    ? { maxMs: RESEARCH_MAX_MS, maxSteps: RESEARCH_MAX_STEPS }
-    : { maxMs: MAX_JOB_MS, maxSteps: MAX_STEPS };
+    ? { maxMs: RESEARCH_MAX_MS, maxSteps: RESEARCH_MAX_STEPS, going: RESEARCH_MAX_STEPS }
+    : { maxMs: MAX_JOB_MS, maxSteps: MAX_STEPS, going: MAX_STEPS_GOING };
 }
 
 /**
@@ -582,6 +606,8 @@ export class Jobs {
   /** When each running job is next to be looked at: read once, then kept as they are saved, so nothing lists every result to find out. */
   private due = new Map<string, number>();
   private read: Promise<void> | null = null;
+  /** What steps say of themselves, kept one at a time: a step's calls run together (note). */
+  private noting: Promise<void> = Promise.resolve();
 
   constructor(storage: Storage, deps: () => Promise<JobDeps>) {
     this.storage = storage;
@@ -800,6 +826,39 @@ export class Jobs {
     return { ...next, onKey: true };
   }
 
+  /** What a step says of itself while it runs (lib/job-tools.ts), kept at once for whoever is watching. Its card is the job's to set only once. */
+  private note(id: string, s: Said): Promise<void> {
+    this.noting = this.noting
+      .then(async () => {
+        const cur = await this.stillRunning(id);
+        if (!cur) return;
+        const ticked = s.todo && doneLines(s.todo) > doneLines(cur.todo);
+        await this.save({
+          ...cur,
+          ...(s.card && !cur.card ? { card: s.card } : {}),
+          ...(s.todo ? { todo: s.todo } : {}),
+          ...(ticked ? { ticked: cur.steps } : {}),
+          ...(s.doing ? { doing: s.doing } : {}),
+        });
+      })
+      .catch((e) => console.warn("job", id, "not noted:", e instanceof Error ? e.message : String(e)));
+    return this.noting;
+  }
+
+  /** Its person changed its card while it works: what they changed reaches it, in their words, at its next step. */
+  async changeCard(id: string, input: { outcome?: unknown; limits?: unknown; assumptions?: unknown }, now = Date.now()): Promise<Job | string> {
+    const j = await this.stillRunning(id);
+    if (!j) return "it is not working any more";
+    if (!j.card) return "it has no card";
+    if (j.cut) return "it has run out, and is writing what it has";
+    const { card, said } = changeCard(j.card, input);
+    if (!said) return j;
+    if ((j.told ?? []).length >= MAX_TOLD) return `a job is told of ${MAX_TOLD} changes at most`;
+    const next = { ...j, card, told: [...(j.told ?? []), { at: now, text: said }] };
+    await this.save(next);
+    return next;
+  }
+
   private async tokensToday(person: string, now: number): Promise<number> {
     const t = await this.storage.get<{ day: string; n: number }>(TOKENS(person));
     return t?.day === new Date(now).toISOString().slice(0, 10) ? t.n : 0;
@@ -848,7 +907,8 @@ export class Jobs {
         return this.finish(j, deps, now, { error: `none of the teams found anything (${why})` });
       }
       // A written report's check, and a team's plan and merge, start the way a job does, so they are cancelled the same way.
-      const s = await (j.draft ? deps.check(j, j.draft.responseId, stop) : planning ? deps.plan(j, stop) : team ? deps.merge(j, stop) : deps.start(j, undefined, stop));
+      const s = await (j.draft ? deps.check(j, j.draft.responseId, stop) : planning ? deps.plan(j, stop) : team ? deps.merge(j, stop) : deps.start(j, undefined, stop, (s) => this.note(j.id, s)));
+      await this.noting;
       if ("parked" in s) return this.park(j.id, s.parked, now);
       if ("error" in s) {
         if (stop.aborted) return;
@@ -870,7 +930,7 @@ export class Jobs {
     const polled = j.responseId;
     let step: Step;
     try {
-      step = await deps.poll(j, undefined, stop);
+      step = await deps.poll(j, undefined, stop, (s) => this.note(j.id, s));
     } catch (e) {
       if (!planning) throw e;
       // The plan could not be looked at: once more in 30 seconds, then the fixed angles.
@@ -882,6 +942,8 @@ export class Jobs {
       await deps.cancel(cur).catch(() => {});
       return;
     }
+    // What it said of itself is kept before the job is read again below, or one would be saved over the other.
+    await this.noting;
     if (step.kind === "parked") return this.park(j.id, step.until, now);
     if (step.kind !== "failed") await this.countTokens(j, step.usage, now);
     const usage = step.kind !== "failed" && step.usage ? addUsage(j.usage, step.usage) : j.usage;
@@ -907,6 +969,9 @@ export class Jobs {
       }
       if (j.cut) j.cut = { ...j.cut, sent: true };
       if (step.stuck) j.stuck = true;
+      if (step.nudged) j.nudged = true;
+      if (step.took && j.told) j.told = j.told.map((t, i) => (i < step.took! ? { ...t, taken: true as const } : t));
+      delete j.doing;
       j.responseId = step.responseId;
       j.steps += 1;
       j.updatedAt = now;
@@ -1035,9 +1100,10 @@ export class Jobs {
   private async finish(j: Job, deps: JobDeps, now: number, out: { text: string; cited?: readonly Cited[] } | { error: string; late?: boolean }): Promise<void> {
     const cur = await this.get(j.id);
     if (!cur || cur.status !== "running") return; // cancelled or removed while it ran
-    const done = { ...cur, ...j, finishedAt: now, updatedAt: now };
+    const done = { ...cur, ...j, ...live(cur), finishedAt: now, updatedAt: now };
     delete done.nextAt;
     delete done.parked;
+    delete done.doing;
     if ("error" in out) {
       // The check never costs the report: if it did not finish, the report goes out as written.
       // Nor does the merge cost the teams' reports: unmerged, each goes out as it was written.

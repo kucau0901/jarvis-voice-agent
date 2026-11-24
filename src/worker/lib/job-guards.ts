@@ -21,15 +21,21 @@ export const MAX_SEARCHES = 40;
 /** Dollars of the API key one ordinary job may use. Nothing, on the ChatGPT plan. */
 export const KEY_DOLLARS = 2;
 
+/** A line of its checklist ticked within this many steps: it is getting somewhere, and goes on past its steps (Limits.going). */
+export const GOING_STEPS = 10;
+
 export interface Limits {
   maxMs: number;
   maxSteps: number;
+  /** Steps while its checklist moves. */
+  going: number;
 }
 
 /** What a job has run out of, as its person is told; null while it has not. `cost`, its dollars so far at OpenAI's prices. */
 export function outOf(j: Job, limits: Limits, cost: number | null, now: number): string | null {
   if (now - j.createdAt - (j.waited ?? 0) > limits.maxMs) return `it ran for its ${limits.maxMs / 60_000} minutes`;
-  if (j.steps >= limits.maxSteps) return `it took its ${limits.maxSteps} steps`;
+  const moving = j.ticked !== undefined && j.steps - j.ticked < GOING_STEPS;
+  if (j.steps >= (moving ? limits.going : limits.maxSteps)) return `it took its ${j.steps} steps`;
   // Research has a month's limit of its own, and is asked for at its price.
   if (j.engine === "research") return null;
   if (j.stuck) return "it kept asking the same thing and getting the same answer";
