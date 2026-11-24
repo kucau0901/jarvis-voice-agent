@@ -1467,9 +1467,10 @@ asks, quoted on one line, with a yes to it an answer to that job and no more
 links are shown by their addresses. A question is one card
 (`ui/JobAsk.ts`) wherever it is met: under its alert, in the conversation, in Jobs
 and in Home's Now strip, with its choices as buttons and a box for other words.
-There is no inbox of them. Each is drawn from the job as it stands, so one answered
-by voice or on another screen says what came of it, and one answered on this screen
-says so on every card here. What they told a job is listed in Jobs with whether it
+There is no inbox of them. Each is drawn from the job as it stands, and an open one
+is looked at again while the page is seen (every 8 seconds, after ten minutes every
+minute), so one answered by voice, in words or on another screen says what came of
+it; one answered by a tap says so on every card here at once. What they told a job is listed in Jobs with whether it
 was taken in, waits for the next step, or came too late; a job on the web says
 that an answer may go out in the words of a search.
 

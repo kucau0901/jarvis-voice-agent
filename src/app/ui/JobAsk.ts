@@ -8,7 +8,8 @@ import { button, el } from "./util";
  * and Go on without me. In Jobs (ui/Jobs.ts), under its alert and in the
  * conversation (main.ts), and in Home's Now strip (ui/Now.ts). Answered on
  * one, every card for it on this screen says so; answered elsewhere meanwhile
- * (by voice, on another screen), the card says what came of it.
+ * (in words, on another screen), or its job over, it says so within seconds
+ * (watch).
  *
  * Built with textContent throughout: the question may come from a page the
  * job read, which is to say from strangers.
@@ -36,6 +37,42 @@ function settled(card: HTMLElement, said: string): void {
 function settle(job: string, id: string, said: string): void {
   for (const c of cards(job, id)) if (!c.dataset.said) settled(c, said);
 }
+
+/** How often the cards still open are looked at again: soon, while the question is new, and then less. */
+const SOON_MS = 8_000;
+const LATER_MS = 60_000;
+const NEW_MS = 10 * 60_000;
+let watching = 0;
+let latest = 0;
+/** Jobs not found this many times running, or not this screen's to see: not looked at again. */
+const misses = new Map<string, number>();
+const MISSES = 3;
+
+/** While a card is open and the page is seen, what came of its question, by one look at its job. */
+function watch(key: string): void {
+  latest = Date.now();
+  if (watching) return;
+  const again = async (): Promise<void> => {
+    const open = [...document.querySelectorAll<HTMLElement>(".askcard:not([data-said])")];
+    const jobs = [...new Set(open.map((c) => (c.dataset.ask ?? "").split(":")[0]!))].filter((id) => (misses.get(id) ?? 0) < MISSES);
+    if (!jobs.length) return void (watching = 0);
+    if (document.visibilityState === "visible") {
+      for (const id of jobs) {
+        const j = await readJob(key, id);
+        misses.set(id, j ? 0 : (misses.get(id) ?? 0) + 1);
+        for (const q of j?.asked ?? []) {
+          const said = cameOf(q, j!);
+          if (said) settle(id, q.id, said);
+        }
+      }
+    }
+    watching = setTimeout(() => void again(), Date.now() - latest < NEW_MS ? SOON_MS : LATER_MS);
+  };
+  watching = setTimeout(() => void again(), SOON_MS);
+}
+
+const readJob = (key: string, id: string): Promise<JobView | null> =>
+  api(key, "GET", `/api/v1/jobs?id=${encodeURIComponent(id)}`).then((r) => (r as { job: JobView }).job, () => null);
 
 export interface AskShown {
   /** Above the question, where it is not plain whose it is; none where its own words are above the card. */
@@ -99,12 +136,13 @@ export function askCard(key: string, j: Of, q: JobAsk, shown: AskShown = {}): HT
   // What a job on the web is told may go out again in the words of a search.
   if (j.reach === "web") foot.appendChild(el("small", "pagesaid", "This job searches the web: your answer may be part of a search."));
   card.append(typing, foot, problem);
+  watch(key);
   return card;
 }
 
 /** A question as it stands: what came of it, or that it may be answered; null where this screen may not see its job, or it is gone. */
 async function look(key: string, job: string, id: string): Promise<{ j: JobView; q: JobAsked; said: string | null } | null> {
-  const j = await api(key, "GET", `/api/v1/jobs?id=${encodeURIComponent(job)}`).then((r) => (r as { job: JobView }).job, () => null);
+  const j = await readJob(key, job);
   const q = j?.asked?.find((x) => x.id === id);
   return j && q ? { j, q, said: cameOf(q, j) } : null;
 }
