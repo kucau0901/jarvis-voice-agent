@@ -633,6 +633,16 @@ assumptions?}` changes the card of one still working (each list is given whole);
 what was changed reaches the job at its next step, and `told: [{at, text,
 taken?}]` says which changes it has had.
 
+`POST /api/v1/jobs/tell {id, text}` tells one still working anything, in its
+person's own words, up to 1,000 characters: it takes it in at its next step. A
+job may also ask its person something, three times at most: its view carries
+`asks: [{id, at, text, choices}]` (what it has not been answered), and an alert
+says so at once, with `ask: {job, id}` and no `job`, since it is not the result.
+`POST /api/v1/jobs/tell {id, question, text}` answers one (`question` is its id,
+or `open` for all of them), and `{id, question, skip: true}` goes on without. With
+nothing else to do, a job waits for the answer a day, its status still `running`
+and `waiting: {for: "you", until}` in its view; it is not one of the three running.
+
 Its answer carries `missing`, what was asked for and not got, and `assumed`,
 what was taken for granted: a list each, absent when there is nothing. They are
 not in `result`, and come before it in the alert. An address in the answer that

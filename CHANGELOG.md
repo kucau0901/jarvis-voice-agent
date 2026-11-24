@@ -141,6 +141,14 @@ of every release, and in the [README](README.md#updating).
   checklist is the job's own, so a small job has none. For devices:
   `POST /api/v1/jobs/card`, and new fields in `/api/v1/jobs` (`docs/api.md`).
 
+- **A background job can ask you, and you can tell it things.** When something
+  only you can settle would change the result ("front only, or front and
+  rear?"), a job asks, up to three times, and goes on with the rest meanwhile.
+  With nothing else to do it waits a day for you, and no answer is ever assumed:
+  **Go on without me** is yours to press. You may also tell a working job
+  anything ("only ones without a contract"). For devices:
+  `POST /api/v1/jobs/tell`, and alerts with a new field, `ask` (`docs/api.md`).
+
 - **A job's result says first what it could not do**, and what it took for
   granted: in the alert, in **Jobs** and when you ask about it. A link in it
   that the job never opened or was shown is marked "(not checked)", and Jobs

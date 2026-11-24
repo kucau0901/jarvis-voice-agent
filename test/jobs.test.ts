@@ -12,6 +12,7 @@ import {
   KEEP_JOBS,
   MAX_JOB_MS,
   MAX_RUNNING,
+  MAX_WAITING,
   MAX_STEPS,
   MAX_STEPS_GOING,
   RESEARCH_CHECK_MS,
@@ -42,7 +43,7 @@ import type { Alert, Delivery } from "../src/worker/lib/alerts.ts";
 import type { UsageEntry } from "../src/worker/lib/usage.ts";
 import { MAX_TRIES, beginCalls } from "../src/worker/lib/job-chain.ts";
 import { tells } from "../src/worker/lib/job-brief.ts";
-import { changeCard, untold, unfinished, workTools, type JobCard, type Said, type Todo } from "../src/worker/lib/job-tools.ts";
+import { ASK_MS, changeCard, untold, unfinished, workTools, type Asked, type JobCard, type Said, type Todo } from "../src/worker/lib/job-tools.ts";
 import { GOING_STEPS, KEY_DOLLARS, MAX_SEARCHES, NOTE_AT, NOT_RUN, REFUSE_AT, STUCK_AT, runGuarded } from "../src/worker/lib/job-guards.ts";
 import { RESULT_KEPT, RESULT_MAX, capResults, flagLines, flagsOf, noteLinks, readResult } from "../src/worker/lib/job-results.ts";
 import { linksIn, markUnseen, searchedIn } from "../src/worker/lib/links.ts";
@@ -463,6 +464,124 @@ console.log("\nits checklist moving, it goes on past its steps");
   check(`ticked within ${GOING_STEPS} steps: it goes on until that long has passed`, on.wrapped === `it took its ${20 + GOING_STEPS} steps`, on);
   const most = await going([5, 12, 20, 27, 34, 41, 48, 55]);
   check(`never past ${MAX_STEPS_GOING}`, most.wrapped === `it took its ${MAX_STEPS_GOING} steps`, most);
+}
+
+console.log("\na job asks its person, and is told things");
+{
+  // The tool: three at most, whatever the look, each kept at once.
+  const kept: Said[] = [];
+  const tool = (asked: Asked[] = []) => workTools({ asked }, async (s) => void kept.push(structuredClone(s))).find((t) => t.name === "ask_person")!;
+  const ask = async (t: ReturnType<typeof tool>, args: Record<string, unknown>) => String(await t.run({ choices: [], ...args }, {} as never));
+  const t1 = tool();
+  const first = await ask(t1, { question: "  Front only, or front and rear? ", choices: ["Front only", " ", "Front and rear", 7] });
+  check("asked, with its choices, and told to go on and never assume", /as question 1/.test(first) && /never assume/.test(first) && JSON.stringify(kept) === JSON.stringify([{ ask: { text: "Front only, or front and rear?", choices: ["Front only", "Front and rear"] } }]), { first, kept });
+  await ask(t1, { question: "How much?", choices: ["Only one"] });
+  check("one choice is none: it is open", kept[1]!.ask!.choices.length === 0);
+  const t2 = tool([{ id: "q1", at: T0, text: "x", choices: [] }, { id: "q2", at: T0, text: "y", choices: [] }]);
+  check("the next look counts those before: a third, then no more", /as question 3/.test(await ask(t2, { question: "Whose?" })) && /asked 3 times/.test(await ask(t2, { question: "And?" })) && kept.length === 3);
+  check("no question, nothing asked", /no question/.test(await ask(tool(), { question: "  " })) && kept.length === 3);
+
+  // Through the job: told of it at once, waiting only with nothing else to do.
+  const h = harness();
+  const j = (await h.jobs.create({ title: "Dashcams", task: "x" }, BY, T0)) as Job;
+  await h.jobs.tick(T0);
+  h.deps.poll = async (_j, _t, _s, say) => {
+    await say!({ ask: { text: "Front only, or front and rear?", choices: ["Front only", "Front and rear"] } });
+    return { kind: "continued", responseId: "resp_2" };
+  };
+  await h.jobs.tick(T0 + 10_000);
+  await new Promise((r) => setTimeout(r, 5));
+  const going = (await h.jobs.get(j.id))!;
+  check("it goes on working", going.status === "running" && going.responseId === "resp_2" && !going.waits && going.asked?.[0]!.id === "q1", going);
+  check("its person is told at once, under the job's name, and it is not its result", h.sent.length === 1 && h.sent[0]!.title === "A question: Dashcams" && h.sent[0]!.text === "Front only, or front and rear?\n\n- Front only\n- Front and rear" && JSON.stringify(h.sent[0]!.ask) === JSON.stringify({ job: j.id, id: "q1" }) && h.sent[0]!.job === undefined && h.sent[0]!.speak, h.sent);
+  const asking = await h.jobs.asking("owner");
+  check("it is listed as asking them, and nobody else", asking.length === 1 && asking[0]!.id === j.id && (await h.jobs.asking("u_sara")).length === 0);
+  const view = jobView(going) as { asks?: { id: string }[]; asked?: unknown; waiting?: unknown };
+  check("its view says what it asks, and that it is still at it", view.asks?.[0]!.id === "q1" && view.waiting === undefined && view.asked === undefined);
+  h.deps.poll = async () => ({ kind: "asks" });
+  await h.jobs.tick(T0 + 60_000);
+  const waits = (await h.jobs.get(j.id))!;
+  check("with nothing else to do it waits for them, a day", waits.waits?.since === T0 + 60_000 && waits.nextAt === T0 + 60_000 + ASK_MS && waits.status === "running" && JSON.stringify(jobView(waits).waiting) === JSON.stringify({ for: "you", until: T0 + 60_000 + ASK_MS }), waits);
+  const n = h.log.length;
+  await h.jobs.tick(T0 + 3_600_000);
+  check("and is asked nothing meanwhile", h.log.length === n);
+  for (let i = 0; i < MAX_RUNNING; i++) check(`a job that waits is not one of the running (${i + 1})`, typeof (await h.jobs.create({ task: `t${i}` }, BY, T0 + 3_600_000)) !== "string");
+  check("…and they are still three at most", typeof (await h.jobs.create({ task: "more" }, BY, T0 + 3_600_000)) === "string");
+
+  check("a secret is not passed on", /payment card/.test(String(await h.jobs.tell(j.id, { text: "use 4111 1111 1111 1111", question: "q1" }))) && /one-time code/.test(String(await h.jobs.tell(j.id, { text: "my OTP is 482913" }))));
+  check("nothing to tell, and a question that is not there", /nothing to tell/.test(String(await h.jobs.tell(j.id, { text: " ", question: "q1" }))) && /not waiting/.test(String(await h.jobs.tell(j.id, { text: "x", question: "q9" }))));
+  const told = (await h.jobs.tell(j.id, { text: "Front and rear", question: "q1" }, T0 + 7_200_000)) as Job;
+  check("answered: due at once, what it waited not its time, and said in their words by its number",
+    told.nextAt === T0 + 7_200_000 && !told.waits && told.waited === 7_200_000 - 60_000 && told.asked?.[0]!.answer?.text === "Front and rear" && told.told?.at(-1)!.text === "My answer to your question 1: Front and rear" && (await h.jobs.nextWake(T0 + 7_200_000)) === T0 + 7_200_000, told);
+  check("answered once", /not waiting/.test(String(await h.jobs.tell(j.id, { text: "Front", question: "q1" }))) && (await h.jobs.asking("owner")).length === 0);
+  const items = untold(told);
+  check("it goes as their own message", items.length === 1 && (items[0] as { role: string }).role === "user" && /My answer to your question 1: Front and rear/.test(JSON.stringify(items)), items);
+  h.deps.poll = async () => ({ kind: "continued", responseId: "resp_3", took: 1 });
+  await h.jobs.tick(T0 + 7_200_000);
+  check("…and is taken in by the step it goes with", (await h.jobs.get(j.id))!.told?.[0]!.taken === true);
+  check("a change, at any time, as they said it", ((await h.jobs.tell(j.id, { text: "And only ones sold in Johor" })) as Job).told?.at(-1)!.text === "And only ones sold in Johor");
+
+  // They go on without it; or never answer.
+  const two: Asked[] = [{ id: "q1", at: T0, text: "How much?", choices: [] }, { id: "q2", at: T0, text: "Whose?", choices: [] }];
+  const fresh = async (over: Partial<Job> = {}, steps: Step[] = []) => {
+    const x = harness(steps);
+    const k = (await x.jobs.create({ title: "K", task: "x" }, BY, T0)) as Job;
+    await x.storage.put(`job:${k.id}`, { ...k, responseId: "resp_1", steps: 1, asked: two, waits: { since: T0 }, nextAt: T0 + ASK_MS, ...over });
+    return { x, k };
+  };
+  const skip = await fresh();
+  const skipped = (await skip.x.jobs.tell(skip.k.id, { question: "open", skip: true }, T0 + 5)) as Job;
+  check("gone on without: both, told so by Jarvis and not as an answer", skipped.asked?.every((q) => q.over === "skipped") === true && skipped.told?.length === 1 && skipped.told[0]!.by === "jarvis" && /without answering questions 1 and 2\. Do not assume/.test(skipped.told[0]!.text) && (untold(skipped)[0] as { role: string }).role === "developer", skipped);
+  const both = await fresh();
+  check("one answer to both, by voice", ((await both.x.jobs.tell(both.k.id, { text: "RM500, for Mum", question: "open" }, T0 + 5)) as Job).told?.[0]!.text === "My answer to your questions 1 and 2: RM500, for Mum");
+  const late = await fresh({}, [{ kind: "continued", responseId: "resp_2", took: 1 }, { kind: "done", text: "SUMMARY: Without it." }]);
+  await late.x.jobs.tick(T0 + ASK_MS);
+  const gone = (await late.x.jobs.get(late.k.id))!;
+  check("a day with no answer: it goes on without one, and none is made up", gone.asked?.every((q) => q.over === "late" && !q.answer) === true && gone.told?.[0]!.by === "jarvis" && /No answer came to questions 1 and 2/.test(gone.told[0]!.text) && gone.responseId === "resp_2" && !gone.waits && gone.waited === ASK_MS, gone);
+  check("…and that day is not its time", (await drive(late.x, late.k.id, T0 + ASK_MS + 60_000)).status === "done");
+  const early = await fresh();
+  await early.x.storage.put(`job:${early.k.id}`, { ...(await early.x.jobs.get(early.k.id))!, nextAt: T0 });
+  await early.x.jobs.tick(T0 + 60_000);
+  check("woken early, it waits on", (await early.x.jobs.get(early.k.id))!.nextAt === T0 + ASK_MS && early.x.log.every((l) => !l.startsWith("poll")));
+  const raced = await fresh({ waits: undefined, nextAt: T0, told: [{ at: T0, text: "My answer to your question 1: RM500" }] }, [{ kind: "asks" }]);
+  await raced.x.jobs.tick(T0);
+  check("answered as it went to wait: it does not wait", !(await raced.x.jobs.get(raced.k.id))!.waits && (await raced.x.jobs.nextWake(T0)) === T0);
+  const many = await fresh({ waits: undefined, nextAt: T0 }, [{ kind: "asks" }]);
+  for (let i = 0; i < MAX_WAITING; i++) {
+    const o = (await many.x.jobs.create({ task: `o${i}` }, BY, T0 + i)) as Job;
+    await many.x.storage.put(`job:${o.id}`, { ...o, asked: two, waits: { since: T0 }, nextAt: T0 + ASK_MS });
+  }
+  await many.x.jobs.tick(T0);
+  check(`${MAX_WAITING} of theirs waiting already: it goes on without`, (await many.x.jobs.get(many.k.id))!.asked?.every((q) => q.over === "late") === true && !(await many.x.jobs.get(many.k.id))!.waits);
+  const cancelled = await fresh();
+  const c = (await cancelled.x.jobs.cancel(cancelled.k.id, T0 + 5)) as Job;
+  check("stopped while it waits", c.status === "cancelled" && !c.waits && (await cancelled.x.jobs.asking("owner")).length === 0);
+  check("it ended: too late to tell", /not working any more/.test(String(await cancelled.x.jobs.tell(cancelled.k.id, { text: "x" }))));
+  const cut = await fresh({ waits: undefined, cut: { why: "it took its 25 steps" } });
+  check("out of its budget: too late", /has run out/.test(String(await cut.x.jobs.tell(cut.k.id, { text: "x" }))));
+  const res = (await h.jobs.create({ task: "r", engine: "research" }, { who: "u_adam", grants: ["*"] }, T0)) as Job;
+  check("only an ordinary job is told anything", /only an ordinary job/.test(String(await h.jobs.tell(res.id, { text: "x" }))));
+  const missing = await fresh({ waits: undefined, nextAt: T0, cut: { why: "it took its 25 steps", sent: true } }, [{ kind: "done", text: "SUMMARY: Not finished." }]);
+  const ended = await drive(missing.x, missing.k.id);
+  check("out of its budget with a question open: that answer is what is missing", ended.missing?.join("|") === "Your answer to: How much?|Your answer to: Whose?", ended.missing);
+  const limit = await fresh({ waits: undefined, asked: undefined });
+  for (let i = 0; i < 12; i++) await limit.x.jobs.tell(limit.k.id, { text: `change ${i}` });
+  check("ten changes at most", (await limit.x.jobs.get(limit.k.id))!.told?.length === 10 && /10 changes at most/.test(String(await limit.x.jobs.tell(limit.k.id, { text: "more" }))));
+}
+
+console.log("\ntelling a job, over HTTP");
+{
+  const asked: unknown[] = [];
+  const job = { id: "jx", title: "x", task: "x", engine: "jarvis", status: "running", createdBy: "u_sara", grants: ["*"], createdAt: T0, updatedAt: T0, steps: 1, attempts: 0 } as Job;
+  const stub = { getJob: async (id: string) => (id === "jx" ? job : undefined), tellJob: async (id: string, input: unknown) => (asked.push([id, input]), (input as { text?: string }).text === "no" ? "it has run out" : job) };
+  const env = { STATE: { idFromName: () => "j", get: () => stub } } as never;
+  const url = new URL("https://jarvis.example/api/v1/jobs/tell");
+  const post = (body: unknown, person: string, method = "POST") =>
+    handleJobs(new Request(url, { method, ...(method === "POST" ? { body: JSON.stringify(body) } : {}) }), env, url, { kind: "member", id: person, name: person, role: "adult", scopes: ["ask"] } as never);
+  const ok = (await post({ id: "jx", text: "Front and rear", question: "q1", extra: "y" }, "u_sara"))!;
+  check("their own, with those and nothing else", ok.status === 200 && JSON.stringify(asked) === JSON.stringify([["jx", { text: "Front and rear", question: "q1" }]]), { status: ok.status, asked });
+  check("somebody else's is not there", (await post({ id: "jx", text: "mine" }, "u_adam"))!.status === 404 && asked.length === 1);
+  check("why not, said; POST only; ask reaches it", (await post({ id: "jx", text: "no" }, "u_sara"))!.status === 400 && (await post(null, "u_sara", "GET"))!.status === 405 && requiredScope("/api/v1/jobs/tell", "POST") === "ask");
 }
 
 console.log("\nchanging a job's card, over HTTP");
@@ -2133,6 +2252,20 @@ console.log("\njobs on the owner's ChatGPT plan (routes/jobs.ts): streamed here,
     const linked = await engine.poll({ ...jlink, responseId: "plan_m.1" });
     check("its answer's links: those it saw as they are, one it did not said to be unchecked",
       linked.kind === "done" && linked.text === "SUMMARY: See https://opened.example and https://brief.example/a, or https://made.up.example/x (not checked).", linked);
+    // What it asked, unanswered: its answer so far is not the end, and it waits, asked nothing.
+    const jq = { ...job, id: "jq", asked: [{ id: "q1", at: T0, text: "How much?", choices: [] }] } as Job;
+    answers.push(says("SUMMARY: So far."));
+    await engine.start(jq);
+    const nq = sent.length;
+    check("an answer with its question open: it waits, and nothing is sent", (await engine.poll({ ...jq, responseId: "plan_m.0" })).kind === "asks" && sent.length === nq);
+    answers.push(says("SUMMARY: Under RM500."));
+    const withIt = await engine.poll({ ...jq, responseId: "plan_m.0", asked: [{ ...jq.asked![0]!, answer: { at: T0, text: "RM500" } }], told: [{ at: T0, text: "My answer to your question 1: RM500" }] });
+    check("answered: it goes on with it", withIt.kind === "continued" && withIt.took === 1 && /question 1: RM500/.test(JSON.stringify(sent.at(-1)!.body.input.at(-1))), withIt);
+    answers.push(says("SUMMARY: Without."));
+    const without = await engine.poll({ ...jq, id: "jq", responseId: "plan_m.1", asked: [{ ...jq.asked![0]!, over: "late" }], told: [{ at: T0, text: "x", taken: true }, { at: T0, text: "No answer came to question 1.", by: "jarvis" }] });
+    check("never answered: told so as Jarvis, not as them", without.kind === "continued" && sent.at(-1)!.body.input.at(-1)!.role === "developer", sent.at(-1)!.body.input.at(-1));
+    check("out of its budget, it is not waited for", (await engine.poll({ ...jq, responseId: "plan_m.1", cut: { why: "x", sent: true } })).kind === "done");
+
     // Its checklist unfinished: asked once to finish it.
     const open: Todo[] = [{ text: "Find three", state: "done" }, { text: "Check the prices", state: "doing" }];
     const jn2 = { ...job, id: "jnudge", todo: open, card: { outcome: "x", limits: [], assumptions: [] } } as Job;
@@ -2332,7 +2465,7 @@ console.log("\na job reads its person's own things, or the web, never both");
     check("…as themselves, with what is saved about them", /Sara/.test(mine.said) && /peanuts/.test(mine.said), mine.said.slice(0, 900));
     check("…told so", /NOT the web/.test(mine.said) && !/You can search the web/.test(mine.said));
     const web = await of({ reach: "web" });
-    check("web: searches, the time, what a place is like, and its own card, checklist and reading on: nothing else at all", web.tools.sort().join() === "job_plan,job_tick,place_info,read_result,time_in,web_search", web.tools);
+    check("web: searches, the time, what a place is like, and its own card, checklist, questions and reading on: nothing else at all", web.tools.sort().join() === "ask_person,job_plan,job_tick,place_info,read_result,time_in,web_search", web.tools);
     check("…not even who is asking, what is saved about them, or the family", !/Sara|Sasa|3 March|peanuts|THE FAMILY|CARS THEY/.test(web.said), web.said.slice(0, 600));
     check("…though where they are stays, for prices and what is near", /Malaysia|Kuala_Lumpur/.test(web.said));
     check("…and it is told what it lacks", /NOTHING of the user's own/.test(web.said));

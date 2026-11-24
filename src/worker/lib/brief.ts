@@ -297,7 +297,7 @@ export function jobsSection(jobs: readonly Job[], since: number): Section | null
   const running = jobs.filter((j) => j.status === "running");
   const ended = jobs.filter((j) => (j.status === "done" || j.status === "failed") && (j.finishedAt ?? 0) > since);
   const lines = [
-    ...running.slice(0, MAX_LISTED).map((j) => `- ${plain(j.title, 70)}: still working`),
+    ...running.slice(0, MAX_LISTED).map((j) => `- ${plain(j.title, 70)}: ${j.waits ? "waits for their answer" : "still working"}`),
     ...ended.slice(0, MAX_LISTED).map((j) => `- ${plain(j.title, 70)}: ${j.status === "done" ? "done" : j.result ? "part done" : "failed"}`),
   ];
   return lines.length ? { head: "Jobs", lines } : null;

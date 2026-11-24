@@ -8,7 +8,8 @@ import { tidy } from "./quote.ts";
 import { costOf, type UsageEntry } from "./usage.ts";
 import { clearChain } from "./job-chain.ts";
 import { outOf, type Limits } from "./job-guards.ts";
-import { MAX_TOLD, changeCard, doneLines, openLines, type JobCard, type Said, type Todo, type Told } from "./job-tools.ts";
+import { ASK_MS, MAX_ASKED, MAX_TOLD, changeCard, doneLines, numbered, openLines, openQuestions, unanswered, type Asked, type JobCard, type Said, type Todo, type Told } from "./job-tools.ts";
+import { secretShaped } from "./memory-guard.ts";
 import { flagLines, flagsOf, type Flags } from "./job-results.ts";
 
 /**
@@ -138,6 +139,9 @@ export interface Job {
   doing?: string[];
   /** What its person told it while it worked. */
   told?: Told[];
+  /** What it asked them; and, with nothing left to do until they answer, since when it waits. */
+  asked?: Asked[];
+  waits?: { since: number };
   /** Asked once already to finish its checklist. */
   nudged?: true;
 }
@@ -146,15 +150,17 @@ export interface Job {
 function flagged(j: Job, f: Flags): Flags {
   const open = openLines(j.todo).map((t) => t.text);
   const dropped = (j.todo ?? []).flatMap((t) => (t.state === "dropped" ? [`${t.text}${t.why ? `: ${t.why}` : ""}`] : []));
-  return { missing: [...(f.missing.length ? f.missing : dropped), ...open], assumed: f.assumed.length ? f.assumed : (j.card?.assumptions ?? []) };
+  const asked = openQuestions(j.asked).map((q) => `Your answer to: ${q.text}`);
+  return { missing: [...(f.missing.length ? f.missing : dropped), ...open, ...asked], assumed: f.assumed.length ? f.assumed : (j.card?.assumptions ?? []) };
 }
 
 /** What is kept while a step runs (note), not by whoever is looking at the job: never saved over by a record read before it. */
-const live = ({ card, todo, ticked, told }: Job): Partial<Job> => ({
+const live = ({ card, todo, ticked, told, asked }: Job): Partial<Job> => ({
   ...(card ? { card } : {}),
   ...(todo ? { todo } : {}),
   ...(ticked !== undefined ? { ticked } : {}),
   ...(told ? { told } : {}),
+  ...(asked ? { asked } : {}),
 });
 
 /** A page the web search cited: what a report's Sources list is made of. */
@@ -251,6 +257,8 @@ export type Step =
   | { kind: "done"; text: string; cited?: Cited[]; usage?: Job["usage"] }
   /** The plan is at its limit: nothing was asked, and it goes on from here then. */
   | { kind: "parked"; until: number }
+  /** It has nothing left to do until its person answers what it asked them: looked at again then, so counted then. */
+  | { kind: "asks" }
   | { kind: "failed"; error: string };
 
 /** A step started: its response id, the plan to wait for, or why it could not start. */
@@ -289,8 +297,10 @@ const T = "jobtable:";
 /** A person's jobs today, by person (lib/context.ts): one member cannot spend the family's day. */
 const DAY = (person: string) => `jobs:day:${person}`;
 
-/** Each a person's own: one member's jobs neither block nor prune another's. */
+/** Each a person's own: one member's jobs neither block nor prune another's. One that waits for its person is not running. */
 export const MAX_RUNNING = 3;
+/** And this many of theirs may wait for an answer. */
+export const MAX_WAITING = 5;
 /** Running in the whole house at once, besides questions for Hermes: they share the owner's one plan with the family's own questions. */
 export const HOUSE_RUNNING = 6;
 /** Looked at at once, besides Hermes: on the plan each is a stream. */
@@ -319,6 +329,8 @@ export const MAX_JOB_MS = 60 * 60_000;
 /** Out of time, it is let finish the step it is on and write what it has for this long more, and is then stopped. */
 export const WRAP_MS = 15 * 60_000;
 const MAX_TASK = 4000;
+/** What a person tells a job at once. */
+const MAX_TELL = 1000;
 /** Kept whole in the Jobs panel; the alert carries only the summary. */
 const MAX_RESULT = 20_000;
 /** How long to wait before looking again: quickly at first, then less often. */
@@ -505,7 +517,7 @@ export function parseAngles(text: string): TeamAngle[] | null {
 export const sharesLeft = (j: Job, t: number): number => Math.max(0, SHARES_PER_TEAM - j.team!.board.filter((b) => b.team === t).length);
 
 /** What happened to one team's chain: it started, a look at it, a look that threw, or it was stopped. */
-export type TeamEvent = { started: string } | { step: Exclude<Step, { kind: "parked" }> } | { threw: string } | { stopped: string };
+export type TeamEvent = { started: string } | { step: Exclude<Step, { kind: "parked" | "asks" }> } | { threw: string } | { stopped: string };
 
 /**
  * One event applied to team `t`: the job as it is after, with the step's
@@ -562,6 +574,31 @@ function resumed(j: Job, now: number): Job {
   const { parked, ...rest } = j;
   return parked ? { ...rest, waited: (j.waited ?? 0) + Math.max(0, now - parked.since) } : j;
 }
+
+/** A job that waited for its person and no longer does: due now, and how long it waited is not its time. */
+function heard(j: Job, now: number): Job {
+  const { waits, ...rest } = j;
+  return waits ? { ...rest, waited: (j.waited ?? 0) + Math.max(0, now - waits.since), nextAt: now } : j;
+}
+
+/** What it asked will not be answered: it is told so, and goes on. Nothing is made up for its person. */
+function unheard(j: Job, now: number): Job {
+  const open = openQuestions(j.asked);
+  const ids = new Set(open.map((q) => q.id));
+  const next = heard(j, now);
+  return {
+    ...next,
+    nextAt: now,
+    asked: (j.asked ?? []).map((q) => (ids.has(q.id) ? { ...q, over: "late" as const } : q)),
+    told: [...(j.told ?? []), ...(open.length ? [{ at: now, text: unanswered(numbered(j.asked ?? [], open), "late"), by: "jarvis" as const }] : [])],
+  };
+}
+
+/** A question of a job's, as its person is told of it: the job's words, under the job's name. */
+const askAlert = (j: Job, q: Asked): Alert => ({
+  ...makeAlert({ title: `A question: ${j.title}`, text: `${q.text}${q.choices.length ? `\n\n${q.choices.map((c) => `- ${c}`).join("\n")}` : ""}` }, "job", q.at, personOfWho(j.createdBy))!,
+  ask: { job: j.id, id: q.id },
+});
 
 /** Every response the job has running at OpenAI: its own, and each working team's. */
 export function responseIdsOf(j: Job): string[] {
@@ -684,11 +721,11 @@ export class Jobs {
     const team = engine === "research" && (input.team === true || table);
     const all = await this.list();
     const person = personOfWho(by.who);
-    if (all.filter((j) => j.status === "running" && personOfWho(j.createdBy) === person).length >= MAX_RUNNING) {
+    if (all.filter((j) => j.status === "running" && !j.waits && personOfWho(j.createdBy) === person).length >= MAX_RUNNING) {
       return `${MAX_RUNNING} jobs are already running; wait for one to finish`;
     }
     if (team && all.some((j) => j.status === "running" && j.team)) return "a research team is already working; wait for it to finish";
-    if (engine !== "hermes" && all.filter((j) => j.status === "running" && j.engine !== "hermes").length >= HOUSE_RUNNING) {
+    if (engine !== "hermes" && all.filter((j) => j.status === "running" && !j.waits && j.engine !== "hermes").length >= HOUSE_RUNNING) {
       return `${HOUSE_RUNNING} jobs are already running in the house; wait for one to finish`;
     }
     const today = new Date(now).toISOString().slice(0, 10);
@@ -751,6 +788,7 @@ export class Jobs {
     delete j.nextAt;
     delete j.parked;
     delete j.doing;
+    delete j.waits;
     if (j.team) j.team = slimTeam(j.team);
     await this.save(j);
     // A step streaming here is let go at once, rather than paid for to its end.
@@ -858,13 +896,18 @@ export class Jobs {
         const cur = await this.stillRunning(id);
         if (!cur) return;
         const ticked = s.todo && doneLines(s.todo) > doneLines(cur.todo);
+        const asked = cur.asked ?? [];
+        const q: Asked | null = s.ask && asked.length < MAX_ASKED ? { id: `q${asked.length + 1}`, at: Date.now(), ...s.ask } : null;
         await this.save({
           ...cur,
           ...(s.card && !cur.card ? { card: s.card } : {}),
           ...(s.todo ? { todo: s.todo } : {}),
           ...(ticked ? { ticked: cur.steps } : {}),
           ...(s.doing ? { doing: s.doing } : {}),
+          ...(q ? { asked: [...asked, q] } : {}),
         });
+        // Kept first, so an answer finds it; told beside the step, which does not wait for a push.
+        if (q) void this.deps().then((d) => d.deliver(askAlert(cur, q))).catch(() => {});
       })
       .catch((e) => console.warn("job", id, "not noted:", e instanceof Error ? e.message : String(e)));
     return this.noting;
@@ -884,6 +927,58 @@ export class Jobs {
     return next;
   }
 
+  /**
+   * Its person tells it something while it works: a change, or the answer to
+   * what it asked (`question`: its id, or "open" for all it waits on; `skip`,
+   * to go on without). It goes as they said it, at its next step, and widens
+   * nothing: what it may reach is by what it is handed.
+   */
+  async tell(id: string, input: { text?: unknown; question?: unknown; skip?: unknown }, now = Date.now()): Promise<Job | string> {
+    const j = await this.stillRunning(id);
+    if (!j) return "it is not working any more";
+    if (j.engine !== "jarvis") return "only an ordinary job can be told anything while it works";
+    if (j.cut) return "it has run out, and is writing what it has";
+    const asked = j.asked ?? [];
+    const open = openQuestions(asked);
+    const which = input.question === undefined || input.question === null ? [] : input.question === "open" ? open : open.filter((q) => q.id === input.question);
+    if (input.question !== undefined && input.question !== null && !which.length) return "that question is not waiting for an answer";
+    const skip = input.skip === true && which.length > 0;
+    const text = skip ? "" : clean(input.text, MAX_TELL);
+    if (!skip && !text) return "there is nothing to tell it";
+    const secret = secretShaped(text);
+    if (secret) return `not passed on: ${secret.replace(", which memory does not keep", "")}, which a job is never given`;
+    if (!which.length && (j.told ?? []).filter((t) => t.by !== "jarvis").length >= MAX_TOLD) return `a job is told of ${MAX_TOLD} changes at most`;
+    const said: Told = skip
+      ? { at: now, text: unanswered(numbered(asked, which), "skipped"), by: "jarvis" }
+      : { at: now, text: which.length ? `My answer to your ${numbered(asked, which)}: ${text}` : text };
+    const ids = new Set(which.map((q) => q.id));
+    const next = heard({
+      ...j,
+      told: [...(j.told ?? []), said],
+      ...(ids.size ? { asked: asked.map((q) => (ids.has(q.id) ? { ...q, ...(skip ? { over: "skipped" as const } : { answer: { at: now, text } }) } : q)) } : {}),
+    }, now);
+    await this.save(next);
+    return next;
+  }
+
+  /** The jobs of a person's that have asked them something and not had it. */
+  async asking(person: string): Promise<Job[]> {
+    const out: Job[] = [];
+    for (const id of (await this.waiting()).keys()) {
+      const j = await this.stillRunning(id);
+      if (j && personOfWho(j.createdBy) === person && openQuestions(j.asked).length) out.push(j);
+    }
+    return out.sort((a, b) => a.createdAt - b.createdAt);
+  }
+
+  /** It has nothing left to do until its person answers: it waits, unless they have by now, or too many of theirs wait already. */
+  private async waitFor(j: Job, now: number): Promise<void> {
+    if ((j.told ?? []).some((t) => !t.taken)) return this.save({ ...j, nextAt: now });
+    const others = (await this.asking(personOfWho(j.createdBy))).filter((o) => o.id !== j.id && o.waits).length;
+    if (others >= MAX_WAITING) return this.save(unheard(j, now));
+    return this.save({ ...j, waits: { since: now }, nextAt: now + ASK_MS, updatedAt: now });
+  }
+
   private async tokensToday(person: string, now: number): Promise<number> {
     const t = await this.storage.get<{ day: string; n: number }>(TOKENS(person));
     return t?.day === new Date(now).toISOString().slice(0, 10) ? t.n : 0;
@@ -899,6 +994,12 @@ export class Jobs {
   private async advanceJarvis(j: Job, deps: JobDeps, now: number, stop: AbortSignal): Promise<void> {
     if (j.parked) {
       j = resumed(j, now);
+      await this.save(j);
+    }
+    if (j.waits) {
+      // Woken early (an update): it waits on. A day gone by with no answer, it goes on without one.
+      if (now < j.waits.since + ASK_MS) return this.save({ ...j, nextAt: j.waits.since + ASK_MS });
+      j = unheard(j, now);
       await this.save(j);
     }
     const limits = limitsOf(j.engine);
@@ -970,6 +1071,10 @@ export class Jobs {
     // What it said of itself is kept before the job is read again below, or one would be saved over the other.
     await this.noting;
     if (step.kind === "parked") return this.park(j.id, step.until, now);
+    if (step.kind === "asks") {
+      const asks = await this.stillRunning(j.id);
+      return asks ? this.waitFor(asks, now) : undefined;
+    }
     if (step.kind !== "failed") await this.countTokens(j, step.usage, now);
     const usage = step.kind !== "failed" && step.usage ? addUsage(j.usage, step.usage) : j.usage;
     const cur = await this.stillRunning(j.id);
@@ -1086,6 +1191,8 @@ export class Jobs {
         (x: unknown) => ({ threw: x instanceof Error ? x.message : String(x) }),
       );
       if ("step" in looked && looked.step.kind === "parked") return this.park(cur.id, looked.step.until, now);
+      // A team asks nothing of anyone (routes/jobs.ts): never so.
+      if ("step" in looked && looked.step.kind === "asks") continue;
       const e = looked as TeamEvent;
       if ("step" in e && e.step.kind !== "failed") await this.countTokens(cur, e.step.usage, now);
       const after = await this.stillRunning(j.id);
@@ -1129,6 +1236,7 @@ export class Jobs {
     delete done.nextAt;
     delete done.parked;
     delete done.doing;
+    delete done.waits;
     if ("error" in out) {
       // The check never costs the report: if it did not finish, the report goes out as written.
       // Nor does the merge cost the teams' reports: unmerged, each goes out as it was written.

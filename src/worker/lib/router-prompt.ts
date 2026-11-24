@@ -387,10 +387,10 @@ const JOB_READS: Record<Reach, string> = {
     "search that the search does not need. ",
 };
 
-export const jobInstructions = (reach: Reach): string =>
+export const jobInstructions = (reach: Reach, asks = false): string =>
   "\n\nTHIS IS A BACKGROUND JOB\n" +
   "The user asked for this to be worked on in the background and will read the result " +
-  "later. Nobody is waiting and nobody can answer a question, so take the steps it " +
+  `later. Nobody is waiting${asks ? "" : " and nobody can answer a question"}, so take the steps it ` +
   `needs and do it properly. ${JOB_READS[reach]}` +
   "You cannot ACT: nothing is sent, booked, bought, deleted, " +
   "unlocked or switched by you. A tool marked PROPOSE ONLY does not act: calling it files " +
@@ -418,10 +418,13 @@ export const outOfSteps = (offer: boolean): string =>
 export const JOB_WORK =
   "\n\nHOW TO WORK\n" +
   "Unless one or two lookups will do, first call job_plan: the outcome in one sentence, the limits you " +
-  "will keep to, what you assume because nobody can be asked, and two to eight short steps. The user " +
+  "will keep to, what you assume, and two to eight short steps. The user " +
   "sees it at once and may change it while you work: what they change reaches you as their own message, " +
   "and is theirs to decide. Call job_tick as steps are done, beside your next calls rather than alone. " +
   "Tick only what was really done; drop what cannot be done, with why.\n" +
+  "What only they can settle, and that would change the result, ask with ask_person rather than assume, " +
+  "all you need at once, and go on with the rest meanwhile. What they would not mind you deciding, decide, " +
+  "and say it under ASSUMED.\n" +
   "Do the work rather than describe how it could be done. When a search or a tool gives nothing, try " +
   "other words, another source or a narrower question before giving up on it. Take figures, dates, " +
   "prices and names from what you read, never from memory; what you could not find, say you could not " +

@@ -1439,6 +1439,22 @@ what it was handed. It is drawn in Jobs and under the job's pill in Chat
 is seen and the job works. A Chat screen that asked through a device's token is
 not shown the job its person started, so its pill is as it was.
 
+**A job asks, and is told; an answer is only ever its person's.** What only they
+can settle and would change the result (which of two, how much, for whom) a job
+asks with `ask_person`, three times at most, with choices where there are a few.
+They are told at once, by an alert that carries `ask` and not `job`: it is not the
+result, and the job's pill in the conversation stays at work. The job goes on with
+whatever does not depend on it. With nothing left to do, it gives its answer so far
+and waits (`Job.waits`), nothing asked of any model meanwhile: a day, which is not
+its time, and it is not one of the three running. Answered, it goes on with their
+words, named by the question's number, since the question itself was the job's and
+may have come from a page it read. Gone on without, or a day gone by, it is told
+that as Jarvis (a developer message), never as them, and to say what it leaves
+open: nothing is assumed for them. They may also tell it anything at any time
+(`Jobs.tell`), which joins at its next step, as a change to its card does; what it
+may reach is by what it is handed, so no words of theirs widen it. A card's number,
+a key or a one-time code is refused, whoever asked for it.
+
 **A result says first what it lacks.** A confident report hides its holes, and
 nobody watched it being made. So an answer begins with its summary, then what was
 asked for and not got (`MISSING:`) and what was taken for granted (`ASSUMED:`),
