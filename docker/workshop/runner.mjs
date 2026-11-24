@@ -155,9 +155,10 @@ export function workshop({ work, drop = true, now = () => Date.now(), jobKb = 50
   let loading = null;
   let next = FIRST_UID;
   let saving = Promise.resolve();
-  /** What is running for each job, and the commands it left running, by their ids. */
+  /** What is running for each job, and the commands it left running, by their ids; and each command, until all that follows its end is done. */
   const live = new Map();
   const long = new Map();
+  const going = new Map();
   /** Things being done to each job's files; and whose processes are being ended. */
   const filing = new Map();
   const clearing = new Set();
@@ -280,7 +281,7 @@ export function workshop({ work, drop = true, now = () => Date.now(), jobKb = 50
     });
     if (!live.has(job)) live.set(job, new Set());
     live.get(job).add(child);
-    child.on("exit", () => live.get(job)?.delete(child));
+    for (const e of ["exit", "error"]) child.on(e, () => live.get(job)?.delete(child));
     for (const s of child.stdio) s?.on("error", () => {});
     return child;
   }
@@ -305,11 +306,11 @@ export function workshop({ work, drop = true, now = () => Date.now(), jobKb = 50
     while (clearing.has(job)) await sleep(20);
     clearing.add(job);
     try {
-      for (const c of live.get(job) ?? []) kill(c);
-      if (!drop || j.uid === null) return;
       for (let i = 0; ; i++) {
-        const left = pidsOf(j.uid);
-        if (!left.length) break;
+        // Those it started, by their groups, one not yet its user's included; and all that are its user's.
+        for (const c of live.get(job) ?? []) kill(c);
+        const left = drop && j.uid !== null ? pidsOf(j.uid) : [];
+        if (!left.length && !live.get(job)?.size) break;
         if (i >= 400) {
           // In some forty seconds it would not end. The container ends, and everything in it, and starts again.
           console.error("workshop: a job's processes would not end");
@@ -320,6 +321,7 @@ export function workshop({ work, drop = true, now = () => Date.now(), jobKb = 50
         for (const p of left) signal(p, "SIGKILL");
         await sleep(Math.min(10 + i, 120));
       }
+      if (!drop || j.uid === null) return;
       // Nor what outlives a process: the old kind of shared memory, which other users could be let read.
       const c = start(job, j, ["ipcrm", "--all"], { seconds: 10, stdio: "ignore" });
       await finish(c, 10);
@@ -491,6 +493,9 @@ export function workshop({ work, drop = true, now = () => Date.now(), jobKb = 50
           await measure(job, j);
           return said;
         });
+      if (!going.has(job)) going.set(job, new Set());
+      going.get(job).add(ended);
+      ended.catch(() => {}).finally(() => going.get(job)?.delete(ended));
       if (background) {
         const id = `p${all.size + 1}`;
         p = { child, read, since: at, code: undefined };
@@ -557,6 +562,8 @@ export function workshop({ work, drop = true, now = () => Date.now(), jobKb = 50
       if (!j) return { ended: false };
       await j.ready?.catch(() => {});
       await clear(job, j);
+      // What follows a command's end looks at its folder once more, and would make part of it again.
+      await Promise.allSettled([...(going.get(job) ?? [])]);
       long.delete(job);
       if (j.uid !== null && existsSync(inner(job))) {
         // A folder it closed to itself is opened first.

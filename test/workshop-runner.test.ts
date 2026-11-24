@@ -257,6 +257,17 @@ console.log("\nover");
   const shut = await post("run", { job: "jfail000001", cmd: "echo x" });
   chmodSync(work, 0o711);
   check("a moment it could not write is over when it can", shut.status === 500 && (await post("run", { job: "jfail000001", cmd: "echo x" })).body.out === "x\n" && (await post("run", { job: "jfail000002", cmd: "echo y" })).body.out === "y\n");
+  const ends: unknown[] = [];
+  for (let i = 0; i < 12; i++) {
+    const job = `jbusy00${String(i).padStart(4, "0")}`;
+    await post("run", { job, cmd: "echo x > f; sleep 60", background: true });
+    if (i % 2) void post("run", { job, cmd: "sleep 60" });
+    await new Promise((r) => setTimeout(r, 15 * i));
+    ends.push((await post("end", { job })).body.ended === true && !existsSync(join(work, job)));
+    await new Promise((r) => setTimeout(r, 400));
+    ends.push(!existsSync(join(work, job)));
+  }
+  check("…and all of it, though it was at work when it was ended", ends.every(Boolean), ends);
   clock += 15 * 86_400_000;
   await w.tidy();
   check("one nobody asked about for two weeks is over", !existsSync(join(work, JOB)) && !existsSync(join(work, "jother00001")));
