@@ -1,5 +1,5 @@
 import { fromB64u } from "./webauthn.ts";
-import { fileName } from "./workshop.ts";
+import { apart, fileName } from "./workshop.ts";
 
 /**
  * Photos to ask about: taken with a phone or glasses (routes/voice.ts), or
@@ -66,13 +66,9 @@ export function filesFrom(raw: unknown): AttachedFile[] {
 /** What came with a message, as files on a disk: each under a name of its own. */
 export function asFiles(a: Attached | undefined): { name: string; bytes: Uint8Array }[] {
   const bytes = (url: string) => fromB64u(url.slice(url.indexOf(",") + 1).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""));
-  const out: { name: string; bytes: Uint8Array }[] = [];
-  const add = (name: string, b: Uint8Array) => {
-    const named = fileName(name);
-    const dot = named.lastIndexOf(".") > 0 ? named.lastIndexOf(".") : named.length;
-    out.push({ name: out.some((f) => f.name === named) ? `${named.slice(0, dot)} (${out.length + 1})${named.slice(dot)}` : named, bytes: b });
-  };
-  (a?.images ?? []).forEach((url, i) => add(`photo ${i + 1}.${/^data:image\/(\w+)/.exec(url)?.[1]?.replace("jpeg", "jpg") ?? "jpg"}`, bytes(url)));
-  for (const f of a?.files ?? []) add(f.name, f.kind === "text" ? new TextEncoder().encode(f.data) : bytes(f.data));
-  return out;
+  const named = apart();
+  return [
+    ...(a?.images ?? []).map((url, i) => ({ name: named(`photo ${i + 1}.${/^data:image\/(\w+)/.exec(url)?.[1]?.replace("jpeg", "jpg") ?? "jpg"}`), bytes: bytes(url) })),
+    ...(a?.files ?? []).map((f) => ({ name: named(fileName(f.name)), bytes: f.kind === "text" ? new TextEncoder().encode(f.data) : bytes(f.data) })),
+  ];
 }

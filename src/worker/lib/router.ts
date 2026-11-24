@@ -372,7 +372,7 @@ export async function prepareRouter(
                   ? { type: "input_file" as const, filename: f.name, file_data: f.data }
                   : f.kind === "text"
                     ? { type: "input_text" as const, text: asQuotedData(`file ${f.name}`, f.data, "THE FILE'S AUTHOR") }
-                    : { type: "input_text" as const, text: `The file "${f.name}", which cannot be read here: start_job with mode 'files' and reach 'private' is given it, and can.` },
+                    : { type: "input_text" as const, text: `A file that cannot be read here: start_job with mode 'files' and reach 'private' is given it, and can.\n${asQuotedData("its name", f.name, "WHOEVER NAMED THE FILE")}` },
               ),
             ],
           },

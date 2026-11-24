@@ -4,7 +4,7 @@ import { call, explain, googleConfig, guardTool } from "./google.ts";
 import { ACCOUNT_PARAM, onOne } from "./google-accounts.ts";
 import { asQuotedData } from "./quote.ts";
 import { fromB64u } from "./webauthn.ts";
-import { WorkshopError, fileName, workshopBring, type WorkshopConfig } from "./workshop.ts";
+import { WorkshopError, apart, fileName, workshopBring, type WorkshopConfig } from "./workshop.ts";
 
 /**
  * mail_file: a file attached to one of the user's emails, put in the folder of
@@ -23,16 +23,22 @@ interface Attached {
   data?: string;
 }
 
-/** The files attached to a message, wherever in it they are. */
-export function attachedIn(part: Part | undefined, depth = 0): Attached[] {
-  if (!part || depth > 8) return [];
-  const own = part.filename && (part.body?.attachmentId || part.body?.data) ? [{ name: fileName(part.filename), size: part.body.size ?? 0, id: part.body.attachmentId, data: part.body.data }] : [];
-  return [...own, ...(part.parts ?? []).flatMap((p) => attachedIn(p, depth + 1))];
+/** The files attached to a message, wherever in it they are, each by a name of its own. */
+export function attachedIn(part: Part | undefined): Attached[] {
+  const found = (p: Part | undefined, depth: number): Attached[] =>
+    !p || depth > 8
+      ? []
+      : [
+          ...(p.filename && (p.body?.attachmentId || p.body?.data) ? [{ name: fileName(p.filename), size: p.body.size ?? 0, id: p.body.attachmentId, data: p.body.data }] : []),
+          ...(p.parts ?? []).flatMap((x) => found(x, depth + 1)),
+        ];
+  const named = apart();
+  return found(part, 0).map((f) => ({ ...f, name: named(f.name) }));
 }
 
 const path = (id: string) => `/users/me/messages/${id}`;
 
-export function mailFile(cfg: WorkshopConfig, job: string): Tool {
+export function mailFile(cfg: WorkshopConfig, job: string, stop?: AbortSignal): Tool {
   return {
     name: "mail_file",
     pace: "fast",
@@ -52,10 +58,12 @@ export function mailFile(cfg: WorkshopConfig, job: string): Tool {
       const id = typeof args.message === "string" ? args.message.trim() : "";
       if (!MESSAGE_ID.test(id)) return "That is not a message id: mail_search gives one.";
       const want = typeof args.name === "string" ? args.name.trim() : "";
+      // Its own time, from when its turn comes (lib/workshop-tools.ts).
+      const signal = AbortSignal.any([AbortSignal.timeout(60_000), ...(stop ? [stop] : [])]);
       return onOne(ctx, args.account, (ctx) => guardTool(async () => {
         const g = googleConfig(ctx.env, "https://jarvis.invalid");
         if (!g) return "Gmail is not set up.";
-        const r = await call(ctx.env, g, `${path(id)}?format=full`, { signal: ctx.signal });
+        const r = await call(ctx.env, g, `${path(id)}?format=full`, { signal });
         const problem = explain(r);
         if (problem) return problem;
         const files = attachedIn((r.body as { payload?: Part } | null)?.payload);
@@ -67,7 +75,7 @@ export function mailFile(cfg: WorkshopConfig, job: string): Tool {
         if (f.size > MAX_BYTES) return `That file is over ${MAX_BYTES / 1_000_000} MB, so it was not brought.`;
         let data = f.data;
         if (f.id) {
-          const a = await call(ctx.env, g, `${path(id)}/attachments/${encodeURIComponent(f.id)}`, { signal: ctx.signal });
+          const a = await call(ctx.env, g, `${path(id)}/attachments/${encodeURIComponent(f.id)}`, { signal });
           const problem = explain(a);
           if (problem) return problem;
           data = (a.body as { data?: string } | null)?.data;
@@ -75,8 +83,10 @@ export function mailFile(cfg: WorkshopConfig, job: string): Tool {
         if (!data) return "Gmail did not give that file.";
         try {
           const bytes = fromB64u(data.replace(/=+$/, ""));
-          await workshopBring(cfg, job, f.name, bytes, ctx.signal);
-          return `It is in the folder, ${bytes.length.toLocaleString("en-US")} bytes.\n${asQuotedData("its name", f.name)}`;
+          // Beside no other message's: a year of statements may all have one name.
+          const at = `mail/${id}/${f.name}`;
+          await workshopBring(cfg, job, at, bytes, signal);
+          return `It is in the folder, ${bytes.length.toLocaleString("en-US")} bytes.\n${asQuotedData("where", at)}`;
         } catch (e) {
           if (e instanceof WorkshopError) return `Not done: ${e.message}.`;
           throw e;

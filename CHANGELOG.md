@@ -36,7 +36,7 @@ of every release, and in the [README](README.md#updating).
   programs in a container of its own with no network at all, checks what it
   made, and gives it to you to save, in Chat under its answer and in **Jobs**,
   which also shows what it ran. Ask for one in Chat ("make a spreadsheet of…",
-  with the file attached: any kind of file now, up to 10 MB), or tick **Files**
+  with a file attached: any kind now, up to 10 MB), or tick **Files**
   in Jobs → New job. A job on your own things can also take attachments from
   your mail; one on the web has nothing of yours. Optional, and off until you
   set it up with Docker (`WORKSHOP_TOKEN` and `--profile workshop`, in the

@@ -2633,6 +2633,23 @@ console.log("\na job reads its person's own things, or the web, never both");
 
 console.log("\na job that makes files");
 {
+  const kept = fakeStorage();
+  const call = (name: string, i: number) => ({ type: "function_call" as const, id: `fc${i}`, call_id: `c${i}`, name, arguments: "{}", status: "completed" as const });
+  const same = async (name: string) => {
+    let stuck = false;
+    let outs = "";
+    for (let i = 0; i < 10; i++) {
+      const r = await runGuarded(kept as never, "jagain", [call(name, i)], async (some) => some.map((c) => ({ type: "function_call_output" as const, call_id: c.call_id, output: "It ended with 0, in 0.1 s." })));
+      stuck ||= r.stuck;
+      outs += JSON.stringify(r.outputs);
+    }
+    return { stuck, refused: /Not made/.test(outs), noted: /Asking again/.test(outs) };
+  };
+  const again = await Promise.all([same("run"), same("process")]);
+  check("a program run again, and one waited for, may answer the same", again.every((r) => !r.stuck && !r.refused && !r.noted), again);
+  check("what only looks something up may not", (await same("recall")).stuck);
+}
+{
   const told: string[] = [];
   const file = (n: number, name: string, sha256 = "x") => ({ n, name, size: 9, sha256, at: T0 });
   const set = (steps: Step[], say: Said[] = []) => {

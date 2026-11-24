@@ -310,7 +310,7 @@ export class Jobs {
 
     if (j.summary) row.appendChild(el("div", "rwhen", j.summary));
     if (j.error) row.appendChild(el("div", "rfacts bad", j.error));
-    if (j.files?.length) row.appendChild(jobFiles(this.key, j.id, j.files));
+    if (j.files?.length) row.appendChild(jobFiles(this.key, j.id, j.files, (why) => this.msg(why, true)));
     // Before the result, not after it: what it does not have, and what it rests on.
     if (j.missing?.length) row.appendChild(flags("Not done", j.missing));
     if (j.assumed?.length) row.appendChild(flags("Assumed", j.assumed));
@@ -430,7 +430,7 @@ export class Jobs {
       if (j.result) box.appendChild(markdown(j.result, j.engine === "jarvis" ? "jobtext whole" : "jobtext"));
       if (j.ran?.length) {
         const ran = el("details", "");
-        ran.append(el("summary", "", "What it ran"), jobRan(j.ran));
+        ran.append(el("summary", "", "What it ran"), jobRan(j.ran, j.status !== "running"));
         box.appendChild(ran);
       }
       const went = j.status === "running" ? null : jobLive(j);

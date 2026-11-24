@@ -41,13 +41,15 @@ export interface JobFile {
   at: number;
 }
 
-/** A command it ran in the workshop, and how it ended; no `code` while one left running still is. */
+/** A command it ran in the workshop, and how it ended; no `code` while it is running, or if that was never learned. */
 export interface JobRan {
   at: number;
   cmd: string;
+  p?: string;
   code?: number | string | null;
   ms?: number;
   late?: true;
+  full?: true;
 }
 
 export interface JobView {
@@ -132,11 +134,12 @@ export function powers(j: JobView): string {
 export const sizeSaid = (bytes: number): string =>
   bytes < 1000 ? `${bytes} bytes` : bytes < 1_000_000 ? `${Math.round(bytes / 1000)} KB` : `${(bytes / 1_000_000).toFixed(1)} MB`;
 
-/** How a command it ran ended. */
-export function ended(r: JobRan): string {
+/** How a command it ran ended; `over`, its job is too. */
+export function ended(r: JobRan, over = false): string {
   const took = r.ms === undefined || r.ms < 100 ? "" : r.ms < 60_000 ? `${(r.ms / 1000).toFixed(1)} s` : `${Math.round(r.ms / 60_000)} min`;
+  if (r.full) return "stopped: it filled its folder, or the disk";
   if (r.late) return `stopped, out of time${took ? ` after ${took}` : ""}`;
-  if (r.code === undefined) return "left running";
+  if (r.code === undefined) return over ? "ended with the job" : r.p ? "left running" : "running";
   return r.code === 0 ? took || "done" : `failed (${r.code ?? "stopped"})${took ? `, ${took}` : ""}`;
 }
 

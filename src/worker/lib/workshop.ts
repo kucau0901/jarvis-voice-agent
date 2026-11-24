@@ -1,4 +1,5 @@
 import type { Env } from "../types.ts";
+import { wellFormed } from "./quote.ts";
 
 /**
  * The workshop: where a background job runs code and makes files
@@ -43,7 +44,7 @@ async function fetched(cfg: WorkshopConfig, path: string, init: RequestInit): Pr
   const said = (await r.json().catch(() => ({}))) as { error?: unknown };
   // Its own words for what was refused (400); a wrong token or a closed door is not the job's to puzzle over.
   if (r.status === 400 && typeof said.error === "string") throw new WorkshopError(said.error, true);
-  throw new WorkshopError(r.status === 401 ? "the workshop's token is wrong (Settings → Workshop)" : OFF);
+  throw new WorkshopError(r.status === 401 ? "the workshop's token is wrong (Settings → Workshop)" : r.status === 403 ? "the workshop's door turned it away: its address must be the one in the help (Settings → Workshop)" : OFF);
 }
 
 export async function workshopAsk<T>(cfg: WorkshopConfig, what: string, body: Record<string, unknown>, signal: AbortSignal): Promise<T> {
@@ -51,9 +52,14 @@ export async function workshopAsk<T>(cfg: WorkshopConfig, what: string, body: Re
   return (await r.json()) as T;
 }
 
-/** A file a job gave its person, as it was when it was given. */
-export async function workshopGiven(cfg: WorkshopConfig, job: string, n: number, signal: AbortSignal): Promise<ArrayBuffer> {
-  return (await fetched(cfg, `given?${new URLSearchParams({ job, n: String(n) })}`, { signal })).arrayBuffer();
+/** A file a job gave its person, by its sum: as it was when it was given. */
+export async function workshopGiven(cfg: WorkshopConfig, job: string, sum: string, signal: AbortSignal): Promise<ArrayBuffer> {
+  const r = await fetched(cfg, `given?${new URLSearchParams({ job, sum })}`, { signal });
+  // No more than it ever gives is taken into memory.
+  if (!(Number(r.headers.get("content-length")) <= MAX_BYTES)) throw new WorkshopError(OFF);
+  return r.arrayBuffer().catch(() => {
+    throw new WorkshopError(OFF);
+  });
 }
 
 /** Bytes put in a job's folder: what its person attached. */
@@ -75,14 +81,18 @@ export interface JobFile {
   at: number;
 }
 
-/** A command a job ran, for its person to see. */
+/** A command a job ran, for its person to see: written down before it is run, and how it ended after. */
 export interface Ran {
   at: number;
   cmd: string;
-  /** How it ended; absent while one left running still is. */
+  /** Left running, as this. */
+  p?: string;
+  /** How it ended; absent while it is running, or if that was never learned. */
   code?: number | string | null;
   ms?: number;
   late?: true;
+  /** Ended for what it wrote: past what a job may hold, or the disk nearly full. */
+  full?: true;
 }
 
 /** How long the workshop keeps what a job made (docker/workshop/runner.mjs KEEP_MS). */
@@ -90,11 +100,35 @@ export const KEPT_DAYS = 14;
 /** What is kept of what a job ran, newest last. */
 export const MAX_RAN = 40;
 export const MAX_FILES = 20;
+/** The largest file the workshop takes in or gives out (docker/workshop/runner.mjs MAX_FILE). */
+const MAX_BYTES = 20_000_000;
+const MAX_NAME = 80;
 
-/** A file's name as it will be saved: the last part of its path, and nothing a disk would stumble on. */
+/** A file's name as it will be saved: the last part of its path, and nothing a disk would stumble on; a long one keeps its ending. */
 export function fileName(path: string): string {
-  const last = path.split(/[\\/]/).pop() ?? "";
-  return last.replace(/[\u0000-\u001f\u007f<>:"|?*]/g, "").replace(/^\.+/, "").trim().slice(0, 80) || "file";
+  const name = wellFormed((path.split(/[\\/]/).pop() ?? "").replace(/[\u0000-\u001f\u007f<>:"|?*]/g, "").replace(/^\.+/, "").trim());
+  if (name.length <= MAX_NAME) return name || "file";
+  const end = /\.[A-Za-z0-9]{1,10}$/.exec(name)?.[0] ?? "";
+  // Not half a letter, where the cut falls inside one.
+  return `${name.slice(0, MAX_NAME - end.length).replace(/[\uD800-\uDBFF]$/, "").trim()}${end}`;
+}
+
+/** Names, each made one no other has: a second "a.pdf" is "a (2).pdf". */
+export function apart(): (name: string) => string {
+  const had = new Set<string>();
+  return (name) => {
+    const dot = name.lastIndexOf(".") > 0 ? name.lastIndexOf(".") : name.length;
+    let own = name;
+    for (let n = 2; had.has(own.toLowerCase()); n += 1) own = `${name.slice(0, dot)} (${n})${name.slice(dot)}`;
+    had.add(own.toLowerCase());
+    return own;
+  };
+}
+
+/** What it ran, with this: how one written down already ended, or a new one. */
+export function withRan(ran: readonly Ran[] | undefined, r: Ran): Ran[] {
+  const all = ran ?? [];
+  return (all.some((x) => x.at === r.at) ? all.map((x) => (x.at === r.at ? r : x)) : [...all, r]).slice(-MAX_RAN);
 }
 
 /** A file kept for its person: a name given again is the newer of the two. */

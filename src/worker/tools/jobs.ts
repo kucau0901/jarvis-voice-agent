@@ -84,7 +84,8 @@ const startJob: Tool = {
     }
     // What they attached goes to a job on their own things only: on the web it would be something of theirs beside a search.
     const brought = shop && args.reach !== "web" ? asFiles(ctx.attached) : [];
-    const task = `${String(args.task ?? "")}${brought.length ? `\n\n(In its folder, from the user: ${brought.map((f) => f.name).join(", ")}.)` : ""}`;
+    // Counted, not named: a name is its author's words, and list_files gives it quoted.
+    const task = `${String(args.task ?? "")}${brought.length ? `\n\n(In its folder, from the user: ${brought.length === 1 ? "a file" : `${brought.length} files`}.)` : ""}`;
     // So does the stronger model cost: a guest's job is an ordinary one.
     const thorough = !research && args.mode === "thorough" && allows(ctx.grants, "routines");
     const j = await state.createJob(
@@ -97,7 +98,7 @@ const startJob: Tool = {
         await workshopBring(shop!, j.id, f.name, f.bytes, ctx.signal);
       } catch (e) {
         await state.cancelJob(j.id);
-        return `Not started: ${f.name} could not be given to it (${e instanceof Error ? e.message : String(e)}).`;
+        return `Not started: what they attached could not be given to it (${e instanceof Error ? e.message : String(e)}).`;
       }
     }
     ctx.started?.({ id: j.id, title: j.title, engine: j.engine });
@@ -114,7 +115,7 @@ const startJob: Tool = {
     return research
       ? `Started research on "${j.title}". It takes 10 to 40 minutes; the report, with its sources, will reach the user as a message and wait in Jobs. Tell them so.`
       : `Started "${j.title}" ${j.reach === "web" ? "on the web, with only what its brief says of the user" : "on the user's own things, without the web"}. ` +
-        `${brought.length ? `It has what they attached: ${brought.map((f) => f.name).join(", ")}. ` : shop && asFiles(ctx.attached).length ? "It was NOT given what they attached: a job on the web has nothing of theirs. " : ""}` +
+        `${brought.length ? `It has what they attached (${brought.length === 1 ? "one file" : `${brought.length} files`}). ` : shop && asFiles(ctx.attached).length ? "It was NOT given what they attached: a job on the web has nothing of theirs. " : ""}` +
         `It usually takes ${j.mode === "thorough" ? "ten minutes or more, with a stronger model" : "a few minutes"}; the result${shop ? ", with its files to download," : ""} will reach the user as a message. Tell them so.`;
   },
 };

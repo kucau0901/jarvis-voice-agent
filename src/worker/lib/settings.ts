@@ -378,8 +378,8 @@ export const SETTINGS: readonly SettingDef[] = [
     validate: (v) => {
       try {
         const u = new URL(v);
-        // Over a network its token and a job's files would go in the clear.
-        return u.protocol === "https:" || (u.protocol === "http:" && /^(localhost|127\.0\.0\.1|\[::1\])$/.test(u.hostname)) ? null : "must be https://, or http:// on this machine (127.0.0.1)";
+        // As its door knows it (docker/workshop/door.mjs), and never over a network: its token and a job's files would go in the clear.
+        return u.protocol === "http:" && /^(localhost|127\.0\.0\.1)$/.test(u.hostname) && u.port ? null : "must be http://127.0.0.1 and its port: the door answers on this machine only";
       } catch {
         return "is not a URL";
       }

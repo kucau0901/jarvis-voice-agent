@@ -254,8 +254,8 @@ Nobody but an admin has the **workshop** reach until you give it (Family, or a
 device's scopes), and no routine or Telegram chat ever does. What a job made is
 kept for 14 days, or until you remove the job. A container is not a separate
 machine: on a kernel with a flaw in it, a program could get out. On an old
-kernel, or where that worries you, leave it off, or run it on a machine that
-holds nothing else. Why it is built this way:
+kernel, or where that worries you, leave it off, or run Jarvis's containers in a
+virtual machine of their own. Why it is built this way:
 [DESIGN.md](docs/DESIGN.md#the-workshop).
 
 **Backups:** everything is in the `jarvis-data` volume.

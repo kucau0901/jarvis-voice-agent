@@ -15,7 +15,7 @@ import { INTERRUPTED, JobChain, beginCalls, stepId, stepOf, type Answered } from
 import { NOT_RUN, runGuarded } from "../lib/job-guards.ts";
 import { noteLinks, readResult } from "../lib/job-results.ts";
 import { KEPT_DAYS, WorkshopError, fileHeaders, workshopAsk, workshopConfig, workshopGiven } from "../lib/workshop.ts";
-import { workshopTools } from "../lib/workshop-tools.ts";
+import { WORKSHOP_TOOLS, workshopTools } from "../lib/workshop-tools.ts";
 import { mailFile } from "../lib/mail-file.ts";
 import { googleConfig } from "../lib/google.ts";
 import { sha256Hex } from "../lib/devices.ts";
@@ -182,7 +182,7 @@ export function jobEngine(
     const own: Tool[] = team
       ? [shareTool("", [], 0)]
       : job.engine === "jarvis"
-        ? [...workTools(job, say), readResult(kept, job.id), ...(shop ? workshopTools(shop, job, say, stop) : []), ...(shop && allows(grants, "mail") && googleConfig(env, "https://jarvis.invalid") ? [mailFile(shop, job.id)] : [])]
+        ? [...workTools(job, say), readResult(kept, job.id), ...(shop ? workshopTools(shop, job, say, stop, allows(grants, "mail") && googleConfig(env, "https://jarvis.invalid") ? [mailFile(shop, job.id, stop)] : []) : [])]
         : [];
     const functions = [...p.tools, ...own].map(toToolSchema);
     return {
@@ -440,7 +440,11 @@ export function jobEngine(
       // An ordinary job's: kept from going round in a circle (lib/job-guards.ts), and its long answers cut (lib/job-results.ts).
       const guarded = kept && job.engine === "jarvis" ? await runGuarded(kept, job.id, fresh, runThem) : null;
       const ran = guarded?.outputs ?? (await runThem(fresh));
-      if (guarded && kept) await noteLinks(kept, job.id, r.output, ran.map((o) => ("output" in o && typeof o.output === "string" ? o.output : "")));
+      if (guarded && kept) {
+        // Not what came from the workshop, nor was kept of that: a job that reads back what it wrote has not seen where it leads.
+        const own = new Set(fresh.filter((c) => WORKSHOP_TOOLS.has(c.name) || (job.mode === "files" && c.name === "read_result")).map((c) => c.call_id));
+        await noteLinks(kept, job.id, r.output, ran.map((o) => ("output" in o && typeof o.output === "string" && !("call_id" in o && own.has(o.call_id ?? "")) ? o.output : "")));
+      }
       const outputs: OpenAI.Responses.ResponseInput = [...ran, ...[...begun].map((call_id) => ({ type: "function_call_output" as const, call_id, output: INTERRUPTED }))];
       await p.memory.save().catch(() => {});
       await say?.({ doing: [] });
@@ -588,7 +592,7 @@ export async function handleJobs(req: Request, env: Env, url: URL, principal: Pr
     const cfg = workshopConfig(env);
     if (!cfg) return err(503, "the workshop it is in is not set up");
     try {
-      const bytes = await workshopGiven(cfg, j.id, f.n, AbortSignal.timeout(60_000));
+      const bytes = await workshopGiven(cfg, j.id, f.sha256, AbortSignal.timeout(60_000));
       if ((await sha256Hex(bytes)) !== f.sha256) return err(409, "that file is not as the job gave it, so it is not handed over");
       return new Response(bytes, { headers: fileHeaders(f.name, bytes.byteLength) });
     } catch (e) {

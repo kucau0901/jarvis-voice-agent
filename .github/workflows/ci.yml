@@ -86,6 +86,7 @@ jobs:
             docker compose --profile workshop logs workshop workshop-door 2>&1 | grep -q 'door: open' && break
             sleep 2
           done
+          docker image ls jarvis-workshop
           docker compose --profile workshop exec -T -e TOKEN="$TOKEN" jarvis node --input-type=module - < docker/workshop/check.mjs
 
       - name: Container logs

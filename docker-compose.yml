@@ -76,9 +76,9 @@ services:
     profiles: ["workshop"]
     restart: unless-stopped
     network_mode: none
+    # No place every job may write: no /tmp, and no shared memory. Each has a folder of its own for such things.
+    ipc: none
     read_only: true
-    tmpfs:
-      - /tmp:size=64m,mode=1777,noexec,nosuid,nodev
     cap_drop: [ALL]
     # To be each job's own user, give it its folder, and end what it left running. Not to open what is another's.
     cap_add: [SETUID, SETGID, CHOWN, KILL]
@@ -86,7 +86,6 @@ services:
     mem_limit: 1200m
     # The same, so no swap: a job out of memory is ended, rather than the whole machine made to wait.
     memswap_limit: 1200m
-    shm_size: 64m
     # Where the kernel can; each job's own processes are limited either way (runner.mjs).
     pids_limit: 1000
     cpu_shares: 256

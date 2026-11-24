@@ -592,9 +592,10 @@ work with many things to weigh together. It costs many times an ordinary one.
 
 `"mode": "files"` (needs `workshop`, and the workshop set up) has an ordinary
 job make files: its view carries `files: [{n, name, size, at}]` as it gives
-them, and `ran: [{at, cmd, code?, ms?, late?}]`, what it ran (the last three
-while it works, the last forty with the whole job; no `code` for one left
-running). `GET /api/v1/jobs/file?id=&n=` (needs `ask`) is one of its files, as
+them, and `ran: [{at, cmd, p?, code?, ms?, late?, full?}]`, what it ran (the last
+three while it works, the last forty with the whole job; no `code` while it
+runs; `p` for one left running, `late` out of time, `full` ended for filling its
+folder). `GET /api/v1/jobs/file?id=&n=` (needs `ask`) is one of its files, as
 bytes to save (`application/octet-stream`, `Content-Disposition: attachment`):
 404 when the workshop no longer keeps it (14 days, or the job removed), 503 when
 the workshop does not answer, 409 when the file is not as the job gave it. The

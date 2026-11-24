@@ -6,8 +6,9 @@ import { button, el } from "./ui/util";
  * "+" in the message box, then Upload file or Take photo. A photo is shrunk
  * here to 1600 pixels as a JPEG, enough to read a page in it; a PDF goes as
  * it is, up to 10 MB, for the model to read; a text file as its words. Any
- * other file (a spreadsheet, a document), up to 10 MB, for whoever may have a
- * job use the workshop, which is all that can open it. They go with that one
+ * other file (a spreadsheet, a document, a text too long to read with a
+ * question), up to 10 MB, for whoever may have a job use the workshop, which
+ * is all that can open it. They go with that one
  * question to the router (routes/delegate.ts, lib/photos.ts, which holds the
  * same limits) and are kept nowhere but in the folder of a job that was given
  * them: what stays in the conversation is their names.
@@ -104,9 +105,16 @@ export class Attachments {
   set any(on: boolean) {
     this.anyFile = on;
     this.input.accept = on ? "" : this.reads;
+    this.told();
   }
   private anyFile = false;
   private reads: string;
+  private told = () => {};
+  /** Whether that is known yet: a file may be shared into the app as it opens (share.ts). */
+  private known = new Promise<void>((ok) => {
+    this.told = ok;
+    setTimeout(ok, 4000);
+  });
   private chips = new Map<Attached, HTMLElement>();
 
   /**
@@ -159,26 +167,34 @@ export class Attachments {
   /** Files picked: each taken as a photo, a PDF, text or a file, or said why not. */
   async add(files: File[]): Promise<void> {
     for (const f of files) {
-      const kind = f.type.startsWith("image/") ? "image" : f.type === "application/pdf" || /\.pdf$/i.test(f.name) ? "pdf" : f.type.startsWith("text/") || TEXT.test(f.name) ? "text" : this.anyFile ? "file" : null;
-      if (!kind) {
-        this.say(`Jarvis reads photos, PDFs and text files, so not ${f.name}.`);
+      let kind: Attached["kind"] = f.type.startsWith("image/") ? "image" : f.type === "application/pdf" || /\.pdf$/i.test(f.name) ? "pdf" : f.type.startsWith("text/") || TEXT.test(f.name) ? "text" : "file";
+      if (!f.size || (kind !== "image" && f.size > MAX_BYTES)) {
+        this.say(f.size ? `${f.name} is over 10 MB.` : `${f.name} is empty.`);
         continue;
       }
-      if (!this.room(kind)) continue;
       try {
-        if (kind === "image") {
-          const bmp = await createImageBitmap(f);
-          this.keep({ name: f.name, kind, data: jpeg(bmp, bmp.width, bmp.height) });
-          bmp.close();
-        } else if (kind === "pdf" || kind === "file") {
-          if (f.size > MAX_BYTES) this.say(`${f.name} is over 10 MB.`);
-          // Of no type of its own: whatever it is called, only the workshop opens it.
-          else this.keep({ name: f.name, kind, data: await asDataUrl(kind === "pdf" ? f : new Blob([f], { type: "application/octet-stream" })) });
-        } else {
-          const text = await f.text();
-          if (text.length > MAX_TEXT_CHARS) this.say(`${f.name} is too long to read with a question.`);
-          else this.keep({ name: f.name, kind, data: text });
+        const text = kind === "text" ? await f.text() : "";
+        const picture = kind === "image" ? await createImageBitmap(f).catch(() => null) : null;
+        // What Jarvis cannot read here, a job may: a text too long for a question, a picture this browser cannot open.
+        const other = kind === "file" || (kind === "text" && text.length > MAX_TEXT_CHARS) || (kind === "image" && !picture);
+        if (other) await this.known;
+        if (other && !this.anyFile) {
+          this.say(kind === "text" ? `${f.name} is too long to read with a question.` : kind === "image" ? `${f.name} could not be opened.` : `Jarvis reads photos, PDFs and text files, so not ${f.name}.`);
+          continue;
         }
+        if (other) kind = "file";
+        if (!this.room(kind)) {
+          picture?.close();
+          continue;
+        }
+        if (picture) {
+          this.keep({ name: f.name, kind, data: jpeg(picture, picture.width, picture.height) });
+          picture.close();
+        } else if (kind === "text") this.keep({ name: f.name, kind, data: text });
+        // A picture it could not open may be bigger.
+        else if (f.size > MAX_BYTES) this.say(`${f.name} is over 10 MB.`);
+        // Of no type of its own: whatever it is called, only the workshop opens it.
+        else this.keep({ name: f.name, kind, data: await asDataUrl(kind === "pdf" ? f : new Blob([f], { type: "application/octet-stream" })) });
       } catch (e) {
         this.say(`${f.name} could not be read: ${why(e)}.`);
       }

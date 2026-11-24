@@ -18,18 +18,20 @@ export async function saveFrom(key: string, path: string, name: string): Promise
   setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 
-/** The files a job gave, each a button that saves it. */
-export function jobFiles(key: string, id: string, files: readonly Omit<JobFile, "at">[]): HTMLElement {
+/** The files a job gave, each a button that saves it. `say`: told why one could not be, by who may draw this afresh meanwhile. */
+export function jobFiles(key: string, id: string, files: readonly Omit<JobFile, "at">[], say?: (why: string) => void): HTMLElement {
   const box = el("div", "jobfiles");
   const why = el("small", "bad");
+  why.setAttribute("role", "status");
+  say ??= (t) => (why.textContent = t);
   for (const f of files) {
     const b = button("", async () => {
       b.disabled = true;
-      why.textContent = "";
+      say("");
       try {
         await saveFrom(key, `/api/v1/jobs/file?${new URLSearchParams({ id, n: String(f.n) })}`, f.name);
       } catch (e) {
-        why.textContent = `Could not save ${f.name}: ${e instanceof Error ? e.message : String(e)}`;
+        say(`Could not save ${f.name}: ${e instanceof Error ? e.message : String(e)}`);
       }
       b.disabled = false;
     }, "jobfile");
@@ -41,12 +43,12 @@ export function jobFiles(key: string, id: string, files: readonly Omit<JobFile, 
   return box;
 }
 
-/** What it ran, newest last, and how each ended. */
-export function jobRan(ran: readonly JobRan[]): HTMLElement {
+/** What it ran, newest last, and how each ended; `over`, its job is too. */
+export function jobRan(ran: readonly JobRan[], over = false): HTMLElement {
   const list = el("ol", "jobran");
   for (const r of ran) {
     const li = el("li", "");
-    li.append(el("code", "", r.cmd), el("small", "", ended(r)));
+    li.append(el("code", "", r.cmd), el("small", "", ended(r, over)));
     list.appendChild(li);
   }
   return list;

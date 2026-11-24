@@ -1,28 +1,45 @@
 // One thing done to a job's files, run as the job's own user (runner.mjs), never as root: whatever a job puts in its
 // folder (a link to elsewhere, a name with .. in it), this can reach only what the job itself can.
 //
-// What to do comes as one JSON argument in WORKSHOP_DO; bytes come on stdin and go on stdout.
-import { createHash } from "node:crypto";
+// What to do comes as one JSON argument in WORKSHOP_DO; bytes come on stdin and go on stdout. What it answers is the
+// job's to make anything (it runs as the job), so the runner takes it as numbers and text, and a failure as one of
+// its own words (runner.mjs WHY).
 import { createReadStream, promises as fs } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 
 const MAX_LISTED = 300;
 const MAX_TEXT = 60_000;
+/** What is read whole, or changed: more than that is a program's to open. */
+const MAX_WHOLE = 20_000_000;
 /** The runner's own, in each folder: not the job's files. */
-const OWN = new Set([".tmp"]);
+const OWN = new Set([".tmp", ".home"]);
 
 const home = process.cwd();
 const what = JSON.parse(process.env.WORKSHOP_DO ?? "{}");
 const say = (o) => process.stdout.write(JSON.stringify(o));
-const fail = (why) => say({ error: why });
+
+class No extends Error {
+  constructor(why, more = {}) {
+    super(why);
+    this.more = more;
+  }
+}
 
 /** Inside the job's folder, said plainly rather than by an error of the system's. */
 function inside(path) {
-  if (typeof path !== "string" || !path.trim() || path.includes("\0")) throw new Error("no path given");
+  if (typeof path !== "string" || !path.trim() || path.includes("\0")) throw new No("path");
   const at = resolve(home, path);
   const rel = relative(home, at);
-  if (rel.startsWith("..") || isAbsolute(rel)) throw new Error("that path is outside the job's folder");
+  if (rel.startsWith("..") || isAbsolute(rel)) throw new No("outside");
   return at;
+}
+
+/** A plain file: not a pipe, which nobody may ever write to, nor a device, which never ends. */
+async function plain(at) {
+  const s = await fs.stat(at);
+  if (s.isDirectory()) throw new No("folder");
+  if (!s.isFile()) throw new No("notfile");
+  return s;
 }
 
 async function* walk(dir) {
@@ -39,19 +56,18 @@ async function stdin(max) {
   let n = 0;
   for await (const c of process.stdin) {
     n += c.length;
-    if (n > max) throw new Error(`more than ${Math.round(max / 1e6)} MB`);
+    if (n > max) throw new No("much", { most: Math.round(max / 1e6) });
     parts.push(c);
   }
   return Buffer.concat(parts);
 }
 
 async function text(at) {
+  if ((await plain(at)).size > MAX_WHOLE) throw new No("long", { most: MAX_WHOLE / 1e6 });
   const b = await fs.readFile(at);
-  if (b.subarray(0, 8000).includes(0)) throw new Error("that is not a text file: open it with a program, by run");
+  if (b.subarray(0, 8000).includes(0)) throw new No("binary");
   return b.toString("utf8");
 }
-
-const sum = (b) => createHash("sha256").update(b).digest("hex");
 
 const DO = {
   async list() {
@@ -59,10 +75,7 @@ const DO = {
     let more = 0;
     for await (const at of walk(home)) {
       if (files.length >= MAX_LISTED) more += 1;
-      else {
-        const s = await fs.stat(at);
-        files.push({ path: relative(home, at), size: s.size, at: Math.round(s.mtimeMs) });
-      }
+      else files.push({ path: relative(home, at), size: (await fs.lstat(at)).size });
     }
     say({ files, more });
   },
@@ -81,39 +94,39 @@ const DO = {
     const at = inside(what.path);
     const b = await stdin(Number(what.max) || 2_000_000);
     await fs.mkdir(dirname(at), { recursive: true });
+    await plain(at).catch((e) => {
+      if (e?.code !== "ENOENT") throw e;
+    });
     await (what.append ? fs.appendFile(at, b) : fs.writeFile(at, b));
     say({ size: (await fs.stat(at)).size });
   },
   async edit() {
     const at = inside(what.path);
-    const { find, replace, all } = JSON.parse((await stdin(1_000_000)).toString("utf8"));
+    const { find, replace, all } = JSON.parse((await stdin(4_000_000)).toString("utf8"));
     const was = await text(at);
     const n = typeof find === "string" && find ? was.split(find).length - 1 : 0;
-    if (!n) return fail("those words are not in the file: read it again and copy them exactly");
-    if (n > 1 && !all) return fail(`those words are in the file ${n} times: give more of what is around them, or set all`);
+    if (!n) throw new No("words");
+    if (n > 1 && !all) throw new No("many", { n });
     await fs.writeFile(at, all ? was.split(find).join(replace) : was.replace(find, () => replace));
     say({ changed: all ? n : 1 });
   },
   async stat() {
-    const at = inside(what.path);
-    const s = await fs.stat(at);
-    if (!s.isFile()) throw new Error("that is not a file");
-    if (s.size > (Number(what.max) || Infinity)) throw new Error(`it is ${(s.size / 1e6).toFixed(1)} MB, more than ${Math.round(what.max / 1e6)} MB`);
-    say({ size: s.size, sha256: sum(await fs.readFile(at)) });
+    const { size } = await plain(inside(what.path));
+    if (size > (Number(what.max) || Infinity)) throw new No("big", { mb: Math.round(size / 1e5) / 10, most: Math.round(what.max / 1e6) });
+    say({ size });
   },
   /** Its bytes, and nothing else, on stdout. */
   async cat() {
     const at = inside(what.path);
-    const s = await fs.stat(at);
-    if (!s.isFile() || s.size > (Number(what.max) || Infinity)) process.exit(3);
+    await plain(at);
     await new Promise((ok, no) => createReadStream(at).on("error", no).on("end", ok).pipe(process.stdout));
   },
 };
 
 try {
-  await (DO[what.op] ?? (() => fail("no such thing to do")))();
+  await DO[what.op]();
 } catch (e) {
-  const said = e?.code === "ENOENT" ? "there is no such file" : e?.code === "EACCES" || e?.code === "EPERM" ? "not allowed" : e?.code === "EISDIR" ? "that is a folder" : String(e?.message ?? e);
   if (what.op === "cat") process.exit(2);
-  fail(said);
+  const why = e instanceof No ? e.message : { ENOENT: "nofile", ENOTDIR: "nofile", EISDIR: "folder", EACCES: "denied", EPERM: "denied", ENOSPC: "full", EDQUOT: "full", EFBIG: "full" }[e?.code];
+  say({ error: why ?? "unknown", ...(e instanceof No ? e.more : {}) });
 }

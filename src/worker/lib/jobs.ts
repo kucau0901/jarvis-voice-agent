@@ -11,7 +11,7 @@ import { outOf, type Limits } from "./job-guards.ts";
 import { ASK_MS, MAX_ASKED, MAX_TOLD, changeCard, doneLines, numbered, openLines, openQuestions, unanswered, type Asked, type JobCard, type Said, type Todo, type Told } from "./job-tools.ts";
 import { secretShaped } from "./memory-guard.ts";
 import { flagLines, flagsOf, type Flags } from "./job-results.ts";
-import { MAX_RAN, withFile, type JobFile, type Ran } from "./workshop.ts";
+import { withFile, withRan, type JobFile, type Ran } from "./workshop.ts";
 
 /**
  * Background jobs: things that take minutes, answered later.
@@ -833,11 +833,11 @@ export class Jobs {
     // A step streaming here is let go at once, rather than paid for to its end.
     this.live.get(id)?.stop.abort();
     const deps = await this.deps();
-    if (j.mode === "files") await deps.workshop?.("rest", id).catch(() => {});
     for (const id of running) await deps.cancel({ ...j, responseId: id }).catch(() => {});
     await clearChain(this.storage, id);
     // What it spent before it was stopped still counts in Settings → Usage.
     await deps.record?.(usageEntry(j, false, now)).catch(() => {});
+    if (j.mode === "files") await deps.workshop?.("rest", id).catch(() => {});
     return j;
   }
 
@@ -947,7 +947,7 @@ export class Jobs {
           ...(s.doing ? { doing: s.doing } : {}),
           ...(q ? { asked: [...asked, q] } : {}),
           ...(s.file ? { files: withFile(cur.files, s.file) } : {}),
-          ...(s.ran ? { ran: [...(cur.ran ?? []), s.ran].slice(-MAX_RAN) } : {}),
+          ...(s.ran ? { ran: withRan(cur.ran, s.ran) } : {}),
         });
         // Kept first, so an answer finds it; told beside the step, which does not wait for a push.
         if (q) void this.deps().then((d) => d.deliver(askAlert(cur, q))).catch(() => {});
@@ -1345,7 +1345,6 @@ export class Jobs {
     if (done.files?.length) alert.made = done.files.map(({ n, name, size }) => ({ n, name, size }));
     await this.save(done); // before delivering: a retried alarm must not tell the user twice
     await clearChain(this.storage, done.id);
-    if (done.mode === "files") await deps.workshop?.("rest", done.id).catch(() => {});
     const d = await deps.deliver(alert).catch(() => null);
     done.deliveredBy = d?.deliveredBy ?? null;
     // Removed while it was being told (a push can take seconds): gone stays gone.
@@ -1353,6 +1352,7 @@ export class Jobs {
     await deps.record?.(usageEntry(done, done.status === "done", now)).catch(() => {});
     // How it went, for next time (lib/episodes.ts): not Hermes still working past the wait, which has not failed.
     if (!("late" in out && out.late)) await deps.episode?.(done).catch(() => {});
+    if (done.mode === "files") await deps.workshop?.("rest", done.id).catch(() => {});
   }
 
   /** Keep each person's newest KEEP_JOBS finished ones: one member's many never prune another's. */
