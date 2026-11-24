@@ -1370,7 +1370,14 @@ reading tools and advises separate requests. So it is settled when a job starts
 and held by what it is handed, not by what it is told: on the web, the searches,
 the time and what a place is like, with no profile, name, birthday, family, past
 attempts or other jobs' results (`unnamed`, grants of `ask` alone); on their own
-things, no web search. Where they are and their language stay, for prices and
+things, no web search. The brief is still written by a model that knows them, and
+told to give only the facts the work needs: the first trip it planned named its
+person and the part of town they live in. So `start_job` looks (`tells` in
+`lib/job-brief.ts`) and refuses a web brief with their name or the family's, the
+house or street of a saved address, an email address or a phone number, saying
+which, and it is written again without. Not the town, which prices and what is
+near depend on, and not what their own message says: "look up what is written
+about me" is theirs to ask. A brief they type into Jobs is theirs whole. Where they are and their language stay, for prices and
 what is near. For work that needs both, the question that starts it reads the
 private part first and puts the facts in the brief, which they can read in Jobs:
 what leaves is then what they saw leave. What is looked up on Google's maps

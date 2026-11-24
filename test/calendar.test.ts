@@ -1,4 +1,4 @@
-import { calendarAdd, calendarChange, calendarCheck, calendarRsvp, calendarTools, rangeWindow, whenSpoken } from "../src/worker/tools/calendar.ts";
+import { calendarAdd, calendarChange, calendarCheck, calendarRsvp, calendarTools, datesWindow, rangeWindow, whenSpoken } from "../src/worker/tools/calendar.ts";
 import { baseTools } from "../src/worker/tools/registry.ts";
 import { SCOPES as GOOGLE_SCOPES, CALENDAR, PEOPLE, GMAIL } from "../src/worker/lib/google.ts";
 import { allows, requiredScope, SCOPES } from "../src/worker/lib/scopes.ts";
@@ -208,6 +208,53 @@ console.log("days are the user's, not the server's");
   const late = Date.UTC(2026, 8, 28, 0, 0);
   check("an all-day event today, west of UTC, is today", whenSpoken(ny, { date: "2026-09-27" }, new Date(late)) === "all day today");
   check("and tomorrow's is its own date", whenSpoken(ny, { date: "2026-09-28" }, new Date(late)) === "all day Mon 28 Sept" || whenSpoken(ny, { date: "2026-09-28" }, new Date(late)) === "all day Mon 28 Sep", whenSpoken(ny, { date: "2026-09-28" }, new Date(late)));
+}
+
+console.log("\nany dates ahead: next month, a free day");
+{
+  const kl = "Asia/Kuala_Lumpur";
+  const w = datesWindow("2026-12-01", "2026-12-31", kl)!;
+  check("from their midnight to the end of the last day", w.from === Date.UTC(2026, 10, 30, 16) && w.to === Date.UTC(2026, 11, 31, 16), w);
+  check("one day is a day; 62 at most", datesWindow("2026-12-01", "2026-12-01", kl)!.to - datesWindow("2026-12-01", "2026-12-01", kl)!.from === 86_400_000 && datesWindow("2026-12-01", "2027-12-31", kl)!.to - w.from === 62 * 86_400_000);
+  check("not dates, not a date there is, or out of order: none", [["1 December", "2026-12-31"], ["2026-04-31", "2026-05-02"], ["2026-12-31", "2026-12-01"], [null, null], ["2026-12-01", null]].every(([a, b]) => datesWindow(a, b, kl) === null));
+
+  const kv = new Map<string, string>([["google:refresh", "refresh-token"]]);
+  const CONFIG = { get: async (k: string) => kv.get(k) ?? null, put: async (k: string, v: string) => void kv.set(k, v), delete: async (k: string) => void kv.delete(k) };
+  const env = { GOOGLE_CLIENT_ID: "id.apps.googleusercontent.com", GOOGLE_CLIENT_SECRET: "sec", TIMEZONE: kl, CONFIG };
+  const realFetch = globalThis.fetch;
+  const asked: string[] = [];
+  let more = false;
+  globalThis.fetch = (async (u: string | URL | Request) => {
+    const url = String(u instanceof Request ? u.url : u);
+    if (url.includes("oauth2")) return Response.json({ access_token: "access", expires_in: 3600 });
+    asked.push(url);
+    return Response.json({
+      items: [
+        { id: "evtoffice01", summary: "Office", start: { date: "2026-12-02" }, end: { date: "2026-12-03" } },
+        { id: "evtleave01", summary: "Leave", start: { date: "2026-12-07" }, end: { date: "2026-12-10" } },
+        { id: "evtmeet01", summary: "Meeting", start: { dateTime: "2026-12-11T14:00:00+08:00" }, end: { dateTime: "2026-12-11T16:30:00+08:00" } },
+        { id: "evtnight01", summary: "Night shift", start: { dateTime: "2026-12-12T22:00:00+08:00" }, end: { dateTime: "2026-12-13T06:00:00+08:00" } },
+      ],
+      ...(more ? { nextPageToken: "p2" } : {}),
+    });
+  }) as typeof fetch;
+  try {
+    const run = async (args: Record<string, unknown>) => String(await calendarCheck.run({ limit: 5, account: null, from: null, to: null, ...args }, ctx({ env })));
+    const out = await run({ range: "dates", from: "2026-12-01", to: "2026-12-31" });
+    const q = new URL(asked[0]!).searchParams;
+    check("every one of them is asked for, whatever number it gave", q.get("maxResults") === "100" && q.get("timeMin") === "2026-11-30T16:00:00.000Z" && q.get("timeMax") === "2026-12-31T16:00:00.000Z", asked);
+    check("when each ends, which a free afternoon is told by", /Meeting — Fri,? 11 Dec 14:00 to 16:30/.test(out) && /Night shift — Sat,? 12 Dec 22:00 to Sun,? 13 Dec,? 06:00/.test(out) && /Leave — all day Mon,? 7 Dec to Wed,? 9 Dec/.test(out) && /Office — all day Wed,? 2 Dec\n/.test(out), out);
+    check("with their ids, so one far off can be changed, quoted, and not cut to two sentences", out.includes("[id:evtmeet01]") && /WRITTEN BY WHOEVER CREATED THESE EVENTS/.test(out) && !/one or two sentences/.test(out) && /1 Dec 2026 to 31 Dec 2026: 4 events/.test(out), out.slice(0, 120));
+    check("all there: nothing said of more", !/MORE THAN THESE/.test(out));
+    more = true;
+    check("more than could be read: said so, so a day is not called free unread", /MORE THAN THESE: the first 4 only/.test(await run({ range: "dates", from: "2026-12-01", to: "2026-12-31" })));
+    asked.length = 0;
+    check("dates that are not: said, and Google not asked", /cannot be read/.test(await run({ range: "dates", from: "next month", to: null })) && asked.length === 0);
+    const next = await run({ range: "next" });
+    check("a fortnight as before", /one or two sentences/.test(next) && !/to 16:30/.test(next) && new URL(asked[0]!).searchParams.get("maxResults") === "5", next.slice(-160));
+  } finally {
+    globalThis.fetch = realFetch;
+  }
 }
 
 console.log("\nanswering an invitation (calendar_rsvp): for a tap only");

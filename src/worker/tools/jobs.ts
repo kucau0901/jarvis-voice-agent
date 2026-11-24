@@ -3,6 +3,7 @@ import { stateStub } from "../lib/state-client.ts";
 import { callerWho, mayWork } from "../lib/context.ts";
 import { wordsOf, type Job } from "../lib/jobs.ts";
 import { flagLines } from "../lib/job-results.ts";
+import { tells } from "../lib/job-brief.ts";
 import { asQuotedData } from "../lib/quote.ts";
 import { allows } from "../lib/scopes.ts";
 import { clampLimit } from "./args.ts";
@@ -56,6 +57,19 @@ const startJob: Tool = {
     // Research spends the family's monthly allowance: for the family, not a guest.
     if (research && !allows(ctx.grants, "routines")) {
       return "Not started: research in depth is for the family, and this person may not start it. Offer an ordinary job, or to answer now.";
+    }
+    // What goes to the web says nothing of who they are: looked at by code, since the model knows it all (lib/job-brief.ts).
+    if (research || args.reach === "web") {
+      const family = await state.familyPeople().catch(() => []);
+      const said = tells(`${String(args.title ?? "")}\n${String(args.task ?? "")}`, {
+        names: [ctx.env.JARVIS_PERSON_NAME ?? "", ctx.env.JARVIS_PERSON_NICKNAME ?? "", ...(family ?? []).map((p) => p.name)],
+        addresses: [...ctx.memory.facts, ...(ctx.memory.family?.facts ?? [])].flatMap((f) => (f.address ? [f.address] : [])),
+      }, ctx.asked ?? "");
+      if (said.length) {
+        return `Not started: the brief says ${said.map((s) => `"${s}"`).join(", ")}. A job on the web is told nothing of who the user is, their family, ` +
+          "or exactly where they live: start it again without, as 'the user' and at most their town. Only what they themselves said in this " +
+          "message may be in it; if they want that looked up, ask them to say so.";
+      }
     }
     // So does the stronger model cost: a guest's job is an ordinary one.
     const thorough = !research && args.mode === "thorough" && allows(ctx.grants, "routines");

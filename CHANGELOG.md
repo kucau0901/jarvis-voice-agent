@@ -144,6 +144,10 @@ of every release, and in the [README](README.md#updating).
   that the job never opened or was shown is marked "(not checked)", and Jobs
   shows where each link really goes.
 
+- **The calendar, any dates ahead.** "When am I free next month?" used to see
+  a fortnight and fifteen events; Jarvis now reads up to two months at a time,
+  with when each event ends, and says so when there is more than it could read.
+
 - **Thorough background jobs.** For work with many things to weigh together, a
   job may use the stronger model research uses, when you ask for it ("look into
   this thoroughly") or tick it in **New job**. Costs several times an ordinary
@@ -248,6 +252,12 @@ of every release, and in the [README](README.md#updating).
   screen to put it on; the rest of the browser works from anywhere, as before.
 
 ### Security
+
+- **A job on the web is not told who you are.** Jarvis writes such a job's
+  brief, and could put your name or street in it though the work did not need
+  them. A brief with your name or your family's, the house or street of an
+  address saved in memory, an email address or a phone number is now refused
+  and written again without, unless your own message says it.
 
 - **A background job can no longer carry what it reads of yours out through a
   web search.** It had your mail, calendar and memory beside live web search, so

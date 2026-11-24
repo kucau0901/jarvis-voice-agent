@@ -35,6 +35,9 @@ import type { Tool, ToolContext } from "./registry.ts";
 
 const MAX_EVENTS = 15;
 const DEFAULT_EVENTS = 5;
+/** Dates asked for by name: as many days and events as planning ahead takes. */
+const MAX_DAYS = 62;
+const MAX_IN_DATES = 100;
 const MAX_TEXT = 200;
 /** How long an event is: minutes as given, at most a day; an hour when none is. */
 const durationOf = (v: unknown): number => {
@@ -126,9 +129,36 @@ export function whenSpoken(tz: string, start?: EventTime, now = new Date()): str
   return `${fmt(tz, d, { weekday: "short", day: "numeric", month: "short" })} ${time}`;
 }
 
+/** When one ends, after when it starts: what a free afternoon is told by. An all-day one that runs on says its last day. */
+function until(tz: string, e: CalEvent): string {
+  if (e.end?.dateTime && e.start?.dateTime) {
+    const end = new Date(e.end.dateTime);
+    const sameDay = dayKey(tz, end) === dayKey(tz, new Date(e.start.dateTime));
+    return ` to ${fmt(tz, end, { ...(sameDay ? {} : { weekday: "short", day: "numeric", month: "short" }), hour: "2-digit", minute: "2-digit", hour12: false })}`;
+  }
+  // Google's all-day end is the day after.
+  const last = e.end?.date && e.start?.date ? new Date(Date.parse(`${e.end.date}T00:00:00Z`) - 86_400_000) : null;
+  return last && last.toISOString().slice(0, 10) > e.start!.date! ? ` to ${fmt("UTC", last, { weekday: "short", day: "numeric", month: "short" })}` : "";
+}
+
 /* ---------- reading ------------------------------------------------------- */
 
-const RANGES = ["next", "today", "tomorrow", "week"] as const;
+const RANGES = ["next", "today", "tomorrow", "week", "dates"] as const;
+
+/** The days from one date to another, in the user's own zone, MAX_DAYS of them at most; null when they are not dates in order. */
+export function datesWindow(from: unknown, to: unknown, tz: string): { from: number; to: number } | null {
+  const day = (v: unknown, plus = 0): number | null => {
+    const m = typeof v === "string" ? /^(\d{4})-(\d{2})-(\d{2})$/.exec(v.trim()) : null;
+    if (!m) return null;
+    const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
+    // 31 April is not a date, and Date would make it 1 May.
+    return new Date(Date.UTC(y, mo - 1, d)).toISOString().slice(0, 10) === m[0] ? zonedToUtc(y, mo, d + plus, 0, 0, tz) : null;
+  };
+  const start = day(from);
+  const end = day(to, 1);
+  const most = day(from, MAX_DAYS);
+  return start === null || end === null || most === null || end <= start ? null : { from: start, to: Math.min(end, most) };
+}
 
 /**
  * The window a range means, in the user's own days: "today" is all of it,
@@ -154,11 +184,9 @@ export const calendarCheck: Tool = {
   reads: true,
   available,
   description:
-    "Read the user's Google Calendar: what is on today, what is next, whether they are " +
-    "free. Use for 'what's my day look like', 'when is my next meeting', 'am I free at " +
-    "four'. Returns each event's id, time and LOCATION. " +
-    "If the user asks when to LEAVE for something, call this first and then pass the " +
-    "event's location to directions — this tool reports times, it does not know traffic. " +
+    "Read the user's Google Calendar: what is on, what is next, whether they are free, on any " +
+    "dates. Returns each event's id, time and LOCATION. " +
+    "For when to LEAVE for something, call this first, then directions with the event's location. " +
     "To move, rename or remove an event, find it here first and pass its id to calendar_change.",
   parameters: {
     type: "object",
@@ -167,29 +195,34 @@ export const calendarCheck: Tool = {
         type: "string",
         enum: [...RANGES],
         description:
-          "next = the next fortnight, for 'what's my next meeting'. today (all of it, " +
-          "what is over too), tomorrow, or week for a rundown.",
+          "next = the next fortnight. today is all of it, what is over too. dates = from " +
+          "`from` to `to`: next month, finding free days.",
       },
+      from: { type: ["string", "null"], description: "YYYY-MM-DD; null unless dates." },
+      to: { type: ["string", "null"], description: `The last day; ${MAX_DAYS} days at most.` },
       limit: {
         type: ["integer", "null"],
-        description: `How many events, 1 to ${MAX_EVENTS}. Default ${DEFAULT_EVENTS}. Keep it small; this is read aloud.`,
+        description: `How many events, 1 to ${MAX_EVENTS}; null for ${DEFAULT_EVENTS}. Small: it is read aloud.`,
       },
       account: ACCOUNT_PARAM,
     },
-    required: ["range", "limit", "account"],
+    required: ["range", "from", "to", "limit", "account"],
     additionalProperties: false,
   },
   async run(args, ctx) {
     const tz = localeOf(ctx.env).timeZone;
+    const dates = args.range === "dates" ? datesWindow(args.from, args.to, tz) : undefined;
+    if (dates === null) return "Those dates cannot be read: give `from` and `to` as YYYY-MM-DD, in order.";
     return onEach(ctx, args.account, (ctx) => guard(async () => {
       const cfg = cfgOf(ctx);
       const range = (RANGES as readonly string[]).includes(String(args.range)) ? String(args.range) : "next";
-      const limit = clampLimit(args.limit, DEFAULT_EVENTS, MAX_EVENTS);
+      // All of them, whatever it asked: a free day is one with nothing left out.
+      const limit = dates ? MAX_IN_DATES : clampLimit(args.limit, DEFAULT_EVENTS, MAX_EVENTS);
 
       const now = new Date();
       // "today" and "tomorrow" mean calendar days, not "the next 24 hours" — a
       // meeting at 09:00 tomorrow is not part of today whatever the clock says.
-      const w = rangeWindow(range, now.getTime(), tz);
+      const w = dates ?? rangeWindow(range, now.getTime(), tz);
       const timeMin = new Date(w.from);
       const timeMax = new Date(w.to);
 
@@ -211,29 +244,38 @@ export const calendarCheck: Tool = {
       const problem = explain(res);
       if (problem) return problem;
 
-      const items = ((res.body as { items?: CalEvent[] } | null)?.items ?? []).slice(0, limit);
+      const body = res.body as { items?: CalEvent[]; nextPageToken?: string } | null;
+      const items = (body?.items ?? []).slice(0, limit);
+      const span = dates ? `${fmt(tz, timeMin, { day: "numeric", month: "short", year: "numeric" })} to ${fmt(tz, new Date(w.to - 1), { day: "numeric", month: "short", year: "numeric" })}` : "";
       const nowSaid = fmt(tz, now, {
         weekday: "long", day: "numeric", month: "long",
         hour: "2-digit", minute: "2-digit", hour12: false,
       });
 
       if (!items.length) {
-        return `Nothing in the calendar for ${range === "next" ? "the next two weeks" : range}. It is now ${nowSaid}.`;
+        return `Nothing in the calendar for ${dates ? span : range === "next" ? "the next two weeks" : range}. It is now ${nowSaid}.`;
       }
 
       const lines = items.map((e, i) => {
         const where = e.location ? tidy(e.location).slice(0, MAX_TEXT) : "";
         return (
           `${i + 1}. [id:${e.id}] ${tidy(e.summary ?? "").slice(0, MAX_TEXT) || "(no title)"}` +
-          ` — ${whenSpoken(tz, e.start, now)}` +
+          ` — ${whenSpoken(tz, e.start, now)}${dates ? until(tz, e) : ""}` +
           (where ? `\n   location: ${where}` : "") +
           (e.hangoutLink && !where ? "\n   location: a video call" : "")
         );
       });
 
+      const listed = asQuotedData("calendar", lines.join("\n"), "WHOEVER CREATED THESE EVENTS");
+      if (dates) {
+        return (
+          `It is now ${nowSaid}. ${span}: ${items.length} event${items.length === 1 ? "" : "s"}.\n\n${listed}` +
+          (body?.nextPageToken ? `\n\nMORE THAN THESE: the first ${items.length} only. Read the later dates before calling any of them free.` : "")
+        );
+      }
       return (
         `It is now ${nowSaid}. ${items.length} event${items.length === 1 ? "" : "s"}.\n\n` +
-        asQuotedData("calendar", lines.join("\n"), "WHOEVER CREATED THESE EVENTS") +
+        listed +
         `\n\nAnswer in one or two sentences. If the user wants to know when to set off, ` +
         `take the location above and call directions with it.`
       );

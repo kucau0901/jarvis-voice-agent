@@ -41,6 +41,7 @@ import {
 import type { Alert, Delivery } from "../src/worker/lib/alerts.ts";
 import type { UsageEntry } from "../src/worker/lib/usage.ts";
 import { MAX_TRIES, beginCalls } from "../src/worker/lib/job-chain.ts";
+import { tells } from "../src/worker/lib/job-brief.ts";
 import { changeCard, untold, unfinished, workTools, type JobCard, type Said, type Todo } from "../src/worker/lib/job-tools.ts";
 import { GOING_STEPS, KEY_DOLLARS, MAX_SEARCHES, NOTE_AT, NOT_RUN, REFUSE_AT, STUCK_AT, runGuarded } from "../src/worker/lib/job-guards.ts";
 import { RESULT_KEPT, RESULT_MAX, capResults, flagLines, flagsOf, noteLinks, readResult } from "../src/worker/lib/job-results.ts";
@@ -499,8 +500,8 @@ console.log("\nthorough: the stronger model, for hard work");
   // Asked for in chat by a guest: an ordinary job.
   const tool = baseTools({} as never).find((t) => t.name === "start_job")!;
   const made: Record<string, unknown>[] = [];
-  const stub = { createJob: async (i: Record<string, unknown>) => (made.push(i), { id: "j", title: "x", engine: "jarvis", ...i }) };
-  const say = async (grants: string[]) => String(await tool.run({ title: "x", task: "x", reach: "web", mode: "thorough", research: "no" }, { env: { STATE: { idFromName: () => "j", get: () => stub } }, grants } as never));
+  const stub = { createJob: async (i: Record<string, unknown>) => (made.push(i), { id: "j", title: "x", engine: "jarvis", ...i }), familyPeople: async () => [] };
+  const say = async (grants: string[]) => String(await tool.run({ title: "x", task: "x", reach: "web", mode: "thorough", research: "no" }, { env: { STATE: { idFromName: () => "j", get: () => stub } }, grants, memory: { facts: [] } } as never));
   check("start_job: the family's is thorough, and says it takes longer", /stronger model/.test(await say(["ask", "routines"])) && made[0]!.mode === "thorough");
   check("a guest's is ordinary", !/stronger/.test(await say(["ask"])) && !("mode" in made[1]!));
 }
@@ -546,6 +547,36 @@ console.log("\nwhat a result is missing, and rests on, comes first");
   check("an address it never saw is said to be unchecked; one it saw is left as it is",
     marked === "Buy [it](https://opened.example/page), or at https://cited.example/p?id=7. Also https://guess.example/deal (not checked), [this](https://bad.example/x?d=secret) (not checked) and https://mail.example/inv.", marked);
   check("a page it saw, asked with words of its own in the address, is not that page", markUnseen("https://mail.example/inv?n=9999", seen).endsWith("(not checked)") && markUnseen("https://opened.example/page?d=my+address", seen).endsWith("(not checked)"));
+}
+
+console.log("\na brief for the web says nothing of who they are");
+{
+  const known = { names: ["Sara Idris", "sasa", "Adam", "Mia"], addresses: ["No 12, Jalan Example 5, Taman Contoh, 31650 Ipoh, Malaysia", "Level 3, Menara Contoh, Kuala Lumpur"] };
+  const of = (brief: string, asked = "") => tells(brief, known, asked).join("|");
+  check("their name, what they are called, and the family's, as names are written", of("Plan a trip for Dr. Sara binti Idris and Mia.") === "Sara|Idris|Mia" && of("Sasa wants a hotel") === "Sasa", of("Plan a trip for Dr. Sara binti Idris and Mia."));
+  check("…not as part of another word, nor without their capital", of("Saratoga springs, adamant, an adam's apple, a mia") === "", of("Saratoga springs, adamant, an adam's apple, a mia"));
+  check("a saved address as far as the house, the street or the postcode", of("Near No 12, jalan example 5, Taman Contoh") === "Jalan Example 5" && of("in 31650 ipoh") === "31650 Ipoh", of("Near No 12, jalan example 5, Taman Contoh"));
+  check("…not the town or the part of it, which prices and what is near depend on, nor what could mean anything", of("Hotels in Ipoh, Taman Contoh or Kuala Lumpur, Malaysia; a Level 3 charger; No 12 on the list") === "");
+  check("an email address, and a phone number", of("Write to sara@mail.example or call +60 12-345 6789") === "sara@mail.example|+60 12-345 6789", of("Write to sara@mail.example or call +60 12-345 6789"));
+  check("…not a price, a year, a range or a model", of("Under RM1,200, 2024-2026, the A229 and 5,000 to 12,500 km, 10 000 000 units") === "", of("Under RM1,200, 2024-2026, the A229 and 5,000 to 12,500 km, 10 000 000 units"));
+  check("what they said themselves in their message is theirs to have looked up", of("What is written about Sara Idris?", "look up what's written about sara idris") === "" && of("About Sara and Adam", "look up Sara") === "Adam");
+  check("…their name, not a word that has it in it", of("For Mia", "find a macadamia tree") === "Mia");
+  check("nothing known, nothing found", tells("For Sara at Jalan Example 5", { names: ["", "Al"], addresses: [""] }, "").length === 0);
+
+  // Through start_job: refused, with what to leave out, so that it is written again.
+  const tool = baseTools({} as never).find((t) => t.name === "start_job")!;
+  const made: Record<string, unknown>[] = [];
+  const stub = { createJob: async (i: Record<string, unknown>) => (made.push(i), { id: "j", title: "x", engine: "jarvis", ...i }), familyPeople: async () => [{ person: "u_adam", name: "Adam" }] };
+  const run = async (args: Record<string, unknown>, asked = "plan us a trip") => String(await tool.run({ title: "Trip", mode: "ordinary", research: "no", ...args }, {
+    env: { STATE: { idFromName: () => "j", get: () => stub }, JARVIS_PERSON_NAME: "Sara", JARVIS_PERSON_NICKNAME: "Sasa" }, grants: ["*"], asked,
+    memory: { facts: [{ text: "home", address: "No 12, Jalan Example 5, 31650 Ipoh" }], family: { facts: [{ text: "gran", address: "9 Example Street, Penang" }] } },
+  } as never));
+  const no = await run({ task: "A trip for Sara and Adam from Jalan Example 5 to 9 Example Street", reach: "web" });
+  check("refused, naming what to leave out; nothing is started", /^Not started: the brief says "Sara", "Adam", "Jalan Example 5", "9 Example Street"\./.test(no) && /'the user' and at most their town/.test(no) && made.length === 0, no);
+  check("research the same; the title is read too", /"Adam"/.test(await run({ task: "Find schools", title: "Schools for Adam", reach: "private", research: "yes" })) && made.length === 0);
+  check("written again without: started", /^Started/.test(await run({ task: "A trip for the user, from Penang", reach: "web" })) && made.length === 1);
+  check("on their own things it may say what it likes", /^Started/.test(await run({ task: "Sara's mail from Adam", reach: "private" })) && made.length === 2);
+  check("asked for by name, by them: started", /^Started/.test(await run({ task: "What is written about Sara", reach: "web" }, "look up what is written about Sara")) && made.length === 3);
 }
 
 console.log("\ngoing round in a circle");
@@ -857,12 +888,12 @@ console.log("\nask_hermes: handing over research by voice");
 console.log("\nstart_job: the job is reported to typed chat, for its pill");
 {
   const h = harness();
-  const stub = { listJobs: () => h.jobs.list(), createJob: (input: Record<string, unknown>, by: unknown) => h.jobs.create(input as never, by as never, T0) };
+  const stub = { listJobs: () => h.jobs.list(), familyPeople: async () => [], createJob: (input: Record<string, unknown>, by: unknown) => h.jobs.create(input as never, by as never, T0) };
   const env = { TIMEZONE: "Asia/Kuala_Lumpur", STATE: { idFromName: () => "jarvis", get: () => stub } } as never;
   const tool = baseTools(env).find((t) => t.name === "start_job")!;
   const started: { id: string; title: string; engine: string }[] = [];
   const run = (args: Record<string, unknown>, grants: string[]) =>
-    tool.run(args, { env, grants, signal: new AbortController().signal, progress() {}, display() {}, started: (j: { id: string; title: string; engine: string }) => started.push(j) } as never);
+    tool.run(args, { env, grants, memory: { facts: [] }, signal: new AbortController().signal, progress() {}, display() {}, started: (j: { id: string; title: string; engine: string }) => started.push(j) } as never);
   const said = String(await run({ title: "Dashcams", task: "Compare dashcams under RM800.", research: "no" }, ["*"]));
   const made = (await h.jobs.list())[0];
   check("started, and its id, title and engine reported", said.startsWith('Started "Dashcams"') && started.length === 1 && started[0]!.id === made?.id && started[0]!.title === "Dashcams" && started[0]!.engine === "jarvis", { said, started });
