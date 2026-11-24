@@ -15,35 +15,32 @@ const startJob: Tool = {
   pace: "fast",
   description:
     "Start a background job for anything that needs many steps or several minutes, rather " +
-    "than trying to do it now: researching and comparing (products, prices, places, options), " +
-    "going through a lot of mail or a long stretch of the calendar, planning a trip, checking " +
-    "many things. It runs on its own, every screen closed, and the result reaches " +
-    "the user as a message and in the Jobs panel. It reads and never acts; what it would do, it proposes. " +
-    "It reads ONE side (`reach`): 'private', the user's own mail, calendar, memory, house, car and " +
-    "cameras, without the web; or 'web', without any of those. For work that needs both (a trip around " +
-    "their diary), read the private part here first, and put only the facts it needs in `task`. " +
-    "Write `task` as a complete brief, names resolved: it will not see the conversation, and the user " +
-    "can read it. Then tell them it has started, and on the web, which of their facts it was given. " +
-    "Not for quick questions: answer those now. " +
-    "Set research to 'yes' only when the user asks for research in depth ('research…', 'dig " +
-    "into…', 'find out everything about…'): it runs on a stronger model, searches widely, takes " +
-    "10 to 40 minutes and costs roughly one to two dollars, and comes back as a report with its sources. " +
-    "Set it to 'team' only when they ask for research as a team, or a research team, in so many words: " +
-    "three teams research it from different angles and share what they find, 20 to 55 minutes, roughly " +
-    "four to seven dollars. Set it to 'table' when they want a list or table of many items found and " +
-    "compared ('the 10 cheapest…', 'every dentist near…', 'a spreadsheet of…'): the same team fills rows " +
-    "instead of writing a report, and the whole table can be downloaded from Jobs as CSV; it costs and " +
-    "takes the same as a team. Otherwise 'no'. Say the time and cost when you start any of them.",
+    "than trying to do it now: researching and comparing, going through a lot of mail or a long " +
+    "stretch of the calendar, planning a trip, checking many things. It runs on its own, every " +
+    "screen closed; the result reaches the user as a message and in Jobs. It reads and never acts; " +
+    "what it would do, it proposes. It reads ONE side (`reach`): 'private', the user's own mail, " +
+    "calendar, memory, house, car and cameras, without the web; or 'web', without any of those. For " +
+    "work that needs both (a trip around their diary), read the private part here first and put only " +
+    "the facts it needs in `task`. Write `task` as a complete brief, names resolved: it will not see " +
+    "the conversation, and the user can read it. Tell them it has started and, on the web, which of " +
+    "their facts it was given. Not for quick questions: answer those now. " +
+    "Set research to 'yes' only when asked for research in depth ('research…', 'dig into…', 'find " +
+    "out everything about…'): a stronger model, searching widely, 10 to 40 minutes, roughly one to two " +
+    "dollars, a report with its sources. 'team' only when asked for research as a team in so many " +
+    "words: three teams from different angles sharing what they find, 20 to 55 minutes, roughly four " +
+    "to seven dollars. 'table' for a list or table of many items found and compared ('the 10 " +
+    "cheapest…', 'every dentist near…', 'a spreadsheet of…'): the same team fills rows, to download " +
+    "from Jobs as CSV, same cost and time. Otherwise 'no'. Say the time and cost when you start any.",
   parameters: {
     type: "object",
     properties: {
       title: { type: "string", description: "A few words to list it by, e.g. 'Dashcams under RM800'." },
       task: { type: "string", description: "The complete brief, as if to a capable assistant who knows nothing of this conversation." },
-      reach: { type: "string", enum: ["private", "web"], description: "What it may read: the user's own things, or the web. Research is always the web." },
+      reach: { type: "string", enum: ["private", "web"], description: "Research is always the web." },
       research: {
         type: "string",
         enum: ["no", "yes", "team", "table"],
-        description: "'yes', 'team' or 'table' only as described above, when the user asked for it; 'no' for an ordinary job.",
+        description: "'yes', 'team' or 'table' only as above; 'no' for an ordinary job.",
       },
     },
     required: ["title", "task", "reach", "research"],

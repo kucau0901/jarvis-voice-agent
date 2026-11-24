@@ -1930,6 +1930,114 @@ console.log("\na job reads its person's own things, or the web, never both");
   check("kept as it was asked for, and only for an ordinary job", (await made({ reach: "web" })).reach === "web" && (await made({ reach: "private" })).reach === "private" && (await made({ reach: "everything" })).reach === "private" && (await made({ engine: "hermes", reach: "web" })).reach === undefined);
 }
 
+console.log("\nthe object can go at any save: the job still ends, once");
+{
+  // A storage that stops for good at one save, before it lands or after: as an update or a power cut would. The
+  // object that was writing never hears back; the next one, over what was kept, goes on.
+  const script = (): Step[] => [{ kind: "wait" }, { kind: "continued", responseId: "resp_2", usage: { input: 10, cached: 0, output: 1 } }, { kind: "done", text: "SUMMARY: Done." }];
+  let points = 0;
+  let worst = 0;
+  let lost = 0;
+  let unended = 0;
+  for (const lands of [false, true]) {
+    for (let at = 1; at <= 30; at++) {
+      const storage = fakeStorage();
+      const told: Alert[] = [];
+      const steps = script();
+      const deps: JobDeps = {
+        async start() { return { responseId: "resp_1" }; },
+        async check() { return { error: "no" }; },
+        async plan() { return { error: "no" }; },
+        async merge() { return { error: "no" }; },
+        // The step is at OpenAI, done after a minute and a half, and there to look at however often it is looked at.
+        async poll(j) { return j.responseId === "resp_2" ? steps[2]! : t < T0 + 90_000 ? steps[0]! : steps[1]!; },
+        async cancel() {},
+        async hermes() { return { ok: true, text: "" }; },
+        async deliver(a) { told.push(a); return { alert: a, attempts: [], deliveredBy: "push" } as Delivery; },
+      };
+      let t = T0;
+      const first = new Jobs(storage, async () => deps);
+      const made = (await first.create({ task: "x" }, BY, T0)) as Job;
+      let n = 0;
+      let cut = false;
+      const cutting = { ...storage, put: async (k: string, v: unknown) => {
+        if (cut || ++n === at) {
+          if (!cut && lands) await storage.put(k, v);
+          cut = true;
+          return new Promise<void>(() => {}); // this object is gone
+        }
+        return storage.put(k, v);
+      } };
+      const dying = new Jobs(cutting as never, async () => deps);
+      for (let i = 0; i < 6 && !cut; i++) {
+        const looks = await dying.begin(t);
+        await Promise.race([Promise.all(looks), new Promise((r) => setTimeout(r, 2))]);
+        t += 60_000;
+      }
+      if (!cut) continue; // past its last save
+      points++;
+      const next = new Jobs(storage, async () => deps);
+      for (let i = 0; i < 8; i++) await next.tick((t += 60_000));
+      const end = await next.get(made.id);
+      if (!end) lost++;
+      else if (end.status !== "done") unended++;
+      worst = Math.max(worst, told.length);
+    }
+  }
+  check("at every save it makes, before and after", points >= 8, points);
+  check("the job is never lost, and ends as it would have", lost === 0 && unended === 0, { lost, unended });
+  check("and nobody is told twice", worst === 1, worst);
+}
+
+console.log("\nwhat a hostile page or mail asks of a job is not there to be used");
+{
+  const kv = new Map<string, string>();
+  const CONFIG = { get: async (k: string) => kv.get(k) ?? null, put: async (k: string, v: string) => void kv.set(k, v), delete: async () => {}, list: async () => ({ keys: [] }) };
+  const did: string[] = [];
+  const stub = new Proxy({}, { get: (_t, m) => (m === "then" ? undefined : async () => {
+    if (m === "chatgptToken") return { token: "at_plan", model: null };
+    did.push(String(m));
+    return undefined;
+  }) });
+  const env = { CONFIG, OPENAI_API_KEY: "sk-test", TIMEZONE: "Asia/Kuala_Lumpur", STATE: { idFromName: () => "j", get: () => stub }, GOOGLE_CLIENT_ID: "g", GOOGLE_CLIENT_SECRET: "s", TESSIE_TOKEN: "t", TESSIE_VIN: "5YJTEST0000000001", HA_BASE_URL: "https://ha.example", HA_TOKEN: "h", HERMES_BASE_URL: "https://hermes.example", HERMES_API_KEY: "k", BROWSER_URL: "http://127.0.0.1:9222" } as never;
+  // A model that does as the page says, whatever it was told: asked of every tool an attack would want.
+  const wanted = ["recall", "mail_search", "calendar_check", "remember", "forget", "mail_send", "car_command", "ask_hermes", "control_home", "browser_open", "start_job", "job_results", "specialty_save", "skill_add", "routine_add", "send_note", "share_findings"];
+  const realFetch = globalThis.fetch;
+  let outputs: { call_id: string; output: string }[] = [];
+  let asked = 0;
+  globalThis.fetch = (async (u: string | URL | Request, init?: RequestInit) => {
+    const url = String(u instanceof Request ? u.url : u);
+    if (!url.endsWith("/responses")) throw new Error(`an attack reached ${url}`);
+    const body = JSON.parse(String(init?.body)) as { input: { type?: string; call_id?: string; output?: string }[] };
+    const items = asked++ === 0
+      ? wanted.map((name, i) => ({ type: "function_call", id: `fc_${i}`, call_id: name, name, namespace: "jarvis", arguments: "{}", status: "completed" }))
+      : [{ type: "message", id: "m", role: "assistant", status: "completed", content: [{ type: "output_text", text: "SUMMARY: ok.", annotations: [] }] }];
+    if (asked === 2) outputs = body.input.filter((i) => i.type === "function_call_output") as typeof outputs;
+    const events = [...items.map((item) => ({ type: "response.output_item.done", item })), { type: "response.completed", response: { id: "r", object: "response", status: "completed", model: "gpt-6-luna", output: [], usage: { input_tokens: 1, output_tokens: 1 } } }];
+    return new Response(events.map((e) => `data: ${JSON.stringify(e)}\n\n`).join(""), { headers: { "content-type": "text/event-stream" } });
+  }) as typeof fetch;
+  try {
+    const engine = jobEngine(env, async (a) => ({ alert: a, attempts: [], deliveredBy: null }) as never, async () => env, fakeStorage() as never);
+    const job = { id: "jx", title: "x", task: "Read this page.", engine: "jarvis", reach: "web", status: "running", createdBy: "owner", grants: ["*"], createdAt: T0, updatedAt: T0, steps: 0, attempts: 0 } as Job;
+    await engine.start(job);
+    did.length = 0;
+    await engine.poll({ ...job, responseId: "plan_m.0" });
+    check("on the web: none of them exists for it", outputs.length === wanted.length && outputs.every((o) => o.output === `No such tool: ${o.call_id}`), outputs.filter((o) => !o.output.startsWith("No such tool")));
+    check("…and nothing was done: what it read is all that was asked of the object", did.every((m) => m === "loadMemory" || m === "chatgptStatus"), did);
+
+    asked = 0;
+    const mine = { ...job, id: "jy", reach: "private" } as Job;
+    await engine.start(mine);
+    did.length = 0;
+    await engine.poll({ ...mine, responseId: "plan_m.0" });
+    const gone = ["remember", "forget", "ask_hermes", "control_home", "browser_open", "start_job", "specialty_save", "skill_add", "routine_add", "send_note", "share_findings"];
+    check("on their own things: what remembers, sends, starts, reaches a computer or the browser does not exist for it", gone.every((n) => outputs.find((o) => o.call_id === n)?.output === `No such tool: ${n}`), outputs.filter((o) => gone.includes(o.call_id) && !o.output.startsWith("No such tool")));
+    check("…and what acts is only proposed, never run", !outputs.some((o) => /^(Sent|Done|Saved|Started)/.test(o.output)), outputs.filter((o) => ["car_command", "mail_send"].includes(o.call_id)));
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+}
+
 console.log("\na job's exchange on the plan goes when the job does, and is never taken for a job");
 {
   const row = { at: T0, input: [], tries: 1 };
