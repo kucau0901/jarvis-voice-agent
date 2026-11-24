@@ -16,7 +16,8 @@ import { button, el } from "./ui/util";
  * same pill at once, "On it — " and its title, still working, with its
  * checklist under it as it goes (ui/JobLive.ts). When its result comes, that
  * pill moves down to it and takes the result's name; pressed, the job opens in
- * Jobs.
+ * Jobs. What it asks meanwhile has a pill of its own, "A question: " and its
+ * title, with the answer under its words (ui/JobAsk.ts): the first stays at work.
  *
  * What a skill said (an outside bot, lib/skills.ts) has its name in the pill,
  * and what it was asked beside the time; pressed, Settings opens at Skills.
@@ -27,6 +28,8 @@ import { button, el } from "./ui/util";
 export type RoutineSaid = Pick<Alert, "id" | "at" | "title" | "text" | "look"> & { routine: string; proposals?: string[] };
 /** `proposals`: what the job proposed, by id, for their cards (proposal.ts). */
 export type JobSaid = Pick<Alert, "id" | "at" | "title" | "text"> & { job: string; proposals?: string[] };
+/** What a job asks, which is not its result. */
+export type AskSaid = Pick<Alert, "id" | "at" | "title" | "text"> & { ask: { job: string; id: string } };
 /** `skill.asked`: the bot's own question to Jarvis, through its own address. `proposals`: what a component suggested, by id. */
 export type SkillSaid = Pick<Alert, "id" | "at" | "text"> & { skill: { id: string; name: string; about?: string; asked?: boolean }; proposals?: string[] };
 
@@ -64,6 +67,13 @@ export function fromSkill(a: SkillSaid, open: () => void): HTMLElement | null {
   const about = a.skill.about ? ` · ${a.skill.about.length > 40 ? `${a.skill.about.slice(0, 40)}…` : a.skill.about}` : "";
   const label = a.skill.asked ? `${a.skill.name} asked` : a.skill.name;
   return pillRow(label, `${when(a.at)}${about}`, open, "frompill skill", isComponent(a.skill) ? `${label}, a component: open Components` : `${label}, a skill: open Skills`);
+}
+
+/** The pill of a job's question, or null when this one is in the conversation already. */
+export function fromAsk(a: AskSaid, open: (id: string) => void): HTMLElement | null {
+  if (shown.has(a.id)) return null;
+  shown.add(a.id);
+  return pillRow(a.title, when(a.at), () => open(a.ask.job), "frompill job", `${a.title}: open its job in Jobs`);
 }
 
 /** A job just started from this screen: its pill, working, followed until the result comes (fromJob). */

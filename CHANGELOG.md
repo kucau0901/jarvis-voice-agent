@@ -145,10 +145,12 @@ of every release, and in the [README](README.md#updating).
   only you can settle would change the result ("front only, or front and
   rear?"), a job asks, up to three times, and goes on with the rest meanwhile.
   With nothing else to do it waits a day for you, and no answer is ever assumed:
-  **Go on without me** is yours to press. You may also tell a working job
-  anything ("only ones without a contract"), answer it or stop it, by voice, in
-  Chat, on a device or by Telegram: it is told your words as you said them. For
-  devices: `POST /api/v1/jobs/tell`, and alerts with a new field, `ask` (`docs/api.md`).
+  **Go on without me** is yours to press. The question comes as an alert, and
+  stays in Chat, in **Jobs** and on Home under Now, with its choices as buttons.
+  You may also tell a working job anything ("only ones without a contract",
+  **Tell it** in Jobs), answer it or stop it, by voice, in Chat, on a device or
+  by Telegram: it is told your words as you said them, and Jobs shows whether it
+  has taken them in. For devices: `POST /api/v1/jobs/tell`, and alerts with a new field, `ask` (`docs/api.md`).
 
 - **A job's result says first what it could not do**, and what it took for
   granted: in the alert, in **Jobs** and when you ask about it. A link in it

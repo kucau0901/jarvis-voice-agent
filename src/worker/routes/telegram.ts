@@ -8,7 +8,7 @@ import { allowedNow } from "../lib/access.ts";
 import { localeOf } from "../lib/locale.ts";
 import { allows, narrow } from "../lib/scopes.ts";
 import { canAsk } from "../lib/openai-auth.ts";
-import { asQuotedData } from "../lib/quote.ts";
+import { FORWARDED, asQuotedData } from "../lib/quote.ts";
 import * as limits from "../lib/limits.ts";
 import { askOptions, legacyWebhookSecret, readUpdate, sendTelegram, setWebhook, TELEGRAM_PATH, TELEGRAM_REACH, webhookSecret, type Update } from "../lib/telegram.ts";
 import { collectWithDeadline, priorTurns, recordTurns, TIMEOUT_TEXT } from "./v1.ts";
@@ -91,7 +91,7 @@ async function answer(env: Env, ctx: ExecutionContext, u: Update, asPerson: (env
   const principal: Principal = { kind: "device", id: "telegram", name: "Telegram", scopes: grants, ...(person === OWNER ? {} : { owner: person }), ...(view.access ? { access: view.access } : {}) };
   const env2 = await asPerson(env, principal);
   // Forwarded: someone else's words, which the person wants something done about.
-  const text = u.forwarded ? `${asQuotedData("forwarded message", u.text, "SOMEONE ELSE")}\nThe user forwarded this.` : u.text;
+  const text = u.forwarded ? `${asQuotedData("forwarded message", u.text, "SOMEONE ELSE")}\n${FORWARDED}` : u.text;
   const thread = whoOf(principal);
   const turns = [...(await priorTurns(env2, thread)), { role: "user" as const, text }];
   const d = await collectWithDeadline(AbortSignal.timeout(STOP_MS), env2, ctx, turns, grants, WAIT_S, "telegram", askOptions(u));

@@ -364,6 +364,10 @@ console.log("\nanswered by a tap (routes/proposals.ts)");
     proposalDisallow: (person: string, category: string) => props.disallow(person, category),
     proposalUndo: (person: string, id: string, scopesNow: Grant[] | null | undefined, approver: Grant[], now: number) => props.undo(person, id, (q) => inverseOf(env, q), scopesNow, approver, now),
     proposalsLater: (person: string) => props.later(person),
+    jobsAsking: async (person: string) =>
+      person === "u_mia"
+        ? [{ id: "j1", title: "Dashcams", task: "x", grants: ["*"], createdBy: "u_mia", reach: "web", asked: [{ id: "q1", at: 1, text: "Old?", choices: [], answer: { at: 2, text: "Yes" } }, { id: "q2", at: 3, text: "Front only?", choices: ["Yes", "No"] }] }]
+        : [],
   };
   const env = { TESSIE_TOKEN: "t", TESSIE_VIN: "LRWTEST0000000000", STATE: { idFromName: () => "jarvis", get: () => stub } } as never;
   const mia = { kind: "member", id: "u_mia", role: "adult", scopes: ["*"], session: "s" } as never;
@@ -373,8 +377,9 @@ console.log("\nanswered by a tap (routes/proposals.ts)");
   const p = (await props.add(input({ person: "u_mia", who: "u_mia" }), Date.now())) as Proposal;
   const theirs = (await props.add(input({ person: "u_lee", who: "u_lee", from: { kind: "job", id: "jl", title: "x" } }), Date.now())) as Proposal;
 
-  const list = (await (await handleProposals(req("/api/hub/proposals"), env, mia))!.json()) as { open: Record<string, unknown>[] };
+  const list = (await (await handleProposals(req("/api/hub/proposals"), env, mia))!.json()) as { open: Record<string, unknown>[]; asking: unknown };
   check("listed: their own, waiting, without what it would run with", list.open.length === 1 && list.open[0]!.id === p.id && !("grants" in list.open[0]!) && !("who" in list.open[0]!), list);
+  check("and what their jobs ask, unanswered, with no more of the job than its name", JSON.stringify(list.asking) === JSON.stringify([{ job: "j1", title: "Dashcams", reach: "web", id: "q2", at: 3, text: "Front only?", choices: ["Yes", "No"] }]), list);
   check("not a path of its own: passed on", (await handleProposals(req("/api/hub/me"), env, mia)) === null);
   const device = await handleProposals(req("/api/hub/proposals"), env, { kind: "device", id: "d1", name: "tablet", scopes: ["*"] } as never);
   check("a device: refused", device!.status === 403);

@@ -51,9 +51,14 @@ export const unquoted = (text: string): string =>
 /** Whether text a tool gave carries something someone else wrote, quoted as above. */
 export const hasQuoted = (text: string): boolean => /^--- [^\n:]+:[0-9a-f]{8} \(CONTENT WRITTEN BY /m.test(text);
 
+/** Under what a person forwarded, quoted (routes/telegram.ts): said by the code, not by them. */
+export const FORWARDED = "The user forwarded this.";
+
 /** A person's message without what it quotes from someone else (a forwarded message): only their own words. */
-export const ownPart = (text: string): string =>
-  text.replace(/^--- ([^\n:]+:[0-9a-f]{8}) \(CONTENT WRITTEN BY [^\n]*\) ---\n[\s\S]*?\n--- end \1 ---$/gm, "").trim();
+export const ownPart = (text: string): string => {
+  const own = text.replace(/^--- ([^\n:]+:[0-9a-f]{8}) \(CONTENT WRITTEN BY [^\n]*\) ---\n[\s\S]*?\n--- end \1 ---$/gm, "").trim();
+  return own === FORWARDED ? "" : own;
+};
 
 /**
  * Text cut with slice() made whole again: half of a character outside the

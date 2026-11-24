@@ -146,12 +146,16 @@ export interface Job {
   nudged?: true;
 }
 
-/** What an answer is missing and assumes: its own words, and its checklist's and card's where it gave none. A line left open is missing whatever it said. */
+/**
+ * What an answer is missing and assumes: its own words, and its checklist's, its questions' and its card's where it
+ * gave none. A line or a question left open is missing whatever it said.
+ */
 function flagged(j: Job, f: Flags): Flags {
   const open = openLines(j.todo).map((t) => t.text);
   const dropped = (j.todo ?? []).flatMap((t) => (t.state === "dropped" ? [`${t.text}${t.why ? `: ${t.why}` : ""}`] : []));
-  const asked = openQuestions(j.asked).map((q) => `Your answer to: ${q.text}`);
-  return { missing: [...(f.missing.length ? f.missing : dropped), ...open, ...asked], assumed: f.assumed.length ? f.assumed : (j.card?.assumptions ?? []) };
+  const answer = (q: Asked) => `Your answer to: ${q.text}`;
+  const over = (j.asked ?? []).filter((q) => q.over).map(answer);
+  return { missing: [...(f.missing.length ? f.missing : [...dropped, ...over]), ...open, ...openQuestions(j.asked).map(answer)], assumed: f.assumed.length ? f.assumed : (j.card?.assumptions ?? []) };
 }
 
 /** What is kept while a step runs (note), not by whoever is looking at the job: never saved over by a record read before it. */
@@ -581,6 +585,9 @@ function heard(j: Job, now: number): Job {
   return waits ? { ...rest, waited: (j.waited ?? 0) + Math.max(0, now - waits.since), nextAt: now } : j;
 }
 
+/** The changes its person has told it of: an answer to what it asked is not one. */
+const changesTold = (j: Job): number => (j.told ?? []).filter((t) => !t.by && !t.to).length;
+
 /** What it asked will not be answered: it is told so, and goes on. Nothing is made up for its person. */
 function unheard(j: Job, now: number): Job {
   const open = openQuestions(j.asked);
@@ -913,7 +920,7 @@ export class Jobs {
     return this.noting;
   }
 
-  /** Its person changed its card while it works: what they changed reaches it, in their words, at its next step. */
+  /** Its person changed its card while it works: what they changed reaches it, in their words, at its next step; one that waits for them takes it now. */
   async changeCard(id: string, input: { outcome?: unknown; limits?: unknown; assumptions?: unknown }, now = Date.now()): Promise<Job | string> {
     const j = await this.stillRunning(id);
     if (!j) return "it is not working any more";
@@ -921,8 +928,8 @@ export class Jobs {
     if (j.cut) return "it has run out, and is writing what it has";
     const { card, said } = changeCard(j.card, input);
     if (!said) return j;
-    if ((j.told ?? []).length >= MAX_TOLD) return `a job is told of ${MAX_TOLD} changes at most`;
-    const next = { ...j, card, told: [...(j.told ?? []), { at: now, text: said }] };
+    if (changesTold(j) >= MAX_TOLD) return `a job is told of ${MAX_TOLD} changes at most`;
+    const next = heard({ ...j, card, told: [...(j.told ?? []), { at: now, text: said, card: true as const }] }, now);
     await this.save(next);
     return next;
   }
@@ -947,10 +954,10 @@ export class Jobs {
     if (!skip && !text) return "there is nothing to tell it";
     const secret = secretShaped(text);
     if (secret) return `not passed on: ${secret.replace(", which memory does not keep", "")}, which a job is never given`;
-    if (!which.length && (j.told ?? []).filter((t) => t.by !== "jarvis").length >= MAX_TOLD) return `a job is told of ${MAX_TOLD} changes at most`;
+    if (!which.length && changesTold(j) >= MAX_TOLD) return `a job is told of ${MAX_TOLD} changes at most`;
     const said: Told = skip
       ? { at: now, text: unanswered(numbered(asked, which), "skipped"), by: "jarvis" }
-      : { at: now, text: which.length ? `My answer to your ${numbered(asked, which)}: ${text}` : text };
+      : { at: now, text, ...(which.length ? { to: numbered(asked, which) } : {}) };
     const ids = new Set(which.map((q) => q.id));
     const next = heard({
       ...j,

@@ -44,6 +44,8 @@ console.log("what a screen may send");
   check("only the server says a routine said it", forged !== null && !("routine" in forged), forged);
   const forgedJob = asSaid({ id: "c_abc124", role: "assistant", text: "Done", job: { id: "jabc123def", name: "Done: x" } }, 1);
   check("only the server says a job's result is one", forgedJob !== null && !("job" in forgedJob), forgedJob);
+  const forgedAsk = asSaid({ id: "c_abc125", role: "assistant", text: "Which?", ask: { job: "jabc123def", id: "q1" } }, 1);
+  check("…or that a job asks something", forgedAsk !== null && !("ask" in forgedAsk), forgedAsk);
 }
 
 console.log("\nwhat is kept");
@@ -101,6 +103,8 @@ console.log("\nwhat any other alert said");
     JSON.stringify(s) === JSON.stringify({ id: "a_d1", at: 50, role: "assistant", text: "The front door lock is unlocked.", alert: { source: "api", title: "Front door" } }), s);
   const ready = alertSaid({ id: "a_r1", at: 50, title: "Ready now", text: "Car: lock", source: "job", proposals: [{ id: "a1", risk: "reversible", says: "Car: lock" }] });
   check("one a job raised without being its result: an alert, its card with it", ready?.alert?.source === "job" && !ready.job && JSON.stringify(ready.proposals) === '["a1"]', ready);
+  const asks = alertSaid({ id: "a_q1", at: 50, title: "A question: Dashcams", text: "Front only?\n\n- Yes\n- No", source: "job", ask: { job: "jabc123def", id: "q1" } });
+  check("a job's question keeps which it is, to be answered, and its alert, for a screen that does not know them; it is not a result", asks?.ask?.job === "jabc123def" && asks.ask.id === "q1" && asks.alert?.title === "A question: Dashcams" && !asks.job, asks);
   check("Settings → Test is nobody's conversation", alertSaid({ id: "a_t1", at: 50, title: "Jarvis test", text: "a test", source: "test" }) === null);
   const chat = alertSaid({ id: "a_c1", at: 50, title: "Sara, to the family", text: "Dinner at eight", source: "chat" });
   check("a family message is kept too, under who sent it, to be answered by voice", chat?.alert?.source === "chat" && chat.alert.title === "Sara, to the family", chat);

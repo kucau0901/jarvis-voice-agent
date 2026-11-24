@@ -1419,7 +1419,7 @@ their merge is that last call already.
 
 **A job's card is its person's, its checklist its own.** A job of any size first
 calls `job_plan` (`lib/job-tools.ts`): what they will have, the limits it keeps
-to, what it assumes since nobody can be asked, and a short checklist; it then
+to, what it assumes without asking, and a short checklist; it then
 ticks lines as it goes with `job_tick`. Both are kept while the step runs (`say`,
 `Jobs.note`), not when it ends: on the plan a step streams for minutes, and
 somebody may be watching. There is no approval and no step editor. It starts at
@@ -1453,7 +1453,14 @@ that as Jarvis (a developer message), never as them, and to say what it leaves
 open: nothing is assumed for them. They may also tell it anything at any time
 (`Jobs.tell`), which joins at its next step, as a change to its card does; what it
 may reach is by what it is handed, so no words of theirs widen it. A card's number,
-a key or a one-time code is refused, whoever asked for it.
+a key or a one-time code is refused, whoever asked for it. A question is one card
+(`ui/JobAsk.ts`) wherever it is met: under its alert, in the conversation, in Jobs
+and in Home's Now strip, with its choices as buttons and a box for other words.
+There is no inbox of them. Each is drawn from the job as it stands, so one answered
+by voice or on another screen says what came of it, and one answered on this screen
+says so on every card here. What they told a job is listed in Jobs with whether it
+was taken in, waits for the next step, or came too late; a job on the web says
+that an answer may go out in the words of a search.
 
 In the conversation, by voice, on the phone or by Telegram it is `job_control`
 (`tools/jobs.ts`): a change, an answer, a stop. It takes no words: the job is told

@@ -30,7 +30,9 @@ import { takeShared } from "./share";
 import { keyboardSpace, watchKeyboard } from "./keyboard";
 import { Attachments, type Attached } from "./attach";
 import { Reply } from "./reply";
-import { fromJob, fromRoutine, fromSkill, jobStarted, jobsSeen, type JobSaid, type RoutineSaid, type SkillSaid } from "./fromRoutine";
+import { fromAsk, fromJob, fromRoutine, fromSkill, jobStarted, jobsSeen, type AskSaid, type JobSaid, type RoutineSaid, type SkillSaid } from "./fromRoutine";
+import { askOf } from "./jobWords";
+import { askUnder } from "./ui/JobAsk";
 import { asked, clearKept, keep, kept, restore, saidId, type Rows } from "./conversation";
 import { inCar } from "./client";
 import { arm } from "./ui/util";
@@ -558,9 +560,11 @@ function showAlert(a: Alert): HTMLElement {
   // A job's result can be a table or a list (ui/rich.ts): drawn as it is meant, from text nodes.
   const body = document.createElement("div");
   body.className = "atext";
-  body.appendChild(markdown(a.text, ""));
+  body.appendChild(markdown(a.ask ? askOf(a.text).question : a.text, ""));
   card.appendChild(head);
   card.appendChild(body);
+  // What a job asks: answered right here (ui/JobAsk.ts).
+  if (a.ask && key) card.appendChild(askUnder(key, a.ask, askOf(a.text).choices));
   // What a job proposed: Approve or Not now, right here (proposal.ts).
   if (a.proposals?.length && key) card.appendChild(proposalCards(key, a.proposals.map((p) => p.id)));
   // Passed on from someone in the family: answer it right here (relay.ts).
@@ -609,6 +613,17 @@ function jobSaid(a: JobSaid): boolean {
   return true;
 }
 
+/** What a job asks: its pill, its question, and its answer's buttons under it, as they now stand. */
+function askSaid(a: AskSaid): boolean {
+  const label = fromAsk(a, openJob);
+  if (!label) return false;
+  els.transcript.appendChild(label);
+  const { question, choices } = askOf(a.text);
+  const row = addRow("jarvis", question);
+  if (key) (row.querySelector(":scope > .who + *") ?? row).appendChild(askUnder(key, a.ask, choices));
+  return true;
+}
+
 /**
  * What a skill said, an outside bot: its pill, then its words under its name, never as Jarvis's (fromRoutine.ts).
  * A component's report the same, its pill opening Components, and what it suggested as cards under its words.
@@ -630,6 +645,7 @@ function onAlert(a: Alert) {
   // anything else as "Title: text"; Settings → Test, which is kept nowhere, only while typing.
   if (a.routine) routineSaid({ ...a, routine: a.routine, proposals: a.proposals?.map((p) => p.id) });
   else if (a.job) jobSaid({ ...a, job: a.job, proposals: a.proposals?.map((p) => p.id) });
+  else if (a.ask) askSaid({ ...a, ask: a.ask });
   else if (a.skill) skillSaid({ id: a.id, at: a.at, text: a.text, skill: a.skill, proposals: a.proposals?.map((p) => p.id) });
   else if (a.source !== "test" || mode === "type") addRow("jarvis", a.title !== "Jarvis" ? `${a.title}: ${a.text}` : a.text).dataset.said = a.id;
   // Into the conversation either way: "yes, do that" after Hermes asks a
@@ -655,6 +671,7 @@ const chatRows: Rows = {
   row: (who, text, links, page) => addRow(who, text, "", links, page),
   routine: routineSaid,
   job: jobSaid,
+  ask: askSaid,
   skill: skillSaid,
   apart: (p) => showCard(pageCard(key, p)),
 };

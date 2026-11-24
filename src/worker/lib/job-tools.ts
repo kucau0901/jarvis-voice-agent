@@ -35,11 +35,17 @@ export interface Todo {
   why?: string;
 }
 
-/** What its person told it while it worked; `taken` once a step had it. By Jarvis: that they did not answer. */
+/**
+ * What its person told it while it worked; `taken` once a step had it. Their
+ * answer to what it asked (`to`: "question 1"), or a change to its card. By
+ * Jarvis: that they did not answer.
+ */
 export interface Told {
   at: number;
   text: string;
   taken?: true;
+  to?: string;
+  card?: true;
   by?: "jarvis";
 }
 
@@ -107,7 +113,7 @@ export function workTools(job: Pick<Job, "card" | "todo" | "asked">, say: (s: Sa
         properties: {
           outcome: { type: "string", description: "What the user will have when you are done, in one sentence." },
           limits: { type: "array", items: { type: "string" }, description: "Limits you will keep to, up to four: a budget, an area, what is left out." },
-          assumptions: { type: "array", items: { type: "string" }, description: "What you take for granted because nobody can be asked, up to four. Empty if nothing." },
+          assumptions: { type: "array", items: { type: "string" }, description: "What you take for granted without asking, up to four. Empty if nothing." },
           steps: { type: "array", items: { type: "string" }, description: "Two to eight short steps, in order: the checklist." },
         },
         required: ["outcome", "limits", "assumptions", "steps"],
@@ -227,7 +233,7 @@ export function untold(job: Pick<Job, "told">): Items {
   const theirs = waiting.filter((t) => t.by !== "jarvis");
   const ours = waiting.filter((t) => t.by === "jarvis");
   return [
-    ...(theirs.length ? [{ role: "user" as const, content: `While you work, I say:\n${theirs.map((t) => t.text).join("\n")}\nKeep what you have found that still holds, and go on from there.` }] : []),
+    ...(theirs.length ? [{ role: "user" as const, content: `While you work, I say:\n${theirs.map((t) => (t.to ? `My answer to your ${t.to}: ${t.text}` : t.text)).join("\n")}\nKeep what you have found that still holds, and go on from there.` }] : []),
     ...(ours.length ? [{ role: "developer" as const, content: ours.map((t) => t.text).join("\n") }] : []),
   ];
 }

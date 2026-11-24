@@ -470,7 +470,7 @@ and connects to `/api/v1/events?ticket=…`. A ticket works once.
 | Direction | Message |
 |---|---|
 | ← | `{"type":"hello","label":…}` on connecting |
-| ← | `{"type":"alert","alert":{id, at, title, text, speak, talk, urgent, source, for?, expiresAt?, routine?, look?, job?, relay?, convo?, proposals?, skill?}}`; `skill: {id, name, about?}` when a bot said it ([Bots](#bots-skills-both-ways)): show it as `name`'s |
+| ← | `{"type":"alert","alert":{id, at, title, text, speak, talk, urgent, source, for?, expiresAt?, routine?, look?, job?, ask?, relay?, convo?, proposals?, skill?}}`; `ask: {job, id}` when a background job puts a question, its choices as a list after the question in `text`; `skill: {id, name, about?}` when a bot said it ([Bots](#bots-skills-both-ways)): show it as `name`'s |
 | ← | `{"type":"glasses.open"}` when the person asks to open Jarvis on their display glasses (the `open_on_glasses` tool): an app holding G2 glasses shows Jarvis's own screen on them. Sent to each of the person's screens and devices; one with no such glasses ignores it |
 | ← | `{"type":"conversation.said","said":[…]}` when a bot's exchange with Jarvis is kept in the person's conversation ([Bots](#bots-skills-both-ways)), rows as `GET /api/hub/conversation` gives them: sent to the person's own screens, signed in, never to a device |
 | → | `{"type":"presence","visible":true}` whenever the screen is shown or hidden |
@@ -631,7 +631,9 @@ assumptions}`, and a checklist, `todo: [{text, state, why?}]` with `state`
 that, `wrapping`, what of. `POST /api/v1/jobs/card {id, outcome?, limits?,
 assumptions?}` changes the card of one still working (each list is given whole);
 what was changed reaches the job at its next step, and `told: [{at, text,
-taken?}]` says which changes it has had.
+taken?, card?, to?, by?}]` says what it was told and which of it it has had: a
+change to its card (`card`), an answer (`to`, "question 1"), or their words; `by:
+"jarvis"` is Jarvis telling it that no answer came.
 
 `POST /api/v1/jobs/tell {id, text}` tells one still working anything, in its
 person's own words, up to 1,000 characters: it takes it in at its next step. A
@@ -642,6 +644,8 @@ says so at once, with `ask: {job, id}` and no `job`, since it is not the result.
 or `open` for all of them), and `{id, question, skip: true}` goes on without. With
 nothing else to do, a job waits for the answer a day, its status still `running`
 and `waiting: {for: "you", until}` in its view; it is not one of the three running.
+One job's whole view also carries `asked`, every question it put with its `answer`
+(`{at, text}`) or `over` ("skipped" or "late").
 
 Its answer carries `missing`, what was asked for and not got, and `assumed`,
 what was taken for granted: a list each, absent when there is nothing. They are
@@ -668,8 +672,9 @@ as a draft) is proposed instead, and its result alert carries them as
 ("Lock", "Send"; absent, Approve). Only the person who started it can approve
 one, signed in, with `POST /api/hub/proposals/answer {id, answer: "approve" |
 "decline" | "undo"}`; an approved one comes back `running`, and Jarvis makes the call
-in the background. `GET /api/hub/proposals` is `{open, recent, allowed, later}`, and
-says what came of it. `later` is what waits to be put to them: `[{id, says,
+in the background. `GET /api/hub/proposals` is `{open, recent, allowed, later, asking}`,
+and says what came of it. `asking` is what their jobs ask them, `[{job, title, reach?,
+id, at, text, choices}]`. `later` is what waits to be put to them: `[{id, says,
 why, risk, when, verb?, about?, body?}]`, `when` in words ("When you get home", "30
 min before “Dentist”, Thu 23 Oct, 10:00"); it cannot be approved before
 then, and `answer: "decline"` with its id drops it (one with `about`, a

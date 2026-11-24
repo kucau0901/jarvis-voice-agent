@@ -3,6 +3,7 @@ import { arm, button, el } from "./util";
 import { markdown } from "./rich";
 import { proposalsBox } from "../proposal";
 import type { JobCard, JobView } from "../jobWords";
+import { askCard, askId } from "./JobAsk";
 import { cardForm, jobLive, jobNow } from "./JobLive";
 
 /**
@@ -44,6 +45,10 @@ export class Jobs {
   private handing = new Map<string, string>();
   /** A working job's card being changed: the job, and the card as typed so far. */
   private changing = new Map<string, JobCard>();
+  /** A working job being told something: the job, and the words as typed so far. */
+  private telling = new Map<string, string>();
+  /** Answers to what jobs ask, as typed so far (ui/JobAsk.ts). */
+  private answering = new Map<string, string>();
 
   /** Told what is listed each time, so the chat's job pills keep up (fromRoutine.ts jobsSeen). */
   private seen: (jobs: JobView[]) => void;
@@ -210,15 +215,32 @@ export class Jobs {
     for (const id of this.changing.keys()) {
       if (!jobs.some((j) => j.id === id && j.status === "running" && j.card && !j.wrapping)) this.changing.delete(id);
     }
+    for (const id of this.telling.keys()) {
+      if (!jobs.some((j) => j.id === id && hears(j))) this.telling.delete(id);
+    }
+    for (const k of this.answering.keys()) {
+      if (!jobs.some((j) => j.asks?.some((q) => askId(j.id, q.id) === k))) this.answering.delete(k);
+    }
     if (!jobs.length) {
       this.list.replaceChildren(el("p", "note", "None yet."));
     } else {
       this.list.replaceChildren(...jobs.map((j) => this.row(j)));
     }
     // Keep up with running jobs while the panel is open, but not while something is being written to one.
-    if (this.el.classList.contains("open") && !this.handing.size && !this.changing.size && jobs.some((j) => j.status === "running")) {
-      this.timer = setTimeout(() => void this.load(), 5000);
-    }
+    if (this.el.classList.contains("open") && jobs.some((j) => j.status === "running")) this.soon();
+  }
+
+  private soon(): void {
+    this.timer = setTimeout(() => (this.writing() ? this.soon() : void this.load()), 5000);
+  }
+
+  private writing(): boolean {
+    const at = document.activeElement;
+    return (
+      this.handing.size + this.changing.size + this.telling.size > 0 ||
+      [...this.answering.values()].some((t) => t.trim()) ||
+      (this.list.contains(at) && (at instanceof HTMLInputElement || at instanceof HTMLTextAreaElement))
+    );
   }
 
   private row(j: JobView): HTMLElement {
@@ -227,7 +249,7 @@ export class Jobs {
     row.dataset.id = j.id;
     const top = el("div", "rtop");
     top.appendChild(el("b", "", j.title));
-    top.appendChild(el("span", `chip ${j.status === "done" ? "on" : "off"}`, j.waiting ? "waiting" : j.status === "failed" && j.hasResult ? "part done" : STATUS[j.status]));
+    top.appendChild(el("span", `chip ${j.status === "done" || j.asks ? "on" : "off"}`, j.asks ? "asks you" : j.waiting ? "waiting" : j.status === "failed" && j.hasResult ? "part done" : STATUS[j.status]));
     row.appendChild(top);
 
     const facts: string[] = [j.team ? "Research team" : j.engine === "hermes" ? "Hermes" : j.engine === "research" ? "Research" : j.mode === "thorough" ? "Jarvis, thorough" : "Jarvis", `started ${when(j.createdAt)}`];
@@ -240,12 +262,20 @@ export class Jobs {
     if (j.engine !== "hermes") facts.push(j.engine === "research" || j.reach === "web" ? "the web only" : "your own things, no web");
     if (j.onKey) facts.push("on the API key");
     row.appendChild(el("div", "rfacts", facts.join(" · ")));
-    if (j.waiting) row.appendChild(el("div", "rwhen", `The ChatGPT plan is at its limit. This goes on by itself at about ${when(j.waiting.until)}.`));
+    if (j.waiting) {
+      row.appendChild(
+        el("div", "rwhen", j.waiting.for === "you"
+          ? `It has done what it can without you. If you have not answered by ${when(j.waiting.until)}, it finishes without, and says what that leaves open.`
+          : `The ChatGPT plan is at its limit. This goes on by itself at about ${when(j.waiting.until)}.`),
+      );
+    }
 
     if (j.status === "running") {
+      for (const q of j.asks ?? []) row.appendChild(askCard(this.key, j, q, { tag: "It asks you", typed: this.answering, after: () => void this.load() }));
       const work = jobLive(j);
       if (work) row.appendChild(work);
       if (j.engine === "jarvis" && !j.waiting) row.appendChild(jobNow(j));
+      if (this.telling.has(j.id)) row.appendChild(this.tell(j));
       const typed = this.changing.get(j.id);
       if (typed) {
         row.appendChild(cardForm(typed, (c) => {
@@ -302,6 +332,15 @@ export class Jobs {
         void this.load();
       }));
     }
+    if (hears(j)) {
+      btns.appendChild(
+        button(this.telling.has(j.id) ? "Leave it" : "Tell it", () => {
+          if (this.telling.has(j.id)) this.telling.delete(j.id);
+          else this.telling.set(j.id, "");
+          void this.load().then(() => this.list.querySelector<HTMLElement>(`.routine[data-id="${CSS.escape(j.id)}"] .jobtell textarea`)?.focus());
+        }),
+      );
+    }
     if (j.status === "running") btns.appendChild(button("Stop", () => void this.act(() => api(this.key, "POST", "/api/v1/jobs/cancel", { id: j.id }))));
     else btns.appendChild(button("Remove", () => void this.act(() => api(this.key, "DELETE", `/api/v1/jobs?id=${encodeURIComponent(j.id)}`))));
     row.appendChild(btns);
@@ -336,6 +375,34 @@ export class Jobs {
     return form;
   }
 
+  /** Telling a working job something, in their own words: it takes it in at its next step. */
+  private tell(j: JobView): HTMLElement {
+    const form = el("div", "rform jobtell");
+    const words = document.createElement("textarea");
+    words.rows = 2;
+    words.maxLength = 1000;
+    words.placeholder = "Only ones I can have this week.";
+    words.setAttribute("aria-label", `What to tell ${j.title}`);
+    words.value = this.telling.get(j.id) ?? "";
+    words.addEventListener("input", () => this.telling.set(j.id, words.value));
+    // Why it was not passed on is said here, beside what was typed; passed on, the row says when it is taken in.
+    const problem = el("small", "rfacts bad");
+    const send = button("Send", async () => {
+      if (!words.value.trim()) return;
+      send.disabled = true;
+      try {
+        await api(this.key, "POST", "/api/v1/jobs/tell", { id: j.id, text: words.value });
+        this.telling.delete(j.id);
+        await this.load();
+      } catch (e) {
+        problem.textContent = e instanceof Error ? e.message : String(e);
+        send.disabled = false;
+      }
+    }, "primary");
+    form.append(words, problem, send);
+    return form;
+  }
+
   private async fill(id: string, box: HTMLElement): Promise<void> {
     try {
       const j = ((await api(this.key, "GET", `/api/v1/jobs?id=${encodeURIComponent(id)}`)) as { job: JobView }).job;
@@ -357,6 +424,9 @@ export class Jobs {
     }
   }
 }
+
+/** Whether a job may be told something: an ordinary one, still working, and not already writing what it has. */
+const hears = (j: JobView): boolean => j.engine === "jarvis" && j.status === "running" && !j.wrapping;
 
 /** What a job's answer is missing, or rests on, a line each. */
 function flags(head: string, lines: readonly string[]): HTMLElement {

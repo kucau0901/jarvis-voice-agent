@@ -19,6 +19,20 @@ export interface Todo {
   why?: string;
 }
 
+/** A question a job put to its person, with its choices where it gave any. */
+export interface JobAsk {
+  id: string;
+  at: number;
+  text: string;
+  choices: string[];
+}
+
+/** One it put, and what came of it: their answer, or that they went on without it, or none came in time. */
+export interface JobAsked extends JobAsk {
+  answer?: { at: number; text: string };
+  over?: "skipped" | "late";
+}
+
 export interface JobView {
   id: string;
   title: string;
@@ -44,8 +58,15 @@ export interface JobView {
   reach?: "private" | "web";
   /** The stronger model, for hard work. */
   mode?: "thorough";
-  /** Waiting for the ChatGPT plan, at its limit, until then; `key`, when it may go on with the API key instead, and what it has used would have cost there. */
-  waiting?: { for: "plan"; until: number; key?: { soFar: number | null } };
+  /**
+   * Waiting until then: for the ChatGPT plan, at its limit (`key`, when it may go on with the API key instead, and
+   * what it has used would have cost there); or for you, with nothing left to do until you answer.
+   */
+  waiting?: { for: "plan" | "you"; until: number; key?: { soFar: number | null } };
+  /** What it asks you and has not been answered, while it works. */
+  asks?: JobAsk[];
+  /** With the whole of it: all it asked. */
+  asked?: JobAsked[];
   /** Moved to the API key rather than wait. */
   onKey?: boolean;
   /** Research into a table: its columns, and how many rows it came back with, to download. */
@@ -58,13 +79,13 @@ export interface JobView {
   /** What it may take; and, out of that, of what: it is writing what it has. */
   limits?: { steps: number; going: number; minutes: number };
   wrapping?: string;
-  /** What its person changed while it worked, and whether a step has had it. */
-  told?: { at: number; text: string; taken?: true }[];
+  /** What its person told it while it worked, and whether a step has had it: an answer (`to`), a change to its card, or their words; by Jarvis, that they did not answer. */
+  told?: { at: number; text: string; taken?: true; to?: string; card?: true; by?: "jarvis" }[];
 }
 
 /** What it is doing this moment. */
 export function nowDoing(j: JobView): string {
-  if (j.waiting) return "Waiting for the ChatGPT plan";
+  if (j.waiting) return j.waiting.for === "you" ? "Waiting for your answer" : "Waiting for the ChatGPT plan";
   if (j.wrapping) return `Writing what it has: ${j.wrapping}`;
   const on = [...new Set((j.doing ?? []).map((t) => (t === "web_search" ? "Searching the web" : doing(t))))];
   return on.length ? on.join(", ") : "Thinking";
@@ -86,12 +107,30 @@ export function powers(j: JobView): string {
   return `${looks} Never acts: what it would do, it proposes.${j.mode === "thorough" ? " On the stronger model." : ""}${takes}`;
 }
 
-/** Whether what its person last changed has reached it; null when nothing was changed. */
-export function heard(j: JobView): string | null {
-  const last = j.told?.at(-1);
-  if (!last) return null;
-  if (last.taken) return "Your change was taken in.";
-  return j.status === "running" && !j.wrapping ? "Your change reaches it at its next step." : "Your last change came too late.";
+/** The last things its person told it, oldest first, and whether each has reached it. */
+export function heard(j: JobView): { said: string; state: string }[] {
+  const late = j.status !== "running" || !!j.wrapping;
+  return (j.told ?? [])
+    .filter((t) => !t.by)
+    .slice(-3)
+    .map((t) => ({
+      said: t.card ? "You changed its card" : t.to ? `Your answer: ${t.text}` : `You said: ${t.text}`,
+      state: t.taken ? "taken in" : late ? "came too late" : "reaches it at its next step",
+    }));
+}
+
+/** What came of a question, as whoever was asked reads it; null while it may still be answered. */
+export function cameOf(q: JobAsked, status: JobView["status"]): string | null {
+  if (q.answer) return `You answered: ${q.answer.text}`;
+  if (q.over === "skipped") return "You chose to go on without an answer.";
+  if (q.over === "late") return "No answer came in time, and it went on without one.";
+  return status === "running" ? null : "It ended before this was answered.";
+}
+
+/** A question's alert (src/worker/lib/jobs.ts askAlert): the question, and its choices. */
+export function askOf(text: string): { question: string; choices: string[] } {
+  const [question = "", list] = text.split("\n\n- ");
+  return { question, choices: list ? list.split("\n- ") : [] };
 }
 
 /** A card's list as it is typed, a line each. */

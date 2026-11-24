@@ -1,5 +1,6 @@
 import { authHeaders } from "./key";
 import type { Said } from "./conversation";
+import { askOf } from "./jobWords";
 import { routeElement } from "./loud";
 import { inCar } from "./client";
 import { desktop, seenHere } from "./desktop";
@@ -34,6 +35,8 @@ export interface Alert {
   look?: true;
   /** The background job it is the result of: its pill in the conversation takes it (fromRoutine.ts). */
   job?: string;
+  /** A question a background job puts to you, not its result: answered under its words (ui/JobAsk.ts). */
+  ask?: { job: string; id: string };
   /** What that job proposed for a tap (proposal.ts). */
   proposals?: { id: string; risk: string; says: string }[];
   /** The skill that said it, an outside bot: shown under its name, and what it was asked (fromRoutine.ts fromSkill). */
@@ -365,7 +368,10 @@ export function setSpeakHere(on: boolean): void {
  * page), so the card can offer a button instead.
  */
 export async function speakAlert(key: string, a: Alert): Promise<boolean> {
-  return speakText(key, a.title && a.title !== "Jarvis" ? `${a.title}. ${a.text}` : a.text);
+  // A question's choices with a pause between them.
+  const { question, choices } = askOf(a.text);
+  const text = a.ask && choices.length ? `${question} ${choices.join(", ")}.` : a.text;
+  return speakText(key, a.title && a.title !== "Jarvis" ? `${a.title}. ${text}` : text);
 }
 
 /**

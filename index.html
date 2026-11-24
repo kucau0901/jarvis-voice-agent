@@ -384,6 +384,8 @@
   .jobcard { display: grid; gap: 3px; font-size: 13px; color: var(--dim); overflow-wrap: anywhere; }
   .jobcard b { font-size: 14px; font-weight: 500; color: var(--fg); }
   .jobcard small, .jobheard { font-size: 12px; color: var(--dim); }
+  .jobheard { overflow-wrap: anywhere; }
+  .jobheard small { margin-left: 8px; color: var(--faint); }
   .jobtodo { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; font-size: 14px; color: var(--fg); }
   .jobtodo li { position: relative; padding-left: 24px; overflow-wrap: anywhere; }
   .jobtodo li::before { content: ""; position: absolute; left: 1px; top: .2em; box-sizing: border-box; width: 14px; height: 14px;
@@ -406,6 +408,21 @@
   .row .jobstop { flex: none; min-height: 36px; padding: 6px 14px; border: 0; border-radius: 999px; background: var(--wash); color: var(--fg);
     font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; }
   .row .jobstop.armed { background: var(--danger); color: #fff; }
+  /* A job's question (ui/JobAsk.ts): its choices as buttons, a box for other words; under its alert, in the conversation, in Jobs and Now. */
+  .askcard { gap: 10px; }
+  .askcard .doctitle { overflow-wrap: anywhere; font-weight: 600; }
+  .askcard .mdbtns { flex-wrap: wrap; margin-top: 0; }
+  .askcard .mdbtns button, .askcard .askrow button { min-height: 44px; text-align: left; overflow-wrap: anywhere; }
+  .askcard .askrow { display: flex; gap: 8px; }
+  .askcard .askrow input { flex: 1; min-width: 0; min-height: 44px; box-sizing: border-box; padding: 9px 14px; border: 1px solid transparent; border-radius: 999px;
+    background: var(--field); color: var(--fg); font: inherit; font-size: 16px; }
+  .askcard .askfoot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 12px; }
+  .askcard .askskip { min-height: 36px; padding: 0; border: 0; background: none; color: var(--dim); font: inherit; font-size: 13px; text-decoration: underline; cursor: pointer; }
+  .askcard .bad { color: var(--danger); }
+  .askcard .bad:empty { display: none; }
+  .routine .askcard, #now .askcard { margin-top: 0; }
+  .alert .askcard, .row .askcard { margin-top: 0; padding: 0; border: 0; border-radius: 0; background: none; }
+  .row .jobasks { display: grid; gap: 8px; }
   .panel .jobchange label { display: grid; gap: 4px; font-size: 13px; color: var(--dim); }
   .routine.flash { animation: rflash 1.6s ease-out; }
   /* An answer's reply button, at its foot (reply.ts). */
