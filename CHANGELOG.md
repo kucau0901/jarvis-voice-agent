@@ -148,7 +148,11 @@ of every release, and in the [README](README.md#updating).
   steps, time (now an hour, was 20 minutes), searches or two dollars of your
   API key, it writes what it has and what is missing, and comes back as **Part
   done**. It used to be stopped with nothing. Devices that read
-  `/api/v1/jobs`: such a job has the status `failed`, and a `result`.
+  `/api/v1/jobs`: such a job has the status `failed`, and a `result`. One that
+  keeps asking the same thing ends the same way, rather than spending the rest
+  of its steps on it; and a very long answer from a tool (a house's every
+  state, a long thread) is read a part at a time, so it is not paid for again
+  at every step.
 - **A background job now looks at your own things, or at the web, not both.**
   Jarvis says which when it starts one, the Jobs panel shows it, and **New job**
   there asks. A job on the web has nothing of yours but what its brief says

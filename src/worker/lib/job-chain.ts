@@ -35,8 +35,9 @@ interface Row {
 
 export const MAX_TRIES = 5;
 
-const rows = (job: string) => `jobitem:${job}:`;
-const key = (job: string, chain: string, n: number) => `${rows(job)}${chain}:${String(n).padStart(4, "0")}`;
+/** What a job keeps while it works, all of it gone with the job (clearChain). */
+export const jobRows = (job: string) => `jobitem:${job}:`;
+const key = (job: string, chain: string, n: number) => `${jobRows(job)}${chain}:${String(n).padStart(4, "0")}`;
 
 /** A step's id: its chain and row, as "plan_m.3". */
 export const stepId = (chain: string, n: number): string => `plan_${chain}.${n}`;
@@ -47,7 +48,7 @@ export function stepOf(id: string | undefined): { chain: string; n: number } | n
 
 /** The exchange is the job's: gone with it, or once it has ended. Not under "job:", which is the jobs themselves. */
 export async function clearChain(storage: Storage, job: string): Promise<void> {
-  for (const k of (await storage.list({ prefix: rows(job) })).keys()) await storage.delete(k);
+  for (const k of (await storage.list({ prefix: jobRows(job) })).keys()) await storage.delete(k);
 }
 
 export class JobChain {
@@ -60,7 +61,7 @@ export class JobChain {
 
   /** Every item so far, through the answer of row `n`. */
   async exchange(chain: string, n: number): Promise<Items> {
-    const all = await this.storage.list<Row>({ prefix: `${rows(this.job)}${chain}:` });
+    const all = await this.storage.list<Row>({ prefix: `${jobRows(this.job)}${chain}:` });
     const out: Items = [];
     for (let i = 0; i <= n; i++) {
       const row = all.get(key(this.job, chain, i));
@@ -117,7 +118,7 @@ export class JobChain {
 
 /* ---------- calls that must not be made twice ---------------------------------- */
 
-const callsKey = (job: string) => `${rows(job)}calls`;
+const callsKey = (job: string) => `${jobRows(job)}calls`;
 
 /**
  * Of a step's calls, those a run cut short had already begun: never made again

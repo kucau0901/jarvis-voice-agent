@@ -1401,6 +1401,20 @@ its time is up is let finish, at most fifteen minutes. A research report written
 this way is checked like any other; a team's chains keep their own limits, since
 their merge is that last call already.
 
+**A job does not go round in a circle, or carry what it has no use for.** The
+same call with the same answer three times running has that said in the answer,
+the fifth is not made, and at eight the job has nothing left to try and writes
+what it has (`runGuarded` in `lib/job-guards.ts`): compared without the fences
+round quoted text, whose marker is new each time. A tool's answer past 40,000
+characters, about ten thousand tokens, is cut as it arrives (`lib/job-results.ts`),
+because a job sends its whole exchange at every step and one long list would be
+paid for at each. Cut once and never edited afterwards: an exchange changed
+behind the model is no longer cached, nor what it answered from. The rest is kept
+beside the exchange, and `read_result` reads on in it or finds a word in it, always
+quoted again, since a cut can take the fence's end with it. These tools, like a
+research team's `share_findings`, are added to a job's own request and are never
+in `ALL`: no question in the conversation carries them.
+
 **Read; propose, never act.** A job runs with nobody watching and reads text
 written by others — web pages, mail — so it reads with Jarvis's reading tools
 and the MCP tools whose names say they read (`ha_get_state` in,

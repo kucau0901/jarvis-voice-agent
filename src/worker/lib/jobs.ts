@@ -120,6 +120,8 @@ export interface Job {
   onKey?: true;
   /** Out of its budget (lib/job-guards.ts outOf): of what, and whether it has been told to write what it has. */
   cut?: { why: string; sent?: true };
+  /** Going round in a circle (lib/job-guards.ts runGuarded). */
+  stuck?: true;
 }
 
 /** A page the web search cited: what a report's Sources list is made of. */
@@ -208,8 +210,8 @@ export function usageEntry(j: Job, ok: boolean, now: number): UsageEntry {
 /** One look at a running jarvis job, as the engine reports it. */
 export type Step =
   | { kind: "wait"; usage?: Job["usage"] }
-  /** `shared`: what a team passed to share_findings in this hop. */
-  | { kind: "continued"; responseId: string; usage?: Job["usage"]; shared?: string[] }
+  /** `shared`: what a team passed to share_findings in this hop. `stuck`: it keeps asking the same thing (lib/job-guards.ts). */
+  | { kind: "continued"; responseId: string; usage?: Job["usage"]; shared?: string[]; stuck?: true }
   | { kind: "done"; text: string; cited?: Cited[]; usage?: Job["usage"] }
   /** The plan is at its limit: nothing was asked, and it goes on from here then. */
   | { kind: "parked"; until: number }
@@ -904,6 +906,7 @@ export class Jobs {
         return this.finish(j, deps, now, { error: `${j.cut?.why ?? `it took more than ${limits.maxSteps} steps`} and was stopped` });
       }
       if (j.cut) j.cut = { ...j.cut, sent: true };
+      if (step.stuck) j.stuck = true;
       j.responseId = step.responseId;
       j.steps += 1;
       j.updatedAt = now;

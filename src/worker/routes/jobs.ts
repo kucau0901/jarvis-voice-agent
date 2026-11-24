@@ -9,10 +9,11 @@ import { asQuotedData } from "../lib/quote.ts";
 import { stateStub } from "../lib/state-client.ts";
 import { allows, withoutScreen, type Grant } from "../lib/scopes.ts";
 import { builtinTools, explicitCache, researchModel } from "../lib/router-model.ts";
-import { toToolSchema } from "../tools/registry.ts";
+import { toToolSchema, type Tool } from "../tools/registry.ts";
 import * as hermes from "../tools/hermes.ts";
 import { INTERRUPTED, JobChain, beginCalls, stepId, stepOf, type Answered } from "../lib/job-chain.ts";
-import { NOT_RUN } from "../lib/job-guards.ts";
+import { NOT_RUN, runGuarded } from "../lib/job-guards.ts";
+import { readResult } from "../lib/job-results.ts";
 import { RESEARCH_MONTHLY_DEFAULT, jobTool, reachOf, webTool, sharesLeft, usageEntry, type Job, type JobDeps, type Step } from "../lib/jobs.ts";
 import { citationsOf } from "../lib/links.ts";
 import { toCsv } from "../lib/research-table.ts";
@@ -165,7 +166,9 @@ export function jobEngine(
     const searches = web ? builtinTools(env) : [];
     // Research: the stronger model, thinking hard (lib/jobs.ts "research").
     const model = research ? researchModel(env.RESEARCH_MODEL) : p.model;
-    const functions = [...p.tools.map(toToolSchema), ...(team ? [toToolSchema(shareTool("", [], 0))] : [])];
+    // Its own tools, which no question in the conversation is ever offered: an ordinary job's, or a research team's one.
+    const own: Tool[] = team ? [shareTool("", [], 0)] : job.engine === "jarvis" ? [readResult(kept, job.id)] : [];
+    const functions = [...p.tools, ...own].map(toToolSchema);
     return {
       job,
       p,
@@ -175,6 +178,7 @@ export function jobEngine(
       research,
       searches,
       functions,
+      own,
       base: {
         model,
         ...(research ? { reasoning: { effort: "high" as const } } : {}),
@@ -372,17 +376,22 @@ export function jobEngine(
       }
       // A team's share_findings: posted by lib/jobs.ts teamStep, answered with what the others shared.
       const shared: string[] = [];
-      const byName = t === undefined ? p.byName : new Map(p.byName).set(SHARE.name, shareTool(shareReply(job, t), shared, sharesLeft(job, t)));
+      const byName = new Map(p.byName);
+      for (const tool of t === undefined ? req.own : [shareTool(shareReply(job, t), shared, sharesLeft(job, t))]) byName.set(tool.name, tool);
       // What acts by itself is never begun twice (lib/job-chain.ts): a run cut short may have made it.
       const acts = calls.filter((c) => byName.get(c.name)?.alone);
       const begun = kept && acts.length ? await beginCalls(kept, job.id, id, acts.map((c) => c.call_id)) : new Set<string>();
-      const ran = await runCalls(calls.filter((c) => !begun.has(c.call_id)), byName, { env: theirs, signal: signal(stop), memory: p.memory, grants }, quiet);
+      const fresh = calls.filter((c) => !begun.has(c.call_id));
+      const runThem = (some: typeof calls) => runCalls(some, byName, { env: theirs, signal: signal(stop), memory: p.memory, grants }, quiet);
+      // An ordinary job's: kept from going round in a circle (lib/job-guards.ts), and its long answers cut (lib/job-results.ts).
+      const guarded = kept && job.engine === "jarvis" ? await runGuarded(kept, job.id, fresh, runThem) : null;
+      const ran = guarded?.outputs ?? (await runThem(fresh));
       const outputs: OpenAI.Responses.ResponseInput = [...ran, ...[...begun].map((call_id) => ({ type: "function_call_output" as const, call_id, output: INTERRUPTED }))];
       await p.memory.save().catch(() => {});
       // On the plan, the whole exchange goes again; at OpenAI, the chain carries it.
       const next = await send(req, outputs, { after: id }).catch(parked);
       if ("kind" in next) return next;
-      return { kind: "continued", responseId: next.responseId, usage, ...(calls.some((c) => c.name === SHARE.name) ? { shared } : {}) };
+      return { kind: "continued", responseId: next.responseId, usage, ...(guarded?.stuck ? { stuck: true as const } : {}), ...(calls.some((c) => c.name === SHARE.name) ? { shared } : {}) };
     },
 
     async cancel(job) {
