@@ -17,6 +17,35 @@ of every release, and in the [README](README.md#updating).
 
 ## [Unreleased]
 
+### Added
+
+- **A background job can ask you, and you can tell it things.** When something
+  only you can settle would change the result ("front only, or front and
+  rear?"), a job asks, up to three times, and goes on with the rest meanwhile.
+  It never asks for a password, a code or a card. With nothing else to do it
+  waits a day for you, and no answer is ever assumed: **Go on without me** is
+  yours to press. The question comes as an alert, and stays in Chat, in **Jobs**
+  and on Home under Now, with its choices as buttons. You may also tell a
+  working job anything ("only ones without a contract", **Tell it** in Jobs),
+  answer it or stop it, by voice, in Chat, on a device or by Telegram: it is
+  told your words as you said them, and Jobs shows whether it has taken them in.
+  For devices: `POST /api/v1/jobs/tell`, and alerts with a new field, `ask`
+  (`docs/api.md`).
+
+### Fixed
+
+- **On a shared screen, an alert still up goes when the person in use steps
+  aside**, rather than staying for up to five minutes.
+- **By live voice, what you said counts as yours when Jarvis says "One moment"
+  first.** "Save this as…" was refused then, as not your own words.
+
+### Removed
+
+- **Changing the house through Hermes** (`control_home`). Home Assistant does it
+  in seconds; asking Hermes took one to four minutes and was a last resort.
+  Hermes is still asked as before (`ask_hermes`). A Home tile made with it no
+  longer works: ask Jarvis to make it again.
+
 ## [2.10.0] - 2026-11-24
 
 ### Added
@@ -141,18 +170,6 @@ of every release, and in the [README](README.md#updating).
   checklist is the job's own, so a small job has none. For devices:
   `POST /api/v1/jobs/card`, and new fields in `/api/v1/jobs` (`docs/api.md`).
 
-- **A background job can ask you, and you can tell it things.** When something
-  only you can settle would change the result ("front only, or front and
-  rear?"), a job asks, up to three times, and goes on with the rest meanwhile.
-  It never asks for a password, a code or a card.
-  With nothing else to do it waits a day for you, and no answer is ever assumed:
-  **Go on without me** is yours to press. The question comes as an alert, and
-  stays in Chat, in **Jobs** and on Home under Now, with its choices as buttons.
-  You may also tell a working job anything ("only ones without a contract",
-  **Tell it** in Jobs), answer it or stop it, by voice, in Chat, on a device or
-  by Telegram: it is told your words as you said them, and Jobs shows whether it
-  has taken them in. For devices: `POST /api/v1/jobs/tell`, and alerts with a new field, `ask` (`docs/api.md`).
-
 - **A job's result says first what it could not do**, and what it took for
   granted: in the alert, in **Jobs** and when you ask about it. A link in it
   that the job never opened or was shown is marked "(not checked)", and Jobs
@@ -215,10 +232,6 @@ of every release, and in the [README](README.md#updating).
 
 ### Fixed
 
-- **On a shared screen, an alert still up goes when the person in use steps
-  aside**, rather than staying for up to five minutes.
-- **By live voice, what you said counts as yours when Jarvis says "One moment"
-  first.** "Save this as…" was refused then, as not your own words.
 - **On Docker, Jarvis no longer waits for the disk at every call.** The runtime
   kept a trace of each one in a database that only grew: on a NAS a question took
   seconds to begin, and the house's fast answers timed out while a background job
@@ -273,13 +286,6 @@ of every release, and in the [README](README.md#updating).
 - **A device with no screen was told the browser was in front of you.**
   Handing the browser's screen over is now offered only where there is a
   screen to put it on; the rest of the browser works from anywhere, as before.
-
-### Removed
-
-- **Changing the house through Hermes** (`control_home`). Home Assistant does it
-  in seconds; asking Hermes took one to four minutes and was a last resort.
-  Hermes is still asked as before (`ask_hermes`). A Home tile made with it no
-  longer works: ask Jarvis to make it again.
 
 ### Security
 
