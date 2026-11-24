@@ -1753,7 +1753,7 @@ console.log("\njobs on the owner's ChatGPT plan (routes/jobs.ts): streamed here,
     await kept.put("jobplan:plan_old", { at: T0, input: [{ role: "user", content: "the old exchange" }, tool], response: { model: "gpt-6-luna", status: "completed", output: [tool], output_text: "" } });
     answers.push([{ type: "message", id: "m8", role: "assistant", status: "completed", content: [{ type: "output_text", text: "Done.", annotations: [] }] }]);
     const old = await engine.poll({ ...job, id: "jo", responseId: "plan_old" });
-    check("a step kept whole by the version before is carried on from", old.kind === "continued" && old.responseId === "plan_m.0" && JSON.stringify(sent.at(-1)!.body.input[0]).includes("the old exchange"), old);
+    check("a step kept whole by the version before is carried on from, in a chain of its own", old.kind === "continued" && old.responseId === "plan_oplanold.0" && JSON.stringify(sent.at(-1)!.body.input[0]).includes("the old exchange"), old);
 
     // No further than whoever started it may reach now (lib/scopes.ts reachNow): a job made with every scope, its maker since narrowed to asking.
     const names = (tools: unknown): string[] => (Array.isArray(tools) ? tools.flatMap((t: { name?: string; tools?: unknown }) => [...(t.name ? [t.name] : []), ...names(t.tools)]) : []);

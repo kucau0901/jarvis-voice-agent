@@ -97,7 +97,14 @@ interface OldPlanStep {
   response: OpenAI.Responses.Response;
 }
 /** A research team's chains, beside the job's own: each team's, the plan's and the merge's (its check follows on it). */
-const CHAIN = { job: "m", team: (t: number) => `t${t}`, plan: "p", merge: "g" };
+const CHAIN = {
+  job: "m",
+  team: (t: number) => `t${t}`,
+  plan: "p",
+  merge: "g",
+  /** One carried on from an old step, by its id: a team's three were each on one of their own. */
+  old: (id: string) => `o${id.replace(/[^a-z0-9]/g, "").slice(-12)}`,
+};
 
 /**
  * A job's tools that act, held (lib/proposals.ts): each call files a proposal
@@ -203,7 +210,7 @@ export function jobEngine(
     const chain = kept ? new JobChain(kept, r.job.id) : null;
     // Where it stands on the plan: after a row of a chain, or at the start of one (an old step's exchange begins a chain).
     const at = stepOf(after);
-    const name = at?.chain ?? ("begin" in to ? to.begin : CHAIN.job);
+    const name = at?.chain ?? ("begin" in to ? to.begin : CHAIN.old(to.after));
     const n = (at?.n ?? -1) + 1;
     const before = !chain || previous || !after ? [] : at ? await chain.exchange(at.chain, at.n) : ((await kept!.get<OldPlanStep>(`jobplan:${after}`))?.input ?? []);
     let input = [...before, ...added];
