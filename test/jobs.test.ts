@@ -991,6 +991,16 @@ console.log("\na step that takes minutes holds up nothing else, and is asked onc
   (h.storage as { list: unknown }).list = (o: { prefix: string }) => (o.prefix === "job:" && listed++, list(o));
   await h.jobs.nextWake(T0);
   await h.jobs.tick(T0);
+  const gone = (await h.jobs.create({ task: "y" }, BY, T0)) as Job;
+  await h.storage.delete(`job:${gone.id}`); // taken away by other hands
+  await h.jobs.tick(T0);
+  listed = 0;
+  check("a job no longer there does not wake the object for ever", (await h.jobs.nextWake(T0)) !== T0, await h.jobs.nextWake(T0));
+  const racing = new Jobs(h.storage, async () => h.deps);
+  const [, late] = await Promise.all([racing.nextWake(T0), racing.create({ task: "z" }, { who: "u_z", grants: ["*"] }, T0 - 5000)]);
+  check("one made while they are first read is not missed", typeof late !== "string" && (await racing.nextWake(T0 - 5000)) === T0 - 5000);
+  listed = 0;
+  await h.jobs.nextWake(T0);
   check("once read, when to wake is known without listing the jobs", listed === 0 && (await h.jobs.nextWake(T0)) === (await h.jobs.get(j.id))!.nextAt, listed);
 }
 

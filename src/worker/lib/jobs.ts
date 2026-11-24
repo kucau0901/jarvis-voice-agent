@@ -573,7 +573,8 @@ export class Jobs {
   /** The jobs being looked at now, and how to stop each: one look at a job at a time, whatever the alarm does meanwhile. */
   private live = new Map<string, { look: Promise<void>; stop: AbortController; hermes: boolean }>();
   /** When each running job is next to be looked at: read once, then kept as they are saved, so nothing lists every result to find out. */
-  private due: Map<string, number> | null = null;
+  private due = new Map<string, number>();
+  private read: Promise<void> | null = null;
 
   constructor(storage: Storage, deps: () => Promise<JobDeps>) {
     this.storage = storage;
@@ -581,11 +582,11 @@ export class Jobs {
   }
 
   private async waiting(): Promise<Map<string, number>> {
-    if (!this.due) {
-      const due = new Map<string, number>();
-      for (const j of await this.list()) if (j.status === "running") due.set(j.id, j.nextAt ?? 0);
-      this.due ??= due;
-    }
+    // One saved while this was being read is already here, and newer than what was read.
+    this.read ??= this.list().then((all) => {
+      for (const j of all) if (j.status === "running" && !this.due.has(j.id)) this.due.set(j.id, j.nextAt ?? 0);
+    });
+    await this.read;
     return this.due;
   }
 
@@ -599,13 +600,13 @@ export class Jobs {
   }
 
   private async save(j: Job): Promise<void> {
-    if (j.status === "running") this.due?.set(j.id, j.nextAt ?? 0);
-    else this.due?.delete(j.id);
+    if (j.status === "running") this.due.set(j.id, j.nextAt ?? 0);
+    else this.due.delete(j.id);
     await this.storage.put(J + j.id, j);
   }
 
   private async drop(id: string): Promise<boolean> {
-    this.due?.delete(id);
+    this.due.delete(id);
     await clearChain(this.storage, id);
     await this.storage.delete(T + id);
     return this.storage.delete(J + id);
@@ -755,6 +756,8 @@ export class Jobs {
     for (const id of ids) {
       const j = await this.stillRunning(id);
       const hermes = j?.engine === "hermes";
+      // Gone, or ended, since it was read: not due again, or the alarm would wake for it for ever.
+      if (!j) this.due.delete(id);
       if (!j || this.live.has(id) || (!hermes && !this.room())) continue;
       const stop = new AbortController();
       const look = (hermes ? this.advanceHermes(j, deps, now, stop.signal) : this.advanceJarvis(j, deps, now, stop.signal))
