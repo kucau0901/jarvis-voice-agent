@@ -854,9 +854,10 @@ async function putAside(): Promise<void> {
   key = "";
   home?.forget();
   home = null;
-  // Nothing of theirs waits in the message box or the chat for the next person.
+  // Nothing of theirs waits in the message box, the chat or an alert still up for the next person.
   attachments.clear();
   forgetChat();
+  alertsBox.replaceChildren();
   document.body.classList.remove("home");
   markTabs();
   $("menuBtn").textContent = $("hubAvatar").textContent = $("hubName").textContent = "";

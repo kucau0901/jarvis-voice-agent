@@ -215,6 +215,8 @@ of every release, and in the [README](README.md#updating).
 
 ### Fixed
 
+- **On a shared screen, an alert still up goes when the person in use steps
+  aside**, rather than staying for up to five minutes.
 - **By live voice, what you said counts as yours when Jarvis says "One moment"
   first.** "Save this as…" was refused then, as not your own words.
 - **On Docker, Jarvis no longer waits for the disk at every call.** The runtime
