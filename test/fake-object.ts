@@ -53,14 +53,23 @@ export async function objectWith(people: readonly Person[], vars: Record<string,
     list: async () => ({ keys: [], list_complete: true }),
   };
   const base = { CONFIG, ALERT_ORDER: "live,push", TIMEZONE: "Asia/Kuala_Lumpur", ...vars };
+  /** What the object left going (ctx.waitUntil), for a test that waits for it (settle). */
+  const going: Promise<unknown>[] = [];
   const ctx = {
     storage,
     blockConcurrencyWhile: async (fn: () => Promise<unknown>) => fn(),
     setWebSocketAutoResponse() {},
+    waitUntil: (p: Promise<unknown>) => void going.push(p),
     getWebSockets: () => [],
     acceptWebSocket() {},
   };
   const jarvis = new JarvisState(ctx as never, base as never);
+  // An alarm as these tests mean it: what it left going (a job's step, a routine's question) done too.
+  const alarm = jarvis.alarm.bind(jarvis);
+  jarvis.alarm = async () => {
+    await alarm();
+    while (going.length) await going.shift();
+  };
   await new Promise((r) => setTimeout(r, 0));
 
   // The family, in place of the hub's own records: who each is, and what they may reach now.

@@ -246,8 +246,8 @@ switched off, Jarvis says the limit is reached. Other errors are not a reason
 to spend the key.
 
 **Background jobs** (`routes/jobs.ts`) cannot use OpenAI's background mode on
-the plan, so a step streams inside the object's alarm, as a Hermes question
-already does, and its exchange is kept in the object under `jobplan:<id>` for
+the plan, so a step streams in the object, beside its alarm, as a Hermes question
+does (below, "Nothing waits for a step"), and its exchange is kept in the object under `jobplan:<id>` for
 the next step and the research check. `lib/jobs.ts` sees an ordinary step id.
 
 OpenAI also says remotely hosted apps should fill in an interest form; it may
@@ -1314,6 +1314,23 @@ is the same one routines use, pointed at whichever is due first. Nothing is
 held open for minutes, so a redeploy in the middle loses nothing: the step
 carries on at OpenAI and the next alarm picks it up.
 
+**Nothing waits for a step.** On the ChatGPT plan there is no background mode:
+the step streams in the object for up to three minutes, research ten, and a
+question to Hermes takes six. Awaited in the alarm, as they were, they held up
+every reminder, the house watch and the relays behind them, and an alarm past
+fifteen minutes is aborted by the runtime with every open chat. So the alarm
+starts each look (`Jobs.begin`) and each routine's question (`Scheduler.tick`
+with `held`) and ends; `goesOn` in `state.ts` hands them to `waitUntil` and
+keeps the object awake until they are done. Measured under `wrangler dev` in
+November 2026, because reading the runtime's source said otherwise: an object
+with nothing coming in is dropped within 140 seconds, its requests cut, with
+`waitUntil` or without, bytes arriving or not; woken by an alarm every 45
+seconds, it was kept for the whole of a 400 second stream. Hence a beat of 25
+seconds while anything is going on. A job in hand is in memory only (`live`), so
+no alarm starts it twice; cut short with the object, it is due as it was, and the
+next alarm takes it up. Stopping a job lets its stream go at once. Questions of
+routines are asked one after another, since they may share the one browser.
+
 **A job's steps cache what they have so far.** A chat question marks the end of
 the fixed prefix and caches only that (explicit mode): what follows is its own
 and is seldom sent twice. A job sends everything so far at every step, so on a
@@ -1333,15 +1350,14 @@ can. The person approves with a tap, on the card the job's result brings
 (`routes/proposals.ts`, under the ordinary sign-in), and the stored call runs
 once, with no model, with no more than the job had, its maker still may and
 the approver may, and never Hermes or a screen. The tap only claims it: the
-object's alarm makes the call (`Proposals.tick`), as it makes a job's steps,
-so a slow one (waking the car takes up to a minute and a half) finishes
+object's alarm makes the call (`Proposals.tick`), so a slow one (waking the car takes up to a minute and a half) finishes
 whether or not the screen that approved it stays, which a Worker's
 `waitUntil` (about 30 seconds) did not. The calls are made one at a time, in
 the order they were tapped, beside the rest of what the alarm does, so a car
-waking holds up nothing already due; what comes due meanwhile waits for it,
-as it does for a job's step. A tap made while the alarm is busy (a job's
-step, a Hermes question) waits for it: one not started within twenty
-minutes, longer than an alarm may run, is not made at all. A call is taken off
+waking holds up nothing already due; what comes due meanwhile waits for it.
+A tap made while the alarm is busy (a brief, the house being looked at) waits
+for it: one not started within twenty minutes, longer than an alarm may run,
+is not made at all. A call is taken off
 the queue before it is made, so one cut short by a deploy is never made
 twice, and reads as failed. It runs only as its card says:
 a card shows the whole call or the call is not filed, and one that would now

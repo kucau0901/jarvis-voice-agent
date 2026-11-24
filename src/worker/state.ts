@@ -59,6 +59,14 @@ import { Spots } from "./lib/spots.ts";
 const POINTS = "chore:points";
 /** Alerts kept for someone's quiet time (lib/alerts.ts). */
 const HELD = "held:";
+/**
+ * While work goes on that the alarm does not wait for, the object is woken this
+ * often. Measured under `wrangler dev` (workerd 1.20260916.1, Nov 2026): an
+ * object with nothing coming in is dropped within 140 seconds, its requests
+ * cut, whether or not they were given to waitUntil and whether or not bytes
+ * were arriving; woken every 45 seconds, it was kept to the end.
+ */
+export const BEAT_MS = 25_000;
 
 /**
  * The Durable Object. Memory, settings and push live in lib/state-host.ts,
@@ -77,6 +85,8 @@ export class JarvisState extends DurableObject<Env> {
   private hub = new LiveHub();
   private scheduler: Scheduler;
   private jobs: Jobs;
+  /** Work going on that the alarm does not wait for (goesOn). */
+  private going = 0;
   /** Messages passed on between the family (lib/relays.ts), and their conversations (lib/chat.ts). */
   private relays: Relays;
   private chat: Chat;
@@ -565,9 +575,25 @@ export class JarvisState extends DurableObject<Env> {
     const wakes = [...(await Promise.all([this.proposals.nextWake(), this.scheduler.nextWake(), this.jobs.nextWake(), this.relays.nextWake(), this.panels.nextWake(), this.house.nextWake(mode, Date.now())])), ...held].filter(
       (t): t is number => t !== null,
     );
+    if (this.going) wakes.push(Date.now() + BEAT_MS);
     const at = wakes.length ? Math.min(...wakes) : null;
     if (at === null) await this.ctx.storage.deleteAlarm();
     else await this.ctx.storage.setAlarm(at);
+  }
+
+  /**
+   * Work the alarm started and does not wait for. waitUntil and the beat
+   * (rearm) keep the object while it runs; when it ends, the alarm is set for
+   * whatever that made due.
+   */
+  private goesOn(work: Promise<void>): void {
+    this.going += 1;
+    this.ctx.waitUntil(
+      work.catch(() => {}).then(() => {
+        this.going -= 1;
+        return this.rearm();
+      }),
+    );
   }
 
   async alarm() {
@@ -576,12 +602,15 @@ export class JarvisState extends DurableObject<Env> {
     // Each catches per item, so this only throws on a storage failure — and then
     // the runtime retries, which is what is wanted.
     // Approved calls beside the rest: someone is waiting on them, and a car waking holds up nothing due now.
-    // What comes due while a call is still being made waits for it, as it does for a job's step.
+    // What comes due while a call is still being made waits for it.
     const done = await Promise.allSettled([
       this.laterDeps().then((later) => this.proposals.tick({ carryOut: (p, grants) => this.makeApproved(p, grants), later })),
       (async () => {
-        await this.scheduler.tick();
-        await this.jobs.tick();
+        // Started, not waited for (goesOn): a routine's question, and a job's step on the ChatGPT plan or with Hermes,
+        // take minutes, and a reminder, the house or a relay due meanwhile must not wait for them.
+        const asks: Promise<void>[] = [];
+        await this.scheduler.tick(Date.now(), asks);
+        for (const work of [...asks, ...(await this.jobs.begin())]) this.goesOn(work);
         await this.relays.tick();
         // The house (lib/house.ts): its failure is its own, logged, never the alarm's.
         await this.houseDeps().then((d) => this.house.tick(d, Date.now())).then((what) => {

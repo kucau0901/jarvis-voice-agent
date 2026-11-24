@@ -25,7 +25,7 @@ registerHooks({
 });
 (globalThis as { WebSocketRequestResponsePair?: unknown }).WebSocketRequestResponsePair = class {};
 // After the hook: a static import would be hoisted above it.
-const { JarvisState } = await import("../src/worker/state.ts");
+const { BEAT_MS, JarvisState } = await import("../src/worker/state.ts");
 
 let pass = 0;
 let fail = 0;
@@ -75,10 +75,13 @@ const sockets: { tags: string[]; closed?: number; close(code: number, reason?: s
 /** The tags each accepted screen was given (JarvisState.fetch). */
 const accepted: string[][] = [];
 const storage = fakeStorage();
+/** What the object left going (ctx.waitUntil). */
+const going: Promise<unknown>[] = [];
 const ctx = {
   storage,
   blockConcurrencyWhile: async (fn: () => Promise<unknown>) => fn(),
   setWebSocketAutoResponse() {},
+  waitUntil: (p: Promise<unknown>) => void going.push(p),
   getWebSockets: (tag?: string) => (tag ? sockets.filter((s) => s.tags.includes(tag)) : sockets.filter((s) => s.deserializeAttachment)),
   acceptWebSocket: (_ws: unknown, tags: string[]) => void accepted.push(tags),
 } as never;
@@ -358,9 +361,9 @@ console.log("\nan approved call, made on the object's alarm");
   let hang = false;
   let hung = false;
   let thinking = false;
-  globalThis.fetch = (async (input: string | URL | Request) => {
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
     const url = String(input instanceof Request ? input.url : input);
-    if (thinking && url.startsWith("https://api.openai.com/")) return new Promise<Response>(() => {});
+    if (thinking && url.startsWith("https://api.openai.com/")) return new Promise<Response>((_, no) => init?.signal?.addEventListener("abort", () => no(new DOMException("aborted", "AbortError")), { once: true }));
     if (!url.startsWith("https://api.tessie.com/")) return new Response(null, { status: 201 });
     if (url.includes("/status")) return Response.json({ status: "awake" });
     commands.push(url.split("/command/")[1]?.split("?")[0] ?? url);
@@ -425,6 +428,18 @@ console.log("\nan approved call, made on the object's alarm");
     void fresh.alarm();
     for (let i = 0; i < 200 && (await fresh.proposalGet("owner", warm, Date.now()))?.state === "running"; i++) await new Promise((r) => setTimeout(r, 0));
     check("an approval is not held up by a job's step still waiting on its model", (await fresh.proposalGet("owner", warm, Date.now()))?.state === "done" && commands.includes("start_climate") && (await fresh.getJob(slowId))?.status === "running");
+    // Nor does anything else the alarm does: it ends with the step still going, and comes back soon enough to keep the object.
+    const tea = await fresh.addRoutine({ when: "once", inMinutes: 1, say: "Tea is ready" }, { who: "owner", grants: ["*"] });
+    const teaId = typeof tea !== "string" ? tea.id : "none";
+    const stored = await storage.get(`routine:${teaId}`) as Record<string, unknown> | undefined;
+    const ended = await Promise.race([fresh.alarm().then(() => true), new Promise((r) => setTimeout(() => r(false), 1000))]);
+    check("the alarm ends though the step has not", ended === true && (await fresh.getJob(slowId))?.status === "running");
+    check("…and is set again soon, so the object is not put away under it", alarmAt !== null && alarmAt <= Date.now() + BEAT_MS && alarmAt > Date.now() + BEAT_MS - 5000, alarmAt);
+    check("a reminder set meanwhile is there to be told", !!stored || (await fresh.listRoutines()).some((r) => r.id === teaId));
+    // Stopped: the request is let go, and nothing more keeps it awake than the reminder.
+    await fresh.cancelJob(slowId);
+    for (let i = 0; i < 200 && (alarmAt ?? 0) < Date.now() + BEAT_MS; i++) await new Promise((r) => setTimeout(r, 0));
+    check("stopped, it lets its request go and the object rest", alarmAt !== null && alarmAt > Date.now() + BEAT_MS && alarmAt <= Date.now() + 60_000, alarmAt);
   } finally {
     globalThis.fetch = realFetch;
     delete (env as { OPENAI_API_KEY?: string }).OPENAI_API_KEY;

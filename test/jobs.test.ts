@@ -931,6 +931,64 @@ console.log("\ncancelled while OpenAI was being asked");
   check("cancelled while starting: stays cancelled, and what started is stopped", (await jobs.get(id))!.status === "cancelled" && cancelled.includes("resp_x"), cancelled);
 }
 
+console.log("\na step that takes minutes holds up nothing else, and is asked once");
+{
+  // A step streaming on the ChatGPT plan: one job's never ends, another's does.
+  const starts: string[] = [];
+  const signals = new Map<string, AbortSignal>();
+  const h = harness([{ kind: "done", text: "SUMMARY: quick." }]);
+  h.deps.start = async (j, _t, stop) => {
+    starts.push(j.title);
+    signals.set(j.title, stop!);
+    if (j.title !== "Slow") return { responseId: "resp_q" };
+    return new Promise((_, no) => stop!.addEventListener("abort", () => no(new Error("aborted")), { once: true }));
+  };
+  const slow = (await h.jobs.create({ title: "Slow", task: "think" }, BY, T0)) as Job;
+  const quick = (await h.jobs.create({ title: "Quick", task: "look" }, BY, T0)) as Job;
+  const looks = await h.jobs.begin(T0);
+  check("both are started, and neither is waited for", looks.length === 2 && starts.join() === "Slow,Quick", starts);
+  await looks[1];
+  check("while one is in hand the other is woken for when it is due", (await h.jobs.nextWake(T0)) === T0 + 4000, await h.jobs.nextWake(T0));
+  await Promise.all(await h.jobs.begin(T0 + 5000));
+  check("the other job finishes meanwhile", (await h.jobs.get(quick.id))!.status === "done" && h.sent.length === 1);
+  check("the slow one is never started twice by the alarms that pass", starts.filter((s) => s === "Slow").length === 1 && (await h.jobs.begin(T0 + 60_000)).length === 0);
+  check("and what is in hand is not due", (await h.jobs.nextWake(T0 + 60_000)) === null);
+
+  // The object goes away under it (an update): the next one, over the same storage, takes it up again.
+  const again: string[] = [];
+  const next = new Jobs(h.storage, async () => ({ ...h.deps, start: async (j) => (again.push(j.title), { responseId: "resp_again" }) }));
+  check("cut short with the object, it is due as it was", (await next.nextWake(T0 + 61_000)) === T0 + 61_000);
+  await next.tick(T0 + 61_000);
+  check("…and started again, once", again.join() === "Slow" && (await next.get(slow.id))!.responseId === "resp_again");
+
+  // Stopped by the person: the stream is let go at once, and nothing is told.
+  await h.jobs.cancel(slow.id, T0 + 62_000);
+  await looks[0];
+  check("stopping it lets the stream go and leaves it cancelled", signals.get("Slow")!.aborted && (await h.jobs.get(slow.id))!.status === "cancelled" && h.sent.length === 1);
+  check("with nothing left to wake for", (await h.jobs.nextWake(T0 + 63_000)) === null);
+}
+{
+  const refund = harness([], { researchLimit: 5 });
+  refund.deps.start = (_j, _t, stop) => new Promise((ok) => stop!.addEventListener("abort", () => ok({ error: "it could not start: aborted" }), { once: true }));
+  const r = (await refund.jobs.create({ task: "dig", engine: "research" }, BY, T0)) as Job;
+  const looks = await refund.jobs.begin(T0);
+  await refund.jobs.cancel(r.id, T0 + 1000);
+  await Promise.all(looks);
+  check("research stopped in its first step keeps its place in the month: it was paid for", (await refund.storage.get<{ n: number }>("jobs:research:month"))?.n === 1 && refund.sent.length === 0);
+}
+{
+  // Nothing lists every kept result to find out when to wake.
+  const h = harness();
+  const j = (await h.jobs.create({ task: "x" }, BY, T0)) as Job;
+  await h.jobs.nextWake(T0);
+  let listed = 0;
+  const list = h.storage.list;
+  (h.storage as { list: unknown }).list = (o: { prefix: string }) => (o.prefix === "job:" && listed++, list(o));
+  await h.jobs.nextWake(T0);
+  await h.jobs.tick(T0);
+  check("once read, when to wake is known without listing the jobs", listed === 0 && (await h.jobs.nextWake(T0)) === (await h.jobs.get(j.id))!.nextAt, listed);
+}
+
 console.log("\nresearch that cannot run");
 {
   const h = harness([], { start: { error: "it could not start: model not found" }, researchLimit: 1 });

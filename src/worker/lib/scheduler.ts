@@ -115,6 +115,10 @@ type Stored = Record<string, LeavePlan>;
 export class Scheduler {
   private storage: Storage;
   private deps: () => Promise<SchedulerDeps>;
+  /** Where a routine's question is put to go on by itself (tick); null, it is waited for. */
+  private held: Promise<void>[] | null = null;
+  /** The questions being asked, one after another. */
+  private asking: Promise<void> = Promise.resolve();
 
   constructor(storage: Storage, deps: () => Promise<SchedulerDeps>) {
     this.storage = storage;
@@ -348,9 +352,14 @@ export class Scheduler {
 
   /* ---------- running --------------------------------------------------------- */
 
-  /** Run everything due. Returns when to wake next. */
-  async tick(now = Date.now()): Promise<number | null> {
+  /**
+   * Run everything due. Returns when to wake next. A routine's question may
+   * take two minutes: with `held` it is put there, to go on by itself while the
+   * rest of what is due is done (state.ts), else waited for.
+   */
+  async tick(now = Date.now(), held?: Promise<void>[]): Promise<number | null> {
     const deps = await this.deps();
+    this.held = held ?? null;
     const all = await this.list();
     // Every due watch asks Home Assistant at once: one slow answer (up to its
     // 15 s timeout) must not hold up the others, or a reminder due now.
@@ -508,7 +517,19 @@ export class Scheduler {
     await this.save(r);
   }
 
+  /**
+   * Questions are asked one after another, never two at once: they may share
+   * the one browser, and each is a model call of its owner's. What a routine is
+   * for was settled (its next time, its event) before it comes here.
+   */
   private async execute(r: Routine, deps: SchedulerDeps, now: number, data?: string, lateFrom?: number): Promise<void> {
+    if (r.action.kind !== "ask" || !this.held) return this.carryOut(r, deps, now, data, lateFrom);
+    const run = this.asking.then(() => this.carryOut(r, deps, now, data, lateFrom)).catch((e) => this.record(r.id, { at: now, ok: false, detail: `failed: ${e instanceof Error ? e.message : String(e)}` }));
+    this.asking = run.catch(() => {});
+    this.held.push(this.asking);
+  }
+
+  private async carryOut(r: Routine, deps: SchedulerDeps, now: number, data?: string, lateFrom?: number): Promise<void> {
     if (r.action.kind === "relay") {
       // To whoever's turn it is; the rota moves on only once it has gone.
       const a = r.action;

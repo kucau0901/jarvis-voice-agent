@@ -183,6 +183,12 @@ of every release, and in the [README](README.md#updating).
   instead of using the browser, where the sign-in is saved. Work on a
   website, like signing in to a portal and filling in or approving something
   there, is now the browser's whenever a browser is set up.
+- **A reminder could be minutes late while a background job worked.** On the
+  ChatGPT plan a job's step, research, and a question for Hermes ran inside the
+  one alarm that also rings reminders, watches the house and passes messages
+  on, and all of those waited for it (up to ten minutes, or half an hour for a
+  research team). They now run beside it. Stopping a job also stops its
+  request at once instead of paying for it to the end.
 - **A job removed while its result was being sent came back** in the Jobs
   panel. Removed now stays removed.
 - **A device with no screen was told the browser was in front of you.**
