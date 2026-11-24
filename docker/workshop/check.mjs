@@ -27,8 +27,11 @@ const id = await run("id -u; id -G; pwd; umask");
 const uid = Number(String(id.out).split("\n")[0]);
 check("a user of its own, in no group but its own", uid >= 20000 && String(id.out).split("\n")[1] === String(uid), id);
 check("another job, another user", Number((await run("id -u", B)).out) !== uid);
-const net = await run("python3 -c \"import socket; socket.create_connection(('1.1.1.1', 53), 3)\"; python3 -c \"import socket; print(socket.gethostbyname('example.com'))\"; ls /sys/class/net");
-check("it can reach nothing, and look nothing up", /unreachable/i.test(net.out) && /resol|Name or service/i.test(net.out) && /\nlo\n$/.test(net.out), net);
+const net = await run("python3 -c \"import socket; socket.create_connection(('1.1.1.1', 53), 3)\"; python3 -c \"import socket; print(socket.gethostbyname('example.com'))\"; for i in /sys/class/net/*; do [ $(($(cat $i/flags) & 1)) = 1 ] && echo up: ${i##*/}; done; ls /sys/class/net");
+// An older kernel puts a tunnel's device (sit0) in every container: it is down, and nothing here may put it up.
+check("it can reach nothing, and look nothing up", /unreachable/i.test(net.out) && /resol|Name or service/i.test(net.out) && /\nup: lo\n(?!up:)/.test(net.out), net);
+const raise = await run("python3 -c \"import fcntl,socket,struct; s=socket.socket(); n=b'sit0' if 'sit0' in [x[1] for x in socket.if_nameindex()] else b'lo'; fcntl.ioctl(s, 0x8914, struct.pack('16sH14x', n, 0x41)); print('CHANGED')\"");
+check("nor change its network", /not permitted/i.test(raise.out) && !/CHANGED/.test(raise.out), raise);
 await run("echo secret > mine; mkdir -p d; chmod 755 . mine; chmod 755 .. ", B);
 const peep = await run(`cat /work/${B}/f/mine; ls /work/${B} /work/${B}/f /work; echo x > /work/${B}/f/y; cd /work/${B}/f && echo IN`);
 check("another's folder, though it opened it: not to be entered, read or written", !/secret|\bIN\b|mine\n/.test(peep.out) && /denied/i.test(peep.out), peep);
