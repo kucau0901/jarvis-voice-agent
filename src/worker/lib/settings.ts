@@ -241,7 +241,7 @@ export const SETTINGS: readonly SettingDef[] = [
   {
     name: "CHATGPT_FALLBACK", group: "openai", kind: "bool", default: "1",
     label: "Use the key when the plan is used up",
-    help: "When your ChatGPT plan's usage limit is reached, carry on with the API key, and say so once. Off, Jarvis stops and says the limit is reached until the plan resets.",
+    help: "When your ChatGPT plan's usage limit is reached, carry on with the API key, and say so once. Off, Jarvis stops and says the limit is reached until the plan resets. Background jobs wait for the plan either way; on, one can be moved to the key in Jobs.",
   },
   {
     name: "ROUTER_EFFORT", group: "openai", kind: "enum", default: "auto", options: EFFORTS,

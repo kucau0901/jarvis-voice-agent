@@ -140,6 +140,17 @@ export function withPerson(
   return out;
 }
 
+/** The same environment saying nothing of whose it is: their name, birthday, cars or pass (a job on the web, lib/jobs.ts Reach). Where they are and their language stay. */
+export function unnamed(env: Env): Env {
+  const { JARVIS_PERSON_NAME: _n, JARVIS_PERSON_NICKNAME: _k, JARVIS_PERSON_BIRTHDAY: _b, JARVIS_PASS: _p, JARVIS_FAMILY: _f, ...rest } = env;
+  void _n;
+  void _k;
+  void _b;
+  void _p;
+  void _f;
+  return { ...rest, JARVIS_CARS: "[]" };
+}
+
 /** The cars a request carries (withPerson). */
 export function carsOf(env: Env): CarKey[] {
   try {

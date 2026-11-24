@@ -1,7 +1,7 @@
 import OpenAI from "openai";
 import type { Env } from "../types.ts";
 import { openaiBase } from "./openai-base.ts";
-import { FAILURE_SAYS, PLAN_BASE, planFailureOf, type PlanFailure } from "./chatgpt-plan.ts";
+import { FAILURE_SAYS, LIMIT_MS, PLAN_BASE, planFailureOf, type PlanFailure } from "./chatgpt-plan.ts";
 import { stateStub } from "./state-client.ts";
 import { deliver, makeAlert } from "./alerts.ts";
 import { OWNER } from "./context.ts";
@@ -45,6 +45,25 @@ export class PlanRefused extends Error {
   }
 }
 
+/**
+ * Background work at the plan's limit: it waits for the plan rather than go on
+ * with the key by itself. The plan is one allowance for the house, and the key
+ * is the owner's money: a long job is moved to it by a tap, or not at all.
+ */
+export class PlanParked extends Error {
+  until: number;
+  constructor(until: number) {
+    super("waiting for the ChatGPT plan");
+    this.until = until;
+  }
+}
+
+/** Until when the owner's plan is at its limit; null when it is not, or there is no plan to wait for. */
+export async function planLimitedUntil(env: Env, now: number): Promise<number | null> {
+  const s = await (stateStub(env)?.chatgptStatus(now) ?? Promise.resolve(null)).catch(() => null);
+  return s?.connected && !s.problem ? (s.limitedUntil ?? null) : null;
+}
+
 /** A thrown API error that is the plan refusing, by its code; null for anything else. */
 export function refusalOf(e: unknown): PlanRefused | null {
   if (e instanceof PlanRefused) return e;
@@ -62,10 +81,17 @@ export async function planFailed(env: Env, refused: PlanRefused): Promise<boolea
   const fallBack = mayFallBack(env);
   const told = await (state?.chatgptFailed(refused.why, Date.now()) ?? Promise.resolve(null)).catch(() => null);
   if (state && told?.first) {
-    const text = `${FAILURE_SAYS[refused.why]}${fallBack ? " Jarvis is using the OpenAI key meanwhile." : ""}`;
+    const text = `${FAILURE_SAYS[refused.why]}${fallBack ? " Jarvis is using the OpenAI key for questions meanwhile." : ""}${refused.why === "limit" ? " Background jobs wait for it, and go on by themselves." : ""}`;
     const alert = makeAlert({ title: "ChatGPT plan", text, speak: false }, "note", Date.now(), OWNER);
     if (alert) await deliver(env, state, alert, { skipLive: true }).catch(() => {});
   }
+  return fallBack;
+}
+
+/** The plan said no to background work: noted as above; at its limit, to wait until (PlanParked), else whether the key may go on. */
+export async function planFailedWorking(env: Env, refused: PlanRefused, now: number): Promise<boolean> {
+  const fallBack = await planFailed(env, refused);
+  if (refused.why === "limit") throw new PlanParked(now + LIMIT_MS);
   return fallBack;
 }
 

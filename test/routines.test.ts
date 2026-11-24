@@ -217,7 +217,7 @@ function harness(opts: { events?: LeaveEvent[] | string; travel?: number | null;
   };
   const storage = fakeStorage();
   const s = new Scheduler(storage, async () => deps);
-  return { s, sent, asked, travels, state, storage };
+  return { s, sent, asked, travels, state, storage, deps };
 }
 
 const OWNER = { who: "owner", grants: ["*"] as const };
@@ -316,6 +316,35 @@ console.log("\na daily briefing asks Jarvis, with its creator's reach");
   check("still on, and set for tomorrow", r.enabled && iso(r.nextAt) === iso(zonedToUtc(2026, 9, 26, 10, 30, tz)));
   await h.s.tick(T0 + 30 * MIN + 5000);
   check("an alarm that fires twice runs it once", h.asked.length === 1);
+}
+
+console.log("\na routine's question goes on by itself, and a reminder does not wait for it");
+{
+  const h = harness();
+  let answer: (() => void) | null = null;
+  const order: string[] = [];
+  h.deps.ask = async (prompt) => {
+    order.push(`asked ${prompt}`);
+    if (prompt === "Slow one") await new Promise<void>((ok) => (answer = ok));
+    if (prompt === "Broken one") throw new Error("no answer came");
+    order.push(`answered ${prompt}`);
+    return { ok: true, text: `${prompt}: done` };
+  };
+  await h.s.add({ when: "daily", time: "10:30", ask: "Slow one", name: "Slow" }, OWNER, T0);
+  await h.s.add({ when: "daily", time: "10:30", ask: "Broken one", name: "Broken" }, OWNER, T0 + 1);
+  await h.s.add({ when: "daily", time: "10:30", ask: "Next one", name: "Next" }, OWNER, T0 + 2);
+  await h.s.add({ when: "once", inMinutes: 30, say: "Call Mum" }, OWNER, T0 + 3);
+  const held: Promise<void>[] = [];
+  await h.s.tick(T0 + 31 * MIN, held);
+  check("the reminder is told while the question is still being answered", h.sent.map((a) => a.title).join() === "Call Mum" && held.length === 3, h.sent.map((a) => a.title));
+  check("and each routine is already set for tomorrow", (await h.s.list()).filter((r) => r.action.kind === "ask").every((r) => (r.nextAt ?? 0) > T0 + 20 * 3_600_000));
+  await new Promise((r) => setTimeout(r, 0));
+  check("one question at a time", order.join() === "asked Slow one", order);
+  answer!();
+  await Promise.all(held);
+  check("the next is asked when it ends, one that fails holding up none", order.join() === "asked Slow one,answered Slow one,asked Broken one,asked Next one,answered Next one", order);
+  const runs = await h.s.list();
+  check("each is told, or its failure kept, as before", h.sent.map((a) => a.title).join() === "Call Mum,Slow,Next" && /no answer came/.test(runs.find((r) => r.name === "Broken")?.lastRun?.detail ?? ""), h.sent.map((a) => a.title));
 }
 
 console.log("\nmeetings from mail: said only when one was added");

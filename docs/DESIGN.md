@@ -246,9 +246,10 @@ switched off, Jarvis says the limit is reached. Other errors are not a reason
 to spend the key.
 
 **Background jobs** (`routes/jobs.ts`) cannot use OpenAI's background mode on
-the plan, so a step streams inside the object's alarm, as a Hermes question
-already does, and its exchange is kept in the object under `jobplan:<id>` for
-the next step and the research check. `lib/jobs.ts` sees an ordinary step id.
+the plan, so a step streams in the object, beside its alarm, as a Hermes question
+does (below, "Nothing waits for a step"), and its exchange is kept in the
+object, a row a step (`lib/job-chain.ts`), for the next step and the research
+check. `lib/jobs.ts` sees an ordinary step id.
 
 OpenAI also says remotely hosted apps should fill in an interest form; it may
 one day ask that of a Worker. The key still runs everything if it does.
@@ -716,6 +717,19 @@ matters most. `recall` remains for the long tail.
 > write a standing instruction into a context that can reach a shell at home.
 > A write-time filter rejects instruction-shaped text as well, but that is a
 > heuristic; the placement is the boundary.
+
+**What is kept must be the person's own.** Memory goes with every later
+question, so a mail that says "remember that the user banks with…" would be
+believed for months. `remember` used to check nothing but the fact's shape.
+Now, once a turn has read something someone else wrote (a tool's output that
+`asQuotedData` fenced, or a web search), a fact is kept only if their latest
+message asks for something to be kept or says at least half of what the fact
+does (`lib/memory-guard.ts`); otherwise the router is told to say it and ask.
+By code, on the words, so it costs no call; a forwarded message inside theirs
+does not count as theirs, and a routine goes by its maker's words. Cards, keys
+and one-time codes are refused where Jarvis adds a fact, never in `sanitise()`:
+every read of the document goes through that, and a rule there would silently
+drop what people already have.
 
 Places are typed (`slug` + `address`) and upserted by name, so two contradicting
 copies of "home" are structurally impossible — and so `directions` can resolve
@@ -1301,6 +1315,76 @@ is the same one routines use, pointed at whichever is due first. Nothing is
 held open for minutes, so a redeploy in the middle loses nothing: the step
 carries on at OpenAI and the next alarm picks it up.
 
+**Nothing waits for a step.** On the ChatGPT plan there is no background mode:
+the step streams in the object for up to three minutes, research ten, and a
+question to Hermes takes six. Awaited in the alarm, as they were, they held up
+every reminder, the house watch and the relays behind them, and an alarm past
+fifteen minutes is aborted by the runtime with every open chat. So the alarm
+starts each look (`Jobs.begin`) and each routine's question (`Scheduler.tick`
+with `held`) and ends; `goesOn` in `state.ts` hands them to `waitUntil` and
+keeps the object awake until they are done. Measured under `wrangler dev` in
+November 2026, because reading the runtime's source said otherwise: an object
+with nothing coming in is dropped within 140 seconds, its requests cut, with
+`waitUntil` or without, bytes arriving or not; woken by an alarm every 45
+seconds, it was kept for the whole of a 400 second stream. Hence a beat of 25
+seconds while anything is going on. A job in hand is in memory only (`live`), so
+no alarm starts it twice; cut short with the object, it is due as it was, and the
+next alarm takes it up. Stopping a job lets its stream go at once. Questions of
+routines are asked one after another, since they may share the one browser.
+
+**A job's steps cache what they have so far.** A chat question marks the end of
+the fixed prefix and caches only that (explicit mode): what follows is its own
+and is seldom sent twice. A job sends everything so far at every step, so on a
+key its steps use implicit mode, which also caches up to the newest tool
+result. The mark stays, so a research team's chains still share the prefix.
+The plan's route takes no cache settings.
+
+**On the plan, the exchange is kept a row a step** (`jobitem:<job>:<chain>:<n>`,
+`lib/job-chain.ts`), for the life of the job: what the step added, and what came
+back. A whole copy was kept at every step, for two hours, so a long job kept its
+start over and over, and one waiting on its person until morning would have
+found nothing. What a step adds is kept before it is asked, so one cut short by
+an update is asked again as it was, with what its tools gave and without running
+them a second time, and one answered just before is taken as it stands; a step
+cut short five times is given up on. A call that acts by itself (a component's
+tool the owner lets run alone) is marked before it is made, and never made again
+by itself: the model is told it may or may not have happened. Reads are simply
+read again, and a proposal filed twice is one card. Rows are not under `job:`,
+which is the jobs themselves.
+
+**A job reads its person's own things, or the web, never both** (`Reach` in
+`lib/jobs.ts`). A job used to have mail, the calendar, memory and the house beside
+live web search. It cannot act, but a search is a way out: what it looks up leaves
+by the words of the search, to whoever runs the page it lands on, and a mail or a
+page it reads may ask for exactly that. OpenAI's own guide says the same of
+reading tools and advises separate requests. So it is settled when a job starts
+and held by what it is handed, not by what it is told: on the web, the searches,
+the time and what a place is like, with no profile, name, birthday, family, past
+attempts or other jobs' results (`unnamed`, grants of `ask` alone); on their own
+things, no web search. Where they are and their language stay, for prices and
+what is near. For work that needs both, the question that starts it reads the
+private part first and puts the facts in the brief, which they can read in Jobs:
+what leaves is then what they saw leave. What is looked up on Google's maps
+(`directions`, `place_info`) and a component's own reading tools still carry words
+to whoever runs them, who the admin chose. This does not cover a routine, nor a
+question in the conversation, which have private reads, the web and acting
+together: they are what a person asked for or set up, and somebody reads the
+answer.
+
+**The family's questions come first on the plan.** Jobs and everyone's questions
+share one ChatGPT allowance, and one call refused at its limit marks the plan
+limited for an hour for the house. A job that met the limit used to go on with
+the key by itself, a long one at the owner's expense with nobody asked. It now
+waits (`parked`): still running, nothing lost, what its tools gave kept, and due
+again when the plan is, the wait not counted as its time. Moving it to the key is
+a tap in Jobs, with what its tokens so far would have cost there, for those who may
+start research, and only where the key may stand in for the plan at all
+(`CHATGPT_FALLBACK`). A question someone asks still carries on with the key as
+before: somebody is waiting for it. One person's jobs may use so much of the plan
+a day (`DAILY_PLAN_TOKENS`, counted by code, since OpenAI gives no figure for what
+is left), six run in the house at once, and three are looked at at once. What
+the numbers should be is a guess until there is a month of real use.
+
 **Read; propose, never act.** A job runs with nobody watching and reads text
 written by others — web pages, mail — so it reads with Jarvis's reading tools
 and the MCP tools whose names say they read (`ha_get_state` in,
@@ -1313,15 +1397,14 @@ can. The person approves with a tap, on the card the job's result brings
 (`routes/proposals.ts`, under the ordinary sign-in), and the stored call runs
 once, with no model, with no more than the job had, its maker still may and
 the approver may, and never Hermes or a screen. The tap only claims it: the
-object's alarm makes the call (`Proposals.tick`), as it makes a job's steps,
-so a slow one (waking the car takes up to a minute and a half) finishes
+object's alarm makes the call (`Proposals.tick`), so a slow one (waking the car takes up to a minute and a half) finishes
 whether or not the screen that approved it stays, which a Worker's
 `waitUntil` (about 30 seconds) did not. The calls are made one at a time, in
 the order they were tapped, beside the rest of what the alarm does, so a car
-waking holds up nothing already due; what comes due meanwhile waits for it,
-as it does for a job's step. A tap made while the alarm is busy (a job's
-step, a Hermes question) waits for it: one not started within twenty
-minutes, longer than an alarm may run, is not made at all. A call is taken off
+waking holds up nothing already due; what comes due meanwhile waits for it.
+A tap made while the alarm is busy (a brief, the house being looked at) waits
+for it: one not started within twenty minutes, longer than an alarm may run,
+is not made at all. A call is taken off
 the queue before it is made, so one cut short by a deploy is never made
 twice, and reads as failed. It runs only as its card says:
 a card shows the whole call or the call is not filed, and one that would now

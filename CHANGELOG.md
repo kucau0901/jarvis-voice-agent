@@ -144,6 +144,24 @@ of every release, and in the [README](README.md#updating).
   it needs one, goes there too. Servers added in chat before this are still
   under **Settings → MCP servers** and work as they did.
 
+- **A background job now looks at your own things, or at the web, not both.**
+  Jarvis says which when it starts one, the Jobs panel shows it, and **New job**
+  there asks. A job on the web has nothing of yours but what its brief says
+  (open **What was asked** to read it); one on your own things cannot search the
+  web. For something like a trip around your diary, Jarvis reads your calendar
+  first and puts the dates in the brief. Research is always the web's.
+- **At your ChatGPT plan's limit, a background job now waits.** It used to go
+  on with the API key by itself. It now says in Jobs until when it waits and
+  goes on when the plan is back, losing nothing; **Use the API key now** there
+  moves it, showing what it has used so far would have cost. Questions you ask
+  still carry on with the key, if you allow that. So that jobs do not use up
+  what the family shares, one person's may use five million tokens of the plan
+  a day, and six run in the house at once.
+- **Background jobs on an API key cost less.** Each step sends everything
+  so far again, and all of it past the fixed instructions was charged in full
+  every time. A job's steps now reuse what OpenAI has cached of the steps
+  before them. On the ChatGPT plan nothing changes.
+
 ### Fixed
 
 - **A routine that speaks only when something matters no longer repeats
@@ -178,12 +196,37 @@ of every release, and in the [README](README.md#updating).
   instead of using the browser, where the sign-in is saved. Work on a
   website, like signing in to a portal and filling in or approving something
   there, is now the browser's whenever a browser is set up.
+- **A reminder could be minutes late while a background job worked.** On the
+  ChatGPT plan a job's step, research, and a question for Hermes ran inside the
+  one alarm that also rings reminders, watches the house and passes messages
+  on, and all of those waited for it (up to ten minutes, or half an hour for a
+  research team). They now run beside it. Stopping a job also stops its
+  request at once instead of paying for it to the end.
+- **A background job interrupted by an update could repeat itself.** On the
+  ChatGPT plan its tools ran again and the step was asked again, from the
+  start of the step, and a component's tool you let run by itself could have
+  run twice. A job now carries on from exactly where it was cut short, and
+  what acts by itself is never repeated without the model being told it may
+  already have happened. Long jobs also keep far less.
+- **A job removed while its result was being sent came back** in the Jobs
+  panel. Removed now stays removed.
 - **A device with no screen was told the browser was in front of you.**
   Handing the browser's screen over is now offered only where there is a
   screen to put it on; the rest of the browser works from anywhere, as before.
 
 ### Security
 
+- **A background job can no longer carry what it reads of yours out through a
+  web search.** It had your mail, calendar and memory beside live web search, so
+  a mail or a page could have asked it to look something up that gave them away.
+  It now has one or the other (see Changed), decided by which tools it is handed.
+- **What a mail or a page asks Jarvis to remember is no longer kept unasked.**
+  In a turn that read something someone else wrote (mail, a web page, a
+  search, an invitation), Jarvis now keeps a fact only if you said it or
+  asked for it to be kept; otherwise it tells you and asks. Saving a list you
+  asked for works as before. Card numbers, API keys and one-time codes are
+  never saved by voice or chat (the Memory panel is your own hand, and takes
+  what you type).
 - **A page in Jarvis's browser could take over that browser.** The browser
   image (Docker, `--profile browser`) also runs a web desktop. Jarvis never
   uses it: its Browser panel works through the debugging port. But the

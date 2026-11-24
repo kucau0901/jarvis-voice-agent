@@ -1,8 +1,12 @@
 import {
   DAILY_JOBS,
+  DAILY_PLAN_TOKENS,
+  HOUSE_RUNNING,
+  MAX_IN_HAND,
   isResearchCap,
   Jobs,
   jobTool,
+  reachOf,
   readsOnly,
   KEEP_JOBS,
   MAX_JOB_MS,
@@ -33,7 +37,8 @@ import {
 } from "../src/worker/lib/jobs.ts";
 import type { Alert, Delivery } from "../src/worker/lib/alerts.ts";
 import type { UsageEntry } from "../src/worker/lib/usage.ts";
-import { HERMES_LONG_WORK, jobEngine } from "../src/worker/routes/jobs.ts";
+import { MAX_TRIES, beginCalls } from "../src/worker/lib/job-chain.ts";
+import { HERMES_LONG_WORK, jobEngine, jobView } from "../src/worker/routes/jobs.ts";
 import { MERGE_INSTRUCTIONS, PLAN_INSTRUCTIONS, RESEARCH_CHECK, TEAM_INSTRUCTIONS } from "../src/worker/lib/router-prompt.ts";
 import { angleMessage, mergeMaterial, shareReply, shareTool, teamView } from "../src/worker/lib/research-team.ts";
 import { allows, reachNow, requiredScope, withoutScreen } from "../src/worker/lib/scopes.ts";
@@ -319,6 +324,20 @@ console.log("\ncancelling");
   await h.jobs.tick(T0 + 60_000);
   check("nothing more happens, and nobody is told", h.sent.length === 0 && (await h.jobs.get(j.id))!.status === "cancelled");
   check("removed", (await h.jobs.remove(j.id)) && (await h.jobs.get(j.id)) === undefined);
+}
+
+console.log("\nremoved while its result is being told");
+{
+  const h = harness([{ kind: "done", text: "SUMMARY: Done." }]);
+  const j = (await h.jobs.create({ task: "x" }, BY, T0)) as Job;
+  const deliver = h.deps.deliver;
+  h.deps.deliver = async (a) => {
+    await h.jobs.remove(j.id); // the user, in the panel, while the push goes out
+    return deliver(a);
+  };
+  await h.jobs.tick(T0);
+  await h.jobs.tick(T0 + 10_000);
+  check("told once, and it does not come back", h.sent.length === 1 && (await h.jobs.get(j.id)) === undefined && (await h.jobs.list()).length === 0, await h.jobs.list());
 }
 
 console.log("\na question for Hermes");
@@ -621,7 +640,7 @@ console.log("\nkept per person");
 
 console.log("\nwho may");
 {
-  check("/api/v1/jobs needs ask", requiredScope("/api/v1/jobs", "POST") === "ask" && requiredScope("/api/v1/jobs/cancel", "POST") === "ask");
+  check("/api/v1/jobs needs ask", requiredScope("/api/v1/jobs", "POST") === "ask" && requiredScope("/api/v1/jobs/cancel", "POST") === "ask" && requiredScope("/api/v1/jobs/key", "POST") === "ask");
   check("a lookalike is the owner's", requiredScope("/api/v1/jobsx", "GET") === "owner");
 }
 
@@ -915,6 +934,74 @@ console.log("\ncancelled while OpenAI was being asked");
   id = ((await jobs.create({ task: "x" }, BY, T0)) as Job).id;
   await jobs.tick(T0);
   check("cancelled while starting: stays cancelled, and what started is stopped", (await jobs.get(id))!.status === "cancelled" && cancelled.includes("resp_x"), cancelled);
+}
+
+console.log("\na step that takes minutes holds up nothing else, and is asked once");
+{
+  // A step streaming on the ChatGPT plan: one job's never ends, another's does.
+  const starts: string[] = [];
+  const signals = new Map<string, AbortSignal>();
+  const h = harness([{ kind: "done", text: "SUMMARY: quick." }]);
+  h.deps.start = async (j, _t, stop) => {
+    starts.push(j.title);
+    signals.set(j.title, stop!);
+    if (j.title !== "Slow") return { responseId: "resp_q" };
+    return new Promise((_, no) => stop!.addEventListener("abort", () => no(new Error("aborted")), { once: true }));
+  };
+  const slow = (await h.jobs.create({ title: "Slow", task: "think" }, BY, T0)) as Job;
+  const quick = (await h.jobs.create({ title: "Quick", task: "look" }, BY, T0)) as Job;
+  const looks = await h.jobs.begin(T0);
+  check("both are started, and neither is waited for", looks.length === 2 && starts.join() === "Slow,Quick", starts);
+  await looks[1];
+  check("while one is in hand the other is woken for when it is due", (await h.jobs.nextWake(T0)) === T0 + 4000, await h.jobs.nextWake(T0));
+  await Promise.all(await h.jobs.begin(T0 + 5000));
+  check("the other job finishes meanwhile", (await h.jobs.get(quick.id))!.status === "done" && h.sent.length === 1);
+  check("the slow one is never started twice by the alarms that pass", starts.filter((s) => s === "Slow").length === 1 && (await h.jobs.begin(T0 + 60_000)).length === 0);
+  check("and what is in hand is not due", (await h.jobs.nextWake(T0 + 60_000)) === null);
+
+  // The object goes away under it (an update): the next one, over the same storage, takes it up again.
+  const again: string[] = [];
+  const next = new Jobs(h.storage, async () => ({ ...h.deps, start: async (j) => (again.push(j.title), { responseId: "resp_again" }) }));
+  check("cut short with the object, it is due as it was", (await next.nextWake(T0 + 61_000)) === T0 + 61_000);
+  await next.tick(T0 + 61_000);
+  check("…and started again, once", again.join() === "Slow" && (await next.get(slow.id))!.responseId === "resp_again");
+
+  // Stopped by the person: the stream is let go at once, and nothing is told.
+  await h.jobs.cancel(slow.id, T0 + 62_000);
+  await looks[0];
+  check("stopping it lets the stream go and leaves it cancelled", signals.get("Slow")!.aborted && (await h.jobs.get(slow.id))!.status === "cancelled" && h.sent.length === 1);
+  check("with nothing left to wake for", (await h.jobs.nextWake(T0 + 63_000)) === null);
+}
+{
+  const refund = harness([], { researchLimit: 5 });
+  refund.deps.start = (_j, _t, stop) => new Promise((ok) => stop!.addEventListener("abort", () => ok({ error: "it could not start: aborted" }), { once: true }));
+  const r = (await refund.jobs.create({ task: "dig", engine: "research" }, BY, T0)) as Job;
+  const looks = await refund.jobs.begin(T0);
+  await refund.jobs.cancel(r.id, T0 + 1000);
+  await Promise.all(looks);
+  check("research stopped in its first step keeps its place in the month: it was paid for", (await refund.storage.get<{ n: number }>("jobs:research:month"))?.n === 1 && refund.sent.length === 0);
+}
+{
+  // Nothing lists every kept result to find out when to wake.
+  const h = harness();
+  const j = (await h.jobs.create({ task: "x" }, BY, T0)) as Job;
+  await h.jobs.nextWake(T0);
+  let listed = 0;
+  const list = h.storage.list;
+  (h.storage as { list: unknown }).list = (o: { prefix: string }) => (o.prefix === "job:" && listed++, list(o));
+  await h.jobs.nextWake(T0);
+  await h.jobs.tick(T0);
+  const gone = (await h.jobs.create({ task: "y" }, BY, T0)) as Job;
+  await h.storage.delete(`job:${gone.id}`); // taken away by other hands
+  await h.jobs.tick(T0);
+  listed = 0;
+  check("a job no longer there does not wake the object for ever", (await h.jobs.nextWake(T0)) !== T0, await h.jobs.nextWake(T0));
+  const racing = new Jobs(h.storage, async () => h.deps);
+  const [, late] = await Promise.all([racing.nextWake(T0), racing.create({ task: "z" }, { who: "u_z", grants: ["*"] }, T0 - 5000)]);
+  check("one made while they are first read is not missed", typeof late !== "string" && (await racing.nextWake(T0 - 5000)) === T0 - 5000);
+  listed = 0;
+  await h.jobs.nextWake(T0);
+  check("once read, when to wake is known without listing the jobs", listed === 0 && (await h.jobs.nextWake(T0)) === (await h.jobs.get(j.id))!.nextAt, listed);
 }
 
 console.log("\nresearch that cannot run");
@@ -1523,6 +1610,7 @@ console.log("\nthe engine: what the plan, the teams and the merge are sent");
     // The cached prefix: instructions, tools and the separator that carries the breakpoint (lib/router.ts).
     check("every team is sent one cached prefix: model, instructions, tools and separator",
       t0.model === "gpt-6-sol" && t0.model === t2.model && t0.instructions === t2.instructions && JSON.stringify(t0.tools) === JSON.stringify(t2.tools) && JSON.stringify(t0.input![0]) === JSON.stringify(t2.input![0]) && JSON.stringify(t0.input![0]).includes("prompt_cache_breakpoint"));
+    check("a job's steps cache what they have so far, not only the shared prefix", (t0 as { prompt_cache_options?: { mode?: string } }).prompt_cache_options?.mode === "implicit", (t0 as { prompt_cache_options?: unknown }).prompt_cache_options);
     check("…its tools including share_findings, strict", (t0.tools ?? []).some((t) => t.name === "share_findings" && t.strict === true), t0.tools?.map((t) => t.name));
     check("each team's last two: the fixed team instructions, then its own angle as the user's",
       JSON.stringify(t0.input!.slice(-2)) === JSON.stringify([{ role: "developer", content: TEAM_INSTRUCTIONS }, { role: "user", content: angleMessage(ANGLES[0]!) }]) &&
@@ -1579,9 +1667,14 @@ console.log("\njobs on the owner's ChatGPT plan (routes/jobs.ts): streamed here,
   const kv = new Map<string, string>();
   const CONFIG = { get: async (k: string) => kv.get(k) ?? null, put: async (k: string, v: string) => void kv.set(k, v), delete: async () => {}, list: async () => ({ keys: [] }) };
   let plan = true;
+  /** When the plan is limited until, as Settings would say; null, it is not. */
+  let limitedUntil: number | null = null;
   const failed: string[] = [];
   const stub = new Proxy({}, {
-    get: (_t, m) => (m === "then" ? undefined : async (...a: unknown[]) => (m === "chatgptToken" ? (plan ? { token: "at_plan", model: null } : null) : m === "chatgptFailed" ? (failed.push(String(a[0])), { first: false }) : undefined)),
+    get: (_t, m) => (m === "then" ? undefined : async (...a: unknown[]) =>
+      m === "chatgptToken" ? (plan && !limitedUntil ? { token: "at_plan", model: null } : null)
+        : m === "chatgptStatus" ? { connected: plan, pending: false, ...(limitedUntil ? { limitedUntil } : {}) }
+          : m === "chatgptFailed" ? (failed.push(String(a[0])), { first: false }) : undefined),
   });
   const env = { CONFIG, OPENAI_API_KEY: "sk-test", TIMEZONE: "Asia/Kuala_Lumpur", STATE: { idFromName: () => "j", get: () => stub } } as never;
   const kept = fakeStorage();
@@ -1610,7 +1703,8 @@ console.log("\njobs on the owner's ChatGPT plan (routes/jobs.ts): streamed here,
       "responseId" in started && started.responseId.startsWith("plan_") && first.by === "plan" && first.body.stream === true && first.body.store === false &&
       !("background" in first.body) && (first.body.tools as { type: string }[])[0]!.type === "namespace", { started, body: Object.keys(first.body) });
     const id1 = (started as { responseId: string }).responseId;
-    check("and is kept in the object until it is polled", !!(await kept.get(`jobplan:${id1}`)));
+    const rowsOf = async (id: string) => [...(await kept.list<{ input: { type?: string }[]; answer?: unknown; tries: number }>({ prefix: `jobitem:${id}:` })).values()];
+    check("and is kept in the object, what was asked and what came back", (await rowsOf("jp")).length === 1 && !!(await rowsOf("jp"))[0]!.answer && id1 === "plan_m.0");
 
     answers.push([{ type: "message", id: "m1", role: "assistant", status: "completed", content: [{ type: "output_text", text: "SUMMARY: serviced in May.\n\nThe boiler was serviced in May.", annotations: [] }] }]);
     const step = await engine.poll({ ...job, responseId: id1 });
@@ -1626,8 +1720,40 @@ console.log("\njobs on the owner's ChatGPT plan (routes/jobs.ts): streamed here,
     const checked = await engine.check({ ...job, engine: "research" }, (step as { responseId: string }).responseId);
     check("a report written on the plan is checked with its whole exchange, then the check",
       "responseId" in checked && sent[2]!.by === "plan" && JSON.stringify(sent[2]!.body.input.at(-1)) === JSON.stringify({ role: "developer", content: RESEARCH_CHECK }) && sent[2]!.body.input.length > 2, sent[2]?.body.input.length);
-    await engine.cancel({ ...job, responseId: id1 });
-    check("cancelling forgets a kept step", !(await kept.get(`jobplan:${id1}`)));
+    const three = await rowsOf("jp");
+    check("each step keeps only what it added, not the whole exchange again", three.length === 3 && three[1]!.input.length === 1 && three[1]!.input[0]!.type === "function_call_output" && three[2]!.input.length === 1, three.map((r) => r.input.length));
+
+    // Cut short (an update) while its next step was being asked: its tools are not run again, and it is asked as it was.
+    const jc = { ...job, id: "jc" };
+    const tool = { type: "function_call", id: "fc_9", call_id: "call_9", name: "time_in", namespace: "jarvis", arguments: JSON.stringify({ place: "London" }), status: "completed" };
+    answers.push([tool]);
+    await engine.start(jc);
+    answers.push({ status: 500, code: "server_error" });
+    const cut = await engine.poll({ ...jc, responseId: "plan_m.0" }).catch((e: Error) => e);
+    check("a step that fails to be asked leaves what its tools gave", cut instanceof Error && (await rowsOf("jc")).length === 2 && !(await rowsOf("jc"))[1]!.answer, cut);
+    const asked = JSON.stringify(sent.at(-1)!.body.input.at(-1));
+    answers.push([{ type: "message", id: "m9", role: "assistant", status: "completed", content: [{ type: "output_text", text: "It is noon.", annotations: [] }] }]);
+    const n = sent.length;
+    const resumed = await engine.poll({ ...jc, responseId: "plan_m.0" });
+    check("looked at again, it is asked as it was, once", resumed.kind === "continued" && resumed.responseId === "plan_m.1" && sent.length === n + 1 && JSON.stringify(sent.at(-1)!.body.input.at(-1)) === asked, resumed);
+    const again = await engine.poll({ ...jc, responseId: "plan_m.0" });
+    check("answered but not noted before it was cut short: taken as it stands, not asked twice", again.kind === "continued" && again.responseId === "plan_m.1" && sent.length === n + 1, again);
+    const restarted = await engine.start(jc);
+    check("nor is a first step asked twice", "responseId" in restarted && restarted.responseId === "plan_m.0" && sent.length === n + 1, restarted);
+    const jl = { ...job, id: "jl" };
+    for (let i = 0; i < MAX_TRIES; i++) {
+      answers.push({ status: 500, code: "server_error" });
+      await engine.start(jl);
+    }
+    const spent = sent.length;
+    const gaveUp = await engine.start(jl);
+    check(`a step cut short ${MAX_TRIES} times is given up on`, "error" in gaveUp && /interrupted 5 times at the same step/.test(gaveUp.error) && sent.length === spent, gaveUp);
+
+    // A job that was running across the update that brought the rows.
+    await kept.put("jobplan:plan_old", { at: T0, input: [{ role: "user", content: "the old exchange" }, tool], response: { model: "gpt-6-luna", status: "completed", output: [tool], output_text: "" } });
+    answers.push([{ type: "message", id: "m8", role: "assistant", status: "completed", content: [{ type: "output_text", text: "Done.", annotations: [] }] }]);
+    const old = await engine.poll({ ...job, id: "jo", responseId: "plan_old" });
+    check("a step kept whole by the version before is carried on from, in a chain of its own", old.kind === "continued" && old.responseId === "plan_oplanold.0" && JSON.stringify(sent.at(-1)!.body.input[0]).includes("the old exchange"), old);
 
     // No further than whoever started it may reach now (lib/scopes.ts reachNow): a job made with every scope, its maker since narrowed to asking.
     const names = (tools: unknown): string[] => (Array.isArray(tools) ? tools.flatMap((t: { name?: string; tools?: unknown }) => [...(t.name ? [t.name] : []), ...names(t.tools)]) : []);
@@ -1639,25 +1765,311 @@ console.log("\njobs on the owner's ChatGPT plan (routes/jobs.ts): streamed here,
     check("whoever started it has left: it does not start", "error" in refused && /no longer in the family/.test(refused.error), refused);
     const narrowed = jobEngine(env, async (a) => ({ alert: a, attempts: [], deliveredBy: null }) as never, async () => env, kept as never, async (j) => reachNow(j.grants, { scopes: ["ask"] }));
     answers.push([{ type: "message", id: "m3", role: "assistant", status: "completed", content: [{ type: "output_text", text: "Done.", annotations: [] }] }]);
-    await narrowed.start(job);
+    await narrowed.start({ ...job, id: "jn" });
     const after = names(sent.at(-1)!.body.tools);
     check("narrowed since: its steps are offered only what its maker may still reach", before.includes("recall") && !after.includes("recall") && after.length < before.length, { before: before.length, after });
     check("a step no longer kept fails plainly", (await engine.poll({ ...job, responseId: "plan_gone" })).kind === "failed");
 
+    // At the plan's limit it waits for the plan: the key is the owner's money, and only a tap moves a job to it.
     answers.push({ status: 429, code: "subscription_sharing_usage_limit_exceeded" });
+    const jlim = { ...job, id: "jlim" };
+    const limited = await engine.start(jlim);
+    check("at the plan's limit: noted, and it waits an hour rather than use the key",
+      failed.join() === "limit" && "parked" in limited && limited.parked > Date.now() + 59 * 60_000 && sent.at(-1)!.by === "plan", { failed, limited });
+    limitedUntil = Date.now() + 60 * 60_000;
+    const before429 = sent.length;
+    const still = await engine.start({ ...job, id: "jlim2" });
+    check("known to be limited, nothing is asked of anyone", "parked" in still && still.parked === limitedUntil && sent.length === before429, still);
+    // Parked after its tools ran: what they gave is kept, so they are not run again.
+    limitedUntil = null;
+    const jp2 = { ...job, id: "jp2" };
+    answers.push([{ ...tool, call_id: "call_p" }]);
+    await engine.start(jp2);
+    limitedUntil = Date.now() + 60 * 60_000;
+    const waits = await engine.poll({ ...jp2, responseId: "plan_m.0" });
+    check("limited between steps: it waits, with what its tools gave kept", waits.kind === "parked" && (await rowsOf("jp2")).length === 2 && JSON.stringify((await rowsOf("jp2"))[1]!.input).includes("call_p"), waits);
+    limitedUntil = null;
+    answers.push([{ type: "message", id: "mp", role: "assistant", status: "completed", content: [{ type: "output_text", text: "Done.", annotations: [] }] }]);
+    const goes = await engine.poll({ ...jp2, responseId: "plan_m.0" });
+    check("the plan back, it goes on from there, its usage counted once", goes.kind === "continued" && goes.responseId === "plan_m.1" && goes.usage?.input === 200, goes);
+    // Moved to the key by a tap: the whole exchange goes there, made fit for it.
+    limitedUntil = Date.now() + 60 * 60_000;
     answers.push([]);
-    const limited = await engine.start(job);
+    const moved = await engine.start({ ...jlim, onKey: true });
     const key = sent.at(-1)!;
-    check("at the plan's limit: noted, and the key starts it in the background as before",
-      failed.join() === "limit" && "responseId" in limited && limited.responseId === "resp_key" && key.by === "key" && key.body.background === true && !("previous_response_id" in key.body), { failed, limited });
+    check("moved to the key by its person: started there in the background, from what was kept",
+      "responseId" in moved && moved.responseId === "resp_key" && key.by === "key" && key.body.background === true && !("previous_response_id" in key.body) && JSON.stringify(key.body.input).includes("the boiler"), moved);
+    limitedUntil = null;
 
     plan = false;
     answers.push([]);
-    const keyOnly = await engine.start(job);
+    const keyOnly = await engine.start({ ...job, id: "jkey" });
     check("no plan: the key, as before", "responseId" in keyOnly && keyOnly.responseId === "resp_key" && sent.at(-1)!.by === "key");
   } finally {
     globalThis.fetch = realFetch;
   }
+}
+
+console.log("\nwaiting for the ChatGPT plan");
+{
+  const HOUR = 3_600_000;
+  const h = harness([{ kind: "parked", until: T0 + HOUR }, { kind: "done", text: "SUMMARY: Done." }]);
+  const j = (await h.jobs.create({ task: "x" }, BY, T0)) as Job;
+  await h.jobs.tick(T0);
+  await h.jobs.tick(T0 + 10_000);
+  let cur = (await h.jobs.get(j.id))!;
+  check("it is still running, says until when, and is next looked at then", cur.status === "running" && cur.parked?.until === T0 + HOUR && (await h.jobs.nextWake(T0 + 20_000)) === T0 + HOUR, cur);
+  const view = jobView(cur, false, true) as { waiting?: unknown; parked?: unknown; waited?: unknown };
+  check("the panel is told, with the key offered to whoever may", JSON.stringify(view.waiting) === JSON.stringify({ for: "plan", until: T0 + HOUR, key: { soFar: null } }) && view.parked === undefined && view.waited === undefined, view);
+  check("…and not offered to whoever may not", JSON.stringify((jobView(cur) as { waiting?: unknown }).waiting) === JSON.stringify({ for: "plan", until: T0 + HOUR }));
+  await h.jobs.tick(T0 + HOUR);
+  cur = (await h.jobs.get(j.id))!;
+  check("then it goes on and finishes, and nobody was told it failed", cur.status === "done" && cur.parked === undefined && h.sent.length === 1 && h.sent[0]!.title.startsWith("Done"), cur);
+
+  // The wait is not its time: a job limited to twenty minutes is not stopped for having waited an hour.
+  const long = harness([{ kind: "parked", until: T0 + HOUR }, { kind: "wait" }, { kind: "wait" }]);
+  const l = (await long.jobs.create({ task: "x" }, BY, T0)) as Job;
+  await long.jobs.tick(T0);
+  await long.jobs.tick(T0 + 10_000);
+  await long.jobs.tick(T0 + HOUR);
+  check("what it waited is not counted as its time", (await long.jobs.get(l.id))!.status === "running" && (await long.jobs.get(l.id))!.waited === HOUR - 10_000, (await long.jobs.get(l.id))!.waited);
+  await long.jobs.tick(T0 + HOUR + MAX_JOB_MS);
+  check("what it worked still is", (await long.jobs.get(l.id))!.status === "failed");
+
+  // Parked at the very start, and by its person moved to the key.
+  const m = harness([{ kind: "done", text: "SUMMARY: Done." }]);
+  let parks = true;
+  const keyed: boolean[] = [];
+  m.deps.start = async (job) => (keyed.push(job.onKey === true), parks && !job.onKey ? { parked: T0 + HOUR } : { responseId: "resp_key" });
+  const k = (await m.jobs.create({ task: "x" }, BY, T0)) as Job;
+  await m.jobs.tick(T0);
+  check("limited before its first step: it waits", (await m.jobs.get(k.id))!.parked?.until === T0 + HOUR);
+  const used = await m.jobs.useKey(k.id, T0 + 60_000);
+  check("its person's tap makes it due at once, on the key", typeof used !== "string" && used.onKey === true && (await m.jobs.nextWake(T0 + 60_000)) === T0 + 60_000);
+  await m.jobs.tick(T0 + 60_000);
+  check("…and it goes on there", keyed.join() === "false,true" && (await m.jobs.get(k.id))!.responseId === "resp_key" && (await m.jobs.get(k.id))!.parked === undefined);
+  check("a job that is not running cannot be moved", typeof (await m.jobs.useKey("jnone", T0)) === "string");
+
+  // A research team waits as one, its teams with it.
+  const t = harness([], { teams: [[{ kind: "parked", until: T0 + HOUR }], [], []] });
+  const r = (await t.jobs.create({ task: "dig", engine: "research", team: true }, BY, T0)) as Job;
+  await t.jobs.tick(T0);
+  t.deps.poll = async () => ({ kind: "done", text: "not json" });
+  await t.jobs.tick(T0 + 10_000);
+  await t.jobs.tick(T0 + 11_000);
+  t.deps.poll = async () => ({ kind: "parked", until: T0 + HOUR });
+  await t.jobs.tick(T0 + 30_000);
+  const team = (await t.jobs.get(r.id))!;
+  check("a research team waits as one, its teams with it", team.parked?.until === T0 + HOUR && team.team!.chains.every((c) => c.state === "working" && c.nextAt === T0 + HOUR), team);
+
+  // The plan is the house's: what one person's jobs use of it in a day is counted, and the house runs so many.
+  const d = harness([{ kind: "done", text: "SUMMARY: Done.", usage: { input: DAILY_PLAN_TOKENS, cached: 0, output: 1, model: "chatgpt:gpt-6-luna" } }]);
+  await d.jobs.create({ task: "big" }, BY, T0);
+  await d.jobs.tick(T0);
+  await d.jobs.tick(T0 + 10_000);
+  check("a day's share used: no more jobs from them today", /share of the ChatGPT plan/.test(String(await d.jobs.create({ task: "more" }, BY, T0 + 20_000))));
+  check("…others are not held to it", typeof (await d.jobs.create({ task: "mine" }, { who: "u_kid", grants: ["ask"] }, T0 + 20_000)) !== "string");
+  check("…nor is a question for Hermes, and tomorrow is new", typeof (await d.jobs.create({ task: "q", engine: "hermes" }, BY, T0 + 20_000)) !== "string" && typeof (await d.jobs.create({ task: "more" }, BY, T0 + 86_400_000)) !== "string");
+  const onKey = harness([{ kind: "done", text: "SUMMARY: Done.", usage: { input: DAILY_PLAN_TOKENS, cached: 0, output: 1, model: "gpt-6-luna" } }]);
+  await onKey.jobs.create({ task: "big" }, BY, T0);
+  await onKey.jobs.tick(T0);
+  await onKey.jobs.tick(T0 + 10_000);
+  check("what the key pays for is not counted against the plan", typeof (await onKey.jobs.create({ task: "more" }, BY, T0 + 20_000)) !== "string");
+  const house = harness();
+  for (let i = 0; i < HOUSE_RUNNING; i++) await house.jobs.create({ task: `t${i}` }, { who: `u_${Math.floor(i / 2)}`, grants: ["*"] }, T0);
+  check(`${HOUSE_RUNNING} at once in the whole house`, /in the house/.test(String(await house.jobs.create({ task: "one more" }, { who: "u_new", grants: ["*"] }, T0))));
+
+  // In hand at once: the rest wait their turn, and do not wake the object meanwhile.
+  const many = harness();
+  let ended: (() => void)[] = [];
+  many.deps.start = () => new Promise((ok) => ended.push(() => ok({ responseId: "r" })));
+  for (let i = 0; i < MAX_IN_HAND + 1; i++) await many.jobs.create({ task: `t${i}` }, { who: `u_${i}`, grants: ["*"] }, T0);
+  const looks = await many.jobs.begin(T0);
+  check(`${MAX_IN_HAND} are looked at at once`, looks.length === MAX_IN_HAND && (await many.jobs.nextWake(T0)) === null);
+  check("a question for Hermes is not one of them", typeof (await many.jobs.create({ task: "q", engine: "hermes" }, { who: "u_h", grants: ["*"] }, T0)) !== "string" && (await many.jobs.begin(T0)).length === 1);
+  ended[0]!();
+  await looks[0];
+  check("one ends, the next is due at once", (await many.jobs.nextWake(T0)) === T0 && (await many.jobs.begin(T0)).length === 1);
+  for (const e of ended) e();
+}
+
+console.log("\na job reads its person's own things, or the web, never both");
+{
+  const kv = new Map<string, string>();
+  const CONFIG = { get: async (k: string) => kv.get(k) ?? null, put: async (k: string, v: string) => void kv.set(k, v), delete: async () => {}, list: async () => ({ keys: [] }) };
+  const facts = { rev: 1, facts: [{ id: "m_1", text: "The user is allergic to peanuts", kind: "note", keys: ["allergic", "peanuts"], createdAt: 1, updatedAt: 1, useCount: 3, source: "ui", pinned: true }], trash: [] };
+  const stub = new Proxy({}, { get: (_t, m) => (m === "then" ? undefined : async () => (m === "loadMemory" ? facts : m === "familyPeople" ? [{ person: "u_sara", name: "Sara" }] : m === "relaysAwaiting" ? [] : undefined)) });
+  // Everything this person has set up, so what is missing is missing by the job's reach.
+  const theirs = { CONFIG, OPENAI_API_KEY: "sk-test", TIMEZONE: "Asia/Kuala_Lumpur", STATE: { idFromName: () => "j", get: () => stub }, JARVIS_PERSON: "u_sara", JARVIS_PERSON_NAME: "Sara", JARVIS_PERSON_NICKNAME: "Sasa", JARVIS_PERSON_BIRTHDAY: "3 March", JARVIS_FAMILY: "fam:s1", GOOGLE_CLIENT_ID: "g", GOOGLE_CLIENT_SECRET: "s", GOOGLE_MAPS_API_KEY: "m", TESSIE_TOKEN: "t", TESSIE_VIN: "5YJTEST0000000001", HERMES_BASE_URL: "https://hermes.example", HERMES_API_KEY: "k" } as never;
+  type Body = { tools: { name?: string; type: string }[]; input: unknown[] };
+  const posted: Body[] = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async (_u: string | URL | Request, init?: RequestInit) => {
+    posted.push(JSON.parse(String(init?.body)) as Body);
+    return Response.json({ id: `resp_${posted.length}`, object: "response", status: "queued", model: "gpt-6-luna", output: [] });
+  }) as typeof fetch;
+  try {
+    const engine = jobEngine(theirs, async (a) => ({ alert: a, attempts: [], deliveredBy: null }) as never, async () => theirs);
+    const job = { id: "jr", title: "x", task: "Find a place to eat.", engine: "jarvis", status: "running", createdBy: "u_sara", grants: ["*"], createdAt: T0, updatedAt: T0, steps: 0, attempts: 0 } as Job;
+    const of = async (j: Partial<Job>) => {
+      const s = await engine.start({ ...job, ...j });
+      if (!("responseId" in s)) throw new Error(JSON.stringify(s));
+      const b = posted.at(-1)!;
+      return { tools: b.tools.map((t) => t.name ?? t.type), said: JSON.stringify(b.input) };
+    };
+    const mine = await of({ reach: "private" });
+    check("private: their own things, and no web search", ["recall", "mail_search", "calendar_check"].every((n) => mine.tools.includes(n)) && !mine.tools.includes("web_search"), mine.tools);
+    check("…as themselves, with what is saved about them", /Sara/.test(mine.said) && /peanuts/.test(mine.said), mine.said.slice(0, 900));
+    check("…told so", /NOT the web/.test(mine.said) && !/You can search the web/.test(mine.said));
+    const web = await of({ reach: "web" });
+    check("web: searches, the time and what a place is like, and nothing else at all", web.tools.sort().join() === "place_info,time_in,web_search", web.tools);
+    check("…not even who is asking, what is saved about them, or the family", !/Sara|Sasa|3 March|peanuts|THE FAMILY|CARS THEY/.test(web.said), web.said.slice(0, 600));
+    check("…though where they are stays, for prices and what is near", /Malaysia|Kuala_Lumpur/.test(web.said));
+    check("…and it is told what it lacks", /NOTHING of the user's own/.test(web.said));
+    check("nothing of it acts: no proposal, no mail", !web.tools.some((n) => /mail|car_command|calendar_add|ask_hermes|job_results|remember/.test(n)));
+    const research = await of({ engine: "research" });
+    check("research is the web's, the same", research.tools.sort().join() === "place_info,time_in,web_search" && !/Sara|peanuts/.test(research.said), research.tools);
+    check("one that says neither reads its person's own things", reachOf({ engine: "jarvis" }) === "private" && reachOf({ engine: "research" }) === "web" && reachOf({ engine: "jarvis", reach: "web" }) === "web");
+    const gone = jobEngine(theirs, async (a) => ({ alert: a, attempts: [], deliveredBy: null }) as never, async () => theirs, undefined, async () => null);
+    check("on the web too, whoever started it must still be here", "error" in (await gone.start({ ...job, reach: "web" })));
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+  const h = harness();
+  const made = async (input: Record<string, unknown>) => (await h.jobs.create({ task: "x", ...input }, { who: `u_${Math.floor(h.log.length + (await h.jobs.list()).length)}`, grants: ["*"] }, T0)) as Job;
+  check("kept as it was asked for, and only for an ordinary job", (await made({ reach: "web" })).reach === "web" && (await made({ reach: "private" })).reach === "private" && (await made({ reach: "everything" })).reach === "private" && (await made({ engine: "hermes", reach: "web" })).reach === undefined);
+}
+
+console.log("\nthe object can go at any save: the job still ends, once");
+{
+  // A storage that stops for good at one save, before it lands or after: as an update or a power cut would. The
+  // object that was writing never hears back; the next one, over what was kept, goes on.
+  const script = (): Step[] => [{ kind: "wait" }, { kind: "continued", responseId: "resp_2", usage: { input: 10, cached: 0, output: 1 } }, { kind: "done", text: "SUMMARY: Done." }];
+  let points = 0;
+  let worst = 0;
+  let lost = 0;
+  let unended = 0;
+  for (const lands of [false, true]) {
+    for (let at = 1; at <= 30; at++) {
+      const storage = fakeStorage();
+      const told: Alert[] = [];
+      const steps = script();
+      const deps: JobDeps = {
+        async start() { return { responseId: "resp_1" }; },
+        async check() { return { error: "no" }; },
+        async plan() { return { error: "no" }; },
+        async merge() { return { error: "no" }; },
+        // The step is at OpenAI, done after a minute and a half, and there to look at however often it is looked at.
+        async poll(j) { return j.responseId === "resp_2" ? steps[2]! : t < T0 + 90_000 ? steps[0]! : steps[1]!; },
+        async cancel() {},
+        async hermes() { return { ok: true, text: "" }; },
+        async deliver(a) { told.push(a); return { alert: a, attempts: [], deliveredBy: "push" } as Delivery; },
+      };
+      let t = T0;
+      const first = new Jobs(storage, async () => deps);
+      const made = (await first.create({ task: "x" }, BY, T0)) as Job;
+      let n = 0;
+      let cut = false;
+      const cutting = { ...storage, put: async (k: string, v: unknown) => {
+        if (cut || ++n === at) {
+          if (!cut && lands) await storage.put(k, v);
+          cut = true;
+          return new Promise<void>(() => {}); // this object is gone
+        }
+        return storage.put(k, v);
+      } };
+      const dying = new Jobs(cutting as never, async () => deps);
+      for (let i = 0; i < 6 && !cut; i++) {
+        const looks = await dying.begin(t);
+        await Promise.race([Promise.all(looks), new Promise((r) => setTimeout(r, 2))]);
+        t += 60_000;
+      }
+      if (!cut) continue; // past its last save
+      points++;
+      const next = new Jobs(storage, async () => deps);
+      for (let i = 0; i < 8; i++) await next.tick((t += 60_000));
+      const end = await next.get(made.id);
+      if (!end) lost++;
+      else if (end.status !== "done") unended++;
+      worst = Math.max(worst, told.length);
+    }
+  }
+  check("at every save it makes, before and after", points >= 8, points);
+  check("the job is never lost, and ends as it would have", lost === 0 && unended === 0, { lost, unended });
+  check("and nobody is told twice", worst === 1, worst);
+}
+
+console.log("\nwhat a hostile page or mail asks of a job is not there to be used");
+{
+  const kv = new Map<string, string>();
+  const CONFIG = { get: async (k: string) => kv.get(k) ?? null, put: async (k: string, v: string) => void kv.set(k, v), delete: async () => {}, list: async () => ({ keys: [] }) };
+  const did: string[] = [];
+  const stub = new Proxy({}, { get: (_t, m) => (m === "then" ? undefined : async () => {
+    if (m === "chatgptToken") return { token: "at_plan", model: null };
+    did.push(String(m));
+    return undefined;
+  }) });
+  const env = { CONFIG, OPENAI_API_KEY: "sk-test", TIMEZONE: "Asia/Kuala_Lumpur", STATE: { idFromName: () => "j", get: () => stub }, GOOGLE_CLIENT_ID: "g", GOOGLE_CLIENT_SECRET: "s", TESSIE_TOKEN: "t", TESSIE_VIN: "5YJTEST0000000001", HA_BASE_URL: "https://ha.example", HA_TOKEN: "h", HERMES_BASE_URL: "https://hermes.example", HERMES_API_KEY: "k", BROWSER_URL: "http://127.0.0.1:9222" } as never;
+  // A model that does as the page says, whatever it was told: asked of every tool an attack would want.
+  const wanted = ["recall", "mail_search", "calendar_check", "remember", "forget", "mail_send", "car_command", "ask_hermes", "control_home", "browser_open", "start_job", "job_results", "specialty_save", "skill_add", "routine_add", "send_note", "share_findings"];
+  const realFetch = globalThis.fetch;
+  let outputs: { call_id: string; output: string }[] = [];
+  let asked = 0;
+  globalThis.fetch = (async (u: string | URL | Request, init?: RequestInit) => {
+    const url = String(u instanceof Request ? u.url : u);
+    if (!url.endsWith("/responses")) throw new Error(`an attack reached ${url}`);
+    const body = JSON.parse(String(init?.body)) as { input: { type?: string; call_id?: string; output?: string }[] };
+    const items = asked++ === 0
+      ? wanted.map((name, i) => ({ type: "function_call", id: `fc_${i}`, call_id: name, name, namespace: "jarvis", arguments: "{}", status: "completed" }))
+      : [{ type: "message", id: "m", role: "assistant", status: "completed", content: [{ type: "output_text", text: "SUMMARY: ok.", annotations: [] }] }];
+    if (asked === 2) outputs = body.input.filter((i) => i.type === "function_call_output") as typeof outputs;
+    const events = [...items.map((item) => ({ type: "response.output_item.done", item })), { type: "response.completed", response: { id: "r", object: "response", status: "completed", model: "gpt-6-luna", output: [], usage: { input_tokens: 1, output_tokens: 1 } } }];
+    return new Response(events.map((e) => `data: ${JSON.stringify(e)}\n\n`).join(""), { headers: { "content-type": "text/event-stream" } });
+  }) as typeof fetch;
+  try {
+    const engine = jobEngine(env, async (a) => ({ alert: a, attempts: [], deliveredBy: null }) as never, async () => env, fakeStorage() as never);
+    const job = { id: "jx", title: "x", task: "Read this page.", engine: "jarvis", reach: "web", status: "running", createdBy: "owner", grants: ["*"], createdAt: T0, updatedAt: T0, steps: 0, attempts: 0 } as Job;
+    await engine.start(job);
+    did.length = 0;
+    await engine.poll({ ...job, responseId: "plan_m.0" });
+    check("on the web: none of them exists for it", outputs.length === wanted.length && outputs.every((o) => o.output === `No such tool: ${o.call_id}`), outputs.filter((o) => !o.output.startsWith("No such tool")));
+    check("…and nothing was done: what it read is all that was asked of the object", did.every((m) => m === "loadMemory" || m === "chatgptStatus"), did);
+
+    asked = 0;
+    const mine = { ...job, id: "jy", reach: "private" } as Job;
+    await engine.start(mine);
+    did.length = 0;
+    await engine.poll({ ...mine, responseId: "plan_m.0" });
+    const gone = ["remember", "forget", "ask_hermes", "control_home", "browser_open", "start_job", "specialty_save", "skill_add", "routine_add", "send_note", "share_findings"];
+    check("on their own things: what remembers, sends, starts, reaches a computer or the browser does not exist for it", gone.every((n) => outputs.find((o) => o.call_id === n)?.output === `No such tool: ${n}`), outputs.filter((o) => gone.includes(o.call_id) && !o.output.startsWith("No such tool")));
+    check("…and what acts is only proposed, never run", !outputs.some((o) => /^(Sent|Done|Saved|Started)/.test(o.output)), outputs.filter((o) => ["car_command", "mail_send"].includes(o.call_id)));
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+}
+
+console.log("\na job's exchange on the plan goes when the job does, and is never taken for a job");
+{
+  const row = { at: T0, input: [], tries: 1 };
+  const h = harness([{ kind: "done", text: "SUMMARY: Done." }]);
+  const left = async (id: string) => [...(await h.storage.list({ prefix: `jobitem:${id}:` })).keys()].length;
+  const a = (await h.jobs.create({ task: "a" }, BY, T0)) as Job;
+  const b = (await h.jobs.create({ task: "b" }, BY, T0)) as Job;
+  for (const j of [a, b]) for (const n of ["0000", "0001"]) await h.storage.put(`jobitem:${j.id}:m:${n}`, row);
+  check("only the jobs are listed", (await h.jobs.list()).length === 2);
+  await h.jobs.tick(T0);
+  await h.jobs.tick(T0 + 10_000);
+  check("finished: its rows are gone, another job's are not", (await left(a.id)) === 0 && (await left(b.id)) === 2, [await left(a.id), await left(b.id)]);
+  await h.jobs.cancel(b.id, T0 + 20_000);
+  check("cancelled: gone too", (await left(b.id)) === 0);
+  await h.storage.put("jobplan:plan_x", { at: T0 - 3 * 3_600_000 });
+  await h.storage.put("jobplan:plan_y", { at: T0 + 20_000 });
+  await h.jobs.create({ task: "c" }, BY, T0 + 30_000);
+  check("steps kept whole by an older version are swept once no job can be on them", (await h.storage.get("jobplan:plan_x")) === undefined && !!(await h.storage.get("jobplan:plan_y")));
+
+  const marks = fakeStorage();
+  check("what acts by itself is begun once for a step", (await beginCalls(marks as never, "j", "plan_m.2", ["call_a"])).size === 0 && (await beginCalls(marks as never, "j", "plan_m.2", ["call_a"])).has("call_a"));
+  check("and afresh at the next", (await beginCalls(marks as never, "j", "plan_m.3", ["call_b"])).size === 0);
 }
 
 console.log("\na job that would act proposes instead (lib/proposals.ts)");

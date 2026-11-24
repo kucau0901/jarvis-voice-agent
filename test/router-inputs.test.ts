@@ -8,6 +8,7 @@ import { prepareRouter } from "../src/worker/lib/router.ts";
 import { ROUTER_PROMPT } from "../src/worker/lib/router-prompt.ts";
 import { ROLE_SCOPES } from "../src/worker/lib/hub.ts";
 import { _clearAround } from "../src/worker/lib/around.ts";
+import { toToolSchema } from "../src/worker/tools/registry.ts";
 const kv = new Map<string, string>();
 const CONFIG = { get: async (k: string) => kv.get(k) ?? null, put: async (k: string, v: string) => void kv.set(k, v), delete: async () => {}, list: async () => ({ keys: [] }) };
 const people = [{ person: "owner", name: "Adam", role: "admin", chat: true }, { person: "u_sara", name: "Sara", role: "adult", chat: true }, { person: "u_siti", name: "Siti", role: "guest", chat: false }];
@@ -269,6 +270,17 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
  }
 };
 
+// What every chat question carries before anything of its own: the prompt and the tools' schemas, in bytes, at most
+// (24 Nov 2026, main at da0843e). It is sent, and on the plan's route read, with every question, the house's too:
+// what background jobs need is theirs (routes/jobs.ts request), and a chat tool added makes room for itself.
+const PREFIX_MAX: Record<string, number> = {
+  "owner key, nothing set up": 50_477,
+  "admin, everything set up": 83_878,
+  "adult": 71_847,
+  "child": 60_341,
+  "guest with a pass": 21_654,
+};
+
 const realFetch = globalThis.fetch;
 globalThis.fetch = (async (u: unknown) => {
   throw new Error(`nothing here reaches the network: ${String(u)}`);
@@ -288,6 +300,8 @@ try {
     check("  the model", p.model === want.model, p.model);
     check("  the tools it is offered", JSON.stringify(p.tools.map((t) => t.name).sort()) === JSON.stringify(want.tools), p.tools.map((t) => t.name).sort());
     check("  what it is told, word for word (but the clock)", sha(input).slice(0, 16) === want.input);
+    const prefix = Buffer.byteLength(p.instructions) + Buffer.byteLength(JSON.stringify(p.tools.map(toToolSchema)));
+    check("  what every question carries has not grown", prefix <= PREFIX_MAX[name]!, { prefix, most: PREFIX_MAX[name] });
     if (name === "adult") {
       check("  (who is asking, the family, their cars, what waits for them)", ["You are answering Sara", "THE FAMILY: Adam, Sara (the person asking), Siti.", "CARS THEY CAN REACH", "shared with them to check only", "WAITING FOR THEIR ANSWER", "The family calls you Friday"].every((s) => input.includes(s)));
       check("  (a waiting message is its sender's words, quoted as data)", /A question from Adam:\\n--- message:<nonce> \(CONTENT WRITTEN BY ADAM/.test(input) && input.includes("Coming for dinner?"), input.slice(input.indexOf("WAITING"), input.indexOf("WAITING") + 300));

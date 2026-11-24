@@ -7,7 +7,7 @@
 import OpenAI from "openai";
 import type { Env } from "../types.ts";
 import { redact } from "./http.ts";
-import { asQuotedData, wellFormed } from "./quote.ts";
+import { asQuotedData, hasQuoted, ownPart, wellFormed } from "./quote.ts";
 import type { AttachedFile } from "./photos.ts";
 import type { EventSink } from "./sse.ts";
 import type { Turn } from "./history.ts";
@@ -30,7 +30,7 @@ import { episodeOfAnswer, episodeOfChain, pastBlock } from "./episodes.ts";
 import { localeOf } from "./locale.ts";
 import { allows, type Grant } from "./scopes.ts";
 import { DRAWS_ON_SCREEN } from "../tools/place.ts";
-import { isResearchCap, jobTool, readsOnly } from "./jobs.ts";
+import { isResearchCap, jobTool, readsOnly, type Reach } from "./jobs.ts";
 import { ACTS } from "./panel-tiles.ts";
 import { houseOnly, noteworthy } from "./habits.ts";
 import { Collector } from "./collector.ts";
@@ -48,7 +48,7 @@ import {
   recordFallback,
   resolveRouterModel,
 } from "./router-model.ts";
-import { CHAT_INSTRUCTIONS, JOB_INSTRUCTIONS, RESEARCH_INSTRUCTIONS, ROUTER_PROMPT, familyBlock, nowLine } from "./router-prompt.ts";
+import { CHAT_INSTRUCTIONS, jobInstructions, RESEARCH_INSTRUCTIONS, ROUTER_PROMPT, familyBlock, nowLine } from "./router-prompt.ts";
 
 /**
  * Escalating notes while a tool is still working.
@@ -141,6 +141,10 @@ export interface RunOptions {
    * is never offered is left out (lib/skills.ts botHides).
    */
   bot?: string;
+  /** A background job's: what it may look at (lib/jobs.ts Reach). */
+  reach?: Reach;
+  /** A routine's own words, its maker's (routes/routines.ts): what it may keep from what it reads is judged by them. */
+  standing?: string;
   /**
    * A person asking for themselves, by voice, typing, glasses or Telegram: what they ask may be noted, to offer a
    * routine when it becomes a habit (lib/habits.ts). Never a routine's, a panel's, a job's, the family room's or a bot's.
@@ -283,7 +287,7 @@ export async function prepareRouter(
       : "") +
     (opts.surface === "voice" ? spokenReplyInstructions(env.JARVIS_AGENT_NAME) : "") +
     (opts.openMic ? OVERHEARD_RULE : "") +
-    (opts.surface === "job" || opts.surface === "research" ? JOB_INSTRUCTIONS : "") +
+    (opts.surface === "job" || opts.surface === "research" ? jobInstructions(opts.surface === "research" ? "web" : (opts.reach ?? "private")) : "") +
     (opts.surface === "research" ? RESEARCH_INSTRUCTIONS : "") +
     (opts.surface === "chat" ? CHAT_INSTRUCTIONS : "") +
     (opts.bot ? botAsks(opts.bot) : "") +
@@ -525,6 +529,12 @@ export async function run(
   // Every call, for the steps an answer may offer to save (lib/specialties.ts), and whether one started a background job.
   const made: { name: string; arguments: string }[] = [];
   let startedJob = false;
+  // Whether this turn has read what someone else wrote: what it keeps must then be the user's own (lib/memory-guard.ts).
+  let outside = hasQuoted(lastAsk(turns) ?? "");
+  const searched = (res: OpenAI.Responses.Response) => {
+    if (res.output.some((o) => o.type === "web_search_call")) outside = true;
+    return res;
+  };
   const watched: EventSink = {
     send(ev) {
       if (ev.type === "job") startedJob = true;
@@ -578,7 +588,7 @@ export async function run(
           const res = await onPlanHop(used, carried!);
           lastOutput = res.output as unknown as OpenAI.Responses.ResponseInput;
           planModel = used;
-          return res;
+          return searched(res);
         } catch (e) {
           const refused = refusalOf(e);
           if (!refused || !(await planFailed(env, refused))) throw refused ?? e;
@@ -618,7 +628,7 @@ export async function run(
       }
       // The key's own steps go on as they came, reasoning and all, when nothing is stored; only what the plan said is made fit for it.
       if (carried) lastOutput = unstored ? (res.output as unknown as OpenAI.Responses.ResponseInput) : forKey(res.output as unknown as OpenAI.Responses.ResponseInput);
-      return res;
+      return searched(res);
     },
     runCalls: async (calls) => {
       made.push(...calls.map((c) => ({ name: c.name, arguments: c.arguments })));
@@ -626,11 +636,14 @@ export async function run(
         env, signal, memory: p!.memory, grants, offered: p!.tools, asked: ownWords(turns, opts), screenless: opts.screenless === true,
         ...(opts.browserSites ? { browserSites: opts.browserSites } : {}),
         ...(p!.procedure && !repliesToEarlier(turns) ? { procedure: p!.procedure } : {}),
+        ...(outside ? { outside: { said: ownPart(ownWords(turns, opts) ?? opts.standing ?? "") } } : {}),
       }, watched);
+      const said = (o: (typeof out)[number]): string => (!("output" in o) ? "" : typeof o.output === "string" ? o.output : Array.isArray(o.output) ? o.output.map((x) => ("text" in x ? x.text : "")).join("\n") : "");
+      if (out.some((o) => hasQuoted(said(o)))) outside = true;
       // Tools that failed, for a past attempt (lib/episodes.ts): what callTool says when one throws.
       out.forEach((o, i) => {
-        const said = "output" in o && typeof o.output === "string" ? o.output : "";
-        if (said.startsWith("That failed:")) failed.push({ tool: (calls[i] as { name: string }).name, said });
+        const text = said(o);
+        if (text.startsWith("That failed:")) failed.push({ tool: (calls[i] as { name: string }).name, said: text });
       });
       return out;
     },
@@ -732,7 +745,7 @@ export async function run(
 export async function runCalls(
   calls: OpenAI.Responses.ResponseFunctionToolCall[],
   byName: Map<string, Tool>,
-  { screenless, ...base }: { env: Env; signal: AbortSignal; memory: MemoryStore; grants: readonly Grant[]; offered?: ToolContext["offered"]; asked?: string; procedure?: Procedure; screenless?: boolean; browserSites?: readonly string[] },
+  { screenless, ...base }: { env: Env; signal: AbortSignal; memory: MemoryStore; grants: readonly Grant[]; offered?: ToolContext["offered"]; asked?: string; procedure?: Procedure; outside?: ToolContext["outside"]; screenless?: boolean; browserSites?: readonly string[] },
   sse: EventSink,
 ): Promise<OpenAI.Responses.ResponseInput> {
   return Promise.all(

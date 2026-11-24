@@ -83,6 +83,12 @@ export interface ToolContext {
   offered?: readonly Pick<Tool, "name" | "reads">[];
   /** The user's latest message, as they said it: what only they can ask for must be in it (tools/specialties.ts). */
   asked?: string;
+  /**
+   * Something someone else wrote has been read in this turn (mail, a page, a
+   * web search): what is kept must then be the user's own (lib/memory-guard.ts),
+   * judged by `said`, their own words or, of a routine, its maker's.
+   */
+  outside?: { said?: string };
   /** The steps the answer before this question offered to save (lib/specialties.ts): all specialty_save may keep. */
   procedure?: Procedure;
   /**

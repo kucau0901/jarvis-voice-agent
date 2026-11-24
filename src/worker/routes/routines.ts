@@ -165,6 +165,7 @@ export async function askForRoutine(
     toolFilter: (t) => !WRITES_HOUSE_CONFIG.test(t.name) && t.name !== "browser_show" && (t.reads !== false || t.alone === true) && (!only || only(t)),
     routineName: routine.name,
     ...(sites.length ? { browserSites: sites } : {}),
+    ...(routine.action.kind === "ask" ? { standing: routine.action.prompt } : {}),
     ...(routine.action.kind === "ask" && routine.action.notify === "if-important" ? { routineIfImportant: true } : {}),
   });
   const c = sink.finish();

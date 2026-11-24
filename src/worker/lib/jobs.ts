@@ -6,6 +6,7 @@ import { makeAlert, type Alert, type Delivery } from "./alerts.ts";
 import { personOfWho } from "./context.ts";
 import { tidy } from "./quote.ts";
 import type { UsageEntry } from "./usage.ts";
+import { clearChain } from "./job-chain.ts";
 
 /**
  * Background jobs: things that take minutes, answered later.
@@ -53,6 +54,15 @@ import type { UsageEntry } from "./usage.ts";
  * and the merged report is checked like any other (lib/research-team.ts).
  */
 export type JobEngine = "jarvis" | "hermes" | "research";
+
+/**
+ * What a job may look at, settled when it is started: its person's own things
+ * (mail, calendar, memory, the house, the car), or the web. Never both: what is
+ * looked up on the web leaves by the words of the search, and a page or a mail
+ * it reads may ask for exactly that. Research is the web's.
+ */
+export type Reach = "private" | "web";
+export const reachOf = (j: Pick<Job, "engine" | "reach">): Reach => (j.engine === "research" ? "web" : (j.reach ?? "private"));
 type JobStatus = "running" | "done" | "failed" | "cancelled";
 
 export interface Job {
@@ -99,6 +109,14 @@ export interface Job {
    * kept apart (jobtable:<id>), to download.
    */
   table?: { columns?: string[]; rows?: number };
+  /** An ordinary job's: its person's own things, or the web (reachOf). */
+  reach?: Reach;
+  /** Waiting for the owner's ChatGPT plan, at its limit: since when, and until when (lib/openai-auth.ts PlanParked). */
+  parked?: { since: number; until: number };
+  /** How long it has waited so, which its time limit does not count. */
+  waited?: number;
+  /** Moved to the API key by its person's tap, rather than wait. */
+  onKey?: true;
 }
 
 /** A page the web search cited: what a report's Sources list is made of. */
@@ -190,23 +208,29 @@ export type Step =
   /** `shared`: what a team passed to share_findings in this hop. */
   | { kind: "continued"; responseId: string; usage?: Job["usage"]; shared?: string[] }
   | { kind: "done"; text: string; cited?: Cited[]; usage?: Job["usage"] }
+  /** The plan is at its limit: nothing was asked, and it goes on from here then. */
+  | { kind: "parked"; until: number }
   | { kind: "failed"; error: string };
 
+/** A step started: its response id, the plan to wait for, or why it could not start. */
+export type Started = { responseId: string } | { parked: number } | { error: string };
+
+/** `stop`, where a step streams here for minutes (the ChatGPT plan, Hermes): aborted when the person stops the job. */
 export interface JobDeps {
   /** Start a jarvis job's first step, or team `team`'s of a research team; its response id, or why it could not start. */
-  start(job: Job, team?: number): Promise<{ responseId: string } | { error: string }>;
+  start(job: Job, team?: number, stop?: AbortSignal): Promise<Started>;
   /** research: start the check of a written report, continuing from `after`; its response id, or why not. */
-  check(job: Job, after: string): Promise<{ responseId: string } | { error: string }>;
+  check(job: Job, after: string, stop?: AbortSignal): Promise<Started>;
   /** research as a team: start planning the teams' angles; its response id, or why not. */
-  plan(job: Job): Promise<{ responseId: string } | { error: string }>;
+  plan(job: Job, stop?: AbortSignal): Promise<Started>;
   /** research as a team: start merging the teams' reports into one; its response id, or why not. */
-  merge(job: Job): Promise<{ responseId: string } | { error: string }>;
+  merge(job: Job, stop?: AbortSignal): Promise<Started>;
   /** Look at the running step (team `team`'s, of a research team); run any tools it asked for and start the next. */
-  poll(job: Job, team?: number): Promise<Step>;
+  poll(job: Job, team?: number, stop?: AbortSignal): Promise<Step>;
   /** Stop a running step at OpenAI. Best effort. */
   cancel(job: Job): Promise<void>;
   /** Ask Hermes, waiting as long as it takes; `reference`, a research report handed over with the question. */
-  hermes(job: Job, reference?: string): Promise<{ ok: boolean; text: string; late?: boolean }>;
+  hermes(job: Job, reference?: string, stop?: AbortSignal): Promise<{ ok: boolean; text: string; late?: boolean }>;
   deliver(alert: Alert): Promise<Delivery>;
   /** Research jobs allowed a month (RESEARCH_MONTHLY_LIMIT); 0 turns them off. */
   researchLimit?: number;
@@ -226,6 +250,13 @@ const DAY = (person: string) => `jobs:day:${person}`;
 
 /** Each a person's own: one member's jobs neither block nor prune another's. */
 export const MAX_RUNNING = 3;
+/** Running in the whole house at once, besides questions for Hermes: they share the owner's one plan with the family's own questions. */
+export const HOUSE_RUNNING = 6;
+/** Looked at at once, besides Hermes: on the plan each is a stream. */
+export const MAX_IN_HAND = 3;
+/** Tokens one person's jobs may use of the plan in a day: one member cannot use up what the house shares. */
+export const DAILY_PLAN_TOKENS = 5_000_000;
+const TOKENS = (person: string) => `jobs:tokens:${person}`;
 export const DAILY_JOBS = 30;
 export const KEEP_JOBS = 30;
 /** A router job that has run this many steps is stopped: something is looping. */
@@ -309,6 +340,10 @@ export function readsOnly(t: { name: string; reads?: boolean }): boolean {
   const own = t.name.slice(i + 2).toLowerCase();
   return !WRITES.test(own) && READS.test(own);
 }
+
+/** What a job on the web is handed besides its searches: nothing of its person's, and nothing that remembers. */
+const WEB_TOOLS = new Set(["time_in", "place_info"]);
+export const webTool = (t: { name: string }): boolean => WEB_TOOLS.has(t.name);
 
 /** What a job is handed to read with: of Jarvis's own, those named above and no others; of the rest, what only reads. */
 export function jobTool(t: { name: string; reads?: boolean }): boolean {
@@ -423,7 +458,7 @@ export function parseAngles(text: string): TeamAngle[] | null {
 export const sharesLeft = (j: Job, t: number): number => Math.max(0, SHARES_PER_TEAM - j.team!.board.filter((b) => b.team === t).length);
 
 /** What happened to one team's chain: it started, a look at it, a look that threw, or it was stopped. */
-export type TeamEvent = { started: string } | { step: Step } | { threw: string } | { stopped: string };
+export type TeamEvent = { started: string } | { step: Exclude<Step, { kind: "parked" }> } | { threw: string } | { stopped: string };
 
 /**
  * One event applied to team `t`: the job as it is after, with the step's
@@ -473,6 +508,12 @@ export function teamStep(j: Job, t: number, e: TeamEvent, now: number): Job {
   }
   const looks = chains.filter((x) => x.state === "working").map((x) => x.nextAt ?? now);
   return { ...j, ...(usage ? { usage } : {}), team: { ...j.team!, chains, board }, nextAt: looks.length ? Math.min(...looks) : now, updatedAt: now };
+}
+
+/** A job that was waiting for the plan and no longer is: how long it waited is not its time. */
+function resumed(j: Job, now: number): Job {
+  const { parked, ...rest } = j;
+  return parked ? { ...rest, waited: (j.waited ?? 0) + Math.max(0, now - parked.since) } : j;
 }
 
 /** Every response the job has running at OpenAI: its own, and each working team's. */
@@ -529,10 +570,24 @@ const clean = (v: unknown, max: number) =>
 export class Jobs {
   private storage: Storage;
   private deps: () => Promise<JobDeps>;
+  /** The jobs being looked at now, and how to stop each: one look at a job at a time, whatever the alarm does meanwhile. */
+  private live = new Map<string, { look: Promise<void>; stop: AbortController; hermes: boolean }>();
+  /** When each running job is next to be looked at: read once, then kept as they are saved, so nothing lists every result to find out. */
+  private due = new Map<string, number>();
+  private read: Promise<void> | null = null;
 
   constructor(storage: Storage, deps: () => Promise<JobDeps>) {
     this.storage = storage;
     this.deps = deps;
+  }
+
+  private async waiting(): Promise<Map<string, number>> {
+    // One saved while this was being read is already here, and newer than what was read.
+    this.read ??= this.list().then((all) => {
+      for (const j of all) if (j.status === "running" && !this.due.has(j.id)) this.due.set(j.id, j.nextAt ?? 0);
+    });
+    await this.read;
+    return this.due;
   }
 
   async list(who?: string): Promise<Job[]> {
@@ -544,12 +599,21 @@ export class Jobs {
     return this.storage.get<Job>(J + id);
   }
 
-  private save(j: Job): Promise<void> {
-    return this.storage.put(J + j.id, j);
+  private async save(j: Job): Promise<void> {
+    if (j.status === "running") this.due.set(j.id, j.nextAt ?? 0);
+    else this.due.delete(j.id);
+    await this.storage.put(J + j.id, j);
+  }
+
+  private async drop(id: string): Promise<boolean> {
+    this.due.delete(id);
+    await clearChain(this.storage, id);
+    await this.storage.delete(T + id);
+    return this.storage.delete(J + id);
   }
 
   async create(
-    input: { title?: unknown; task?: unknown; engine?: unknown; team?: unknown; from?: unknown; table?: unknown },
+    input: { title?: unknown; task?: unknown; engine?: unknown; reach?: unknown; team?: unknown; from?: unknown; table?: unknown },
     by: { who: string; grants: readonly Grant[] },
     now = Date.now(),
   ): Promise<Job | string> {
@@ -557,7 +621,7 @@ export class Jobs {
     if (!task) return "a job needs a task: what to find out or work through";
     const engine: JobEngine = input.engine === "hermes" ? "hermes" : input.engine === "research" ? "research" : "jarvis";
     // First: what `from` names must not be pruned by this very create, after it was accepted.
-    await this.prune();
+    await this.prune(now);
     // Research handed to Hermes: only the caller's own, and finished. Other engines ignore it.
     let from: string | undefined;
     if (engine === "hermes" && input.from !== undefined && input.from !== null) {
@@ -575,7 +639,13 @@ export class Jobs {
       return `${MAX_RUNNING} jobs are already running; wait for one to finish`;
     }
     if (team && all.some((j) => j.status === "running" && j.team)) return "a research team is already working; wait for it to finish";
+    if (engine !== "hermes" && all.filter((j) => j.status === "running" && j.engine !== "hermes").length >= HOUSE_RUNNING) {
+      return `${HOUSE_RUNNING} jobs are already running in the house; wait for one to finish`;
+    }
     const today = new Date(now).toISOString().slice(0, 10);
+    if (engine !== "hermes" && (await this.tokensToday(person, now)) >= DAILY_PLAN_TOKENS) {
+      return "today's share of the ChatGPT plan for background work has been used; it starts again tomorrow";
+    }
     const day = (await this.storage.get<{ day: string; n: number }>(DAY(person))) ?? { day: today, n: 0 };
     const n = day.day === today ? day.n : 0;
     if (n >= DAILY_JOBS) return `the limit of ${DAILY_JOBS} jobs a day has been reached`;
@@ -605,6 +675,7 @@ export class Jobs {
       nextAt: now,
       steps: 0,
       attempts: 0,
+      ...(engine === "jarvis" ? { reach: input.reach === "web" ? ("web" as const) : ("private" as const) } : {}),
       ...(team ? { team: newTeam(now) } : {}),
       ...(table ? { table: {} } : {}),
       ...(from ? { from } : {}),
@@ -621,10 +692,14 @@ export class Jobs {
     j.status = "cancelled";
     j.finishedAt = j.updatedAt = now;
     delete j.nextAt;
+    delete j.parked;
     if (j.team) j.team = slimTeam(j.team);
     await this.save(j);
+    // A step streaming here is let go at once, rather than paid for to its end.
+    this.live.get(id)?.stop.abort();
     const deps = await this.deps();
     for (const id of running) await deps.cancel({ ...j, responseId: id }).catch(() => {});
+    await clearChain(this.storage, id);
     // What it spent before it was stopped still counts in Settings → Usage.
     await deps.record?.(usageEntry(j, false, now)).catch(() => {});
     return j;
@@ -647,8 +722,7 @@ export class Jobs {
     const j = await this.get(id);
     if (!j) return false;
     if (j.status === "running") await this.cancel(id);
-    await this.storage.delete(T + id);
-    return this.storage.delete(J + id);
+    return this.drop(id);
   }
 
   /** A table job's rows, with its columns; null for any other job, or one that came back as prose. */
@@ -656,37 +730,94 @@ export class Jobs {
     return (await this.storage.get<{ columns: string[]; rows: string[][] }>(T + id)) ?? null;
   }
 
+  /** When the first job that is not already in hand is due; what is in hand keeps the object awake itself (state.ts going), and is followed by whatever waits its turn. */
   async nextWake(now = Date.now()): Promise<number | null> {
-    let next: number | undefined;
-    for (const j of await this.list()) {
-      if (j.status === "running" && j.nextAt !== undefined && (next === undefined || j.nextAt < next)) next = j.nextAt;
-    }
-    return next === undefined ? null : Math.max(next, now);
+    let next: number | null = null;
+    for (const [id, at] of await this.waiting()) if (!this.live.has(id) && (at > now || this.room()) && (next === null || at < next)) next = at;
+    return next === null ? null : Math.max(next, now);
   }
 
-  /** Advance every job that is due. Hermes last: it can hold the alarm for minutes. */
-  async tick(now = Date.now()): Promise<void> {
-    const due = (await this.list()).filter((j) => j.status === "running" && (j.nextAt ?? 0) <= now + 1000);
-    if (!due.length) return;
+  private room(): boolean {
+    return [...this.live.values()].filter((l) => !l.hermes).length < MAX_IN_HAND;
+  }
+
+  /**
+   * Start a look at every job that is due and not already in hand; each, as it
+   * ends (never rejected). The object hands them to waitUntil (state.ts): a step
+   * on the ChatGPT plan streams here for minutes, and a reminder, the house or
+   * a tap waits for none of them. Cut short with the object (an update, a
+   * restart), a job is due as it was, and the alarm takes it up again.
+   */
+  async begin(now = Date.now()): Promise<Promise<void>[]> {
+    const ids = [...(await this.waiting())].filter(([id, at]) => at <= now + 1000 && !this.live.has(id)).map(([id]) => id);
+    if (!ids.length) return [];
     const deps = await this.deps();
-    for (const j of due.sort((a, b) => (a.engine === "hermes" ? 1 : 0) - (b.engine === "hermes" ? 1 : 0))) {
-      try {
-        await (j.engine === "hermes" ? this.advanceHermes(j, deps, now) : this.advanceJarvis(j, deps, now));
-      } catch (e) {
-        await this.finish(j, deps, now, { error: e instanceof Error ? e.message : String(e) });
-      }
+    const looks: Promise<void>[] = [];
+    for (const id of ids) {
+      const j = await this.stillRunning(id);
+      const hermes = j?.engine === "hermes";
+      // Gone, or ended, since it was read: not due again, or the alarm would wake for it for ever.
+      if (!j) this.due.delete(id);
+      if (!j || this.live.has(id) || (!hermes && !this.room())) continue;
+      const stop = new AbortController();
+      const look = (hermes ? this.advanceHermes(j, deps, now, stop.signal) : this.advanceJarvis(j, deps, now, stop.signal))
+        .catch((e) => this.finish(j, deps, now, { error: e instanceof Error ? e.message : String(e) }))
+        .catch((e) => console.error("job", id, e instanceof Error ? e.message : String(e)))
+        .finally(() => this.live.delete(id));
+      this.live.set(id, { look, stop, hermes });
+      looks.push(look);
     }
+    return looks;
   }
 
-  private async advanceJarvis(j: Job, deps: JobDeps, now: number): Promise<void> {
+  /** Advance every job that is due, to the end of each look. */
+  async tick(now = Date.now()): Promise<void> {
+    await Promise.all(await this.begin(now));
+  }
+
+  /** Waiting for the plan: the job, and any team of it still working, due again when the plan is. */
+  private async park(id: string, until: number, now: number): Promise<void> {
+    const cur = await this.stillRunning(id);
+    if (!cur) return;
+    const team = cur.team && { ...cur.team, chains: cur.team.chains.map((c) => (c.state === "working" ? { ...c, nextAt: until } : c)) };
+    await this.save({ ...cur, ...(team ? { team } : {}), parked: { since: cur.parked?.since ?? now, until }, nextAt: until });
+  }
+
+  /** Its person moved it to the API key rather than wait for the plan: due at once, there. */
+  async useKey(id: string, now = Date.now()): Promise<Job | string> {
+    const j = await this.stillRunning(id);
+    if (!j) return "no such job running";
+    const next = resumed(j, now);
+    const team = next.team && { ...next.team, chains: next.team.chains.map((c) => (c.state === "working" ? { ...c, nextAt: now } : c)) };
+    await this.save({ ...next, ...(team ? { team } : {}), onKey: true, nextAt: now });
+    return { ...next, onKey: true };
+  }
+
+  private async tokensToday(person: string, now: number): Promise<number> {
+    const t = await this.storage.get<{ day: string; n: number }>(TOKENS(person));
+    return t?.day === new Date(now).toISOString().slice(0, 10) ? t.n : 0;
+  }
+
+  /** What a step used of the plan, counted to whoever started it. */
+  private async countTokens(j: Job, u: JobUsage | undefined, now: number): Promise<void> {
+    if (!u?.model?.startsWith("chatgpt:")) return;
+    const person = personOfWho(j.createdBy);
+    await this.storage.put(TOKENS(person), { day: new Date(now).toISOString().slice(0, 10), n: (await this.tokensToday(person, now)) + u.input + u.output });
+  }
+
+  private async advanceJarvis(j: Job, deps: JobDeps, now: number, stop: AbortSignal): Promise<void> {
+    if (j.parked) {
+      j = resumed(j, now);
+      await this.save(j);
+    }
     const { maxSteps } = limitsOf(j.engine);
     const maxMs = limitsOf(j.engine).maxMs + (j.draft ? RESEARCH_CHECK_MS : 0);
-    if (now - j.createdAt > maxMs) {
+    if (now - j.createdAt - (j.waited ?? 0) > maxMs) {
       for (const id of responseIdsOf(j)) await deps.cancel({ ...j, responseId: id }).catch(() => {});
       return this.finish(j, deps, now, { error: `it ran for over ${maxMs / 60_000} minutes and was stopped` });
     }
     // Research as a team: while a team is working, the job is its teams.
-    if (j.team?.chains.some((c) => c.state === "working")) return this.advanceTeams(j, deps, now);
+    if (j.team?.chains.some((c) => c.state === "working")) return this.advanceTeams(j, deps, now, stop);
     const team = j.team;
     const planning = !!team && !team.angles;
     /*
@@ -702,8 +833,10 @@ export class Jobs {
         return this.finish(j, deps, now, { error: `none of the teams found anything (${why})` });
       }
       // A written report's check, and a team's plan and merge, start the way a job does, so they are cancelled the same way.
-      const s = await (j.draft ? deps.check(j, j.draft.responseId) : planning ? deps.plan(j) : team ? deps.merge(j) : deps.start(j));
+      const s = await (j.draft ? deps.check(j, j.draft.responseId, stop) : planning ? deps.plan(j, stop) : team ? deps.merge(j, stop) : deps.start(j, undefined, stop));
+      if ("parked" in s) return this.park(j.id, s.parked, now);
       if ("error" in s) {
+        if (stop.aborted) return;
         // Planning never costs the run: unplanned, the teams take the fixed angles.
         if (planning) {
           const cur = await this.stillRunning(j.id);
@@ -722,7 +855,7 @@ export class Jobs {
     const polled = j.responseId;
     let step: Step;
     try {
-      step = await deps.poll(j);
+      step = await deps.poll(j, undefined, stop);
     } catch (e) {
       if (!planning) throw e;
       // The plan could not be looked at: once more in 30 seconds, then the fixed angles.
@@ -734,6 +867,8 @@ export class Jobs {
       await deps.cancel(cur).catch(() => {});
       return;
     }
+    if (step.kind === "parked") return this.park(j.id, step.until, now);
+    if (step.kind !== "failed") await this.countTokens(j, step.usage, now);
     const usage = step.kind !== "failed" && step.usage ? addUsage(j.usage, step.usage) : j.usage;
     const cur = await this.stillRunning(j.id);
     if (!cur) {
@@ -808,8 +943,8 @@ export class Jobs {
    * team that fails is stopped and the others go on; only team 1 failing to
    * start ends the run, as research that cannot start does, its slot given back.
    */
-  private async advanceTeams(j: Job, deps: JobDeps, now: number): Promise<void> {
-    const late = now - j.createdAt > TEAM_MS;
+  private async advanceTeams(j: Job, deps: JobDeps, now: number, stop: AbortSignal): Promise<void> {
+    const late = now - j.createdAt - (j.waited ?? 0) > TEAM_MS;
     const tooLong = { stopped: `it ran for over ${TEAM_MS / 60_000} minutes` };
     for (let t = 0; t < TEAMS; t++) {
       const cur = await this.stillRunning(j.id);
@@ -821,7 +956,9 @@ export class Jobs {
           await this.save(teamStep(cur, t, tooLong, now));
           continue;
         }
-        const s = await deps.start(cur, t);
+        const s = await deps.start(cur, t, stop);
+        if (stop.aborted && "error" in s) return;
+        if ("parked" in s) return this.park(cur.id, s.parked, now);
         if ("error" in s && t === 0) {
           await this.refundResearch(cur.createdAt);
           return this.finish(cur, deps, now, { error: s.error });
@@ -836,10 +973,13 @@ export class Jobs {
       }
       // Past the teams' time each is looked at once more, due or not, so a report written since the last look is kept.
       if (!late && (c.nextAt ?? 0) > now + 1000) continue;
-      const e: TeamEvent = await deps.poll(cur, t).then(
+      const looked: { step: Step } | { threw: string } = await deps.poll(cur, t, stop).then(
         (step) => ({ step }),
         (x: unknown) => ({ threw: x instanceof Error ? x.message : String(x) }),
       );
+      if ("step" in looked && looked.step.kind === "parked") return this.park(cur.id, looked.step.until, now);
+      const e = looked as TeamEvent;
+      if ("step" in e && e.step.kind !== "failed") await this.countTokens(cur, e.step.usage, now);
       const after = await this.stillRunning(j.id);
       if (!after) {
         // Stopped meanwhile: stop what this step started too, and keep what it spent.
@@ -859,17 +999,17 @@ export class Jobs {
     }
   }
 
-  private async advanceHermes(j: Job, deps: JobDeps, now: number): Promise<void> {
+  private async advanceHermes(j: Job, deps: JobDeps, now: number, stop: AbortSignal): Promise<void> {
     // An alarm cut short mid-question (a deploy) is retried once, not forever.
     if (j.attempts >= 2) return this.finish(j, deps, now, { error: "Hermes was interrupted twice" });
     // Research handed over is read now: it may have been pruned or removed since the job was made.
     const reference = j.from ? (await this.get(j.from))?.result : undefined;
     if (j.from && !reference) return this.finish(j, deps, now, { error: "the research to hand over is no longer kept" });
     j.attempts += 1;
-    j.nextAt = now + 10 * 60_000; // recorded first: while asking, nothing else should pick it up
+    j.nextAt = now + 10 * 60_000; // recorded first: cut short while asking, it is taken up again once Hermes has had its time
     j.updatedAt = now;
     await this.save(j);
-    const r = await deps.hermes(j, reference);
+    const r = await deps.hermes(j, reference, stop);
     return this.finish(j, deps, Date.now(), r.ok ? { text: r.text } : { error: r.text, ...(r.late ? { late: true } : {}) });
   }
 
@@ -879,6 +1019,7 @@ export class Jobs {
     if (!cur || cur.status !== "running") return; // cancelled or removed while it ran
     const done = { ...cur, ...j, finishedAt: now, updatedAt: now };
     delete done.nextAt;
+    delete done.parked;
     if ("error" in out) {
       // The check never costs the report: if it did not finish, the report goes out as written.
       // Nor does the merge cost the teams' reports: unmerged, each goes out as it was written.
@@ -924,24 +1065,26 @@ export class Jobs {
       alert = { ...makeAlert({ title, text: done.error, speak: false }, "job", now, personOfWho(j.createdBy))!, job: j.id };
     }
     await this.save(done); // before delivering: a retried alarm must not tell the user twice
+    await clearChain(this.storage, done.id);
     const d = await deps.deliver(alert).catch(() => null);
     done.deliveredBy = d?.deliveredBy ?? null;
-    await this.save(done);
+    // Removed while it was being told (a push can take seconds): gone stays gone.
+    if (await this.get(done.id)) await this.save(done);
     await deps.record?.(usageEntry(done, done.status === "done", now)).catch(() => {});
     // How it went, for next time (lib/episodes.ts): not Hermes still working past the wait, which has not failed.
     if (!("late" in out && out.late)) await deps.episode?.(done).catch(() => {});
   }
 
   /** Keep each person's newest KEEP_JOBS finished ones: one member's many never prune another's. */
-  private async prune(): Promise<void> {
+  private async prune(now: number): Promise<void> {
+    // Steps a version before the rows kept whole (lib/job-chain.ts), once no job can still be on one.
+    for (const [k, s] of await this.storage.list<{ at: number }>({ prefix: "jobplan:" })) if (now - s.at > 2 * 3_600_000) await this.storage.delete(k);
     const kept = new Map<string, number>();
     for (const j of (await this.list()).filter((x) => x.status !== "running")) {
       const person = personOfWho(j.createdBy);
       const n = (kept.get(person) ?? 0) + 1;
       kept.set(person, n);
-      if (n <= KEEP_JOBS) continue;
-      await this.storage.delete(T + j.id);
-      await this.storage.delete(J + j.id);
+      if (n > KEEP_JOBS) await this.drop(j.id);
     }
   }
 }

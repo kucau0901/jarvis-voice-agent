@@ -116,7 +116,7 @@ export const RUN_MS = 120_000;
 /**
  * An approved call the alarm has not started this long after the tap is not
  * made: the world it was approved for has moved on. A tap made while the
- * alarm is busy (a job's step, a Hermes question) waits for it to finish;
+ * alarm is busy (a brief, the house being looked at) waits for it to finish;
  * an alarm is stopped after fifteen minutes, and tried again a few seconds
  * later, so only an alarm that keeps failing comes to this.
  */

@@ -1,5 +1,5 @@
 import { api, authHeaders } from "../key";
-import { button, el } from "./util";
+import { arm, button, el } from "./util";
 import { markdown } from "./rich";
 import { proposalsBox } from "../proposal";
 
@@ -31,6 +31,12 @@ interface JobView {
   cost?: number | null;
   /** Research as a team: how many teams reported and, while it runs, which part it is in. */
   team?: { of: number; reported: number; phase?: "planning" | "teams" | "merging" | "checking" };
+  /** What it may look at: your own things, or the web. */
+  reach?: "private" | "web";
+  /** Waiting for the ChatGPT plan, at its limit, until then; `key`, when it may go on with the API key instead, and what it has used would have cost there. */
+  waiting?: { for: "plan"; until: number; key?: { soFar: number | null } };
+  /** Moved to the API key rather than wait. */
+  onKey?: boolean;
   /** Research into a table: its columns, and how many rows it came back with, to download. */
   table?: { columns?: string[]; rows?: number };
 }
@@ -96,6 +102,16 @@ export class Jobs {
     task.rows = 3;
     task.placeholder = "Compare the three cheapest EV chargers I can get installed at home, with prices and what the reviews say.";
     form.appendChild(task);
+    // One side or the other, never both (lib/jobs.ts Reach): what is looked up on the web leaves by the words of the search.
+    const reach = document.createElement("select");
+    for (const [value, label] of [["web", "On the web, and nothing of mine"], ["private", "In my own things, not the web"]] as const) {
+      const o = document.createElement("option");
+      o.value = value;
+      o.textContent = label;
+      reach.appendChild(o);
+    }
+    reach.setAttribute("aria-label", "Where this job may look");
+    form.appendChild(reach);
     // Research: a stronger model, searching widely, with sources (lib/jobs.ts).
     const deep = el("label", "on");
     const deepBox = document.createElement("input");
@@ -125,6 +141,11 @@ export class Jobs {
     deepBox.addEventListener("change", () => {
       if (!deepBox.checked) teamBox.checked = tableBox.checked = false;
     });
+    // Research is the web's.
+    form.addEventListener("change", () => {
+      if (deepBox.checked) reach.value = "web";
+      reach.disabled = deepBox.checked;
+    });
     teamBox.addEventListener("change", () => {
       if (!teamBox.checked) tableBox.checked = false;
     });
@@ -133,12 +154,13 @@ export class Jobs {
         void this.act(async () => {
           await api(this.key, "POST", "/api/v1/jobs", {
             task: task.value,
+            reach: reach.value,
             ...(deepBox.checked ? { engine: "research" } : {}),
             ...(teamBox.checked ? { team: true } : {}),
             ...(tableBox.checked ? { table: true } : {}),
           });
           task.value = "";
-          deepBox.checked = teamBox.checked = tableBox.checked = false;
+          deepBox.checked = teamBox.checked = tableBox.checked = reach.disabled = false;
         }, "Started — it arrives as an alert when done."), "primary"),
     );
     sheet.appendChild(form);
@@ -216,7 +238,7 @@ export class Jobs {
     row.dataset.id = j.id;
     const top = el("div", "rtop");
     top.appendChild(el("b", "", j.title));
-    top.appendChild(el("span", `chip ${j.status === "done" ? "on" : "off"}`, STATUS[j.status]));
+    top.appendChild(el("span", `chip ${j.status === "done" ? "on" : "off"}`, j.waiting ? "waiting" : STATUS[j.status]));
     row.appendChild(top);
 
     const facts: string[] = [j.team ? "Research team" : j.engine === "hermes" ? "Hermes" : j.engine === "research" ? "Research" : "Jarvis", `started ${when(j.createdAt)}`];
@@ -226,7 +248,10 @@ export class Jobs {
     if (j.finishedAt) facts.push(`took ${Math.max(1, Math.round((j.finishedAt - j.createdAt) / 60_000))} min`);
     if (j.status !== "running" && j.deliveredBy !== undefined) facts.push(j.deliveredBy ? `sent by ${j.deliveredBy}` : "not delivered");
     if (typeof j.cost === "number" && j.cost > 0) facts.push(`about ${j.cost < 0.01 ? "under 1¢" : `$${j.cost.toFixed(2)}`}`);
+    if (j.engine !== "hermes") facts.push(j.engine === "research" || j.reach === "web" ? "the web only" : "your own things, no web");
+    if (j.onKey) facts.push("on the API key");
     row.appendChild(el("div", "rfacts", facts.join(" · ")));
+    if (j.waiting) row.appendChild(el("div", "rwhen", `The ChatGPT plan is at its limit. This goes on by itself at about ${when(j.waiting.until)}.`));
 
     if (j.summary) row.appendChild(el("div", "rwhen", j.summary));
     if (j.error) row.appendChild(el("div", "rfacts bad", j.error));
@@ -255,6 +280,12 @@ export class Jobs {
           void this.load();
         }),
       );
+    }
+    if (j.waiting?.key) {
+      const soFar = j.waiting.key.soFar;
+      const use = button("Use the API key now", () => {});
+      arm(use, soFar ? `About ${soFar < 0.01 ? "under 1¢" : `$${soFar.toFixed(2)}`} so far. Sure?` : "It costs money. Sure?", () => this.act(() => api(this.key, "POST", "/api/v1/jobs/key", { id: j.id })));
+      btns.appendChild(use);
     }
     if (j.status === "running") btns.appendChild(button("Cancel", () => void this.act(() => api(this.key, "POST", "/api/v1/jobs/cancel", { id: j.id }))));
     else btns.appendChild(button("Remove", () => void this.act(() => api(this.key, "DELETE", `/api/v1/jobs?id=${encodeURIComponent(j.id)}`))));
