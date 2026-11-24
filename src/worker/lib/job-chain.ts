@@ -92,6 +92,19 @@ export class JobChain {
     return null;
   }
 
+  /** A step that cannot be asked yet: kept, so what its tools gave is not asked of them again. */
+  async keep(chain: string, n: number, input: Items, now: number): Promise<void> {
+    const k = key(this.job, chain, n);
+    if (!(await this.storage.get<Row>(k))) await this.storage.put(k, { at: now, input, tries: 0 } satisfies Row);
+  }
+
+  /** The plan refused it (its limit): not a time it was asked. */
+  async refused(chain: string, n: number): Promise<void> {
+    const k = key(this.job, chain, n);
+    const row = await this.storage.get<Row>(k);
+    if (row) await this.storage.put(k, { ...row, tries: Math.max(0, row.tries - 1) } satisfies Row);
+  }
+
   /** Its answer, kept; not if the job was ended meanwhile and its rows are gone. */
   async answered(chain: string, n: number, r: Answered): Promise<void> {
     const k = key(this.job, chain, n);

@@ -1436,6 +1436,12 @@ export class JarvisState extends DurableObject<Env> {
     return j;
   }
 
+  async jobUseKey(id: string) {
+    const j = await this.jobs.useKey(id);
+    await this.rearm();
+    return j;
+  }
+
   async removeJob(id: string) {
     const j = await this.jobs.get(id);
     const ok = await this.jobs.remove(id);

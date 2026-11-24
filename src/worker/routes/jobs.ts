@@ -26,7 +26,7 @@ import { draftThenAsk, mailDraftSend } from "../lib/mail-draft.ts";
 import { mailSend } from "../tools/gmail.ts";
 import { recordUsage } from "./usage.ts";
 import { costOf } from "../lib/usage.ts";
-import { canAsk, clientFor, forKey, forPlan, modelAuth, planFailed, planRespond, refusalOf } from "../lib/openai-auth.ts";
+import { PlanParked, canAsk, clientFor, forKey, forPlan, mayFallBack, modelAuth, planFailedWorking, planLimitedUntil, planRespond, refusalOf } from "../lib/openai-auth.ts";
 import type { Storage } from "../lib/state-host.ts";
 
 /**
@@ -37,6 +37,7 @@ import type { Storage } from "../lib/state-host.ts";
  *   GET    /api/v1/jobs?id=       one, with its whole result
  *   POST   /api/v1/jobs           {task, title?, engine?: "jarvis" | "hermes" | "research", team?: true, from?: id}
  *   POST   /api/v1/jobs/cancel    {id}
+ *   POST   /api/v1/jobs/key       {id}   a job waiting for the ChatGPT plan goes on with the API key instead; needs `routines`
  *   DELETE /api/v1/jobs?id=
  */
 
@@ -183,8 +184,9 @@ export function jobEngine(
    * Start a step: on the owner's ChatGPT plan when it can be used and the step
    * does not continue a response at OpenAI, else in the background at OpenAI
    * with the key, as before. `to`: the step it follows, or the chain it begins.
-   * At the plan's limit the key takes over, if the owner allows it
-   * (lib/openai-auth.ts).
+   * At the plan's limit it waits for the plan (PlanParked), unless its person
+   * has moved it to the key; a plan that will not answer at all is the key's,
+   * if the owner allows it (lib/openai-auth.ts).
    */
   async function send(
     r: Awaited<ReturnType<typeof request>>,
@@ -201,7 +203,14 @@ export function jobEngine(
     const n = (at?.n ?? -1) + 1;
     const before = !chain || previous || !after ? [] : at ? await chain.exchange(at.chain, at.n) : ((await kept!.get<OldPlanStep>(`jobplan:${after}`))?.input ?? []);
     let input = [...before, ...added];
-    const auth = chain && !previous ? await modelAuth(r.env) : null;
+    // On the plan, the house's one allowance: at its limit the job waits, and only a tap moves it to the key (lib/openai-auth.ts).
+    const onPlan = !!chain && !previous && !r.job.onKey;
+    const limited = onPlan ? await planLimitedUntil(r.env, Date.now()) : null;
+    if (chain && limited) {
+      await chain.keep(name, n, at ? added : input, Date.now());
+      throw new PlanParked(limited);
+    }
+    const auth = onPlan ? await modelAuth(r.env) : null;
     if (chain && auth?.kind === "plan") {
       if (r.stop?.aborted) throw new Error("it was stopped");
       const why = await chain.asking(name, n, at ? added : input, Date.now());
@@ -220,7 +229,9 @@ export function jobEngine(
         return { responseId: stepId(name, n) };
       } catch (e) {
         const refused = refusalOf(e);
-        if (!refused || !(await planFailed(r.env, refused))) throw e;
+        if (!refused) throw e;
+        await chain.refused(name, n);
+        if (!(await planFailedWorking(r.env, refused, Date.now()))) throw e;
         input = forKey(input);
       }
     } else if (before.length) input = forKey(input);
@@ -267,6 +278,7 @@ export function jobEngine(
         const to = { begin: t === undefined ? CHAIN.job : CHAIN.team(t) };
         return (await pickUp(r, to)) ?? (await send(r, input, to));
       } catch (e) {
+        if (e instanceof PlanParked) return { parked: e.until };
         return { error: `it could not start: ${e instanceof Error ? e.message : String(e)}`.slice(0, 300) };
       }
     },
@@ -279,6 +291,7 @@ export function jobEngine(
         const to = { begin: CHAIN.plan };
         return (await pickUp(r, to, "none")) ?? (await send(r, [...r.p.input, { role: "developer", content: job.table ? TABLE_PLAN_INSTRUCTIONS : PLAN_INSTRUCTIONS }], to, "none"));
       } catch (e) {
+        if (e instanceof PlanParked) return { parked: e.until };
         return { error: `the teams could not be planned: ${e instanceof Error ? e.message : String(e)}`.slice(0, 300) };
       }
     },
@@ -290,6 +303,7 @@ export function jobEngine(
         const to = { begin: CHAIN.merge };
         return (await pickUp(r, to, "none")) ?? (await send(r, [...r.p.input, { role: "developer", content: job.table?.columns ? TABLE_MERGE_INSTRUCTIONS : MERGE_INSTRUCTIONS }, { role: "user", content: mergeMaterial(job) }], to, "none"));
       } catch (e) {
+        if (e instanceof PlanParked) return { parked: e.until };
         return { error: `the teams' reports could not be merged: ${e instanceof Error ? e.message : String(e)}`.slice(0, 300) };
       }
     },
@@ -303,6 +317,7 @@ export function jobEngine(
         if (isPlanStep(after) && !(await planStep(job, after))) return { error: "the report's step is no longer kept" };
         return (await pickUp(r, { after })) ?? (await send(r, check, { after }));
       } catch (e) {
+        if (e instanceof PlanParked) return { parked: e.until };
         return { error: `the check could not start: ${e instanceof Error ? e.message : String(e)}`.slice(0, 300) };
       }
     },
@@ -330,9 +345,13 @@ export function jobEngine(
       // The tools it asked for run here, between steps; then the next step starts.
       const req = await request(job, [], t !== undefined, stop);
       const { p, env: theirs, grants } = req;
-      // Cut short after its tools ran: what they gave is kept, and only the asking is done again.
-      const resumed = onPlan ? await pickUp(req, { after: id }) : null;
-      if (resumed) return { kind: "continued", responseId: resumed.responseId, usage };
+      // Cut short after its tools ran, or waiting for the plan: what they gave is kept, and only the asking is done again.
+      const parked = (e: unknown): Step => {
+        if (e instanceof PlanParked) return { kind: "parked", until: e.until };
+        throw e;
+      };
+      const resumed = onPlan ? await pickUp(req, { after: id }).catch(parked) : null;
+      if (resumed) return "kind" in resumed ? resumed : { kind: "continued", responseId: resumed.responseId, usage };
       // A team's share_findings: posted by lib/jobs.ts teamStep, answered with what the others shared.
       const shared: string[] = [];
       const byName = t === undefined ? p.byName : new Map(p.byName).set(SHARE.name, shareTool(shareReply(job, t), shared, sharesLeft(job, t)));
@@ -343,7 +362,8 @@ export function jobEngine(
       const outputs: OpenAI.Responses.ResponseInput = [...ran, ...[...begun].map((call_id) => ({ type: "function_call_output" as const, call_id, output: INTERRUPTED }))];
       await p.memory.save().catch(() => {});
       // On the plan, the whole exchange goes again; at OpenAI, the chain carries it.
-      const next = await send(req, outputs, { after: id });
+      const next = await send(req, outputs, { after: id }).catch(parked);
+      if ("kind" in next) return next;
       return { kind: "continued", responseId: next.responseId, usage, ...(calls.some((c) => c.name === SHARE.name) ? { shared } : {}) };
     },
 
@@ -380,22 +400,32 @@ export function jobEngine(
 const MAX_BODY = 16 * 1024;
 
 
-/** The panel's view: everything but the grants and the internals; of a research team, its progress. */
-export function jobView(j: Job, whole = false) {
-  const { grants: _g, responseId: _r, draft: _d, team: _t, ...rest } = j;
+/**
+ * The panel's view: everything but the grants and the internals; of a research team, its progress. `mayKey`: of one
+ * waiting for the plan, whether whoever is looking may move it to the key, with what its tokens so far would have cost there.
+ */
+export function jobView(j: Job, whole = false, mayKey = false) {
+  const { grants: _g, responseId: _r, draft: _d, team: _t, waited: _w, parked, ...rest } = j;
   void _g;
   void _r;
   void _d;
   void _t;
+  void _w;
   // What it cost so far, at OpenAI's prices (lib/usage.ts); null for a model with no price.
   const cost = j.usage ? costOf(usageEntry(j, true, j.updatedAt)) : null;
-  const view = { ...rest, ...(j.team ? { team: teamView(j) } : {}), cost };
+  const keyCost = mayKey && parked && j.usage ? costOf({ ...usageEntry(j, true, j.updatedAt), by: (j.usage.model ?? "").replace(/^chatgpt:/, "") }) : null;
+  const view = {
+    ...rest,
+    ...(j.team ? { team: teamView(j) } : {}),
+    ...(parked ? { waiting: { for: "plan" as const, until: parked.until, ...(mayKey ? { key: { soFar: keyCost } } : {}) } } : {}),
+    cost,
+  };
   return whole ? view : { ...view, result: undefined, hasResult: !!j.result };
 }
 
 export async function handleJobs(req: Request, env: Env, url: URL, principal: Principal): Promise<Response | null> {
   const p = url.pathname;
-  if (p !== "/api/v1/jobs" && p !== "/api/v1/jobs/cancel" && p !== "/api/v1/jobs/csv") return null;
+  if (p !== "/api/v1/jobs" && p !== "/api/v1/jobs/cancel" && p !== "/api/v1/jobs/key" && p !== "/api/v1/jobs/csv") return null;
   const state = stateStub(env);
   if (!state) return err(503, "jobs need the STATE Durable Object");
   const grants: Grant[] = grantsOf(principal);
@@ -403,6 +433,21 @@ export async function handleJobs(req: Request, env: Env, url: URL, principal: Pr
   // A device sees its own jobs; a person theirs, including those they started by
   // voice (lib/context.ts). Another person's are theirs, admin or not.
   const mine = (j: Job) => (principal.kind === "device" ? j.createdBy === who : isTheirs(j.createdBy, personOf(principal)));
+
+  // Spending the owner's key on background work is for the family, as research is, and only where the owner lets it stand in for the plan.
+  const mayKey = mayFallBack(env) && allows(grants, "routines");
+
+  if (p === "/api/v1/jobs/key") {
+    if (req.method !== "POST") return err(405, "method not allowed");
+    const b = await readObject(req, MAX_BODY);
+    const j = await state.getJob(typeof b?.id === "string" ? b.id : "");
+    if (!j || !mine(j)) return err(404, "no such job");
+    if (!allows(grants, "routines")) return err(403, 'using the API key for a job needs "routines"', { need: "routines" });
+    if (!mayKey) return err(400, "there is no OpenAI key that may be used in the plan's place (Settings → OpenAI)");
+    if (!j.parked) return err(400, "that job is not waiting for the ChatGPT plan");
+    const r = await state.jobUseKey(j.id);
+    return typeof r === "string" ? err(404, r) : json({ ok: true, job: jobView(r) });
+  }
 
   // A research table's rows, as a spreadsheet opens them (lib/research-table.ts).
   if (p === "/api/v1/jobs/csv") {
@@ -430,9 +475,9 @@ export async function handleJobs(req: Request, env: Env, url: URL, principal: Pr
     const id = url.searchParams.get("id");
     if (id) {
       const j = await state.getJob(id);
-      return j && mine(j) ? json({ job: jobView(j, true) }) : err(404, "no such job");
+      return j && mine(j) ? json({ job: jobView(j, true, mayKey) }) : err(404, "no such job");
     }
-    return json({ jobs: (await state.listJobs()).filter(mine).map((j) => jobView(j)) });
+    return json({ jobs: (await state.listJobs()).filter(mine).map((j) => jobView(j, false, mayKey)) });
   }
 
   if (req.method === "DELETE") {

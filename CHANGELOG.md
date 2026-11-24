@@ -144,6 +144,13 @@ of every release, and in the [README](README.md#updating).
   it needs one, goes there too. Servers added in chat before this are still
   under **Settings → MCP servers** and work as they did.
 
+- **At your ChatGPT plan's limit, a background job now waits.** It used to go
+  on with the API key by itself. It now says in Jobs until when it waits and
+  goes on when the plan is back, losing nothing; **Use the API key now** there
+  moves it, showing what it has used so far would have cost. Questions you ask
+  still carry on with the key, if you allow that. So that jobs do not use up
+  what the family shares, one person's may use five million tokens of the plan
+  a day, and six run in the house at once.
 - **Background jobs on an API key cost less.** Each step sends everything
   so far again, and all of it past the fixed instructions was charged in full
   every time. A job's steps now reuse what OpenAI has cached of the steps

@@ -612,6 +612,15 @@ be complete on its own: a job never sees a conversation. `GET /api/v1/jobs`
 lists them (a device sees its own); `GET ?id=` returns one with its whole
 result; `POST /api/v1/jobs/cancel {id}` stops one; `DELETE ?id=` removes it.
 
+At most three run at once for a person and six in the house, besides questions
+for Hermes. On the owner's ChatGPT plan, one person's jobs may use five million
+tokens of it a day. At the plan's limit a job waits and goes on by itself when the
+plan is back: its status stays `running` and it carries
+`waiting: {for: "plan", until}`. Where the owner lets an OpenAI key stand in for
+the plan, `waiting.key` is there too, with `soFar`, the dollars its tokens so far
+would have cost on the key (null when unknown), and
+`POST /api/v1/jobs/key {id}` (needs `routines`) moves it there at once.
+
 A job may READ — web search, mail, calendar, memory, contacts, the car,
 cameras, and the reading tools of MCP servers (judged by name: `get`, `list`,
 `search`… in, `set`, `call`, `control`… out). It cannot send, book, delete,

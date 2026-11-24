@@ -1352,6 +1352,20 @@ by itself: the model is told it may or may not have happened. Reads are simply
 read again, and a proposal filed twice is one card. Rows are not under `job:`,
 which is the jobs themselves.
 
+**The family's questions come first on the plan.** Jobs and everyone's questions
+share one ChatGPT allowance, and one call refused at its limit marks the plan
+limited for an hour for the house. A job that met the limit used to go on with
+the key by itself, a long one at the owner's expense with nobody asked. It now
+waits (`parked`): still running, nothing lost, what its tools gave kept, and due
+again when the plan is, the wait not counted as its time. Moving it to the key is
+a tap in Jobs, with what its tokens so far would have cost there, for those who may
+start research, and only where the key may stand in for the plan at all
+(`CHATGPT_FALLBACK`). A question someone asks still carries on with the key as
+before: somebody is waiting for it. One person's jobs may use so much of the plan
+a day (`DAILY_PLAN_TOKENS`, counted by code, since OpenAI gives no figure for what
+is left), six run in the house at once, and three are looked at at once. What
+the numbers should be is a guess until there is a month of real use.
+
 **Read; propose, never act.** A job runs with nobody watching and reads text
 written by others — web pages, mail — so it reads with Jarvis's reading tools
 and the MCP tools whose names say they read (`ha_get_state` in,

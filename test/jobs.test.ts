@@ -1,5 +1,8 @@
 import {
   DAILY_JOBS,
+  DAILY_PLAN_TOKENS,
+  HOUSE_RUNNING,
+  MAX_IN_HAND,
   isResearchCap,
   Jobs,
   jobTool,
@@ -34,7 +37,7 @@ import {
 import type { Alert, Delivery } from "../src/worker/lib/alerts.ts";
 import type { UsageEntry } from "../src/worker/lib/usage.ts";
 import { MAX_TRIES, beginCalls } from "../src/worker/lib/job-chain.ts";
-import { HERMES_LONG_WORK, jobEngine } from "../src/worker/routes/jobs.ts";
+import { HERMES_LONG_WORK, jobEngine, jobView } from "../src/worker/routes/jobs.ts";
 import { MERGE_INSTRUCTIONS, PLAN_INSTRUCTIONS, RESEARCH_CHECK, TEAM_INSTRUCTIONS } from "../src/worker/lib/router-prompt.ts";
 import { angleMessage, mergeMaterial, shareReply, shareTool, teamView } from "../src/worker/lib/research-team.ts";
 import { allows, reachNow, requiredScope, withoutScreen } from "../src/worker/lib/scopes.ts";
@@ -636,7 +639,7 @@ console.log("\nkept per person");
 
 console.log("\nwho may");
 {
-  check("/api/v1/jobs needs ask", requiredScope("/api/v1/jobs", "POST") === "ask" && requiredScope("/api/v1/jobs/cancel", "POST") === "ask");
+  check("/api/v1/jobs needs ask", requiredScope("/api/v1/jobs", "POST") === "ask" && requiredScope("/api/v1/jobs/cancel", "POST") === "ask" && requiredScope("/api/v1/jobs/key", "POST") === "ask");
   check("a lookalike is the owner's", requiredScope("/api/v1/jobsx", "GET") === "owner");
 }
 
@@ -1653,9 +1656,14 @@ console.log("\njobs on the owner's ChatGPT plan (routes/jobs.ts): streamed here,
   const kv = new Map<string, string>();
   const CONFIG = { get: async (k: string) => kv.get(k) ?? null, put: async (k: string, v: string) => void kv.set(k, v), delete: async () => {}, list: async () => ({ keys: [] }) };
   let plan = true;
+  /** When the plan is limited until, as Settings would say; null, it is not. */
+  let limitedUntil: number | null = null;
   const failed: string[] = [];
   const stub = new Proxy({}, {
-    get: (_t, m) => (m === "then" ? undefined : async (...a: unknown[]) => (m === "chatgptToken" ? (plan ? { token: "at_plan", model: null } : null) : m === "chatgptFailed" ? (failed.push(String(a[0])), { first: false }) : undefined)),
+    get: (_t, m) => (m === "then" ? undefined : async (...a: unknown[]) =>
+      m === "chatgptToken" ? (plan && !limitedUntil ? { token: "at_plan", model: null } : null)
+        : m === "chatgptStatus" ? { connected: plan, pending: false, ...(limitedUntil ? { limitedUntil } : {}) }
+          : m === "chatgptFailed" ? (failed.push(String(a[0])), { first: false }) : undefined),
   });
   const env = { CONFIG, OPENAI_API_KEY: "sk-test", TIMEZONE: "Asia/Kuala_Lumpur", STATE: { idFromName: () => "j", get: () => stub } } as never;
   const kept = fakeStorage();
@@ -1751,12 +1759,36 @@ console.log("\njobs on the owner's ChatGPT plan (routes/jobs.ts): streamed here,
     check("narrowed since: its steps are offered only what its maker may still reach", before.includes("recall") && !after.includes("recall") && after.length < before.length, { before: before.length, after });
     check("a step no longer kept fails plainly", (await engine.poll({ ...job, responseId: "plan_gone" })).kind === "failed");
 
+    // At the plan's limit it waits for the plan: the key is the owner's money, and only a tap moves a job to it.
     answers.push({ status: 429, code: "subscription_sharing_usage_limit_exceeded" });
+    const jlim = { ...job, id: "jlim" };
+    const limited = await engine.start(jlim);
+    check("at the plan's limit: noted, and it waits an hour rather than use the key",
+      failed.join() === "limit" && "parked" in limited && limited.parked > Date.now() + 59 * 60_000 && sent.at(-1)!.by === "plan", { failed, limited });
+    limitedUntil = Date.now() + 60 * 60_000;
+    const before429 = sent.length;
+    const still = await engine.start({ ...job, id: "jlim2" });
+    check("known to be limited, nothing is asked of anyone", "parked" in still && still.parked === limitedUntil && sent.length === before429, still);
+    // Parked after its tools ran: what they gave is kept, so they are not run again.
+    limitedUntil = null;
+    const jp2 = { ...job, id: "jp2" };
+    answers.push([{ ...tool, call_id: "call_p" }]);
+    await engine.start(jp2);
+    limitedUntil = Date.now() + 60 * 60_000;
+    const waits = await engine.poll({ ...jp2, responseId: "plan_m.0" });
+    check("limited between steps: it waits, with what its tools gave kept", waits.kind === "parked" && (await rowsOf("jp2")).length === 2 && JSON.stringify((await rowsOf("jp2"))[1]!.input).includes("call_p"), waits);
+    limitedUntil = null;
+    answers.push([{ type: "message", id: "mp", role: "assistant", status: "completed", content: [{ type: "output_text", text: "Done.", annotations: [] }] }]);
+    const goes = await engine.poll({ ...jp2, responseId: "plan_m.0" });
+    check("the plan back, it goes on from there, its usage counted once", goes.kind === "continued" && goes.responseId === "plan_m.1" && goes.usage?.input === 200, goes);
+    // Moved to the key by a tap: the whole exchange goes there, made fit for it.
+    limitedUntil = Date.now() + 60 * 60_000;
     answers.push([]);
-    const limited = await engine.start({ ...job, id: "jlim" });
+    const moved = await engine.start({ ...jlim, onKey: true });
     const key = sent.at(-1)!;
-    check("at the plan's limit: noted, and the key starts it in the background as before",
-      failed.join() === "limit" && "responseId" in limited && limited.responseId === "resp_key" && key.by === "key" && key.body.background === true && !("previous_response_id" in key.body), { failed, limited });
+    check("moved to the key by its person: started there in the background, from what was kept",
+      "responseId" in moved && moved.responseId === "resp_key" && key.by === "key" && key.body.background === true && !("previous_response_id" in key.body) && JSON.stringify(key.body.input).includes("the boiler"), moved);
+    limitedUntil = null;
 
     plan = false;
     answers.push([]);
@@ -1765,6 +1797,89 @@ console.log("\njobs on the owner's ChatGPT plan (routes/jobs.ts): streamed here,
   } finally {
     globalThis.fetch = realFetch;
   }
+}
+
+console.log("\nwaiting for the ChatGPT plan");
+{
+  const HOUR = 3_600_000;
+  const h = harness([{ kind: "parked", until: T0 + HOUR }, { kind: "done", text: "SUMMARY: Done." }]);
+  const j = (await h.jobs.create({ task: "x" }, BY, T0)) as Job;
+  await h.jobs.tick(T0);
+  await h.jobs.tick(T0 + 10_000);
+  let cur = (await h.jobs.get(j.id))!;
+  check("it is still running, says until when, and is next looked at then", cur.status === "running" && cur.parked?.until === T0 + HOUR && (await h.jobs.nextWake(T0 + 20_000)) === T0 + HOUR, cur);
+  const view = jobView(cur, false, true) as { waiting?: unknown; parked?: unknown; waited?: unknown };
+  check("the panel is told, with the key offered to whoever may", JSON.stringify(view.waiting) === JSON.stringify({ for: "plan", until: T0 + HOUR, key: { soFar: null } }) && view.parked === undefined && view.waited === undefined, view);
+  check("…and not offered to whoever may not", JSON.stringify((jobView(cur) as { waiting?: unknown }).waiting) === JSON.stringify({ for: "plan", until: T0 + HOUR }));
+  await h.jobs.tick(T0 + HOUR);
+  cur = (await h.jobs.get(j.id))!;
+  check("then it goes on and finishes, and nobody was told it failed", cur.status === "done" && cur.parked === undefined && h.sent.length === 1 && h.sent[0]!.title.startsWith("Done"), cur);
+
+  // The wait is not its time: a job limited to twenty minutes is not stopped for having waited an hour.
+  const long = harness([{ kind: "parked", until: T0 + HOUR }, { kind: "wait" }, { kind: "wait" }]);
+  const l = (await long.jobs.create({ task: "x" }, BY, T0)) as Job;
+  await long.jobs.tick(T0);
+  await long.jobs.tick(T0 + 10_000);
+  await long.jobs.tick(T0 + HOUR);
+  check("what it waited is not counted as its time", (await long.jobs.get(l.id))!.status === "running" && (await long.jobs.get(l.id))!.waited === HOUR - 10_000, (await long.jobs.get(l.id))!.waited);
+  await long.jobs.tick(T0 + HOUR + MAX_JOB_MS);
+  check("what it worked still is", (await long.jobs.get(l.id))!.status === "failed");
+
+  // Parked at the very start, and by its person moved to the key.
+  const m = harness([{ kind: "done", text: "SUMMARY: Done." }]);
+  let parks = true;
+  const keyed: boolean[] = [];
+  m.deps.start = async (job) => (keyed.push(job.onKey === true), parks && !job.onKey ? { parked: T0 + HOUR } : { responseId: "resp_key" });
+  const k = (await m.jobs.create({ task: "x" }, BY, T0)) as Job;
+  await m.jobs.tick(T0);
+  check("limited before its first step: it waits", (await m.jobs.get(k.id))!.parked?.until === T0 + HOUR);
+  const used = await m.jobs.useKey(k.id, T0 + 60_000);
+  check("its person's tap makes it due at once, on the key", typeof used !== "string" && used.onKey === true && (await m.jobs.nextWake(T0 + 60_000)) === T0 + 60_000);
+  await m.jobs.tick(T0 + 60_000);
+  check("…and it goes on there", keyed.join() === "false,true" && (await m.jobs.get(k.id))!.responseId === "resp_key" && (await m.jobs.get(k.id))!.parked === undefined);
+  check("a job that is not running cannot be moved", typeof (await m.jobs.useKey("jnone", T0)) === "string");
+
+  // A research team waits as one, its teams with it.
+  const t = harness([], { teams: [[{ kind: "parked", until: T0 + HOUR }], [], []] });
+  const r = (await t.jobs.create({ task: "dig", engine: "research", team: true }, BY, T0)) as Job;
+  await t.jobs.tick(T0);
+  t.deps.poll = async () => ({ kind: "done", text: "not json" });
+  await t.jobs.tick(T0 + 10_000);
+  await t.jobs.tick(T0 + 11_000);
+  t.deps.poll = async () => ({ kind: "parked", until: T0 + HOUR });
+  await t.jobs.tick(T0 + 30_000);
+  const team = (await t.jobs.get(r.id))!;
+  check("a research team waits as one, its teams with it", team.parked?.until === T0 + HOUR && team.team!.chains.every((c) => c.state === "working" && c.nextAt === T0 + HOUR), team);
+
+  // The plan is the house's: what one person's jobs use of it in a day is counted, and the house runs so many.
+  const d = harness([{ kind: "done", text: "SUMMARY: Done.", usage: { input: DAILY_PLAN_TOKENS, cached: 0, output: 1, model: "chatgpt:gpt-6-luna" } }]);
+  await d.jobs.create({ task: "big" }, BY, T0);
+  await d.jobs.tick(T0);
+  await d.jobs.tick(T0 + 10_000);
+  check("a day's share used: no more jobs from them today", /share of the ChatGPT plan/.test(String(await d.jobs.create({ task: "more" }, BY, T0 + 20_000))));
+  check("…others are not held to it", typeof (await d.jobs.create({ task: "mine" }, { who: "u_kid", grants: ["ask"] }, T0 + 20_000)) !== "string");
+  check("…nor is a question for Hermes, and tomorrow is new", typeof (await d.jobs.create({ task: "q", engine: "hermes" }, BY, T0 + 20_000)) !== "string" && typeof (await d.jobs.create({ task: "more" }, BY, T0 + 86_400_000)) !== "string");
+  const onKey = harness([{ kind: "done", text: "SUMMARY: Done.", usage: { input: DAILY_PLAN_TOKENS, cached: 0, output: 1, model: "gpt-6-luna" } }]);
+  await onKey.jobs.create({ task: "big" }, BY, T0);
+  await onKey.jobs.tick(T0);
+  await onKey.jobs.tick(T0 + 10_000);
+  check("what the key pays for is not counted against the plan", typeof (await onKey.jobs.create({ task: "more" }, BY, T0 + 20_000)) !== "string");
+  const house = harness();
+  for (let i = 0; i < HOUSE_RUNNING; i++) await house.jobs.create({ task: `t${i}` }, { who: `u_${Math.floor(i / 2)}`, grants: ["*"] }, T0);
+  check(`${HOUSE_RUNNING} at once in the whole house`, /in the house/.test(String(await house.jobs.create({ task: "one more" }, { who: "u_new", grants: ["*"] }, T0))));
+
+  // In hand at once: the rest wait their turn, and do not wake the object meanwhile.
+  const many = harness();
+  let ended: (() => void)[] = [];
+  many.deps.start = () => new Promise((ok) => ended.push(() => ok({ responseId: "r" })));
+  for (let i = 0; i < MAX_IN_HAND + 1; i++) await many.jobs.create({ task: `t${i}` }, { who: `u_${i}`, grants: ["*"] }, T0);
+  const looks = await many.jobs.begin(T0);
+  check(`${MAX_IN_HAND} are looked at at once`, looks.length === MAX_IN_HAND && (await many.jobs.nextWake(T0)) === null);
+  check("a question for Hermes is not one of them", typeof (await many.jobs.create({ task: "q", engine: "hermes" }, { who: "u_h", grants: ["*"] }, T0)) !== "string" && (await many.jobs.begin(T0)).length === 1);
+  ended[0]!();
+  await looks[0];
+  check("one ends, the next is due at once", (await many.jobs.nextWake(T0)) === T0 && (await many.jobs.begin(T0)).length === 1);
+  for (const e of ended) e();
 }
 
 console.log("\na job's exchange on the plan goes when the job does, and is never taken for a job");
