@@ -1,0 +1,18 @@
+# Jarvis's workshop: where a background job may run code and make files.
+#
+# It has no network (docker-compose.yml), so all it will ever have is put in
+# here, and from Debian's own signed packages only. No compiler, no package
+# manager for a language, nothing that runs as somebody else.
+FROM node:22-bookworm-slim
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+      python3 python3-pandas python3-openpyxl python3-docx python3-reportlab python3-pypdf \
+      python3-matplotlib python3-pil python3-markdown python3-jinja2 python3-bs4 python3-lxml python3-yaml \
+      weasyprint pandoc poppler-utils qpdf hugo \
+      jq ripgrep zip unzip sqlite3 file fonts-dejavu-core fonts-noto-core \
+ && rm -rf /var/lib/apt/lists/* /var/cache/apt/* \
+ && rm -rf /usr/local/lib/node_modules /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack /usr/local/bin/yarn* /opt/yarn* \
+ && find / -xdev -perm /6000 -type f -exec chmod a-s {} + \
+ && mkdir -p /work /run/workshop
+COPY runner.mjs files.mjs door.mjs /opt/workshop/
+CMD ["node", "/opt/workshop/runner.mjs"]

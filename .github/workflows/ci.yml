@@ -26,7 +26,7 @@ jobs:
 
   docker:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - name: Build the image
@@ -75,6 +75,21 @@ jobs:
             | node -e "const d=JSON.parse(require('fs').readFileSync(0,'utf8'));const t=d.settings.find(s=>s.name==='TIMEZONE');if(t.display!=='Europe/London'||t.source!=='saved'){console.error('lost across restart',t);process.exit(1)}console.log('setting survived the restart:',t.display)"
           docker rm -f jarvis
 
+      - name: The workshop keeps a job to itself, with no network
+        timeout-minutes: 12
+        run: |
+          set -eu
+          TOKEN=ci-workshop-token-0123456789
+          printf 'JARVIS_SHARED_SECRET=CITESTKEY1234567\nWORKSHOP_URL=http://127.0.0.1:9377\nWORKSHOP_TOKEN=%s\n' "$TOKEN" > .env
+          docker compose --profile workshop up -d --build jarvis workshop workshop-door
+          for i in $(seq 1 30); do
+            docker compose --profile workshop logs workshop workshop-door 2>&1 | grep -q 'door: open' && break
+            sleep 2
+          done
+          docker compose --profile workshop exec -T -e TOKEN="$TOKEN" jarvis node --input-type=module - < docker/workshop/check.mjs
+
       - name: Container logs
         if: always()
-        run: docker logs jarvis 2>&1 | tail -80 || true
+        run: |
+          docker logs jarvis 2>&1 | tail -80 || true
+          docker compose --profile workshop logs workshop workshop-door 2>&1 | tail -40 || true

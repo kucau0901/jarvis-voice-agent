@@ -20,6 +20,9 @@ services:
       BROWSER_URL: ${BROWSER_URL:-}
       MOVE_KEY: ${MOVE_KEY:-}
       JARVIS_STANDBY: ${JARVIS_STANDBY:-}
+      # With the workshop profile below: http://127.0.0.1:9377, and a token of 24 characters or more, the same for its door.
+      WORKSHOP_URL: ${WORKSHOP_URL:-}
+      WORKSHOP_TOKEN: ${WORKSHOP_TOKEN:-}
     ports:
       - "${JARVIS_PORT:-8787}:8787"
     volumes:
@@ -61,6 +64,52 @@ services:
     shm_size: "1gb"
     mem_limit: 2g
 
+  # Where a background job may run code and make files: `--profile workshop`,
+  # with WORKSHOP_TOKEN in .env. It has no network at all: the one way in is a
+  # socket on a volume of its own, and the one thing that holds its other end is
+  # its door, in Jarvis's own network, where nothing is published. Nothing of
+  # Jarvis's is mounted in it. What it can do is in docker/workshop/Dockerfile;
+  # what a job there is kept to, in runner.mjs.
+  workshop:
+    build: docker/workshop
+    image: jarvis-workshop
+    profiles: ["workshop"]
+    restart: unless-stopped
+    network_mode: none
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777,noexec,nosuid,nodev
+    cap_drop: [ALL]
+    # To be each job's own user, give it its folder, and end what it left running. Not to open what is another's.
+    cap_add: [SETUID, SETGID, CHOWN, KILL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 1200m
+    # The same, so no swap: a job out of memory is ended, rather than the whole machine made to wait.
+    memswap_limit: 1200m
+    shm_size: 64m
+    # Where the kernel can; each job's own processes are limited either way (runner.mjs).
+    pids_limit: 1000
+    cpu_shares: 256
+    volumes:
+      - workshop-files:/work
+      - workshop-socket:/run/workshop
+  workshop-door:
+    image: jarvis-workshop
+    profiles: ["workshop"]
+    restart: unless-stopped
+    depends_on: [jarvis, workshop]
+    network_mode: "service:jarvis"
+    read_only: true
+    cap_drop: [ALL]
+    user: "1000:1000"
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 128m
+    environment:
+      WORKSHOP_TOKEN: ${WORKSHOP_TOKEN:-}
+    volumes:
+      - workshop-socket:/run/workshop
+    command: ["node", "/opt/workshop/door.mjs"]
+
   caddy:
     image: caddy:2
     profiles: ["https"]
@@ -78,4 +127,6 @@ services:
 volumes:
   jarvis-data:
   browser-data:
+  workshop-files:
+  workshop-socket:
   caddy-data:
