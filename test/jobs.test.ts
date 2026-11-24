@@ -1537,6 +1537,7 @@ console.log("\nthe engine: what the plan, the teams and the merge are sent");
     // The cached prefix: instructions, tools and the separator that carries the breakpoint (lib/router.ts).
     check("every team is sent one cached prefix: model, instructions, tools and separator",
       t0.model === "gpt-6-sol" && t0.model === t2.model && t0.instructions === t2.instructions && JSON.stringify(t0.tools) === JSON.stringify(t2.tools) && JSON.stringify(t0.input![0]) === JSON.stringify(t2.input![0]) && JSON.stringify(t0.input![0]).includes("prompt_cache_breakpoint"));
+    check("a job's steps cache what they have so far, not only the shared prefix", (t0 as { prompt_cache_options?: { mode?: string } }).prompt_cache_options?.mode === "implicit", (t0 as { prompt_cache_options?: unknown }).prompt_cache_options);
     check("…its tools including share_findings, strict", (t0.tools ?? []).some((t) => t.name === "share_findings" && t.strict === true), t0.tools?.map((t) => t.name));
     check("each team's last two: the fixed team instructions, then its own angle as the user's",
       JSON.stringify(t0.input!.slice(-2)) === JSON.stringify([{ role: "developer", content: TEAM_INSTRUCTIONS }, { role: "user", content: angleMessage(ANGLES[0]!) }]) &&

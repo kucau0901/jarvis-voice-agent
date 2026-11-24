@@ -144,6 +144,11 @@ of every release, and in the [README](README.md#updating).
   it needs one, goes there too. Servers added in chat before this are still
   under **Settings → MCP servers** and work as they did.
 
+- **Background jobs on an API key cost less.** Each step sends everything
+  so far again, and all of it past the fixed instructions was charged in full
+  every time. A job's steps now reuse what OpenAI has cached of the steps
+  before them. On the ChatGPT plan nothing changes.
+
 ### Fixed
 
 - **A routine that speaks only when something matters no longer repeats

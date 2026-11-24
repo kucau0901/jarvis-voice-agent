@@ -169,7 +169,10 @@ export function jobEngine(
         // Background mode: the step runs at OpenAI, and nobody has to stay connected for it.
         background: true,
         store: true,
-        ...(explicitCache(model) ? { prompt_cache_options: { mode: "explicit" as const, ttl: "30m" as const } } : {}),
+        // Implicit, unlike a chat question's explicit mode (lib/router.ts): a job's steps share everything so far, and
+        // in explicit mode all of it past the marked prefix is paid for whole again at every step. The mark stays, so
+        // a research team's three chains still share it.
+        ...(explicitCache(model) ? { prompt_cache_options: { mode: "implicit" as const, ttl: "30m" as const } } : {}),
       },
     };
   }

@@ -1301,6 +1301,13 @@ is the same one routines use, pointed at whichever is due first. Nothing is
 held open for minutes, so a redeploy in the middle loses nothing: the step
 carries on at OpenAI and the next alarm picks it up.
 
+**A job's steps cache what they have so far.** A chat question marks the end of
+the fixed prefix and caches only that (explicit mode): what follows is its own
+and is seldom sent twice. A job sends everything so far at every step, so on a
+key its steps use implicit mode, which also caches up to the newest tool
+result. The mark stays, so a research team's chains still share the prefix.
+The plan's route takes no cache settings.
+
 **Read; propose, never act.** A job runs with nobody watching and reads text
 written by others — web pages, mail — so it reads with Jarvis's reading tools
 and the MCP tools whose names say they read (`ha_get_state` in,
