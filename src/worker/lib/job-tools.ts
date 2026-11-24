@@ -54,6 +54,9 @@ export interface Asked {
 }
 
 export const openQuestions = (asked: readonly Asked[] | undefined): Asked[] => (asked ?? []).filter((q) => !q.answer && !q.over);
+/** Questions as they are put, with their choices: the job's own words, for quoting. */
+export const asksSaid = (asked: readonly Asked[]): string =>
+  asked.map((q) => `${q.text}${q.choices.length ? ` (${q.choices.join(" / ")})` : ""}`).join("\n");
 
 /** What a step says of itself while it runs, kept at once (lib/jobs.ts note): on the plan a step takes minutes. */
 export interface Said {

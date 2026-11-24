@@ -35,8 +35,8 @@ console.log("what an attempt comes to");
   check("a failed job: its error is the lesson", f.outcome === "failed" && f.source === "job" && /blocked/.test(f.lesson) && f.id === "j1", f);
   const ok = episodeOfJob(job({ status: "done", summary: "The A229 at RM650.", engine: "research" }));
   check("a done one: its summary, as research", ok.outcome === "ok" && ok.source === "research" && ok.lesson === "The A229 at RM650.", ok);
-  const c = episodeOfChain("Turn on the porch light", [{ tool: "control_home", said: "That failed: Home Assistant timed out" }]);
-  check("a question whose tools failed: which, and what they said", c.source === "chain" && c.lesson === "control_home: Home Assistant timed out", c);
+  const c = episodeOfChain("Turn on the porch light", [{ tool: "house__ha_call_service", said: "That failed: Home Assistant timed out" }]);
+  check("a question whose tools failed: which, and what they said", c.source === "chain" && c.lesson === "house__ha_call_service: Home Assistant timed out", c);
 }
 
 console.log("\nkept, tidied as they come");
@@ -68,7 +68,7 @@ console.log("\ngiven to a question like them");
 {
   const e = new Episodes(fakeStorage());
   await e.add("u_sara", episodeOfJob(job()), T);
-  await e.add("u_sara", episodeOfChain("Turn on the porch light", [{ tool: "control_home", said: "That failed: timed out" }]), T);
+  await e.add("u_sara", episodeOfChain("Turn on the porch light", [{ tool: "house__ha_call_service", said: "That failed: timed out" }]), T);
   const like = await e.match("u_sara", "find me a Xiaomi speaker on Shopee", T);
   check("by the words they share", like.length === 1 && like[0]!.id === "j1", like);
   check("not one word alone, nor anything else", !(await e.match("u_sara", "Shopee", T)).length && !(await e.match("u_sara", "play jazz", T)).length);

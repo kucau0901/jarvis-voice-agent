@@ -11,16 +11,6 @@ import { asAddress, type Addressee } from "./botAddress";
  * text — so the whole transcript goes to the Worker and its router decides what
  * the user actually wanted.
  */
-/**
- * Tools that routinely run for minutes rather than seconds.
- *
- * Only Hermes qualifies: everything else here answers inside about eight
- * seconds, which is not worth tearing a session down for.
- */
-// ask_hermes is no longer here: it starts a background job and returns at once,
-// and its answer arrives later as an alert (src/worker/lib/jobs.ts).
-const SLOW_TOOLS = new Set(["control_home"]);
-
 interface DelegateHandlers {
   /** Something to look at, rather than something to say. */
   display(payload: Record<string, unknown>): void;
@@ -29,13 +19,6 @@ interface DelegateHandlers {
   /** Silent context for Jarvis. */
   think(text: string, delegationId: string): void;
   log(type: string, data: Record<string, unknown>): void;
-  /**
-   * A tool that will take minutes has started.
-   *
-   * The voice session bills by the minute and the HTTP stream this runs on does
-   * not, so the app can drop the session and keep waiting here for nothing.
-   */
-  slow?(name: string): void;
   /** A tool call started or finished: Home shows a panel in the making (main.ts panelTool). */
   tool?(name: string, phase: string): void;
   /** A mail written and held for the person's tap (Draft first): its card (draft.ts). */
@@ -116,9 +99,6 @@ export async function runDelegation(
         switch (ev.type) {
           case "tool":
             h.log("[delegate.tool]", { name: ev.name });
-            if (ev.phase === "start" && typeof ev.name === "string" && SLOW_TOOLS.has(ev.name)) {
-              h.slow?.(ev.name);
-            }
             if (typeof ev.name === "string") h.tool?.(ev.name, String(ev.phase ?? ""));
             break;
 

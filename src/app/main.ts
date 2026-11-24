@@ -239,17 +239,8 @@ function tick() {
 }
 requestAnimationFrame(tick);
 
-/*
- * An answer that arrived after the session was let go.
- *
- * The voice session costs $0.05 a minute; the HTTP stream carrying the
- * delegation costs nothing. So when a tool is going to take minutes, the
- * session is dropped and the stream is kept — and whatever comes back waits
- * here until someone taps the orb, rather than being spoken to an empty car.
- */
+/** An answer that arrived while the session was down (a dead zone): said once it is back. */
 let heldAnswer: string | null = null;
-/** Set when the session was dropped to save money, so "closed" can say so. */
-let droppedForCost = false;
 
 function sayOrHold(text: string, id: string) {
   if (session) {
@@ -259,22 +250,6 @@ function sayOrHold(text: string, id: string) {
   heldAnswer = heldAnswer ? `${heldAnswer} ${text}` : text;
   history.add("assistant", text);
   status("answer ready — tap to hear");
-}
-
-/**
- * Let the session go while a slow tool runs, keeping the stream.
- *
- * Deliberately NOT `toggle()`, which aborts the delegation — that is what an
- * explicit end should do, and the exact opposite of what is wanted here.
- */
-function dropSessionKeepWaiting(why: string) {
-  if (!session) return;
-  logEvent({ type: "[cost.drop]", why });
-  userWantsSession = false;      // stop the reconnect loop from firing
-  droppedForCost = true;
-  clearTimeout(reconnectTimer);
-  clearTimeout(idleTimer);
-  session.stop(why);
 }
 
 /* ---------- event routing ----------------------------------------------- */
@@ -330,7 +305,6 @@ function onEvent(ev: ServerEvent) {
             stage ??= new Stage(key);
             void stage.show(payload as unknown as DisplayPayload);
           },
-          slow: (name) => dropSessionKeepWaiting(`${name} takes minutes; not paying to listen`),
           tool: (name, phase) => panelTool(name, phase),
           drafted: showDraft,
           address: showAddress,
@@ -413,17 +387,6 @@ function onState(s: SessionState, detail?: string) {
       thinking = false;
       stage?.hide();
       if (userWantsSession) break;   // a reconnect is already in flight
-      // "ended" would be a lie here: the question is still being worked on,
-      // the stream is still open, and the answer is coming.
-      // Not self-consuming: "closed" arrives more than once — the data
-      // channel and the peer connection each report it — and clearing the flag
-      // on the first would let the second overwrite the message with "ended".
-      // It is cleared when a session next starts instead.
-      if (droppedForCost) {
-        status(heldAnswer ? "answer ready — tap to hear" : "working on it — tap when ready");
-        setOrb();
-        break;
-      }
       status(detail && detail !== "stopped" ? `ended — ${detail}` : "tap to start");
       setOrb();
       break;
@@ -519,7 +482,6 @@ async function toggle() {
   }
   if (!key) { requireKey(); return; }
   userWantsSession = true;
-  droppedForCost = false;
   attempt = 0;
   const resume = history.snapshot();
   await openSession(resume.length ? resume : undefined);
@@ -1795,7 +1757,7 @@ declare global {
       send(ev: Record<string, unknown>): boolean;
       history(): { role: string; text: string }[];
       simulateDrop(): void;
-      /** Park an answer as if a slow tool had returned while the session was down. */
+      /** Hold an answer as if it had come while the session was down. */
       hold(text: string): void;
       orb(): { tier: number; detail: number } | null;
       orbForce(v: { user?: number; agent?: number; think?: number; error?: number } | null): void;
@@ -1814,11 +1776,8 @@ window.__jarvis = {
   events: () => Object.fromEntries([...counts.entries()].sort((a, b) => b[1] - a[1])),
   stop: () => { userWantsSession = false; session?.stop("debug stop"); },
   simulateDrop: () => session?.simulateDrop(),
-  // Verifying the held-answer path otherwise means waiting out a real
-  // three-minute Hermes call, which is a poor way to test one line.
   hold: (text: string) => {
     heldAnswer = text;
-    droppedForCost = true;
     status("answer ready — tap to hear");
   },
   orb: () => orb?.quality ?? null,

@@ -257,7 +257,7 @@ console.log("\nwhat a job is handed");
   const env = { TESSIE_TOKEN: "t", TESSIE_VIN: "LRWTEST0000000000", GOOGLE_CLIENT_ID: "id.apps.googleusercontent.com", GOOGLE_CLIENT_SECRET: "sec", HERMES_BASE_URL: "https://hermes.example", HERMES_API_KEY: "k", HA_BASE_URL: "https://house.example", HA_TOKEN: "t", STATE: {} } as never;
   const all = baseTools(env, ["*"]);
   const names = all.map((t) => t.name);
-  check("the tools that act are all here to be checked", ["ask_hermes", "control_home", "start_job", "routine_add", "remember", "forget", "specialty_save", "panel_set", "send_note", "mail_send", "make_page", "car_command"].every((n) => names.includes(n)), names);
+  check("the tools that act are all here to be checked", ["ask_hermes", "start_job", "routine_add", "remember", "forget", "specialty_save", "panel_set", "send_note", "mail_send", "make_page", "car_command"].every((n) => names.includes(n)), names);
   check("only those that say how, and nothing else, may be proposed", all.filter(proposable).map((t) => t.name).sort().join() === "calendar_add,car_command,mail_manage", all.filter(proposable).map((t) => t.name));
   const filedCalls: unknown[] = [];
   let ranReal = false;

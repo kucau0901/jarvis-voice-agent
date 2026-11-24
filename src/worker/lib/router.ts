@@ -30,6 +30,7 @@ import { episodeOfAnswer, episodeOfChain, pastBlock } from "./episodes.ts";
 import { localeOf } from "./locale.ts";
 import { allows, type Grant } from "./scopes.ts";
 import { DRAWS_ON_SCREEN } from "../tools/place.ts";
+import { asksSaid, openQuestions } from "./job-tools.ts";
 import { isResearchCap, jobTool, readsOnly, type Reach } from "./jobs.ts";
 import { ACTS } from "./panel-tiles.ts";
 import { houseOnly, noteworthy } from "./habits.ts";
@@ -50,23 +51,8 @@ import {
 } from "./router-model.ts";
 import { CHAT_INSTRUCTIONS, JOB_WORK, jobInstructions, outOfSteps, RESEARCH_INSTRUCTIONS, ROUTER_PROMPT, familyBlock, nowLine } from "./router-prompt.ts";
 
-/**
- * Escalating notes while a tool is still working.
- *
- * Split by pace. The slow ladder is written for Hermes, which genuinely runs for
- * minutes. Applying it to a one-second tool made Jarvis narrate a phantom wait
- * on the house every time he looked something up.
- */
-const WAITING_SLOW = [
-  { after: 12_000, say: "still waiting on home" },
-  { after: 35_000, say: "home is taking a while, still waiting" },
-  { after: 75_000, say: "still going — home has not answered yet" },
-  { after: 150_000, say: "this is taking unusually long; still holding on" },
-  { after: 240_000, say: "home is still thinking; say the user can ask you to drop it" },
-  { after: 360_000, say: "six minutes now with no answer from home" },
-];
-
-const WAITING_FAST = [
+/** Notes while a tool is still working. */
+const WAITING = [
   { after: 20_000, say: "still working on that" },
   { after: 60_000, say: "this is taking longer than it should" },
 ];
@@ -213,7 +199,7 @@ export async function prepareRouter(
   const parted = allows(grants, "components");
   // Nobody is there to ask or to answer: what a component's acting tools do then is the owner's choice (tools/components.ts).
   const unattended = opts.surface === "routine" || opts.surface === "job" || opts.surface === "research";
-  const [, mcp, chosen, shared, family, recalled, ready, said, around, parts] = await Promise.all([
+  const [, mcp, chosen, shared, family, recalled, ready, said, around, parts, asking] = await Promise.all([
     memory.load().catch((e) => {
       console.warn("memory unavailable:", e instanceof Error ? e.message : String(e));
     }),
@@ -231,6 +217,8 @@ export async function prepareRouter(
     since !== null ? (stateStub(env)?.conversationOf(env.JARVIS_PERSON || OWNER, Date.now()) ?? Promise.resolve([] as Said[])).catch(() => [] as Said[]) : Promise.resolve([] as Said[]),
     near ? aroundUser(env, grants, opts.waitUntil).catch(() => "") : Promise.resolve(""),
     parted ? (stateStub(env)?.componentsFor(env.JARVIS_PERSON || OWNER) ?? Promise.resolve([] as Offered[])).catch(() => [] as Offered[]) : Promise.resolve([] as Offered[]),
+    // What their jobs wait on them for, where a person may answer (tools/jobs.ts job_control).
+    !unattended && !opts.bot ? (stateStub(env)?.jobsAsking(env.JARVIS_PERSON || OWNER) ?? Promise.resolve([])).catch(() => []) : Promise.resolve([]),
   ]);
   const earlier = since !== null ? earlierOnGlasses(said ?? [], since, Date.now(), localeOf(env).timeZone) : "";
   const elsewhere = [sharedBlock(shared, Date.now()), family].filter(Boolean).join("\n\n");
@@ -360,6 +348,10 @@ export async function prepareRouter(
     ...(around ? [{ role: "user" as const, content: around }] : []),
     // What their components report, in the components' own words: quoted as data, like the rest.
     ...(reported ? [{ role: "user" as const, content: reported }] : []),
+    // What a job of theirs asks, in the job's own words, the same.
+    ...(asking?.length
+      ? [{ role: "user" as const, content: `A BACKGROUND JOB WAITS FOR THEIR ANSWER (job_control)\n${asking.map((j) => asQuotedData("job question", `${j.title}: ${asksSaid(openQuestions(j.asked))}`, "A BACKGROUND JOB, FROM WHAT IT READ")).join("\n")}` }]
+      : []),
     { role: "user" as const, content: `Conversation so far:\n\n${conversation}` },
     ...(opts.images?.length || opts.files?.length
       ? [
@@ -807,13 +799,7 @@ export async function runCalls(
   );
 }
 
-/**
- * Run a tool, narrating the wait.
- *
- * Hermes has no timeout by design — a local model can take minutes, and the
- * instruction was that Jarvis waits rather than giving up. So the silence is
- * filled instead of cut short.
- */
+/** Run a tool, saying so when it is taking long: the silence is filled rather than cut short. */
 async function callTool(
   tool: Tool,
   rawArgs: string,
@@ -828,8 +814,7 @@ async function callTool(
   }
 
   const started = Date.now();
-  const ladder = tool.pace === "slow" ? WAITING_SLOW : WAITING_FAST;
-  const timers = ladder.map((w) =>
+  const timers = WAITING.map((w) =>
     setTimeout(() => {
       if (!sse.isClosed) ctx.progress(w.say);
     }, w.after),

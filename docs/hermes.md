@@ -44,9 +44,6 @@ person. A device needs `hermes` ticked as well.
   (`ask_hermes`), saying what to change, where, and to report when it is done.
   "Make the footer say 2027 on my website" is enough. Only for those with
   `hermes`; for anything else Hermes stays the last resort.
-- **A change at home that Home Assistant can't make** (`control_home`): a last
-  resort, used only when the Home Assistant tools fail. In the car, the Live
-  session is let go while it waits, so the wait costs nothing.
 - **Research to build from**: see [Building from research](#building-from-research).
 
 ## Six minutes, and longer work

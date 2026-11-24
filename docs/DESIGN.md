@@ -1455,6 +1455,16 @@ open: nothing is assumed for them. They may also tell it anything at any time
 may reach is by what it is handed, so no words of theirs widen it. A card's number,
 a key or a one-time code is refused, whoever asked for it.
 
+In the conversation, by voice, on the phone or by Telegram it is `job_control`
+(`tools/jobs.ts`): a change, an answer, a stop. It takes no words: the job is told
+their latest message as they said it (`ownWords`, less anything quoted in it), so
+the model cannot put any in their mouth, and in a routine or for a bot, where
+nobody said anything, it refuses. What their jobs wait on is said with each
+question someone asks, quoted as the job's words, and only where there is any.
+It took `control_home`'s place among the tools: that one, changing the house
+through Hermes, was a last resort of one to four minutes that a live voice session
+was let go for, and Home Assistant does what it did.
+
 **A result says first what it lacks.** A confident report hides its holes, and
 nobody watched it being made. So an answer begins with its summary, then what was
 asked for and not got (`MISSING:`) and what was taken for granted (`ASSUMED:`),

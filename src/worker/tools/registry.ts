@@ -33,7 +33,6 @@ import { browserTools } from "./browser.ts";
 import { stateStub } from "../lib/state-client.ts";
 import { voiceWho } from "../lib/context.ts";
 import { researchFor, type Job } from "../lib/jobs.ts";
-import { asQuotedData } from "../lib/quote.ts";
 
 /**
  * The tools the delegation router may call.
@@ -124,12 +123,8 @@ export interface Tool {
    * from disabling every other local tool.
    */
   available?(env: Env): boolean;
-  /**
-   * How long this tool plausibly takes. Drives the spoken waiting ladder: a
-   * "fast" tool narrating "still waiting on home" after twelve seconds is both
-   * too early and factually wrong.
-   */
-  pace?: "fast" | "slow";
+  /** Answers within seconds, as every tool here does: what takes minutes is a background job. */
+  pace?: "fast";
   /**
    * What a caller must hold to be offered this tool. Absent means the `ask`
    * baseline suffices. The router is only ever SHOWN the tools a grant allows —
@@ -259,46 +254,6 @@ const askHermes: Tool = {
   },
 };
 
-const controlHome: Tool = {
-  name: "control_home",
-  scope: "hermes",
-  available: (env) => !!hermes.hermesConfig(env),
-  pace: "slow",
-  description:
-    "FALLBACK ONLY, and slow — one to four minutes. Changes something in the user's " +
-    "home by asking Hermes. The home-assistant tools operate the same lights, " +
-    "switches, doors, climate and scenes in about eight seconds, so use those " +
-    "first and reach for this only when they have failed or cannot express what " +
-    "is being asked. Never for questions, only for changes. Report back exactly " +
-    "what Hermes says happened; never assume it succeeded.",
-  parameters: {
-    type: "object",
-    properties: {
-      instruction: {
-        type: "string",
-        description: "The action in plain language, e.g. 'turn on the porch light'.",
-      },
-    },
-    required: ["instruction"],
-    additionalProperties: false,
-  },
-  async run(args, ctx) {
-    const instruction = str(args.instruction);
-    if (!instruction) return "No instruction was supplied.";
-    ctx.progress("sending that home");
-    // Hermes's words, quoted: it reads the house and the web, and its answer is data, not an instruction.
-    const answer = await hermes.ask(ctx.env, instruction, {
-      signal: ctx.signal,
-      system:
-        "You are acting on a home automation request from the user's car. Carry it " +
-        "out if you can. Reply in one short sentence stating what actually " +
-        "happened. If you could not do it, say so plainly and say why. Never claim " +
-        "success you did not verify.",
-    });
-    return asQuotedData("Hermes answer", answer, "HERMES");
-  },
-};
-
 /** Every local tool. MCP tools are appended separately at request time. */
 const ALL: Tool[] = [
   ...memoryTools,
@@ -327,7 +282,6 @@ const ALL: Tool[] = [
   ...skillTools,
   ...browserTools,
   askHermes,
-  controlHome,
 ];
 
 /** Everything, for the owner and for any caller that has not been narrowed. */

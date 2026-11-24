@@ -146,8 +146,9 @@ of every release, and in the [README](README.md#updating).
   rear?"), a job asks, up to three times, and goes on with the rest meanwhile.
   With nothing else to do it waits a day for you, and no answer is ever assumed:
   **Go on without me** is yours to press. You may also tell a working job
-  anything ("only ones without a contract"). For devices:
-  `POST /api/v1/jobs/tell`, and alerts with a new field, `ask` (`docs/api.md`).
+  anything ("only ones without a contract"), answer it or stop it, by voice, in
+  Chat, on a device or by Telegram: it is told your words as you said them. For
+  devices: `POST /api/v1/jobs/tell`, and alerts with a new field, `ask` (`docs/api.md`).
 
 - **A job's result says first what it could not do**, and what it took for
   granted: in the alert, in **Jobs** and when you ask about it. A link in it
@@ -265,6 +266,13 @@ of every release, and in the [README](README.md#updating).
 - **A device with no screen was told the browser was in front of you.**
   Handing the browser's screen over is now offered only where there is a
   screen to put it on; the rest of the browser works from anywhere, as before.
+
+### Removed
+
+- **Changing the house through Hermes** (`control_home`). Home Assistant does it
+  in seconds; asking Hermes took one to four minutes and was a last resort.
+  Hermes is still asked as before (`ask_hermes`). A Home tile made with it no
+  longer works: ask Jarvis to make it again.
 
 ### Security
 
