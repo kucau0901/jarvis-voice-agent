@@ -1,4 +1,4 @@
-import { BROWSER_MAX_STEPS, MAX_STEPS, routerLoop, spokenFailure, type LoopDeps, type LoopRecord, type Reply } from "../src/worker/lib/router-loop.ts";
+import { BROWSER_MAX_STEPS, MAX_STEPS, ROUTINE_MAX_STEPS, routerLoop, spokenFailure, type LoopDeps, type LoopRecord, type Reply } from "../src/worker/lib/router-loop.ts";
 import { DEFAULT_ROUTER_MODEL } from "../src/worker/lib/router-model.ts";
 
 let pass = 0;
@@ -28,7 +28,7 @@ const status = (s: number, message = `status ${s}`) => Object.assign(new Error(m
 /** A loop with fakes: `answers` is what each model hop returns, or throws. */
 function harness(answers: (Reply | Error | ((model: string) => Reply | Error))[], over: Partial<LoopDeps> = {}) {
   const events: Ev[] = [];
-  const asks: { model: string; input: unknown; prev: string | undefined }[] = [];
+  const asks: { model: string; input: unknown; prev: string | undefined; last?: true }[] = [];
   const counts = { prepare: 0, close: 0, save: 0, runCalls: 0, fallback: 0 };
   const records: LoopRecord[] = [];
   const logs: string[] = [];
@@ -42,8 +42,8 @@ function harness(answers: (Reply | Error | ((model: string) => Reply | Error))[]
       counts.prepare++;
       return { model: "gpt-6-sol", input: "first", save: async () => void counts.save++ };
     },
-    async ask(model, input, prev) {
-      asks.push({ model, input, prev });
+    async ask(model, input, prev, last) {
+      asks.push({ model, input, prev, ...(last ? { last } : {}) });
       const a = answers.shift();
       const r = typeof a === "function" ? a(model) : a;
       if (!r) throw new Error("no more answers");
@@ -156,7 +156,36 @@ console.log("\nfailures, said plainly");
   const answers = Array.from({ length: MAX_STEPS + 2 }, (_, i) => reply(`r${i}`, { output: [call("web")] }));
   const h = harness(answers);
   await routerLoop(h.deps);
-  check(`stops after ${MAX_STEPS} hops`, h.asks.length === MAX_STEPS && /got stuck/.test(String(last(h.events).text)), h.asks.length);
+  check(`stops after ${MAX_STEPS} hops, and one more to answer`, h.asks.length === MAX_STEPS + 1 && h.asks.every((a, i) => !!a.last === (i === MAX_STEPS)) && h.counts.runCalls === MAX_STEPS, h.asks.length);
+  check("that one with nothing to say: stuck, said so", last(h.events).type === "error" && /got stuck/.test(String(last(h.events).text)) && h.records[0]?.ok === false, last(h.events));
+}
+{
+  // Out of hops: what its tools found is answered from, and it is not taken for an answer to all of it.
+  const tools = Array.from({ length: MAX_STEPS }, (_, i) => reply(`r${i}`, { output: [call("mail_search")] }));
+  let offered = 0;
+  const h = harness([...tools, reply("end", { output_text: "I found two of the three. Shall I carry on in the background?" })], { offer: () => (offered++, "Save it?") });
+  await routerLoop(h.deps);
+  const end = h.asks.at(-1)!;
+  check("out of hops: it answers from what its tools found", last(h.events).type === "result" && last(h.events).text === "I found two of the three. Shall I carry on in the background?" && end.last === true && end.input === "outputs of mail_search" && end.prev === `r${MAX_STEPS - 1}`, { end, e: last(h.events) });
+  check("…said to be that: an answer, but not one whose steps are worth keeping", h.records[0]?.ok === true && h.records[0].ranOut === true && offered === 0, h.records[0]);
+  check("…with the hop counted, and the tools named", h.records[0]!.usage.hops === MAX_STEPS + 1 && h.events.some((e) => e.type === "used"));
+  check("…and in the log", h.logs.some((l) => /^router out of hops \(test\): mail_search$/.test(l)), h.logs);
+}
+{
+  const tools = Array.from({ length: MAX_STEPS + 1 }, (_, i) => reply(`r${i}`, { output: [call("mail_search")] }));
+  const h = harness([...tools, reply("end", { output_text: "Done." })], { steps: ROUTINE_MAX_STEPS });
+  await routerLoop(h.deps);
+  check("a routine, which nobody is waiting for, has more", h.asks.length === MAX_STEPS + 2 && !h.records[0]!.ranOut && last(h.events).text === "Done.", h.asks.length);
+}
+{
+  const h = harness(Array.from({ length: MAX_STEPS + 1 }, (_, i) => reply(`r${i}`, { output: [call("web")] })));
+  const run = h.deps.runCalls;
+  h.deps.runCalls = async (calls) => {
+    if (h.counts.runCalls === MAX_STEPS - 1) h.ac.abort();
+    return run(calls);
+  };
+  await routerLoop(h.deps);
+  check("cut off at the end: no more is asked, and it is still counted", h.asks.length === MAX_STEPS && h.records[0]?.ok === false && h.records[0].usage.hops === MAX_STEPS, h.asks.length);
 }
 {
   // Signing in and filling a form is a hop a press: more of them, once it is in the browser.
@@ -169,7 +198,7 @@ console.log("\nfailures, said plainly");
   const answers = Array.from({ length: BROWSER_MAX_STEPS + 2 }, (_, i) => reply(`r${i}`, { output: [call("browser_press")] }));
   const h = harness(answers);
   await routerLoop(h.deps);
-  check(`but stops after ${BROWSER_MAX_STEPS}`, h.asks.length === BROWSER_MAX_STEPS && /got stuck/.test(String(last(h.events).text)), h.asks.length);
+  check(`but stops after ${BROWSER_MAX_STEPS}, and one more to answer`, h.asks.length === BROWSER_MAX_STEPS + 1 && h.asks.at(-1)!.last === true && h.counts.runCalls === BROWSER_MAX_STEPS, h.asks.length);
 }
 {
   const h = harness([status(429, "rate limit reached")]);

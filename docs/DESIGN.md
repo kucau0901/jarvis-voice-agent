@@ -198,6 +198,15 @@ and invented a task: asked about tomorrow's calendar, it started a background
 job looking for payroll dates. So `ROUTER_EFFORT` stays at the model's
 default; the setting is there for a heavier router model, where it may matter.
 
+**Out of steps, it answers from what it found.** A question has six hops of tools
+(twenty once it is in the browser, fifteen in a routine, which nobody is waiting
+for). Past them it used to say "I got stuck", with everything its tools had found
+thrown away. Now one more hop, with no tools allowed, is told it is out of steps
+and answers from that, saying what was not done (`lib/router-loop.ts`). To someone
+who may start a job, and not after work in the house or on the car, which no job
+does, it may offer to carry on in the background; a yes starts an ordinary job. Such
+an answer's steps are not kept as a way that worked.
+
 ## Paying for it: the ChatGPT plan first
 
 Many owners already pay for ChatGPT, and since DevDay 2026 OpenAI lets an
@@ -1361,7 +1370,14 @@ reading tools and advises separate requests. So it is settled when a job starts
 and held by what it is handed, not by what it is told: on the web, the searches,
 the time and what a place is like, with no profile, name, birthday, family, past
 attempts or other jobs' results (`unnamed`, grants of `ask` alone); on their own
-things, no web search. Where they are and their language stay, for prices and
+things, no web search. The brief is still written by a model that knows them, and
+told to give only the facts the work needs: the first trip it planned named its
+person and the part of town they live in. So `start_job` looks (`tells` in
+`lib/job-brief.ts`) and refuses a web brief with their name or the family's, the
+house or street of a saved address, an email address or a phone number, saying
+which, and it is written again without. Not the town, which prices and what is
+near depend on, and not what their own message says: "look up what is written
+about me" is theirs to ask. A brief they type into Jobs is theirs whole. Where they are and their language stay, for prices and
 what is near. For work that needs both, the question that starts it reads the
 private part first and puts the facts in the brief, which they can read in Jobs:
 what leaves is then what they saw leave. What is looked up on Google's maps
@@ -1384,6 +1400,79 @@ before: somebody is waiting for it. One person's jobs may use so much of the pla
 a day (`DAILY_PLAN_TOKENS`, counted by code, since OpenAI gives no figure for what
 is left), six run in the house at once, and three are looked at at once. What
 the numbers should be is a guess until there is a month of real use.
+
+**Out of its budget, a job writes what it has.** One that reached its 25 steps
+or its 20 minutes was stopped, and everything it had found went with it: a job
+that had read forty pages and one that had read none both came back as "it took
+more than 25 steps". Now each limit (`outOf` in `lib/job-guards.ts`: its steps,
+an hour, 60 searches, two dollars of the key) is kept on the job as `cut` before
+the step in hand is looked at. If that step turns out to be its answer, it is an
+answer. If it asked for more tools, none is run, and one more call, with no tools
+allowed, is told what ran out and to write what it has, what is missing first.
+What comes of it is **Part done**, a failed job with a result, whatever the model
+calls it: the alert, Jobs, the brief, Usage and past attempts all say so, because
+a report that stopped half way reads exactly like one that did not. Told once
+and still asking for tools, it is stopped as before. The step a job is on when
+its time is up is let finish, at most fifteen minutes. A research report written
+this way is checked like any other; a team's chains keep their own limits, since
+their merge is that last call already.
+
+**A job's card is its person's, its checklist its own.** A job of any size first
+calls `job_plan` (`lib/job-tools.ts`): what they will have, the limits it keeps
+to, what it assumes since nobody can be asked, and a short checklist; it then
+ticks lines as it goes with `job_tick`. Both are kept while the step runs (`say`,
+`Jobs.note`), not when it ends: on the plan a step streams for minutes, and
+somebody may be watching. There is no approval and no step editor. It starts at
+once, and the card may be changed while it works: what they type reaches it at
+its next step as their own message, and nothing else does. A line of the card
+was the job's own words, perhaps taken from a page it read, so a line struck out
+goes quoted, one left as it was is not repeated, and the job may set the card
+only once. An answer given before it has heard them is not the end, nor is one
+that leaves lines of its checklist neither done nor dropped, which it is asked
+about once: that much code can check, and a vaguer "are you sure" only makes
+work. The checklist is also what its budget goes by: past 25 steps it goes on,
+to 60, only while a line was ticked in the last ten (`outOf`). The model ticks
+its own lines, so this can be gamed; 60 steps and the hour are the limits that
+hold. What a job may do is said on the card by code (`src/app/jobWords.ts`), from
+what it was handed. It is drawn in Jobs and under the job's pill in Chat
+(`ui/JobLive.ts`), which asks the server every four seconds, only while the page
+is seen and the job works. A Chat screen that asked through a device's token is
+not shown the job its person started, so its pill is as it was.
+
+**A result says first what it lacks.** A confident report hides its holes, and
+nobody watched it being made. So an answer begins with its summary, then what was
+asked for and not got (`MISSING:`) and what was taken for granted (`ASSUMED:`),
+kept apart from the result (`flagsOf` in `lib/job-results.ts`) and shown before it
+in Jobs, the alert and whatever reads it back. Code does not leave this to the
+model: a checklist line neither done nor dropped is missing whatever the answer
+says, and with no word of its own, the lines it dropped and the card's assumptions
+are. An address in the answer that was on nothing the job read (`markUnseen` in
+`lib/links.ts`: its tools' answers, the pages its searches opened, gave or cited,
+its brief) is followed by "(not checked)". One with no query is on record with any
+address of that page; one with a query only as it was seen, since a query can
+carry anything. Jobs shows the whole address beside a link's words, so a name
+does not stand for somewhere else; a research report's are its searches' own
+citations, listed at its end, and stay as they were.
+
+**The stronger model only for hard work.** An ordinary job runs on the router's
+model; a thorough one (`mode`) on research's, thinking hard, when somebody asked
+for it or the work is many things to weigh together. It costs many times as much,
+so it is the family's to start (`routines`, as research is), five a day for a
+person, and no job is moved to it by itself.
+
+**A job does not go round in a circle, or carry what it has no use for.** The
+same call with the same answer three times running has that said in the answer,
+the fifth is not made, and at eight the job has nothing left to try and writes
+what it has (`runGuarded` in `lib/job-guards.ts`): compared without the fences
+round quoted text, whose marker is new each time. A tool's answer past 40,000
+characters, about ten thousand tokens, is cut as it arrives (`lib/job-results.ts`),
+because a job sends its whole exchange at every step and one long list would be
+paid for at each. Cut once and never edited afterwards: an exchange changed
+behind the model is no longer cached, nor what it answered from. The rest is kept
+beside the exchange, and `read_result` reads on in it or finds a word in it, always
+quoted again, since a cut can take the fence's end with it. These tools, like a
+research team's `share_findings`, are added to a job's own request and are never
+in `ALL`: no question in the conversation carries them.
 
 **Read; propose, never act.** A job runs with nobody watching and reads text
 written by others — web pages, mail — so it reads with Jarvis's reading tools

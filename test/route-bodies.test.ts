@@ -166,7 +166,7 @@ console.log("\nstart_job: research as a team, by voice");
   const created = { id: "j2", title: "Home chargers", task: "Research home EV chargers.", engine: "research", status: "running" };
   const start = async (research: string, grants: string[]) => {
     const { env, calls } = fakeState({ createJob: created });
-    const said = String(await jobTools[0]!.run({ title: "Home chargers", task: "Research home EV chargers.", research }, { env, grants } as never));
+    const said = String(await jobTools[0]!.run({ title: "Home chargers", task: "Research home EV chargers.", research }, { env, grants, memory: { facts: [] } } as never));
     return { said, made: calls.find((c) => c.method === "createJob")?.args[0] as { engine?: string; team?: unknown } | undefined };
   };
   const team = await start("team", ["*"]);

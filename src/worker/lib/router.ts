@@ -15,7 +15,7 @@ import { baseTools, outputText, toToolSchema, type Tool, type ToolContext, type 
 import type { DraftCard } from "./mail-draft.ts";
 import { mcpSessions, mcpTools } from "../tools/mcp.ts";
 import { assistConfig, lastAsk, tryAssist } from "./assist.ts";
-import { routerLoop } from "./router-loop.ts";
+import { ROUTINE_MAX_STEPS, routerLoop } from "./router-loop.ts";
 import { recordUsage } from "../routes/usage.ts";
 import { sharedBlock, type Origin, type SharedTurn } from "./shared.ts";
 import { stateStub } from "./state-client.ts";
@@ -48,7 +48,7 @@ import {
   recordFallback,
   resolveRouterModel,
 } from "./router-model.ts";
-import { CHAT_INSTRUCTIONS, jobInstructions, RESEARCH_INSTRUCTIONS, ROUTER_PROMPT, familyBlock, nowLine } from "./router-prompt.ts";
+import { CHAT_INSTRUCTIONS, JOB_WORK, jobInstructions, outOfSteps, RESEARCH_INSTRUCTIONS, ROUTER_PROMPT, familyBlock, nowLine } from "./router-prompt.ts";
 
 /**
  * Escalating notes while a tool is still working.
@@ -288,6 +288,7 @@ export async function prepareRouter(
     (opts.surface === "voice" ? spokenReplyInstructions(env.JARVIS_AGENT_NAME) : "") +
     (opts.openMic ? OVERHEARD_RULE : "") +
     (opts.surface === "job" || opts.surface === "research" ? jobInstructions(opts.surface === "research" ? "web" : (opts.reach ?? "private")) : "") +
+    (opts.surface === "job" ? JOB_WORK : "") +
     (opts.surface === "research" ? RESEARCH_INSTRUCTIONS : "") +
     (opts.surface === "chat" ? CHAT_INSTRUCTIONS : "") +
     (opts.bot ? botAsks(opts.bot) : "") +
@@ -546,7 +547,7 @@ export async function run(
   };
   let offered: Procedure | null = null;
   let saidHow = false;
-  const onPlanHop = async (model: string, input: OpenAI.Responses.ResponseInput) => {
+  const onPlanHop = async (model: string, input: OpenAI.Responses.ResponseInput, toolChoice: "auto" | "none") => {
     const ask = (withEffort: boolean) =>
       planRespond(plan!.client, {
         model,
@@ -554,7 +555,7 @@ export async function run(
         input: forPlan(input),
         // Grouped, as the plan's route asks of function tools; calls come back under their own names.
         tools: [{ type: "namespace", name: "jarvis", description: "Jarvis's own tools", tools: p!.tools.map(toToolSchema) }, ...builtinTools(env)],
-        tool_choice: "auto",
+        tool_choice: toolChoice,
         include: ["reasoning.encrypted_content"],
         ...(withEffort && effort ? { reasoning: { effort } } : {}),
       }, signal);
@@ -567,6 +568,11 @@ export async function run(
     }
   };
 
+  /** Out of hops, whether to offer to go on as a job: to someone who may start one, for work that is not the house's or the car's. */
+  const mayOffer = () =>
+    !!p?.byName.has("start_job") && !opts.bot && opts.surface !== "routine" && opts.surface !== "glasses" &&
+    !made.some((c) => c.name.includes("__") || ["home", "car.control"].includes(p!.byName.get(c.name)?.scope ?? ""));
+
   // The loop itself is lib/router-loop.ts; this gives it the real model, tools
   // and house, which is all that differs from its tests.
   await routerLoop({
@@ -574,18 +580,20 @@ export async function run(
     signal,
     label: opts.surface ?? "app",
     hasKey: !!auth,
+    ...(opts.surface === "routine" ? { steps: ROUTINE_MAX_STEPS } : {}),
     ...(assist && ask ? { assist: () => tryAssist(assist, ask) } : {}),
     async prepare() {
       p = await prepareRouter(env, turns, signal, grants, opts, sessions);
       return { model: p.model, input: p.input, save: () => p!.memory.save() };
     },
-    async ask(model, input, previousResponseId) {
+    async ask(model, asked, previousResponseId, last) {
+      const input = last ? [...(asked as OpenAI.Responses.ResponseInput), { role: "developer" as const, content: outOfSteps(mayOffer()) }] : asked;
       // Built afresh until a hop has answered: a first hop retried on the default model must not send its input twice.
       if (carried) carried = previousResponseId ? [...carried, ...lastOutput, ...(input as OpenAI.Responses.ResponseInput)] : (input as OpenAI.Responses.ResponseInput);
       if (onPlan) {
         const used = plan!.model ?? model;
         try {
-          const res = await onPlanHop(used, carried!);
+          const res = await onPlanHop(used, carried!, last ? "none" : "auto");
           lastOutput = res.output as unknown as OpenAI.Responses.ResponseInput;
           planModel = used;
           return searched(res);
@@ -610,7 +618,7 @@ export async function run(
           // arrives already grounded.
           ...builtinTools(env),
         ],
-        tool_choice: "auto",
+        tool_choice: last ? "none" : "auto",
         // Not stored, so the reasoning comes back to be carried, as on the plan.
         ...(unstored ? { include: ["reasoning.encrypted_content" as const] } : {}),
         ...(previousResponseId && !carried ? { previous_response_id: previousResponseId } : {}),
@@ -678,7 +686,7 @@ export async function run(
         // And one answered with two tools or more, when someone asked it from a screen or device (origin): not a
         // routine, a tile's refresh or a bot, which would note the same answer again on every run. Their own words only.
         const own = ownWords(turns, opts);
-        const worked = own ? episodeOfAnswer(own, r) : null;
+        const worked = own && !r.ranOut ? episodeOfAnswer(own, r) : null;
         if (worked) writes.push((stateStub(env)?.episodeAdd(env.JARVIS_PERSON || OWNER, worked, Date.now()) ?? Promise.resolve()).catch(() => {}));
       }
       // The steps just offered, until their next question (lib/specialties.ts).
@@ -702,7 +710,7 @@ export async function run(
       }
       // Their own request, answered with tools a routine can use: noted, to offer it as a routine once it is a habit.
       // Never what an open microphone overheard: not said to Jarvis, perhaps not even theirs.
-      const own = opts.habit && !ignored && noteworthy(r, grants, p?.tools ?? []) ? ownWords(turns, opts) : undefined;
+      const own = opts.habit && !ignored && !r.ranOut && noteworthy(r, grants, p?.tools ?? []) ? ownWords(turns, opts) : undefined;
       if (own) writes.push((stateStub(env)?.noteAsk(env.JARVIS_PERSON || OWNER, callerWho(env), own, r.tools, grants, Date.now(), houseOnly(r)) ?? Promise.resolve()).catch(() => {}));
       writes.push(recordUsage(env, {
         at: Date.now() - r.ms,

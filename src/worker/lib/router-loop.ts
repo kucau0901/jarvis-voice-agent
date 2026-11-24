@@ -8,7 +8,8 @@ import { DEFAULT_ROUTER_MODEL, shouldFallBack } from "./router-model.ts";
  *
  * Home Assistant's Assist first where asked for; then up to MAX_STEPS model
  * hops (BROWSER_MAX_STEPS in the browser), running the tools each hop asks
- * for, until the model answers in words. Everything with a side effect (the model, the tools, memory, the
+ * for, until the model answers in words. Out of hops, one more, with no tools,
+ * answers from what it has. Everything with a side effect (the model, the tools, memory, the
  * house connections) comes in through `deps`, so Node can test the loop with
  * fakes (test/router-loop.test.ts). routes/delegate.ts `run()` builds the real
  * ones.
@@ -21,6 +22,8 @@ export const MAX_STEPS = 6;
  * and filling it is a press or a box a hop, and six ran out half way through.
  */
 export const BROWSER_MAX_STEPS = 20;
+/** And for a routine, which nobody is waiting for. */
+export const ROUTINE_MAX_STEPS = 15;
 
 /** What a question cost, summed over every hop, and reported with the answer. */
 interface Usage {
@@ -65,6 +68,8 @@ export interface LoopRecord {
   usage: Usage;
   tools: string[];
   ms: number;
+  /** Out of hops: an answer from what it had, not an answer to all of it. */
+  ranOut?: true;
 }
 
 export interface LoopDeps {
@@ -78,8 +83,10 @@ export interface LoopDeps {
   hasKey: boolean;
   /** Tools, memory and the first input: prepareRouter, in production. */
   prepare(): Promise<{ model: string; input: unknown; save(): Promise<void> }>;
-  /** One model hop. */
-  ask(model: string, input: unknown, previousResponseId: string | undefined): Promise<Reply>;
+  /** Hops this question may take, when not MAX_STEPS. */
+  steps?: number;
+  /** One model hop. `last`: out of hops, so with no tools, told to answer from what it has. */
+  ask(model: string, input: unknown, previousResponseId: string | undefined, last?: true): Promise<Reply>;
   /** Run the tools asked for; returns the next hop's input. */
   runCalls(calls: FunctionCall[]): Promise<unknown>;
   /** Whatever must be let go at the end, even if preparing failed (house connections). */
@@ -101,8 +108,8 @@ export async function routerLoop(deps: LoopDeps): Promise<void> {
   const usage: Usage = { input: 0, cached: 0, written: 0, output: 0, hops: 0, searches: 0 };
   const used: string[] = [];
   let outcome: LoopRecord | null = null;
-  const settle = (by: string, ok: boolean, text: string) => {
-    outcome = { by, ok, text, usage: { ...usage }, tools: [...used], ms: now() - started };
+  const settle = (by: string, ok: boolean, text: string, ranOut?: true) => {
+    outcome = { by, ok, text, usage: { ...usage }, tools: [...used], ms: now() - started, ...(ranOut ? { ranOut } : {}) };
   };
   const record = async () => {
     if (!outcome || !deps.record) return;
@@ -147,8 +154,18 @@ export async function routerLoop(deps: LoopDeps): Promise<void> {
   let turn = p.input;
   let previousResponseId: string | undefined;
 
+  const count = (res: Reply) => {
+    const u = res.usage;
+    usage.input += u?.input_tokens ?? 0;
+    usage.cached += u?.input_tokens_details?.cached_tokens ?? 0;
+    usage.written += u?.input_tokens_details?.cache_write_tokens ?? 0;
+    usage.output += u?.output_tokens ?? 0;
+    usage.hops += 1;
+    usage.searches += res.output.filter((o) => o.type === "web_search_call").length;
+  };
+
   try {
-    const most = () => (used.some((name) => name.startsWith("browser_")) ? BROWSER_MAX_STEPS : MAX_STEPS);
+    const most = () => (used.some((name) => name.startsWith("browser_")) ? BROWSER_MAX_STEPS : (deps.steps ?? MAX_STEPS));
     for (let step = 0; step < most(); step++) {
       if (signal.aborted) {
         // Cut off between hops: what the hops so far spent still counts.
@@ -171,13 +188,7 @@ export async function routerLoop(deps: LoopDeps): Promise<void> {
       }
       timing.hops.push(now() - hopStart);
       previousResponseId = res.id;
-      const u = res.usage;
-      usage.input += u?.input_tokens ?? 0;
-      usage.cached += u?.input_tokens_details?.cached_tokens ?? 0;
-      usage.written += u?.input_tokens_details?.cache_write_tokens ?? 0;
-      usage.output += u?.output_tokens ?? 0;
-      usage.hops += 1;
-      usage.searches += res.output.filter((o) => o.type === "web_search_call").length;
+      count(res);
       // The search ran inside the hop, so nothing could say so while it did;
       // typed chat shows it afterwards, once a hop however many it made.
       if (res.output.some((o) => o.type === "web_search_call")) sink.send({ type: "tool", name: "web_search", phase: "done" });
@@ -217,9 +228,23 @@ export async function routerLoop(deps: LoopDeps): Promise<void> {
       timing.tools.push(now() - toolStart);
     }
 
-    const said = "I got stuck working that one out. Ask me again in a moment.";
-    sink.send({ type: "error", text: said, model, usage });
-    settle(model, false, said);
+    // Out of hops. What its tools found used to be thrown away with them: one more, with none, answers from it.
+    if (signal.aborted) {
+      settle(model, false, "That request was cut off.");
+      return;
+    }
+    const closing = now();
+    const res = await deps.ask(model, turn, previousResponseId, true);
+    timing.hops.push(now() - closing);
+    count(res);
+    logTiming();
+    log(`router out of hops (${deps.label}): ${used.join(",")}`);
+    if (used.length) sink.send({ type: "used", tools: used });
+    const text = res.output_text?.trim();
+    const said = text || "I got stuck working that one out. Ask me again in a moment.";
+    if (text) sink.send({ type: "result", text, model, usage });
+    else sink.send({ type: "error", text: said, model, usage });
+    settle(model, !!text, said, true);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     console.error("delegate failed:", msg);

@@ -1,5 +1,6 @@
 import type { Alert } from "./alerts";
 import { isComponent } from "./history";
+import { follow } from "./ui/JobLive";
 import { button, el } from "./ui/util";
 
 /**
@@ -12,9 +13,10 @@ import { button, el } from "./ui/util";
  * once.
  *
  * A background job asked for in typed chat (start_job, ask_hermes) gets the
- * same pill at once, "On it — " and its title, still working. When its result
- * comes, that pill moves down to it and takes the result's name; pressed, the
- * job opens in Jobs.
+ * same pill at once, "On it — " and its title, still working, with its
+ * checklist under it as it goes (ui/JobLive.ts). When its result comes, that
+ * pill moves down to it and takes the result's name; pressed, the job opens in
+ * Jobs.
  *
  * What a skill said (an outside bot, lib/skills.ts) has its name in the pill,
  * and what it was asked beside the time; pressed, Settings opens at Skills.
@@ -64,10 +66,12 @@ export function fromSkill(a: SkillSaid, open: () => void): HTMLElement | null {
   return pillRow(label, `${when(a.at)}${about}`, open, "frompill skill", isComponent(a.skill) ? `${label}, a component: open Components` : `${label}, a skill: open Skills`);
 }
 
-/** A job just started from this screen: its pill, working, until the result comes (fromJob). */
-export function jobStarted(j: { id: string; title: string }, open: (id: string) => void): HTMLElement {
+/** A job just started from this screen: its pill, working, followed until the result comes (fromJob). */
+export function jobStarted(j: { id: string; title: string; engine: string }, open: (id: string) => void, key: string): HTMLElement {
   const row = pillRow(`On it — ${j.title}`, "working", () => open(j.id), "frompill job working", `${j.title}, a job still working: open it in Jobs`);
   working.set(j.id, row);
+  // Only an ordinary job has a checklist to show.
+  if (j.engine === "jarvis") follow(key, j.id, row, (seen) => jobsSeen([seen]));
   return row;
 }
 
@@ -95,6 +99,7 @@ export function fromJob(a: JobSaid, open: (id: string) => void): HTMLElement | n
   shown.add(a.id);
   const row = working.get(a.job);
   working.delete(a.job);
+  row?.querySelector(".joblive")?.remove();
   if (!row) return pillRow(a.title, when(a.at), () => open(a.job), "frompill job", `${a.title}, a job: open it in Jobs`);
   const pill = row.querySelector<HTMLElement>(".frompill")!;
   pill.classList.remove("working");

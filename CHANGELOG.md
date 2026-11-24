@@ -129,6 +129,30 @@ of every release, and in the [README](README.md#updating).
   (deploy-time) puts the old one aside afterwards: everything kept, nothing
   run on its own clock, so the two never both act for one family.
 
+- **Watch a background job work, and change it as it goes.** A job of any size
+  now says first what you will have, what it keeps to and what it assumes, and
+  makes itself a short checklist. You see it ticked off in **Jobs** and under
+  the job's pill in Chat, with what it is doing that moment and **Stop**.
+  Press **Change** in Jobs to correct any of it ("front and rear cameras", "not
+  for a sedan"): the job takes it in at its next step and keeps what still
+  holds. While its checklist moves it may go on to 60 steps, from 25. The
+  checklist is the job's own, so a small job has none. For devices:
+  `POST /api/v1/jobs/card`, and new fields in `/api/v1/jobs` (`docs/api.md`).
+
+- **A job's result says first what it could not do**, and what it took for
+  granted: in the alert, in **Jobs** and when you ask about it. A link in it
+  that the job never opened or was shown is marked "(not checked)", and Jobs
+  shows where each link really goes.
+
+- **The calendar, any dates ahead.** "When am I free next month?" used to see
+  a fortnight and fifteen events; Jarvis now reads up to two months at a time,
+  with when each event ends, and says so when there is more than it could read.
+
+- **Thorough background jobs.** For work with many things to weigh together, a
+  job may use the stronger model research uses, when you ask for it ("look into
+  this thoroughly") or tick it in **New job**. Costs several times an ordinary
+  job; at most five a day each.
+
 ### Changed
 
 - **"Save this as" is said far less often.** Jarvis ended every answer that
@@ -144,6 +168,19 @@ of every release, and in the [README](README.md#updating).
   it needs one, goes there too. Servers added in chat before this are still
   under **Settings → MCP servers** and work as they did.
 
+- **No more "I got stuck working that one out".** A question that runs out of
+  steps is answered from what was found, saying what was not, and may offer to
+  carry on as a background job. A routine's question gets fifteen steps, from
+  six.
+- **A background job that runs out no longer loses what it found.** Out of
+  steps, time (now an hour, was 20 minutes), searches or two dollars of your
+  API key, it writes what it has and what is missing, and comes back as **Part
+  done**. It used to be stopped with nothing. Devices that read
+  `/api/v1/jobs`: such a job has the status `failed`, and a `result`. One that
+  keeps asking the same thing ends the same way, rather than spending the rest
+  of its steps on it; and a very long answer from a tool (a house's every
+  state, a long thread) is read a part at a time, so it is not paid for again
+  at every step.
 - **A background job now looks at your own things, or at the web, not both.**
   Jarvis says which when it starts one, the Jobs panel shows it, and **New job**
   there asks. A job on the web has nothing of yours but what its brief says
@@ -215,6 +252,12 @@ of every release, and in the [README](README.md#updating).
   screen to put it on; the rest of the browser works from anywhere, as before.
 
 ### Security
+
+- **A job on the web is not told who you are.** Jarvis writes such a job's
+  brief, and could put your name or street in it though the work did not need
+  them. A brief with your name or your family's, the house or street of an
+  address saved in memory, an email address or a phone number is now refused
+  and written again without, unless your own message says it.
 
 - **A background job can no longer carry what it reads of yours out through a
   web search.** It had your mail, calendar and memory beside live web search, so

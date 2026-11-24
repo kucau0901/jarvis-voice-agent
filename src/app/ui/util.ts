@@ -97,6 +97,8 @@ export function inline(parent: HTMLElement, text: string): void {
       }
       a.target = "_blank";
       a.rel = "noopener noreferrer";
+      // Its words are not the whole address: a job's result shows that too (index.html .jobtext.whole).
+      if (`https://${a.textContent}` !== href) a.className = "named";
       const bracketed = m[0].startsWith("(") && m[1] !== undefined;
       if (bracketed) parent.appendChild(document.createTextNode("("));
       parent.appendChild(a);

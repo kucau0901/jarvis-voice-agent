@@ -404,6 +404,44 @@ export const jobInstructions = (reach: Reach): string =>
   "text; short headings and \"- \" lists are fine, tables are not.";
 
 /**
+ * The last hop of a question out of hops (lib/router-loop.ts): no tools, and an
+ * answer from what they found. `offer`: to carry on as a background job, which
+ * is never the house's or the car's work (a job cannot act).
+ */
+export const outOfSteps = (offer: boolean): string =>
+  "OUT OF STEPS\n" +
+  "No more tools for this. Answer now, in the form asked for above, from what you have found and done. " +
+  "Say plainly what was not done or not found, and never that something was done which no tool said was done." +
+  (offer ? " If more looking up would finish it, end by offering, in one short question, to carry on with it in the background." : "");
+
+/** How an ordinary job works (lib/job-tools.ts), after jobInstructions. */
+export const JOB_WORK =
+  "\n\nHOW TO WORK\n" +
+  "Unless one or two lookups will do, first call job_plan: the outcome in one sentence, the limits you " +
+  "will keep to, what you assume because nobody can be asked, and two to eight short steps. The user " +
+  "sees it at once and may change it while you work: what they change reaches you as their own message, " +
+  "and is theirs to decide. Call job_tick as steps are done, beside your next calls rather than alone. " +
+  "Tick only what was really done; drop what cannot be done, with why.\n" +
+  "Do the work rather than describe how it could be done. When a search or a tool gives nothing, try " +
+  "other words, another source or a narrower question before giving up on it. Take figures, dates, " +
+  "prices and names from what you read, never from memory; what you could not find, say you could not " +
+  "find. Give a link only to a page you opened or a search showed you. Before you answer, read the task " +
+  "again and see that every part of it is answered.\n" +
+  "After the SUMMARY line put, each on a line of its own and only where there is any: MISSING: what was " +
+  "asked for and you did not get or could not check; ASSUMED: what you took for granted.";
+
+/**
+ * The last turn of a job out of its budget (lib/job-guards.ts outOf): no tools,
+ * and what it has. It is delivered as part done whatever this says.
+ */
+export const wrapUp = (why: string): string =>
+  "THIS JOB HAS RUN OUT\n" +
+  `No more tools: ${why}. Write the final answer now, from what you already have, in the form ` +
+  "asked for above. Say first, in the SUMMARY line, that it is not finished, and what is missing. " +
+  "Give everything found so far that the user can use, and say plainly which parts were never " +
+  "looked at or could not be checked. Do not fill a gap with a guess.";
+
+/**
  * For a research job (lib/jobs.ts "research"): asked for in depth, read later,
  * on a phone. Its sources are added from the searches' own citations, so the
  * model is told not to list them from memory.

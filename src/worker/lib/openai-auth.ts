@@ -132,8 +132,10 @@ type PlanParams = Omit<OpenAI.Responses.ResponseCreateParamsStreaming, "stream" 
  * key's route accepts, is answered 400 "Input must be a list" (seen 20 Oct
  * 2026, when every page watch on the plan failed that way). So a string
  * becomes the one user message it stands for, here, for every caller.
+ *
+ * `searching`, told as each web search of it begins.
  */
-export async function planRespond(client: OpenAI, params: PlanParams, signal?: AbortSignal): Promise<OpenAI.Responses.Response> {
+export async function planRespond(client: OpenAI, params: PlanParams, signal?: AbortSignal, searching?: () => void): Promise<OpenAI.Responses.Response> {
   const input: OpenAI.Responses.ResponseInput | undefined = typeof params.input === "string" ? [{ role: "user", content: params.input }] : params.input;
   let stream: AsyncIterable<OpenAI.Responses.ResponseStreamEvent>;
   try {
@@ -145,6 +147,7 @@ export async function planRespond(client: OpenAI, params: PlanParams, signal?: A
   let last: OpenAI.Responses.Response | null = null;
   for await (const ev of stream) {
     if (ev.type === "response.output_item.done") items.push(ev.item);
+    else if (ev.type === "response.web_search_call.in_progress") searching?.();
     else if (ev.type === "response.completed" || ev.type === "response.incomplete" || ev.type === "response.failed") last = ev.response;
     else if (ev.type === "error") throw refusalOf(ev) ?? new Error(`ChatGPT plan: ${ev.message}`);
   }

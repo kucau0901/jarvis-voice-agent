@@ -9,13 +9,16 @@ import { asQuotedData } from "../lib/quote.ts";
 import { stateStub } from "../lib/state-client.ts";
 import { allows, withoutScreen, type Grant } from "../lib/scopes.ts";
 import { builtinTools, explicitCache, researchModel } from "../lib/router-model.ts";
-import { toToolSchema } from "../tools/registry.ts";
+import { toToolSchema, type Tool } from "../tools/registry.ts";
 import * as hermes from "../tools/hermes.ts";
 import { INTERRUPTED, JobChain, beginCalls, stepId, stepOf, type Answered } from "../lib/job-chain.ts";
-import { RESEARCH_MONTHLY_DEFAULT, jobTool, reachOf, webTool, sharesLeft, usageEntry, type Job, type JobDeps, type Step } from "../lib/jobs.ts";
-import { citationsOf } from "../lib/links.ts";
+import { NOT_RUN, runGuarded } from "../lib/job-guards.ts";
+import { noteLinks, readResult } from "../lib/job-results.ts";
+import { openLines, unfinished, untold, workTools, type Said } from "../lib/job-tools.ts";
+import { RESEARCH_MONTHLY_DEFAULT, jobTool, limitsOf, reachOf, webTool, sharesLeft, usageEntry, type Job, type JobDeps, type Step } from "../lib/jobs.ts";
+import { citationsOf, markUnseen } from "../lib/links.ts";
 import { toCsv } from "../lib/research-table.ts";
-import { MERGE_INSTRUCTIONS, PLAN_INSTRUCTIONS, RESEARCH_CHECK, TABLE_CHECK, TABLE_MERGE_INSTRUCTIONS, TABLE_PLAN_INSTRUCTIONS, TABLE_TEAM_INSTRUCTIONS, TEAM_INSTRUCTIONS } from "../lib/router-prompt.ts";
+import { MERGE_INSTRUCTIONS, PLAN_INSTRUCTIONS, RESEARCH_CHECK, TABLE_CHECK, TABLE_MERGE_INSTRUCTIONS, TABLE_PLAN_INSTRUCTIONS, TABLE_TEAM_INSTRUCTIONS, TEAM_INSTRUCTIONS, wrapUp } from "../lib/router-prompt.ts";
 import { SHARE, angleMessage, mergeMaterial, shareReply, shareTool, teamView } from "../lib/research-team.ts";
 import { prepareRouter, runCalls, type Prepared } from "../lib/router.ts";
 import { held, proposable, type File, type Finish } from "../lib/proposals.ts";
@@ -31,13 +34,14 @@ import type { Storage } from "../lib/state-host.ts";
 
 /**
  * Background jobs (lib/jobs.ts): the engine that runs them, and the HTTP
- * surface. All paths need `ask`; a Hermes job also needs `hermes`, and research `routines`.
+ * surface. All paths need `ask`; a Hermes job also needs `hermes`, and research or a thorough job `routines`.
  *
  *   GET    /api/v1/jobs           the jobs (a device sees its own)
  *   GET    /api/v1/jobs?id=       one, with its whole result
- *   POST   /api/v1/jobs           {task, title?, engine?: "jarvis" | "hermes" | "research", reach?: "private" | "web", team?: true, from?: id}
+ *   POST   /api/v1/jobs           {task, title?, engine?: "jarvis" | "hermes" | "research", reach?: "private" | "web", mode?: "thorough", team?: true, from?: id}
  *   POST   /api/v1/jobs/cancel    {id}
  *   POST   /api/v1/jobs/key       {id}   a job waiting for the ChatGPT plan goes on with the API key instead; needs `routines`
+ *   POST   /api/v1/jobs/card      {id, outcome?, limits?, assumptions?}   its person changes its card while it works
  *   DELETE /api/v1/jobs?id=
  */
 
@@ -148,7 +152,7 @@ export function jobEngine(
   const signal = (stop?: AbortSignal, ms = 60_000) => (stop ? AbortSignal.any([AbortSignal.timeout(ms), stop]) : AbortSignal.timeout(ms));
 
   /** `team`: for a research team's chain, which is offered share_findings besides. */
-  async function request(job: Job, turns: { role: "user"; text: string }[], team = false, stop?: AbortSignal) {
+  async function request(job: Job, turns: { role: "user"; text: string }[], team = false, stop?: AbortSignal, say: (s: Said) => Promise<void> = async () => {}) {
     const research = job.engine === "research";
     // Its person's own things, or the web, never both (lib/jobs.ts Reach): by what it is handed, not by what it is told.
     const web = reachOf(job) === "web";
@@ -162,21 +166,26 @@ export function jobEngine(
     const prepared = await prepareRouter(env, turns, signal(stop), grants, { surface: research ? "research" : "job", reach: reachOf(job), toolFilter });
     const p = web ? prepared : proposing(prepared, job);
     const searches = web ? builtinTools(env) : [];
-    // Research: the stronger model, thinking hard (lib/jobs.ts "research").
-    const model = research ? researchModel(env.RESEARCH_MODEL) : p.model;
-    const functions = [...p.tools.map(toToolSchema), ...(team ? [toToolSchema(shareTool("", [], 0))] : [])];
+    // Research, and a thorough job: the stronger model, thinking hard (lib/jobs.ts "research").
+    const strong = research || job.mode === "thorough";
+    const model = strong ? researchModel(env.RESEARCH_MODEL) : p.model;
+    // Its own tools, which no question in the conversation is ever offered: an ordinary job's, or a research team's one.
+    const own: Tool[] = team ? [shareTool("", [], 0)] : job.engine === "jarvis" ? [...workTools(job, say), readResult(kept, job.id)] : [];
+    const functions = [...p.tools, ...own].map(toToolSchema);
     return {
       job,
       p,
       env,
       grants,
       stop,
-      research,
+      say,
+      strong,
       searches,
       functions,
+      own,
       base: {
         model,
-        ...(research ? { reasoning: { effort: "high" as const } } : {}),
+        ...(strong ? { reasoning: { effort: "high" as const } } : {}),
         instructions: p.instructions,
         tools: [...functions, ...searches],
         tool_choice: "auto" as const,
@@ -226,16 +235,21 @@ export function jobEngine(
       if (r.stop?.aborted) throw new Error("it was stopped");
       const why = await chain.asking(name, n, at ? added : input, Date.now());
       if (why) throw new Error(why);
+      let searching = false;
       try {
         const res = await planRespond(clientFor(r.env, auth), {
-          model: r.research ? r.base.model : (auth.model ?? r.base.model),
+          model: r.strong ? r.base.model : (auth.model ?? r.base.model),
           instructions: r.base.instructions,
           input: forPlan(input),
           tools: [{ type: "namespace", name: "jarvis", description: "Jarvis's own tools", tools: r.functions }, ...r.searches],
           tool_choice: toolChoice,
           include: ["reasoning.encrypted_content"],
-          ...(r.research ? { reasoning: { effort: "high" as const } } : {}),
-        }, signal(r.stop, r.research ? 10 * 60_000 : 3 * 60_000));
+          ...(r.strong ? { reasoning: { effort: "high" as const } } : {}),
+        }, signal(r.stop, r.strong ? 10 * 60_000 : 3 * 60_000), () => {
+          // Said once a step, however many it makes.
+          if (!searching) void r.say({ doing: ["web_search"] });
+          searching = true;
+        });
         await chain.answered(name, n, res);
         return { responseId: stepId(name, n) };
       } catch (e) {
@@ -272,10 +286,10 @@ export function jobEngine(
     researchBlocked: builtinTools(env).length ? null : "research needs web search, which is withheld in Settings → Advanced",
     record: (e) => recordUsage(env, e),
 
-    async start(job, t, stop) {
+    async start(job, t, stop, say) {
       if (!(await canAsk(env))) return { error: "no ChatGPT plan or OpenAI key is set" };
       try {
-        const r = await request(job, [{ role: "user", text: job.task }], t !== undefined, stop);
+        const r = await request(job, [{ role: "user", text: job.task }], t !== undefined, stop, say);
         // A research team's: the same for every team, then its own angle, planned from the user's brief.
         const input: OpenAI.Responses.ResponseInput =
           t === undefined
@@ -333,7 +347,7 @@ export function jobEngine(
       }
     },
 
-    async poll(job, t, stop): Promise<Step> {
+    async poll(job, t, stop, say): Promise<Step> {
       const id = t === undefined ? job.responseId! : job.team!.chains[t]!.responseId!;
       // A step on the plan is over by the time it is kept: read here, not at OpenAI.
       const onPlan = isPlanStep(id) ? await planStep(job, id) : null;
@@ -347,35 +361,68 @@ export function jobEngine(
         return { kind: "failed", error: `OpenAI stopped it (${why})` };
       }
       const calls = r.output.filter((o): o is OpenAI.Responses.ResponseFunctionToolCall => o.type === "function_call");
-      if (!calls.length) {
-        const text = r.output_text?.trim() ?? "";
-        if (!text) return { kind: "failed", error: "it finished without an answer" };
-        // Research lists them (lib/jobs.ts withSources), after its check.
-        return { kind: "done", text, cited: citationsOf(r.output), usage };
-      }
-      // The tools it asked for run here, between steps; then the next step starts.
-      const req = await request(job, [], t !== undefined, stop);
-      const { p, env: theirs, grants } = req;
       // Cut short after its tools ran, or waiting for the plan: what they gave is kept, and only the asking is done again.
       const parked = (e: unknown): Step => {
         if (e instanceof PlanParked) return { kind: "parked", until: e.until };
         throw e;
       };
-      const resumed = onPlan ? await pickUp(req, { after: id }).catch(parked) : null;
+      // An ordinary job's own: what its person told it since, and its checklist.
+      const ordinary = t === undefined && job.engine === "jarvis";
+      const works = ordinary && !job.cut;
+      const told = works ? untold(job) : [];
+      const took = told.length ? { took: job.told!.length } : {};
+      if (!calls.length) {
+        const text = r.output_text?.trim() ?? "";
+        if (!text) return { kind: "failed", error: "it finished without an answer" };
+        // Its answer before it has heard them, or with its checklist unfinished: it goes on, the second only once.
+        const nudge = works && !told.length && !job.nudged && openLines(job.todo).length > 0;
+        if (told.length || nudge) {
+          const req = await request(job, [], false, stop, say);
+          // Cut short, or waiting for the plan, after it was told something: that, as it was. What they said since goes with the step after.
+          const before = onPlan ? await pickUp(req, { after: id }).catch(parked) : null;
+          if (before) return "kind" in before ? before : { kind: "continued", responseId: before.responseId, usage, nudged: true };
+          const next = await send(req, told.length ? told : [{ role: "developer", content: unfinished(job.todo) }], { after: id }).catch(parked);
+          return "kind" in next ? next : { kind: "continued", responseId: next.responseId, usage, ...took, ...(nudge ? { nudged: true as const } : {}) };
+        }
+        // An address it never saw is said to be unchecked; its brief and what it was told count as seen.
+        const seen = kept && ordinary ? await noteLinks(kept, job.id, r.output, [job.task, ...(job.told ?? []).map((x) => x.text)]) : null;
+        // Research lists them (lib/jobs.ts withSources), after its check.
+        return { kind: "done", text: seen ? markUnseen(text, seen) : text, cited: citationsOf(r.output), usage };
+      }
+      // The tools it asked for run here, between steps; then the next step starts.
+      const req = await request(job, [], t !== undefined, stop, say);
+      const { p, env: theirs, grants } = req;
+      // Told to write what it has; the check of a report written so is not told again, and may look things up.
+      const wraps = !!job.cut && !job.draft;
+      const resumed = onPlan ? await pickUp(req, { after: id }, wraps ? "none" : "auto").catch(parked) : null;
       if (resumed) return "kind" in resumed ? resumed : { kind: "continued", responseId: resumed.responseId, usage };
+      // Out of its budget: nothing more is run, and it writes what it has.
+      if (job.cut && wraps) {
+        const unrun = calls.map((c) => ({ type: "function_call_output" as const, call_id: c.call_id, output: NOT_RUN }));
+        const last = await send(req, [...unrun, { role: "developer", content: wrapUp(job.cut.why) }], { after: id }, "none").catch(parked);
+        return "kind" in last ? last : { kind: "continued", responseId: last.responseId, usage };
+      }
       // A team's share_findings: posted by lib/jobs.ts teamStep, answered with what the others shared.
       const shared: string[] = [];
-      const byName = t === undefined ? p.byName : new Map(p.byName).set(SHARE.name, shareTool(shareReply(job, t), shared, sharesLeft(job, t)));
+      const byName = new Map(p.byName);
+      for (const tool of t === undefined ? req.own : [shareTool(shareReply(job, t), shared, sharesLeft(job, t))]) byName.set(tool.name, tool);
       // What acts by itself is never begun twice (lib/job-chain.ts): a run cut short may have made it.
       const acts = calls.filter((c) => byName.get(c.name)?.alone);
       const begun = kept && acts.length ? await beginCalls(kept, job.id, id, acts.map((c) => c.call_id)) : new Set<string>();
-      const ran = await runCalls(calls.filter((c) => !begun.has(c.call_id)), byName, { env: theirs, signal: signal(stop), memory: p.memory, grants }, quiet);
+      const fresh = calls.filter((c) => !begun.has(c.call_id));
+      await say?.({ doing: [...new Set(fresh.map((c) => c.name))] });
+      const runThem = (some: typeof calls) => runCalls(some, byName, { env: theirs, signal: signal(stop), memory: p.memory, grants }, quiet);
+      // An ordinary job's: kept from going round in a circle (lib/job-guards.ts), and its long answers cut (lib/job-results.ts).
+      const guarded = kept && job.engine === "jarvis" ? await runGuarded(kept, job.id, fresh, runThem) : null;
+      const ran = guarded?.outputs ?? (await runThem(fresh));
+      if (guarded && kept) await noteLinks(kept, job.id, r.output, ran.map((o) => ("output" in o && typeof o.output === "string" ? o.output : "")));
       const outputs: OpenAI.Responses.ResponseInput = [...ran, ...[...begun].map((call_id) => ({ type: "function_call_output" as const, call_id, output: INTERRUPTED }))];
       await p.memory.save().catch(() => {});
+      await say?.({ doing: [] });
       // On the plan, the whole exchange goes again; at OpenAI, the chain carries it.
-      const next = await send(req, outputs, { after: id }).catch(parked);
+      const next = await send(req, [...outputs, ...told], { after: id }).catch(parked);
       if ("kind" in next) return next;
-      return { kind: "continued", responseId: next.responseId, usage, ...(calls.some((c) => c.name === SHARE.name) ? { shared } : {}) };
+      return { kind: "continued", responseId: next.responseId, usage, ...took, ...(guarded?.stuck ? { stuck: true as const } : {}), ...(calls.some((c) => c.name === SHARE.name) ? { shared } : {}) };
     },
 
     async cancel(job) {
@@ -416,7 +463,10 @@ const MAX_BODY = 16 * 1024;
  * waiting for the plan, whether whoever is looking may move it to the key, with what its tokens so far would have cost there.
  */
 export function jobView(j: Job, whole = false, mayKey = false) {
-  const { grants: _g, responseId: _r, draft: _d, team: _t, waited: _w, parked, ...rest } = j;
+  const { grants: _g, responseId: _r, draft: _d, team: _t, waited: _w, ticked: _k, stuck: _s, nudged: _n, cut, parked, ...rest } = j;
+  void _k;
+  void _s;
+  void _n;
   void _g;
   void _r;
   void _d;
@@ -427,7 +477,12 @@ export function jobView(j: Job, whole = false, mayKey = false) {
   const keyCost = mayKey && parked && j.usage ? costOf({ ...usageEntry(j, true, j.updatedAt), by: (j.usage.model ?? "").replace(/^chatgpt:/, "") }) : null;
   const view = {
     ...rest,
+    // What it set out to do: while it works, and with the whole of it; a list of thirty need not carry it.
+    ...(whole || j.status === "running" ? {} : { card: undefined, todo: undefined, told: undefined }),
     ...(j.team ? { team: teamView(j) } : {}),
+    // What it may take, and once it is out of that, what of: it is writing what it has.
+    ...(j.status === "running" && j.engine === "jarvis" ? { limits: { steps: limitsOf(j.engine).maxSteps, going: limitsOf(j.engine).going, minutes: limitsOf(j.engine).maxMs / 60_000 } } : {}),
+    ...(j.status === "running" && cut ? { wrapping: cut.why } : {}),
     ...(parked ? { waiting: { for: "plan" as const, until: parked.until, ...(mayKey ? { key: { soFar: keyCost } } : {}) } } : {}),
     cost,
   };
@@ -436,7 +491,7 @@ export function jobView(j: Job, whole = false, mayKey = false) {
 
 export async function handleJobs(req: Request, env: Env, url: URL, principal: Principal): Promise<Response | null> {
   const p = url.pathname;
-  if (p !== "/api/v1/jobs" && p !== "/api/v1/jobs/cancel" && p !== "/api/v1/jobs/key" && p !== "/api/v1/jobs/csv") return null;
+  if (p !== "/api/v1/jobs" && p !== "/api/v1/jobs/cancel" && p !== "/api/v1/jobs/key" && p !== "/api/v1/jobs/card" && p !== "/api/v1/jobs/csv") return null;
   const state = stateStub(env);
   if (!state) return err(503, "jobs need the STATE Durable Object");
   const grants: Grant[] = grantsOf(principal);
@@ -458,6 +513,15 @@ export async function handleJobs(req: Request, env: Env, url: URL, principal: Pr
     if (!j.parked) return err(400, "that job is not waiting for the ChatGPT plan");
     const r = await state.jobUseKey(j.id);
     return typeof r === "string" ? err(404, r) : json({ ok: true, job: jobView(r) });
+  }
+
+  if (p === "/api/v1/jobs/card") {
+    if (req.method !== "POST") return err(405, "method not allowed");
+    const b = await readObject(req, MAX_BODY);
+    const j = await state.getJob(typeof b?.id === "string" ? b.id : "");
+    if (!b || !j || !mine(j)) return err(404, "no such job");
+    const r = await state.changeJobCard(j.id, { outcome: b.outcome, limits: b.limits, assumptions: b.assumptions });
+    return typeof r === "string" ? err(400, r) : json({ ok: true, job: jobView(r) });
   }
 
   // A research table's rows, as a spreadsheet opens them (lib/research-table.ts).
@@ -502,8 +566,9 @@ export async function handleJobs(req: Request, env: Env, url: URL, principal: Pr
     const b = await readObject(req, MAX_BODY);
     if (!b) return err(400, "body must be a small JSON object");
     if (b.engine === "hermes" && !allows(grants, "hermes")) return err(403, 'a Hermes job needs "hermes"', { need: "hermes" });
-    // Research spends the family's monthly allowance (Settings → OpenAI): not a guest's to spend.
+    // Research spends the family's monthly allowance (Settings → OpenAI), and a thorough job the stronger model: not a guest's to spend.
     if (b.engine === "research" && !allows(grants, "routines")) return err(403, 'a research job needs "routines"', { need: "routines" });
+    if (b.mode === "thorough" && !allows(grants, "routines")) return err(403, 'a thorough job needs "routines"', { need: "routines" });
     const j = await state.createJob(b, { who, grants });
     return typeof j === "string" ? err(400, j) : json({ ok: true, job: jobView(j) }, { status: 201 });
   }

@@ -1422,7 +1422,7 @@ export class JarvisState extends DurableObject<Env> {
     return this.jobs.get(id);
   }
 
-  async createJob(input: { title?: unknown; task?: unknown; engine?: unknown; reach?: unknown; team?: unknown; from?: unknown; table?: unknown }, by: { who: string; grants: readonly Grant[] }) {
+  async createJob(input: { title?: unknown; task?: unknown; engine?: unknown; reach?: unknown; mode?: unknown; team?: unknown; from?: unknown; table?: unknown }, by: { who: string; grants: readonly Grant[] }) {
     const j = await this.jobs.create(input, by);
     await this.rearm();
     return j;
@@ -1440,6 +1440,11 @@ export class JarvisState extends DurableObject<Env> {
     const j = await this.jobs.useKey(id);
     await this.rearm();
     return j;
+  }
+
+  // Nothing becomes due: what they changed goes with its next step.
+  changeJobCard(id: string, input: { outcome?: unknown; limits?: unknown; assumptions?: unknown }) {
+    return this.jobs.changeCard(id, input);
   }
 
   async removeJob(id: string) {

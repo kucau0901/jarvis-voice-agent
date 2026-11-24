@@ -585,6 +585,10 @@ nothing of its person's: not their name, nor what is saved about them). Never
 both. Research is always the web's. A job that needs some of each is given the
 facts it needs in `task`.
 
+`"mode": "thorough"` (needs `routines`; at most five a day for a person) gives an
+ordinary job research's stronger model (`RESEARCH_MODEL`), thinking hard, for
+work with many things to weigh together. It costs many times an ordinary one.
+
 `engine` is `jarvis` (default: the router, many steps, in OpenAI's background
 mode), `research` (needs `routines`: it spends the family's monthly
 allowance), or `hermes` (one question to the Hermes agent; needs `hermes`).
@@ -618,6 +622,21 @@ Each job's `cost` so far, at OpenAI's prices, comes with it. `task` must
 be complete on its own: a job never sees a conversation. `GET /api/v1/jobs`
 lists them (a device sees its own); `GET ?id=` returns one with its whole
 result; `POST /api/v1/jobs/cancel {id}` stops one; `DELETE ?id=` removes it.
+
+An ordinary job of any size sets itself a card, `card: {outcome, limits,
+assumptions}`, and a checklist, `todo: [{text, state, why?}]` with `state`
+`open`, `doing`, `done` or `dropped`. While it runs its view also carries
+`doing`, the tools its step is running (empty or absent while it thinks),
+`limits: {steps, going, minutes}`, what it may take, and, once it is out of
+that, `wrapping`, what of. `POST /api/v1/jobs/card {id, outcome?, limits?,
+assumptions?}` changes the card of one still working (each list is given whole);
+what was changed reaches the job at its next step, and `told: [{at, text,
+taken?}]` says which changes it has had.
+
+Its answer carries `missing`, what was asked for and not got, and `assumed`,
+what was taken for granted: a list each, absent when there is nothing. They are
+not in `result`, and come before it in the alert. An address in the answer that
+it never read is followed by "(not checked)".
 
 At most three run at once for a person and six in the house, besides questions
 for Hermes. On the owner's ChatGPT plan, one person's jobs may use five million
@@ -659,7 +678,10 @@ everything under `/api/hub/` is a person's. A proposal waits a day (a
 one-off invitation's, no later than its start; an all-day one's, until its
 day is out; one put to them later, no later than half an hour past its
 time, or its event's start). At most 3 run at once and 30 are started a
-day; one is stopped after 25 steps or 20 minutes.
+day. One that reaches 25 steps (60 while its checklist moves), an hour, 60 web
+searches or two dollars of the API key is told to write what it has: its status
+is then `failed`, its `error` says what ran out, and it has a `summary` and a
+`result` (titled **Part done** in its alert). One that failed outright has none.
 
 ### Handing research to Hermes
 
