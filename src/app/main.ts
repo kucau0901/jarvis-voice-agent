@@ -1468,7 +1468,7 @@ async function sendTyped() {
     address: showAddress,
     // Handed to a background job: its pill at once, which the result takes when it comes (fromRoutine.ts).
     job: (j) => {
-      els.transcript.insertBefore(jobStarted(j, openJob), els.transcript.querySelector(".row.working"));
+      els.transcript.insertBefore(jobStarted(j, openJob, key), els.transcript.querySelector(".row.working"));
       els.transcript.scrollTop = els.transcript.scrollHeight;
     },
     display: (payload) => {

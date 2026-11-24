@@ -1417,7 +1417,11 @@ about once: that much code can check, and a vaguer "are you sure" only makes
 work. The checklist is also what its budget goes by: past 25 steps it goes on,
 to 60, only while a line was ticked in the last ten (`outOf`). The model ticks
 its own lines, so this can be gamed; 60 steps and the hour are the limits that
-hold. What a job may do is said on the card by code, from what it was handed.
+hold. What a job may do is said on the card by code (`src/app/jobWords.ts`), from
+what it was handed. It is drawn in Jobs and under the job's pill in Chat
+(`ui/JobLive.ts`), which asks the server every four seconds, only while the page
+is seen and the job works. A Chat screen that asked through a device's token is
+not shown the job its person started, so its pill is as it was.
 
 **The stronger model only for hard work.** An ordinary job runs on the router's
 model; a thorough one (`mode`) on research's, thinking hard, when somebody asked

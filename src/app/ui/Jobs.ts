@@ -2,6 +2,8 @@ import { api, authHeaders } from "../key";
 import { arm, button, el } from "./util";
 import { markdown } from "./rich";
 import { proposalsBox } from "../proposal";
+import type { JobCard, JobView } from "../jobWords";
+import { cardForm, jobLive, jobNow } from "./JobLive";
 
 /**
  * Background jobs (src/worker/lib/jobs.ts): what is running, what came back,
@@ -12,34 +14,6 @@ import { proposalsBox } from "../proposal";
  * Built with textContent throughout: results are written from web pages and
  * mail, which is to say by strangers.
  */
-
-interface JobView {
-  id: string;
-  title: string;
-  task: string;
-  engine: "jarvis" | "hermes" | "research";
-  status: "running" | "done" | "failed" | "cancelled";
-  createdAt: number;
-  finishedAt?: number;
-  steps: number;
-  summary?: string;
-  result?: string;
-  hasResult?: boolean;
-  error?: string;
-  deliveredBy?: string | null;
-  /** Dollars so far, at OpenAI's prices; null when the model has no listed price. */
-  cost?: number | null;
-  /** Research as a team: how many teams reported and, while it runs, which part it is in. */
-  team?: { of: number; reported: number; phase?: "planning" | "teams" | "merging" | "checking" };
-  /** What it may look at: your own things, or the web. */
-  reach?: "private" | "web";
-  /** Waiting for the ChatGPT plan, at its limit, until then; `key`, when it may go on with the API key instead, and what it has used would have cost there. */
-  waiting?: { for: "plan"; until: number; key?: { soFar: number | null } };
-  /** Moved to the API key rather than wait. */
-  onKey?: boolean;
-  /** Research into a table: its columns, and how many rows it came back with, to download. */
-  table?: { columns?: string[]; rows?: number };
-}
 
 /** What a running research team is doing, after "min so far". */
 const PHASE: Record<"planning" | "merging" | "checking", string> = {
@@ -68,6 +42,8 @@ export class Jobs {
   private hermes = false;
   /** Research being handed to Hermes: the job, and the instruction as typed so far. */
   private handing = new Map<string, string>();
+  /** A working job's card being changed: the job, and the card as typed so far. */
+  private changing = new Map<string, JobCard>();
 
   /** Told what is listed each time, so the chat's job pills keep up (fromRoutine.ts jobsSeen). */
   private seen: (jobs: JobView[]) => void;
@@ -112,6 +88,13 @@ export class Jobs {
     }
     reach.setAttribute("aria-label", "Where this job may look");
     form.appendChild(reach);
+    // Thorough: research's model, for an ordinary job.
+    const hard = el("label", "on");
+    const hardBox = document.createElement("input");
+    hardBox.type = "checkbox";
+    hard.appendChild(hardBox);
+    hard.appendChild(document.createTextNode(" Thorough: a stronger model, for work with many things to weigh; several times the cost, five a day"));
+    form.appendChild(hard);
     // Research: a stronger model, searching widely, with sources (lib/jobs.ts).
     const deep = el("label", "on");
     const deepBox = document.createElement("input");
@@ -144,7 +127,8 @@ export class Jobs {
     // Research is the web's.
     form.addEventListener("change", () => {
       if (deepBox.checked) reach.value = "web";
-      reach.disabled = deepBox.checked;
+      if (deepBox.checked) hardBox.checked = false;
+      reach.disabled = hardBox.disabled = deepBox.checked;
     });
     teamBox.addEventListener("change", () => {
       if (!teamBox.checked) tableBox.checked = false;
@@ -155,12 +139,13 @@ export class Jobs {
           await api(this.key, "POST", "/api/v1/jobs", {
             task: task.value,
             reach: reach.value,
+            ...(hardBox.checked ? { mode: "thorough" } : {}),
             ...(deepBox.checked ? { engine: "research" } : {}),
             ...(teamBox.checked ? { team: true } : {}),
             ...(tableBox.checked ? { table: true } : {}),
           });
           task.value = "";
-          deepBox.checked = teamBox.checked = tableBox.checked = reach.disabled = false;
+          hardBox.checked = deepBox.checked = teamBox.checked = tableBox.checked = reach.disabled = hardBox.disabled = false;
         }, "Started — it arrives as an alert when done."), "primary"),
     );
     sheet.appendChild(form);
@@ -221,13 +206,17 @@ export class Jobs {
     for (const id of this.handing.keys()) {
       if (!jobs.some((j) => j.id === id && j.engine === "research" && j.status === "done")) this.handing.delete(id);
     }
+    // Nor is the card of one that has ended, or been told to write what it has, still being changed.
+    for (const id of this.changing.keys()) {
+      if (!jobs.some((j) => j.id === id && j.status === "running" && j.card && !j.wrapping)) this.changing.delete(id);
+    }
     if (!jobs.length) {
       this.list.replaceChildren(el("p", "note", "None yet."));
     } else {
       this.list.replaceChildren(...jobs.map((j) => this.row(j)));
     }
-    // Keep up with running jobs while the panel is open, but not while an instruction to Hermes is being written.
-    if (this.el.classList.contains("open") && !this.handing.size && jobs.some((j) => j.status === "running")) {
+    // Keep up with running jobs while the panel is open, but not while something is being written to one.
+    if (this.el.classList.contains("open") && !this.handing.size && !this.changing.size && jobs.some((j) => j.status === "running")) {
       this.timer = setTimeout(() => void this.load(), 5000);
     }
   }
@@ -241,7 +230,7 @@ export class Jobs {
     top.appendChild(el("span", `chip ${j.status === "done" ? "on" : "off"}`, j.waiting ? "waiting" : j.status === "failed" && j.hasResult ? "part done" : STATUS[j.status]));
     row.appendChild(top);
 
-    const facts: string[] = [j.team ? "Research team" : j.engine === "hermes" ? "Hermes" : j.engine === "research" ? "Research" : "Jarvis", `started ${when(j.createdAt)}`];
+    const facts: string[] = [j.team ? "Research team" : j.engine === "hermes" ? "Hermes" : j.engine === "research" ? "Research" : j.mode === "thorough" ? "Jarvis, thorough" : "Jarvis", `started ${when(j.createdAt)}`];
     if (j.status === "running") facts.push(`${Math.max(1, Math.round((Date.now() - j.createdAt) / 60_000))} min so far${j.engine === "jarvis" ? `, step ${j.steps}` : ""}`);
     if (j.team?.phase) facts.push(j.team.phase === "teams" ? `${j.team.reported} of ${j.team.of} teams done` : PHASE[j.team.phase]);
     else if (j.team && j.status !== "running" && j.team.reported < j.team.of) facts.push(`${j.team.reported} of ${j.team.of} teams reported`);
@@ -252,6 +241,22 @@ export class Jobs {
     if (j.onKey) facts.push("on the API key");
     row.appendChild(el("div", "rfacts", facts.join(" · ")));
     if (j.waiting) row.appendChild(el("div", "rwhen", `The ChatGPT plan is at its limit. This goes on by itself at about ${when(j.waiting.until)}.`));
+
+    if (j.status === "running") {
+      const work = jobLive(j);
+      if (work) row.appendChild(work);
+      if (j.engine === "jarvis" && !j.waiting) row.appendChild(jobNow(j));
+      const typed = this.changing.get(j.id);
+      if (typed) {
+        row.appendChild(cardForm(typed, (c) => {
+          this.changing.delete(j.id);
+          void this.act(() => api(this.key, "POST", "/api/v1/jobs/card", { id: j.id, ...c }), "Told: it goes on from there at its next step.");
+        }, () => {
+          this.changing.delete(j.id);
+          void this.load();
+        }));
+      }
+    }
 
     if (j.summary) row.appendChild(el("div", "rwhen", j.summary));
     if (j.error) row.appendChild(el("div", "rfacts bad", j.error));
@@ -287,7 +292,14 @@ export class Jobs {
       arm(use, soFar ? `About ${soFar < 0.01 ? "under 1¢" : `$${soFar.toFixed(2)}`} so far. Sure?` : "It costs money. Sure?", () => this.act(() => api(this.key, "POST", "/api/v1/jobs/key", { id: j.id })));
       btns.appendChild(use);
     }
-    if (j.status === "running") btns.appendChild(button("Cancel", () => void this.act(() => api(this.key, "POST", "/api/v1/jobs/cancel", { id: j.id }))));
+    if (j.status === "running" && j.card && !j.wrapping && !this.changing.has(j.id)) {
+      const c = j.card;
+      btns.appendChild(button("Change", () => {
+        this.changing.set(j.id, { outcome: c.outcome, limits: [...c.limits], assumptions: [...c.assumptions] });
+        void this.load();
+      }));
+    }
+    if (j.status === "running") btns.appendChild(button("Stop", () => void this.act(() => api(this.key, "POST", "/api/v1/jobs/cancel", { id: j.id }))));
     else btns.appendChild(button("Remove", () => void this.act(() => api(this.key, "DELETE", `/api/v1/jobs?id=${encodeURIComponent(j.id)}`))));
     row.appendChild(btns);
     if (this.handing.has(j.id)) row.appendChild(this.handOver(j));
@@ -326,6 +338,12 @@ export class Jobs {
       const j = ((await api(this.key, "GET", `/api/v1/jobs?id=${encodeURIComponent(id)}`)) as { job: JobView }).job;
       box.replaceChildren();
       if (j.result) box.appendChild(markdown(j.result, "jobtext"));
+      const went = j.status === "running" ? null : jobLive(j);
+      if (went) {
+        const how = el("details", "");
+        how.append(el("summary", "", "What it set out to do"), went);
+        box.appendChild(how);
+      }
       const asked = el("details", "");
       asked.appendChild(el("summary", "", "What was asked"));
       asked.appendChild(el("div", "jobtext", j.task));

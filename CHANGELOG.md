@@ -129,6 +129,16 @@ of every release, and in the [README](README.md#updating).
   (deploy-time) puts the old one aside afterwards: everything kept, nothing
   run on its own clock, so the two never both act for one family.
 
+- **Watch a background job work, and change it as it goes.** A job of any size
+  now says first what you will have, what it keeps to and what it assumes, and
+  makes itself a short checklist. You see it ticked off in **Jobs** and under
+  the job's pill in Chat, with what it is doing that moment and **Stop**.
+  Press **Change** in Jobs to correct any of it ("front and rear cameras", "not
+  for a sedan"): the job takes it in at its next step and keeps what still
+  holds. While its checklist moves it may go on to 60 steps, from 25. The
+  checklist is the job's own, so a small job has none. For devices:
+  `POST /api/v1/jobs/card`, and new fields in `/api/v1/jobs` (`docs/api.md`).
+
 - **Thorough background jobs.** For work with many things to weigh together, a
   job may use the stronger model research uses, when you ask for it ("look into
   this thoroughly") or tick it in **New job**. Costs several times an ordinary
