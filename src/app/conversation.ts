@@ -31,6 +31,8 @@ export interface Said {
   /** What a look around said: answered with Not now or Less of this (look.ts). */
   look?: true;
   job?: { id: string; name: string };
+  /** The files that job made, to save (ui/JobFiles.ts). */
+  made?: { n: number; name: string; size: number }[];
   /** What a background job asks, which is not its result (ui/JobAsk.ts): its alert says the words. */
   ask?: { job: string; id: string };
   /** Any other alert that said it: where from, and its title, shown as "Title: text" (main.ts onAlert). */
@@ -91,7 +93,7 @@ export function restore(all: Said[], rows: Rows, history: History): void {
       continue;
     }
     if (s.job) {
-      if (rows.job({ id: s.id, at: s.at, title: s.job.name, text: s.text, job: s.job.id, ...(s.proposals ? { proposals: s.proposals } : {}) })) history.add("assistant", `${s.job.name}: ${s.text}`, s.at);
+      if (rows.job({ id: s.id, at: s.at, title: s.job.name, text: s.text, job: s.job.id, ...(s.made ? { made: s.made } : {}), ...(s.proposals ? { proposals: s.proposals } : {}) })) history.add("assistant", `${s.job.name}: ${s.text}`, s.at);
       continue;
     }
     if (s.ask && s.alert) {

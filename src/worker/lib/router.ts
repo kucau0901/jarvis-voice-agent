@@ -78,7 +78,7 @@ export interface RunOptions {
    * sees — "add this to my calendar" with a poster in the photo.
    */
   images?: string[];
-  /** Files the user attached in the app's chat (lib/photos.ts): a PDF to read, or a text file's words. */
+  /** Files the user attached in the app's chat (lib/photos.ts): a PDF to read, a text file's words, or one only a job can open. */
   files?: AttachedFile[];
   /** Only these tools are offered (background jobs: reading, not acting — routes/jobs.ts). */
   toolFilter?: (t: Tool) => boolean;
@@ -366,11 +366,13 @@ export async function prepareRouter(
             content: [
               { type: "input_text" as const, text: attachedSaid(opts) },
               ...(opts.images ?? []).map((url) => ({ type: "input_image" as const, image_url: url, detail: "auto" as const })),
-              // A PDF the model reads itself; a text file's words are someone else's, so quoted as data.
+              // A PDF the model reads itself; a text file's words are someone else's, so quoted as data; any other, only a job's programs can open.
               ...(opts.files ?? []).map((f) =>
                 f.kind === "pdf"
                   ? { type: "input_file" as const, filename: f.name, file_data: f.data }
-                  : { type: "input_text" as const, text: asQuotedData(`file ${f.name}`, f.data, "THE FILE'S AUTHOR") },
+                  : f.kind === "text"
+                    ? { type: "input_text" as const, text: asQuotedData(`file ${f.name}`, f.data, "THE FILE'S AUTHOR") }
+                    : { type: "input_text" as const, text: `A file that cannot be read here: start_job with mode 'files' and reach 'private' is given it, and can.\n${asQuotedData("its name", f.name, "WHOEVER NAMED THE FILE")}` },
               ),
             ],
           },
@@ -647,6 +649,7 @@ export async function run(
       made.push(...calls.map((c) => ({ name: c.name, arguments: c.arguments })));
       const out = await runCalls(calls as OpenAI.Responses.ResponseFunctionToolCall[], p!.byName, {
         env, signal, memory: p!.memory, grants, offered: p!.tools, asked: opts.relayed ? undefined : ownWords(turns, opts), screenless: opts.screenless === true,
+        ...(opts.images?.length || opts.files?.length ? { attached: { images: opts.images, files: opts.files } } : {}),
         ...(opts.browserSites ? { browserSites: opts.browserSites } : {}),
         ...(p!.procedure && !repliesToEarlier(turns) ? { procedure: p!.procedure } : {}),
         ...(outside ? { outside: { said: ownPart(ownWords(turns, opts) ?? opts.standing ?? "") } } : {}),
@@ -758,7 +761,7 @@ export async function run(
 export async function runCalls(
   calls: OpenAI.Responses.ResponseFunctionToolCall[],
   byName: Map<string, Tool>,
-  { screenless, ...base }: { env: Env; signal: AbortSignal; memory: MemoryStore; grants: readonly Grant[]; offered?: ToolContext["offered"]; asked?: string; procedure?: Procedure; outside?: ToolContext["outside"]; screenless?: boolean; browserSites?: readonly string[] },
+  { screenless, ...base }: { env: Env; signal: AbortSignal; memory: MemoryStore; grants: readonly Grant[]; offered?: ToolContext["offered"]; asked?: string; attached?: ToolContext["attached"]; procedure?: Procedure; outside?: ToolContext["outside"]; screenless?: boolean; browserSites?: readonly string[] },
   sse: EventSink,
 ): Promise<OpenAI.Responses.ResponseInput> {
   return Promise.all(

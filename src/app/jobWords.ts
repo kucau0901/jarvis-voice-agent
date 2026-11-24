@@ -33,6 +33,25 @@ export interface JobAsked extends JobAsk {
   over?: "skipped" | "late";
 }
 
+/** A file it made, to save. */
+export interface JobFile {
+  n: number;
+  name: string;
+  size: number;
+  at: number;
+}
+
+/** A command it ran in the workshop, and how it ended; no `code` while it is running, or if that was never learned. */
+export interface JobRan {
+  at: number;
+  cmd: string;
+  p?: string;
+  code?: number | string | null;
+  ms?: number;
+  late?: true;
+  full?: true;
+}
+
 export interface JobView {
   id: string;
   title: string;
@@ -56,8 +75,11 @@ export interface JobView {
   team?: { of: number; reported: number; phase?: "planning" | "teams" | "merging" | "checking" };
   /** What it may look at: your own things, or the web. */
   reach?: "private" | "web";
-  /** The stronger model, for hard work. */
-  mode?: "thorough";
+  /** The stronger model, for hard work; or it makes files, in the workshop. */
+  mode?: "thorough" | "files";
+  /** What it made, and what it ran: the last of it while it works, all that is kept with the whole. */
+  files?: JobFile[];
+  ran?: JobRan[];
   /**
    * Waiting until then: for the ChatGPT plan, at its limit (`key`, when it may go on with the API key instead, and
    * what it has used would have cost there); or for you, with nothing left to do until you answer.
@@ -104,7 +126,21 @@ export function powers(j: JobView): string {
       ? "Searches the web, and has nothing of yours but what it was asked."
       : "Reads your own things, as far as you may: mail, calendar, memory, house, car and cameras. Does not search the web.";
   const takes = j.limits ? ` Up to ${j.limits.minutes} minutes and ${j.limits.steps} steps, ${j.limits.going} while its list moves.` : "";
-  return `${looks} Never acts: what it would do, it proposes.${j.mode === "thorough" ? " On the stronger model." : ""}${takes}`;
+  const makes = j.mode === "files" ? " Makes files with programs of its own, on a machine with no network, and gives them to you to save." : "";
+  return `${looks}${makes} Never acts: what it would do, it proposes.${j.mode === "thorough" ? " On the stronger model." : ""}${takes}`;
+}
+
+/** A file's size, as a person says it. */
+export const sizeSaid = (bytes: number): string =>
+  bytes < 1000 ? `${bytes} bytes` : bytes < 1_000_000 ? `${Math.round(bytes / 1000)} KB` : `${(bytes / 1_000_000).toFixed(1)} MB`;
+
+/** How a command it ran ended; `over`, its job is too. */
+export function ended(r: JobRan, over = false): string {
+  const took = r.ms === undefined || r.ms < 100 ? "" : r.ms < 60_000 ? `${(r.ms / 1000).toFixed(1)} s` : `${Math.round(r.ms / 60_000)} min`;
+  if (r.full) return "stopped: it filled its folder, or the disk";
+  if (r.late) return `stopped, out of time${took ? ` after ${took}` : ""}`;
+  if (r.code === undefined) return over ? "ended with the job" : r.p ? "left running" : "running";
+  return r.code === 0 ? took || "done" : `failed (${r.code ?? "stopped"})${took ? `, ${took}` : ""}`;
 }
 
 /** The last things its person told it, oldest first, and whether each has reached it. */
@@ -127,6 +163,9 @@ export function cameOf(q: JobAsked, j: Pick<JobView, "status" | "told">): string
   if (q.over === "late") return "No answer came in time, and it went on without one.";
   return j.status === "running" ? null : "It ended before this was answered.";
 }
+
+/** A result's words without the line that names its files (src/worker/lib/jobs.ts finish), where each is there to save. */
+export const beside = (a: { text: string; made?: readonly unknown[] }): string => (a.made?.length ? a.text.replace(/\n\nIn Jobs to download: [^\n]*$/, "") : a.text);
 
 /** A question's alert (src/worker/lib/jobs.ts askAlert): the question, and its choices. */
 export function askOf(text: string): { question: string; choices: string[] } {

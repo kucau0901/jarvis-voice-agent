@@ -54,6 +54,9 @@ export const NOTE_AT = 3;
 export const REFUSE_AT = 5;
 export const STUCK_AT = 8;
 
+/** What may rightly be asked again and answer the same: a program run after a change to it, and one waited for (lib/workshop-tools.ts). */
+const AGAIN: ReadonlySet<string> = new Set(["run", "process"]);
+
 type Call = OpenAI.Responses.ResponseFunctionToolCall;
 type Items = OpenAI.Responses.ResponseInput;
 type Seen = Record<string, { out: string; n: number }>;
@@ -97,7 +100,7 @@ export async function runGuarded(kept: Storage, job: string, calls: readonly Cal
     if (!o) continue;
     // Compared without its fences, whose marker is new each time (lib/quote.ts), and before a long one is cut and numbered.
     const out = (await sha256Hex("output" in o ? (typeof o.output === "string" ? unquoted(o.output) : JSON.stringify(o.output)) : "")).slice(0, 16);
-    const n = before?.out === out ? before.n + 1 : 1;
+    const n = before?.out === out && !AGAIN.has(c.name) ? before.n + 1 : 1;
     seen[k] = { out, n };
     const [shown] = await capResults(kept, job, [o]);
     outputs.push(

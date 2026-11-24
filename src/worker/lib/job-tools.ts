@@ -2,6 +2,7 @@ import type OpenAI from "openai";
 import type { Tool } from "../tools/registry.ts";
 import type { Job } from "./jobs.ts";
 import { asQuotedData, tidy } from "./quote.ts";
+import type { JobFile, Ran } from "./workshop.ts";
 
 /**
  * What an ordinary job says of its own work while it works, for whoever
@@ -72,6 +73,9 @@ export interface Said {
   doing?: string[];
   /** A question for its person. */
   ask?: { text: string; choices: string[] };
+  /** A file made for its person, and a command it ran (lib/workshop-tools.ts). */
+  file?: JobFile;
+  ran?: Ran;
 }
 
 export const MAX_ASKED = 3;

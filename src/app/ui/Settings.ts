@@ -11,7 +11,7 @@ import { Components } from "./Components";
 
 /** The settings menu: groups, and the sections in each, by id. */
 const NAV: NavGroup[] = [
-  ["Connections", ["chatgpt", "openai", "car", "home", "hermes", "browser", "google", "spotify", "maps", "cameras", "mcp", "skills", "components"]],
+  ["Connections", ["chatgpt", "openai", "car", "home", "hermes", "browser", "workshop", "google", "spotify", "maps", "cameras", "mcp", "skills", "components"]],
   ["How Jarvis behaves", ["router", "voice", "screen", "alerts", "locale"]],
   ["Access and advanced", ["usage", "owner", "devices", "export", "move", "advanced"]],
 ];

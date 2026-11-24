@@ -1,6 +1,7 @@
 import { api } from "../key";
 import { cameOf, heard, linesOf, nowDoing, powers, progress, type JobCard, type JobView, type Todo } from "../jobWords";
 import { askCard, askedIn, askId } from "./JobAsk";
+import { jobRan } from "./JobFiles";
 import { arm, button, el } from "./util";
 
 /**
@@ -41,6 +42,8 @@ export function jobLive(j: JobView): HTMLElement | null {
   const box = el("div", "jobwork");
   if (j.card) box.appendChild(card(j, j.card));
   if (j.todo?.length) box.appendChild(checklist(j.todo));
+  // The last it ran, while it works; after, all of it is with the whole (ui/Jobs.ts).
+  if (j.status === "running" && j.ran?.length) box.appendChild(jobRan(j.ran.slice(-3)));
   // With the whole of it, what it asked and what came of that; while it works, the last things it was told.
   const ended = j.status === "running" ? [] : (j.asked ?? []);
   for (const q of ended) box.appendChild(told(`It asked: ${q.text}`, cameOf(q, j) ?? ""));

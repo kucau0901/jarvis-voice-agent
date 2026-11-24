@@ -677,7 +677,7 @@ console.log("\nthorough: the stronger model, for hard work");
     typeof (await h.jobs.create({ task: "plain" }, BY, T0)) !== "string" && typeof (await h.jobs.create({ task: "theirs", mode: "thorough" }, { who: "u_sara", grants: ["*"] }, T0)) !== "string" &&
       typeof (await h.jobs.create({ task: "next", mode: "thorough" }, BY, T0 + 86_400_000)) !== "string");
   const r = (await h.jobs.create({ task: "r", engine: "research", mode: "thorough" }, { who: "u_adam", grants: ["*"] }, T0)) as Job;
-  check("research is never that too; anything else is ordinary", r.mode === undefined && ((await h.jobs.create({ task: "o", mode: "files" }, { who: "u_siti", grants: ["*"] }, T0)) as Job).mode === undefined);
+  check("research is never that too; anything else is ordinary", r.mode === undefined && ((await h.jobs.create({ task: "o", mode: "build" }, { who: "u_siti", grants: ["*"] }, T0)) as Job).mode === undefined);
   // Asked for in chat by a guest: an ordinary job.
   const tool = baseTools({} as never).find((t) => t.name === "start_job")!;
   const made: Record<string, unknown>[] = [];
@@ -1172,7 +1172,7 @@ console.log("\nsteering a job by asking (job_control)");
   check("why not, said", /^Not passed on: not passed on: it looks like a card/.test(await run({ op: "answer" }, "4111 1111 1111 1111")));
   told.length = 0;
   // A device no weaker than a job works with: Telegram's, which has no screen, Hermes or browser, answers the owner's own.
-  const telegram = SCOPES.filter((s) => s !== "hermes" && s !== "browser" && s !== "screen");
+  const telegram = SCOPES.filter((s) => s !== "hermes" && s !== "browser" && s !== "workshop" && s !== "screen");
   check("by Telegram, their own job made with everything", /^Passed on to "Dashcams/.test(await run({ op: "answer" }, "Both", { JARVIS_DEVICE: "telegram" }, telegram)) && told.length === 1);
   told.length = 0;
   check("by a device that may only ask: not one made with more", /No job of theirs is waiting/.test(await run({ op: "answer" }, "Both", { JARVIS_DEVICE: "gate" }, ["ask"])) && told.length === 0);
@@ -2629,6 +2629,69 @@ console.log("\na job reads its person's own things, or the web, never both");
   const h = harness();
   const made = async (input: Record<string, unknown>) => (await h.jobs.create({ task: "x", ...input }, { who: `u_${Math.floor(h.log.length + (await h.jobs.list()).length)}`, grants: ["*"] }, T0)) as Job;
   check("kept as it was asked for, and only for an ordinary job", (await made({ reach: "web" })).reach === "web" && (await made({ reach: "private" })).reach === "private" && (await made({ reach: "everything" })).reach === "private" && (await made({ engine: "hermes", reach: "web" })).reach === undefined);
+}
+
+console.log("\na job that makes files");
+{
+  const kept = fakeStorage();
+  const call = (name: string, i: number) => ({ type: "function_call" as const, id: `fc${i}`, call_id: `c${i}`, name, arguments: "{}", status: "completed" as const });
+  const same = async (name: string) => {
+    let stuck = false;
+    let outs = "";
+    for (let i = 0; i < 10; i++) {
+      const r = await runGuarded(kept as never, "jagain", [call(name, i)], async (some) => some.map((c) => ({ type: "function_call_output" as const, call_id: c.call_id, output: "It ended with 0, in 0.1 s." })));
+      stuck ||= r.stuck;
+      outs += JSON.stringify(r.outputs);
+    }
+    return { stuck, refused: /Not made/.test(outs), noted: /Asking again/.test(outs) };
+  };
+  const again = await Promise.all([same("run"), same("process")]);
+  check("a program run again, and one waited for, may answer the same", again.every((r) => !r.stuck && !r.refused && !r.noted), again);
+  check("what only looks something up may not", (await same("recall")).stuck);
+}
+{
+  const told: string[] = [];
+  const file = (n: number, name: string, sha256 = "x") => ({ n, name, size: 9, sha256, at: T0 });
+  const set = (steps: Step[], say: Said[] = []) => {
+    const h = harness(steps);
+    h.deps.workshop = async (what, id) => void told.push(`${what} ${id}`);
+    const poll = h.deps.poll;
+    h.deps.poll = async (j, t, stop, s) => {
+      for (const x of say.splice(0)) await s?.(x);
+      return poll(j, t, stop, s);
+    };
+    return h;
+  };
+  const h = set([{ kind: "continued", responseId: "r2" }, { kind: "done", text: "SUMMARY: Done.\n\nThe sheet." }], [
+    { file: file(1, "a.xlsx") }, { ran: { at: T0, cmd: "python3 a.py", code: 0, ms: 5 } }, { file: file(2, "b.pdf") }, { file: file(1, "a.xlsx", "y") },
+    ...Array.from({ length: 50 }, (_, i) => ({ ran: { at: T0 + i, cmd: `c${i}`, code: 0 } })),
+  ]);
+  const j = (await h.jobs.create({ task: "Make it.", mode: "files" }, BY, T0)) as Job;
+  check("kept as one", j.mode === "files" && ((await h.jobs.create({ task: "r", engine: "research", mode: "files" }, { who: "u_f", grants: ["*"] }, T0)) as Job).mode === undefined);
+  const done = await drive(h, j.id);
+  check("what it gave is kept, a name given again as the newer of the two", done.files?.map((f) => `${f.n}${f.name}${f.sha256}`).join() === "2b.pdfx,1a.xlsxy", done.files);
+  check("what it ran, the last forty", done.ran?.length === 40 && done.ran.at(-1)!.cmd === "c49" && done.ran[0]!.cmd === "c10");
+  const a = h.sent.at(-1)!;
+  check("told of by code, with what to save under it", /In Jobs to download: b\.pdf, a\.xlsx$/.test(a.text) && a.job === j.id && a.made?.map((f) => `${f.n}:${f.name}:${f.size}`).join() === "2:b.pdf:9,1:a.xlsx:9" && !JSON.stringify(a.made).includes("sha256"), a);
+  check("over: nothing of it is left running, its files are kept", told.join() === `rest ${j.id}`, told);
+  await h.jobs.remove(j.id);
+  check("removed: they go with it", told.at(-1) === `end ${j.id}`, told);
+  const c = (await h.jobs.create({ task: "x", mode: "files" }, { who: "u_c", grants: ["*"] }, T0)) as Job;
+  await h.jobs.cancel(c.id, T0);
+  check("stopped: so is what it ran", told.at(-1) === `rest ${c.id}`);
+  h.deps.workshop = async () => { throw new Error("off"); };
+  check("the workshop being off holds up none of it", (await h.jobs.remove(c.id)) === true && (await h.jobs.get(c.id)) === undefined);
+  const long = set([{ kind: "done", text: `SUMMARY: Done.\n\n${"x".repeat(900)}` }], [{ file: file(1, "a.csv") }]);
+  const l = (await long.jobs.create({ task: "x", mode: "files" }, BY, T0)) as Job;
+  await drive(long, l.id);
+  check("a long answer's message has them too", /The full result is in Jobs\.\n\nIn Jobs to download: a\.csv$/.test(long.sent.at(-1)!.text), long.sent.at(-1)!.text);
+  const bad = set([{ kind: "failed", error: "OpenAI stopped it" }], [{ file: file(1, "a.csv") }]);
+  const b = (await bad.jobs.create({ task: "x", mode: "files" }, BY, T0)) as Job;
+  const failed = await drive(bad, b.id);
+  check("one that could not finish still gives what it gave", failed.status === "failed" && /In Jobs to download: a\.csv/.test(bad.sent.at(-1)!.text) && bad.sent.at(-1)!.made?.length === 1);
+  const none = set([{ kind: "done", text: "SUMMARY: I made the sheet." }]);
+  const n = (await none.jobs.create({ task: "x", mode: "files" }, BY, T0)) as Job;
+  check("one that says it made one, and gave none: code says so", (await drive(none, n.id)).missing?.join() === "No file was made." && none.sent.at(-1)!.made === undefined);
 }
 
 console.log("\nthe object can go at any save: the job still ends, once");

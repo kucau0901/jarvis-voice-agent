@@ -30,6 +30,7 @@ export type Group =
   | "home"
   | "hermes"
   | "browser"
+  | "workshop"
   | "google"
   | "spotify"
   | "maps"
@@ -165,6 +166,14 @@ export const GROUPS: readonly GroupDef[] = [
       "Optional: a full Chrome that Jarvis opens pages in, reads, presses and fills for whoever an admin gives the browser reach to (Family, or a device's scopes). Nobody has it until then. You sign in yourself, in the Browser panel, and it stays signed in; a sign-in you save there is the only password Jarvis ever types, and only on its own site. It never answers an \"are you human\" check. With Docker, `docker compose --profile browser up -d` runs one beside Jarvis.",
     needs: ["BROWSER_URL"],
     testable: false,
+  },
+  {
+    id: "workshop",
+    title: "Workshop",
+    intro:
+      "Optional: where a background job runs code and makes files (a spreadsheet, a document, a chart, a small site) for whoever an admin gives the workshop reach to (Family, or a device's scopes). Nobody but an admin has it until then. It has no network and nothing of yours but what the job was given. Its walls are the machine's own: a flaw in that machine's kernel would be a way out of it. With Docker, set WORKSHOP_TOKEN in .env and `docker compose --profile workshop up -d --build` runs one beside Jarvis.",
+    needs: ["WORKSHOP_URL", "WORKSHOP_TOKEN"],
+    testable: true,
   },
   {
     id: "google",
@@ -360,6 +369,27 @@ export const SETTINGS: readonly SettingDef[] = [
         return "is not a URL";
       }
     },
+  },
+
+  // --- Workshop
+  {
+    name: "WORKSHOP_URL", group: "workshop", kind: "url",
+    label: "Door's address", help: "Where the workshop's door answers. With the Docker profile: http://127.0.0.1:9377.",
+    validate: (v) => {
+      try {
+        const u = new URL(v);
+        // As its door knows it (docker/workshop/door.mjs), and never over a network: its token and a job's files would go in the clear.
+        return u.protocol === "http:" && /^(localhost|127\.0\.0\.1)$/.test(u.hostname) && u.port ? null : "must be http://127.0.0.1 and its port: the door answers on this machine only";
+      } catch {
+        return "is not a URL";
+      }
+    },
+    bindsTo: ["WORKSHOP_TOKEN"],
+  },
+  {
+    name: "WORKSHOP_TOKEN", group: "workshop", kind: "secret",
+    label: "Token", help: "The same as its door's WORKSHOP_TOKEN in .env: 24 characters or more, for instance from `openssl rand -hex 24`.",
+    validate: (v) => (v.length < 24 ? "must be 24 characters or more" : null),
   },
 
   // --- Google

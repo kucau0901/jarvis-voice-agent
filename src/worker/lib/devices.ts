@@ -65,8 +65,8 @@ interface StoredDevice extends Device {
 
 const enc = new TextEncoder();
 
-export async function sha256Hex(s: string): Promise<string> {
-  const d = new Uint8Array(await crypto.subtle.digest("SHA-256", enc.encode(s)));
+export async function sha256Hex(s: string | ArrayBuffer): Promise<string> {
+  const d = new Uint8Array(await crypto.subtle.digest("SHA-256", typeof s === "string" ? enc.encode(s) : s));
   let out = "";
   for (const b of d) out += b.toString(16).padStart(2, "0");
   return out;

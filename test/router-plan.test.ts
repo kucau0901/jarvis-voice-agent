@@ -226,7 +226,7 @@ console.log("a job that waits for their answer is said, quoted, where they may a
   check("not in a routine, nor for a bot, a tile, the family room or another program: not even looked up", [routine, bot, ...others].every((x) => !/WAITS FOR THEIR ANSWER/.test(x.said) && x.asked.length === 0));
   const device = async (grants: string[]) => JSON.stringify((await ask({ plan: true, plans: [{ items: [answer("Hello.")] }], asking, grants, env: { JARVIS_DEVICE: "gate" } } as never)).sent[0]!.body.input);
   check("a device of theirs that reaches less than the job: not told what it asks", !/WAITS FOR THEIR ANSWER/.test(await device(["ask"])));
-  check("…one with all a job works with (no screen, Hermes or browser) is", /WAITS FOR THEIR ANSWER/.test(await device(SCOPES.filter((s) => s !== "hermes" && s !== "browser" && s !== "screen"))));
+  check("…one with all a job works with (no screen, Hermes or browser) is", /WAITS FOR THEIR ANSWER/.test(await device(SCOPES.filter((s) => s !== "hermes" && s !== "browser" && s !== "workshop" && s !== "screen"))));
   const steer = { ...call, name: "job_control", arguments: JSON.stringify({ op: "answer", job: null }) };
   const relayed = await ask({ plan: true, plans: [{ items: [steer] }, { items: [answer("Done.")] }], run: { surface: "chat", relayed: true } } as never);
   check("another program's words steer no job", /Only the user can do that/.test(JSON.stringify(relayed.sent[1]!.body.input.at(-1))), relayed.sent[1]?.body.input.at(-1));

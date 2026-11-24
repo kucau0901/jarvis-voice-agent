@@ -26,8 +26,8 @@ import { button, el } from "./ui/util";
  */
 
 export type RoutineSaid = Pick<Alert, "id" | "at" | "title" | "text" | "look"> & { routine: string; proposals?: string[] };
-/** `proposals`: what the job proposed, by id, for their cards (proposal.ts). */
-export type JobSaid = Pick<Alert, "id" | "at" | "title" | "text"> & { job: string; proposals?: string[] };
+/** `proposals`: what the job proposed, by id, for their cards (proposal.ts). `made`: the files it made, to save. */
+export type JobSaid = Pick<Alert, "id" | "at" | "title" | "text" | "made"> & { job: string; proposals?: string[] };
 /** What a job asks, which is not its result. */
 export type AskSaid = Pick<Alert, "id" | "at" | "title" | "text"> & { ask: { job: string; id: string } };
 /** `skill.asked`: the bot's own question to Jarvis, through its own address. `proposals`: what a component suggested, by id. */

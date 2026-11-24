@@ -31,8 +31,9 @@ import { keyboardSpace, watchKeyboard } from "./keyboard";
 import { Attachments, type Attached } from "./attach";
 import { Reply } from "./reply";
 import { fromAsk, fromJob, fromRoutine, fromSkill, jobStarted, jobsSeen, type AskSaid, type JobSaid, type RoutineSaid, type SkillSaid } from "./fromRoutine";
-import { askOf, askSaid } from "./jobWords";
+import { askOf, askSaid, beside } from "./jobWords";
 import { askUnder } from "./ui/JobAsk";
+import { jobFiles } from "./ui/JobFiles";
 import { asked, clearKept, keep, kept, restore, saidId, type Rows } from "./conversation";
 import { inCar } from "./client";
 import { arm } from "./ui/util";
@@ -560,11 +561,13 @@ function showAlert(a: Alert): HTMLElement {
   // A job's result can be a table or a list (ui/rich.ts): drawn as it is meant, from text nodes.
   const body = document.createElement("div");
   body.className = "atext";
-  body.appendChild(markdown(a.ask ? askOf(a.text).question : a.text, ""));
+  body.appendChild(markdown(a.ask ? askOf(a.text).question : beside(a), ""));
   card.appendChild(head);
   card.appendChild(body);
   // What a job asks: answered right here (ui/JobAsk.ts).
   if (a.ask && key) card.appendChild(askUnder(key, a.ask, askOf(a.text).choices));
+  // What a job made, to save (ui/JobFiles.ts).
+  if (a.job && a.made?.length && key) card.appendChild(jobFiles(key, a.job, a.made));
   // What a job proposed: Approve or Not now, right here (proposal.ts).
   if (a.proposals?.length && key) card.appendChild(proposalCards(key, a.proposals.map((p) => p.id)));
   // Passed on from someone in the family: answer it right here (relay.ts).
@@ -607,8 +610,9 @@ function jobSaid(a: JobSaid): boolean {
   const label = fromJob(a, openJob);
   if (!label) return false;
   els.transcript.appendChild(label);
-  const row = addRow("jarvis", a.text);
+  const row = addRow("jarvis", beside(a));
   // Under the answer, in its bubble, as a page's card is (addRow).
+  if (a.made?.length && key) (row.querySelector(":scope > .who + *") ?? row).appendChild(jobFiles(key, a.job, a.made));
   if (a.proposals?.length && key) (row.querySelector(":scope > .who + *") ?? row).appendChild(proposalCards(key, a.proposals));
   return true;
 }
@@ -1554,6 +1558,7 @@ async function whoAmI() {
       locked: boolean;
       live?: boolean;
       browser?: boolean;
+      workshop?: boolean;
     };
     if (me.space?.agentName) document.title = me.space.agentName;
     // No OpenAI key, only the ChatGPT plan: no Live voice; push-to-talk answers on the plan.
@@ -1583,6 +1588,7 @@ async function whoAmI() {
     $("openChat").hidden = !me.space || !isSession(key) || !may("chat");
     // The browser, where one is set up and theirs to use (routes/hub.ts).
     $("openBrowser").hidden = !me.browser;
+    attachments.any = me.workshop === true;
     void unreadChat();
   } catch {
     // Offline: the menu stays as it is.

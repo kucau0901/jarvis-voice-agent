@@ -47,11 +47,20 @@ export const mayWork = (
 
 /**
  * The same of a job at work, by what it works with, which is never a screen,
- * Hermes or the browser (routes/jobs.ts): a device of theirs without those
- * (Telegram) may hear what it asks, and answer it.
+ * Hermes or the browser, and the workshop only where it makes files
+ * (routes/jobs.ts): a device of theirs without those (Telegram) may hear what
+ * it asks, and answer it.
  */
-export const maySteer: typeof mayWork = (job, env, grants) =>
-  mayWork({ createdBy: job.createdBy, grants: withoutScreen(job.grants).filter((s) => s !== "hermes" && s !== "browser") }, env, grants);
+export const maySteer = (
+  job: { createdBy: string; grants: readonly Grant[]; mode?: string },
+  env: { JARVIS_PERSON?: string; JARVIS_DEVICE?: string },
+  grants: readonly Grant[],
+): boolean =>
+  mayWork(
+    { createdBy: job.createdBy, grants: withoutScreen(job.grants).filter((s) => s !== "hermes" && s !== "browser" && (s !== "workshop" || job.mode === "files")) },
+    env,
+    grants,
+  );
 
 /**
  * Whose person a stored creator or subscriber is: a member's id, or one of

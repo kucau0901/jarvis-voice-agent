@@ -2,7 +2,7 @@
 // call, in words rather than the tool's name, and a tool's own notes made fit
 // to read.
 import { doing, said } from "../src/app/steps.ts";
-import { askOf, askSaid, cameOf, heard, linesOf, nowDoing, powers, progress, type JobView } from "../src/app/jobWords.ts";
+import { askOf, askSaid, beside, cameOf, ended, heard, linesOf, nowDoing, powers, progress, sizeSaid, type JobView } from "../src/app/jobWords.ts";
 
 let pass = 0, fail = 0;
 function check(name: string, cond: boolean, got?: unknown) {
@@ -31,6 +31,12 @@ console.log("a job at work");
   check("waiting, or writing what it has, before either", nowDoing({ ...j, doing: ["recall"], waiting: { for: "plan", until: 1 } }) === "Waiting for the ChatGPT plan" && nowDoing({ ...j, doing: ["recall"], wrapping: "it took its 25 steps" }) === "Writing what it has: it took its 25 steps");
   check("how far: done of those not dropped", progress(j) === null && progress({ ...j, todo: [{ text: "a", state: "done" }, { text: "b", state: "doing" }, { text: "c", state: "dropped", why: "x" }] }) === "1 of 2");
   check("what it may do is said by code, from what it was handed", /^Searches the web, and has nothing of yours/.test(powers(j)) && /Never acts/.test(powers(j)) && /60 minutes and 25 steps, 60 while/.test(powers(j)) && !/stronger/.test(powers(j)), powers(j));
+  check("one that makes files says so, and where", /no network, and gives them to you to save/.test(powers({ ...j, mode: "files" })) && !/no network/.test(powers(j)));
+  check("what it is doing in the workshop, in words", nowDoing({ ...j, doing: ["run", "give_file"] }) === "Running a program, Giving you a file", nowDoing({ ...j, doing: ["run", "give_file"] }));
+  check("a file's size, as a person says it", [143, 1500, 999_999, 2_340_000].map(sizeSaid).join() === "143 bytes,2 KB,1000 KB,2.3 MB", [143, 1500, 999_999, 2_340_000].map(sizeSaid));
+  check("how what it ran ended", [ended({ at: 1, cmd: "x", code: 0, ms: 20 }), ended({ at: 1, cmd: "x", code: 0, ms: 1234 }), ended({ at: 1, cmd: "x", code: 3, ms: 90_000 }), ended({ at: 1, cmd: "x", code: "SIGKILL", ms: 5 }), ended({ at: 1, cmd: "x", code: null, late: true, ms: 120_000 }), ended({ at: 1, cmd: "x", p: "p1" }), ended({ at: 1, cmd: "x" }), ended({ at: 1, cmd: "x", p: "p1" }, true), ended({ at: 1, cmd: "x", code: null, full: true })].join("|") ===
+    "done|1.2 s|failed (3), 2 min|failed (SIGKILL)|stopped, out of time after 2 min|left running|running|ended with the job|stopped: it filled its folder, or the disk");
+  check("a result beside its files does not name them twice", beside({ text: "Made.\n\nIn Jobs to download: a.csv", made: [1] }) === "Made." && beside({ text: "Made.\n\nIn Jobs to download: a.csv" }).endsWith("a.csv") && beside({ text: "Made.", made: [1] }) === "Made.");
   check("on their own things, and on the stronger model", /Does not search the web/.test(powers({ ...j, reach: "private" })) && /stronger model/.test(powers({ ...j, mode: "thorough" })));
   check("waiting for its person's answer, and not the plan", nowDoing({ ...j, doing: ["recall"], waiting: { for: "you", until: 1 } }) === "Waiting for your answer");
   const told = (taken: boolean) => [{ at: 1, text: "Only ones sold here", ...(taken ? { taken: true as const } : {}) }];

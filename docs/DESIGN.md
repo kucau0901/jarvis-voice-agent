@@ -2359,6 +2359,87 @@ Chrome (`lib/browser.ts`, `tools/browser.ts`), run beside it
   (DNS rebinding) would pass the desktop's origin check; Chromium's own
   limits on public pages reaching local addresses are what stands there.
 
+## The workshop
+
+Some work is not words: a spreadsheet that adds up, a PDF to print, a chart.
+For those an ordinary background job may be started as one that makes files
+(`mode: "files"`), and is handed, besides what any job has, a folder and a
+shell in a container beside Jarvis (`docker/workshop`, the `workshop` profile;
+`lib/workshop.ts`, `lib/workshop-tools.ts`). It is optional, and everything
+else works without it.
+
+- **The machine is the wall, not a list of forbidden words.** What a job runs is
+  never looked at first, by code or by a model: a list of dangerous commands is
+  a list of the ones somebody thought of. Instead the container has **no
+  network** (`network_mode: none`, not even a way to Jarvis), a read-only
+  system, no setuid program, no new privileges, and of the kernel's powers only
+  what it takes to be each job's own user. Nothing of Jarvis's is mounted in
+  it: no key, no token, no stored data, never the Docker socket.
+- **A job is a user.** Each has its own, never given to another after it, and a
+  folder that is the runner's outside and the user's inside, so that whatever a
+  job does to its own, no other can enter. There is no `/tmp` and no shared
+  memory, which every job could write: each has those in its folder. The runner
+  (`runner.mjs`) is root without the power to open other people's files, so it
+  cannot look into a job's folder either: everything done to a file there
+  (`files.mjs`) is done as the job's user, and a link or a name a job leaves
+  there reaches only what that job can.
+- **What runs as a job's user is the job's to change**, `files.mjs` too, so the
+  runner does not take its word: an answer is numbers where it should be and no
+  more text than so much, a failure is one of the runner's own sentences, and
+  nothing is waited for long. A copy given to a person is read, summed and kept
+  by the runner. No shell that reads a start-up file stands in between.
+- **One job at a time runs anything, and nothing outlives its turn.** When a
+  job's last command ends, everything its user has running is ended, looked for
+  by the runner rather than asked of the user, until there is none (if some
+  would not end, the whole container starts again). So two jobs are never there
+  together to speak to each other, and what a job left cannot wait for the next.
+  A command meanwhile waits a minute for its turn, then is told to try later.
+- **What it may use.** A command has two minutes, or fifteen left running.
+  Processes, open files, processor time and the size of one file are limited for
+  each job's user by the kernel; memory, and where the kernel can, processes in
+  all, for the container. While something runs its folder is looked at every few
+  seconds, and it is ended past 500 MB, or on a disk with less than 3 GB left;
+  all jobs' files come to 5 GB at most, what they gave counted. A job puts itself
+  first to be ended when memory runs out, which it could undo.
+- **The one way in is a socket in a shared folder.** A door (`door.mjs`) holds
+  its other end, in Jarvis's own network, where nothing is published, and passes
+  on what carries the shared token. Jarvis's own browser shares that network: a
+  request that says it is a browser's (`Origin`, `Sec-Fetch-Site`) is refused,
+  token or not.
+- **What comes back is data.** A program prints what it read, and what it read
+  may be a page or a mail: all of it reaches the model quoted, names of files
+  included. A failure, the workshop being off included, is something the job is
+  told. A step's calls are made one after another, as they were asked. What may
+  have happened when an update cut a step short is not done again unasked. An
+  address it read back from its own work does not count as one it saw
+  (`lib/links.ts`).
+- **Nothing crosses the two sides.** A job still reads its person's own things
+  or the web, never both. What they attached in Chat goes to the folder of a
+  private job only, and so do attachments from their mail (`lib/mail-file.ts`):
+  in a job on the web, they would be something of theirs beside a search.
+- **A file is saved, never opened.** The job gives a file by name; a copy the
+  job can no longer change is kept, by its sum. What its person downloads is
+  checked against that sum, and goes as an attachment of no type, with
+  `nosniff` and a policy that runs nothing: Jarvis never shows what a program
+  made as a page. Code says which files there are, and that there are none: the
+  answer's own word for it is not taken. In **Jobs**, *What it ran* has the
+  last forty commands, the first 300 letters of each, written down before each
+  is run; not what those ran in turn.
+- **Never by default.** The `workshop` scope follows `hermes`'s rule: in no role
+  but an admin's, no device's preset, no guest's pass, and never in a routine, a
+  habit, an approved step, a bot's address or Telegram. It is looked at again at
+  every step.
+
+**What it does not protect against.** A container shares its host's kernel: a
+flaw there would be a way out, onto the machine Jarvis itself runs on. Docker's
+system-call filter and its limit on processes narrow that where the kernel has
+them; some NAS kernels (4.4) have neither, and the per-user limits above are
+then what there is. A kernel also has small ways for one user to leave a trace
+for another (how full the disk is, how long something took, a key it keeps), and
+those are not closed: two jobs both talked round, one after the other, could
+pass a few words. Where that is not enough, Jarvis's containers belong in a
+virtual machine of their own.
+
 ## Architecture
 
 One Cloudflare Worker serves both the app and `/api/*`, so the app needs no CORS

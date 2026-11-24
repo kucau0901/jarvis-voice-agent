@@ -14,7 +14,7 @@ fi
 # environment: PATH, HOSTNAME and the like are not the Worker's business.
 envfile="$(mktemp)"
 chmod 600 "$envfile"
-env | grep -E '^(JARVIS_SHARED_SECRET|MOVE_KEY|JARVIS_STANDBY|JARVIS_ALLOWED_ORIGINS|OPENAI_API_KEY|ROUTER_MODEL|DISABLE_WEB_SEARCH|PUBLIC_URL|TIMEZONE|COUNTRY|LOCALE|UNITS|DEVICE_DAILY_LIMIT|HA_[A-Z_]+|TESSIE_[A-Z_]+|HERMES_[A-Z_]+|BROWSER_URL|CF_ACCESS_[A-Z_]+|GOOGLE_[A-Z_]+|SPOTIFY_[A-Z_]+|G2_[A-Z_]+)=' > "$envfile" || true
+env | grep -E '^(JARVIS_SHARED_SECRET|MOVE_KEY|JARVIS_STANDBY|JARVIS_ALLOWED_ORIGINS|OPENAI_API_KEY|ROUTER_MODEL|DISABLE_WEB_SEARCH|PUBLIC_URL|TIMEZONE|COUNTRY|LOCALE|UNITS|DEVICE_DAILY_LIMIT|HA_[A-Z_]+|TESSIE_[A-Z_]+|HERMES_[A-Z_]+|BROWSER_URL|WORKSHOP_[A-Z_]+|CF_ACCESS_[A-Z_]+|GOOGLE_[A-Z_]+|SPOTIFY_[A-Z_]+|G2_[A-Z_]+)=' > "$envfile" || true
 
 # `wrangler dev` is a developer's tool, and two of its helpers are on unless
 # told otherwise. One keeps a trace of every call the runtime makes, in a
