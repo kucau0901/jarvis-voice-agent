@@ -191,6 +191,13 @@ of every release, and in the [README](README.md#updating).
 
 ### Security
 
+- **What a mail or a page asks Jarvis to remember is no longer kept unasked.**
+  In a turn that read something someone else wrote (mail, a web page, a
+  search, an invitation), Jarvis now keeps a fact only if you said it or
+  asked for it to be kept; otherwise it tells you and asks. Saving a list you
+  asked for works as before. Card numbers, API keys and one-time codes are
+  never saved by voice or chat (the Memory panel is your own hand, and takes
+  what you type).
 - **A page in Jarvis's browser could take over that browser.** The browser
   image (Docker, `--profile browser`) also runs a web desktop. Jarvis never
   uses it: its Browser panel works through the debugging port. But the

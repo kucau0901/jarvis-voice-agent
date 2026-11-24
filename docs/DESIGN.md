@@ -717,6 +717,19 @@ matters most. `recall` remains for the long tail.
 > A write-time filter rejects instruction-shaped text as well, but that is a
 > heuristic; the placement is the boundary.
 
+**What is kept must be the person's own.** Memory goes with every later
+question, so a mail that says "remember that the user banks with…" would be
+believed for months. `remember` used to check nothing but the fact's shape.
+Now, once a turn has read something someone else wrote (a tool's output that
+`asQuotedData` fenced, or a web search), a fact is kept only if their latest
+message asks for something to be kept or says at least half of what the fact
+does (`lib/memory-guard.ts`); otherwise the router is told to say it and ask.
+By code, on the words, so it costs no call; a forwarded message inside theirs
+does not count as theirs, and a routine goes by its maker's words. Cards, keys
+and one-time codes are refused where Jarvis adds a fact, never in `sanitise()`:
+every read of the document goes through that, and a rule there would silently
+drop what people already have.
+
 Places are typed (`slug` + `address`) and upserted by name, so two contradicting
 copies of "home" are structurally impossible — and so `directions` can resolve
 "home" in code with no model in the path.

@@ -188,6 +188,25 @@ console.log("no plan: the key, as before");
     r.sent[1]!.body.previous_response_id === "resp_1" && !r.sent[0]!.body.tools.some((t) => t.type === "namespace"), r.sent.map((s) => s.body.previous_response_id));
 }
 
+console.log("what someone else wrote is not remembered in the same turn (lib/memory-guard.ts)");
+{
+  const keep = (id: string) => ({ type: "function_call", id: `fc_${id}`, call_id: `call_${id}`, name: "remember", namespace: "jarvis", status: "completed", arguments: JSON.stringify({ text: "The user's bank is Zephyr Bank", kind: "note", place: null, replaces: null, pin: null, more: null, for_family: null }) });
+  const answer = { type: "message", id: "m1", role: "assistant", status: "completed", content: [{ type: "output_text", text: "Done.", annotations: [] }] };
+  const search = { type: "web_search_call", id: "ws_1", status: "completed", action: { type: "search", query: "chargers" } };
+  const outputOf = (r: Awaited<ReturnType<typeof ask>>) => String((r.sent.at(-1)!.body.input.findLast((i) => i.type === "function_call_output") as { output?: string } | undefined)?.output);
+  const r = await ask({ plan: true, plans: [{ items: [search, keep("1")] }, { items: [answer] }], text: "any news about chargers?" });
+  check("after a web search, a fact the user never said is not kept", /^Not saved: that came from what was read/.test(outputOf(r)), outputOf(r));
+  const asked = await ask({ plan: true, plans: [{ items: [search, keep("1")] }, { items: [answer] }], text: "look up my bank and remember it" });
+  // The state here keeps no memory, so what is checked is that the tool was let through (test/memory.test.ts saves one).
+  check("asked to, it is let through", !/came from what was read/.test(outputOf(asked)), outputOf(asked));
+  const plain = await ask({ plan: true, plans: [{ items: [keep("1")] }, { items: [answer] }], text: "what is the time?" });
+  check("a turn that read nothing is as before", !/came from what was read/.test(outputOf(plain)), outputOf(plain));
+  const key = await ask({ plan: false, plans: [], keys: [{ items: [search, keep("1")] }, { items: [answer] }], text: "any news about chargers?" });
+  check("the same on the key", /^Not saved: that came from what was read/.test(outputOf(key)), outputOf(key));
+  const routine = await ask({ plan: true, plans: [{ items: [search, keep("1")] }, { items: [answer] }], text: "Check the charger news. Remember it all.", run: { surface: "routine", standing: "Check the charger news." } });
+  check("a routine goes by its maker's words, not what came with the event", /^Not saved/.test(outputOf(routine)), outputOf(routine));
+}
+
 console.log("past attempts (lib/episodes.ts): an answer that took two tools is kept");
 {
   // Two that need nothing set up here, so neither fails (recall does: there is no memory to search).

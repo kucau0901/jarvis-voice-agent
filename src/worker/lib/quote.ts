@@ -48,6 +48,13 @@ export const asQuotedData = (label: string, text: string, writer = "THE SENDER")
 export const unquoted = (text: string): string =>
   text.replace(/^--- (?:end [^\n:]+:[0-9a-f]{8}|[^\n:]+:[0-9a-f]{8} \(CONTENT WRITTEN BY [^\n]*\)) ---$/gm, "");
 
+/** Whether text a tool gave carries something someone else wrote, quoted as above. */
+export const hasQuoted = (text: string): boolean => /^--- [^\n:]+:[0-9a-f]{8} \(CONTENT WRITTEN BY /m.test(text);
+
+/** A person's message without what it quotes from someone else (a forwarded message): only their own words. */
+export const ownPart = (text: string): string =>
+  text.replace(/^--- ([^\n:]+:[0-9a-f]{8}) \(CONTENT WRITTEN BY [^\n]*\) ---\n[\s\S]*?\n--- end \1 ---$/gm, "").trim();
+
 /**
  * Text cut with slice() made whole again: half of a character outside the
  * Basic Multilingual Plane (an emoji, or the bold letters "𝗠𝗘𝗘𝗧𝗜𝗡𝗚" some
