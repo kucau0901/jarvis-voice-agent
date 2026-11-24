@@ -104,7 +104,7 @@ export class Jobs {
     form.appendChild(task);
     // One side or the other, never both (lib/jobs.ts Reach): what is looked up on the web leaves by the words of the search.
     const reach = document.createElement("select");
-    for (const [value, label] of [["web", "On the web, with only what you write above"], ["private", "In my own things (mail, calendar, memory, house, car), without the web"]] as const) {
+    for (const [value, label] of [["web", "On the web, and nothing of mine"], ["private", "In my own things, not the web"]] as const) {
       const o = document.createElement("option");
       o.value = value;
       o.textContent = label;
