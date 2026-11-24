@@ -152,14 +152,14 @@ existence, or argued around.
 | `car.read` | `car_state`, `directions`. |
 | `car.control` | `car_command` — including unlock and sending a destination. |
 | `home` | Home Assistant, `show_camera`, `look_at_camera`, `/api/camera`. |
-| `hermes` | `ask_hermes`, `control_home`: Hermes can run commands on its machine, so sharing the house never shares it. A device made before 2.0 with `home` keeps it. |
+| `hermes` | `ask_hermes`: Hermes can run commands on its machine, so sharing the house never shares it. A device made before 2.0 with `home` keeps it. |
 | `browser` | `browser_open`, `browser_read`, `browser_press`, `browser_fill`, `browser_close_tab`, `browser_sign_in`, `browser_show`, and the app's Browser panel (`/api/browser/screen`, `/api/browser/input`, and `/api/browser/logins` for a person's saved sign-ins and `/api/browser/alone` for the sites their routines may use it on, both never a device's): a full browser Jarvis drives, signed in wherever the family signed it in ([DESIGN.md](DESIGN.md#the-browser)). No role has it but an admin's and no device has it unless ticked (a `*` device has every scope, this one too); in a routine only on the sites its maker chose; never in an approved step of a job, or over Telegram. |
 | `media` | Spotify. |
 | `mail` | Gmail: `mail_check`, `mail_search`, `mail_send`, `mail_manage`, `contacts_lookup`. Reads, sends, replies, drafts, trashes and archives — there is no read-only half. Also reads Google Contacts to turn a name into an address. |
 | `calendar` | Google Calendar: `calendar_check`, `calendar_add`, `calendar_change`. Reads the diary **and creates, moves, renames and removes events**. |
 | `screen` | `show_place`, `hide_display`, `/api/map`, `make_image` and `/api/image` (pictures Jarvis makes), `make_page` and `/api/page` (pages Jarvis makes), and a person's panels (`panel_set`, `panel_remove`, `/api/hub/panels`). |
 | `voice` | `/api/session`, `/api/tts`, `/api/voices`, and push-to-talk `/api/v1/voice` (which also needs `ask`). |
-| `ask` (jobs) | `/api/v1/jobs`, `/api/v1/jobs/cancel`, `start_job`. A job for Hermes also needs `hermes`. Each job runs with its creator's grants, no more than they hold now; it reads with their reading tools, and what it would do is proposed for their tap (or done at once, for a reversible kind they allowed). |
+| `ask` (jobs) | `/api/v1/jobs`, `/api/v1/jobs/cancel`, `/api/v1/jobs/tell`, `start_job`, `job_control`. A job for Hermes also needs `hermes`. Each job runs with its creator's grants, no more than they hold now; it reads with their reading tools, and what it would do is proposed for their tap (or done at once, for a reversible kind they allowed). |
 | `routines` | `/api/v1/routines`, `/api/v1/routines/run`, `/api/v1/routines/runs`, `/api/v1/trigger`; `routine_add`, `routine_list`, `routine_remove`. A routine's question runs with **its creator's** grants, never more. A device sees, runs and changes only the routines it made, or ones no stronger than itself; revoking or deleting it stops the routines it made, and narrowing it narrows them. |
 | `alerts` | Receiving alerts (`/api/v1/events`, `/api/v1/push`, `/api/v1/alerts`), raising one (`/api/v1/notify`), and `send_note`. The same scope both ways: a device that may be told things may ask to be told something. |
 | `skills` | `skill_add`, `skill_remove` (outside services added in chat; an MCP server asked for there is added as a [component](components.md), which offers nothing until an admin approves it), `skill_address` (a card for a bot's own address, on an admin's screen) and `ask_skill` (sending a request to a service). A service may act on the house or send things, so no role has it but an admin's. Each service's key is set in Settings → Skills, never by a device. A bot's own address never holds it, nor `alerts`, `chat`, `voice`, `screen` or `routines` ([Bots](#bots-skills-both-ways)). |
@@ -470,7 +470,7 @@ and connects to `/api/v1/events?ticket=…`. A ticket works once.
 | Direction | Message |
 |---|---|
 | ← | `{"type":"hello","label":…}` on connecting |
-| ← | `{"type":"alert","alert":{id, at, title, text, speak, talk, urgent, source, for?, expiresAt?, routine?, look?, job?, relay?, convo?, proposals?, skill?}}`; `skill: {id, name, about?}` when a bot said it ([Bots](#bots-skills-both-ways)): show it as `name`'s |
+| ← | `{"type":"alert","alert":{id, at, title, text, speak, talk, urgent, source, for?, expiresAt?, routine?, look?, job?, ask?, relay?, convo?, proposals?, skill?}}`; `ask: {job, id}` when a background job puts a question, its choices as a list after the question in `text`; `skill: {id, name, about?}` when a bot said it ([Bots](#bots-skills-both-ways)): show it as `name`'s |
 | ← | `{"type":"glasses.open"}` when the person asks to open Jarvis on their display glasses (the `open_on_glasses` tool): an app holding G2 glasses shows Jarvis's own screen on them. Sent to each of the person's screens and devices; one with no such glasses ignores it |
 | ← | `{"type":"conversation.said","said":[…]}` when a bot's exchange with Jarvis is kept in the person's conversation ([Bots](#bots-skills-both-ways)), rows as `GET /api/hub/conversation` gives them: sent to the person's own screens, signed in, never to a device |
 | → | `{"type":"presence","visible":true}` whenever the screen is shown or hidden |
@@ -631,7 +631,20 @@ assumptions}`, and a checklist, `todo: [{text, state, why?}]` with `state`
 that, `wrapping`, what of. `POST /api/v1/jobs/card {id, outcome?, limits?,
 assumptions?}` changes the card of one still working (each list is given whole);
 what was changed reaches the job at its next step, and `told: [{at, text,
-taken?}]` says which changes it has had.
+taken?, card?, to?}]` says what it was told and which of it it has had: a change to
+its card (`card`), an answer (`to`, "question 1"), or their words.
+
+`POST /api/v1/jobs/tell {id, text}` tells one still working anything, in its
+person's own words, up to 1,000 characters: it takes it in at its next step. A
+job may also ask its person something, three times at most: its view carries
+`asks: [{id, at, text, choices}]` (what it has not been answered), and an alert
+says so at once, with `ask: {job, id}` and no `job`, since it is not the result.
+`POST /api/v1/jobs/tell {id, question, text}` answers one (`question` is its id),
+and `{id, question, skip: true}` goes on without. With
+nothing else to do, a job waits for the answer a day, its status still `running`
+and `waiting: {for: "you", until}` in its view; it is not one of the three running.
+One job's whole view also carries `asked`, every question it put with its `answer`
+(`{at, text}`) or `over` ("skipped" or "late").
 
 Its answer carries `missing`, what was asked for and not got, and `assumed`,
 what was taken for granted: a list each, absent when there is nothing. They are
@@ -658,8 +671,9 @@ as a draft) is proposed instead, and its result alert carries them as
 ("Lock", "Send"; absent, Approve). Only the person who started it can approve
 one, signed in, with `POST /api/hub/proposals/answer {id, answer: "approve" |
 "decline" | "undo"}`; an approved one comes back `running`, and Jarvis makes the call
-in the background. `GET /api/hub/proposals` is `{open, recent, allowed, later}`, and
-says what came of it. `later` is what waits to be put to them: `[{id, says,
+in the background. `GET /api/hub/proposals` is `{open, recent, allowed, later, asking}`,
+and says what came of it. `asking` is what their jobs ask them, `[{job, title, reach?,
+id, at, text, choices}]`. `later` is what waits to be put to them: `[{id, says,
 why, risk, when, verb?, about?, body?}]`, `when` in words ("When you get home", "30
 min before “Dentist”, Thu 23 Oct, 10:00"); it cannot be approved before
 then, and `answer: "decline"` with its id drops it (one with `about`, a

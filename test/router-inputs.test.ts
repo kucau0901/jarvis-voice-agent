@@ -45,7 +45,8 @@ function check(name: string, cond: boolean, got?: unknown) {
 // place_info's row in the table of routes: given coordinates, the street address there (28 Oct 2026).
 // …and then the places nearest them, by name (29 Oct 2026).
 // ask_hermes: nor a tool, bot, webhook or MCP server for Jarvis itself, which is skill_add (30 Oct 2026).
-const PROMPT_SHA256 = "ca9ae682da7e82a9d110cc7936180ac53ec84c1bcaafd152ffeb1fa8de2c025c";
+// control_home gone and ask_hermes's row shorter; job_control's row, and a job's question answered by its person (24 Nov 2026).
+const PROMPT_SHA256 = "d22624ced939b613e835b170e6fcb2def07cd45a869c88a4ca96af4bde521dce";
 // panel_set and panel_remove (tools/panels.ts, scope screen): everyone but the guest (14 Oct 2026).
 // look_back (tools/conversation.ts, scope memory.read): everyone but the guest (16 Oct 2026).
 // panel_list (tools/panels.ts, scope screen): everyone but the guest (16 Oct 2026).
@@ -71,6 +72,7 @@ const PROMPT_SHA256 = "ca9ae682da7e82a9d110cc7936180ac53ec84c1bcaafd152ffeb1fa8d
 // panel_set (tools/panels.ts): a tile's reading must be a tool that only looks something up, said in its description and
 // refused in code otherwise; sixteen of Jarvis's own tools say `reads: true`, which is not sent to the model. Names, scopes
 // and who is offered what are as before, so no entry below changes (12 Nov 2026).
+// job_control (tools/jobs.ts, no scope beyond ask): everyone, as start_job; control_home gone (24 Nov 2026).
 const EXPECTED: Record<string, { model: string; tools: string[]; input: string }> = {
  "owner key, nothing set up": {
   "model": "gpt-6-luna",
@@ -78,6 +80,7 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
    "alert_talk",
    "forget",
    "hide_display",
+   "job_control",
    "job_results",
    "look_back",
    "make_image",
@@ -122,12 +125,12 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
    "car_state",
    "chore_points",
    "contacts_lookup",
-   "control_home",
    "directions",
    "family_messages",
    "forget",
    "hide_display",
    "house_watch",
+   "job_control",
    "job_results",
    "look_at_camera",
    "look_back",
@@ -182,6 +185,7 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
    "forget",
    "hide_display",
    "house_watch",
+   "job_control",
    "job_results",
    "look_at_camera",
    "look_back",
@@ -231,6 +235,7 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
    "family_messages",
    "forget",
    "hide_display",
+   "job_control",
    "job_results",
    "look_back",
    "make_image",
@@ -259,6 +264,7 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
  "guest with a pass": {
   "model": "gpt-6-luna",
   "tools": [
+   "job_control",
    "job_results",
    "open_on_glasses",
    "place_info",
@@ -271,14 +277,14 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
 };
 
 // What every chat question carries before anything of its own: the prompt and the tools' schemas, in bytes, at most
-// (24 Nov 2026, main at da0843e). It is sent, and on the plan's route read, with every question, the house's too:
+// (24 Nov 2026, with control_home gone and job_control come). It is sent, and on the plan's route read, with every question, the house's too:
 // what background jobs need is theirs (routes/jobs.ts request), and a chat tool added makes room for itself.
 const PREFIX_MAX: Record<string, number> = {
-  "owner key, nothing set up": 50_477,
-  "admin, everything set up": 83_878,
-  "adult": 71_847,
-  "child": 60_341,
-  "guest with a pass": 21_654,
+  "owner key, nothing set up": 50_422,
+  "admin, everything set up": 83_129,
+  "adult": 71_813,
+  "child": 60_307,
+  "guest with a pass": 21_599,
 };
 
 const realFetch = globalThis.fetch;

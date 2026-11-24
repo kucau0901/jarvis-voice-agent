@@ -141,6 +141,16 @@ your Home Assistant person in Family). It waits in Jobs → Later, where
 **Don't do this** drops it (on a brief's, **Don't suggest this again**), and
 comes as a **Ready now** alert with its card when its time comes.
 
+## When a job asks you something
+
+A background job may ask what only you can settle ("front only, or front and
+rear?"), three times at most. It comes as an alert titled **A question:** and the
+job's name, with its choices, and is answered there, in the chat, in **Jobs**, on
+Home under **Now**, or in words: to Jarvis by voice, on a device, or by replying
+in Telegram. ntfy and Home Assistant only show it. Nothing waits on the answer
+that does not need it; when nothing else is left the job waits a day, and nobody
+answers for you. **Go on without me** has it finish without.
+
 ## Check that it works
 
 1. On your phone, close Jarvis and lock the screen.

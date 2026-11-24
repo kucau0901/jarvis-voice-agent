@@ -138,7 +138,7 @@ const BY_TOOL: [RegExp, PanelIcon][] = [
   [/^(mail_|contacts_)/, "mail"],
   [/camera/, "camera"],
   [/^routine_/, "clock"],
-  [/^(ask_hermes|control_home)$/, "terminal"],
+  [/^ask_hermes$/, "terminal"],
   [/^(directions|place_info|show_place)$/, "route"],
 ];
 

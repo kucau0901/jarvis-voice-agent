@@ -1206,7 +1206,7 @@ console.log("\na routine's question never reaches Hermes (routes/routines.ts ask
     const routine = { id: "r1", name: "Morning mail", enabled: true, trigger: { kind: "daily", time: "07:00", days: [] }, action: { kind: "ask", prompt: "Check my mail" }, grants: ["*"], createdBy: "voice", createdAt: T0 } as unknown as Routine;
     const r = await askForRoutine(env as never, "Check my mail", ["*"], routine);
     check("answered", r.ok && r.text === "Nothing new.", r);
-    check("made with everything, yet offered neither Hermes tool", offered.length > 0 && !offered.includes("ask_hermes") && !offered.includes("control_home"), offered);
+    check("made with everything, yet not offered Hermes", offered.length > 0 && !offered.includes("ask_hermes"), offered);
     check("…while what it may otherwise do is still there", offered.includes("send_note") && offered.includes("routine_list"), offered);
   } finally {
     globalThis.fetch = realFetch;

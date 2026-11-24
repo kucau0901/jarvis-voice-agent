@@ -71,6 +71,12 @@ export interface Alert {
    */
   job?: string;
   /**
+   * What a background job asks its person (lib/jobs.ts): the job, and the
+   * question's id there. Not its result, so not `job`: the app offers the
+   * answer under it (src/app/ui/JobAsk.ts) and its pill stays at work.
+   */
+  ask?: { job: string; id: string };
+  /**
    * The skill that said it (lib/skills.ts skillAlert): an outside bot's answer
    * to `about`, a request Jarvis sent it, or a message of its own. Its title is
    * the skill's name: the app shows it under that name, never as Jarvis's.

@@ -1,5 +1,6 @@
 import { api } from "../key";
-import { heard, linesOf, nowDoing, powers, progress, type JobCard, type JobView, type Todo } from "../jobWords";
+import { cameOf, heard, linesOf, nowDoing, powers, progress, type JobCard, type JobView, type Todo } from "../jobWords";
+import { askCard, askedIn, askId } from "./JobAsk";
 import { arm, button, el } from "./util";
 
 /**
@@ -35,15 +36,22 @@ function card(j: JobView, c: JobCard): HTMLElement {
   return box;
 }
 
-/** In Jobs: the card, the list and the moment. Null for a job with none of them (one or two lookups, research, Hermes). */
+/** In Jobs: the card, the list, what it asked and was told. Null for a job with none of them (one or two lookups, research, Hermes). */
 export function jobLive(j: JobView): HTMLElement | null {
-  if (!j.card && !j.todo?.length) return null;
   const box = el("div", "jobwork");
   if (j.card) box.appendChild(card(j, j.card));
   if (j.todo?.length) box.appendChild(checklist(j.todo));
-  const said = heard(j);
-  if (said) box.appendChild(el("small", "jobheard", said));
-  return box;
+  // With the whole of it, what it asked and what came of that; while it works, the last things it was told.
+  const ended = j.status === "running" ? [] : (j.asked ?? []);
+  for (const q of ended) box.appendChild(told(`It asked: ${q.text}`, cameOf(q, j) ?? ""));
+  for (const h of heard(ended.length ? { ...j, told: j.told?.filter((t) => !t.to) } : j)) box.appendChild(told(h.said, h.state));
+  return box.childElementCount ? box : null;
+}
+
+function told(said: string, state: string): HTMLElement {
+  const line = el("div", "jobheard", said);
+  line.appendChild(el("small", "", state));
+  return line;
 }
 
 /** The moment, for a running job that has its own tools. */
@@ -71,10 +79,14 @@ export function cardForm(typed: JobCard, save: (c: JobCard) => void, cancel: () 
 }
 
 const EVERY_MS = 4000;
+/** One that waits, for its person or the plan: up to a day, so looked at less often. */
+const WAITING_MS = 20_000;
 
 /**
  * Under a job's pill in the conversation, while it works: its checklist, the
- * moment, and Stop; the pill says how far it has got. Asked of the server only
+ * moment, and Stop; the pill says how far it has got, or that it asks them
+ * something, and the question is here where its alert did not bring it to this
+ * screen (a socket that was down). Asked of the server only
  * while the page is seen, and gone once the result has come, the job has ended
  * (`ended`), or it is not this screen's to see (a device is not shown the jobs
  * its chat starts).
@@ -83,6 +95,7 @@ export function follow(key: string, id: string, row: HTMLElement, ended: (j: Job
   const box = el("div", "joblive");
   const inner = el("div", "jobbox");
   const list = el("div", "");
+  const asks = el("div", "jobasks");
   const foot = el("div", "jobfoot");
   const now = el("span", "jobnow");
   const stop = button("Stop", () => {}, "jobstop");
@@ -91,11 +104,13 @@ export function follow(key: string, id: string, row: HTMLElement, ended: (j: Job
     void look();
   });
   foot.append(now, stop);
-  inner.append(list, foot);
+  inner.append(list, asks, foot);
   box.appendChild(inner);
   let timer = 0;
   let misses = 0;
+  let every = EVERY_MS;
   let drawn = "";
+  const typed = new Map<string, string>();
   const gone = () => {
     clearTimeout(timer);
     box.remove();
@@ -109,24 +124,32 @@ export function follow(key: string, id: string, row: HTMLElement, ended: (j: Job
       if (!j && ++misses > 2) return gone();
       if (j) {
         misses = 0;
+        every = j.waiting ? WAITING_MS : EVERY_MS;
         if (j.status !== "running") {
           gone();
           return ended(j);
         }
-        const as = JSON.stringify([j.todo, nowDoing(j)]);
-        if (as !== drawn && pill.classList.contains("working")) {
+        const open = j.asks ?? [];
+        const thread = row.parentElement;
+        // Shown here where the conversation does not show it; one already here stays, its answer may be half typed.
+        const drawnHere = new Map([...asks.querySelectorAll<HTMLElement>(".askcard")].map((c) => [c.dataset.ask ?? "", c]));
+        const mine = open.filter((q) => drawnHere.has(askId(id, q.id)) || !askedIn(thread, id, q.id, box));
+        const here = mine.map((q) => q.id).join();
+        const as = JSON.stringify([j.todo, nowDoing(j), open.length]);
+        if ((as !== drawn || here !== asks.dataset.asks) && pill.classList.contains("working")) {
           drawn = as;
-          const thread = row.parentElement;
           const atEnd = !!thread && thread.scrollHeight - thread.scrollTop - thread.clientHeight < 40;
           list.replaceChildren(...(j.todo?.length ? [checklist(j.todo)] : []));
+          if (here !== (asks.dataset.asks ?? "")) asks.replaceChildren(...mine.map((q) => drawnHere.get(askId(id, q.id)) ?? askCard(key, j, q, { tag: "It asks you", typed })));
+          asks.dataset.asks = here;
           now.textContent = nowDoing(j);
-          pill.querySelector("small")!.textContent = progress(j) ?? "working";
+          pill.querySelector("small")!.textContent = open.length ? "asks you" : (progress(j) ?? "working");
           if (!box.isConnected) row.appendChild(box);
           if (atEnd) thread.scrollTop = thread.scrollHeight;
         }
       }
     }
-    timer = setTimeout(() => void look(), EVERY_MS);
+    timer = setTimeout(() => void look(), every);
   };
   // The row is put in the conversation by whoever asked for it.
   timer = setTimeout(() => void look(), 1500);

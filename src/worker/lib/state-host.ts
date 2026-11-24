@@ -578,6 +578,8 @@ interface JobApi {
   jobTable(id: string): Promise<{ columns: string[]; rows: string[][] } | null>;
   cancelJob(id: string): Promise<Job | string>;
   jobUseKey(id: string): Promise<Job | string>;
+  tellJob(id: string, input: { text?: unknown; question?: unknown; skip?: unknown }): Promise<Job | string>;
+  jobsAsking(person: string): Promise<Job[]>;
   changeJobCard(id: string, input: { outcome?: unknown; limits?: unknown; assumptions?: unknown }): Promise<Job | string>;
   removeJob(id: string): Promise<boolean>;
 }

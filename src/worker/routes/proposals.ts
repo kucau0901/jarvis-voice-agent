@@ -3,6 +3,7 @@ import { err, json, readObjectOrEmpty } from "../lib/http.ts";
 import { grantsOf, personOf, type Principal } from "../lib/auth.ts";
 import { stateStub } from "../lib/state-client.ts";
 import { personView } from "../lib/hub-client.ts";
+import { openQuestions } from "../lib/job-tools.ts";
 import { PROPOSAL_ID, UNDO_MS, viewOf, weigh } from "../lib/proposals.ts";
 import { whenSaid } from "../lib/later.ts";
 import { localeOf } from "../lib/locale.ts";
@@ -10,9 +11,10 @@ import { APPROVED_ONLY, notAsShown } from "../lib/approval.ts";
 import { baseTools } from "../tools/registry.ts";
 
 /**
- *   GET    /api/hub/proposals            {open, recent, allowed, later}: what the person's jobs and briefs proposed
+ *   GET    /api/hub/proposals            {open, recent, allowed, later, asking}: what the person's jobs and briefs proposed
  *                                         (lib/proposals.ts); `later`, what waits to be put to them (lib/later.ts),
- *                                         each with when, in words, and declined as a card is
+ *                                         each with when, in words, and declined as a card is; `asking`, what their
+ *                                         jobs ask them, for Home (answered at POST /api/v1/jobs/tell)
  *   POST   /api/hub/proposals/answer     {id, answer: "approve" | "decline" | "undo"}: approved, it comes back running,
  *                                         and the object's alarm makes the call (Proposals.tick); GET says what came of it.
  *                                         Declined, a brief's card is not offered again for a while. "undo" is Put back on
@@ -39,7 +41,8 @@ export async function handleProposals(req: Request, env: Env, principal: Princip
 
   if (url.pathname === "/api/hub/proposals") {
     if (req.method !== "GET") return err(405, "GET only");
-    const [all, allowed, staged] = await Promise.all([state.proposalsOf(me, now), state.proposalAllowed(me), state.proposalsLater(me)]);
+    const [all, allowed, staged, jobs] = await Promise.all([state.proposalsOf(me, now), state.proposalAllowed(me), state.proposalsLater(me), state.jobsAsking(me)]);
+    const asking = jobs.flatMap((j) => openQuestions(j.asked).map(({ id, at, text, choices }) => ({ job: j.id, title: j.title, ...(j.reach ? { reach: j.reach } : {}), id, at, text, choices })));
     const tz = localeOf(env).timeZone;
     const later = staged.map(({ id, says, why, verb, about, risk, body, release }) => ({ id, says, why, risk, when: whenSaid(release, tz), ...(verb ? { verb } : {}), ...(about ? { about } : {}), ...(body ? { body } : {}) }));
     // Newest decided first: one just approved is listed while its call is made, however long it waited (src/app/proposal.ts watch).
@@ -47,7 +50,7 @@ export async function handleProposals(req: Request, env: Env, principal: Princip
     const newest = decided.slice(0, RECENT);
     // And whatever can still be put back, however far down: its card offers Put back all week.
     const back = decided.slice(RECENT).filter((p) => p.state === "done" && p.by === "tap" && p.action.tool === "mail_archive_many" && !p.undone && now - (p.decidedAt ?? p.createdAt) < UNDO_MS);
-    return json({ open: all.filter((p) => p.state === "pending").map(viewOf), recent: [...newest, ...back].map(viewOf), allowed, later });
+    return json({ open: all.filter((p) => p.state === "pending").map(viewOf), recent: [...newest, ...back].map(viewOf), allowed, later, asking });
   }
 
   if (url.pathname === "/api/hub/proposals/allow") {

@@ -20,7 +20,7 @@ import { recordUsage } from "../routes/usage.ts";
 import { sharedBlock, type Origin, type SharedTurn } from "./shared.ts";
 import { stateStub } from "./state-client.ts";
 import { memoryFor, type MemoryStore } from "./memory.ts";
-import { bookOf, callerWho, OWNER } from "./context.ts";
+import { bookOf, callerWho, maySteer, OWNER } from "./context.ts";
 import { OFFER, OFFER_SAID_MS, OFFER_TOOLS, procedureOf, specialtyBlock, type Procedure, type Specialty } from "./specialties.ts";
 import { botAsks, botHides, type Skill } from "./skills.ts";
 import { askSkill } from "../tools/skills.ts";
@@ -30,7 +30,8 @@ import { episodeOfAnswer, episodeOfChain, pastBlock } from "./episodes.ts";
 import { localeOf } from "./locale.ts";
 import { allows, type Grant } from "./scopes.ts";
 import { DRAWS_ON_SCREEN } from "../tools/place.ts";
-import { isResearchCap, jobTool, readsOnly, type Reach } from "./jobs.ts";
+import { asksSaid, openQuestions } from "./job-tools.ts";
+import { isResearchCap, jobTool, readsOnly, type Job, type Reach } from "./jobs.ts";
 import { ACTS } from "./panel-tiles.ts";
 import { houseOnly, noteworthy } from "./habits.ts";
 import { Collector } from "./collector.ts";
@@ -50,23 +51,8 @@ import {
 } from "./router-model.ts";
 import { CHAT_INSTRUCTIONS, JOB_WORK, jobInstructions, outOfSteps, RESEARCH_INSTRUCTIONS, ROUTER_PROMPT, familyBlock, nowLine } from "./router-prompt.ts";
 
-/**
- * Escalating notes while a tool is still working.
- *
- * Split by pace. The slow ladder is written for Hermes, which genuinely runs for
- * minutes. Applying it to a one-second tool made Jarvis narrate a phantom wait
- * on the house every time he looked something up.
- */
-const WAITING_SLOW = [
-  { after: 12_000, say: "still waiting on home" },
-  { after: 35_000, say: "home is taking a while, still waiting" },
-  { after: 75_000, say: "still going — home has not answered yet" },
-  { after: 150_000, say: "this is taking unusually long; still holding on" },
-  { after: 240_000, say: "home is still thinking; say the user can ask you to drop it" },
-  { after: 360_000, say: "six minutes now with no answer from home" },
-];
-
-const WAITING_FAST = [
+/** Notes while a tool is still working. */
+const WAITING = [
   { after: 20_000, say: "still working on that" },
   { after: 60_000, say: "this is taking longer than it should" },
 ];
@@ -141,6 +127,8 @@ export interface RunOptions {
    * is never offered is left out (lib/skills.ts botHides).
    */
   bot?: string;
+  /** A question the user did not word: an MCP client's model (routes/v1.ts), a Home tile's sentence (routes/panels.ts). Nothing in it is passed on as theirs. */
+  relayed?: boolean;
   /** A background job's: what it may look at (lib/jobs.ts Reach). */
   reach?: Reach;
   /** A routine's own words, its maker's (routes/routines.ts): what it may keep from what it reads is judged by them. */
@@ -213,7 +201,7 @@ export async function prepareRouter(
   const parted = allows(grants, "components");
   // Nobody is there to ask or to answer: what a component's acting tools do then is the owner's choice (tools/components.ts).
   const unattended = opts.surface === "routine" || opts.surface === "job" || opts.surface === "research";
-  const [, mcp, chosen, shared, family, recalled, ready, said, around, parts] = await Promise.all([
+  const [, mcp, chosen, shared, family, recalled, ready, said, around, parts, asking] = await Promise.all([
     memory.load().catch((e) => {
       console.warn("memory unavailable:", e instanceof Error ? e.message : String(e));
     }),
@@ -231,7 +219,13 @@ export async function prepareRouter(
     since !== null ? (stateStub(env)?.conversationOf(env.JARVIS_PERSON || OWNER, Date.now()) ?? Promise.resolve([] as Said[])).catch(() => [] as Said[]) : Promise.resolve([] as Said[]),
     near ? aroundUser(env, grants, opts.waitUntil).catch(() => "") : Promise.resolve(""),
     parted ? (stateStub(env)?.componentsFor(env.JARVIS_PERSON || OWNER) ?? Promise.resolve([] as Offered[])).catch(() => [] as Offered[]) : Promise.resolve([] as Offered[]),
+    // What their jobs wait on them for, where the person asks and is answered alone (tools/jobs.ts job_control):
+    // not for a reading nobody pressed (lookUp), nor in the family room, where everyone reads the answer.
+    !unattended && !opts.bot && !opts.relayed && !opts.toolFilter && opts.assistAsk === undefined
+      ? (stateStub(env)?.jobsAsking(env.JARVIS_PERSON || OWNER) ?? Promise.resolve([] as Job[])).catch(() => [] as Job[])
+      : Promise.resolve([] as Job[]),
   ]);
+  const theirs = (asking ?? []).filter((j) => maySteer(j, env, grants));
   const earlier = since !== null ? earlierOnGlasses(said ?? [], since, Date.now(), localeOf(env).timeZone) : "";
   const elsewhere = [sharedBlock(shared, Date.now()), family].filter(Boolean).join("\n\n");
   tools.push(...mcp, ...askSkill(ready ?? []));
@@ -287,7 +281,7 @@ export async function prepareRouter(
       : "") +
     (opts.surface === "voice" ? spokenReplyInstructions(env.JARVIS_AGENT_NAME) : "") +
     (opts.openMic ? OVERHEARD_RULE : "") +
-    (opts.surface === "job" || opts.surface === "research" ? jobInstructions(opts.surface === "research" ? "web" : (opts.reach ?? "private")) : "") +
+    (opts.surface === "job" || opts.surface === "research" ? jobInstructions(opts.surface === "research" ? "web" : (opts.reach ?? "private"), opts.surface === "job") : "") +
     (opts.surface === "job" ? JOB_WORK : "") +
     (opts.surface === "research" ? RESEARCH_INSTRUCTIONS : "") +
     (opts.surface === "chat" ? CHAT_INSTRUCTIONS : "") +
@@ -360,6 +354,10 @@ export async function prepareRouter(
     ...(around ? [{ role: "user" as const, content: around }] : []),
     // What their components report, in the components' own words: quoted as data, like the rest.
     ...(reported ? [{ role: "user" as const, content: reported }] : []),
+    // What a job of theirs asks, in the job's own words, the same.
+    ...(theirs.length
+      ? [{ role: "user" as const, content: `A BACKGROUND JOB WAITS FOR THEIR ANSWER (job_control)\n${theirs.map((j) => asQuotedData("job question", `${j.title}: ${asksSaid(openQuestions(j.asked))}`, "A BACKGROUND JOB, FROM WHAT IT READ")).join("\n")}` }]
+      : []),
     { role: "user" as const, content: `Conversation so far:\n\n${conversation}` },
     ...(opts.images?.length || opts.files?.length
       ? [
@@ -382,17 +380,24 @@ export async function prepareRouter(
   return { model, instructions, input, tools, byName, memory, specialty: recalled?.specialty ?? null, procedure: recalled?.procedure ?? null, offerSaid: recalled?.offerSaid ?? 0 };
 }
 
+/** As much as a live voice says before it hands a question over. */
+const HANDING_OVER = 80;
+
 /**
  * What the person themselves said in their latest message, for what only they
  * may ask for (tools/specialties.ts): none in a routine, whose question its
  * maker set long ago and whose event carries others' words; in the family
  * room their own message, not the room around it (assistAsk); none from a
  * bot asking (bot), whose words are its own; and never an earlier answer
- * quoted in a reply (src/app/reply.ts).
+ * quoted in a reply (src/app/reply.ts). A live voice that says "One moment"
+ * before it hands over ends the conversation with that: what they said just
+ * before is still their latest.
  */
 export function ownWords(turns: Turn[], opts: Pick<RunOptions, "surface" | "assistAsk" | "bot">): string | undefined {
   if (opts.surface === "routine" || opts.bot) return undefined;
-  const said = opts.assistAsk ?? lastAsk(turns) ?? "";
+  const [before, last] = turns.slice(-2);
+  const handed = before?.role === "user" && last?.role === "assistant" && last.text.trim().length <= HANDING_OVER ? before.text : "";
+  const said = opts.assistAsk ?? lastAsk(turns) ?? handed;
   const reply = /^\(Replying to this answer of yours: "[\s\S]*?"\)\n/.exec(said);
   return (reply ? said.slice(reply[0].length) : said).trim() || undefined;
 }
@@ -641,7 +646,7 @@ export async function run(
     runCalls: async (calls) => {
       made.push(...calls.map((c) => ({ name: c.name, arguments: c.arguments })));
       const out = await runCalls(calls as OpenAI.Responses.ResponseFunctionToolCall[], p!.byName, {
-        env, signal, memory: p!.memory, grants, offered: p!.tools, asked: ownWords(turns, opts), screenless: opts.screenless === true,
+        env, signal, memory: p!.memory, grants, offered: p!.tools, asked: opts.relayed ? undefined : ownWords(turns, opts), screenless: opts.screenless === true,
         ...(opts.browserSites ? { browserSites: opts.browserSites } : {}),
         ...(p!.procedure && !repliesToEarlier(turns) ? { procedure: p!.procedure } : {}),
         ...(outside ? { outside: { said: ownPart(ownWords(turns, opts) ?? opts.standing ?? "") } } : {}),
@@ -807,13 +812,7 @@ export async function runCalls(
   );
 }
 
-/**
- * Run a tool, narrating the wait.
- *
- * Hermes has no timeout by design — a local model can take minutes, and the
- * instruction was that Jarvis waits rather than giving up. So the silence is
- * filled instead of cut short.
- */
+/** Run a tool, saying so when it is taking long: the silence is filled rather than cut short. */
 async function callTool(
   tool: Tool,
   rawArgs: string,
@@ -828,8 +827,7 @@ async function callTool(
   }
 
   const started = Date.now();
-  const ladder = tool.pace === "slow" ? WAITING_SLOW : WAITING_FAST;
-  const timers = ladder.map((w) =>
+  const timers = WAITING.map((w) =>
     setTimeout(() => {
       if (!sse.isClosed) ctx.progress(w.say);
     }, w.after),

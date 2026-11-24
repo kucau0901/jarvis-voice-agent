@@ -1,6 +1,6 @@
 import { JarvisSession, type ServerEvent, type SessionState } from "./session";
 import { loadKey, saveKey, clearKey, authHeaders, isSession } from "./key";
-import { History, alertHistory, isComponent, skillHistory } from "./history";
+import { History, alertHistory, askHistory, isComponent, skillHistory } from "./history";
 import { Settings } from "./ui/Settings";
 import { Devices } from "./ui/Devices";
 import { Memory } from "./ui/Memory";
@@ -30,7 +30,9 @@ import { takeShared } from "./share";
 import { keyboardSpace, watchKeyboard } from "./keyboard";
 import { Attachments, type Attached } from "./attach";
 import { Reply } from "./reply";
-import { fromJob, fromRoutine, fromSkill, jobStarted, jobsSeen, type JobSaid, type RoutineSaid, type SkillSaid } from "./fromRoutine";
+import { fromAsk, fromJob, fromRoutine, fromSkill, jobStarted, jobsSeen, type AskSaid, type JobSaid, type RoutineSaid, type SkillSaid } from "./fromRoutine";
+import { askOf, askSaid } from "./jobWords";
+import { askUnder } from "./ui/JobAsk";
 import { asked, clearKept, keep, kept, restore, saidId, type Rows } from "./conversation";
 import { inCar } from "./client";
 import { arm } from "./ui/util";
@@ -239,17 +241,8 @@ function tick() {
 }
 requestAnimationFrame(tick);
 
-/*
- * An answer that arrived after the session was let go.
- *
- * The voice session costs $0.05 a minute; the HTTP stream carrying the
- * delegation costs nothing. So when a tool is going to take minutes, the
- * session is dropped and the stream is kept — and whatever comes back waits
- * here until someone taps the orb, rather than being spoken to an empty car.
- */
+/** An answer that arrived while the session was down (a dead zone): said once it is back. */
 let heldAnswer: string | null = null;
-/** Set when the session was dropped to save money, so "closed" can say so. */
-let droppedForCost = false;
 
 function sayOrHold(text: string, id: string) {
   if (session) {
@@ -259,22 +252,6 @@ function sayOrHold(text: string, id: string) {
   heldAnswer = heldAnswer ? `${heldAnswer} ${text}` : text;
   history.add("assistant", text);
   status("answer ready — tap to hear");
-}
-
-/**
- * Let the session go while a slow tool runs, keeping the stream.
- *
- * Deliberately NOT `toggle()`, which aborts the delegation — that is what an
- * explicit end should do, and the exact opposite of what is wanted here.
- */
-function dropSessionKeepWaiting(why: string) {
-  if (!session) return;
-  logEvent({ type: "[cost.drop]", why });
-  userWantsSession = false;      // stop the reconnect loop from firing
-  droppedForCost = true;
-  clearTimeout(reconnectTimer);
-  clearTimeout(idleTimer);
-  session.stop(why);
 }
 
 /* ---------- event routing ----------------------------------------------- */
@@ -330,7 +307,6 @@ function onEvent(ev: ServerEvent) {
             stage ??= new Stage(key);
             void stage.show(payload as unknown as DisplayPayload);
           },
-          slow: (name) => dropSessionKeepWaiting(`${name} takes minutes; not paying to listen`),
           tool: (name, phase) => panelTool(name, phase),
           drafted: showDraft,
           address: showAddress,
@@ -413,17 +389,6 @@ function onState(s: SessionState, detail?: string) {
       thinking = false;
       stage?.hide();
       if (userWantsSession) break;   // a reconnect is already in flight
-      // "ended" would be a lie here: the question is still being worked on,
-      // the stream is still open, and the answer is coming.
-      // Not self-consuming: "closed" arrives more than once — the data
-      // channel and the peer connection each report it — and clearing the flag
-      // on the first would let the second overwrite the message with "ended".
-      // It is cleared when a session next starts instead.
-      if (droppedForCost) {
-        status(heldAnswer ? "answer ready — tap to hear" : "working on it — tap when ready");
-        setOrb();
-        break;
-      }
       status(detail && detail !== "stopped" ? `ended — ${detail}` : "tap to start");
       setOrb();
       break;
@@ -519,7 +484,6 @@ async function toggle() {
   }
   if (!key) { requireKey(); return; }
   userWantsSession = true;
-  droppedForCost = false;
   attempt = 0;
   const resume = history.snapshot();
   await openSession(resume.length ? resume : undefined);
@@ -596,9 +560,11 @@ function showAlert(a: Alert): HTMLElement {
   // A job's result can be a table or a list (ui/rich.ts): drawn as it is meant, from text nodes.
   const body = document.createElement("div");
   body.className = "atext";
-  body.appendChild(markdown(a.text, ""));
+  body.appendChild(markdown(a.ask ? askOf(a.text).question : a.text, ""));
   card.appendChild(head);
   card.appendChild(body);
+  // What a job asks: answered right here (ui/JobAsk.ts).
+  if (a.ask && key) card.appendChild(askUnder(key, a.ask, askOf(a.text).choices));
   // What a job proposed: Approve or Not now, right here (proposal.ts).
   if (a.proposals?.length && key) card.appendChild(proposalCards(key, a.proposals.map((p) => p.id)));
   // Passed on from someone in the family: answer it right here (relay.ts).
@@ -647,6 +613,17 @@ function jobSaid(a: JobSaid): boolean {
   return true;
 }
 
+/** What a job asks: its pill, its question, and its answer's buttons under it, as they now stand. */
+function jobAsked(a: AskSaid): boolean {
+  const label = fromAsk(a, openJob);
+  if (!label) return false;
+  els.transcript.appendChild(label);
+  const { question, choices } = askOf(a.text);
+  const row = addRow("jarvis", question);
+  if (key) (row.querySelector(":scope > .who + *") ?? row).appendChild(askUnder(key, a.ask, choices));
+  return true;
+}
+
 /**
  * What a skill said, an outside bot: its pill, then its words under its name, never as Jarvis's (fromRoutine.ts).
  * A component's report the same, its pill opening Components, and what it suggested as cards under its words.
@@ -668,17 +645,18 @@ function onAlert(a: Alert) {
   // anything else as "Title: text"; Settings → Test, which is kept nowhere, only while typing.
   if (a.routine) routineSaid({ ...a, routine: a.routine, proposals: a.proposals?.map((p) => p.id) });
   else if (a.job) jobSaid({ ...a, job: a.job, proposals: a.proposals?.map((p) => p.id) });
+  else if (a.ask) jobAsked({ ...a, ask: a.ask });
   else if (a.skill) skillSaid({ id: a.id, at: a.at, text: a.text, skill: a.skill, proposals: a.proposals?.map((p) => p.id) });
   else if (a.source !== "test" || mode === "type") addRow("jarvis", a.title !== "Jarvis" ? `${a.title}: ${a.text}` : a.text).dataset.said = a.id;
   // Into the conversation either way: "yes, do that" after Hermes asks a
   // question in an alert must have the question to refer to.
-  history.add("assistant", a.skill ? skillHistory(a.skill, a.text) : alertHistory(a.title, a.text, a.source));
+  history.add("assistant", a.skill ? skillHistory(a.skill, a.text) : a.ask ? askHistory(a.title, a.text) : alertHistory(a.title, a.text, a.source));
   // Said only when the server says to talk about it: their "Talk to me about alerts" (Family → You), and not a repeat.
   // One fetched from an older log has no `talk`: as it was, by `speak`.
   const talk = a.talk ?? a.speak;
   if (session?.live) {
     if (!talk) return;
-    session.commentary(a.title !== "Jarvis" ? `${a.title}: ${a.text}` : a.text);
+    session.commentary(a.ask ? askSaid(a.title, a.text) : a.title !== "Jarvis" ? `${a.title}: ${a.text}` : a.text);
     quiet.saidAt = performance.now(); // not closed before Jarvis gets to say it
     return;
   }
@@ -693,6 +671,7 @@ const chatRows: Rows = {
   row: (who, text, links, page) => addRow(who, text, "", links, page),
   routine: routineSaid,
   job: jobSaid,
+  ask: jobAsked,
   skill: skillSaid,
   apart: (p) => showCard(pageCard(key, p)),
 };
@@ -875,9 +854,10 @@ async function putAside(): Promise<void> {
   key = "";
   home?.forget();
   home = null;
-  // Nothing of theirs waits in the message box or the chat for the next person.
+  // Nothing of theirs waits in the message box, the chat or an alert still up for the next person.
   attachments.clear();
   forgetChat();
+  alertsBox.replaceChildren();
   document.body.classList.remove("home");
   markTabs();
   $("menuBtn").textContent = $("hubAvatar").textContent = $("hubName").textContent = "";
@@ -1795,7 +1775,7 @@ declare global {
       send(ev: Record<string, unknown>): boolean;
       history(): { role: string; text: string }[];
       simulateDrop(): void;
-      /** Park an answer as if a slow tool had returned while the session was down. */
+      /** Hold an answer as if it had come while the session was down. */
       hold(text: string): void;
       orb(): { tier: number; detail: number } | null;
       orbForce(v: { user?: number; agent?: number; think?: number; error?: number } | null): void;
@@ -1814,11 +1794,8 @@ window.__jarvis = {
   events: () => Object.fromEntries([...counts.entries()].sort((a, b) => b[1] - a[1])),
   stop: () => { userWantsSession = false; session?.stop("debug stop"); },
   simulateDrop: () => session?.simulateDrop(),
-  // Verifying the held-answer path otherwise means waiting out a real
-  // three-minute Hermes call, which is a poor way to test one line.
   hold: (text: string) => {
     heldAnswer = text;
-    droppedForCost = true;
     status("answer ready — tap to hear");
   },
   orb: () => orb?.quality ?? null,

@@ -248,6 +248,7 @@ export function requiredScope(pathname: string, method: string): RouteRequiremen
     case "/api/v1/jobs/cancel":
     case "/api/v1/jobs/key":
     case "/api/v1/jobs/card":
+    case "/api/v1/jobs/tell":
     case "/api/v1/jobs/csv":
       return "ask";
 

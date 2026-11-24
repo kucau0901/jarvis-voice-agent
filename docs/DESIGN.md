@@ -1419,7 +1419,7 @@ their merge is that last call already.
 
 **A job's card is its person's, its checklist its own.** A job of any size first
 calls `job_plan` (`lib/job-tools.ts`): what they will have, the limits it keeps
-to, what it assumes since nobody can be asked, and a short checklist; it then
+to, what it assumes without asking, and a short checklist; it then
 ticks lines as it goes with `job_tick`. Both are kept while the step runs (`say`,
 `Jobs.note`), not when it ends: on the plan a step streams for minutes, and
 somebody may be watching. There is no approval and no step editor. It starts at
@@ -1438,6 +1438,58 @@ what it was handed. It is drawn in Jobs and under the job's pill in Chat
 (`ui/JobLive.ts`), which asks the server every four seconds, only while the page
 is seen and the job works. A Chat screen that asked through a device's token is
 not shown the job its person started, so its pill is as it was.
+
+**A job asks, and is told; an answer is only ever its person's.** What only they
+can settle and would change the result (which of two, how much, for whom) a job
+asks with `ask_person`, three times at most, with choices where there are a few.
+They are told at once, by an alert that carries `ask` and not `job`: it is not the
+result, and the job's pill in the conversation stays at work. The job goes on with
+whatever does not depend on it. With nothing left to do, it gives its answer so far
+and waits (`Job.waits`), nothing asked of any model meanwhile: a day, which is not
+its time, and it is not one of the three running. Answered, it goes on with their
+words, named by the question's number, since the question itself was the job's and
+may have come from a page it read. Gone on without, or a day gone by, it is told
+that as Jarvis (a developer message), never as them, and to say what it leaves
+open: nothing is assumed for them. They may also tell it anything at any time
+(`Jobs.tell`), which joins at its next step, as a change to its card does; what it
+may reach is by what it is handed, so no words of theirs widen it. What they said
+before it ran out of its budget it has with being told to write what it has; after
+that it is refused, rather than taken and lost. One answer is to one question:
+"RM500" said to the first is not the second's as well. A question that asks for a
+password, a code or a card is not put to them, whatever a page wanted; and what they
+type that looks like a card's number, a key or a one-time code is not passed on.
+
+**A question is the job's words, and never Jarvis's.** It may be a page's, read out:
+"Shall I unlock the car for the courier?" A result read as Jarvis's is only wrong;
+a question invites a yes. So the conversation holds it as what a background job
+asks, quoted on one line, with a yes to it an answer to that job and no more
+(`askHistory` in `src/app/history.ts`); said aloud it begins with whose it is; its
+links are shown by their addresses. A question is one card
+(`ui/JobAsk.ts`) wherever it is met: under its alert, in the conversation, in Jobs
+and in Home's Now strip, with its choices as buttons and a box for other words.
+There is no inbox of them. Each is drawn from the job as it stands, and an open one
+is looked at again while the page is seen (every 8 seconds, after ten minutes every
+minute), so one answered by voice, in words or on another screen says what came of
+it; one answered by a tap says so on every card here at once. What they told a job is listed in Jobs with whether it
+was taken in, waits for the next step, or came too late; a job on the web says
+that an answer may go out in the words of a search.
+
+In the conversation, by voice, on the phone or by Telegram it is `job_control`
+(`tools/jobs.ts`): a change, an answer, a stop. It takes no words: the job is told
+their latest message as they said it (`ownWords`, less anything quoted in it), so
+the model cannot put any in their mouth, and in a routine, for a bot, an MCP client
+or a Home tile's sentence, where they said nothing, it refuses. What their jobs wait
+on is said with each question they ask, quoted as the job's words, and only where
+there is any: not in the family room, whose answer everyone reads, nor for a tile's
+reading, nor on a device that reaches less than the job works with (`maySteer`).
+It is looked for with every question, so by a small index (`jobs:asks`), not by
+listing the jobs with their results. A model calls a job by what it was about ("the
+power bank comparison") and not by its title, so it is found by most of its words;
+an answer, where only one question waits, whatever it is called by, and a change or
+a stop only by more than a third of them, since neither is given to whatever is there.
+It took `control_home`'s place among the tools: that one, changing the house
+through Hermes, was a last resort of one to four minutes that a live voice session
+was let go for, and Home Assistant does what it did.
 
 **A result says first what it lacks.** A confident report hides its holes, and
 nobody watched it being made. So an answer begins with its summary, then what was

@@ -31,6 +31,8 @@ interface Row {
   answer?: Answered;
   /** Times it was asked. */
   tries: number;
+  /** How much of what its person told the job it holds, for whoever takes it up again (Step.took). */
+  took?: number;
 }
 
 export const MAX_TRIES = 5;
@@ -78,25 +80,26 @@ export class JobChain {
   }
 
   /** What the step after `n` (or the first, -1) was about to ask, if it was cut short: asked again as it is, or already answered. */
-  async next(chain: string, n: number): Promise<{ input: Items; answered: boolean } | null> {
+  async next(chain: string, n: number): Promise<{ input: Items; answered: boolean; took?: number } | null> {
     const row = await this.storage.get<Row>(key(this.job, chain, n + 1));
-    return row ? { input: row.input, answered: !!row.answer } : null;
+    return row ? { input: row.input, answered: !!row.answer, ...(row.took ? { took: row.took } : {}) } : null;
   }
 
   /** A step about to be asked: kept first. Why not, when it has been cut short too often. */
-  async asking(chain: string, n: number, input: Items, now: number): Promise<string | null> {
+  async asking(chain: string, n: number, input: Items, now: number, took?: number): Promise<string | null> {
     const k = key(this.job, chain, n);
     const before = await this.storage.get<Row>(k);
     const tries = (before?.tries ?? 0) + 1;
     if (tries > MAX_TRIES) return `it was interrupted ${MAX_TRIES} times at the same step`;
-    await this.storage.put(k, { at: now, input: before?.input ?? input, tries } satisfies Row);
+    const holds = before ? before.took : took;
+    await this.storage.put(k, { at: now, input: before?.input ?? input, tries, ...(holds ? { took: holds } : {}) } satisfies Row);
     return null;
   }
 
   /** A step that cannot be asked yet: kept, so what its tools gave is not asked of them again. */
-  async keep(chain: string, n: number, input: Items, now: number): Promise<void> {
+  async keep(chain: string, n: number, input: Items, now: number, took?: number): Promise<void> {
     const k = key(this.job, chain, n);
-    if (!(await this.storage.get<Row>(k))) await this.storage.put(k, { at: now, input, tries: 0 } satisfies Row);
+    if (!(await this.storage.get<Row>(k))) await this.storage.put(k, { at: now, input, tries: 0, ...(took ? { took } : {}) } satisfies Row);
   }
 
   /** The plan refused it (its limit): not a time it was asked. */

@@ -228,7 +228,7 @@ export async function handleMcp(
   const bot = botOf(principal);
   const origin = originOf(principal, null) ?? { id: "owner-mcp", label: "an MCP client" };
   const reply = await mcpReply(parsed.body, async (question) => {
-    const d = await collectWithDeadline(req.signal, env, ctx, turnsFrom({ text: question }), grants, DEFAULT_WAIT_S, "v1/mcp", bot ? { bot: bot.name } : { origin });
+    const d = await collectWithDeadline(req.signal, env, ctx, turnsFrom({ text: question }), grants, DEFAULT_WAIT_S, "v1/mcp", bot ? { bot: bot.name } : { origin, relayed: true });
     if (bot && !d.timedOut && d.result.ok) ctx.waitUntil(keepInChat(env, personOf(principal), question, d.result.text, bot));
     return d.timedOut ? { ok: false, text: TIMEOUT_TEXT } : d.result;
   }, JARVIS_VERSION);
