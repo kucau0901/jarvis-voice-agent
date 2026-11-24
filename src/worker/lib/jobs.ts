@@ -8,7 +8,8 @@ import { tidy } from "./quote.ts";
 import { costOf, type UsageEntry } from "./usage.ts";
 import { clearChain } from "./job-chain.ts";
 import { outOf, type Limits } from "./job-guards.ts";
-import { MAX_TOLD, changeCard, doneLines, type JobCard, type Said, type Todo, type Told } from "./job-tools.ts";
+import { MAX_TOLD, changeCard, doneLines, openLines, type JobCard, type Said, type Todo, type Told } from "./job-tools.ts";
+import { flagLines, flagsOf, type Flags } from "./job-results.ts";
 
 /**
  * Background jobs: things that take minutes, answered later.
@@ -91,6 +92,9 @@ export interface Job {
   summary?: string;
   /** The whole result. */
   result?: string;
+  /** What it could not do, and what it took for granted (lib/job-results.ts): said before the result. */
+  missing?: string[];
+  assumed?: string[];
   error?: string;
   deliveredBy?: string | null;
   /** Tokens over every step, and the model that spent them, for Settings → Usage. */
@@ -136,6 +140,13 @@ export interface Job {
   told?: Told[];
   /** Asked once already to finish its checklist. */
   nudged?: true;
+}
+
+/** What an answer is missing and assumes: its own words, and its checklist's and card's where it gave none. A line left open is missing whatever it said. */
+function flagged(j: Job, f: Flags): Flags {
+  const open = openLines(j.todo).map((t) => t.text);
+  const dropped = (j.todo ?? []).flatMap((t) => (t.state === "dropped" ? [`${t.text}${t.why ? `: ${t.why}` : ""}`] : []));
+  return { missing: [...(f.missing.length ? f.missing : dropped), ...open], assumed: f.assumed.length ? f.assumed : (j.card?.assumptions ?? []) };
 }
 
 /** What is kept while a step runs (note), not by whoever is looking at the job: never saved over by a record read before it. */
@@ -1138,7 +1149,20 @@ export class Jobs {
     }
     let alert: Alert;
     if ("text" in out && out.text.trim()) {
-      const { summary, result, whole } = splitResult(out.text);
+      const split = splitResult(out.text);
+      const { summary } = split;
+      let { result, whole } = split;
+      let said = "";
+      if (done.engine === "jarvis") {
+        const f = flagsOf(result === summary ? "" : result);
+        const all = flagged(done, f);
+        if (all.missing.length) done.missing = all.missing;
+        if (all.assumed.length) done.assumed = all.assumed;
+        // Three of each in a message; all of them in Jobs. With no SUMMARY line the result begins with its summary already.
+        said = flagLines(all, 3);
+        whole = (whole === result && f.rest ? [said, f.rest] : [summary, said, f.rest]).filter(Boolean).join("\n\n");
+        result = f.rest || summary;
+      }
       // Out of its budget, what it wrote is what it had: part done, and never called done.
       const short = done.cut?.sent ? done.cut.why : null;
       done.status = short ? "failed" : "done";
@@ -1149,7 +1173,7 @@ export class Jobs {
         ...makeAlert(
           {
             title: short ? `Part done: ${j.title}` : j.engine === "hermes" ? "Hermes answered" : j.engine === "research" ? `Research done: ${j.title}` : `Done: ${j.title}`,
-            text: whole.length <= ALERT_WHOLE ? whole : `${summary}\n\nThe full result is in Jobs.`,
+            text: whole.length <= ALERT_WHOLE ? whole : [summary, said, "The full result is in Jobs."].filter(Boolean).join("\n\n"),
           },
           "job",
           now,

@@ -2,7 +2,8 @@ import type OpenAI from "openai";
 import type { Storage } from "./state-host.ts";
 import type { Tool } from "../tools/registry.ts";
 import { jobRows } from "./job-chain.ts";
-import { asQuotedData, unquoted } from "./quote.ts";
+import { linksIn, searchedIn } from "./links.ts";
+import { asQuotedData, tidy, unquoted } from "./quote.ts";
 
 /**
  * A tool's long answer, in a job. A job sends its whole exchange at every step,
@@ -102,4 +103,48 @@ export function readResult(kept: Storage | undefined, job: string): Tool {
       return `Result ${n}, characters ${chars(from)} to ${chars(to)} of ${chars(text.length)}.\n${asQuotedData(`result ${n}`, text.slice(from, to), WRITER)}`;
     },
   };
+}
+
+/* ---------- what its answer says is missing or assumed ------------------------- */
+
+const MAX_FLAGS = 6;
+const FLAG = /^[\s*_-]*(MISSING|ASSUMED)[\s*_]*:[\s*_]*(.+?)[\s*_]*$/i;
+
+/** What a job could not do, and what it took for granted: said first, before its result. */
+export interface Flags {
+  missing: string[];
+  assumed: string[];
+}
+
+/** The MISSING: and ASSUMED: lines an answer begins with (JOB_WORK), and the rest of it. */
+export function flagsOf(text: string): Flags & { rest: string } {
+  const out: Flags = { missing: [], assumed: [] };
+  const lines = text.split("\n");
+  let i = 0;
+  for (; i < lines.length; i++) {
+    const m = FLAG.exec(lines[i]!);
+    if (m) (m[1]!.toUpperCase() === "MISSING" ? out.missing : out.assumed).push(tidy(m[2]!).slice(0, 240));
+    else if (lines[i]!.trim()) break;
+  }
+  return { missing: out.missing.slice(0, MAX_FLAGS), assumed: out.assumed.slice(0, MAX_FLAGS), rest: lines.slice(i).join("\n").trim() };
+}
+
+/** The same as words, for a message or a model: at most `most` of each. */
+export function flagLines(f: Partial<Flags>, most = MAX_FLAGS): string {
+  const part = (head: string, all: readonly string[] | undefined) =>
+    all?.length ? `${head}:\n${all.slice(0, most).map((x) => `- ${x}`).join("\n")}${all.length > most ? "\n- …" : ""}` : "";
+  return [part("Not done", f.missing), part("Assumed", f.assumed)].filter(Boolean).join("\n\n");
+}
+
+/* ---------- the addresses a job has seen --------------------------------------- */
+
+const linksKey = (job: string) => `${jobRows(job)}links`;
+const MAX_LINKS = 1_000;
+
+/** Addresses in what a step read: its tools' answers, the pages its searches opened, gave or cited. */
+export async function noteLinks(kept: Storage, job: string, output: readonly unknown[], texts: readonly string[]): Promise<Set<string>> {
+  const was = (await kept.get<string[]>(linksKey(job))) ?? [];
+  const all = new Set([...was, ...searchedIn(output), ...texts.flatMap(linksIn)]);
+  if (all.size > was.length) await kept.put(linksKey(job), [...all].slice(0, MAX_LINKS));
+  return all;
 }

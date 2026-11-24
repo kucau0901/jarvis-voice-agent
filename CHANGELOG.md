@@ -139,6 +139,11 @@ of every release, and in the [README](README.md#updating).
   checklist is the job's own, so a small job has none. For devices:
   `POST /api/v1/jobs/card`, and new fields in `/api/v1/jobs` (`docs/api.md`).
 
+- **A job's result says first what it could not do**, and what it took for
+  granted: in the alert, in **Jobs** and when you ask about it. A link in it
+  that the job never opened or was shown is marked "(not checked)", and Jobs
+  shows where each link really goes.
+
 - **Thorough background jobs.** For work with many things to weigh together, a
   job may use the stronger model research uses, when you ask for it ("look into
   this thoroughly") or tick it in **New job**. Costs several times an ordinary

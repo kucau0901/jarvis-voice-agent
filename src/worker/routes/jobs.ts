@@ -13,10 +13,10 @@ import { toToolSchema, type Tool } from "../tools/registry.ts";
 import * as hermes from "../tools/hermes.ts";
 import { INTERRUPTED, JobChain, beginCalls, stepId, stepOf, type Answered } from "../lib/job-chain.ts";
 import { NOT_RUN, runGuarded } from "../lib/job-guards.ts";
-import { readResult } from "../lib/job-results.ts";
+import { noteLinks, readResult } from "../lib/job-results.ts";
 import { openLines, unfinished, untold, workTools, type Said } from "../lib/job-tools.ts";
 import { RESEARCH_MONTHLY_DEFAULT, jobTool, limitsOf, reachOf, webTool, sharesLeft, usageEntry, type Job, type JobDeps, type Step } from "../lib/jobs.ts";
-import { citationsOf } from "../lib/links.ts";
+import { citationsOf, markUnseen } from "../lib/links.ts";
 import { toCsv } from "../lib/research-table.ts";
 import { MERGE_INSTRUCTIONS, PLAN_INSTRUCTIONS, RESEARCH_CHECK, TABLE_CHECK, TABLE_MERGE_INSTRUCTIONS, TABLE_PLAN_INSTRUCTIONS, TABLE_TEAM_INSTRUCTIONS, TEAM_INSTRUCTIONS, wrapUp } from "../lib/router-prompt.ts";
 import { SHARE, angleMessage, mergeMaterial, shareReply, shareTool, teamView } from "../lib/research-team.ts";
@@ -362,7 +362,8 @@ export function jobEngine(
         throw e;
       };
       // An ordinary job's own: what its person told it since, and its checklist.
-      const works = t === undefined && job.engine === "jarvis" && !job.cut;
+      const ordinary = t === undefined && job.engine === "jarvis";
+      const works = ordinary && !job.cut;
       const told = works ? untold(job) : [];
       const took = told.length ? { took: job.told!.length } : {};
       if (!calls.length) {
@@ -376,8 +377,10 @@ export function jobEngine(
           const next = (await (onPlan ? pickUp(req, { after: id }) : Promise.resolve(null)).then((p) => p ?? send(req, added, { after: id })).catch(parked));
           return "kind" in next ? next : { kind: "continued", responseId: next.responseId, usage, ...took, ...(nudge ? { nudged: true as const } : {}) };
         }
+        // An address it never saw is said to be unchecked; its brief and what it was told count as seen.
+        const seen = kept && ordinary ? await noteLinks(kept, job.id, r.output, [job.task, ...(job.told ?? []).map((x) => x.text)]) : null;
         // Research lists them (lib/jobs.ts withSources), after its check.
-        return { kind: "done", text, cited: citationsOf(r.output), usage };
+        return { kind: "done", text: seen ? markUnseen(text, seen) : text, cited: citationsOf(r.output), usage };
       }
       // The tools it asked for run here, between steps; then the next step starts.
       const req = await request(job, [], t !== undefined, stop, say);
@@ -403,6 +406,7 @@ export function jobEngine(
       // An ordinary job's: kept from going round in a circle (lib/job-guards.ts), and its long answers cut (lib/job-results.ts).
       const guarded = kept && job.engine === "jarvis" ? await runGuarded(kept, job.id, fresh, runThem) : null;
       const ran = guarded?.outputs ?? (await runThem(fresh));
+      if (guarded && kept) await noteLinks(kept, job.id, r.output, ran.map((o) => ("output" in o && typeof o.output === "string" ? o.output : "")));
       const outputs: OpenAI.Responses.ResponseInput = [...ran, ...[...begun].map((call_id) => ({ type: "function_call_output" as const, call_id, output: INTERRUPTED }))];
       await p.memory.save().catch(() => {});
       await say?.({ doing: [] });

@@ -414,7 +414,10 @@ export const JOB_WORK =
   "Do the work rather than describe how it could be done. When a search or a tool gives nothing, try " +
   "other words, another source or a narrower question before giving up on it. Take figures, dates, " +
   "prices and names from what you read, never from memory; what you could not find, say you could not " +
-  "find. Before you answer, read the task again and see that every part of it is answered.";
+  "find. Give a link only to a page you opened or a search showed you. Before you answer, read the task " +
+  "again and see that every part of it is answered.\n" +
+  "After the SUMMARY line put, each on a line of its own and only where there is any: MISSING: what was " +
+  "asked for and you did not get or could not check; ASSUMED: what you took for granted.";
 
 /**
  * The last turn of a job out of its budget (lib/job-guards.ts outOf): no tools,

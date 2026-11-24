@@ -43,7 +43,8 @@ import type { UsageEntry } from "../src/worker/lib/usage.ts";
 import { MAX_TRIES, beginCalls } from "../src/worker/lib/job-chain.ts";
 import { changeCard, untold, unfinished, workTools, type JobCard, type Said, type Todo } from "../src/worker/lib/job-tools.ts";
 import { GOING_STEPS, KEY_DOLLARS, MAX_SEARCHES, NOTE_AT, NOT_RUN, REFUSE_AT, STUCK_AT, runGuarded } from "../src/worker/lib/job-guards.ts";
-import { RESULT_KEPT, RESULT_MAX, capResults, readResult } from "../src/worker/lib/job-results.ts";
+import { RESULT_KEPT, RESULT_MAX, capResults, flagLines, flagsOf, noteLinks, readResult } from "../src/worker/lib/job-results.ts";
+import { linksIn, markUnseen, searchedIn } from "../src/worker/lib/links.ts";
 import { asQuotedData } from "../src/worker/lib/quote.ts";
 import { HERMES_LONG_WORK, handleJobs, jobEngine, jobView } from "../src/worker/routes/jobs.ts";
 import { MERGE_INSTRUCTIONS, PLAN_INSTRUCTIONS, RESEARCH_CHECK, TEAM_INSTRUCTIONS, wrapUp } from "../src/worker/lib/router-prompt.ts";
@@ -501,6 +502,49 @@ console.log("\nthorough: the stronger model, for hard work");
   const say = async (grants: string[]) => String(await tool.run({ title: "x", task: "x", reach: "web", mode: "thorough", research: "no" }, { env: { STATE: { idFromName: () => "j", get: () => stub } }, grants } as never));
   check("start_job: the family's is thorough, and says it takes longer", /stronger model/.test(await say(["ask", "routines"])) && made[0]!.mode === "thorough");
   check("a guest's is ordinary", !/stronger/.test(await say(["ask"])) && !("mode" in made[1]!));
+}
+
+console.log("\nwhat a result is missing, and rests on, comes first");
+{
+  const f = flagsOf("MISSING: the price in Johor: no shop lists it\n- **ASSUMED:** a sedan\n\nmissing: what owners say\n\nThe three\nMISSING: is a word in the text too");
+  check("the lines it begins with, however it wrote them; the rest is the result", f.missing.join("|") === "the price in Johor: no shop lists it|what owners say" && f.assumed.join() === "a sedan" && f.rest === "The three\nMISSING: is a word in the text too", f);
+  check("none: the result as it was", flagsOf("Just the result.\nMISSING: later").rest === "Just the result.\nMISSING: later" && flagsOf("Just the result.").missing.length === 0);
+  check("as words: what is missing, then what is assumed, a few of each in a message", flagLines({ missing: ["a", "b", "c", "d"], assumed: ["e"] }, 3) === "Not done:\n- a\n- b\n- c\n- …\n\nAssumed:\n- e" && flagLines({}) === "", flagLines({ missing: ["a", "b", "c", "d"], assumed: ["e"] }, 3));
+
+  const of = async (text: string, more: Partial<Job> = {}) => {
+    const h = harness([{ kind: "done", text }]);
+    const j = (await h.jobs.create({ title: "T", task: "x" }, BY, T0)) as Job;
+    await h.storage.put(`job:${j.id}`, { ...j, ...more });
+    return { job: await drive(h, j.id), sent: h.sent[0]! };
+  };
+  const a = await of("SUMMARY: The A229.\nMISSING: owners after a year\nASSUMED: a sedan\n\nThe three compared.");
+  check("kept apart, and said before the result", a.job.missing?.join() === "owners after a year" && a.job.assumed?.join() === "a sedan" && a.job.result === "The three compared." && a.sent.text === "The A229.\n\nNot done:\n- owners after a year\n\nAssumed:\n- a sedan\n\nThe three compared.", a);
+  check("…in a long one's message too, with where to read the rest", (await of(`SUMMARY: The A229.\nMISSING: owners\n\n${"Details. ".repeat(200)}`)).sent.text === "The A229.\n\nNot done:\n- owners\n\nThe full result is in Jobs.");
+  const todo: Todo[] = [{ text: "Find", state: "done" }, { text: "Warranty", state: "open" }, { text: "Owners", state: "dropped", why: "none yet" }];
+  const card = { outcome: "x", limits: [], assumptions: ["a sedan"] };
+  const b = await of("SUMMARY: The A229.\n\nThe three.", { todo, card, nudged: true });
+  check("it named none: its checklist's lines not done, and its card's assumptions", b.job.missing?.join("|") === "Owners: none yet|Warranty" && b.job.assumed?.join() === "a sedan", b.job);
+  const c = await of("SUMMARY: The A229.\nMISSING: owners' views\n\nThe three.", { todo, card, nudged: true });
+  check("it named some: those, and whatever line is still open, whatever it says", c.job.missing?.join("|") === "owners' views|Warranty", c.job.missing);
+  check("nothing missing, nothing assumed: as before", (await of("SUMMARY: Done.\n\nAll of it.")).sent.text === "Done.\n\nAll of it." && (await of("SUMMARY: Done.")).sent.text === "Done." && (await of("Two sentences. Here.\nAnd more.")).sent.text === "Two sentences. Here.\nAnd more.");
+  check("a summary alone, with something missing", (await of("SUMMARY: Done.", { todo: [{ text: "Warranty", state: "open" }], nudged: true })).sent.text === "Done.\n\nNot done:\n- Warranty");
+
+  // Which of its links it saw.
+  check("an address, as compared: no tracking tags, no www, no trailing slash or full stop", linksIn("See https://www.shop.example/a229/?utm_source=x. And (http://b.example/x?b=2&a=1).").join(" ") === "shop.example/a229 b.example/x?a=1&b=2", linksIn("See https://www.shop.example/a229/?utm_source=x. And (http://b.example/x?b=2&a=1)."));
+  const output = [
+    { type: "web_search_call", action: { type: "open_page", url: "https://opened.example/page" } },
+    { type: "web_search_call", action: { type: "search", sources: [{ type: "url", url: "https://given.example/" }] } },
+    { type: "message", content: [{ type: "output_text", text: "x", annotations: [{ type: "url_citation", url: "https://cited.example/p?id=7&utm_source=openai" }] }] },
+  ];
+  check("a step's own searches: opened, given, cited", searchedIn(output).join(" ") === "opened.example/page given.example cited.example/p?id=7", searchedIn(output));
+  const kept = fakeStorage();
+  await noteLinks(kept as never, "jl", output, []);
+  const seen = await noteLinks(kept as never, "jl", [], ["Mail: https://mail.example/inv?n=4471", "no links here"]);
+  check("kept through the job, with what its tools gave", seen.size === 4 && [...kept._m.keys()].join() === "jobitem:jl:links", [...seen]);
+  const marked = markUnseen("Buy [it](https://opened.example/page), or at https://cited.example/p?id=7. Also https://guess.example/deal, [this](https://bad.example/x?d=secret) and https://mail.example/inv.", seen);
+  check("an address it never saw is said to be unchecked; one it saw is left as it is",
+    marked === "Buy [it](https://opened.example/page), or at https://cited.example/p?id=7. Also https://guess.example/deal (not checked), [this](https://bad.example/x?d=secret) (not checked) and https://mail.example/inv.", marked);
+  check("a page it saw, asked with words of its own in the address, is not that page", markUnseen("https://mail.example/inv?n=9999", seen).endsWith("(not checked)") && markUnseen("https://opened.example/page?d=my+address", seen).endsWith("(not checked)"));
 }
 
 console.log("\ngoing round in a circle");
@@ -2039,6 +2083,18 @@ console.log("\njobs on the owner's ChatGPT plan (routes/jobs.ts): streamed here,
     answers.push(says("SUMMARY: Under RM500."));
     const later = await engine.poll({ ...jt2, told: [{ at: T0, text: "A limit: under RM500" }], responseId: "plan_m.0" });
     check("an answer given before it heard them is not the end: it goes on, with them", later.kind === "continued" && later.took === 1 && JSON.stringify(sent.at(-1)!.body.input).includes("Too soon.") && sent.at(-1)!.body.input.at(-1)!.role === "user", later);
+    // The addresses in its answer: what its tools gave, its brief and its own searches are on record.
+    const jlink = { ...job, id: "jlink", task: "Compare https://brief.example/a with others." } as Job;
+    answers.push([{ ...tool, call_id: "call_l", name: "recall", arguments: JSON.stringify({ query: "x" }) }]);
+    await engine.start(jlink);
+    answers.push([
+      { type: "web_search_call", id: "ws", status: "completed", action: { type: "open_page", url: "https://opened.example/" } },
+      ...says("SUMMARY: See https://opened.example and https://brief.example/a, or https://made.up.example/x."),
+    ]);
+    await engine.poll({ ...jlink, responseId: "plan_m.0" });
+    const linked = await engine.poll({ ...jlink, responseId: "plan_m.1" });
+    check("its answer's links: those it saw as they are, one it did not said to be unchecked",
+      linked.kind === "done" && linked.text === "SUMMARY: See https://opened.example and https://brief.example/a, or https://made.up.example/x (not checked).", linked);
     // Its checklist unfinished: asked once to finish it.
     const open: Todo[] = [{ text: "Find three", state: "done" }, { text: "Check the prices", state: "doing" }];
     const jn2 = { ...job, id: "jnudge", todo: open, card: { outcome: "x", limits: [], assumptions: [] } } as Job;

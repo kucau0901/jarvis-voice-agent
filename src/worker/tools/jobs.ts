@@ -2,6 +2,7 @@ import type { Tool } from "./registry.ts";
 import { stateStub } from "../lib/state-client.ts";
 import { callerWho, mayWork } from "../lib/context.ts";
 import { wordsOf, type Job } from "../lib/jobs.ts";
+import { flagLines } from "../lib/job-results.ts";
 import { asQuotedData } from "../lib/quote.ts";
 import { allows } from "../lib/scopes.ts";
 import { clampLimit } from "./args.ts";
@@ -97,7 +98,7 @@ const WRITER = { hermes: "HERMES", research: "A RESEARCH JOB, FROM THE WEB", jar
 
 /** Summary and result as one text, without the summary twice where the result begins with it. */
 const textOf = (j: Job): string => {
-  const r = j.result ?? "";
+  const r = [flagLines(j), j.result ?? ""].filter(Boolean).join("\n\n");
   const s = j.summary ?? "";
   return !s || r.replace(/\s+/g, " ").startsWith(s) ? r || s : `${s}\n\n${r}`;
 };

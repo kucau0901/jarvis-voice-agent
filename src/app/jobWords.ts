@@ -32,6 +32,9 @@ export interface JobView {
   result?: string;
   hasResult?: boolean;
   error?: string;
+  /** What it could not do, and what it took for granted. */
+  missing?: string[];
+  assumed?: string[];
   deliveredBy?: string | null;
   /** Dollars so far, at OpenAI's prices; null when the model has no listed price. */
   cost?: number | null;

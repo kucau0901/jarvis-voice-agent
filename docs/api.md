@@ -633,6 +633,11 @@ assumptions?}` changes the card of one still working (each list is given whole);
 what was changed reaches the job at its next step, and `told: [{at, text,
 taken?}]` says which changes it has had.
 
+Its answer carries `missing`, what was asked for and not got, and `assumed`,
+what was taken for granted: a list each, absent when there is nothing. They are
+not in `result`, and come before it in the alert. An address in the answer that
+it never read is followed by "(not checked)".
+
 At most three run at once for a person and six in the house, besides questions
 for Hermes. On the owner's ChatGPT plan, one person's jobs may use five million
 tokens of it a day. At the plan's limit a job waits and goes on by itself when the

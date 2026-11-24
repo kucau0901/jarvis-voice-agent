@@ -1423,6 +1423,21 @@ what it was handed. It is drawn in Jobs and under the job's pill in Chat
 is seen and the job works. A Chat screen that asked through a device's token is
 not shown the job its person started, so its pill is as it was.
 
+**A result says first what it lacks.** A confident report hides its holes, and
+nobody watched it being made. So an answer begins with its summary, then what was
+asked for and not got (`MISSING:`) and what was taken for granted (`ASSUMED:`),
+kept apart from the result (`flagsOf` in `lib/job-results.ts`) and shown before it
+in Jobs, the alert and whatever reads it back. Code does not leave this to the
+model: a checklist line neither done nor dropped is missing whatever the answer
+says, and with no word of its own, the lines it dropped and the card's assumptions
+are. An address in the answer that was on nothing the job read (`markUnseen` in
+`lib/links.ts`: its tools' answers, the pages its searches opened, gave or cited,
+its brief) is followed by "(not checked)". One with no query is on record with any
+address of that page; one with a query only as it was seen, since a query can
+carry anything. Jobs shows the whole address beside a link's words, so a name
+does not stand for somewhere else; a research report's are its searches' own
+citations, listed at its end, and stay as they were.
+
 **The stronger model only for hard work.** An ordinary job runs on the router's
 model; a thorough one (`mode`) on research's, thinking hard, when somebody asked
 for it or the work is many things to weigh together. It costs many times as much,

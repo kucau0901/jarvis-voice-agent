@@ -260,6 +260,9 @@ export class Jobs {
 
     if (j.summary) row.appendChild(el("div", "rwhen", j.summary));
     if (j.error) row.appendChild(el("div", "rfacts bad", j.error));
+    // Before the result, not after it: what it does not have, and what it rests on.
+    if (j.missing?.length) row.appendChild(flags("Not done", j.missing));
+    if (j.assumed?.length) row.appendChild(flags("Assumed", j.assumed));
 
     const full = el("div", "jobresult");
     full.hidden = !this.open.has(j.id);
@@ -337,7 +340,8 @@ export class Jobs {
     try {
       const j = ((await api(this.key, "GET", `/api/v1/jobs?id=${encodeURIComponent(id)}`)) as { job: JobView }).job;
       box.replaceChildren();
-      if (j.result) box.appendChild(markdown(j.result, "jobtext"));
+      // Where a link goes is shown, not only what it is called; a research report's are its own searches', listed at its end.
+      if (j.result) box.appendChild(markdown(j.result, j.engine === "jarvis" ? "jobtext whole" : "jobtext"));
       const went = j.status === "running" ? null : jobLive(j);
       if (went) {
         const how = el("details", "");
@@ -352,6 +356,16 @@ export class Jobs {
       box.textContent = e instanceof Error ? e.message : String(e);
     }
   }
+}
+
+/** What a job's answer is missing, or rests on, a line each. */
+function flags(head: string, lines: readonly string[]): HTMLElement {
+  const box = el("div", "jobflags");
+  box.appendChild(el("b", "", head));
+  const list = el("ul", "");
+  for (const l of lines) list.appendChild(el("li", "", l));
+  box.appendChild(list);
+  return box;
 }
 
 const when = (ts: number) =>
