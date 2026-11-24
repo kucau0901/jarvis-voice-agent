@@ -317,7 +317,7 @@ console.log("\nlimits");
     return drive(s, ((await s.jobs.create({ task: "x" }, BY, T0)) as Job).id);
   };
   const luna = { input: 0, cached: 0, output: 0, model: "gpt-6-luna" };
-  check(`${MAX_SEARCHES} web searches: the same`, /40 web searches/.test((await spent({ ...luna, searches: MAX_SEARCHES })).error ?? ""));
+  check(`${MAX_SEARCHES} web searches: the same`, /60 web searches/.test((await spent({ ...luna, searches: MAX_SEARCHES })).error ?? ""));
   const sol = { input: 2_000_000, cached: 0, output: 0, model: "gpt-6-sol" };
   check(`$${KEY_DOLLARS} of the key: the same`, /\$2 of the API key/.test((await spent(sol)).error ?? ""), (await spent(sol)).error);
   check("…and nothing, on the plan", (await spent({ ...sol, model: "chatgpt:gpt-6-sol" })).status === "done");
@@ -401,6 +401,7 @@ console.log("\na job's card and checklist");
   const after = (await h.jobs.get(j.id))!;
   check("what a step says is seen while it runs", seen?.card?.outcome === "Three compared." && seen.todo?.[0]!.state === "done" && seen.doing?.join() === "mail_search" && seen.ticked === 1, seen);
   check("and is not saved over when it ends, nor is the end saved over by it", after.responseId === "resp_2" && after.steps === 2 && after.card?.outcome === "Three compared." && after.doing === undefined, after);
+  check("a list does not carry what a finished one set out to do; the whole of it does", jobView({ ...after, status: "done" }).card === undefined && !!jobView({ ...after, status: "done" }, true).card);
   const view = jobView(after) as Record<string, unknown>;
   check("its view: the card, the checklist and what it may take; none of its workings", !!view.card && !!view.todo && JSON.stringify(view.limits) === JSON.stringify({ steps: MAX_STEPS, going: MAX_STEPS_GOING, minutes: MAX_JOB_MS / 60_000 }) && !("ticked" in view) && !("cut" in view) && !("stuck" in view) && !("nudged" in view), Object.keys(view));
   // A look that throws ends the job with the record it began with: what was kept meanwhile stays.
@@ -2056,6 +2057,12 @@ console.log("\njobs on the owner's ChatGPT plan (routes/jobs.ts): streamed here,
     check("out of its budget: its calls are not run, and it is asked to write what it has, with no tools",
       wrapped.kind === "continued" && last.tool_choice === "none" && JSON.stringify(last.input.at(-1)) === JSON.stringify({ role: "developer", content: wrapUp("it took its 25 steps") }) &&
         last.input.at(-2)!.type === "function_call_output" && last.input.at(-2)!.output === NOT_RUN, last.input.slice(-2));
+    const jchk = { ...job, id: "jchk", engine: "research", cut: { why: "it took its 40 steps", sent: true }, draft: { text: "The report.", cited: [], responseId: "plan_m.0" } } as Job;
+    answers.push([{ ...tool, call_id: "call_chk" }]);
+    await engine.start(jchk);
+    answers.push([{ type: "message", id: "mc", role: "assistant", status: "completed", content: [{ type: "output_text", text: "SUMMARY: Checked.", annotations: [] }] }]);
+    await engine.poll({ ...jchk, responseId: "plan_m.0" });
+    check("the check of a report written so may still look things up", sent.at(-1)!.body.tool_choice === "auto" && sent.at(-1)!.body.input.at(-1)!.output !== NOT_RUN, sent.at(-1)!.body.input.at(-1));
     const nw = sent.length;
     const wrappedAgain = await engine.poll({ ...jout, responseId: "plan_m.0", cut: { why: "it took its 25 steps" } });
     check("…once, though cut short before that was noted", wrappedAgain.kind === "continued" && sent.length === nw);
@@ -2104,6 +2111,16 @@ console.log("\njobs on the owner's ChatGPT plan (routes/jobs.ts): streamed here,
     const nudged = await engine.poll({ ...jn2, responseId: "plan_m.0" });
     check("an answer with its checklist unfinished: asked to finish it, naming the open lines only",
       nudged.kind === "continued" && nudged.nudged === true && JSON.stringify(sent.at(-1)!.body.input.at(-1)) === JSON.stringify({ role: "developer", content: unfinished(open) }) && /2\. Check the prices/.test(unfinished(open)) && !/Find three/.test(unfinished(open)), nudged);
+    // Asked so as the plan reached its limit, and told something by its person while it waited: that still has to reach it.
+    const jw = { ...jn2, id: "jw" } as Job;
+    answers.push(says("SUMMARY: Here."));
+    await engine.start(jw);
+    limitedUntil = Date.now() + 60 * 60_000;
+    check("asked so at the plan's limit: it waits", (await engine.poll({ ...jw, responseId: "plan_m.0" })).kind === "parked");
+    limitedUntil = null;
+    answers.push(says("SUMMARY: Here, finished."));
+    const kept2 = await engine.poll({ ...jw, responseId: "plan_m.0", told: [{ at: T0, text: "A limit: in Johor" }] });
+    check("…and what its person said meanwhile is not taken as heard by it", kept2.kind === "continued" && kept2.took === undefined && kept2.nudged === true && !JSON.stringify(sent.at(-1)!.body.input).includes("in Johor"), kept2);
     const n3 = sent.length;
     check("…once, cut short or not, and then its answer is its answer",
       (await engine.poll({ ...jn2, responseId: "plan_m.0" })).kind === "continued" && sent.length === n3 &&
@@ -2359,6 +2376,61 @@ console.log("\nthe object can go at any save: the job still ends, once");
   check("at every save it makes, before and after", points >= 8, points);
   check("the job is never lost, and ends as it would have", lost === 0 && unended === 0, { lost, unended });
   check("and nobody is told twice", worst === 1, worst);
+}
+
+console.log("\nthe object can go at any save while a job is told to write what it has");
+{
+  let points = 0;
+  const wrong: unknown[] = [];
+  for (const lands of [false, true]) {
+    for (let at = 1; at <= 30; at++) {
+      const storage = fakeStorage();
+      const told: Alert[] = [];
+      let wraps = 0;
+      const deps: JobDeps = {
+        async start() { return { responseId: "r1" }; },
+        async check() { return { error: "no" }; },
+        async plan() { return { error: "no" }; },
+        async merge() { return { error: "no" }; },
+        async poll(j, _t, _s, say) {
+          if (j.responseId === "wrap") return { kind: "done", text: "SUMMARY: Not finished: the price is missing.\n\nWhat there is." };
+          if (j.cut) return (wraps++, { kind: "continued", responseId: "wrap" });
+          await say!({ todo: [{ text: "One", state: "open" }] });
+          return { kind: "continued", responseId: `r${j.steps + 1}` };
+        },
+        async cancel() {},
+        async hermes() { return { ok: true, text: "" }; },
+        async deliver(a) { told.push(a); return { alert: a, attempts: [], deliveredBy: "push" } as Delivery; },
+      };
+      const first = new Jobs(storage, async () => deps);
+      const made = (await first.create({ task: "x" }, BY, T0)) as Job;
+      await storage.put(`job:${made.id}`, { ...made, steps: MAX_STEPS - 1, responseId: "r24" });
+      let n = 0;
+      let cut = false;
+      const cutting = { ...storage, put: async (k: string, v: unknown) => {
+        if (cut || ++n === at) {
+          if (!cut && lands) await storage.put(k, v);
+          cut = true;
+          return new Promise<void>(() => {}); // this object is gone
+        }
+        return storage.put(k, v);
+      } };
+      const dying = new Jobs(cutting as never, async () => deps);
+      let t = T0;
+      for (let i = 0; i < 6 && !cut; i++) {
+        const looks = await dying.begin(t);
+        await Promise.race([Promise.all(looks), new Promise((r) => setTimeout(r, 2))]);
+        t += 60_000;
+      }
+      if (!cut) continue; // past its last save
+      points++;
+      const next = new Jobs(storage, async () => deps);
+      for (let i = 0; i < 10; i++) await next.tick((t += 60_000));
+      const end = (await next.get(made.id))!;
+      if (end.status !== "failed" || end.result !== "What there is." || told.length > 1 || told.some((a) => !a.title.startsWith("Part done")) || end.missing?.join() !== "One") wrong.push({ at, lands, status: end.status, told: told.map((a) => a.title), missing: end.missing, wraps });
+    }
+  }
+  check("at every save it makes, before and after: part done, what it had kept, and told of no more than once", points >= 8 && wrong.length === 0, { points, wrong });
 }
 
 console.log("\nwhat a hostile page or mail asks of a job is not there to be used");

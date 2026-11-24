@@ -750,6 +750,7 @@ export class Jobs {
     j.finishedAt = j.updatedAt = now;
     delete j.nextAt;
     delete j.parked;
+    delete j.doing;
     if (j.team) j.team = slimTeam(j.team);
     await this.save(j);
     // A step streaming here is let go at once, rather than paid for to its end.

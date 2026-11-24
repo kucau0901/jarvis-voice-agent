@@ -1398,7 +1398,7 @@ the numbers should be is a guess until there is a month of real use.
 or its 20 minutes was stopped, and everything it had found went with it: a job
 that had read forty pages and one that had read none both came back as "it took
 more than 25 steps". Now each limit (`outOf` in `lib/job-guards.ts`: its steps,
-an hour, 40 searches, two dollars of the key) is kept on the job as `cut` before
+an hour, 60 searches, two dollars of the key) is kept on the job as `cut` before
 the step in hand is looked at. If that step turns out to be its answer, it is an
 answer. If it asked for more tools, none is run, and one more call, with no tools
 allowed, is told what ran out and to write what it has, what is missing first.

@@ -235,6 +235,7 @@ export function jobEngine(
       if (r.stop?.aborted) throw new Error("it was stopped");
       const why = await chain.asking(name, n, at ? added : input, Date.now());
       if (why) throw new Error(why);
+      let searching = false;
       try {
         const res = await planRespond(clientFor(r.env, auth), {
           model: r.strong ? r.base.model : (auth.model ?? r.base.model),
@@ -244,7 +245,11 @@ export function jobEngine(
           tool_choice: toolChoice,
           include: ["reasoning.encrypted_content"],
           ...(r.strong ? { reasoning: { effort: "high" as const } } : {}),
-        }, signal(r.stop, r.strong ? 10 * 60_000 : 3 * 60_000), () => void r.say({ doing: ["web_search"] }));
+        }, signal(r.stop, r.strong ? 10 * 60_000 : 3 * 60_000), () => {
+          // Said once a step, however many it makes.
+          if (!searching) void r.say({ doing: ["web_search"] });
+          searching = true;
+        });
         await chain.answered(name, n, res);
         return { responseId: stepId(name, n) };
       } catch (e) {
@@ -373,8 +378,10 @@ export function jobEngine(
         const nudge = works && !told.length && !job.nudged && openLines(job.todo).length > 0;
         if (told.length || nudge) {
           const req = await request(job, [], false, stop, say);
-          const added: OpenAI.Responses.ResponseInput = told.length ? told : [{ role: "developer", content: unfinished(job.todo) }];
-          const next = (await (onPlan ? pickUp(req, { after: id }) : Promise.resolve(null)).then((p) => p ?? send(req, added, { after: id })).catch(parked));
+          // Cut short, or waiting for the plan, after it was told something: that, as it was. What they said since goes with the step after.
+          const before = onPlan ? await pickUp(req, { after: id }).catch(parked) : null;
+          if (before) return "kind" in before ? before : { kind: "continued", responseId: before.responseId, usage, nudged: true };
+          const next = await send(req, told.length ? told : [{ role: "developer", content: unfinished(job.todo) }], { after: id }).catch(parked);
           return "kind" in next ? next : { kind: "continued", responseId: next.responseId, usage, ...took, ...(nudge ? { nudged: true as const } : {}) };
         }
         // An address it never saw is said to be unchecked; its brief and what it was told count as seen.
@@ -385,10 +392,12 @@ export function jobEngine(
       // The tools it asked for run here, between steps; then the next step starts.
       const req = await request(job, [], t !== undefined, stop, say);
       const { p, env: theirs, grants } = req;
-      const resumed = onPlan ? await pickUp(req, { after: id }, job.cut ? "none" : "auto").catch(parked) : null;
+      // Told to write what it has; the check of a report written so is not told again, and may look things up.
+      const wraps = !!job.cut && !job.draft;
+      const resumed = onPlan ? await pickUp(req, { after: id }, wraps ? "none" : "auto").catch(parked) : null;
       if (resumed) return "kind" in resumed ? resumed : { kind: "continued", responseId: resumed.responseId, usage };
       // Out of its budget: nothing more is run, and it writes what it has.
-      if (job.cut) {
+      if (job.cut && wraps) {
         const unrun = calls.map((c) => ({ type: "function_call_output" as const, call_id: c.call_id, output: NOT_RUN }));
         const last = await send(req, [...unrun, { role: "developer", content: wrapUp(job.cut.why) }], { after: id }, "none").catch(parked);
         return "kind" in last ? last : { kind: "continued", responseId: last.responseId, usage };
@@ -468,6 +477,8 @@ export function jobView(j: Job, whole = false, mayKey = false) {
   const keyCost = mayKey && parked && j.usage ? costOf({ ...usageEntry(j, true, j.updatedAt), by: (j.usage.model ?? "").replace(/^chatgpt:/, "") }) : null;
   const view = {
     ...rest,
+    // What it set out to do: while it works, and with the whole of it; a list of thirty need not carry it.
+    ...(whole || j.status === "running" ? {} : { card: undefined, todo: undefined, told: undefined }),
     ...(j.team ? { team: teamView(j) } : {}),
     // What it may take, and once it is out of that, what of: it is writing what it has.
     ...(j.status === "running" && j.engine === "jarvis" ? { limits: { steps: limitsOf(j.engine).maxSteps, going: limitsOf(j.engine).going, minutes: limitsOf(j.engine).maxMs / 60_000 } } : {}),

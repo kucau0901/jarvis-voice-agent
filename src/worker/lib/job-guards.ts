@@ -16,8 +16,8 @@ import { unquoted } from "./quote.ts";
  * budget too (runGuarded).
  */
 
-/** Web searches an ordinary job makes before it is told to write what it has. */
-export const MAX_SEARCHES = 40;
+/** Web searches, and pages opened by them, an ordinary job makes before it is told to write what it has. */
+export const MAX_SEARCHES = 60;
 /** Dollars of the API key one ordinary job may use. Nothing, on the ChatGPT plan. */
 export const KEY_DOLLARS = 2;
 
