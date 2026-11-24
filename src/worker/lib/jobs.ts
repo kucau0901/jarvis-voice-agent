@@ -298,6 +298,8 @@ export interface JobDeps {
 }
 
 const J = "job:";
+/** The running jobs that ask something, by id: looked at with every question (lib/router.ts), where listing the jobs would read every result to find none. */
+const ASKS = "jobs:asks";
 /** A table job's rows (Job.table), beside the job: not under "job:", which list() reads. */
 const T = "jobtable:";
 /** A person's jobs today, by person (lib/context.ts): one member cannot spend the family's day. */
@@ -668,6 +670,8 @@ export class Jobs {
   /** When each running job is next to be looked at: read once, then kept as they are saved, so nothing lists every result to find out. */
   private due = new Map<string, number>();
   private read: Promise<void> | null = null;
+  /** ASKS, read once and then kept as jobs are saved. */
+  private asks: Promise<Set<string>> | null = null;
   /** What steps say of themselves, kept one at a time: a step's calls run together (note). */
   private noting: Promise<void> = Promise.resolve();
 
@@ -697,11 +701,26 @@ export class Jobs {
   private async save(j: Job): Promise<void> {
     if (j.status === "running") this.due.set(j.id, j.nextAt ?? 0);
     else this.due.delete(j.id);
-    await this.storage.put(J + j.id, j);
+    const kept = this.storage.put(J + j.id, j);
+    await this.askIs(j.id, j.status === "running" && openQuestions(j.asked).length > 0);
+    await kept;
+  }
+
+  private asksNow(): Promise<Set<string>> {
+    return (this.asks ??= this.storage.get<string[]>(ASKS).then((ids) => new Set(ids ?? [])));
+  }
+
+  private async askIs(id: string, on: boolean): Promise<void> {
+    const ids = await this.asksNow();
+    if (on === ids.has(id)) return;
+    if (on) ids.add(id);
+    else ids.delete(id);
+    await this.storage.put(ASKS, [...ids]);
   }
 
   private async drop(id: string): Promise<boolean> {
     this.due.delete(id);
+    await this.askIs(id, false);
     await clearChain(this.storage, id);
     await this.storage.delete(T + id);
     return this.storage.delete(J + id);
@@ -974,7 +993,7 @@ export class Jobs {
   /** The jobs of a person's that have asked them something and not had it. */
   async asking(person: string): Promise<Job[]> {
     const out: Job[] = [];
-    for (const id of (await this.waiting()).keys()) {
+    for (const id of await this.asksNow()) {
       const j = await this.stillRunning(id);
       if (j && personOfWho(j.createdBy) === person && openQuestions(j.asked).length) out.push(j);
     }

@@ -218,32 +218,48 @@ const jobControl: Tool = {
     if (!said) return "Only the user can do that, in their own words.";
     const op = args.op === "answer" || args.op === "stop" ? args.op : "correct";
     const want = wordsOf(typeof args.job === "string" ? args.job : "");
-    const named = (words: string) => {
-      const has = wordsOf(words);
-      return want.every((w) => has.some((h) => h.startsWith(w)));
-    };
-    // The questions an answer may be to: those its words name, with their job's title. One answer is to one of them.
-    const asks = (j: Job) => openQuestions(j.asked).filter((q) => named(`${j.title} ${q.text}`));
-    const fits = (await state.listJobs()).filter((j) => {
-      if (j.status !== "running" || !maySteer(j, ctx.env, ctx.grants)) return false;
-      if (op !== "stop" && j.engine !== "jarvis") return false;
-      return op === "answer" ? asks(j).length > 0 : named(j.title);
-    });
-    if (!fits.length) return op === "answer" ? "No job of theirs is waiting for an answer." : "No job of theirs at work is called that.";
+    const atWork = (await state.listJobs()).filter((j) => j.status === "running" && (op === "stop" || j.engine === "jarvis") && maySteer(j, ctx.env, ctx.grants));
+    if (op === "answer") {
+      // One answer is to one question: the one its words name, with its job's title; the only one, whatever they are.
+      const open = atWork.flatMap((j) => openQuestions(j.asked).map((q) => ({ j, q })));
+      if (!open.length) return "No job of theirs is waiting for an answer.";
+      const to = nearest(open, want, ({ j, q }) => `${j.title} ${q.text}`);
+      if (to.length > 1) {
+        return `More than one question waits. For each their message answers, and no other, call this again with words of that question as \`job\`:\n${asQuotedData("job question", to.map(({ j, q }) => `${j.title}: ${asksSaid([q])}`).join("\n"), WRITER.jarvis)}`;
+      }
+      return told(to[0]!.j, await state.tellJob(to[0]!.j.id, { text: said, question: to[0]!.q.id }));
+    }
+    const fits = nearest(atWork, want, (j) => j.title, true);
+    if (!fits.length) return `No job of theirs at work is called that.${atWork.length ? ` At work: ${atWork.map((j) => `"${j.title}"`).join(", ")}.` : ""}`;
     if (fits.length > 1) return `More than one is: ${fits.map((j) => `"${j.title}"`).join(", ")}. Ask which, and say its title.`;
     const j = fits[0]!;
     if (op === "stop") {
       const r = await state.cancelJob(j.id);
       return typeof r === "string" ? `Not stopped: ${r}.` : `Stopped "${j.title}".`;
     }
-    const to = op === "answer" ? asks(j) : [];
-    if (to.length > 1) {
-      return `"${j.title}" asks more than one thing. For each their message answers, and no other, call this again with words of that question as \`job\`:\n${asQuotedData("job question", asksSaid(to), WRITER.jarvis)}`;
-    }
-    const r = await state.tellJob(j.id, { text: said, ...(to[0] ? { question: to[0].id } : {}) });
-    if (typeof r === "string") return `Not passed on: ${r}.`;
-    return `Passed on to "${j.title}", in their words: it takes it in at its next step. Say so, briefly.`;
+    return told(j, await state.tellJob(j.id, { text: said }));
   },
 };
+
+/** What came of telling a job something. */
+const told = (j: Job, r: Job | string): string =>
+  typeof r === "string" ? `Not passed on: ${r}.` : `Passed on to "${j.title}", in their words: it takes it in at its next step. Say so, briefly.`;
+
+/**
+ * Those most of `want` names, by the start of their words: the model calls a
+ * job by what it was about ("the power bank comparison"), not by its title.
+ * With no words, all of them; with none that fit, all, or where `named` (a
+ * change or a stop is not given to whatever is there) none, as where a third
+ * of the words or fewer fit.
+ */
+function nearest<T>(all: readonly T[], want: readonly string[], words: (x: T) => string, named = false): T[] {
+  const fit = all.map((x) => {
+    const has = wordsOf(words(x));
+    return want.filter((w) => has.some((h) => h.startsWith(w))).length;
+  });
+  const best = Math.max(0, ...fit);
+  if (named && want.length && best * 3 <= want.length) return [];
+  return all.filter((_, i) => fit[i] === best);
+}
 
 export const jobTools: Tool[] = [startJob, jobControl, jobResults];

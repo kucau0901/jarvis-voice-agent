@@ -1481,6 +1481,11 @@ or a Home tile's sentence, where they said nothing, it refuses. What their jobs 
 on is said with each question they ask, quoted as the job's words, and only where
 there is any: not in the family room, whose answer everyone reads, nor for a tile's
 reading, nor on a device that reaches less than the job works with (`maySteer`).
+It is looked for with every question, so by a small index (`jobs:asks`), not by
+listing the jobs with their results. A model calls a job by what it was about ("the
+power bank comparison") and not by its title, so it is found by most of its words;
+an answer, where only one question waits, whatever it is called by, and a change or
+a stop only by more than a third of them, since neither is given to whatever is there.
 It took `control_home`'s place among the tools: that one, changing the house
 through Hermes, was a last resort of one to four minutes that a live voice session
 was let go for, and Home Assistant does what it did.
