@@ -480,6 +480,12 @@ console.log("\na job asks its person, and is told things");
   const t2 = tool([{ id: "q1", at: T0, text: "x", choices: [] }, { id: "q2", at: T0, text: "y", choices: [] }]);
   check("the next look counts those before: a third, then no more", /as question 3/.test(await ask(t2, { question: "Whose?" })) && /asked 3 times/.test(await ask(t2, { question: "And?" })) && kept.length === 3);
   check("no question, nothing asked", /no question/.test(await ask(tool(), { question: "  " })) && kept.length === 3);
+  for (const question of ["What code did they text you?", "Your password for the shop?", "Apa kata laluan dia?"]) check(`never a secret: ${question}`, /^Not asked/.test(await ask(tool(), { question })) && kept.length === 3);
+  check("…nor in its choices", /^Not asked/.test(await ask(tool(), { question: "Which one?", choices: ["The PIN", "The other"] })) && kept.length === 3);
+  const again = await ask(tool([{ id: "q1", at: T0, text: "Whose?", choices: [] }]), { question: "Whose?" });
+  check("asked already, by a step that was cut short: not asked again, and by its number", /as question 1/.test(again) && kept.length === 3, again);
+  await ask(tool(), { question: "Is it [this one](https://shop.example/x)?" });
+  check("a link by its address, not its label", kept[3]!.ask!.text === "Is it this one (https://shop.example/x)?", kept[3]);
 
   // Through the job: told of it at once, waiting only with nothing else to do.
   const h = harness();
@@ -530,10 +536,13 @@ console.log("\na job asks its person, and is told things");
     return { x, k };
   };
   const skip = await fresh();
-  const skipped = (await skip.x.jobs.tell(skip.k.id, { question: "open", skip: true }, T0 + 5)) as Job;
-  check("gone on without: both, told so by Jarvis and not as an answer", skipped.asked?.every((q) => q.over === "skipped") === true && skipped.told?.length === 1 && skipped.told[0]!.by === "jarvis" && /without answering questions 1 and 2\. Do not assume/.test(skipped.told[0]!.text) && (untold(skipped)[0] as { role: string }).role === "developer", skipped);
-  const both = await fresh();
-  check("one answer to both, by voice", /My answer to your questions 1 and 2: RM500, for Mum/.test(JSON.stringify(untold((await both.x.jobs.tell(both.k.id, { text: "RM500, for Mum", question: "open" }, T0 + 5)) as Job))));
+  const skipped = (await skip.x.jobs.tell(skip.k.id, { question: "q1", skip: true }, T0 + 5)) as Job;
+  check("gone on without: told so by Jarvis and not as an answer, the other still open", skipped.asked?.map((q) => q.over ?? "open").join() === "skipped,open" && skipped.told?.length === 1 && skipped.told[0]!.by === "jarvis" && /without answering question 1\. Do not assume/.test(skipped.told[0]!.text) && (untold(skipped)[0] as { role: string }).role === "developer", skipped);
+  check("…and not shown as something they told it", (jobView(skipped) as { told: unknown[] }).told.length === 0);
+  const one = await fresh();
+  const answered = (await one.x.jobs.tell(one.k.id, { text: "RM500", question: "q1" }, T0 + 5)) as Job;
+  check("one answer is to one question", answered.asked?.map((q) => q.answer?.text ?? "open").join() === "RM500,open" && /My answer to your question 1: RM500/.test(JSON.stringify(untold(answered))), answered);
+  check("…never to all that are open", /not waiting/.test(String(await one.x.jobs.tell(one.k.id, { text: "RM500", question: "open" }))));
   const card: JobCard = { outcome: "Three.", limits: [], assumptions: [] };
   const recarded = await fresh({ card });
   const changed = (await recarded.x.jobs.changeCard(recarded.k.id, { limits: ["Under RM500"] }, T0 + 5)) as Job;
@@ -547,6 +556,31 @@ console.log("\na job asks its person, and is told things");
   await early.x.storage.put(`job:${early.k.id}`, { ...(await early.x.jobs.get(early.k.id))!, nextAt: T0 });
   await early.x.jobs.tick(T0 + 60_000);
   check("woken early, it waits on", (await early.x.jobs.get(early.k.id))!.nextAt === T0 + ASK_MS && early.x.log.every((l) => !l.startsWith("poll")));
+  // The step it waits on is counted as it begins to wait, and once.
+  const paid = { input: 900, cached: 0, output: 100, model: "chatgpt:gpt-6-luna" };
+  const counts = await fresh({ waits: undefined, nextAt: T0, usage: undefined }, [{ kind: "asks", usage: paid }, { kind: "continued", responseId: "resp_2", usage: paid, took: 1 }, { kind: "wait" }]);
+  await counts.x.jobs.tick(T0);
+  const began = (await counts.x.jobs.get(counts.k.id))!;
+  check("waiting, what it spent so far is on its record", !!began.waits && began.usage?.input === 900, began);
+  await counts.x.jobs.tell(counts.k.id, { text: "RM500", question: "q1" }, T0 + 5);
+  await counts.x.jobs.tick(T0 + 5);
+  check("…and not again when it goes on from there", (await counts.x.jobs.get(counts.k.id))!.usage?.input === 900 && (await counts.x.jobs.get(counts.k.id))!.responseId === "resp_2" && JSON.stringify(jobView((await counts.x.jobs.get(counts.k.id))!)).includes("counted") === false);
+  const stops = await fresh({ waits: undefined, nextAt: T0 }, [{ kind: "asks", usage: paid }]);
+  await stops.x.jobs.tick(T0);
+  await stops.x.jobs.cancel(stops.k.id, T0 + 5);
+  check("stopped while it waits: Usage has it", stops.x.recorded[0]?.input === 900, stops.x.recorded);
+  // Two questions of one text: the second is the first, asked again by a step that was cut short.
+  const twice = harness();
+  const tw = (await twice.jobs.create({ task: "x" }, BY, T0)) as Job;
+  await twice.jobs.tick(T0);
+  twice.deps.poll = async (_j, _t, _s, say) => {
+    await say!({ ask: { text: "How much?", choices: [] } });
+    await say!({ ask: { text: "How much?", choices: [] } });
+    return { kind: "wait" };
+  };
+  await twice.jobs.tick(T0 + 10_000);
+  await new Promise((r) => setTimeout(r, 5));
+  check("the same question is kept, and told, once", (await twice.jobs.get(tw.id))!.asked?.length === 1 && twice.sent.length === 1);
   const raced = await fresh({ waits: undefined, nextAt: T0, told: [{ at: T0, text: "RM500", to: "question 1" }] }, [{ kind: "asks" }]);
   await raced.x.jobs.tick(T0);
   check("answered as it went to wait: it does not wait", !(await raced.x.jobs.get(raced.k.id))!.waits && (await raced.x.jobs.nextWake(T0)) === T0);
@@ -1097,8 +1131,9 @@ console.log("\nsteering a job by asking (job_control)");
   told.length = 0;
   jobs[0]!.asked = [...q, { id: "q2", at: T0, text: "Which shop installs it?", choices: [] }];
   await run({ op: "answer", job: "shop" }, "The one in town");
-  await run({ op: "answer", job: "dashcams" }, "Both at that shop");
-  check("of two it asks, the one its words name; both where they name only the job", JSON.stringify(told.map((t) => (t as [string, { question: string }])[1].question)) === '["q2","open"]', told);
+  const which = [await run({ op: "answer", job: "dashcams" }, "The one in town"), await run({ op: "answer" }, "The one in town")];
+  check("of two it asks, the one its words name; where none is named, which, quoted, and nothing told",
+    JSON.stringify(told) === JSON.stringify([["j1", { text: "The one in town", question: "q2" }]]) && which.every((w) => /asks more than one thing/.test(w) && /job question:[0-9a-f]{8} \(CONTENT WRITTEN BY A BACKGROUND JOB[\s\S]*Front only\? \(Yes \/ No\)\nWhich shop installs it\?/.test(w)), { told, which });
   jobs[0]!.asked = q;
   told.length = 0;
   check("in a routine or for a bot, where nobody said anything: refused", /Only the user can do that/.test(await run({ op: "answer" }, undefined)) && told.length === 0);
@@ -2320,6 +2355,37 @@ console.log("\njobs on the owner's ChatGPT plan (routes/jobs.ts): streamed here,
     const without = await engine.poll({ ...jq, id: "jq", responseId: "plan_m.1", asked: [{ ...jq.asked![0]!, over: "late" }], told: [{ at: T0, text: "x", taken: true }, { at: T0, text: "No answer came to question 1.", by: "jarvis" }] });
     check("never answered: told so as Jarvis, not as them", without.kind === "continued" && sent.at(-1)!.body.input.at(-1)!.role === "developer", sent.at(-1)!.body.input.at(-1));
     check("out of its budget, it is not waited for", (await engine.poll({ ...jq, responseId: "plan_m.1", cut: { why: "x", sent: true } })).kind === "done");
+
+    // Told, then kept waiting by the plan's limit (or cut short): what it was told is in what was kept, and goes once.
+    const jp = { ...job, id: "jpark" } as Job;
+    answers.push(says("SUMMARY: So far."));
+    await engine.start(jp);
+    const withTold = { ...jp, responseId: "plan_m.0", told: [{ at: T0, text: "RM500", to: "question 1" }] } as Job;
+    limitedUntil = Date.now() + 60 * 60_000;
+    check("told at the plan's limit: it waits", (await engine.poll(withTold)).kind === "parked");
+    limitedUntil = null;
+    answers.push(says("SUMMARY: Under RM500."));
+    const resumedWith = await engine.poll({ ...withTold, told: [...withTold.told!, { at: T0 + 1, text: "And soon" }] });
+    check("then it goes as it was kept, taken in, and what they said since is not", resumedWith.kind === "continued" && resumedWith.took === 1 && !resumedWith.nudged && !JSON.stringify(sent.at(-1)!.body.input).includes("And soon"), resumedWith);
+    answers.push(says("SUMMARY: Under RM500, soon."));
+    const since = await engine.poll({ ...withTold, responseId: "plan_m.1", told: [{ ...withTold.told![0]!, taken: true }, { at: T0 + 1, text: "And soon" }] });
+    check("…which goes with the step after, the first not said again", since.kind === "continued" && since.took === 2 && JSON.stringify(sent.at(-1)!.body.input).split("question 1: RM500").length === 2 && JSON.stringify(sent.at(-1)!.body.input.at(-1)).includes("And soon"), since);
+    // Answered as it ran out: it still has that, with being told to write what it has; whether it had calls to make or was done.
+    const jcut = { ...job, id: "jcut", cut: { why: "it took its 25 steps" }, told: [{ at: T0, text: "RM500", to: "question 1" }] } as Job;
+    answers.push(says("SUMMARY: So far."));
+    await engine.start(jcut);
+    answers.push(says("SUMMARY: Under RM500."));
+    const lastly = await engine.poll({ ...jcut, responseId: "plan_m.0" });
+    const end = sent.at(-1)!.body;
+    check("answered as it ran out, its answer given: one more, with no tools, with theirs and told to write what it has",
+      lastly.kind === "continued" && lastly.took === 1 && end.tool_choice === "none" && /question 1: RM500/.test(JSON.stringify(end.input.at(-2))) && JSON.stringify(end.input.at(-1)) === JSON.stringify({ role: "developer", content: wrapUp("it took its 25 steps") }), end.input.slice(-2));
+    const jcut2 = { ...jcut, id: "jcut2" } as Job;
+    answers.push([{ ...tool, call_id: "call_cut" }]);
+    await engine.start(jcut2);
+    answers.push(says("SUMMARY: Under RM500."));
+    const lastly2 = await engine.poll({ ...jcut2, responseId: "plan_m.0" });
+    check("…the same where it had more tools to call", lastly2.kind === "continued" && lastly2.took === 1 && sent.at(-1)!.body.tool_choice === "none" && /question 1: RM500/.test(JSON.stringify(sent.at(-1)!.body.input.at(-2))), sent.at(-1)!.body.input.slice(-3));
+    check("told once to write what it has, its answer is its answer", (await engine.poll({ ...jcut2, responseId: "plan_m.1", cut: { why: "it took its 25 steps", sent: true } })).kind === "done");
 
     // Its checklist unfinished: asked once to finish it.
     const open: Todo[] = [{ text: "Find three", state: "done" }, { text: "Check the prices", state: "doing" }];

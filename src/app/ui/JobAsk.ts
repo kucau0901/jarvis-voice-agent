@@ -106,7 +106,7 @@ export function askCard(key: string, j: Of, q: JobAsk, shown: AskShown = {}): HT
 async function look(key: string, job: string, id: string): Promise<{ j: JobView; q: JobAsked; said: string | null } | null> {
   const j = await api(key, "GET", `/api/v1/jobs?id=${encodeURIComponent(job)}`).then((r) => (r as { job: JobView }).job, () => null);
   const q = j?.asked?.find((x) => x.id === id);
-  return j && q ? { j, q, said: cameOf(q, j.status) } : null;
+  return j && q ? { j, q, said: cameOf(q, j) } : null;
 }
 
 /** Under the words of a question's alert: its card, as it stands now (one request); its choices in words, where this screen may not answer. */

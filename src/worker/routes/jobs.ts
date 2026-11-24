@@ -214,7 +214,8 @@ export function jobEngine(
     added: OpenAI.Responses.ResponseInput,
     to: { after: string } | { begin: string },
     toolChoice: "auto" | "none" = "auto",
-  ): Promise<{ responseId: string }> {
+    took?: number,
+  ): Promise<{ responseId: string; took?: number }> {
     const after = "after" in to ? to.after : undefined;
     const previous = after && !isPlanStep(after) ? after : undefined;
     const chain = kept ? new JobChain(kept, r.job.id) : null;
@@ -228,13 +229,13 @@ export function jobEngine(
     const onPlan = !!chain && !previous && !r.job.onKey;
     const limited = onPlan ? await planLimitedUntil(r.env, Date.now()) : null;
     if (chain && limited) {
-      await chain.keep(name, n, at ? added : input, Date.now());
+      await chain.keep(name, n, at ? added : input, Date.now(), took);
       throw new PlanParked(limited);
     }
     const auth = onPlan ? await modelAuth(r.env) : null;
     if (chain && auth?.kind === "plan") {
       if (r.stop?.aborted) throw new Error("it was stopped");
-      const why = await chain.asking(name, n, at ? added : input, Date.now());
+      const why = await chain.asking(name, n, at ? added : input, Date.now(), took);
       if (why) throw new Error(why);
       let searching = false;
       try {
@@ -252,7 +253,7 @@ export function jobEngine(
           searching = true;
         });
         await chain.answered(name, n, res);
-        return { responseId: stepId(name, n) };
+        return { responseId: stepId(name, n), took };
       } catch (e) {
         const refused = refusalOf(e);
         if (!refused) throw e;
@@ -265,15 +266,15 @@ export function jobEngine(
       { ...r.base, tool_choice: toolChoice, input: previous ? added : input, ...(previous ? { previous_response_id: previous } : {}) },
       { signal: signal(r.stop) },
     );
-    return { responseId: res.id };
+    return { responseId: res.id, took };
   }
 
   /** What a step that was cut short was about to ask, or where it got to: its tools are not run, nor it asked, a second time. */
-  async function pickUp(r: Awaited<ReturnType<typeof request>>, to: { after: string } | { begin: string }, toolChoice: "auto" | "none" = "auto"): Promise<{ responseId: string } | null> {
+  async function pickUp(r: Awaited<ReturnType<typeof request>>, to: { after: string } | { begin: string }, toolChoice: "auto" | "none" = "auto"): Promise<{ responseId: string; took?: number } | null> {
     const at = "after" in to ? stepOf(to.after) : { chain: to.begin, n: -1 };
     const next = kept && at ? await new JobChain(kept, r.job.id).next(at.chain, at.n) : null;
     if (!next || !at) return null;
-    return next.answered ? { responseId: stepId(at.chain, at.n + 1) } : send(r, next.input, to, toolChoice);
+    return next.answered ? { responseId: stepId(at.chain, at.n + 1), took: next.took } : send(r, next.input, to, toolChoice, next.took);
   }
 
   /** A step on the plan, as it was answered; null when it is no longer kept. */
@@ -370,22 +371,26 @@ export function jobEngine(
       // An ordinary job's own: what its person told it since, and its checklist.
       const ordinary = t === undefined && job.engine === "jarvis";
       const works = ordinary && !job.cut;
-      const told = works ? untold(job) : [];
-      const took = told.length ? { took: job.told!.length } : {};
+      // Out of its budget, it still has what they said before that, with being told to write what it has.
+      const told = ordinary && !job.cut?.sent ? untold(job) : [];
+      const all = told.length ? job.told!.length : undefined;
+      const took = (x: { took?: number }) => (x.took ? { took: x.took } : {});
+      const last = job.cut ? "none" as const : "auto" as const;
+      const wrap = job.cut ? [{ role: "developer" as const, content: wrapUp(job.cut.why) }] : [];
       if (!calls.length) {
         const text = r.output_text?.trim() ?? "";
         if (!text) return { kind: "failed", error: "it finished without an answer" };
         // With a question of its own unanswered, and nothing they have said to go on with: it waits for them.
-        if (works && !told.length && openQuestions(job.asked).length) return { kind: "asks" };
+        if (works && !told.length && openQuestions(job.asked).length) return { kind: "asks", usage };
         // Its answer before it has heard them, or with its checklist unfinished: it goes on, the second only once.
         const nudge = works && !told.length && !job.nudged && openLines(job.todo).length > 0;
         if (told.length || nudge) {
           const req = await request(job, [], false, stop, say);
           // Cut short, or waiting for the plan, after it was told something: that, as it was. What they said since goes with the step after.
-          const before = onPlan ? await pickUp(req, { after: id }).catch(parked) : null;
-          if (before) return "kind" in before ? before : { kind: "continued", responseId: before.responseId, usage, nudged: true };
-          const next = await send(req, told.length ? told : [{ role: "developer", content: unfinished(job.todo) }], { after: id }).catch(parked);
-          return "kind" in next ? next : { kind: "continued", responseId: next.responseId, usage, ...took, ...(nudge ? { nudged: true as const } : {}) };
+          const before = onPlan ? await pickUp(req, { after: id }, last).catch(parked) : null;
+          if (before) return "kind" in before ? before : { kind: "continued", responseId: before.responseId, usage, ...took(before), ...(before.took ? {} : { nudged: true as const }) };
+          const next = await send(req, [...(told.length ? told : [{ role: "developer" as const, content: unfinished(job.todo) }]), ...wrap], { after: id }, last, all).catch(parked);
+          return "kind" in next ? next : { kind: "continued", responseId: next.responseId, usage, ...took(next), ...(nudge ? { nudged: true as const } : {}) };
         }
         // An address it never saw is said to be unchecked; its brief and what it was told count as seen.
         const seen = kept && ordinary ? await noteLinks(kept, job.id, r.output, [job.task, ...(job.told ?? []).map((x) => x.text)]) : null;
@@ -398,12 +403,12 @@ export function jobEngine(
       // Told to write what it has; the check of a report written so is not told again, and may look things up.
       const wraps = !!job.cut && !job.draft;
       const resumed = onPlan ? await pickUp(req, { after: id }, wraps ? "none" : "auto").catch(parked) : null;
-      if (resumed) return "kind" in resumed ? resumed : { kind: "continued", responseId: resumed.responseId, usage };
+      if (resumed) return "kind" in resumed ? resumed : { kind: "continued", responseId: resumed.responseId, usage, ...took(resumed) };
       // Out of its budget: nothing more is run, and it writes what it has.
       if (job.cut && wraps) {
         const unrun = calls.map((c) => ({ type: "function_call_output" as const, call_id: c.call_id, output: NOT_RUN }));
-        const last = await send(req, [...unrun, { role: "developer", content: wrapUp(job.cut.why) }], { after: id }, "none").catch(parked);
-        return "kind" in last ? last : { kind: "continued", responseId: last.responseId, usage };
+        const end = await send(req, [...unrun, ...told, ...wrap], { after: id }, "none", all).catch(parked);
+        return "kind" in end ? end : { kind: "continued", responseId: end.responseId, usage, ...took(end) };
       }
       // A team's share_findings: posted by lib/jobs.ts teamStep, answered with what the others shared.
       const shared: string[] = [];
@@ -423,9 +428,9 @@ export function jobEngine(
       await p.memory.save().catch(() => {});
       await say?.({ doing: [] });
       // On the plan, the whole exchange goes again; at OpenAI, the chain carries it.
-      const next = await send(req, [...outputs, ...told], { after: id }).catch(parked);
+      const next = await send(req, [...outputs, ...told], { after: id }, "auto", all).catch(parked);
       if ("kind" in next) return next;
-      return { kind: "continued", responseId: next.responseId, usage, ...took, ...(guarded?.stuck ? { stuck: true as const } : {}), ...(calls.some((c) => c.name === SHARE.name) ? { shared } : {}) };
+      return { kind: "continued", responseId: next.responseId, usage, ...took(next), ...(guarded?.stuck ? { stuck: true as const } : {}), ...(calls.some((c) => c.name === SHARE.name) ? { shared } : {}) };
     },
 
     async cancel(job) {
@@ -466,7 +471,8 @@ const MAX_BODY = 16 * 1024;
  * waiting for the plan, whether whoever is looking may move it to the key, with what its tokens so far would have cost there.
  */
 export function jobView(j: Job, whole = false, mayKey = false) {
-  const { grants: _g, responseId: _r, draft: _d, team: _t, waited: _w, ticked: _k, stuck: _s, nudged: _n, asked, waits, cut, parked, ...rest } = j;
+  const { grants: _g, responseId: _r, draft: _d, team: _t, waited: _w, ticked: _k, stuck: _s, nudged: _n, counted: _o, told, asked, waits, cut, parked, ...rest } = j;
+  void _o;
   void _k;
   void _s;
   void _n;
@@ -481,7 +487,7 @@ export function jobView(j: Job, whole = false, mayKey = false) {
   const view = {
     ...rest,
     // What it set out to do: while it works, and with the whole of it; a list of thirty need not carry it.
-    ...(whole || j.status === "running" ? {} : { card: undefined, todo: undefined, told: undefined }),
+    ...(whole || j.status === "running" ? (told ? { told: told.filter((t) => !t.by) } : {}) : { card: undefined, todo: undefined }),
     ...(j.team ? { team: teamView(j) } : {}),
     // What it may take, and once it is out of that, what of: it is writing what it has.
     ...(j.status === "running" && j.engine === "jarvis" ? { limits: { steps: limitsOf(j.engine).maxSteps, going: limitsOf(j.engine).going, minutes: limitsOf(j.engine).maxMs / 60_000 } } : {}),

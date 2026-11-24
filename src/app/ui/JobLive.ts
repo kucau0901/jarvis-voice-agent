@@ -1,6 +1,6 @@
 import { api } from "../key";
 import { cameOf, heard, linesOf, nowDoing, powers, progress, type JobCard, type JobView, type Todo } from "../jobWords";
-import { askCard, askedIn } from "./JobAsk";
+import { askCard, askedIn, askId } from "./JobAsk";
 import { arm, button, el } from "./util";
 
 /**
@@ -43,7 +43,7 @@ export function jobLive(j: JobView): HTMLElement | null {
   if (j.todo?.length) box.appendChild(checklist(j.todo));
   // With the whole of it, what it asked and what came of that; while it works, the last things it was told.
   const ended = j.status === "running" ? [] : (j.asked ?? []);
-  for (const q of ended) box.appendChild(told(`It asked: ${q.text}`, cameOf(q, j.status) ?? ""));
+  for (const q of ended) box.appendChild(told(`It asked: ${q.text}`, cameOf(q, j) ?? ""));
   for (const h of heard(ended.length ? { ...j, told: j.told?.filter((t) => !t.to) } : j)) box.appendChild(told(h.said, h.state));
   return box.childElementCount ? box : null;
 }
@@ -79,6 +79,8 @@ export function cardForm(typed: JobCard, save: (c: JobCard) => void, cancel: () 
 }
 
 const EVERY_MS = 4000;
+/** One that waits, for its person or the plan: up to a day, so looked at less often. */
+const WAITING_MS = 20_000;
 
 /**
  * Under a job's pill in the conversation, while it works: its checklist, the
@@ -106,7 +108,9 @@ export function follow(key: string, id: string, row: HTMLElement, ended: (j: Job
   box.appendChild(inner);
   let timer = 0;
   let misses = 0;
+  let every = EVERY_MS;
   let drawn = "";
+  const typed = new Map<string, string>();
   const gone = () => {
     clearTimeout(timer);
     box.remove();
@@ -120,20 +124,23 @@ export function follow(key: string, id: string, row: HTMLElement, ended: (j: Job
       if (!j && ++misses > 2) return gone();
       if (j) {
         misses = 0;
+        every = j.waiting ? WAITING_MS : EVERY_MS;
         if (j.status !== "running") {
           gone();
           return ended(j);
         }
         const open = j.asks ?? [];
         const thread = row.parentElement;
-        const here = open.filter((q) => !askedIn(thread, id, q.id, box)).map((q) => q.id).join();
+        // Shown here where the conversation does not show it; one already here stays, its answer may be half typed.
+        const drawnHere = new Map([...asks.querySelectorAll<HTMLElement>(".askcard")].map((c) => [c.dataset.ask ?? "", c]));
+        const mine = open.filter((q) => drawnHere.has(askId(id, q.id)) || !askedIn(thread, id, q.id, box));
+        const here = mine.map((q) => q.id).join();
         const as = JSON.stringify([j.todo, nowDoing(j), open.length]);
         if ((as !== drawn || here !== asks.dataset.asks) && pill.classList.contains("working")) {
           drawn = as;
           const atEnd = !!thread && thread.scrollHeight - thread.scrollTop - thread.clientHeight < 40;
           list.replaceChildren(...(j.todo?.length ? [checklist(j.todo)] : []));
-          // Drawn again only when what it asks has changed: an answer may be half typed.
-          if (here !== (asks.dataset.asks ?? "")) asks.replaceChildren(...open.filter((q) => here.split(",").includes(q.id)).map((q) => askCard(key, j, q, { tag: "It asks you" })));
+          if (here !== (asks.dataset.asks ?? "")) asks.replaceChildren(...mine.map((q) => drawnHere.get(askId(id, q.id)) ?? askCard(key, j, q, { tag: "It asks you", typed })));
           asks.dataset.asks = here;
           now.textContent = nowDoing(j);
           pill.querySelector("small")!.textContent = open.length ? "asks you" : (progress(j) ?? "working");
@@ -142,7 +149,7 @@ export function follow(key: string, id: string, row: HTMLElement, ended: (j: Job
         }
       }
     }
-    timer = setTimeout(() => void look(), EVERY_MS);
+    timer = setTimeout(() => void look(), every);
   };
   // The row is put in the conversation by whoever asked for it.
   timer = setTimeout(() => void look(), 1500);

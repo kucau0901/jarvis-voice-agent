@@ -144,6 +144,7 @@ of every release, and in the [README](README.md#updating).
 - **A background job can ask you, and you can tell it things.** When something
   only you can settle would change the result ("front only, or front and
   rear?"), a job asks, up to three times, and goes on with the rest meanwhile.
+  It never asks for a password, a code or a card.
   With nothing else to do it waits a day for you, and no answer is ever assumed:
   **Go on without me** is yours to press. The question comes as an alert, and
   stays in Chat, in **Jobs** and on Home under Now, with its choices as buttons.

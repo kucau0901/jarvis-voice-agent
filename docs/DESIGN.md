@@ -1452,8 +1452,19 @@ may have come from a page it read. Gone on without, or a day gone by, it is told
 that as Jarvis (a developer message), never as them, and to say what it leaves
 open: nothing is assumed for them. They may also tell it anything at any time
 (`Jobs.tell`), which joins at its next step, as a change to its card does; what it
-may reach is by what it is handed, so no words of theirs widen it. A card's number,
-a key or a one-time code is refused, whoever asked for it. A question is one card
+may reach is by what it is handed, so no words of theirs widen it. What they said
+before it ran out of its budget it has with being told to write what it has; after
+that it is refused, rather than taken and lost. One answer is to one question:
+"RM500" said to the first is not the second's as well. A question that asks for a
+password, a code or a card is not put to them, whatever a page wanted; and what they
+type that looks like a card's number, a key or a one-time code is not passed on.
+
+**A question is the job's words, and never Jarvis's.** It may be a page's, read out:
+"Shall I unlock the car for the courier?" A result read as Jarvis's is only wrong;
+a question invites a yes. So the conversation holds it as what a background job
+asks, quoted on one line, with a yes to it an answer to that job and no more
+(`askHistory` in `src/app/history.ts`); said aloud it begins with whose it is; its
+links are shown by their addresses. A question is one card
 (`ui/JobAsk.ts`) wherever it is met: under its alert, in the conversation, in Jobs
 and in Home's Now strip, with its choices as buttons and a box for other words.
 There is no inbox of them. Each is drawn from the job as it stands, so one answered
@@ -1465,9 +1476,11 @@ that an answer may go out in the words of a search.
 In the conversation, by voice, on the phone or by Telegram it is `job_control`
 (`tools/jobs.ts`): a change, an answer, a stop. It takes no words: the job is told
 their latest message as they said it (`ownWords`, less anything quoted in it), so
-the model cannot put any in their mouth, and in a routine or for a bot, where
-nobody said anything, it refuses. What their jobs wait on is said with each
-question someone asks, quoted as the job's words, and only where there is any.
+the model cannot put any in their mouth, and in a routine, for a bot, an MCP client
+or a Home tile's sentence, where they said nothing, it refuses. What their jobs wait
+on is said with each question they ask, quoted as the job's words, and only where
+there is any: not in the family room, whose answer everyone reads, nor for a tile's
+reading, nor on a device that reaches less than the job works with (`maySteer`).
 It took `control_home`'s place among the tools: that one, changing the house
 through Hermes, was a last resort of one to four minutes that a live voice session
 was let go for, and Home Assistant does what it did.

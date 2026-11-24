@@ -1,6 +1,6 @@
 import { authHeaders } from "./key";
 import type { Said } from "./conversation";
-import { askOf } from "./jobWords";
+import { askSaid } from "./jobWords";
 import { routeElement } from "./loud";
 import { inCar } from "./client";
 import { desktop, seenHere } from "./desktop";
@@ -368,10 +368,8 @@ export function setSpeakHere(on: boolean): void {
  * page), so the card can offer a button instead.
  */
 export async function speakAlert(key: string, a: Alert): Promise<boolean> {
-  // A question's choices with a pause between them.
-  const { question, choices } = askOf(a.text);
-  const text = a.ask && choices.length ? `${question} ${choices.join(", ")}.` : a.text;
-  return speakText(key, a.title && a.title !== "Jarvis" ? `${a.title}. ${text}` : text);
+  if (a.ask) return speakText(key, askSaid(a.title, a.text));
+  return speakText(key, a.title && a.title !== "Jarvis" ? `${a.title}. ${a.text}` : a.text);
 }
 
 /**

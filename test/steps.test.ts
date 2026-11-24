@@ -2,7 +2,7 @@
 // call, in words rather than the tool's name, and a tool's own notes made fit
 // to read.
 import { doing, said } from "../src/app/steps.ts";
-import { askOf, cameOf, heard, linesOf, nowDoing, powers, progress, type JobView } from "../src/app/jobWords.ts";
+import { askOf, askSaid, cameOf, heard, linesOf, nowDoing, powers, progress, type JobView } from "../src/app/jobWords.ts";
 
 let pass = 0, fail = 0;
 function check(name: string, cond: boolean, got?: unknown) {
@@ -37,12 +37,15 @@ console.log("a job at work");
   const said = (x: Partial<JobView>) => heard({ ...j, ...x }).map((h) => `${h.said} / ${h.state}`).join("|");
   check("what it was told, and whether that has reached it", said({}) === "" && said({ told: told(false) }) === "You said: Only ones sold here / reaches it at its next step" && said({ told: told(true) }) === "You said: Only ones sold here / taken in", said({ told: told(false) }));
   check("…or came too late", /came too late$/.test(said({ told: told(false), wrapping: "x" })) && /came too late$/.test(said({ told: told(false), status: "done" })));
-  check("an answer and a changed card as what they are, the fence of a struck line not shown, what Jarvis told it not theirs, the last three",
-    said({ told: [...told(true), { at: 2, text: "Front only", to: "question 1" }, { at: 3, text: "--- struck out:ab12 (CONTENT …", card: true }, { at: 4, text: "No answer came to question 2.", by: "jarvis" }, { at: 5, text: "And soon" }] }) ===
+  check("an answer and a changed card as what they are, the fence of a struck line not shown, the last three",
+    said({ told: [...told(true), { at: 2, text: "Front only", to: "question 1" }, { at: 3, text: "--- struck out:ab12 (CONTENT …", card: true }, { at: 5, text: "And soon" }] }) ===
       "Your answer: Front only / reaches it at its next step|You changed its card / reaches it at its next step|You said: And soon / reaches it at its next step", said({}));
   const q = { id: "q1", at: 1, text: "Front only?", choices: ["Yes", "No"] };
-  check("what came of a question: nothing yet, an answer, gone on without, a day gone by, its job over", cameOf(q, "running") === null && cameOf({ ...q, answer: { at: 2, text: "Yes" } }, "running") === "You answered: Yes" && /chose to go on/.test(cameOf({ ...q, over: "skipped" }, "running")!) && /No answer came/.test(cameOf({ ...q, over: "late" }, "done")!) && /ended before/.test(cameOf(q, "cancelled")!));
+  check("what came of a question: nothing yet, an answer, gone on without, a day gone by, its job over", cameOf(q, j) === null && cameOf({ ...q, answer: { at: 2, text: "Yes" } }, j) === "You answered: Yes" && /chose to go on/.test(cameOf({ ...q, over: "skipped" }, j)!) && /No answer came/.test(cameOf({ ...q, over: "late" }, { status: "done" })!) && /ended before/.test(cameOf(q, { status: "cancelled" })!));
+  const had = (taken: boolean) => cameOf({ ...q, answer: { at: 2, text: "Yes" } }, { status: "done", told: [{ at: 2, text: "Yes", to: "question 1", ...(taken ? { taken: true as const } : {}) }] });
+  check("an answer it ended before it had is said to be so", had(true) === "You answered: Yes" && /^You answered: Yes \(too late/.test(had(false)!));
   check("a question's alert, apart: its words and its choices", JSON.stringify(askOf("Front only?\n\n- Yes\n- No, both")) === '{"question":"Front only?","choices":["Yes","No, both"]}' && JSON.stringify(askOf("How much?")) === '{"question":"How much?","choices":[]}');
+  check("…and aloud: whose question it is first", askSaid("A question: Dashcams", "Front only?\n\n- Yes\n- No") === "Your background job asks, about Dashcams. Front only? Yes, No.", askSaid("A question: Dashcams", "Front only?\n\n- Yes\n- No"));
   check("a list typed a line each", JSON.stringify(linesOf(" a \n\n b")) === '["a","b"]');
 }
 

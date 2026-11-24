@@ -1,5 +1,5 @@
 import { api, authHeaders } from "./key";
-import { alertHistory, skillHistory, type History } from "./history";
+import { alertHistory, askHistory, skillHistory, type History } from "./history";
 import { Reply } from "./reply";
 import { Attachments } from "./attach";
 import type { AskSaid, JobSaid, RoutineSaid, SkillSaid } from "./fromRoutine";
@@ -95,7 +95,7 @@ export function restore(all: Said[], rows: Rows, history: History): void {
       continue;
     }
     if (s.ask && s.alert) {
-      if (rows.ask({ id: s.id, at: s.at, title: s.alert.title, text: s.text, ask: s.ask })) history.add("assistant", alertHistory(s.alert.title, s.text, s.alert.source), s.at);
+      if (rows.ask({ id: s.id, at: s.at, title: s.alert.title, text: s.text, ask: s.ask })) history.add("assistant", askHistory(s.alert.title, s.text), s.at);
       continue;
     }
     if (s.skill && !s.skill.answered) {

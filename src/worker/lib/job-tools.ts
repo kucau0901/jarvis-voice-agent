@@ -77,6 +77,10 @@ export interface Said {
 export const MAX_ASKED = 3;
 /** How long a job with nothing else to do waits for an answer. */
 export const ASK_MS = 24 * 3_600_000;
+/** What no job asks anyone for, English or Malay: what it read may want it. */
+const SECRET = /\b(?:pass(?:word|code|phrase)s?|pin|otp|tac|cvv|cvc|codes?|kod|kata laluan|card numbers?|nombor kad)\b/i;
+/** A link by its address, not its label: nobody presses what they cannot see. */
+const shown = (v: unknown, max: number): string => line(typeof v === "string" ? v.replace(/\[([^\]\n]*)\]\((https?:[^)\s]*)\)/g, "$1 ($2)") : v, max);
 const MAX_QUESTION = 300;
 const MAX_CHOICES = 4;
 const MAX_CHOICE = 80;
@@ -100,7 +104,7 @@ const listed = (todo: readonly Todo[]): string => todo.map((t, i) => `${i + 1}. 
 /** The tools, for one look at a job: what they are told is kept by `say`. */
 export function workTools(job: Pick<Job, "card" | "todo" | "asked">, say: (s: Said) => Promise<void>): Tool[] {
   let card = job.card;
-  let asked = (job.asked ?? []).length;
+  const asked = (job.asked ?? []).map((q) => q.text);
   // Calls of one step run together, so each works from what the one before it left here.
   let todo = (job.todo ?? []).map((t) => ({ ...t }));
   return [
@@ -192,14 +196,19 @@ export function workTools(job: Pick<Job, "card" | "todo" | "asked">, say: (s: Sa
         additionalProperties: false,
       },
       async run(args) {
-        const text = line(args.question, MAX_QUESTION);
+        const text = shown(args.question, MAX_QUESTION);
         if (!text) return "There was no question.";
-        if (asked >= MAX_ASKED) return `You have asked ${MAX_ASKED} times, which is all there are. Go on with what you have, and put what you could not settle under MISSING.`;
-        asked += 1;
-        const choices = (Array.isArray(args.choices) ? args.choices : []).map((c) => line(c, MAX_CHOICE)).filter(Boolean).slice(0, MAX_CHOICES);
-        await say({ ask: { text, choices: choices.length > 1 ? choices : [] } });
+        const choices = (Array.isArray(args.choices) ? args.choices : []).map((c) => shown(c, MAX_CHOICE)).filter(Boolean).slice(0, MAX_CHOICES);
+        if ([text, ...choices].some((s) => SECRET.test(s))) return "Not asked: a job never asks for a password, a code or a card. Go on without it.";
+        const n = asked.indexOf(text) + 1;
+        if (!n && asked.length >= MAX_ASKED) return `You have asked ${MAX_ASKED} times, which is all there are. Go on with what you have, and put what you could not settle under MISSING.`;
+        // Asked already: by a step that was cut short, and is run again.
+        if (!n) {
+          asked.push(text);
+          await say({ ask: { text, choices: choices.length > 1 ? choices : [] } });
+        }
         return (
-          `Asked, as question ${asked}. Their answer comes as their message. Go on with whatever does not depend on it, and never ` +
+          `Asked, as question ${n || asked.length}. Their answer comes as their message. Go on with whatever does not depend on it, and never ` +
           "assume it. With nothing else left to do, give your answer so far: the job then waits for theirs, and you go on with it."
         );
       },

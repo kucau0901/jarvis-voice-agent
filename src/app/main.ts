@@ -1,6 +1,6 @@
 import { JarvisSession, type ServerEvent, type SessionState } from "./session";
 import { loadKey, saveKey, clearKey, authHeaders, isSession } from "./key";
-import { History, alertHistory, isComponent, skillHistory } from "./history";
+import { History, alertHistory, askHistory, isComponent, skillHistory } from "./history";
 import { Settings } from "./ui/Settings";
 import { Devices } from "./ui/Devices";
 import { Memory } from "./ui/Memory";
@@ -31,7 +31,7 @@ import { keyboardSpace, watchKeyboard } from "./keyboard";
 import { Attachments, type Attached } from "./attach";
 import { Reply } from "./reply";
 import { fromAsk, fromJob, fromRoutine, fromSkill, jobStarted, jobsSeen, type AskSaid, type JobSaid, type RoutineSaid, type SkillSaid } from "./fromRoutine";
-import { askOf } from "./jobWords";
+import { askOf, askSaid } from "./jobWords";
 import { askUnder } from "./ui/JobAsk";
 import { asked, clearKept, keep, kept, restore, saidId, type Rows } from "./conversation";
 import { inCar } from "./client";
@@ -614,7 +614,7 @@ function jobSaid(a: JobSaid): boolean {
 }
 
 /** What a job asks: its pill, its question, and its answer's buttons under it, as they now stand. */
-function askSaid(a: AskSaid): boolean {
+function jobAsked(a: AskSaid): boolean {
   const label = fromAsk(a, openJob);
   if (!label) return false;
   els.transcript.appendChild(label);
@@ -645,18 +645,18 @@ function onAlert(a: Alert) {
   // anything else as "Title: text"; Settings → Test, which is kept nowhere, only while typing.
   if (a.routine) routineSaid({ ...a, routine: a.routine, proposals: a.proposals?.map((p) => p.id) });
   else if (a.job) jobSaid({ ...a, job: a.job, proposals: a.proposals?.map((p) => p.id) });
-  else if (a.ask) askSaid({ ...a, ask: a.ask });
+  else if (a.ask) jobAsked({ ...a, ask: a.ask });
   else if (a.skill) skillSaid({ id: a.id, at: a.at, text: a.text, skill: a.skill, proposals: a.proposals?.map((p) => p.id) });
   else if (a.source !== "test" || mode === "type") addRow("jarvis", a.title !== "Jarvis" ? `${a.title}: ${a.text}` : a.text).dataset.said = a.id;
   // Into the conversation either way: "yes, do that" after Hermes asks a
   // question in an alert must have the question to refer to.
-  history.add("assistant", a.skill ? skillHistory(a.skill, a.text) : alertHistory(a.title, a.text, a.source));
+  history.add("assistant", a.skill ? skillHistory(a.skill, a.text) : a.ask ? askHistory(a.title, a.text) : alertHistory(a.title, a.text, a.source));
   // Said only when the server says to talk about it: their "Talk to me about alerts" (Family → You), and not a repeat.
   // One fetched from an older log has no `talk`: as it was, by `speak`.
   const talk = a.talk ?? a.speak;
   if (session?.live) {
     if (!talk) return;
-    session.commentary(a.title !== "Jarvis" ? `${a.title}: ${a.text}` : a.text);
+    session.commentary(a.ask ? askSaid(a.title, a.text) : a.title !== "Jarvis" ? `${a.title}: ${a.text}` : a.text);
     quiet.saidAt = performance.now(); // not closed before Jarvis gets to say it
     return;
   }
@@ -671,7 +671,7 @@ const chatRows: Rows = {
   row: (who, text, links, page) => addRow(who, text, "", links, page),
   routine: routineSaid,
   job: jobSaid,
-  ask: askSaid,
+  ask: jobAsked,
   skill: skillSaid,
   apart: (p) => showCard(pageCard(key, p)),
 };

@@ -227,11 +227,12 @@ export class Jobs {
       this.list.replaceChildren(...jobs.map((j) => this.row(j)));
     }
     // Keep up with running jobs while the panel is open, but not while something is being written to one.
-    if (this.el.classList.contains("open") && jobs.some((j) => j.status === "running")) this.soon();
+    const running = jobs.filter((j) => j.status === "running");
+    if (this.el.classList.contains("open") && running.length) this.soon(running.every((j) => j.waiting) ? 20_000 : 5000);
   }
 
-  private soon(): void {
-    this.timer = setTimeout(() => (this.writing() ? this.soon() : void this.load()), 5000);
+  private soon(ms: number): void {
+    this.timer = setTimeout(() => (this.writing() ? this.soon(ms) : void this.load()), ms);
   }
 
   private writing(): boolean {

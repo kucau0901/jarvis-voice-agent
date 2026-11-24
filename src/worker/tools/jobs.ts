@@ -1,12 +1,12 @@
 import type { Tool } from "./registry.ts";
 import { stateStub } from "../lib/state-client.ts";
-import { callerWho, mayWork } from "../lib/context.ts";
+import { callerWho, maySteer, mayWork } from "../lib/context.ts";
 import { wordsOf, type Job } from "../lib/jobs.ts";
 import { flagLines } from "../lib/job-results.ts";
 import { tells } from "../lib/job-brief.ts";
 import { asksSaid, openQuestions } from "../lib/job-tools.ts";
 import { asQuotedData, ownPart } from "../lib/quote.ts";
-import { allows, withoutScreen, type Grant } from "../lib/scopes.ts";
+import { allows } from "../lib/scopes.ts";
 import { clampLimit } from "./args.ts";
 
 /**
@@ -190,9 +190,6 @@ const jobResults: Tool = {
   },
 };
 
-/** What a job works with of what it was given: never a screen, Hermes or the browser (routes/jobs.ts). */
-const ofJob = (grants: readonly Grant[]): Grant[] => withoutScreen(grants).filter((s) => s !== "hermes" && s !== "browser");
-
 /**
  * Steering a job that is working (lib/jobs.ts tell): a change, the answer to
  * what it asked, or a stop. What it is told is the person's latest message,
@@ -225,10 +222,10 @@ const jobControl: Tool = {
       const has = wordsOf(words);
       return want.every((w) => has.some((h) => h.startsWith(w)));
     };
-    // The questions an answer is to: those its words name, with their job's title; all of a job's where they name only the job.
+    // The questions an answer may be to: those its words name, with their job's title. One answer is to one of them.
     const asks = (j: Job) => openQuestions(j.asked).filter((q) => named(`${j.title} ${q.text}`));
     const fits = (await state.listJobs()).filter((j) => {
-      if (j.status !== "running" || !mayWork({ createdBy: j.createdBy, grants: ofJob(j.grants) }, ctx.env, ctx.grants)) return false;
+      if (j.status !== "running" || !maySteer(j, ctx.env, ctx.grants)) return false;
       if (op !== "stop" && j.engine !== "jarvis") return false;
       return op === "answer" ? asks(j).length > 0 : named(j.title);
     });
@@ -239,8 +236,11 @@ const jobControl: Tool = {
       const r = await state.cancelJob(j.id);
       return typeof r === "string" ? `Not stopped: ${r}.` : `Stopped "${j.title}".`;
     }
-    const to = asks(j);
-    const r = await state.tellJob(j.id, { text: said, ...(op === "answer" ? { question: to.length === 1 ? to[0]!.id : "open" } : {}) });
+    const to = op === "answer" ? asks(j) : [];
+    if (to.length > 1) {
+      return `"${j.title}" asks more than one thing. For each their message answers, and no other, call this again with words of that question as \`job\`:\n${asQuotedData("job question", asksSaid(to), WRITER.jarvis)}`;
+    }
+    const r = await state.tellJob(j.id, { text: said, ...(to[0] ? { question: to[0].id } : {}) });
     if (typeof r === "string") return `Not passed on: ${r}.`;
     return `Passed on to "${j.title}", in their words: it takes it in at its next step. Say so, briefly.`;
   },

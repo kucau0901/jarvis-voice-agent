@@ -20,7 +20,7 @@ import { recordUsage } from "../routes/usage.ts";
 import { sharedBlock, type Origin, type SharedTurn } from "./shared.ts";
 import { stateStub } from "./state-client.ts";
 import { memoryFor, type MemoryStore } from "./memory.ts";
-import { bookOf, callerWho, OWNER } from "./context.ts";
+import { bookOf, callerWho, maySteer, OWNER } from "./context.ts";
 import { OFFER, OFFER_SAID_MS, OFFER_TOOLS, procedureOf, specialtyBlock, type Procedure, type Specialty } from "./specialties.ts";
 import { botAsks, botHides, type Skill } from "./skills.ts";
 import { askSkill } from "../tools/skills.ts";
@@ -31,7 +31,7 @@ import { localeOf } from "./locale.ts";
 import { allows, type Grant } from "./scopes.ts";
 import { DRAWS_ON_SCREEN } from "../tools/place.ts";
 import { asksSaid, openQuestions } from "./job-tools.ts";
-import { isResearchCap, jobTool, readsOnly, type Reach } from "./jobs.ts";
+import { isResearchCap, jobTool, readsOnly, type Job, type Reach } from "./jobs.ts";
 import { ACTS } from "./panel-tiles.ts";
 import { houseOnly, noteworthy } from "./habits.ts";
 import { Collector } from "./collector.ts";
@@ -127,6 +127,8 @@ export interface RunOptions {
    * is never offered is left out (lib/skills.ts botHides).
    */
   bot?: string;
+  /** A question the user did not word: an MCP client's model (routes/v1.ts), a Home tile's sentence (routes/panels.ts). Nothing in it is passed on as theirs. */
+  relayed?: boolean;
   /** A background job's: what it may look at (lib/jobs.ts Reach). */
   reach?: Reach;
   /** A routine's own words, its maker's (routes/routines.ts): what it may keep from what it reads is judged by them. */
@@ -217,9 +219,13 @@ export async function prepareRouter(
     since !== null ? (stateStub(env)?.conversationOf(env.JARVIS_PERSON || OWNER, Date.now()) ?? Promise.resolve([] as Said[])).catch(() => [] as Said[]) : Promise.resolve([] as Said[]),
     near ? aroundUser(env, grants, opts.waitUntil).catch(() => "") : Promise.resolve(""),
     parted ? (stateStub(env)?.componentsFor(env.JARVIS_PERSON || OWNER) ?? Promise.resolve([] as Offered[])).catch(() => [] as Offered[]) : Promise.resolve([] as Offered[]),
-    // What their jobs wait on them for, where a person may answer (tools/jobs.ts job_control).
-    !unattended && !opts.bot ? (stateStub(env)?.jobsAsking(env.JARVIS_PERSON || OWNER) ?? Promise.resolve([])).catch(() => []) : Promise.resolve([]),
+    // What their jobs wait on them for, where the person asks and is answered alone (tools/jobs.ts job_control):
+    // not for a reading nobody pressed (lookUp), nor in the family room, where everyone reads the answer.
+    !unattended && !opts.bot && !opts.relayed && !opts.toolFilter && opts.assistAsk === undefined
+      ? (stateStub(env)?.jobsAsking(env.JARVIS_PERSON || OWNER) ?? Promise.resolve([] as Job[])).catch(() => [] as Job[])
+      : Promise.resolve([] as Job[]),
   ]);
+  const theirs = (asking ?? []).filter((j) => maySteer(j, env, grants));
   const earlier = since !== null ? earlierOnGlasses(said ?? [], since, Date.now(), localeOf(env).timeZone) : "";
   const elsewhere = [sharedBlock(shared, Date.now()), family].filter(Boolean).join("\n\n");
   tools.push(...mcp, ...askSkill(ready ?? []));
@@ -349,8 +355,8 @@ export async function prepareRouter(
     // What their components report, in the components' own words: quoted as data, like the rest.
     ...(reported ? [{ role: "user" as const, content: reported }] : []),
     // What a job of theirs asks, in the job's own words, the same.
-    ...(asking?.length
-      ? [{ role: "user" as const, content: `A BACKGROUND JOB WAITS FOR THEIR ANSWER (job_control)\n${asking.map((j) => asQuotedData("job question", `${j.title}: ${asksSaid(openQuestions(j.asked))}`, "A BACKGROUND JOB, FROM WHAT IT READ")).join("\n")}` }]
+    ...(theirs.length
+      ? [{ role: "user" as const, content: `A BACKGROUND JOB WAITS FOR THEIR ANSWER (job_control)\n${theirs.map((j) => asQuotedData("job question", `${j.title}: ${asksSaid(openQuestions(j.asked))}`, "A BACKGROUND JOB, FROM WHAT IT READ")).join("\n")}` }]
       : []),
     { role: "user" as const, content: `Conversation so far:\n\n${conversation}` },
     ...(opts.images?.length || opts.files?.length
@@ -640,7 +646,7 @@ export async function run(
     runCalls: async (calls) => {
       made.push(...calls.map((c) => ({ name: c.name, arguments: c.arguments })));
       const out = await runCalls(calls as OpenAI.Responses.ResponseFunctionToolCall[], p!.byName, {
-        env, signal, memory: p!.memory, grants, offered: p!.tools, asked: ownWords(turns, opts), screenless: opts.screenless === true,
+        env, signal, memory: p!.memory, grants, offered: p!.tools, asked: opts.relayed ? undefined : ownWords(turns, opts), screenless: opts.screenless === true,
         ...(opts.browserSites ? { browserSites: opts.browserSites } : {}),
         ...(p!.procedure && !repliesToEarlier(turns) ? { procedure: p!.procedure } : {}),
         ...(outside ? { outside: { said: ownPart(ownWords(turns, opts) ?? opts.standing ?? "") } } : {}),

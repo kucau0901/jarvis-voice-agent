@@ -142,6 +142,8 @@ export interface Job {
   /** What it asked them; and, with nothing left to do until they answer, since when it waits. */
   asked?: Asked[];
   waits?: { since: number };
+  /** The step it waits on, or waited on last: its tokens are counted already. */
+  counted?: string;
   /** Asked once already to finish its checklist. */
   nudged?: true;
 }
@@ -261,8 +263,8 @@ export type Step =
   | { kind: "done"; text: string; cited?: Cited[]; usage?: Job["usage"] }
   /** The plan is at its limit: nothing was asked, and it goes on from here then. */
   | { kind: "parked"; until: number }
-  /** It has nothing left to do until its person answers what it asked them: looked at again then, so counted then. */
-  | { kind: "asks" }
+  /** It has nothing left to do until its person answers what it asked them: looked at again then, its tokens counted now. */
+  | { kind: "asks"; usage?: Job["usage"] }
   | { kind: "failed"; error: string };
 
 /** A step started: its response id, the plan to wait for, or why it could not start. */
@@ -904,7 +906,8 @@ export class Jobs {
         if (!cur) return;
         const ticked = s.todo && doneLines(s.todo) > doneLines(cur.todo);
         const asked = cur.asked ?? [];
-        const q: Asked | null = s.ask && asked.length < MAX_ASKED ? { id: `q${asked.length + 1}`, at: Date.now(), ...s.ask } : null;
+        // Once each: a step cut short before it was kept is run again, and asks again.
+        const q: Asked | null = s.ask && asked.length < MAX_ASKED && !asked.some((a) => a.text === s.ask!.text) ? { id: `q${asked.length + 1}`, at: Date.now(), ...s.ask } : null;
         await this.save({
           ...cur,
           ...(s.card && !cur.card ? { card: s.card } : {}),
@@ -936,9 +939,9 @@ export class Jobs {
 
   /**
    * Its person tells it something while it works: a change, or the answer to
-   * what it asked (`question`: its id, or "open" for all it waits on; `skip`,
-   * to go on without). It goes as they said it, at its next step, and widens
-   * nothing: what it may reach is by what it is handed.
+   * one thing it asked (`question`: its id; `skip`, to go on without). It goes
+   * as they said it, at its next step, and widens nothing: what it may reach
+   * is by what it is handed.
    */
   async tell(id: string, input: { text?: unknown; question?: unknown; skip?: unknown }, now = Date.now()): Promise<Job | string> {
     const j = await this.stillRunning(id);
@@ -947,7 +950,7 @@ export class Jobs {
     if (j.cut) return "it has run out, and is writing what it has";
     const asked = j.asked ?? [];
     const open = openQuestions(asked);
-    const which = input.question === undefined || input.question === null ? [] : input.question === "open" ? open : open.filter((q) => q.id === input.question);
+    const which = open.filter((q) => q.id === input.question);
     if (input.question !== undefined && input.question !== null && !which.length) return "that question is not waiting for an answer";
     const skip = input.skip === true && which.length > 0;
     const text = skip ? "" : clean(input.text, MAX_TELL);
@@ -1078,12 +1081,10 @@ export class Jobs {
     // What it said of itself is kept before the job is read again below, or one would be saved over the other.
     await this.noting;
     if (step.kind === "parked") return this.park(j.id, step.until, now);
-    if (step.kind === "asks") {
-      const asks = await this.stillRunning(j.id);
-      return asks ? this.waitFor(asks, now) : undefined;
-    }
-    if (step.kind !== "failed") await this.countTokens(j, step.usage, now);
-    const usage = step.kind !== "failed" && step.usage ? addUsage(j.usage, step.usage) : j.usage;
+    // Looked at again once it has heard from them: counted when it began to wait.
+    const spent = step.kind === "failed" || j.counted === polled ? undefined : step.usage;
+    await this.countTokens(j, spent, now);
+    const usage = spent ? addUsage(j.usage, spent) : j.usage;
     const cur = await this.stillRunning(j.id);
     if (!cur) {
       // Stopped meanwhile: stop what this step started too, and keep what it spent.
@@ -1093,6 +1094,7 @@ export class Jobs {
       return;
     }
     j = { ...cur, ...(usage ? { usage } : {}) };
+    if (step.kind === "asks") return this.waitFor({ ...j, counted: polled }, now);
     if (step.kind === "wait") {
       j.nextAt = now + nextLook(j.updatedAt, now);
       // updatedAt is when the current step started, so the wait grows while it runs.
@@ -1244,6 +1246,7 @@ export class Jobs {
     delete done.parked;
     delete done.doing;
     delete done.waits;
+    delete done.counted;
     if ("error" in out) {
       // The check never costs the report: if it did not finish, the report goes out as written.
       // Nor does the merge cost the teams' reports: unmerged, each goes out as it was written.

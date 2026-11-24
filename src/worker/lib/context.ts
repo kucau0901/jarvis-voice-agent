@@ -1,7 +1,7 @@
 import type { Env } from "../types.ts";
 import type { Prefs, Reach, Space } from "./hub.ts";
 import type { Access } from "./access.ts";
-import { covers, type Grant } from "./scopes.ts";
+import { covers, withoutScreen, type Grant } from "./scopes.ts";
 
 /**
  * Who a request is for, laid over the environment every route already reads.
@@ -44,6 +44,14 @@ export const mayWork = (
   env: { JARVIS_PERSON?: string; JARVIS_DEVICE?: string },
   grants: readonly Grant[],
 ): boolean => isTheirs(item.createdBy, env.JARVIS_PERSON) && (!env.JARVIS_DEVICE || item.createdBy === env.JARVIS_DEVICE || covers(grants, item.grants));
+
+/**
+ * The same of a job at work, by what it works with, which is never a screen,
+ * Hermes or the browser (routes/jobs.ts): a device of theirs without those
+ * (Telegram) may hear what it asks, and answer it.
+ */
+export const maySteer: typeof mayWork = (job, env, grants) =>
+  mayWork({ createdBy: job.createdBy, grants: withoutScreen(job.grants).filter((s) => s !== "hermes" && s !== "browser") }, env, grants);
 
 /**
  * Whose person a stored creator or subscriber is: a member's id, or one of

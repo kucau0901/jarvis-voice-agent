@@ -631,17 +631,16 @@ assumptions}`, and a checklist, `todo: [{text, state, why?}]` with `state`
 that, `wrapping`, what of. `POST /api/v1/jobs/card {id, outcome?, limits?,
 assumptions?}` changes the card of one still working (each list is given whole);
 what was changed reaches the job at its next step, and `told: [{at, text,
-taken?, card?, to?, by?}]` says what it was told and which of it it has had: a
-change to its card (`card`), an answer (`to`, "question 1"), or their words; `by:
-"jarvis"` is Jarvis telling it that no answer came.
+taken?, card?, to?}]` says what it was told and which of it it has had: a change to
+its card (`card`), an answer (`to`, "question 1"), or their words.
 
 `POST /api/v1/jobs/tell {id, text}` tells one still working anything, in its
 person's own words, up to 1,000 characters: it takes it in at its next step. A
 job may also ask its person something, three times at most: its view carries
 `asks: [{id, at, text, choices}]` (what it has not been answered), and an alert
 says so at once, with `ask: {job, id}` and no `job`, since it is not the result.
-`POST /api/v1/jobs/tell {id, question, text}` answers one (`question` is its id,
-or `open` for all of them), and `{id, question, skip: true}` goes on without. With
+`POST /api/v1/jobs/tell {id, question, text}` answers one (`question` is its id),
+and `{id, question, skip: true}` goes on without. With
 nothing else to do, a job waits for the answer a day, its status still `running`
 and `waiting: {for: "you", until}` in its view; it is not one of the three running.
 One job's whole view also carries `asked`, every question it put with its `answer`

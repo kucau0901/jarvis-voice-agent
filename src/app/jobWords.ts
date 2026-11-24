@@ -79,8 +79,8 @@ export interface JobView {
   /** What it may take; and, out of that, of what: it is writing what it has. */
   limits?: { steps: number; going: number; minutes: number };
   wrapping?: string;
-  /** What its person told it while it worked, and whether a step has had it: an answer (`to`), a change to its card, or their words; by Jarvis, that they did not answer. */
-  told?: { at: number; text: string; taken?: true; to?: string; card?: true; by?: "jarvis" }[];
+  /** What its person told it while it worked, and whether a step has had it: an answer (`to`), a change to its card, or their words. */
+  told?: { at: number; text: string; taken?: true; to?: string; card?: true }[];
 }
 
 /** What it is doing this moment. */
@@ -111,7 +111,6 @@ export function powers(j: JobView): string {
 export function heard(j: JobView): { said: string; state: string }[] {
   const late = j.status !== "running" || !!j.wrapping;
   return (j.told ?? [])
-    .filter((t) => !t.by)
     .slice(-3)
     .map((t) => ({
       said: t.card ? "You changed its card" : t.to ? `Your answer: ${t.text}` : `You said: ${t.text}`,
@@ -120,17 +119,25 @@ export function heard(j: JobView): { said: string; state: string }[] {
 }
 
 /** What came of a question, as whoever was asked reads it; null while it may still be answered. */
-export function cameOf(q: JobAsked, status: JobView["status"]): string | null {
-  if (q.answer) return `You answered: ${q.answer.text}`;
+export function cameOf(q: JobAsked, j: Pick<JobView, "status" | "told">): string | null {
+  // Kept at the same moment (src/worker/lib/jobs.ts tell): whether a step had it.
+  const unheard = q.answer && j.status !== "running" && j.told?.some((t) => t.to && t.at === q.answer!.at && !t.taken);
+  if (q.answer) return `You answered: ${q.answer.text}${unheard ? " (too late: it ended before it had that)" : ""}`;
   if (q.over === "skipped") return "You chose to go on without an answer.";
   if (q.over === "late") return "No answer came in time, and it went on without one.";
-  return status === "running" ? null : "It ended before this was answered.";
+  return j.status === "running" ? null : "It ended before this was answered.";
 }
 
 /** A question's alert (src/worker/lib/jobs.ts askAlert): the question, and its choices. */
 export function askOf(text: string): { question: string; choices: string[] } {
   const [question = "", list] = text.split("\n\n- ");
   return { question, choices: list ? list.split("\n- ") : [] };
+}
+
+/** The same, said aloud: whose question it is first, so that it is never heard as Jarvis's own. */
+export function askSaid(title: string, text: string): string {
+  const { question, choices } = askOf(text);
+  return `Your background job asks, about ${title.replace(/^A question: /, "")}. ${question}${choices.length ? ` ${choices.join(", ")}.` : ""}`;
 }
 
 /** A card's list as it is typed, a line each. */
