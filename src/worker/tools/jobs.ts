@@ -203,13 +203,13 @@ const jobControl: Tool = {
   name: "job_control",
   pace: "fast",
   description:
-    "Steer one of the user's background jobs while it works: 'correct' passes on a change, 'answer' what they say to its " +
+    "Steer a background job of theirs: 'correct' passes on a change, 'answer' their answer to its " +
     "question, 'stop' ends it. It is told their latest message as they said it. Never answer for them.",
   parameters: {
     type: "object",
     properties: {
       op: { type: "string", enum: ["correct", "answer", "stop"] },
-      job: { type: ["string", "null"], description: "Words from its title; null for the only one." },
+      job: { type: ["string", "null"], description: "Words from its title, or the question answered; null for the only one." },
     },
     required: ["op", "job"],
     additionalProperties: false,
@@ -221,12 +221,16 @@ const jobControl: Tool = {
     if (!said) return "Only the user can do that, in their own words.";
     const op = args.op === "answer" || args.op === "stop" ? args.op : "correct";
     const want = wordsOf(typeof args.job === "string" ? args.job : "");
+    const named = (words: string) => {
+      const has = wordsOf(words);
+      return want.every((w) => has.some((h) => h.startsWith(w)));
+    };
+    // The questions an answer is to: those its words name, with their job's title; all of a job's where they name only the job.
+    const asks = (j: Job) => openQuestions(j.asked).filter((q) => named(`${j.title} ${q.text}`));
     const fits = (await state.listJobs()).filter((j) => {
       if (j.status !== "running" || !mayWork({ createdBy: j.createdBy, grants: ofJob(j.grants) }, ctx.env, ctx.grants)) return false;
       if (op !== "stop" && j.engine !== "jarvis") return false;
-      if (op === "answer" && !openQuestions(j.asked).length) return false;
-      const has = wordsOf(j.title);
-      return want.every((w) => has.some((h) => h.startsWith(w)));
+      return op === "answer" ? asks(j).length > 0 : named(j.title);
     });
     if (!fits.length) return op === "answer" ? "No job of theirs is waiting for an answer." : "No job of theirs at work is called that.";
     if (fits.length > 1) return `More than one is: ${fits.map((j) => `"${j.title}"`).join(", ")}. Ask which, and say its title.`;
@@ -235,7 +239,8 @@ const jobControl: Tool = {
       const r = await state.cancelJob(j.id);
       return typeof r === "string" ? `Not stopped: ${r}.` : `Stopped "${j.title}".`;
     }
-    const r = await state.tellJob(j.id, { text: said, ...(op === "answer" ? { question: "open" } : {}) });
+    const to = asks(j);
+    const r = await state.tellJob(j.id, { text: said, ...(op === "answer" ? { question: to.length === 1 ? to[0]!.id : "open" } : {}) });
     if (typeof r === "string") return `Not passed on: ${r}.`;
     return `Passed on to "${j.title}", in their words: it takes it in at its next step. Say so, briefly.`;
   },

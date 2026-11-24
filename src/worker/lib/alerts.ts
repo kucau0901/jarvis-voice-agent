@@ -73,7 +73,7 @@ export interface Alert {
   /**
    * What a background job asks its person (lib/jobs.ts): the job, and the
    * question's id there. Not its result, so not `job`: the app offers the
-   * answer under it (src/app/ui/JobLive.ts) and its pill stays at work.
+   * answer under it (src/app/ui/JobAsk.ts) and its pill stays at work.
    */
   ask?: { job: string; id: string };
   /**
