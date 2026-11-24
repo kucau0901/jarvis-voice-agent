@@ -54,6 +54,15 @@ import { clearChain } from "./job-chain.ts";
  * and the merged report is checked like any other (lib/research-team.ts).
  */
 export type JobEngine = "jarvis" | "hermes" | "research";
+
+/**
+ * What a job may look at, settled when it is started: its person's own things
+ * (mail, calendar, memory, the house, the car), or the web. Never both: what is
+ * looked up on the web leaves by the words of the search, and a page or a mail
+ * it reads may ask for exactly that. Research is the web's.
+ */
+export type Reach = "private" | "web";
+export const reachOf = (j: Pick<Job, "engine" | "reach">): Reach => (j.engine === "research" ? "web" : (j.reach ?? "private"));
 type JobStatus = "running" | "done" | "failed" | "cancelled";
 
 export interface Job {
@@ -100,6 +109,8 @@ export interface Job {
    * kept apart (jobtable:<id>), to download.
    */
   table?: { columns?: string[]; rows?: number };
+  /** An ordinary job's: its person's own things, or the web (reachOf). */
+  reach?: Reach;
   /** Waiting for the owner's ChatGPT plan, at its limit: since when, and until when (lib/openai-auth.ts PlanParked). */
   parked?: { since: number; until: number };
   /** How long it has waited so, which its time limit does not count. */
@@ -329,6 +340,10 @@ export function readsOnly(t: { name: string; reads?: boolean }): boolean {
   const own = t.name.slice(i + 2).toLowerCase();
   return !WRITES.test(own) && READS.test(own);
 }
+
+/** What a job on the web is handed besides its searches: nothing of its person's, and nothing that remembers. */
+const WEB_TOOLS = new Set(["time_in", "place_info"]);
+export const webTool = (t: { name: string }): boolean => WEB_TOOLS.has(t.name);
 
 /** What a job is handed to read with: of Jarvis's own, those named above and no others; of the rest, what only reads. */
 export function jobTool(t: { name: string; reads?: boolean }): boolean {
@@ -597,7 +612,7 @@ export class Jobs {
   }
 
   async create(
-    input: { title?: unknown; task?: unknown; engine?: unknown; team?: unknown; from?: unknown; table?: unknown },
+    input: { title?: unknown; task?: unknown; engine?: unknown; reach?: unknown; team?: unknown; from?: unknown; table?: unknown },
     by: { who: string; grants: readonly Grant[] },
     now = Date.now(),
   ): Promise<Job | string> {
@@ -659,6 +674,7 @@ export class Jobs {
       nextAt: now,
       steps: 0,
       attempts: 0,
+      ...(engine === "jarvis" ? { reach: input.reach === "web" ? ("web" as const) : ("private" as const) } : {}),
       ...(team ? { team: newTeam(now) } : {}),
       ...(table ? { table: {} } : {}),
       ...(from ? { from } : {}),

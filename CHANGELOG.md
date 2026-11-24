@@ -144,6 +144,12 @@ of every release, and in the [README](README.md#updating).
   it needs one, goes there too. Servers added in chat before this are still
   under **Settings → MCP servers** and work as they did.
 
+- **A background job now looks at your own things, or at the web, not both.**
+  Jarvis says which when it starts one, the Jobs panel shows it, and **New job**
+  there asks. A job on the web has nothing of yours but what its brief says
+  (open **What was asked** to read it); one on your own things cannot search the
+  web. For something like a trip around your diary, Jarvis reads your calendar
+  first and puts the dates in the brief. Research is always the web's.
 - **At your ChatGPT plan's limit, a background job now waits.** It used to go
   on with the API key by itself. It now says in Jobs until when it waits and
   goes on when the plan is back, losing nothing; **Use the API key now** there
@@ -210,6 +216,10 @@ of every release, and in the [README](README.md#updating).
 
 ### Security
 
+- **A background job can no longer carry what it reads of yours out through a
+  web search.** It had your mail, calendar and memory beside live web search, so
+  a mail or a page could have asked it to look something up that gave them away.
+  It now has one or the other (see Changed), decided by which tools it is handed.
 - **What a mail or a page asks Jarvis to remember is no longer kept unasked.**
   In a turn that read something someone else wrote (mail, a web page, a
   search, an invitation), Jarvis now keeps a fact only if you said it or

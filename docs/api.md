@@ -575,8 +575,15 @@ and stays readable in full.
 
 ```
 POST /api/v1/jobs
-{"title": "Dashcams", "task": "Compare three dashcams under RM800 …", "engine": "jarvis"}
+{"title": "Dashcams", "task": "Compare three dashcams under RM800 …", "engine": "jarvis", "reach": "web"}
 ```
+
+`reach` is what an ordinary job may look at, settled when it starts: `private`
+(the default: its person's own mail, calendar, memory, house, car and cameras,
+without the web) or `web` (web search, the time and what a place is like, with
+nothing of its person's: not their name, nor what is saved about them). Never
+both. Research is always the web's. A job that needs some of each is given the
+facts it needs in `task`.
 
 `engine` is `jarvis` (default: the router, many steps, in OpenAI's background
 mode), `research` (needs `routines`: it spends the family's monthly
@@ -621,7 +628,8 @@ the plan, `waiting.key` is there too, with `soFar`, the dollars its tokens so fa
 would have cost on the key (null when unknown), and
 `POST /api/v1/jobs/key {id}` (needs `routines`) moves it there at once.
 
-A job may READ — web search, mail, calendar, memory, contacts, the car,
+A job may READ: on the web, its searches; on its person's own things, mail,
+calendar, memory, contacts, the car,
 cameras, and the reading tools of MCP servers (judged by name: `get`, `list`,
 `search`… in, `set`, `call`, `control`… out). It cannot send, book, delete,
 unlock or switch anything itself: a call it would make (a car command, a

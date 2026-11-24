@@ -17,12 +17,14 @@ const startJob: Tool = {
     "Start a background job for anything that needs many steps or several minutes, rather " +
     "than trying to do it now: researching and comparing (products, prices, places, options), " +
     "going through a lot of mail or a long stretch of the calendar, planning a trip, checking " +
-    "many things. It runs on its own, even with every screen closed, and the result reaches " +
-    "the user as a message and in the Jobs panel. It can READ — the web, mail, calendar, " +
-    "memory, the car, cameras — but not act; if the work leads to an action it will say what it " +
-    "would do. Write `task` as a complete brief: everything it needs from this conversation, " +
-    "names resolved, because it will not see the conversation. Then tell the user it has started " +
-    "and that they will hear when it is done. Not for quick questions: answer those now. " +
+    "many things. It runs on its own, every screen closed, and the result reaches " +
+    "the user as a message and in the Jobs panel. It reads and never acts; what it would do, it proposes. " +
+    "It reads ONE side (`reach`): 'private', the user's own mail, calendar, memory, house, car and " +
+    "cameras, without the web; or 'web', without any of those. For work that needs both (a trip around " +
+    "their diary), read the private part here first, and put only the facts it needs in `task`. " +
+    "Write `task` as a complete brief, names resolved: it will not see the conversation, and the user " +
+    "can read it. Then tell them it has started, and on the web, which of their facts it was given. " +
+    "Not for quick questions: answer those now. " +
     "Set research to 'yes' only when the user asks for research in depth ('research…', 'dig " +
     "into…', 'find out everything about…'): it runs on a stronger model, searches widely, takes " +
     "10 to 40 minutes and costs roughly one to two dollars, and comes back as a report with its sources. " +
@@ -37,13 +39,14 @@ const startJob: Tool = {
     properties: {
       title: { type: "string", description: "A few words to list it by, e.g. 'Dashcams under RM800'." },
       task: { type: "string", description: "The complete brief, as if to a capable assistant who knows nothing of this conversation." },
+      reach: { type: "string", enum: ["private", "web"], description: "What it may read: the user's own things, or the web. Research is always the web." },
       research: {
         type: "string",
         enum: ["no", "yes", "team", "table"],
         description: "'yes', 'team' or 'table' only as described above, when the user asked for it; 'no' for an ordinary job.",
       },
     },
-    required: ["title", "task", "research"],
+    required: ["title", "task", "reach", "research"],
     additionalProperties: false,
   },
   async run(args, ctx) {
@@ -57,7 +60,7 @@ const startJob: Tool = {
       return "Not started: research in depth is for the family, and this person may not start it. Offer an ordinary job, or to answer now.";
     }
     const j = await state.createJob(
-      { title: args.title, task: args.task, engine: research ? "research" : "jarvis", ...(team ? { team: true } : {}), ...(table ? { table: true } : {}) },
+      { title: args.title, task: args.task, engine: research ? "research" : "jarvis", reach: args.reach, ...(team ? { team: true } : {}), ...(table ? { table: true } : {}) },
       { who: callerWho(ctx.env), grants: ctx.grants },
     );
     if (typeof j === "string") return `Not started: ${j}.`;
@@ -74,7 +77,8 @@ const startJob: Tool = {
     }
     return research
       ? `Started research on "${j.title}". It takes 10 to 40 minutes; the report, with its sources, will reach the user as a message and wait in Jobs. Tell them so.`
-      : `Started "${j.title}". It usually takes a few minutes; the result will reach the user as a message. Tell them so.`;
+      : `Started "${j.title}" ${j.reach === "web" ? "on the web, with only what its brief says of the user" : "on the user's own things, without the web"}. ` +
+        "It usually takes a few minutes; the result will reach the user as a message. Tell them so.";
   },
 };
 

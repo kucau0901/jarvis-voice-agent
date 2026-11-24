@@ -1352,6 +1352,25 @@ by itself: the model is told it may or may not have happened. Reads are simply
 read again, and a proposal filed twice is one card. Rows are not under `job:`,
 which is the jobs themselves.
 
+**A job reads its person's own things, or the web, never both** (`Reach` in
+`lib/jobs.ts`). A job used to have mail, the calendar, memory and the house beside
+live web search. It cannot act, but a search is a way out: what it looks up leaves
+by the words of the search, to whoever runs the page it lands on, and a mail or a
+page it reads may ask for exactly that. OpenAI's own guide says the same of
+reading tools and advises separate requests. So it is settled when a job starts
+and held by what it is handed, not by what it is told: on the web, the searches,
+the time and what a place is like, with no profile, name, birthday, family, past
+attempts or other jobs' results (`unnamed`, grants of `ask` alone); on their own
+things, no web search. Where they are and their language stay, for prices and
+what is near. For work that needs both, the question that starts it reads the
+private part first and puts the facts in the brief, which they can read in Jobs:
+what leaves is then what they saw leave. What is looked up on Google's maps
+(`directions`, `place_info`) and a component's own reading tools still carry words
+to whoever runs them, who the admin chose. This does not cover a routine, nor a
+question in the conversation, which have private reads, the web and acting
+together: they are what a person asked for or set up, and somebody reads the
+answer.
+
 **The family's questions come first on the plan.** Jobs and everyone's questions
 share one ChatGPT allowance, and one call refused at its limit marks the plan
 limited for an hour for the house. A job that met the limit used to go on with

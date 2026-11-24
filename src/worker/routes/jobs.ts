@@ -2,7 +2,7 @@ import { openaiBase } from "../lib/openai-base.ts";
 import OpenAI from "openai";
 import type { Env } from "../types.ts";
 import { whoOf, grantsOf, personOf, type Principal } from "../lib/auth.ts";
-import { isTheirs, personOfWho } from "../lib/context.ts";
+import { isTheirs, personOfWho, unnamed } from "../lib/context.ts";
 import type { EventSink } from "../lib/sse.ts";
 import { err, json, readObject } from "../lib/http.ts";
 import { asQuotedData } from "../lib/quote.ts";
@@ -12,7 +12,7 @@ import { builtinTools, explicitCache, researchModel } from "../lib/router-model.
 import { toToolSchema } from "../tools/registry.ts";
 import * as hermes from "../tools/hermes.ts";
 import { INTERRUPTED, JobChain, beginCalls, stepId, stepOf, type Answered } from "../lib/job-chain.ts";
-import { RESEARCH_MONTHLY_DEFAULT, jobTool, sharesLeft, usageEntry, type Job, type JobDeps, type Step } from "../lib/jobs.ts";
+import { RESEARCH_MONTHLY_DEFAULT, jobTool, reachOf, webTool, sharesLeft, usageEntry, type Job, type JobDeps, type Step } from "../lib/jobs.ts";
 import { citationsOf } from "../lib/links.ts";
 import { toCsv } from "../lib/research-table.ts";
 import { MERGE_INSTRUCTIONS, PLAN_INSTRUCTIONS, RESEARCH_CHECK, TABLE_CHECK, TABLE_MERGE_INSTRUCTIONS, TABLE_PLAN_INSTRUCTIONS, TABLE_TEAM_INSTRUCTIONS, TEAM_INSTRUCTIONS } from "../lib/router-prompt.ts";
@@ -35,7 +35,7 @@ import type { Storage } from "../lib/state-host.ts";
  *
  *   GET    /api/v1/jobs           the jobs (a device sees its own)
  *   GET    /api/v1/jobs?id=       one, with its whole result
- *   POST   /api/v1/jobs           {task, title?, engine?: "jarvis" | "hermes" | "research", team?: true, from?: id}
+ *   POST   /api/v1/jobs           {task, title?, engine?: "jarvis" | "hermes" | "research", reach?: "private" | "web", team?: true, from?: id}
  *   POST   /api/v1/jobs/cancel    {id}
  *   POST   /api/v1/jobs/key       {id}   a job waiting for the ChatGPT plan goes on with the API key instead; needs `routines`
  *   DELETE /api/v1/jobs?id=
@@ -143,15 +143,18 @@ export function jobEngine(
   /** `team`: for a research team's chain, which is offered share_findings besides. */
   async function request(job: Job, turns: { role: "user"; text: string }[], team = false, stop?: AbortSignal) {
     const research = job.engine === "research";
-    // As whoever started it (lib/context.ts): their memory, their mail.
-    const env = await envFor(job);
-    const reach = await reachFor(job);
-    if (!reach) throw new Error("whoever started it is no longer in the family");
-    const grants = jobGrants(reach);
-    // A job that may act proposes instead (lib/proposals.ts); research only reads.
-    const toolFilter = research ? jobTool : (t: { name: string }) => jobTool(t) || proposable(t) || t.name === mailSend.name;
-    const prepared = await prepareRouter(env, turns, signal(stop), grants, { surface: research ? "research" : "job", toolFilter });
-    const p = research ? prepared : proposing(prepared, job);
+    // Its person's own things, or the web, never both (lib/jobs.ts Reach): by what it is handed, not by what it is told.
+    const web = reachOf(job) === "web";
+    // As whoever started it (lib/context.ts): their memory, their mail. On the web, as nobody in particular.
+    const env = web ? unnamed(await envFor(job)) : await envFor(job);
+    const may = await reachFor(job);
+    if (!may) throw new Error("whoever started it is no longer in the family");
+    const grants: Grant[] = web ? ["ask"] : jobGrants(may);
+    // A job that may act proposes instead (lib/proposals.ts); on the web it has nothing to act on.
+    const toolFilter = web ? webTool : (t: { name: string }) => jobTool(t) || proposable(t) || t.name === mailSend.name;
+    const prepared = await prepareRouter(env, turns, signal(stop), grants, { surface: research ? "research" : "job", reach: reachOf(job), toolFilter });
+    const p = web ? prepared : proposing(prepared, job);
+    const searches = web ? builtinTools(env) : [];
     // Research: the stronger model, thinking hard (lib/jobs.ts "research").
     const model = research ? researchModel(env.RESEARCH_MODEL) : p.model;
     const functions = [...p.tools.map(toToolSchema), ...(team ? [toToolSchema(shareTool("", [], 0))] : [])];
@@ -162,12 +165,13 @@ export function jobEngine(
       grants,
       stop,
       research,
+      searches,
       functions,
       base: {
         model,
         ...(research ? { reasoning: { effort: "high" as const } } : {}),
         instructions: p.instructions,
-        tools: [...functions, ...builtinTools(env)],
+        tools: [...functions, ...searches],
         tool_choice: "auto" as const,
         // Background mode: the step runs at OpenAI, and nobody has to stay connected for it.
         background: true,
@@ -220,7 +224,7 @@ export function jobEngine(
           model: r.research ? r.base.model : (auth.model ?? r.base.model),
           instructions: r.base.instructions,
           input: forPlan(input),
-          tools: [{ type: "namespace", name: "jarvis", description: "Jarvis's own tools", tools: r.functions }, ...builtinTools(r.env)],
+          tools: [{ type: "namespace", name: "jarvis", description: "Jarvis's own tools", tools: r.functions }, ...r.searches],
           tool_choice: toolChoice,
           include: ["reasoning.encrypted_content"],
           ...(r.research ? { reasoning: { effort: "high" as const } } : {}),

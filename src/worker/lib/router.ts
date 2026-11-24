@@ -30,7 +30,7 @@ import { episodeOfAnswer, episodeOfChain, pastBlock } from "./episodes.ts";
 import { localeOf } from "./locale.ts";
 import { allows, type Grant } from "./scopes.ts";
 import { DRAWS_ON_SCREEN } from "../tools/place.ts";
-import { isResearchCap, jobTool, readsOnly } from "./jobs.ts";
+import { isResearchCap, jobTool, readsOnly, type Reach } from "./jobs.ts";
 import { ACTS } from "./panel-tiles.ts";
 import { houseOnly, noteworthy } from "./habits.ts";
 import { Collector } from "./collector.ts";
@@ -48,7 +48,7 @@ import {
   recordFallback,
   resolveRouterModel,
 } from "./router-model.ts";
-import { CHAT_INSTRUCTIONS, JOB_INSTRUCTIONS, RESEARCH_INSTRUCTIONS, ROUTER_PROMPT, familyBlock, nowLine } from "./router-prompt.ts";
+import { CHAT_INSTRUCTIONS, jobInstructions, RESEARCH_INSTRUCTIONS, ROUTER_PROMPT, familyBlock, nowLine } from "./router-prompt.ts";
 
 /**
  * Escalating notes while a tool is still working.
@@ -141,6 +141,8 @@ export interface RunOptions {
    * is never offered is left out (lib/skills.ts botHides).
    */
   bot?: string;
+  /** A background job's: what it may look at (lib/jobs.ts Reach). */
+  reach?: Reach;
   /** A routine's own words, its maker's (routes/routines.ts): what it may keep from what it reads is judged by them. */
   standing?: string;
   /**
@@ -285,7 +287,7 @@ export async function prepareRouter(
       : "") +
     (opts.surface === "voice" ? spokenReplyInstructions(env.JARVIS_AGENT_NAME) : "") +
     (opts.openMic ? OVERHEARD_RULE : "") +
-    (opts.surface === "job" || opts.surface === "research" ? JOB_INSTRUCTIONS : "") +
+    (opts.surface === "job" || opts.surface === "research" ? jobInstructions(opts.surface === "research" ? "web" : (opts.reach ?? "private")) : "") +
     (opts.surface === "research" ? RESEARCH_INSTRUCTIONS : "") +
     (opts.surface === "chat" ? CHAT_INSTRUCTIONS : "") +
     (opts.bot ? botAsks(opts.bot) : "") +

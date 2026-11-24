@@ -6,6 +6,7 @@ import {
   isResearchCap,
   Jobs,
   jobTool,
+  reachOf,
   readsOnly,
   KEEP_JOBS,
   MAX_JOB_MS,
@@ -1880,6 +1881,53 @@ console.log("\nwaiting for the ChatGPT plan");
   await looks[0];
   check("one ends, the next is due at once", (await many.jobs.nextWake(T0)) === T0 && (await many.jobs.begin(T0)).length === 1);
   for (const e of ended) e();
+}
+
+console.log("\na job reads its person's own things, or the web, never both");
+{
+  const kv = new Map<string, string>();
+  const CONFIG = { get: async (k: string) => kv.get(k) ?? null, put: async (k: string, v: string) => void kv.set(k, v), delete: async () => {}, list: async () => ({ keys: [] }) };
+  const facts = { rev: 1, facts: [{ id: "m_1", text: "The user is allergic to peanuts", kind: "note", keys: ["allergic", "peanuts"], createdAt: 1, updatedAt: 1, useCount: 3, source: "ui", pinned: true }], trash: [] };
+  const stub = new Proxy({}, { get: (_t, m) => (m === "then" ? undefined : async () => (m === "loadMemory" ? facts : m === "familyPeople" ? [{ person: "u_sara", name: "Sara" }] : m === "relaysAwaiting" ? [] : undefined)) });
+  // Everything this person has set up, so what is missing is missing by the job's reach.
+  const theirs = { CONFIG, OPENAI_API_KEY: "sk-test", TIMEZONE: "Asia/Kuala_Lumpur", STATE: { idFromName: () => "j", get: () => stub }, JARVIS_PERSON: "u_sara", JARVIS_PERSON_NAME: "Sara", JARVIS_PERSON_NICKNAME: "Sasa", JARVIS_PERSON_BIRTHDAY: "3 March", JARVIS_FAMILY: "fam:s1", GOOGLE_CLIENT_ID: "g", GOOGLE_CLIENT_SECRET: "s", GOOGLE_MAPS_API_KEY: "m", TESSIE_TOKEN: "t", TESSIE_VIN: "5YJTEST0000000001", HERMES_BASE_URL: "https://hermes.example", HERMES_API_KEY: "k" } as never;
+  type Body = { tools: { name?: string; type: string }[]; input: unknown[] };
+  const posted: Body[] = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async (_u: string | URL | Request, init?: RequestInit) => {
+    posted.push(JSON.parse(String(init?.body)) as Body);
+    return Response.json({ id: `resp_${posted.length}`, object: "response", status: "queued", model: "gpt-6-luna", output: [] });
+  }) as typeof fetch;
+  try {
+    const engine = jobEngine(theirs, async (a) => ({ alert: a, attempts: [], deliveredBy: null }) as never, async () => theirs);
+    const job = { id: "jr", title: "x", task: "Find a place to eat.", engine: "jarvis", status: "running", createdBy: "u_sara", grants: ["*"], createdAt: T0, updatedAt: T0, steps: 0, attempts: 0 } as Job;
+    const of = async (j: Partial<Job>) => {
+      const s = await engine.start({ ...job, ...j });
+      if (!("responseId" in s)) throw new Error(JSON.stringify(s));
+      const b = posted.at(-1)!;
+      return { tools: b.tools.map((t) => t.name ?? t.type), said: JSON.stringify(b.input) };
+    };
+    const mine = await of({ reach: "private" });
+    check("private: their own things, and no web search", ["recall", "mail_search", "calendar_check"].every((n) => mine.tools.includes(n)) && !mine.tools.includes("web_search"), mine.tools);
+    check("…as themselves, with what is saved about them", /Sara/.test(mine.said) && /peanuts/.test(mine.said), mine.said.slice(0, 900));
+    check("…told so", /NOT the web/.test(mine.said) && !/You can search the web/.test(mine.said));
+    const web = await of({ reach: "web" });
+    check("web: searches, the time and what a place is like, and nothing else at all", web.tools.sort().join() === "place_info,time_in,web_search", web.tools);
+    check("…not even who is asking, what is saved about them, or the family", !/Sara|Sasa|3 March|peanuts|THE FAMILY|CARS THEY/.test(web.said), web.said.slice(0, 600));
+    check("…though where they are stays, for prices and what is near", /Malaysia|Kuala_Lumpur/.test(web.said));
+    check("…and it is told what it lacks", /NOTHING of the user's own/.test(web.said));
+    check("nothing of it acts: no proposal, no mail", !web.tools.some((n) => /mail|car_command|calendar_add|ask_hermes|job_results|remember/.test(n)));
+    const research = await of({ engine: "research" });
+    check("research is the web's, the same", research.tools.sort().join() === "place_info,time_in,web_search" && !/Sara|peanuts/.test(research.said), research.tools);
+    check("one that says neither reads its person's own things", reachOf({ engine: "jarvis" }) === "private" && reachOf({ engine: "research" }) === "web" && reachOf({ engine: "jarvis", reach: "web" }) === "web");
+    const gone = jobEngine(theirs, async (a) => ({ alert: a, attempts: [], deliveredBy: null }) as never, async () => theirs, undefined, async () => null);
+    check("on the web too, whoever started it must still be here", "error" in (await gone.start({ ...job, reach: "web" })));
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+  const h = harness();
+  const made = async (input: Record<string, unknown>) => (await h.jobs.create({ task: "x", ...input }, { who: `u_${Math.floor(h.log.length + (await h.jobs.list()).length)}`, grants: ["*"] }, T0)) as Job;
+  check("kept as it was asked for, and only for an ordinary job", (await made({ reach: "web" })).reach === "web" && (await made({ reach: "private" })).reach === "private" && (await made({ reach: "everything" })).reach === "private" && (await made({ engine: "hermes", reach: "web" })).reach === undefined);
 }
 
 console.log("\na job's exchange on the plan goes when the job does, and is never taken for a job");
