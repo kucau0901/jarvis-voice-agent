@@ -111,7 +111,7 @@ interface Header {
   name: string;
   value: string;
 }
-interface Part {
+export interface Part {
   mimeType?: string;
   filename?: string;
   headers?: Header[];

@@ -18,6 +18,7 @@ import {
 } from "../lib/settings.ts";
 import { carState } from "../tools/tessie.ts";
 import { ping as hermesPing, hermesConfig } from "../tools/hermes.ts";
+import { workshopConfig, workshopUp } from "../lib/workshop.ts";
 import * as google from "../lib/google.ts";
 import * as spotify from "../lib/spotify.ts";
 import { loadServers } from "../lib/config-store.ts";
@@ -248,6 +249,15 @@ const TESTS: Partial<Record<Group, (eff: Env, origin: string) => Promise<TestRes
       parts.push("Base URL and token go together; one is missing, so cameras and the glasses' fast path are off.");
     }
     return { ok, detail: parts.join(" ") };
+  },
+
+  async workshop(eff) {
+    const cfg = workshopConfig(eff);
+    if (!cfg) return { ok: false, detail: "Needs the door's address and the token." };
+    return workshopUp(cfg, timeout()).then(
+      () => ({ ok: true, detail: "The workshop answers." }),
+      (e) => ({ ok: false, detail: `Not yet: ${e instanceof Error ? e.message : String(e)}.` }),
+    );
   },
 
   async hermes(eff) {

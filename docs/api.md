@@ -159,7 +159,8 @@ existence, or argued around.
 | `calendar` | Google Calendar: `calendar_check`, `calendar_add`, `calendar_change`. Reads the diary **and creates, moves, renames and removes events**. |
 | `screen` | `show_place`, `hide_display`, `/api/map`, `make_image` and `/api/image` (pictures Jarvis makes), `make_page` and `/api/page` (pages Jarvis makes), and a person's panels (`panel_set`, `panel_remove`, `/api/hub/panels`). |
 | `voice` | `/api/session`, `/api/tts`, `/api/voices`, and push-to-talk `/api/v1/voice` (which also needs `ask`). |
-| `ask` (jobs) | `/api/v1/jobs`, `/api/v1/jobs/cancel`, `/api/v1/jobs/tell`, `start_job`, `job_control`. A job for Hermes also needs `hermes`. Each job runs with its creator's grants, no more than they hold now; it reads with their reading tools, and what it would do is proposed for their tap (or done at once, for a reversible kind they allowed). |
+| `workshop` | A background job that makes files (`"mode": "files"`): it runs programs in the workshop, a container with no network ([DESIGN.md](DESIGN.md#the-workshop)). No role has it but an admin's and no device has it unless ticked (a `*` device has every scope, this one too); never in a routine, an approved step of a job, or over Telegram. |
+| `ask` (jobs) | `/api/v1/jobs`, `/api/v1/jobs/cancel`, `/api/v1/jobs/tell`, `/api/v1/jobs/file`, `start_job`, `job_control`. A job for Hermes also needs `hermes`, one that makes files `workshop`. Each job runs with its creator's grants, no more than they hold now; it reads with their reading tools, and what it would do is proposed for their tap (or done at once, for a reversible kind they allowed). |
 | `routines` | `/api/v1/routines`, `/api/v1/routines/run`, `/api/v1/routines/runs`, `/api/v1/trigger`; `routine_add`, `routine_list`, `routine_remove`. A routine's question runs with **its creator's** grants, never more. A device sees, runs and changes only the routines it made, or ones no stronger than itself; revoking or deleting it stops the routines it made, and narrowing it narrows them. |
 | `alerts` | Receiving alerts (`/api/v1/events`, `/api/v1/push`, `/api/v1/alerts`), raising one (`/api/v1/notify`), and `send_note`. The same scope both ways: a device that may be told things may ask to be told something. |
 | `skills` | `skill_add`, `skill_remove` (outside services added in chat; an MCP server asked for there is added as a [component](components.md), which offers nothing until an admin approves it), `skill_address` (a card for a bot's own address, on an admin's screen) and `ask_skill` (sending a request to a service). A service may act on the house or send things, so no role has it but an admin's. Each service's key is set in Settings → Skills, never by a device. A bot's own address never holds it, nor `alerts`, `chat`, `voice`, `screen` or `routines` ([Bots](#bots-skills-both-ways)). |
@@ -589,6 +590,17 @@ facts it needs in `task`.
 ordinary job research's stronger model (`RESEARCH_MODEL`), thinking hard, for
 work with many things to weigh together. It costs many times an ordinary one.
 
+`"mode": "files"` (needs `workshop`, and the workshop set up) has an ordinary
+job make files: its view carries `files: [{n, name, size, at}]` as it gives
+them, and `ran: [{at, cmd, code?, ms?, late?}]`, what it ran (the last three
+while it works, the last forty with the whole job; no `code` for one left
+running). `GET /api/v1/jobs/file?id=&n=` (needs `ask`) is one of its files, as
+bytes to save (`application/octet-stream`, `Content-Disposition: attachment`):
+404 when the workshop no longer keeps it (14 days, or the job removed), 503 when
+the workshop does not answer, 409 when the file is not as the job gave it. The
+alert of its result carries `made: [{n, name, size}]`, and its text ends with a
+line naming them.
+
 `engine` is `jarvis` (default: the router, many steps, in OpenAI's background
 mode), `research` (needs `routines`: it spends the family's monthly
 allowance), or `hermes` (one question to the Hermes agent; needs `hermes`).
@@ -715,7 +727,8 @@ view carries `from`. Saying "send the research on home chargers to Hermes and
 have it build a first version", or pressing **Send to Hermes** on a finished
 research job in Jobs, does the same; the button is there only when
 `GET /api/hub/me` says `"hermes": true` (Hermes is set up, the person may ask
-it, and the profile is not locked). A report is never handed over on its own.
+it, and the profile is not locked; `"workshop": true` says the same of jobs that
+make files). A report is never handed over on its own.
 
 Hermes gets six minutes to answer, and a build takes longer, so it should
 start the build, answer at once, and report back when it is done. Every

@@ -110,6 +110,7 @@
     --i-star: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z'/%3E%3C/svg%3E");
     --i-note: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 3h10l4 4v14H5z'/%3E%3Cpath d='M14 3v5h5M8 13h8M8 17h5'/%3E%3C/svg%3E");
     --i-reply: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 14 4 9l5-5'/%3E%3Cpath d='M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5V20'/%3E%3C/svg%3E");
+    --i-save: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 4v11'/%3E%3Cpath d='m7 11 5 5 5-5'/%3E%3Cpath d='M4 20h16'/%3E%3C/svg%3E");
     --i-plus: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 5v14M5 12h14'/%3E%3C/svg%3E");
     --i-search: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-4-4'/%3E%3C/svg%3E");
     --i-eye: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z'/%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3C/svg%3E");
@@ -408,6 +409,21 @@
   .row .jobstop { flex: none; min-height: 36px; padding: 6px 14px; border: 0; border-radius: 999px; background: var(--wash); color: var(--fg);
     font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; }
   .row .jobstop.armed { background: var(--danger); color: #fff; }
+  /* What a job made, to save, and what it ran (ui/JobFiles.ts): in Jobs, and under its result in the conversation. */
+  .jobfiles { display: flex; flex-wrap: wrap; gap: 8px; }
+  .txt .jobfiles, .alert .jobfiles { margin-top: 10px; }
+  .jobfiles .jobfile { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; min-height: 44px; padding: 4px 14px 4px 12px; border: 1px solid var(--hair);
+    border-radius: 16px; background: var(--glass-hi); color: var(--fg); font: inherit; font-size: 14px; text-align: left; cursor: pointer; }
+  .jobfiles .jobfile::before { content: ""; flex: none; width: 18px; height: 18px; background: var(--accent-ink);
+    -webkit-mask: var(--i-save) center / contain no-repeat; mask: var(--i-save) center / contain no-repeat; }
+  .jobfiles .jobfile span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .jobfiles .jobfile small { flex: none; font-size: 12px; color: var(--dim); }
+  .jobfiles .bad { flex: 1 1 100%; font-size: 12px; color: var(--danger); overflow-wrap: anywhere; }
+  .jobfiles .bad:empty { display: none; }
+  .jobran { display: grid; gap: 6px; margin: 6px 0 0; padding: 0; list-style: none; }
+  .jobran li { display: grid; gap: 1px; min-width: 0; }
+  .jobran code { font: 12px/1.5 ui-monospace, Menlo, monospace; color: var(--fg); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 4.5em; overflow: hidden; }
+  .jobran small { font-size: 12px; color: var(--dim); }
   /* A job's question (ui/JobAsk.ts): its choices as buttons, a box for other words; under its alert, in the conversation, in Jobs and Now. */
   .askcard { gap: 10px; }
   .askcard .doctitle { overflow-wrap: anywhere; font-weight: 600; }
@@ -1043,6 +1059,7 @@
   .navcard :is([data-for="car"], [data-for="m-cars"], [data-for$=":vehicle"]) { --icon: var(--i-car); }
   .navcard :is([data-for="home"], [data-for="m-home"]) { --icon: var(--i-house); }
   .navcard [data-for="hermes"] { --icon: var(--i-terminal); }
+  .navcard [data-for="workshop"] { --icon: var(--i-save); }
   .navcard [data-for="google"] { --icon: var(--i-mail); }
   .navcard [data-for="spotify"] { --icon: var(--i-music); }
   .navcard :is([data-for="maps"], [data-for$=":place"]) { --icon: var(--i-pin); }

@@ -31,6 +31,19 @@ of every release, and in the [README](README.md#updating).
   told your words as you said them, and Jobs shows whether it has taken them in.
   For devices: `POST /api/v1/jobs/tell`, and alerts with a new field, `ask`
   (`docs/api.md`).
+- **A background job can make files for you**, in the **workshop**: a
+  spreadsheet, a Word document, a PDF, a chart, a small site. It writes and runs
+  programs in a container of its own with no network at all, checks what it
+  made, and gives it to you to save, in Chat under its answer and in **Jobs**,
+  which also shows what it ran. Ask for one in Chat ("make a spreadsheet of…",
+  with the file attached: any kind of file now, up to 10 MB), or tick **Files**
+  in Jobs → New job. A job on your own things can also take attachments from
+  your mail; one on the web has nothing of yours. Optional, and off until you
+  set it up with Docker (`WORKSHOP_TOKEN` and `--profile workshop`, in the
+  README) and, for anyone but an admin, give them the new **workshop** reach: no
+  role, routine or Telegram chat has it. For devices: `mode: "files"`,
+  `GET /api/v1/jobs/file`, and alerts with a new field, `made`
+  (`docs/api.md`).
 
 ### Fixed
 

@@ -5,10 +5,12 @@ import { button, el } from "./ui/util";
  * Photos and files attached to a typed question, as Hark's chat has them:
  * "+" in the message box, then Upload file or Take photo. A photo is shrunk
  * here to 1600 pixels as a JPEG, enough to read a page in it; a PDF goes as
- * it is, up to 10 MB, for the model to read; a text file as its words. They
- * go with that one question to the router (routes/delegate.ts,
- * lib/photos.ts, which holds the same limits) and are kept nowhere: what
- * stays in the conversation is their names.
+ * it is, up to 10 MB, for the model to read; a text file as its words. Any
+ * other file (a spreadsheet, a document), up to 10 MB, for whoever may have a
+ * job use the workshop, which is all that can open it. They go with that one
+ * question to the router (routes/delegate.ts, lib/photos.ts, which holds the
+ * same limits) and are kept nowhere but in the folder of a job that was given
+ * them: what stays in the conversation is their names.
  *
  * Take photo opens the camera here, in the page, so it is the same on a
  * computer, a phone and the car, where the car allows its cabin camera in
@@ -17,7 +19,7 @@ import { button, el } from "./ui/util";
 
 export interface Attached {
   name: string;
-  kind: "image" | "pdf" | "text";
+  kind: "image" | "pdf" | "text" | "file";
   /** A data: URL, or a text file's words. */
   data: string;
 }
@@ -25,7 +27,7 @@ export interface Attached {
 /** As the server takes them (lib/photos.ts). */
 const MAX_PHOTOS = 2;
 const MAX_FILES = 2;
-const MAX_PDF_BYTES = 10 * 1024 * 1024;
+const MAX_BYTES = 10 * 1024 * 1024;
 const MAX_TEXT_CHARS = 200_000;
 /** A photo's longer side, shrunk to: enough for the model to read a page in it. */
 const EDGE = 1600;
@@ -43,7 +45,7 @@ function jpeg(source: CanvasImageSource, w: number, h: number): string {
   return canvas.toDataURL("image/jpeg", 0.85);
 }
 
-const asDataUrl = (file: File) =>
+const asDataUrl = (file: Blob) =>
   new Promise<string>((resolve, reject) => {
     const r = new FileReader();
     r.onload = () => resolve(String(r.result));
@@ -98,6 +100,13 @@ function snap(): Promise<string | null> {
 
 export class Attachments {
   readonly list: Attached[] = [];
+  /** Any file at all, not only what Jarvis reads: for whoever may have a job open it (main.ts whoAmI). */
+  set any(on: boolean) {
+    this.anyFile = on;
+    this.input.accept = on ? "" : this.reads;
+  }
+  private anyFile = false;
+  private reads: string;
   private chips = new Map<Attached, HTMLElement>();
 
   /**
@@ -109,9 +118,10 @@ export class Attachments {
     private tray: HTMLElement,
     plus: HTMLButtonElement,
     menu: HTMLElement,
-    input: HTMLInputElement,
+    private input: HTMLInputElement,
     private say: (text: string) => void,
   ) {
+    this.reads = input.accept;
     const close = () => {
       menu.hidden = true;
       plus.setAttribute("aria-expanded", "false");
@@ -146,10 +156,10 @@ export class Attachments {
     });
   }
 
-  /** Files picked: each taken as a photo, a PDF or text, or said why not. */
+  /** Files picked: each taken as a photo, a PDF, text or a file, or said why not. */
   async add(files: File[]): Promise<void> {
     for (const f of files) {
-      const kind = f.type.startsWith("image/") ? "image" : f.type === "application/pdf" || /\.pdf$/i.test(f.name) ? "pdf" : f.type.startsWith("text/") || TEXT.test(f.name) ? "text" : null;
+      const kind = f.type.startsWith("image/") ? "image" : f.type === "application/pdf" || /\.pdf$/i.test(f.name) ? "pdf" : f.type.startsWith("text/") || TEXT.test(f.name) ? "text" : this.anyFile ? "file" : null;
       if (!kind) {
         this.say(`Jarvis reads photos, PDFs and text files, so not ${f.name}.`);
         continue;
@@ -160,9 +170,10 @@ export class Attachments {
           const bmp = await createImageBitmap(f);
           this.keep({ name: f.name, kind, data: jpeg(bmp, bmp.width, bmp.height) });
           bmp.close();
-        } else if (kind === "pdf") {
-          if (f.size > MAX_PDF_BYTES) this.say(`${f.name} is over 10 MB.`);
-          else this.keep({ name: f.name, kind, data: await asDataUrl(f) });
+        } else if (kind === "pdf" || kind === "file") {
+          if (f.size > MAX_BYTES) this.say(`${f.name} is over 10 MB.`);
+          // Of no type of its own: whatever it is called, only the workshop opens it.
+          else this.keep({ name: f.name, kind, data: await asDataUrl(kind === "pdf" ? f : new Blob([f], { type: "application/octet-stream" })) });
         } else {
           const text = await f.text();
           if (text.length > MAX_TEXT_CHARS) this.say(`${f.name} is too long to read with a question.`);
@@ -205,7 +216,7 @@ export class Attachments {
   /** What a kept question carried, by name only: the files were never kept (conversation.ts). */
   static named(names: string[]): HTMLElement {
     const box = el("div", "att");
-    for (const name of names) box.appendChild(fileChip({ name, kind: /\.(jpe?g|png|gif|webp|heic)$/i.test(name) ? "image" : /\.pdf$/i.test(name) ? "pdf" : "text", data: "" }));
+    for (const name of names) box.appendChild(fileChip({ name, kind: /\.(jpe?g|png|gif|webp|heic)$/i.test(name) ? "image" : /\.pdf$/i.test(name) ? "pdf" : TEXT.test(name) ? "text" : "file", data: "" }));
     return box;
   }
 

@@ -238,6 +238,26 @@ do. None of the
 browser's ports is published: only Jarvis reaches it. Why it is built this
 way: [DESIGN.md](docs/DESIGN.md#the-browser).
 
+**A workshop for background jobs** (optional): a container where a job may run
+programs and make files for you to save, a spreadsheet or a PDF.
+
+```bash
+echo "WORKSHOP_URL=http://127.0.0.1:9377" >> .env
+echo "WORKSHOP_TOKEN=$(openssl rand -hex 24)" >> .env
+docker compose --profile workshop up -d --build
+```
+
+The first build downloads about 1 GB of programs (Python, pandas, pandoc and
+the like); after that it has **no network at all**, no password or key, and
+nothing of Jarvis's but what a job was given. It is given 1.2 GB of memory.
+Nobody but an admin has the **workshop** reach until you give it (Family, or a
+device's scopes), and no routine or Telegram chat ever does. What a job made is
+kept for 14 days, or until you remove the job. A container is not a separate
+machine: on a kernel with a flaw in it, a program could get out. On an old
+kernel, or where that worries you, leave it off, or run it on a machine that
+holds nothing else. Why it is built this way:
+[DESIGN.md](docs/DESIGN.md#the-workshop).
+
 **Backups:** everything is in the `jarvis-data` volume.
 
 ```bash

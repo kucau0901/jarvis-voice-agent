@@ -33,6 +33,7 @@ import { browserTools } from "./browser.ts";
 import { stateStub } from "../lib/state-client.ts";
 import { voiceWho } from "../lib/context.ts";
 import { researchFor, type Job } from "../lib/jobs.ts";
+import type { Attached } from "../lib/photos.ts";
 
 /**
  * The tools the delegation router may call.
@@ -82,6 +83,8 @@ export interface ToolContext {
   offered?: readonly Pick<Tool, "name" | "reads">[];
   /** The user's latest message, as they said it: what only they can ask for must be in it (tools/specialties.ts). */
   asked?: string;
+  /** What came with it (lib/photos.ts), for a job that makes files to be given (tools/jobs.ts). */
+  attached?: Attached;
   /**
    * Something someone else wrote has been read in this turn (mail, a page, a
    * web search): what is kept must then be the user's own (lib/memory-guard.ts),

@@ -728,7 +728,7 @@ export class JarvisState extends DurableObject<Env> {
       // As them, with what they may reach, less the house (no MCP to discover on an alarm), Hermes and the browser.
       look: async (person, text) => {
         const v = await view(person);
-        const grants = narrow(v?.scopes ?? [], SCOPES.filter((s) => s !== "home" && s !== "hermes" && s !== "browser"));
+        const grants = narrow(v?.scopes ?? [], SCOPES.filter((s) => s !== "home" && s !== "hermes" && s !== "browser" && s !== "workshop"));
         return lookUp(await this.personEnv(env, person), text, grants, AbortSignal.timeout(90_000));
       },
     };

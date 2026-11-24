@@ -35,6 +35,8 @@ export interface Alert {
   look?: true;
   /** The background job it is the result of: its pill in the conversation takes it (fromRoutine.ts). */
   job?: string;
+  /** The files that job made, to save (ui/JobFiles.ts). */
+  made?: { n: number; name: string; size: number }[];
   /** A question a background job puts to you, not its result: answered under its words (ui/JobAsk.ts). */
   ask?: { job: string; id: string };
   /** What that job proposed for a tap (proposal.ts). */

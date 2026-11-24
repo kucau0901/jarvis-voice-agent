@@ -16,6 +16,7 @@ import { OWNER, deviceWho, haTokenFits } from "../lib/context.ts";
 import { originOf } from "../lib/mcp-config.ts";
 import { stateStub } from "../lib/state-client.ts";
 import { hermesConfig } from "../tools/hermes.ts";
+import { workshopConfig } from "../lib/workshop.ts";
 import {
   creationOptions,
   fromB64u,
@@ -333,6 +334,7 @@ export async function handleHub(req: Request, env: Env, principal: Principal): P
       hermes: !locked && !!hermesConfig(env) && allows(grantsOf(principal), "hermes"),
       // Whether the Browser panel is offered: one is set up, and theirs to use.
       browser: !locked && !!env.BROWSER_URL && allows(grantsOf(principal), "browser"),
+      workshop: !locked && !!workshopConfig(env) && allows(grantsOf(principal), "workshop"),
       // Live voice is GPT-Live, which only an OpenAI key runs: a ChatGPT plan has no part of it (lib/chatgpt-plan.ts).
       live: !!env.OPENAI_API_KEY,
       // What this person may reach, so the app offers only that.

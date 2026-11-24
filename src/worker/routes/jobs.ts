@@ -14,11 +14,16 @@ import * as hermes from "../tools/hermes.ts";
 import { INTERRUPTED, JobChain, beginCalls, stepId, stepOf, type Answered } from "../lib/job-chain.ts";
 import { NOT_RUN, runGuarded } from "../lib/job-guards.ts";
 import { noteLinks, readResult } from "../lib/job-results.ts";
+import { KEPT_DAYS, WorkshopError, fileHeaders, workshopAsk, workshopConfig, workshopGiven } from "../lib/workshop.ts";
+import { workshopTools } from "../lib/workshop-tools.ts";
+import { mailFile } from "../lib/mail-file.ts";
+import { googleConfig } from "../lib/google.ts";
+import { sha256Hex } from "../lib/devices.ts";
 import { ASK_MS, openLines, openQuestions, unfinished, untold, workTools, type Said } from "../lib/job-tools.ts";
 import { RESEARCH_MONTHLY_DEFAULT, jobTool, limitsOf, reachOf, webTool, sharesLeft, usageEntry, type Job, type JobDeps, type Step } from "../lib/jobs.ts";
 import { citationsOf, markUnseen } from "../lib/links.ts";
 import { toCsv } from "../lib/research-table.ts";
-import { MERGE_INSTRUCTIONS, PLAN_INSTRUCTIONS, RESEARCH_CHECK, TABLE_CHECK, TABLE_MERGE_INSTRUCTIONS, TABLE_PLAN_INSTRUCTIONS, TABLE_TEAM_INSTRUCTIONS, TEAM_INSTRUCTIONS, wrapUp } from "../lib/router-prompt.ts";
+import { JOB_FILES, MERGE_INSTRUCTIONS, PLAN_INSTRUCTIONS, RESEARCH_CHECK, TABLE_CHECK, TABLE_MERGE_INSTRUCTIONS, TABLE_PLAN_INSTRUCTIONS, TABLE_TEAM_INSTRUCTIONS, TEAM_INSTRUCTIONS, wrapUp } from "../lib/router-prompt.ts";
 import { SHARE, angleMessage, mergeMaterial, shareReply, shareTool, teamView } from "../lib/research-team.ts";
 import { prepareRouter, runCalls, type Prepared } from "../lib/router.ts";
 import { held, proposable, type File, type Finish } from "../lib/proposals.ts";
@@ -34,15 +39,16 @@ import type { Storage } from "../lib/state-host.ts";
 
 /**
  * Background jobs (lib/jobs.ts): the engine that runs them, and the HTTP
- * surface. All paths need `ask`; a Hermes job also needs `hermes`, and research or a thorough job `routines`.
+ * surface. All paths need `ask`; a Hermes job also needs `hermes`, one that makes files `workshop`, and research or a thorough job `routines`.
  *
  *   GET    /api/v1/jobs           the jobs (a device sees its own)
  *   GET    /api/v1/jobs?id=       one, with its whole result
- *   POST   /api/v1/jobs           {task, title?, engine?: "jarvis" | "hermes" | "research", reach?: "private" | "web", mode?: "thorough", team?: true, from?: id}
+ *   POST   /api/v1/jobs           {task, title?, engine?: "jarvis" | "hermes" | "research", reach?: "private" | "web", mode?: "thorough" | "files", team?: true, from?: id}
  *   POST   /api/v1/jobs/cancel    {id}
  *   POST   /api/v1/jobs/key       {id}   a job waiting for the ChatGPT plan goes on with the API key instead; needs `routines`
  *   POST   /api/v1/jobs/card      {id, outcome?, limits?, assumptions?}   its person changes its card while it works
  *   POST   /api/v1/jobs/tell      {id, text, question?} or {id, question, skip: true}   tells it something while it works, or answers what it asked
+ *   GET    /api/v1/jobs/file?id=&n=   a file it made, to save
  *   DELETE /api/v1/jobs?id=
  */
 
@@ -171,7 +177,13 @@ export function jobEngine(
     const strong = research || job.mode === "thorough";
     const model = strong ? researchModel(env.RESEARCH_MODEL) : p.model;
     // Its own tools, which no question in the conversation is ever offered: an ordinary job's, or a research team's one.
-    const own: Tool[] = team ? [shareTool("", [], 0)] : job.engine === "jarvis" ? [...workTools(job, say), readResult(kept, job.id)] : [];
+    // The workshop's, for one that makes files, while its person may have one use it.
+    const shop = job.mode === "files" && allows(may, "workshop") ? workshopConfig(env) : null;
+    const own: Tool[] = team
+      ? [shareTool("", [], 0)]
+      : job.engine === "jarvis"
+        ? [...workTools(job, say), readResult(kept, job.id), ...(shop ? workshopTools(shop, job, say, stop) : []), ...(shop && allows(grants, "mail") && googleConfig(env, "https://jarvis.invalid") ? [mailFile(shop, job.id)] : [])]
+        : [];
     const functions = [...p.tools, ...own].map(toToolSchema);
     return {
       job,
@@ -187,7 +199,7 @@ export function jobEngine(
       base: {
         model,
         ...(strong ? { reasoning: { effort: "high" as const } } : {}),
-        instructions: p.instructions,
+        instructions: p.instructions + (shop ? JOB_FILES : ""),
         tools: [...functions, ...searches],
         tool_choice: "auto" as const,
         // Background mode: the step runs at OpenAI, and nobody has to stay connected for it.
@@ -287,6 +299,11 @@ export function jobEngine(
     // Research without the web is forty steps of nothing to search.
     researchBlocked: builtinTools(env).length ? null : "research needs web search, which is withheld in Settings → Advanced",
     record: (e) => recordUsage(env, e),
+
+    async workshop(what, id) {
+      const cfg = workshopConfig(env);
+      if (cfg) await workshopAsk(cfg, what, { job: id }, AbortSignal.timeout(5000));
+    },
 
     async start(job, t, stop, say) {
       if (!(await canAsk(env))) return { error: "no ChatGPT plan or OpenAI key is set" };
@@ -471,7 +488,7 @@ const MAX_BODY = 16 * 1024;
  * waiting for the plan, whether whoever is looking may move it to the key, with what its tokens so far would have cost there.
  */
 export function jobView(j: Job, whole = false, mayKey = false) {
-  const { grants: _g, responseId: _r, draft: _d, team: _t, waited: _w, ticked: _k, stuck: _s, nudged: _n, counted: _o, told, asked, waits, cut, parked, ...rest } = j;
+  const { grants: _g, responseId: _r, draft: _d, team: _t, waited: _w, ticked: _k, stuck: _s, nudged: _n, counted: _o, told, asked, waits, cut, parked, files, ran, ...rest } = j;
   void _o;
   void _k;
   void _s;
@@ -488,6 +505,9 @@ export function jobView(j: Job, whole = false, mayKey = false) {
     ...rest,
     // What it set out to do: while it works, and with the whole of it; a list of thirty need not carry it.
     ...(whole || j.status === "running" ? (told ? { told: told.filter((t) => !t.by) } : {}) : { card: undefined, todo: undefined }),
+    // What it made, to save; and what it ran: the last of it while it works, all that is kept with the whole.
+    ...(files ? { files: files.map(({ n, name, size, at }) => ({ n, name, size, at })) } : {}),
+    ...(ran && (whole || j.status === "running") ? { ran: whole ? ran : ran.slice(-3) } : {}),
     ...(j.team ? { team: teamView(j) } : {}),
     // What it may take, and once it is out of that, what of: it is writing what it has.
     ...(j.status === "running" && j.engine === "jarvis" ? { limits: { steps: limitsOf(j.engine).maxSteps, going: limitsOf(j.engine).going, minutes: limitsOf(j.engine).maxMs / 60_000 } } : {}),
@@ -504,7 +524,7 @@ export function jobView(j: Job, whole = false, mayKey = false) {
 
 export async function handleJobs(req: Request, env: Env, url: URL, principal: Principal): Promise<Response | null> {
   const p = url.pathname;
-  if (p !== "/api/v1/jobs" && p !== "/api/v1/jobs/cancel" && p !== "/api/v1/jobs/key" && p !== "/api/v1/jobs/card" && p !== "/api/v1/jobs/tell" && p !== "/api/v1/jobs/csv") return null;
+  if (p !== "/api/v1/jobs" && p !== "/api/v1/jobs/cancel" && p !== "/api/v1/jobs/key" && p !== "/api/v1/jobs/card" && p !== "/api/v1/jobs/tell" && p !== "/api/v1/jobs/csv" && p !== "/api/v1/jobs/file") return null;
   const state = stateStub(env);
   if (!state) return err(503, "jobs need the STATE Durable Object");
   const grants: Grant[] = grantsOf(principal);
@@ -559,6 +579,24 @@ export async function handleJobs(req: Request, env: Env, url: URL, principal: Pr
     });
   }
 
+  // A file it made, as it was when it gave it (lib/workshop.ts), and only if it still is that.
+  if (p === "/api/v1/jobs/file") {
+    if (req.method !== "GET") return err(405, "GET only");
+    const j = await state.getJob(url.searchParams.get("id") ?? "");
+    const f = j && mine(j) ? j.files?.find((x) => String(x.n) === url.searchParams.get("n")) : undefined;
+    if (!j || !f) return err(404, "no such file");
+    const cfg = workshopConfig(env);
+    if (!cfg) return err(503, "the workshop it is in is not set up");
+    try {
+      const bytes = await workshopGiven(cfg, j.id, f.n, AbortSignal.timeout(60_000));
+      if ((await sha256Hex(bytes)) !== f.sha256) return err(409, "that file is not as the job gave it, so it is not handed over");
+      return new Response(bytes, { headers: fileHeaders(f.name, bytes.byteLength) });
+    } catch (e) {
+      if (!(e instanceof WorkshopError)) throw e;
+      return err(e.refused ? 404 : 503, e.refused ? `it is no longer kept: the workshop keeps files for ${KEPT_DAYS} days` : e.message);
+    }
+  }
+
   if (p === "/api/v1/jobs/cancel") {
     if (req.method !== "POST") return err(405, "method not allowed");
     const b = await readObject(req, MAX_BODY);
@@ -591,6 +629,10 @@ export async function handleJobs(req: Request, env: Env, url: URL, principal: Pr
     // Research spends the family's monthly allowance (Settings → OpenAI), and a thorough job the stronger model: not a guest's to spend.
     if (b.engine === "research" && !allows(grants, "routines")) return err(403, 'a research job needs "routines"', { need: "routines" });
     if (b.mode === "thorough" && !allows(grants, "routines")) return err(403, 'a thorough job needs "routines"', { need: "routines" });
+    if (b.mode === "files") {
+      if (!allows(grants, "workshop")) return err(403, 'a job that makes files needs "workshop"', { need: "workshop" });
+      if (!workshopConfig(env)) return err(400, "making files needs the workshop, which is not set up (Settings → Workshop)");
+    }
     const j = await state.createJob(b, { who, grants });
     return typeof j === "string" ? err(400, j) : json({ ok: true, job: jobView(j) }, { status: 201 });
   }

@@ -30,6 +30,13 @@ export const SCOPES = [
    * of a role, a device preset or a pass. Only who an admin gives it has it.
    */
   "browser",
+  /**
+   * The workshop, where a background job runs code and makes files
+   * (lib/workshop.ts). It has no network, but code is code: like Hermes it is
+   * its own scope, in no role but an admin's, and nothing that runs with
+   * nobody asking has it.
+   */
+  "workshop",
   "media",
   "mail",
   "calendar",
@@ -250,6 +257,7 @@ export function requiredScope(pathname: string, method: string): RouteRequiremen
     case "/api/v1/jobs/card":
     case "/api/v1/jobs/tell":
     case "/api/v1/jobs/csv":
+    case "/api/v1/jobs/file":
       return "ask";
 
     // Jarvis's component in Home Assistant: what to watch, and what changed. The route

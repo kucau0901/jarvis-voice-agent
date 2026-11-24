@@ -1,10 +1,11 @@
-import { api, authHeaders } from "../key";
+import { api } from "../key";
 import { arm, button, el } from "./util";
 import { markdown } from "./rich";
 import { proposalsBox } from "../proposal";
 import type { JobCard, JobView } from "../jobWords";
 import { askCard, askId } from "./JobAsk";
 import { cardForm, jobLive, jobNow } from "./JobLive";
+import { jobFiles, jobRan, saveFrom } from "./JobFiles";
 
 /**
  * Background jobs (src/worker/lib/jobs.ts): what is running, what came back,
@@ -41,6 +42,8 @@ export class Jobs {
   private timer = 0;
   /** Whether this person may ask Hermes: only then is a finished report offered to it. */
   private hermes = false;
+  /** Files, in the New job form: offered only where the workshop is set up and theirs to use. */
+  private files: HTMLElement;
   /** Research being handed to Hermes: the job, and the instruction as typed so far. */
   private handing = new Map<string, string>();
   /** A working job's card being changed: the job, and the card as typed so far. */
@@ -100,6 +103,20 @@ export class Jobs {
     hard.appendChild(hardBox);
     hard.appendChild(document.createTextNode(" Thorough: a stronger model, for work with many things to weigh; several times the cost, five a day"));
     form.appendChild(hard);
+    // Files: in the workshop, for whoever may have one use it (show).
+    this.files = el("label", "on");
+    const filesBox = document.createElement("input");
+    filesBox.type = "checkbox";
+    this.files.appendChild(filesBox);
+    this.files.appendChild(document.createTextNode(" Files: makes them with programs, on a machine with no network, for you to save (a spreadsheet, a document, a chart)"));
+    this.files.hidden = true;
+    form.appendChild(this.files);
+    hardBox.addEventListener("change", () => {
+      if (hardBox.checked) filesBox.checked = false;
+    });
+    filesBox.addEventListener("change", () => {
+      if (filesBox.checked) hardBox.checked = false;
+    });
     // Research: a stronger model, searching widely, with sources (lib/jobs.ts).
     const deep = el("label", "on");
     const deepBox = document.createElement("input");
@@ -132,8 +149,8 @@ export class Jobs {
     // Research is the web's.
     form.addEventListener("change", () => {
       if (deepBox.checked) reach.value = "web";
-      if (deepBox.checked) hardBox.checked = false;
-      reach.disabled = hardBox.disabled = deepBox.checked;
+      if (deepBox.checked) hardBox.checked = filesBox.checked = false;
+      reach.disabled = hardBox.disabled = filesBox.disabled = deepBox.checked;
     });
     teamBox.addEventListener("change", () => {
       if (!teamBox.checked) tableBox.checked = false;
@@ -144,13 +161,13 @@ export class Jobs {
           await api(this.key, "POST", "/api/v1/jobs", {
             task: task.value,
             reach: reach.value,
-            ...(hardBox.checked ? { mode: "thorough" } : {}),
+            ...(hardBox.checked ? { mode: "thorough" } : filesBox.checked ? { mode: "files" } : {}),
             ...(deepBox.checked ? { engine: "research" } : {}),
             ...(teamBox.checked ? { team: true } : {}),
             ...(tableBox.checked ? { table: true } : {}),
           });
           task.value = "";
-          hardBox.checked = deepBox.checked = teamBox.checked = tableBox.checked = reach.disabled = hardBox.disabled = false;
+          hardBox.checked = filesBox.checked = deepBox.checked = teamBox.checked = tableBox.checked = reach.disabled = hardBox.disabled = filesBox.disabled = false;
         }, "Started — it arrives as an alert when done."), "primary"),
     );
     sheet.appendChild(form);
@@ -167,7 +184,9 @@ export class Jobs {
     this.el.classList.add("open");
     if (focus) this.open.add(focus);
     // Offered only where Hermes is set up and theirs to ask (routes/hub.ts). A device is not a person: no button.
-    this.hermes = await api(this.key, "GET", "/api/hub/me").then((me) => (me as { hermes?: boolean }).hermes === true, () => false);
+    const me = await api(this.key, "GET", "/api/hub/me").then((r) => r as { hermes?: boolean; workshop?: boolean }, () => ({}) as { hermes?: boolean; workshop?: boolean });
+    this.hermes = me.hermes === true;
+    this.files.hidden = me.workshop !== true;
     await this.load();
     const row = focus ? [...this.list.querySelectorAll<HTMLElement>(".routine")].find((r) => r.dataset.id === focus) : undefined;
     if (!row) return;
@@ -253,7 +272,7 @@ export class Jobs {
     top.appendChild(el("span", `chip ${j.status === "done" || j.asks ? "on" : "off"}`, j.asks ? "asks you" : j.waiting ? "waiting" : j.status === "failed" && j.hasResult ? "part done" : STATUS[j.status]));
     row.appendChild(top);
 
-    const facts: string[] = [j.team ? "Research team" : j.engine === "hermes" ? "Hermes" : j.engine === "research" ? "Research" : j.mode === "thorough" ? "Jarvis, thorough" : "Jarvis", `started ${when(j.createdAt)}`];
+    const facts: string[] = [j.team ? "Research team" : j.engine === "hermes" ? "Hermes" : j.engine === "research" ? "Research" : j.mode === "thorough" ? "Jarvis, thorough" : j.mode === "files" ? "Jarvis, making files" : "Jarvis", `started ${when(j.createdAt)}`];
     if (j.status === "running") facts.push(`${Math.max(1, Math.round((Date.now() - j.createdAt) / 60_000))} min so far${j.engine === "jarvis" ? `, step ${j.steps}` : ""}`);
     if (j.team?.phase) facts.push(j.team.phase === "teams" ? `${j.team.reported} of ${j.team.of} teams done` : PHASE[j.team.phase]);
     else if (j.team && j.status !== "running" && j.team.reported < j.team.of) facts.push(`${j.team.reported} of ${j.team.of} teams reported`);
@@ -291,6 +310,7 @@ export class Jobs {
 
     if (j.summary) row.appendChild(el("div", "rwhen", j.summary));
     if (j.error) row.appendChild(el("div", "rfacts bad", j.error));
+    if (j.files?.length) row.appendChild(jobFiles(this.key, j.id, j.files));
     // Before the result, not after it: what it does not have, and what it rests on.
     if (j.missing?.length) row.appendChild(flags("Not done", j.missing));
     if (j.assumed?.length) row.appendChild(flags("Assumed", j.assumed));
@@ -350,12 +370,10 @@ export class Jobs {
   }
 
   /** A research table's rows, saved as a spreadsheet file (GET /api/v1/jobs/csv). */
-  private async csv(j: JobView): Promise<void> {
-    const r = await fetch(`/api/v1/jobs/csv?id=${encodeURIComponent(j.id)}`, { headers: authHeaders(this.key) });
-    if (!r.ok) throw new Error(`Could not download it: the server said ${r.status}`);
-    const url = URL.createObjectURL(await r.blob());
-    Object.assign(document.createElement("a"), { href: url, download: `${j.title.replace(/[\\/:*?"<>|]/g, "").slice(0, 60) || "table"}.csv` }).click();
-    setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  private csv(j: JobView): Promise<void> {
+    return saveFrom(this.key, `/api/v1/jobs/csv?id=${encodeURIComponent(j.id)}`, `${j.title.replace(/[\\/:*?"<>|]/g, "").slice(0, 60) || "table"}.csv`).catch((e) => {
+      throw new Error(`Could not download it: ${e instanceof Error ? e.message : String(e)}`);
+    });
   }
 
   /** What Hermes should do with a finished report: sent with the whole report, which it gets as reference, not instructions. */
@@ -410,6 +428,11 @@ export class Jobs {
       box.replaceChildren();
       // Where a link goes is shown, not only what it is called; a research report's are its own searches', listed at its end.
       if (j.result) box.appendChild(markdown(j.result, j.engine === "jarvis" ? "jobtext whole" : "jobtext"));
+      if (j.ran?.length) {
+        const ran = el("details", "");
+        ran.append(el("summary", "", "What it ran"), jobRan(j.ran));
+        box.appendChild(ran);
+      }
       const went = j.status === "running" ? null : jobLive(j);
       if (went) {
         const how = el("details", "");

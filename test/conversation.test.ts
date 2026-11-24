@@ -91,6 +91,8 @@ console.log("\nwhat a background job came back with");
   const s = alertSaid({ id: "a_j1x2", at: 50, title: "Done: Dashcams", text: "The A229.", source: "job", job: "jabc123def" });
   check("is kept as Jarvis's, under the result's name, with its job, by the alert's id",
     JSON.stringify(s) === JSON.stringify({ id: "a_j1x2", at: 50, role: "assistant", text: "The A229.", job: { id: "jabc123def", name: "Done: Dashcams" } }), s);
+  const made = [{ n: 1, name: "Costs.xlsx", size: 9 }];
+  check("the files it made, to save, and only a job's", JSON.stringify(alertSaid({ id: "a_j3", at: 50, title: "Done: Sheet", text: "Made.", source: "job", job: "jabc123def", made })?.made) === JSON.stringify(made) && !("made" in (alertSaid({ id: "a_j4", at: 50, title: "T", text: "x", source: "api", made }) ?? {})) && asSaid({ id: "c_made01", role: "assistant", text: "x", made }, 1)!.made === undefined);
   const proposed = alertSaid({ id: "a_j2", at: 50, title: "Done: Tidy", text: "SUMMARY: tidied.", source: "job", job: "jabc123def", proposals: [{ id: "a0123456789abcdefghjk", risk: "reversible", says: "Car: lock" }] });
   check("what the job proposed goes with it, by id, for its cards", JSON.stringify(proposed?.proposals) === JSON.stringify(["a0123456789abcdefghjk"]) && !("proposals" in s!), proposed);
   check("a screen cannot say a message carries proposals", !("proposals" in (asSaid({ id: "x1", at: 1, role: "assistant", text: "hi", proposals: ["a0123456789abcdefghjk"] }, 1) ?? {})));

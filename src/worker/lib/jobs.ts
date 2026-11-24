@@ -11,6 +11,7 @@ import { outOf, type Limits } from "./job-guards.ts";
 import { ASK_MS, MAX_ASKED, MAX_TOLD, changeCard, doneLines, numbered, openLines, openQuestions, unanswered, type Asked, type JobCard, type Said, type Todo, type Told } from "./job-tools.ts";
 import { secretShaped } from "./memory-guard.ts";
 import { flagLines, flagsOf, type Flags } from "./job-results.ts";
+import { MAX_RAN, withFile, type JobFile, type Ran } from "./workshop.ts";
 
 /**
  * Background jobs: things that take minutes, answered later.
@@ -118,8 +119,11 @@ export interface Job {
   table?: { columns?: string[]; rows?: number };
   /** An ordinary job's: its person's own things, or the web (reachOf). */
   reach?: Reach;
-  /** An ordinary job's, for hard work: research's stronger model, thinking hard. */
-  mode?: "thorough";
+  /** An ordinary job's: for hard work, research's stronger model, thinking hard; or one that makes files, in the workshop (lib/workshop.ts). */
+  mode?: "thorough" | "files";
+  /** What it made for its person, to download; and what it ran, newest last. */
+  files?: JobFile[];
+  ran?: Ran[];
   /** Waiting for the owner's ChatGPT plan, at its limit: since when, and until when (lib/openai-auth.ts PlanParked). */
   parked?: { since: number; until: number };
   /** How long it has waited so, which its time limit does not count. */
@@ -157,16 +161,19 @@ function flagged(j: Job, f: Flags): Flags {
   const dropped = (j.todo ?? []).flatMap((t) => (t.state === "dropped" ? [`${t.text}${t.why ? `: ${t.why}` : ""}`] : []));
   const answer = (q: Asked) => `Your answer to: ${q.text}`;
   const over = (j.asked ?? []).filter((q) => q.over).map(answer);
-  return { missing: [...(f.missing.length ? f.missing : [...dropped, ...over]), ...open, ...openQuestions(j.asked).map(answer)], assumed: f.assumed.length ? f.assumed : (j.card?.assumptions ?? []) };
+  const none = j.mode === "files" && !j.files?.length ? ["No file was made."] : [];
+  return { missing: [...none, ...(f.missing.length ? f.missing : [...dropped, ...over]), ...open, ...openQuestions(j.asked).map(answer)], assumed: f.assumed.length ? f.assumed : (j.card?.assumptions ?? []) };
 }
 
 /** What is kept while a step runs (note), not by whoever is looking at the job: never saved over by a record read before it. */
-const live = ({ card, todo, ticked, told, asked }: Job): Partial<Job> => ({
+const live = ({ card, todo, ticked, told, asked, files, ran }: Job): Partial<Job> => ({
   ...(card ? { card } : {}),
   ...(todo ? { todo } : {}),
   ...(ticked !== undefined ? { ticked } : {}),
   ...(told ? { told } : {}),
   ...(asked ? { asked } : {}),
+  ...(files ? { files } : {}),
+  ...(ran ? { ran } : {}),
 });
 
 /** A page the web search cited: what a report's Sources list is made of. */
@@ -295,6 +302,8 @@ export interface JobDeps {
   record?(e: UsageEntry): Promise<void>;
   /** A finished job, for the next question like it (lib/episodes.ts). */
   episode?(j: Job): Promise<void>;
+  /** Tell the workshop a job that makes files is at rest (nothing of it left running) or at its end (nothing of it kept). */
+  workshop?(what: "rest" | "end", id: string): Promise<void>;
 }
 
 const J = "job:";
@@ -718,8 +727,10 @@ export class Jobs {
     await this.storage.put(ASKS, [...ids]);
   }
 
-  private async drop(id: string): Promise<boolean> {
+  private async drop({ id, mode }: Job): Promise<boolean> {
     this.due.delete(id);
+    // Its files go with it. A workshop that is off forgets them by itself (docker/workshop/runner.mjs).
+    if (mode === "files") await (await this.deps()).workshop?.("end", id).catch(() => {});
     await this.askIs(id, false);
     await clearChain(this.storage, id);
     await this.storage.delete(T + id);
@@ -797,7 +808,7 @@ export class Jobs {
       steps: 0,
       attempts: 0,
       ...(engine === "jarvis" ? { reach: input.reach === "web" ? ("web" as const) : ("private" as const) } : {}),
-      ...(thorough ? { mode: "thorough" as const } : {}),
+      ...(thorough ? { mode: "thorough" as const } : engine === "jarvis" && input.mode === "files" ? { mode: "files" as const } : {}),
       ...(team ? { team: newTeam(now) } : {}),
       ...(table ? { table: {} } : {}),
       ...(from ? { from } : {}),
@@ -822,6 +833,7 @@ export class Jobs {
     // A step streaming here is let go at once, rather than paid for to its end.
     this.live.get(id)?.stop.abort();
     const deps = await this.deps();
+    if (j.mode === "files") await deps.workshop?.("rest", id).catch(() => {});
     for (const id of running) await deps.cancel({ ...j, responseId: id }).catch(() => {});
     await clearChain(this.storage, id);
     // What it spent before it was stopped still counts in Settings → Usage.
@@ -846,7 +858,7 @@ export class Jobs {
     const j = await this.get(id);
     if (!j) return false;
     if (j.status === "running") await this.cancel(id);
-    return this.drop(id);
+    return this.drop(j);
   }
 
   /** A table job's rows, with its columns; null for any other job, or one that came back as prose. */
@@ -934,6 +946,8 @@ export class Jobs {
           ...(ticked ? { ticked: cur.steps } : {}),
           ...(s.doing ? { doing: s.doing } : {}),
           ...(q ? { asked: [...asked, q] } : {}),
+          ...(s.file ? { files: withFile(cur.files, s.file) } : {}),
+          ...(s.ran ? { ran: [...(cur.ran ?? []), s.ran].slice(-MAX_RAN) } : {}),
         });
         // Kept first, so an answer finds it; told beside the step, which does not wait for a push.
         if (q) void this.deps().then((d) => d.deliver(askAlert(cur, q))).catch(() => {});
@@ -1285,6 +1299,8 @@ export class Jobs {
         out = { text: tableResult(t, columns, withSources("", out.cited ?? [])) };
       } else if (out.cited) out = { text: withSources(out.text, out.cited) };
     }
+    // What it made, by code, and last: the app has them to save under the result (src/app/jobWords.ts beside), other channels say where they are.
+    const made = done.files?.length ? `In Jobs to download: ${done.files.map((f) => f.name).join(", ")}` : "";
     let alert: Alert;
     if ("text" in out && out.text.trim()) {
       const split = splitResult(out.text);
@@ -1311,7 +1327,7 @@ export class Jobs {
         ...makeAlert(
           {
             title: short ? `Part done: ${j.title}` : j.engine === "hermes" ? "Hermes answered" : j.engine === "research" ? `Research done: ${j.title}` : `Done: ${j.title}`,
-            text: whole.length <= ALERT_WHOLE ? whole : [summary, said, "The full result is in Jobs."].filter(Boolean).join("\n\n"),
+            text: [...(whole.length <= ALERT_WHOLE ? [whole] : [summary, said, "The full result is in Jobs."]), made].filter(Boolean).join("\n\n"),
           },
           "job",
           now,
@@ -1324,10 +1340,12 @@ export class Jobs {
       done.error = "error" in out ? out.error.slice(0, 500) : "it finished without an answer";
       // Hermes past the wait has not failed: it is still working, and says so itself when it is done.
       const title = "late" in out && out.late ? `Still working: ${j.title}` : `Could not finish: ${j.title}`;
-      alert = { ...makeAlert({ title, text: done.error, speak: false }, "job", now, personOfWho(j.createdBy))!, job: j.id };
+      alert = { ...makeAlert({ title, text: made ? `${done.error}\n\n${made}` : done.error, speak: false }, "job", now, personOfWho(j.createdBy))!, job: j.id };
     }
+    if (done.files?.length) alert.made = done.files.map(({ n, name, size }) => ({ n, name, size }));
     await this.save(done); // before delivering: a retried alarm must not tell the user twice
     await clearChain(this.storage, done.id);
+    if (done.mode === "files") await deps.workshop?.("rest", done.id).catch(() => {});
     const d = await deps.deliver(alert).catch(() => null);
     done.deliveredBy = d?.deliveredBy ?? null;
     // Removed while it was being told (a push can take seconds): gone stays gone.
@@ -1346,7 +1364,7 @@ export class Jobs {
       const person = personOfWho(j.createdBy);
       const n = (kept.get(person) ?? 0) + 1;
       kept.set(person, n);
-      if (n > KEEP_JOBS) await this.drop(j.id);
+      if (n > KEEP_JOBS) await this.drop(j);
     }
   }
 }

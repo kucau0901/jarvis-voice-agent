@@ -70,6 +70,8 @@ export interface Alert {
    * it in Jobs (src/app/fromRoutine.ts).
    */
   job?: string;
+  /** The files that job made (lib/workshop.ts): the app offers each to save (src/app/ui/JobFiles.ts). */
+  made?: { n: number; name: string; size: number }[];
   /**
    * What a background job asks its person (lib/jobs.ts): the job, and the
    * question's id there. Not its result, so not `job`: the app offers the
