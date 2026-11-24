@@ -585,6 +585,10 @@ nothing of its person's: not their name, nor what is saved about them). Never
 both. Research is always the web's. A job that needs some of each is given the
 facts it needs in `task`.
 
+`"mode": "thorough"` (needs `routines`; at most five a day for a person) gives an
+ordinary job research's stronger model (`RESEARCH_MODEL`), thinking hard, for
+work with many things to weigh together. It costs many times an ordinary one.
+
 `engine` is `jarvis` (default: the router, many steps, in OpenAI's background
 mode), `research` (needs `routines`: it spends the family's monthly
 allowance), or `hermes` (one question to the Hermes agent; needs `hermes`).

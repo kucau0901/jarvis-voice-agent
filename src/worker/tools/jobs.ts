@@ -14,16 +14,15 @@ const startJob: Tool = {
   name: "start_job",
   pace: "fast",
   description:
-    "Start a background job for anything that needs many steps or several minutes, rather " +
-    "than trying to do it now: researching and comparing, going through a lot of mail or a long " +
-    "stretch of the calendar, planning a trip, checking many things. It runs on its own, every " +
-    "screen closed; the result reaches the user as a message and in Jobs. It reads and never acts; " +
-    "what it would do, it proposes. It reads ONE side (`reach`): 'private', the user's own mail, " +
-    "calendar, memory, house, car and cameras, without the web; or 'web', without any of those. For " +
-    "work that needs both (a trip around their diary), read the private part here first and put only " +
-    "the facts it needs in `task`. Write `task` as a complete brief, names resolved: it will not see " +
-    "the conversation, and the user can read it. Tell them it has started and, on the web, which of " +
-    "their facts it was given. Not for quick questions: answer those now. " +
+    "Start a background job for anything that needs many steps or several minutes: researching and " +
+    "comparing, going through a lot of mail or a long stretch of the calendar, planning a trip, " +
+    "checking many things. It runs on its own; the result reaches the user as a message and in Jobs. " +
+    "It reads and never acts; what it would do, it proposes. It reads ONE side (`reach`): 'private', " +
+    "the user's own mail, calendar, memory, house, car and cameras, without the web; or 'web', without " +
+    "any of those. For work that needs both (a trip around their diary), read the private part here " +
+    "first and put only the facts it needs in `task`. Write `task` as a complete brief, names resolved: " +
+    "it will not see the conversation, and the user can read it. Tell them it has started and, on the " +
+    "web, which of their facts it was given. Not for quick questions: answer those now. " +
     "Set research to 'yes' only when asked for research in depth ('research…', 'dig into…', 'find " +
     "out everything about…'): a stronger model, searching widely, 10 to 40 minutes, roughly one to two " +
     "dollars, a report with its sources. 'team' only when asked for research as a team in so many " +
@@ -35,15 +34,16 @@ const startJob: Tool = {
     type: "object",
     properties: {
       title: { type: "string", description: "A few words to list it by, e.g. 'Dashcams under RM800'." },
-      task: { type: "string", description: "The complete brief, as if to a capable assistant who knows nothing of this conversation." },
+      task: { type: "string", description: "The complete brief." },
       reach: { type: "string", enum: ["private", "web"], description: "Research is always the web." },
+      mode: { type: "string", enum: ["ordinary", "thorough"], description: "'thorough' only if asked, or to weigh many things together: a stronger, dearer model." },
       research: {
         type: "string",
         enum: ["no", "yes", "team", "table"],
-        description: "'yes', 'team' or 'table' only as above; 'no' for an ordinary job.",
+        description: "'no' for an ordinary job.",
       },
     },
-    required: ["title", "task", "reach", "research"],
+    required: ["title", "task", "reach", "mode", "research"],
     additionalProperties: false,
   },
   async run(args, ctx) {
@@ -56,8 +56,10 @@ const startJob: Tool = {
     if (research && !allows(ctx.grants, "routines")) {
       return "Not started: research in depth is for the family, and this person may not start it. Offer an ordinary job, or to answer now.";
     }
+    // So does the stronger model cost: a guest's job is an ordinary one.
+    const thorough = !research && args.mode === "thorough" && allows(ctx.grants, "routines");
     const j = await state.createJob(
-      { title: args.title, task: args.task, engine: research ? "research" : "jarvis", reach: args.reach, ...(team ? { team: true } : {}), ...(table ? { table: true } : {}) },
+      { title: args.title, task: args.task, engine: research ? "research" : "jarvis", reach: args.reach, ...(thorough ? { mode: "thorough" } : {}), ...(team ? { team: true } : {}), ...(table ? { table: true } : {}) },
       { who: callerWho(ctx.env), grants: ctx.grants },
     );
     if (typeof j === "string") return `Not started: ${j}.`;
@@ -75,7 +77,7 @@ const startJob: Tool = {
     return research
       ? `Started research on "${j.title}". It takes 10 to 40 minutes; the report, with its sources, will reach the user as a message and wait in Jobs. Tell them so.`
       : `Started "${j.title}" ${j.reach === "web" ? "on the web, with only what its brief says of the user" : "on the user's own things, without the web"}. ` +
-        "It usually takes a few minutes; the result will reach the user as a message. Tell them so.";
+        `It usually takes ${j.mode === "thorough" ? "ten minutes or more, with a stronger model" : "a few minutes"}; the result will reach the user as a message. Tell them so.`;
   },
 };
 

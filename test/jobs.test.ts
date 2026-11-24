@@ -1,6 +1,7 @@
 import {
   DAILY_JOBS,
   DAILY_PLAN_TOKENS,
+  DAILY_THOROUGH,
   HOUSE_RUNNING,
   MAX_IN_HAND,
   isResearchCap,
@@ -475,6 +476,31 @@ console.log("\nchanging a job's card, over HTTP");
   check("somebody else's is not there", (await post({ id: "jx", outcome: "mine" }, "u_adam"))!.status === 404 && (await post({ id: "jy" }, "u_sara"))!.status === 404 && asked.length === 1);
   check("why not, said", (await post({ id: "jx", outcome: "no" }, "u_sara"))!.status === 400);
   check("POST only, and ask reaches it", (await post(null, "u_sara", "GET"))!.status === 405 && requiredScope("/api/v1/jobs/card", "POST") === "ask");
+}
+
+console.log("\nthorough: the stronger model, for hard work");
+{
+  const h = harness();
+  const ids: string[] = [];
+  for (let i = 0; i < DAILY_THOROUGH; i++) {
+    const j = (await h.jobs.create({ task: `t${i}`, mode: "thorough" }, BY, T0)) as Job;
+    ids.push(j.id);
+    if (i === 0) check("kept on the job", j.mode === "thorough" && j.engine === "jarvis");
+    await h.jobs.cancel(j.id, T0);
+  }
+  check(`${DAILY_THOROUGH} a day for a person`, /5 thorough jobs a day/.test(String(await h.jobs.create({ task: "more", mode: "thorough" }, BY, T0))));
+  check("…an ordinary one still, someone else's still, and tomorrow again",
+    typeof (await h.jobs.create({ task: "plain" }, BY, T0)) !== "string" && typeof (await h.jobs.create({ task: "theirs", mode: "thorough" }, { who: "u_sara", grants: ["*"] }, T0)) !== "string" &&
+      typeof (await h.jobs.create({ task: "next", mode: "thorough" }, BY, T0 + 86_400_000)) !== "string");
+  const r = (await h.jobs.create({ task: "r", engine: "research", mode: "thorough" }, { who: "u_adam", grants: ["*"] }, T0)) as Job;
+  check("research is never that too; anything else is ordinary", r.mode === undefined && ((await h.jobs.create({ task: "o", mode: "files" }, { who: "u_siti", grants: ["*"] }, T0)) as Job).mode === undefined);
+  // Asked for in chat by a guest: an ordinary job.
+  const tool = baseTools({} as never).find((t) => t.name === "start_job")!;
+  const made: Record<string, unknown>[] = [];
+  const stub = { createJob: async (i: Record<string, unknown>) => (made.push(i), { id: "j", title: "x", engine: "jarvis", ...i }) };
+  const say = async (grants: string[]) => String(await tool.run({ title: "x", task: "x", reach: "web", mode: "thorough", research: "no" }, { env: { STATE: { idFromName: () => "j", get: () => stub } }, grants } as never));
+  check("start_job: the family's is thorough, and says it takes longer", /stronger model/.test(await say(["ask", "routines"])) && made[0]!.mode === "thorough");
+  check("a guest's is ordinary", !/stronger/.test(await say(["ask"])) && !("mode" in made[1]!));
 }
 
 console.log("\ngoing round in a circle");
@@ -1989,6 +2015,12 @@ console.log("\njobs on the owner's ChatGPT plan (routes/jobs.ts): streamed here,
     const nw = sent.length;
     const wrappedAgain = await engine.poll({ ...jout, responseId: "plan_m.0", cut: { why: "it took its 25 steps" } });
     check("…once, though cut short before that was noted", wrappedAgain.kind === "continued" && sent.length === nw);
+
+    // Thorough: research's stronger model, thinking hard; an ordinary job neither.
+    answers.push([{ type: "message", id: "mt", role: "assistant", status: "completed", content: [{ type: "output_text", text: "Done.", annotations: [] }] }]);
+    await engine.start({ ...job, id: "jthor", mode: "thorough" });
+    const thor = sent.at(-1)!.body;
+    check("a thorough job's steps: the stronger model, thinking hard", thor.model === "gpt-6-sol" && JSON.stringify(thor.reasoning) === JSON.stringify({ effort: "high" }) && first.body.model !== "gpt-6-sol" && !("reasoning" in first.body), { model: thor.model, first: first.body.model });
 
     // What its person says while it works goes with its next step, as their own message, after what its tools gave.
     const says = (text: string) => [{ type: "message", id: "ms", role: "assistant", status: "completed", content: [{ type: "output_text", text, annotations: [] }] }];

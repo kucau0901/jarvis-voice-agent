@@ -1419,6 +1419,12 @@ to 60, only while a line was ticked in the last ten (`outOf`). The model ticks
 its own lines, so this can be gamed; 60 steps and the hour are the limits that
 hold. What a job may do is said on the card by code, from what it was handed.
 
+**The stronger model only for hard work.** An ordinary job runs on the router's
+model; a thorough one (`mode`) on research's, thinking hard, when somebody asked
+for it or the work is many things to weigh together. It costs many times as much,
+so it is the family's to start (`routines`, as research is), five a day for a
+person, and no job is moved to it by itself.
+
 **A job does not go round in a circle, or carry what it has no use for.** The
 same call with the same answer three times running has that said in the answer,
 the fifth is not made, and at eight the job has nothing left to try and writes

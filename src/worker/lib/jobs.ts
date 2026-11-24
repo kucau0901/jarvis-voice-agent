@@ -113,6 +113,8 @@ export interface Job {
   table?: { columns?: string[]; rows?: number };
   /** An ordinary job's: its person's own things, or the web (reachOf). */
   reach?: Reach;
+  /** An ordinary job's, for hard work: research's stronger model, thinking hard. */
+  mode?: "thorough";
   /** Waiting for the owner's ChatGPT plan, at its limit: since when, and until when (lib/openai-auth.ts PlanParked). */
   parked?: { since: number; until: number };
   /** How long it has waited so, which its time limit does not count. */
@@ -286,6 +288,9 @@ export const MAX_IN_HAND = 3;
 export const DAILY_PLAN_TOKENS = 5_000_000;
 const TOKENS = (person: string) => `jobs:tokens:${person}`;
 export const DAILY_JOBS = 30;
+/** Thorough jobs a person may start in a day, beside research's own month: each costs many times an ordinary one. */
+export const DAILY_THOROUGH = 5;
+const THOROUGH = (person: string) => `jobs:thorough:${person}`;
 export const KEEP_JOBS = 30;
 /** Steps a job gets, and with its checklist moving; then it writes what it has (lib/job-guards.ts). */
 export const MAX_STEPS = 25;
@@ -646,7 +651,7 @@ export class Jobs {
   }
 
   async create(
-    input: { title?: unknown; task?: unknown; engine?: unknown; reach?: unknown; team?: unknown; from?: unknown; table?: unknown },
+    input: { title?: unknown; task?: unknown; engine?: unknown; reach?: unknown; mode?: unknown; team?: unknown; from?: unknown; table?: unknown },
     by: { who: string; grants: readonly Grant[] },
     now = Date.now(),
   ): Promise<Job | string> {
@@ -682,6 +687,13 @@ export class Jobs {
     const day = (await this.storage.get<{ day: string; n: number }>(DAY(person))) ?? { day: today, n: 0 };
     const n = day.day === today ? day.n : 0;
     if (n >= DAILY_JOBS) return `the limit of ${DAILY_JOBS} jobs a day has been reached`;
+    const thorough = engine === "jarvis" && input.mode === "thorough";
+    if (thorough) {
+      const t = (await this.storage.get<{ day: string; n: number }>(THOROUGH(person))) ?? { day: today, n: 0 };
+      const used = t.day === today ? t.n : 0;
+      if (used >= DAILY_THOROUGH) return `the limit of ${DAILY_THOROUGH} thorough jobs a day has been reached; an ordinary one can still be started`;
+      await this.storage.put(THOROUGH(person), { day: today, n: used + 1 });
+    }
     if (engine === "research") {
       const deps = await this.deps();
       if (deps.researchBlocked) return deps.researchBlocked;
@@ -709,6 +721,7 @@ export class Jobs {
       steps: 0,
       attempts: 0,
       ...(engine === "jarvis" ? { reach: input.reach === "web" ? ("web" as const) : ("private" as const) } : {}),
+      ...(thorough ? { mode: "thorough" as const } : {}),
       ...(team ? { team: newTeam(now) } : {}),
       ...(table ? { table: {} } : {}),
       ...(from ? { from } : {}),

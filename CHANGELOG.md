@@ -129,6 +129,11 @@ of every release, and in the [README](README.md#updating).
   (deploy-time) puts the old one aside afterwards: everything kept, nothing
   run on its own clock, so the two never both act for one family.
 
+- **Thorough background jobs.** For work with many things to weigh together, a
+  job may use the stronger model research uses, when you ask for it ("look into
+  this thoroughly") or tick it in **New job**. Costs several times an ordinary
+  job; at most five a day each.
+
 ### Changed
 
 - **"Save this as" is said far less often.** Jarvis ended every answer that

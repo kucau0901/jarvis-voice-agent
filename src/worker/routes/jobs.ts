@@ -34,11 +34,11 @@ import type { Storage } from "../lib/state-host.ts";
 
 /**
  * Background jobs (lib/jobs.ts): the engine that runs them, and the HTTP
- * surface. All paths need `ask`; a Hermes job also needs `hermes`, and research `routines`.
+ * surface. All paths need `ask`; a Hermes job also needs `hermes`, and research or a thorough job `routines`.
  *
  *   GET    /api/v1/jobs           the jobs (a device sees its own)
  *   GET    /api/v1/jobs?id=       one, with its whole result
- *   POST   /api/v1/jobs           {task, title?, engine?: "jarvis" | "hermes" | "research", reach?: "private" | "web", team?: true, from?: id}
+ *   POST   /api/v1/jobs           {task, title?, engine?: "jarvis" | "hermes" | "research", reach?: "private" | "web", mode?: "thorough", team?: true, from?: id}
  *   POST   /api/v1/jobs/cancel    {id}
  *   POST   /api/v1/jobs/key       {id}   a job waiting for the ChatGPT plan goes on with the API key instead; needs `routines`
  *   POST   /api/v1/jobs/card      {id, outcome?, limits?, assumptions?}   its person changes its card while it works
@@ -166,8 +166,9 @@ export function jobEngine(
     const prepared = await prepareRouter(env, turns, signal(stop), grants, { surface: research ? "research" : "job", reach: reachOf(job), toolFilter });
     const p = web ? prepared : proposing(prepared, job);
     const searches = web ? builtinTools(env) : [];
-    // Research: the stronger model, thinking hard (lib/jobs.ts "research").
-    const model = research ? researchModel(env.RESEARCH_MODEL) : p.model;
+    // Research, and a thorough job: the stronger model, thinking hard (lib/jobs.ts "research").
+    const strong = research || job.mode === "thorough";
+    const model = strong ? researchModel(env.RESEARCH_MODEL) : p.model;
     // Its own tools, which no question in the conversation is ever offered: an ordinary job's, or a research team's one.
     const own: Tool[] = team ? [shareTool("", [], 0)] : job.engine === "jarvis" ? [...workTools(job, say), readResult(kept, job.id)] : [];
     const functions = [...p.tools, ...own].map(toToolSchema);
@@ -178,13 +179,13 @@ export function jobEngine(
       grants,
       stop,
       say,
-      research,
+      strong,
       searches,
       functions,
       own,
       base: {
         model,
-        ...(research ? { reasoning: { effort: "high" as const } } : {}),
+        ...(strong ? { reasoning: { effort: "high" as const } } : {}),
         instructions: p.instructions,
         tools: [...functions, ...searches],
         tool_choice: "auto" as const,
@@ -236,14 +237,14 @@ export function jobEngine(
       if (why) throw new Error(why);
       try {
         const res = await planRespond(clientFor(r.env, auth), {
-          model: r.research ? r.base.model : (auth.model ?? r.base.model),
+          model: r.strong ? r.base.model : (auth.model ?? r.base.model),
           instructions: r.base.instructions,
           input: forPlan(input),
           tools: [{ type: "namespace", name: "jarvis", description: "Jarvis's own tools", tools: r.functions }, ...r.searches],
           tool_choice: toolChoice,
           include: ["reasoning.encrypted_content"],
-          ...(r.research ? { reasoning: { effort: "high" as const } } : {}),
-        }, signal(r.stop, r.research ? 10 * 60_000 : 3 * 60_000), () => void r.say({ doing: ["web_search"] }));
+          ...(r.strong ? { reasoning: { effort: "high" as const } } : {}),
+        }, signal(r.stop, r.strong ? 10 * 60_000 : 3 * 60_000), () => void r.say({ doing: ["web_search"] }));
         await chain.answered(name, n, res);
         return { responseId: stepId(name, n) };
       } catch (e) {
@@ -550,8 +551,9 @@ export async function handleJobs(req: Request, env: Env, url: URL, principal: Pr
     const b = await readObject(req, MAX_BODY);
     if (!b) return err(400, "body must be a small JSON object");
     if (b.engine === "hermes" && !allows(grants, "hermes")) return err(403, 'a Hermes job needs "hermes"', { need: "hermes" });
-    // Research spends the family's monthly allowance (Settings → OpenAI): not a guest's to spend.
+    // Research spends the family's monthly allowance (Settings → OpenAI), and a thorough job the stronger model: not a guest's to spend.
     if (b.engine === "research" && !allows(grants, "routines")) return err(403, 'a research job needs "routines"', { need: "routines" });
+    if (b.mode === "thorough" && !allows(grants, "routines")) return err(403, 'a thorough job needs "routines"', { need: "routines" });
     const j = await state.createJob(b, { who, grants });
     return typeof j === "string" ? err(400, j) : json({ ok: true, job: jobView(j) }, { status: 201 });
   }
