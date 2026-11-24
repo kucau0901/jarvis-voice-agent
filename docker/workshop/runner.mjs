@@ -41,6 +41,10 @@ const MAX_ANSWER = 3_000_000;
 /** Of all jobs' files; and left free on the disk. */
 const MAX_ALL_KB = 5_000_000;
 const MIN_FREE = 3_000_000_000;
+/** This many times what its folder may hold is not left there for the job to remove. */
+const FAR = 4;
+/** A folder that could not be looked at for this long is not waited for. */
+const UNSEEN_MS = 40_000;
 /** A job that was not heard of for this long is over, whatever was said. */
 const KEEP_MS = 14 * 86_400_000;
 const FIRST_UID = 20_000;
@@ -57,6 +61,8 @@ const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
 
 /** Its own folder entered as itself, by a shell that reads no file of the job's on the way; and the first to be ended if memory runs out. */
 const ENTER = ["/bin/sh", "-c", '{ echo 1000 > /proc/self/oom_score_adj; } 2>/dev/null; umask 077; chmod u+rwx "$WORK" 2>/dev/null; cd "$WORK" || exit 97; mkdir -p .tmp .home 2>/dev/null; exec "$@"', "-"];
+/** A folder it closed to itself, opened. */
+const OPEN = "find . -type d ! -perm -u=rwx -exec chmod u+rwx {} \\;";
 /** Told on its input, so that what it runs is in nobody's list of processes. */
 const SHELL = ["bash", "--norc", "--noprofile", "-c", 'script=$(cat); exec </dev/null; eval "$script"'];
 
@@ -147,7 +153,7 @@ export function answered(op, bytes) {
  * it runs as whoever runs this (test/workshop-runner.test.ts). The rest, for that test: what a job's files may come to,
  * how long a job waits for another's command, and how often a folder is looked at while something runs.
  */
-export function workshop({ work, drop = true, now = () => Date.now(), jobKb = 500_000, turnMs = 60_000, watchMs = 4000 }) {
+export function workshop({ work, drop = true, now = () => Date.now(), jobKb = 500_000, turnMs = 60_000, watchMs = 1000 }) {
   const GIVEN = join(work, ".given");
   const NEXT = join(work, ".next");
   const outer = (job) => join(work, job);
@@ -263,12 +269,12 @@ export function workshop({ work, drop = true, now = () => Date.now(), jobKb = 50
 
   /* ---------- what runs ----------------------------------------------------------------------------------------- */
 
-  /** A program run as the job's user, in its folder: how to start it. */
-  function start(job, j, argv, { seconds, env = {}, stdio = ["pipe", "pipe", "pipe"] }) {
+  /** A program run as the job's user, in its folder: how to start it. `most`: the largest file it may write. */
+  function start(job, j, argv, { seconds, env = {}, stdio = ["pipe", "pipe", "pipe"], most = 200_000_000 }) {
     if (drop && !(j.uid >= FIRST_UID)) throw new Error("a job without a user of its own");
     const full = drop
       ? ["setpriv", `--reuid=${j.uid}`, `--regid=${j.uid}`, "--clear-groups", "--no-new-privs", "--",
-         "prlimit", "--nproc=300", "--nofile=1024", "--core=0", "--msgqueue=0", `--fsize=${200_000_000}`, `--cpu=${Math.ceil(seconds * 3)}`, "--", ...ENTER, ...argv]
+         "prlimit", "--nproc=300", "--nofile=1024", "--core=0", "--msgqueue=0", `--fsize=${most}`, `--cpu=${Math.ceil(seconds * 3)}`, "--", ...ENTER, ...argv]
       : [...ENTER, ...argv];
     const child = spawn(full[0], full.slice(1), {
       cwd: "/",
@@ -398,40 +404,64 @@ export function workshop({ work, drop = true, now = () => Date.now(), jobKb = 50
   }
   const file = async (job, j, what, body) => answered(what.op, await program(job, j, what, body, MAX_ANSWER));
 
-  /** How much it holds now; null when it cannot be told. */
+  /** How much it holds now, to the last of what `du` said; null when it cannot be told. */
   async function du(job, j) {
-    const b = await collect(start(job, j, ["du", "-sk", "."], { seconds: 30, stdio: ["ignore", "pipe", "ignore"] }), 10_000, 30);
-    const kb = Number.parseInt(b?.toString("utf8") ?? "", 10);
+    const b = await collect(start(job, j, ["/bin/sh", "-c", `du -sk . || { ${OPEN} ; du -sk . || true; }`], { seconds: 30, stdio: ["ignore", "pipe", "ignore"] }), 10_000, 30);
+    const kb = Number.parseInt(b?.toString("utf8").trim().split("\n").pop() ?? "", 10);
     return Number.isFinite(kb) ? kb : null;
   }
   async function measure(job, j) {
     j.kb = (await du(job, j)) ?? j.kb;
     return j.kb ?? 0;
   }
+  /** All that is in its folder, gone. */
+  const empty = (job, j) => finish(start(job, j, ["/bin/sh", "-c", `${OPEN} ; find . -mindepth 1 -delete`], { seconds: 300, stdio: "ignore" }), 300);
+
+  /**
+   * A command is over, or was cut short by a restart: how much its folder holds now. A quick one ends before it is
+   * looked at, and may take room without writing a byte (fallocate). Far past what it may hold, or past it on a disk
+   * nearly full, where no command runs that would remove any, nothing in it is kept. What it gave is not in there.
+   */
+  async function settle(job, j) {
+    const kb = await measure(job, j);
+    if (kb <= jobKb || (kb <= FAR * jobKb && free() >= MIN_FREE)) return false;
+    await clear(job, j);
+    await empty(job, j);
+    await measure(job, j);
+    return true;
+  }
 
   /** While something of it runs: its folder is looked at, and the disk, and it is ended past what it may hold, or when it will not be looked at. */
   function watch(job, j, over) {
     const began = j.kb ?? 0;
     let looking = false;
-    let missed = 0;
-    const t = setInterval(async () => {
-      if (looking) return;
+    let seen = Date.now();
+    let done = false;
+    async function past() {
+      if (looking) return false;
       looking = true;
+      const kb = await du(job, j).finally(() => (looking = false));
+      if (done) return false;
+      if (kb === null) return Date.now() - seen > UNSEEN_MS;
+      seen = Date.now();
+      j.kb = kb;
+      return kb > jobKb && kb > began + 20_000;
+    }
+    const t = setInterval(async () => {
       try {
-        const kb = await du(job, j);
-        missed = kb === null ? missed + 1 : 0;
-        if (kb !== null) j.kb = kb;
-        if (free() < MIN_FREE || missed >= 3 || (kb !== null && kb > jobKb && kb > began + 20_000)) {
-          over();
-          await clear(job, j);
-        }
+        // The disk every time, its folder still being looked at or not.
+        if (!(free() < MIN_FREE || (await past())) || done) return;
+        done = true;
+        over();
+        await clear(job, j);
       } catch (e) {
         console.error("workshop:", e?.stack ?? e);
-      } finally {
-        looking = false;
       }
     }, watchMs);
-    return () => clearInterval(t);
+    return () => {
+      done = true;
+      clearInterval(t);
+    };
   }
 
   /* ---------- whose turn it is ---------------------------------------------------------------------------------- */
@@ -476,7 +506,8 @@ export function workshop({ work, drop = true, now = () => Date.now(), jobKb = 50
       let p = null;
       let child;
       try {
-        child = start(job, j, SHELL, { seconds: t });
+        // Past what its folder may hold it may remove, and the kernel lets it write nothing.
+        child = start(job, j, SHELL, { seconds: t, ...((j.kb ?? 0) > jobKb ? { most: 0 } : {}) });
       } catch (e) {
         await leave(job, j);
         throw e;
@@ -490,8 +521,9 @@ export function workshop({ work, drop = true, now = () => Date.now(), jobKb = 50
           const said = { ...r, ...(full ? { full: true } : {}), over: now() };
           if (p) Object.assign(p, said, { code: r.code ?? r.signal ?? null });
           await leave(job, j);
-          await measure(job, j);
-          return said;
+          const emptied = (await settle(job, j)) ? { full: true, emptied: true } : {};
+          if (p) Object.assign(p, emptied);
+          return { ...said, ...emptied };
         });
       if (!going.has(job)) going.set(job, new Set());
       going.get(job).add(ended);
@@ -509,7 +541,7 @@ export function workshop({ work, drop = true, now = () => Date.now(), jobKb = 50
     async process({ job, op, id, wait }, gone) {
       await known(job);
       const all = longOf(job);
-      const said = (k, p) => ({ id: k, running: p.code === undefined, ...(p.code === undefined ? {} : { code: p.code, ...(p.late ? { late: true } : {}), ...(p.full ? { full: true } : {}) }), ms: (p.over ?? now()) - p.since });
+      const said = (k, p) => ({ id: k, running: p.code === undefined, ...(p.code === undefined ? {} : { code: p.code, ...(p.late ? { late: true } : {}), ...(p.full ? { full: true } : {}), ...(p.emptied ? { emptied: true } : {}) }), ms: (p.over ?? now()) - p.since });
       if (op === "list") return { processes: [...all].map(([k, p]) => said(k, p)) };
       const p = all.get(String(id));
       if (!p) refuse("no process by that id is known: the workshop may have been started again");
@@ -565,11 +597,7 @@ export function workshop({ work, drop = true, now = () => Date.now(), jobKb = 50
       // What follows a command's end looks at its folder once more, and would make part of it again.
       await Promise.allSettled([...(going.get(job) ?? [])]);
       long.delete(job);
-      if (j.uid !== null && existsSync(inner(job))) {
-        // A folder it closed to itself is opened first.
-        const c = start(job, j, ["/bin/sh", "-c", "find . -type d ! -perm -u=rwx -exec chmod u+rwx {} \\; ; find . -mindepth 1 -delete"], { seconds: 300, stdio: "ignore" });
-        await finish(c, 300);
-      }
+      if (j.uid !== null && existsSync(inner(job))) await empty(job, j);
       await fs.rm(join(GIVEN, job), { recursive: true, force: true });
       await fs.rmdir(inner(job)).catch(() => {});
       const left = await fs.rmdir(outer(job)).then(() => false, (e) => e.code !== "ENOENT");
@@ -605,7 +633,7 @@ export function workshop({ work, drop = true, now = () => Date.now(), jobKb = 50
     const all = await load();
     for (const [job, j] of [...all]) {
       if (now() - j.at > KEEP_MS) await api.end({ job });
-      else if (j.kb === null && j.uid !== null) await measure(job, j);
+      else if (j.kb === null && j.uid !== null) await settle(job, j);
     }
     for (const e of await fs.readdir(GIVEN).catch(() => [])) if (!all.has(e)) await fs.rm(join(GIVEN, e), { recursive: true, force: true });
   }

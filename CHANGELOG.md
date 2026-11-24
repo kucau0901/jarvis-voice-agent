@@ -17,6 +17,16 @@ of every release, and in the [README](README.md#updating).
 
 ## [Unreleased]
 
+### Fixed
+
+- **What a job may hold in the workshop holds for a command too quick to be
+  looked at.** A job's folder was looked at every four seconds, so a short
+  command, or one that took the room at once, could go past its 500 MB without
+  being stopped, and so could the next. Its folder is looked at every second and
+  measured when each command ends: past 500 MB the next may only remove, and one
+  that went past 2 GB, or filled the disk, has its folder emptied. What it gave
+  you is kept.
+
 ## [2.11.0] - 2026-11-24
 
 ### Added

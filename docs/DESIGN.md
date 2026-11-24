@@ -2397,10 +2397,16 @@ else works without it.
 - **What it may use.** A command has two minutes, or fifteen left running.
   Processes, open files, processor time and the size of one file are limited for
   each job's user by the kernel; memory, and where the kernel can, processes in
-  all, for the container. While something runs its folder is looked at every few
-  seconds, and it is ended past 500 MB, or on a disk with less than 3 GB left;
-  all jobs' files come to 5 GB at most, what they gave counted. A job puts itself
-  first to be ended when memory runs out, which it could undo.
+  all, for the container. While something runs its folder is looked at every
+  second, and it is ended past 500 MB, or on a disk with less than 3 GB left;
+  all jobs' files come to 5 GB at most, what they gave counted. There is no quota
+  to lean on in a container without powers, and a command may be over before it
+  is looked at, or take room without writing a byte (`fallocate`), so the folder
+  is measured again when it ends, a part it closed to itself included. Past
+  500 MB, the kernel lets its next commands write nothing until some is removed;
+  past 2 GB, or past 500 MB on a disk that full, all that is in the folder goes,
+  and what it gave is kept. A job puts itself first to be ended when memory runs
+  out, which it could undo.
 - **The one way in is a socket in a shared folder.** A door (`door.mjs`) holds
   its other end, in Jarvis's own network, where nothing is published, and passes
   on what carries the shared token. Jarvis's own browser shares that network: a

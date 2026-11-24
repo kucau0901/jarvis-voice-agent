@@ -22,7 +22,7 @@ const SHOWN = 300;
 const WRITER = "A PROGRAM, FROM WHAT IT READ";
 
 type Ask = <T>(what: string, body: Record<string, unknown>, seconds?: number) => Promise<T>;
-interface Out { out?: string; code?: number | string | null; signal?: string; late?: boolean; full?: boolean; ms?: number; kb?: number }
+interface Out { out?: string; code?: number | string | null; signal?: string; late?: boolean; full?: boolean; emptied?: boolean; ms?: number; kb?: number }
 /** Waiting for another job's command, and for what it left to be ended, besides its own time. */
 const WAIT_SECONDS = 100;
 const MAX_WAIT = 60;
@@ -30,7 +30,7 @@ const MAX_WAIT = 60;
 export const WORKSHOP_TOOLS: ReadonlySet<string> = new Set(["run", "process", "list_files", "read_file", "write_file", "edit_file", "give_file", "mail_file"]);
 
 const ended = (r: Out): string =>
-  r.full ? "was stopped: this job's folder went past what it may hold, or the disk is nearly full" : r.late ? `stopped: it took its whole ${Math.round((r.ms ?? 0) / 1000) || RUN_SECONDS} seconds` : r.signal ? `ended by ${r.signal}${r.signal === "SIGKILL" ? " (out of memory, or stopped)" : ""}` : `ended with ${r.code ?? "no code"}`;
+  r.emptied ? "was undone: this job's folder went far past what it may hold, or past it with the disk nearly full, so all that was in it is gone; what you gave is kept" : r.full ? "was stopped: this job's folder went past what it may hold, or the disk is nearly full" : r.late ? `stopped: it took its whole ${Math.round((r.ms ?? 0) / 1000) || RUN_SECONDS} seconds` : r.signal ? `ended by ${r.signal}${r.signal === "SIGKILL" ? " (out of memory, or stopped)" : ""}` : `ended with ${r.code ?? "no code"}`;
 
 const wrote = (out: string | undefined): string => (out?.trim() ? `\n${asQuotedData("what it wrote", out, WRITER)}` : " It wrote nothing.");
 
@@ -113,7 +113,7 @@ export function workshopTools(cfg: WorkshopConfig, job: Pick<Job, "id" | "files"
           throw e;
         }
         await note({ ...it, code: r.signal ?? r.code ?? null, ms: r.ms, ...(r.late ? { late: true as const } : {}), ...(r.full ? { full: true as const } : {}) });
-        return `It ${ended(r)}${r.ms === undefined || r.late ? "" : `, in ${(r.ms / 1000).toFixed(1)} s`}.${(r.kb ?? 0) > 400_000 ? ` The folder holds ${Math.round((r.kb ?? 0) / 1000)} MB of its 500.` : ""}${wrote(r.out)}`;
+        return `It ${ended(r)}${r.ms === undefined || r.late ? "" : `, in ${(r.ms / 1000).toFixed(1)} s`}.${(r.kb ?? 0) > 400_000 ? ` The folder holds ${Math.round((r.kb ?? 0) / 1000)} MB of its 500.` : ""}${(r.kb ?? 0) > 500_000 ? " Until it holds less, a command may only remove files: it can write nothing." : ""}${wrote(r.out)}`;
       },
     }),
     tool({
