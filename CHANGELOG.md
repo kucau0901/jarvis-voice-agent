@@ -214,6 +214,8 @@ of every release, and in the [README](README.md#updating).
 
 ### Fixed
 
+- **By live voice, what you said counts as yours when Jarvis says "One moment"
+  first.** "Save this as…" was refused then, as not your own words.
 - **On Docker, Jarvis no longer waits for the disk at every call.** The runtime
   kept a trace of each one in a database that only grew: on a NAS a question took
   seconds to begin, and the house's fast answers timed out while a background job

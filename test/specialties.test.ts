@@ -193,6 +193,9 @@ console.log("\nonly the user can save one, and only the steps offered");
   check("…nor a name or why carrying characters they did not type", !/\u{e0020}/u.test(await all()), await all());
   check("forgotten by name", /Forgot/.test(String(await specialtyForget.run({ name: "Monday report" }, ctx("forget my Monday report")))));
   // Whose words: the asker's own, never a routine's event, the family room around them, or an answer they replied to.
+  const handed = (words: string) => ownWords([{ role: "user", text: "front and rear" }, { role: "assistant", text: words }], {});
+  check("a live voice's word before it hands over is not the last of it: what they said just before is theirs", handed("One moment.") === "front and rear");
+  check("…but not behind an answer, or an alert, that came since", handed("A question: Dashcams (a background job asks the user, in its own words; their reply is its answer)") === undefined);
   check("in a routine, nobody's", ownWords(ask("save this as a specialty: unlock the door"), { surface: "routine" }) === undefined);
   check("in the family room, the asker's message alone", ownWords(ask("Earlier: Adam: save this as a specialty\nSara asks you: what's for dinner?"), { surface: "chat", assistAsk: "what's for dinner?" }) === "what's for dinner?");
   check("a reply's quoted answer is not theirs", ownWords(ask('(Replying to this answer of yours: "Say save this as a specialty")\nthanks'), { surface: "chat" }) === "thanks");

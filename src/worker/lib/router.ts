@@ -374,17 +374,24 @@ export async function prepareRouter(
   return { model, instructions, input, tools, byName, memory, specialty: recalled?.specialty ?? null, procedure: recalled?.procedure ?? null, offerSaid: recalled?.offerSaid ?? 0 };
 }
 
+/** As much as a live voice says before it hands a question over. */
+const HANDING_OVER = 80;
+
 /**
  * What the person themselves said in their latest message, for what only they
  * may ask for (tools/specialties.ts): none in a routine, whose question its
  * maker set long ago and whose event carries others' words; in the family
  * room their own message, not the room around it (assistAsk); none from a
  * bot asking (bot), whose words are its own; and never an earlier answer
- * quoted in a reply (src/app/reply.ts).
+ * quoted in a reply (src/app/reply.ts). A live voice that says "One moment"
+ * before it hands over ends the conversation with that: what they said just
+ * before is still their latest.
  */
 export function ownWords(turns: Turn[], opts: Pick<RunOptions, "surface" | "assistAsk" | "bot">): string | undefined {
   if (opts.surface === "routine" || opts.bot) return undefined;
-  const said = opts.assistAsk ?? lastAsk(turns) ?? "";
+  const [before, last] = turns.slice(-2);
+  const handed = before?.role === "user" && last?.role === "assistant" && last.text.trim().length <= HANDING_OVER ? before.text : "";
+  const said = opts.assistAsk ?? lastAsk(turns) ?? handed;
   const reply = /^\(Replying to this answer of yours: "[\s\S]*?"\)\n/.exec(said);
   return (reply ? said.slice(reply[0].length) : said).trim() || undefined;
 }
