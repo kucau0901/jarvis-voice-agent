@@ -6,6 +6,7 @@ import { makeAlert, type Alert, type Delivery } from "./alerts.ts";
 import { personOfWho } from "./context.ts";
 import { tidy } from "./quote.ts";
 import type { UsageEntry } from "./usage.ts";
+import { clearChain } from "./job-chain.ts";
 
 /**
  * Background jobs: things that take minutes, answered later.
@@ -566,6 +567,7 @@ export class Jobs {
 
   private async drop(id: string): Promise<boolean> {
     this.due?.delete(id);
+    await clearChain(this.storage, id);
     await this.storage.delete(T + id);
     return this.storage.delete(J + id);
   }
@@ -579,7 +581,7 @@ export class Jobs {
     if (!task) return "a job needs a task: what to find out or work through";
     const engine: JobEngine = input.engine === "hermes" ? "hermes" : input.engine === "research" ? "research" : "jarvis";
     // First: what `from` names must not be pruned by this very create, after it was accepted.
-    await this.prune();
+    await this.prune(now);
     // Research handed to Hermes: only the caller's own, and finished. Other engines ignore it.
     let from: string | undefined;
     if (engine === "hermes" && input.from !== undefined && input.from !== null) {
@@ -649,6 +651,7 @@ export class Jobs {
     this.live.get(id)?.stop.abort();
     const deps = await this.deps();
     for (const id of running) await deps.cancel({ ...j, responseId: id }).catch(() => {});
+    await clearChain(this.storage, id);
     // What it spent before it was stopped still counts in Settings → Usage.
     await deps.record?.(usageEntry(j, false, now)).catch(() => {});
     return j;
@@ -965,6 +968,7 @@ export class Jobs {
       alert = { ...makeAlert({ title, text: done.error, speak: false }, "job", now, personOfWho(j.createdBy))!, job: j.id };
     }
     await this.save(done); // before delivering: a retried alarm must not tell the user twice
+    await clearChain(this.storage, done.id);
     const d = await deps.deliver(alert).catch(() => null);
     done.deliveredBy = d?.deliveredBy ?? null;
     // Removed while it was being told (a push can take seconds): gone stays gone.
@@ -975,7 +979,9 @@ export class Jobs {
   }
 
   /** Keep each person's newest KEEP_JOBS finished ones: one member's many never prune another's. */
-  private async prune(): Promise<void> {
+  private async prune(now: number): Promise<void> {
+    // Steps a version before the rows kept whole (lib/job-chain.ts), once no job can still be on one.
+    for (const [k, s] of await this.storage.list<{ at: number }>({ prefix: "jobplan:" })) if (now - s.at > 2 * 3_600_000) await this.storage.delete(k);
     const kept = new Map<string, number>();
     for (const j of (await this.list()).filter((x) => x.status !== "running")) {
       const person = personOfWho(j.createdBy);

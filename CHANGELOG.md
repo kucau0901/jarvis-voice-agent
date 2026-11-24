@@ -189,6 +189,12 @@ of every release, and in the [README](README.md#updating).
   on, and all of those waited for it (up to ten minutes, or half an hour for a
   research team). They now run beside it. Stopping a job also stops its
   request at once instead of paying for it to the end.
+- **A background job interrupted by an update could repeat itself.** On the
+  ChatGPT plan its tools ran again and the step was asked again, from the
+  start of the step, and a component's tool you let run by itself could have
+  run twice. A job now carries on from exactly where it was cut short, and
+  what acts by itself is never repeated without the model being told it may
+  already have happened. Long jobs also keep far less.
 - **A job removed while its result was being sent came back** in the Jobs
   panel. Removed now stays removed.
 - **A device with no screen was told the browser was in front of you.**

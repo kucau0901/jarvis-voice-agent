@@ -247,8 +247,9 @@ to spend the key.
 
 **Background jobs** (`routes/jobs.ts`) cannot use OpenAI's background mode on
 the plan, so a step streams in the object, beside its alarm, as a Hermes question
-does (below, "Nothing waits for a step"), and its exchange is kept in the object under `jobplan:<id>` for
-the next step and the research check. `lib/jobs.ts` sees an ordinary step id.
+does (below, "Nothing waits for a step"), and its exchange is kept in the
+object, a row a step (`lib/job-chain.ts`), for the next step and the research
+check. `lib/jobs.ts` sees an ordinary step id.
 
 OpenAI also says remotely hosted apps should fill in an interest form; it may
 one day ask that of a Worker. The key still runs everything if it does.
@@ -1337,6 +1338,19 @@ and is seldom sent twice. A job sends everything so far at every step, so on a
 key its steps use implicit mode, which also caches up to the newest tool
 result. The mark stays, so a research team's chains still share the prefix.
 The plan's route takes no cache settings.
+
+**On the plan, the exchange is kept a row a step** (`jobitem:<job>:<chain>:<n>`,
+`lib/job-chain.ts`), for the life of the job: what the step added, and what came
+back. A whole copy was kept at every step, for two hours, so a long job kept its
+start over and over, and one waiting on its person until morning would have
+found nothing. What a step adds is kept before it is asked, so one cut short by
+an update is asked again as it was, with what its tools gave and without running
+them a second time, and one answered just before is taken as it stands; a step
+cut short five times is given up on. A call that acts by itself (a component's
+tool the owner lets run alone) is marked before it is made, and never made again
+by itself: the model is told it may or may not have happened. Reads are simply
+read again, and a proposal filed twice is one card. Rows are not under `job:`,
+which is the jobs themselves.
 
 **Read; propose, never act.** A job runs with nobody watching and reads text
 written by others — web pages, mail — so it reads with Jarvis's reading tools

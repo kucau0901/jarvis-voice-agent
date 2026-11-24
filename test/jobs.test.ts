@@ -33,6 +33,7 @@ import {
 } from "../src/worker/lib/jobs.ts";
 import type { Alert, Delivery } from "../src/worker/lib/alerts.ts";
 import type { UsageEntry } from "../src/worker/lib/usage.ts";
+import { MAX_TRIES, beginCalls } from "../src/worker/lib/job-chain.ts";
 import { HERMES_LONG_WORK, jobEngine } from "../src/worker/routes/jobs.ts";
 import { MERGE_INSTRUCTIONS, PLAN_INSTRUCTIONS, RESEARCH_CHECK, TEAM_INSTRUCTIONS } from "../src/worker/lib/router-prompt.ts";
 import { angleMessage, mergeMaterial, shareReply, shareTool, teamView } from "../src/worker/lib/research-team.ts";
@@ -1683,7 +1684,8 @@ console.log("\njobs on the owner's ChatGPT plan (routes/jobs.ts): streamed here,
       "responseId" in started && started.responseId.startsWith("plan_") && first.by === "plan" && first.body.stream === true && first.body.store === false &&
       !("background" in first.body) && (first.body.tools as { type: string }[])[0]!.type === "namespace", { started, body: Object.keys(first.body) });
     const id1 = (started as { responseId: string }).responseId;
-    check("and is kept in the object until it is polled", !!(await kept.get(`jobplan:${id1}`)));
+    const rowsOf = async (id: string) => [...(await kept.list<{ input: { type?: string }[]; answer?: unknown; tries: number }>({ prefix: `jobitem:${id}:` })).values()];
+    check("and is kept in the object, what was asked and what came back", (await rowsOf("jp")).length === 1 && !!(await rowsOf("jp"))[0]!.answer && id1 === "plan_m.0");
 
     answers.push([{ type: "message", id: "m1", role: "assistant", status: "completed", content: [{ type: "output_text", text: "SUMMARY: serviced in May.\n\nThe boiler was serviced in May.", annotations: [] }] }]);
     const step = await engine.poll({ ...job, responseId: id1 });
@@ -1699,8 +1701,40 @@ console.log("\njobs on the owner's ChatGPT plan (routes/jobs.ts): streamed here,
     const checked = await engine.check({ ...job, engine: "research" }, (step as { responseId: string }).responseId);
     check("a report written on the plan is checked with its whole exchange, then the check",
       "responseId" in checked && sent[2]!.by === "plan" && JSON.stringify(sent[2]!.body.input.at(-1)) === JSON.stringify({ role: "developer", content: RESEARCH_CHECK }) && sent[2]!.body.input.length > 2, sent[2]?.body.input.length);
-    await engine.cancel({ ...job, responseId: id1 });
-    check("cancelling forgets a kept step", !(await kept.get(`jobplan:${id1}`)));
+    const three = await rowsOf("jp");
+    check("each step keeps only what it added, not the whole exchange again", three.length === 3 && three[1]!.input.length === 1 && three[1]!.input[0]!.type === "function_call_output" && three[2]!.input.length === 1, three.map((r) => r.input.length));
+
+    // Cut short (an update) while its next step was being asked: its tools are not run again, and it is asked as it was.
+    const jc = { ...job, id: "jc" };
+    const tool = { type: "function_call", id: "fc_9", call_id: "call_9", name: "time_in", namespace: "jarvis", arguments: JSON.stringify({ place: "London" }), status: "completed" };
+    answers.push([tool]);
+    await engine.start(jc);
+    answers.push({ status: 500, code: "server_error" });
+    const cut = await engine.poll({ ...jc, responseId: "plan_m.0" }).catch((e: Error) => e);
+    check("a step that fails to be asked leaves what its tools gave", cut instanceof Error && (await rowsOf("jc")).length === 2 && !(await rowsOf("jc"))[1]!.answer, cut);
+    const asked = JSON.stringify(sent.at(-1)!.body.input.at(-1));
+    answers.push([{ type: "message", id: "m9", role: "assistant", status: "completed", content: [{ type: "output_text", text: "It is noon.", annotations: [] }] }]);
+    const n = sent.length;
+    const resumed = await engine.poll({ ...jc, responseId: "plan_m.0" });
+    check("looked at again, it is asked as it was, once", resumed.kind === "continued" && resumed.responseId === "plan_m.1" && sent.length === n + 1 && JSON.stringify(sent.at(-1)!.body.input.at(-1)) === asked, resumed);
+    const again = await engine.poll({ ...jc, responseId: "plan_m.0" });
+    check("answered but not noted before it was cut short: taken as it stands, not asked twice", again.kind === "continued" && again.responseId === "plan_m.1" && sent.length === n + 1, again);
+    const restarted = await engine.start(jc);
+    check("nor is a first step asked twice", "responseId" in restarted && restarted.responseId === "plan_m.0" && sent.length === n + 1, restarted);
+    const jl = { ...job, id: "jl" };
+    for (let i = 0; i < MAX_TRIES; i++) {
+      answers.push({ status: 500, code: "server_error" });
+      await engine.start(jl);
+    }
+    const spent = sent.length;
+    const gaveUp = await engine.start(jl);
+    check(`a step cut short ${MAX_TRIES} times is given up on`, "error" in gaveUp && /interrupted 5 times at the same step/.test(gaveUp.error) && sent.length === spent, gaveUp);
+
+    // A job that was running across the update that brought the rows.
+    await kept.put("jobplan:plan_old", { at: T0, input: [{ role: "user", content: "the old exchange" }, tool], response: { model: "gpt-6-luna", status: "completed", output: [tool], output_text: "" } });
+    answers.push([{ type: "message", id: "m8", role: "assistant", status: "completed", content: [{ type: "output_text", text: "Done.", annotations: [] }] }]);
+    const old = await engine.poll({ ...job, id: "jo", responseId: "plan_old" });
+    check("a step kept whole by the version before is carried on from", old.kind === "continued" && old.responseId === "plan_m.0" && JSON.stringify(sent.at(-1)!.body.input[0]).includes("the old exchange"), old);
 
     // No further than whoever started it may reach now (lib/scopes.ts reachNow): a job made with every scope, its maker since narrowed to asking.
     const names = (tools: unknown): string[] => (Array.isArray(tools) ? tools.flatMap((t: { name?: string; tools?: unknown }) => [...(t.name ? [t.name] : []), ...names(t.tools)]) : []);
@@ -1712,25 +1746,49 @@ console.log("\njobs on the owner's ChatGPT plan (routes/jobs.ts): streamed here,
     check("whoever started it has left: it does not start", "error" in refused && /no longer in the family/.test(refused.error), refused);
     const narrowed = jobEngine(env, async (a) => ({ alert: a, attempts: [], deliveredBy: null }) as never, async () => env, kept as never, async (j) => reachNow(j.grants, { scopes: ["ask"] }));
     answers.push([{ type: "message", id: "m3", role: "assistant", status: "completed", content: [{ type: "output_text", text: "Done.", annotations: [] }] }]);
-    await narrowed.start(job);
+    await narrowed.start({ ...job, id: "jn" });
     const after = names(sent.at(-1)!.body.tools);
     check("narrowed since: its steps are offered only what its maker may still reach", before.includes("recall") && !after.includes("recall") && after.length < before.length, { before: before.length, after });
     check("a step no longer kept fails plainly", (await engine.poll({ ...job, responseId: "plan_gone" })).kind === "failed");
 
     answers.push({ status: 429, code: "subscription_sharing_usage_limit_exceeded" });
     answers.push([]);
-    const limited = await engine.start(job);
+    const limited = await engine.start({ ...job, id: "jlim" });
     const key = sent.at(-1)!;
     check("at the plan's limit: noted, and the key starts it in the background as before",
       failed.join() === "limit" && "responseId" in limited && limited.responseId === "resp_key" && key.by === "key" && key.body.background === true && !("previous_response_id" in key.body), { failed, limited });
 
     plan = false;
     answers.push([]);
-    const keyOnly = await engine.start(job);
+    const keyOnly = await engine.start({ ...job, id: "jkey" });
     check("no plan: the key, as before", "responseId" in keyOnly && keyOnly.responseId === "resp_key" && sent.at(-1)!.by === "key");
   } finally {
     globalThis.fetch = realFetch;
   }
+}
+
+console.log("\na job's exchange on the plan goes when the job does, and is never taken for a job");
+{
+  const row = { at: T0, input: [], tries: 1 };
+  const h = harness([{ kind: "done", text: "SUMMARY: Done." }]);
+  const left = async (id: string) => [...(await h.storage.list({ prefix: `jobitem:${id}:` })).keys()].length;
+  const a = (await h.jobs.create({ task: "a" }, BY, T0)) as Job;
+  const b = (await h.jobs.create({ task: "b" }, BY, T0)) as Job;
+  for (const j of [a, b]) for (const n of ["0000", "0001"]) await h.storage.put(`jobitem:${j.id}:m:${n}`, row);
+  check("only the jobs are listed", (await h.jobs.list()).length === 2);
+  await h.jobs.tick(T0);
+  await h.jobs.tick(T0 + 10_000);
+  check("finished: its rows are gone, another job's are not", (await left(a.id)) === 0 && (await left(b.id)) === 2, [await left(a.id), await left(b.id)]);
+  await h.jobs.cancel(b.id, T0 + 20_000);
+  check("cancelled: gone too", (await left(b.id)) === 0);
+  await h.storage.put("jobplan:plan_x", { at: T0 - 3 * 3_600_000 });
+  await h.storage.put("jobplan:plan_y", { at: T0 + 20_000 });
+  await h.jobs.create({ task: "c" }, BY, T0 + 30_000);
+  check("steps kept whole by an older version are swept once no job can be on them", (await h.storage.get("jobplan:plan_x")) === undefined && !!(await h.storage.get("jobplan:plan_y")));
+
+  const marks = fakeStorage();
+  check("what acts by itself is begun once for a step", (await beginCalls(marks as never, "j", "plan_m.2", ["call_a"])).size === 0 && (await beginCalls(marks as never, "j", "plan_m.2", ["call_a"])).has("call_a"));
+  check("and afresh at the next", (await beginCalls(marks as never, "j", "plan_m.3", ["call_b"])).size === 0);
 }
 
 console.log("\na job that would act proposes instead (lib/proposals.ts)");
