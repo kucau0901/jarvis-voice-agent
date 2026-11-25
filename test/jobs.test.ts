@@ -305,6 +305,10 @@ console.log("\nlimits");
   const deafEnd = await drive(deaf, ((await deaf.jobs.create({ task: "loop" }, BY, T0)) as Job).id);
   check("told so and still going: stopped, at OpenAI too", deafEnd.status === "failed" && /was stopped/.test(deafEnd.error!) && deafEnd.result === undefined && deaf.log.some((l) => l.startsWith("cancel")), deafEnd);
 
+  const upd = harness([...more(MAX_STEPS - 1), { kind: "continued", responseId: "again", untold: true }, { kind: "continued", responseId: "told" }, wrote]);
+  const updEnd = await drive(upd, ((await upd.jobs.create({ task: "loop" }, BY, T0)) as Job).id);
+  check("a step taken up after an update as it was asked before that is not the one it was told with: what it had is kept", updEnd.status === "failed" && updEnd.result === "Shop A has it at RM700.", updEnd);
+
   const t = harness([{ kind: "wait" }, { kind: "wait" }]);
   const k = (await t.jobs.create({ task: "slow" }, BY, T0)) as Job;
   await t.jobs.tick(T0);

@@ -474,12 +474,15 @@ export const HELPER_FILES =
   "each command short. What the job should have as a file, check by opening it again, then give it with hand_file, and " +
   "say in your report what each is. The user gets only what the job gives them.";
 
+/** What begins it, by which a step that was told is known from one that was not (routes/jobs.ts pickUp). */
+export const RAN_OUT = "THIS JOB HAS RUN OUT\n";
+
 /**
  * The last turn of a job out of its budget (lib/job-guards.ts outOf): no tools,
  * and what it has. It is delivered as part done whatever this says.
  */
 export const wrapUp = (why: string): string =>
-  "THIS JOB HAS RUN OUT\n" +
+  RAN_OUT +
   `No more tools: ${why}. Write the final answer now, from what you already have, in the form ` +
   "asked for above. Say first, in the SUMMARY line, that it is not finished, and what is missing. " +
   "Give everything found so far that the user can use, and say plainly which parts were never " +

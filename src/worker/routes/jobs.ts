@@ -25,8 +25,8 @@ import { ASK_MS, openLines, openQuestions, unfinished, untold, workTools, type S
 import { RESEARCH_MONTHLY_DEFAULT, helperTool, jobTool, limitsOf, reachOf, webTool, sharesLeft, usageEntry, type Job, type JobDeps, type Step } from "../lib/jobs.ts";
 import { citationsOf, markUnseen } from "../lib/links.ts";
 import { toCsv } from "../lib/research-table.ts";
-import { HELPER_FILES, JOB_FILES, JOB_HELPERS, MERGE_INSTRUCTIONS, PLAN_INSTRUCTIONS, RESEARCH_CHECK, TABLE_CHECK, TABLE_MERGE_INSTRUCTIONS, TABLE_PLAN_INSTRUCTIONS, TABLE_TEAM_INSTRUCTIONS, TEAM_INSTRUCTIONS, wrapUp } from "../lib/router-prompt.ts";
-import { SHARE, angleMessage, mergeMaterial, shareReply, shareTool, teamView } from "../lib/research-team.ts";
+import { HELPER_FILES, JOB_FILES, JOB_HELPERS, MERGE_INSTRUCTIONS, PLAN_INSTRUCTIONS, RAN_OUT, RESEARCH_CHECK, TABLE_CHECK, TABLE_MERGE_INSTRUCTIONS, TABLE_PLAN_INSTRUCTIONS, TABLE_TEAM_INSTRUCTIONS, TEAM_INSTRUCTIONS, wrapUp } from "../lib/router-prompt.ts";
+import { SHARE, angleMessage, mergeMaterial, sharedIn, shareReply, shareTool, teamView } from "../lib/research-team.ts";
 import { prepareRouter, runCalls, type Prepared } from "../lib/router.ts";
 import { held, proposable, type File, type Finish } from "../lib/proposals.ts";
 import { eventNear } from "../lib/agenda.ts";
@@ -300,11 +300,12 @@ export function jobEngine(
   }
 
   /** What a step that was cut short was about to ask, or where it got to: its tools are not run, nor it asked, a second time. */
-  async function pickUp(r: Awaited<ReturnType<typeof request>>, to: { after: string } | { begin: string }, toolChoice: "auto" | "none" = "auto"): Promise<{ responseId: string; took?: number } | null> {
+  async function pickUp(r: Awaited<ReturnType<typeof request>>, to: { after: string } | { begin: string }, toolChoice: "auto" | "none" = "auto"): Promise<{ responseId: string; took?: number; untold?: true } | null> {
     const at = "after" in to ? stepOf(to.after) : { chain: to.begin, n: -1 };
     const next = kept && at ? await new JobChain(kept, r.job.id).next(at.chain, at.n) : null;
     if (!next || !at) return null;
-    return next.answered ? { responseId: stepId(at.chain, at.n + 1), took: next.took } : send(r, next.input, to, toolChoice, next.took);
+    const told = next.input.some((i) => "role" in i && "content" in i && i.role === "developer" && typeof i.content === "string" && i.content.startsWith(RAN_OUT));
+    return { ...(next.answered ? { responseId: stepId(at.chain, at.n + 1), took: next.took } : await send(r, next.input, to, toolChoice, next.took)), ...(told ? {} : { untold: true as const }) };
   }
 
   /** Neither a plan nor a key. A plan at its limit is still one: what needs it waits (PlanParked), rather than fail as though there were none. */
@@ -445,7 +446,7 @@ export function jobEngine(
           const req = await request(job, [], t, stop, say);
           // Cut short, or waiting for the plan, after it was told something: that, as it was. What they said since goes with the step after.
           const before = onPlan ? await pickUp(req, { after: id }, last).catch(parked) : null;
-          if (before) return "kind" in before ? before : { kind: "continued", responseId: before.responseId, usage, ...took(before), ...(before.took ? {} : { nudged: true as const }) };
+          if (before) return "kind" in before ? before : { kind: "continued", responseId: before.responseId, usage, ...took(before), ...(before.untold ? { untold: true as const } : {}), ...(before.took ? {} : { nudged: true as const }) };
           const next = await send(req, [...(told.length ? told : [{ role: "developer" as const, content: unfinished(job.todo) }]), ...wrap], { after: id }, last, all).catch(parked);
           return "kind" in next ? next : { kind: "continued", responseId: next.responseId, usage, ...took(next), ...(nudge ? { nudged: true as const } : {}) };
         }
@@ -468,7 +469,9 @@ export function jobEngine(
       // Told to write what it has; the check of a report written so is not told again, and may look things up.
       const wraps = !!cut && !job.draft;
       const resumed = onPlan ? await pickUp(req, { after: id }, wraps ? "none" : "auto").catch(parked) : null;
-      if (resumed) return "kind" in resumed ? resumed : { kind: "continued", responseId: resumed.responseId, usage, ...took(resumed) };
+      // What it shared in that step is not on the board yet: it goes there with it.
+      const given = t === undefined ? [] : sharedIn(calls);
+      if (resumed) return "kind" in resumed ? resumed : { kind: "continued", responseId: resumed.responseId, usage, ...took(resumed), ...(resumed.untold ? { untold: true as const } : {}), ...(given.length ? { shared: given, saw: (job.team ?? job.help)!.chains[t!]!.seen } : {}) };
       // Out of its budget: nothing more is run, and it writes what it has, its helpers' reports with it.
       if (cut && wraps) {
         const unrun = calls.map((c) => answered(c, c.call_id === job.help?.call ? reports.get(c.call_id)! : NOT_RUN));

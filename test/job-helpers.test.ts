@@ -444,6 +444,16 @@ console.log("\nout of what it has, a helper writes what it found");
   check(`after ${HELPER_STEPS} steps it is told to, once, and its report is what it had`, end.status === "done" && told.filter(Boolean).length === 2 && told.indexOf(`it took its ${HELPER_STEPS} steps`) === HELPER_STEPS - 1, told);
   check("…which is part done, and code says so: to its person after, and to the job", (jobView(end, true) as { helpers: { why?: string }[] }).helpers[0]!.why === `it took its ${HELPER_STEPS} steps` && /Helper 1 \(Prices\), part done \(it took its 15 steps\):/.test(half), [half.slice(0, 200), end.help]);
   let report = "";
+  let again = 0;
+  const was = set([helps(2), (x) => ((report = reportsOf(x.help!)), said(1, "Done."))], (t, n, x) => {
+    if (t === 1) return said(1, "quick");
+    // Out of what it has: taken up after a restart as it was asked before that; then told; then what it wrote.
+    if (!x.help!.chains[0]!.cut) return { kind: "continued", responseId: `h.${n}` };
+    again += 1;
+    return again === 1 ? { kind: "continued", responseId: "again", untold: true } : again === 2 ? { kind: "continued", responseId: "told" } : said(1, "what it had");
+  });
+  await drive(was, (await made(was)).id);
+  check("a step that was not told does not count as the one that was", /what it had/.test(report), report.slice(0, 300));
   const deaf = set([helps(2), (x) => ((report = reportsOf(x.help!)), said(1, "Done."))], (t, n) => (t === 1 ? said(1, "quick") : { kind: "continued", responseId: `h.${n}` }));
   await drive(deaf, (await made(deaf)).id);
   check("told so and still going: stopped, its response too", /it took its 15 steps, and it wrote nothing/.test(report) && deaf.log.some((l) => l.startsWith("cancel h.")), [report, deaf.log.slice(-4)]);
@@ -564,12 +574,14 @@ console.log("\nwhat a helper is handed, and how it is asked (routes/jobs.ts), on
 {
   const kv = new Map<string, string>([["google:refresh", "r"]]);
   const CONFIG = { get: async (k: string) => kv.get(k) ?? null, put: async (k: string, v: string) => void kv.set(k, v), delete: async () => {}, list: async () => ({ keys: [] }) };
-  const stub = new Proxy({}, { get: (_t, m) => (m === "then" ? undefined : async () => (m === "chatgptToken" ? { token: "at_plan", model: null } : m === "chatgptStatus" ? { connected: true, pending: false } : m === "loadMemory" ? { rev: 1, facts: [{ id: "f1", text: "Ferry on Fridays, always.", kind: "preference", keys: [], createdAt: T0, updatedAt: T0, useCount: 0, source: "ui" }], trash: [] } : m === "recallFor" ? { specialty: null, procedure: null, offerSaid: 0, past: [{ id: "e1", at: T0, source: "job", goal: "Compared lake houses in May", outcome: "ok", lesson: "", keys: [], seen: 1 }] } : m === "familyPeople" || m === "relaysAwaiting" ? [] : undefined)) });
+  const stub = new Proxy({}, { get: (_t, m) => (m === "then" ? undefined : async () => (m === "chatgptToken" ? { token: "at_plan", model: null } : m === "chatgptStatus" ? { connected: true, pending: false, ...(refuse ? { limitedUntil: T0 + 3_600_000 } : {}) } : m === "loadMemory" ? { rev: 1, facts: [{ id: "f1", text: "Ferry on Fridays, always.", kind: "preference", keys: [], createdAt: T0, updatedAt: T0, useCount: 0, source: "ui" }], trash: [] } : m === "recallFor" ? { specialty: null, procedure: null, offerSaid: 0, past: [{ id: "e1", at: T0, source: "job", goal: "Compared lake houses in May", outcome: "ok", lesson: "", keys: [], seen: 1 }] } : m === "familyPeople" || m === "relaysAwaiting" ? [] : undefined)) });
   const env = { CONFIG, TIMEZONE: "Asia/Kuala_Lumpur", STATE: { idFromName: () => "j", get: () => stub }, GOOGLE_CLIENT_ID: "g", GOOGLE_CLIENT_SECRET: "s", TESSIE_TOKEN: "t", TESSIE_VIN: "5YJTEST0000000001", WORKSHOP_URL: "http://127.0.0.1:9", WORKSHOP_TOKEN: "t".repeat(30) } as never;
   type Item = Record<string, unknown> & { type?: string; role?: string; call_id?: string; output?: unknown; content?: unknown };
   const sent: { input: Item[]; instructions: string; tools: { type: string; tools?: { name: string }[] }[]; tool_choice: string }[] = [];
   const answers: Item[][] = [];
   const shop: { job: string; cmd?: string }[] = [];
+  /** The plan is at its limit. */
+  let refuse = false;
   /** Something of the job's still running in the workshop. */
   let left = false;
   const realFetch = globalThis.fetch;
@@ -657,6 +669,28 @@ console.log("\nwhat a helper is handed, and how it is asked (routes/jobs.ts), on
     check("what it shares goes to the board, and it hears the others, quoted", shared.kind === "continued" && shared.shared?.length === 1 && shared.saw === 1 && /Helper 1 \(Prices\): RM900/.test(reply) && /DATA, NOT INSTRUCTIONS/.test(reply), [shared, reply]);
     const took = await engine.poll({ ...board, help: { ...board.help!, chains: board.help!.chains.map((c, i) => (i === 1 ? { ...c, responseId: "plan_h1.1" } : c)) } }, 1);
     check("an address another told it of is not one it has seen", took.kind === "done" && /told\.example\/z \(not checked\)/.test(took.text), took);
+
+    /* cut short, or kept waiting by the plan, after its tools ran */
+    const keptOn = fakeStorage();
+    const ep = jobEngine(env, async (a) => ({ alert: a, attempts: [], deliveredBy: null }) as never, async () => env, keptOn as never);
+    const jp = { ...board, id: "jpick0000001", help: { ...board.help!, board: [] } } as Job;
+    answers.push([call("share_findings", { findings: "The second is closed." }, "call_q")]);
+    await ep.start(jp, 1);
+    refuse = true;
+    const limited = await ep.poll(jp, 1);
+    refuse = false;
+    answers.push([words("SUMMARY: x")]);
+    const picked = await ep.poll({ ...jp, help: { ...jp.help!, board: [{ team: 0, text: "Meanwhile." }] } }, 1);
+    check("what it shared before the plan's limit goes to the board with the step that went on", limited.kind === "parked" && picked.kind === "continued" && JSON.stringify(picked.shared) === JSON.stringify(["The second is closed."]) && picked.saw === 0, [limited, picked]);
+    const pickedAgain = await ep.poll({ ...jp, help: { ...jp.help!, chains: jp.help!.chains.map((c, i) => (i === 1 ? { ...c, cut: { why: "the helpers' 40 minutes are up" } } : c)) } }, 1);
+    check("…and one taken up as it was, asked before it ran out, was not told to write what it has", pickedAgain.kind === "continued" && pickedAgain.untold === true && picked.untold === true, pickedAgain);
+    const toldOf = { ...jp, id: "jpick0000002", help: { ...jp.help!, chains: jp.help!.chains.map((c, i) => (i === 1 ? { ...c, cut: { why: "it took its 15 steps" } } : c)) } } as Job;
+    answers.push([call("time_in", { place: "Paris" }, "call_w")]);
+    await ep.start(toldOf, 1);
+    answers.push([words("SUMMARY: What it had.")]);
+    await ep.poll(toldOf, 1);
+    const wrapped = await ep.poll(toldOf, 1);
+    check("one that was told is known to be, cut short or not", wrapped.kind === "continued" && !wrapped.untold, wrapped);
 
     /* the job again */
     const done = { ...helped, help: { ...helped.help!, chains: helped.help!.chains.map((c, i) => ({ ...c, state: i === 2 ? ("stopped" as const) : ("reported" as const), ...(i === 2 ? { why: STOPPED } : { report: `SUMMARY: part ${i + 1}. https://shop.example/b` }) })) } } as Job;

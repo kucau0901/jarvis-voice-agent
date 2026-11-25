@@ -12,7 +12,7 @@ import { ASK_MS, MAX_ASKED, MAX_TOLD, changeCard, doneLines, numbered, openLines
 import { secretShaped } from "./memory-guard.ts";
 import { flagLines, flagsOf, type Flags } from "./job-results.ts";
 import { withFile, withRan, type JobFile, type Ran } from "./workshop.ts";
-import { HELPERS_MS, HELPER_STEPS, MAX_HELPERS, STOPPED, helperId, helperOut, helpersWorking, newHelpers, reportKept, slimHelpers, withHelper, type HelperChain, type HelperRun, type HelperTask } from "./job-helpers.ts";
+import { HELPERS_MS, MAX_HELPERS, STOPPED, helperId, helperOut, helpersWorking, newHelpers, reportKept, slimHelpers, withHelper, type HelperChain, type HelperRun, type HelperTask } from "./job-helpers.ts";
 
 /**
  * Background jobs: things that take minutes, answered later.
@@ -268,8 +268,9 @@ export type Step =
   /**
    * `shared`: what a team or a helper passed to share_findings in this hop; `saw`, how much of the board it was told from. `stuck`: it keeps asking the same thing (lib/job-guards.ts).
    * `took`: how much of what its person told it the step now has. `nudged`: it was asked to finish its checklist.
+   * `untold`: one that was cut short, taken up again as it was: asked before it ran out, and so not told to write what it has.
    */
-  | { kind: "continued"; responseId: string; usage?: Job["usage"]; shared?: string[]; saw?: number; stuck?: true; took?: number; nudged?: true }
+  | { kind: "continued"; responseId: string; usage?: Job["usage"]; shared?: string[]; saw?: number; stuck?: true; took?: number; nudged?: true; untold?: true }
   | { kind: "done"; text: string; cited?: Cited[]; usage?: Job["usage"] }
   /** The plan is at its limit: nothing was asked, and it goes on from here then. */
   | { kind: "parked"; until: number }
@@ -579,7 +580,7 @@ export function teamStep(j: Job, t: number, e: TeamEvent, now: number): Job {
     else if (s.kind === "continued") {
       // A helper's own (lib/job-helpers.ts): told to write what it has, it is not told twice.
       const deaf = c.cut?.sent;
-      if (c.cut) c.cut = { ...c.cut, sent: true };
+      if (c.cut && !s.untold) c.cut = { ...c.cut, sent: true };
       if (s.stuck) c.stuck = true;
       if (s.took) c.heard = s.took;
       if (s.shared) {
@@ -590,9 +591,9 @@ export function teamStep(j: Job, t: number, e: TeamEvent, now: number): Job {
         // Helpers post beside each other: what came since it was answered, it has not heard.
         c.seen = s.saw ?? board.length;
       }
-      // A helper has one step past its own, to write with.
       if (deaf) stop(`${c.cut!.why}, and it wrote nothing`);
-      else if (c.steps + 1 > (j.team ? TEAM_MAX_STEPS : HELPER_STEPS + 1)) stop(`it took more than ${j.team ? TEAM_MAX_STEPS : HELPER_STEPS} steps`);
+      // A helper's steps are in what it has (helperOut).
+      else if (j.team && c.steps + 1 > TEAM_MAX_STEPS) stop(`it took more than ${TEAM_MAX_STEPS} steps`);
       else next(s.responseId);
     } else if (s.kind === "done") {
       c.state = "reported";
@@ -1248,7 +1249,7 @@ export class Jobs {
         await deps.cancel({ ...j, responseId: step.responseId }).catch(() => {});
         return this.finish(j, deps, now, { error: `${j.cut?.why ?? `it took more than ${limits.maxSteps} steps`} and was stopped` });
       }
-      if (j.cut) j.cut = { ...j.cut, sent: true };
+      if (j.cut && !step.untold) j.cut = { ...j.cut, sent: true };
       if (step.stuck) j.stuck = true;
       if (step.nudged) j.nudged = true;
       if (step.took && j.told) j.told = j.told.map((t, i) => (i < step.took! ? { ...t, taken: true as const } : t));

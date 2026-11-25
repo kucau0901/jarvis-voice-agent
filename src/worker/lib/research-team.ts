@@ -45,6 +45,17 @@ const SHARE_HELPERS =
   "Tell the job's other helpers something you have found that bears on their part, or a dead end not worth repeating, and hear what they " +
   "have found since you last asked. Only where it would save them looking.";
 
+/** What a step passed to it, by its calls. */
+export const sharedIn = (calls: readonly { name: string; arguments: string }[]): string[] =>
+  calls.filter((c) => c.name === SHARE.name).flatMap((c) => {
+    try {
+      const { findings } = JSON.parse(c.arguments || "{}") as { findings?: unknown };
+      return typeof findings === "string" ? [findings] : [];
+    } catch {
+      return [];
+    }
+  });
+
 const CAPPED = "You have shared as often as a team may: this was not passed on. Keep to your angle, and write your report when you are ready.";
 
 /** The share tool for one hop: what it is told goes into `into`; the first call hears `reply`, a later one whether it fitted the `room` the team had left. */

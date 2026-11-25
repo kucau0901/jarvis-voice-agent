@@ -38,6 +38,10 @@ of every release, and in the [README](README.md#updating).
 
 - **A job started while the ChatGPT plan is at its limit waits for it.** With no
   OpenAI key set it failed at once, saying there was no plan.
+- **A job cut short by an update just as it ran out keeps what it had.** Its next
+  answer was taken for one that had been told to stop, and what it wrote then was
+  thrown away. A research team's finding shared just before the plan's limit, or an
+  update, now reaches the others.
 - **What a job may hold in the workshop holds for a command too quick to be
   looked at.** A job's folder was looked at every four seconds, so a short
   command, or one that took the room at once, could go past its 500 MB without
