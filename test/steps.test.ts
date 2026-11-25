@@ -2,7 +2,7 @@
 // call, in words rather than the tool's name, and a tool's own notes made fit
 // to read.
 import { doing, said } from "../src/app/steps.ts";
-import { askOf, askSaid, beside, cameOf, ended, heard, linesOf, nowDoing, powers, progress, sizeSaid, type JobView } from "../src/app/jobWords.ts";
+import { askOf, askSaid, beside, cameOf, ended, heard, helperNow, linesOf, nowDoing, powers, progress, sizeSaid, type JobHelper, type JobView } from "../src/app/jobWords.ts";
 
 let pass = 0, fail = 0;
 function check(name: string, cond: boolean, got?: unknown) {
@@ -39,9 +39,17 @@ console.log("a job at work");
   check("a result beside its files does not name them twice", beside({ text: "Made.\n\nIn Jobs to download: a.csv", made: [1] }) === "Made." && beside({ text: "Made.\n\nIn Jobs to download: a.csv" }).endsWith("a.csv") && beside({ text: "Made.", made: [1] }) === "Made.");
   check("on their own things, and on the stronger model", /Does not search the web/.test(powers({ ...j, reach: "private" })) && /stronger model/.test(powers({ ...j, mode: "thorough" })));
   check("waiting for its person's answer, and not the plan", nowDoing({ ...j, doing: ["recall"], waiting: { for: "you", until: 1 } }) === "Waiting for your answer");
+  const help: JobHelper[] = [{ n: 1, name: "Prices", state: "working", doing: ["web_search"] }, { n: 2, name: "Reviews", state: "reported" }, { n: 3, name: "The drive", state: "stopped", why: "you stopped it" }];
+  const split: JobView = { ...j, helpers: help, doing: ["delegate"] };
+  check("its helpers at work are what it is doing; done, it is what it is doing again", nowDoing(split) === "1 of 3 helpers at work" && nowDoing({ ...split, helpers: help.slice(1), doing: ["mail_search"] }) === "Searching your mail" && nowDoing({ ...split, waiting: { for: "plan", until: 1 } }) === "Waiting for the ChatGPT plan", nowDoing(split));
+  check("what each of them is doing, or how it ended", help.map((h) => helperNow(h, j)).join("|") === "Searching the web|Done: it has reported to the job|Came back with nothing: you stopped it", help.map((h) => helperNow(h, j)));
+  check("…cut short, it is part done, whatever it wrote", helperNow({ n: 1, name: "x", state: "reported", why: "it took its 15 steps" }, j) === "Part done: it took its 15 steps, and it reported what it had");
+  check("…the job waiting for the plan, so does it; the job over, so is it", helperNow(help[0]!, { status: "running", waiting: { for: "plan", until: 1 } }) === "Waiting for the ChatGPT plan" && helperNow(help[0]!, { status: "cancelled" }) === "Ended with the job" && helperNow({ ...help[0]!, doing: [] }, j) === "Thinking");
+  check("that it may split its work is said by code, and only where it may", /up to three helpers of its own, who may read what it may and nothing more/.test(powers({ ...j, helpers: [] })) && !/helpers/.test(powers(j)));
   const told = (taken: boolean) => [{ at: 1, text: "Only ones sold here", ...(taken ? { taken: true as const } : {}) }];
   const said = (x: Partial<JobView>) => heard({ ...j, ...x }).map((h) => `${h.said} / ${h.state}`).join("|");
   check("what it was told, and whether that has reached it", said({}) === "" && said({ told: told(false) }) === "You said: Only ones sold here / reaches it at its next step" && said({ told: told(true) }) === "You said: Only ones sold here / taken in", said({ told: told(false) }));
+  check("…while its helpers work, they hear it first; an answer is for the job", said({ helpers: help, told: told(false) }).endsWith("reaches its helpers at their next step") && said({ helpers: help, told: [{ at: 2, text: "Front", to: "question 1" }] }).endsWith("reaches it when its helpers are done") && said({ helpers: help, told: [{ at: 1, text: "x", helped: true }] }).endsWith("its helpers have it; it does when they are done") && said({ helpers: help.slice(1), told: told(false) }).endsWith("reaches it at its next step"));
   check("…or came too late", /came too late$/.test(said({ told: told(false), wrapping: "x" })) && /came too late$/.test(said({ told: told(false), status: "done" })));
   check("an answer and a changed card as what they are, the fence of a struck line not shown, the last three",
     said({ told: [...told(true), { at: 2, text: "Front only", to: "question 1" }, { at: 3, text: "--- struck out:ab12 (CONTENT …", card: true }, { at: 5, text: "And soon" }] }) ===

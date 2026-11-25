@@ -401,6 +401,18 @@
   .jobstate { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .jobnow { min-width: 0; font-size: 13px; color: var(--dim); overflow-wrap: anywhere; }
   .routine .jobnow, .jobbox .jobnow { animation: pulse 1.3s ease-in-out infinite; }
+  .routine .jobnow.still, .jobbox .jobnow.still { animation: none; }
+  /* Its helpers, a row each: its name, the moment, how far it has got, and Stop; its list under it in Jobs. */
+  .jobhelper { display: grid; gap: 8px; padding-left: 12px; border-left: 2px solid var(--accent-ink); }
+  .jobhelper.reported { border-color: var(--ok); }
+  .jobhelper.stopped { border-color: var(--line); }
+  .jobbox .jobhelper { margin-top: 10px; }
+  .jobhelptop { display: flex; align-items: center; gap: 12px; }
+  .jobhelptop > div { flex: 1; min-width: 0; display: grid; gap: 2px; }
+  .jobhelptop b { font-size: 14px; font-weight: 500; overflow-wrap: anywhere; }
+  .jobhelptop small { flex: none; font-size: 12px; color: var(--dim); }
+  .panel .jobhelptop button { flex: none; }
+  .jobhelper .jobtodo { gap: 4px; font-size: 13px; }
   .row.you.from:has(.joblive) { flex-wrap: wrap; row-gap: 6px; }
   .row .joblive { flex: 0 0 100%; display: flex; justify-content: flex-end; }
   .row .jobbox { display: grid; gap: 10px; box-sizing: border-box; width: min(480px, 88%); padding: 12px 16px; border-radius: 22px; background: var(--bubble-you); }

@@ -1422,7 +1422,7 @@ export class JarvisState extends DurableObject<Env> {
     return this.jobs.get(id);
   }
 
-  async createJob(input: { title?: unknown; task?: unknown; engine?: unknown; reach?: unknown; mode?: unknown; team?: unknown; from?: unknown; table?: unknown }, by: { who: string; grants: readonly Grant[] }) {
+  async createJob(input: { title?: unknown; task?: unknown; engine?: unknown; reach?: unknown; mode?: unknown; team?: unknown; from?: unknown; table?: unknown; helpers?: unknown }, by: { who: string; grants: readonly Grant[] }) {
     const j = await this.jobs.create(input, by);
     await this.rearm();
     return j;
@@ -1432,6 +1432,12 @@ export class JarvisState extends DurableObject<Env> {
   async cancelJob(id: string) {
     const j = await this.jobs.cancel(id);
     if (typeof j !== "string") await this.proposals.withdrawJob(personOfWho(j.createdBy), id, Date.now());
+    await this.rearm();
+    return j;
+  }
+
+  async stopJobHelper(id: string, t: number) {
+    const j = await this.jobs.stopHelper(id, t);
     await this.rearm();
     return j;
   }

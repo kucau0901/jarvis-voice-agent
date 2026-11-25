@@ -41,11 +41,22 @@ export interface JobFile {
   at: number;
 }
 
-/** A command it ran in the workshop, and how it ended; no `code` while it is running, or if that was never learned. */
+/** One of its helpers (src/worker/lib/job-helpers.ts): its number, what it is on, its list, and why it has no report, or what it ran out of with one. */
+export interface JobHelper {
+  n: number;
+  name: string;
+  state: "working" | "reported" | "stopped";
+  doing?: string[];
+  todo?: Todo[];
+  why?: string;
+}
+
+/** A command it ran in the workshop, and how it ended; no `code` while it is running, or if that was never learned. `by`, its helper of that number. */
 export interface JobRan {
   at: number;
   cmd: string;
   p?: string;
+  by?: number;
   code?: number | string | null;
   ms?: number;
   late?: true;
@@ -77,6 +88,8 @@ export interface JobView {
   reach?: "private" | "web";
   /** The stronger model, for hard work; or it makes files, in the workshop. */
   mode?: "thorough" | "files";
+  /** Started with helpers: none until it gives its work out, then each of them. */
+  helpers?: JobHelper[];
   /** What it made, and what it ran: the last of it while it works, all that is kept with the whole. */
   files?: JobFile[];
   ran?: JobRan[];
@@ -102,19 +115,36 @@ export interface JobView {
   limits?: { steps: number; going: number; minutes: number };
   wrapping?: string;
   /** What its person told it while it worked, and whether a step has had it: an answer (`to`), a change to its card, or their words. */
-  told?: { at: number; text: string; taken?: true; to?: string; card?: true }[];
+  told?: { at: number; text: string; taken?: true; helped?: true; to?: string; card?: true }[];
 }
 
 /** What it is doing this moment. */
 export function nowDoing(j: JobView): string {
   if (j.waiting) return j.waiting.for === "you" ? "Waiting for your answer" : "Waiting for the ChatGPT plan";
   if (j.wrapping) return `Writing what it has: ${j.wrapping}`;
-  const on = [...new Set((j.doing ?? []).map((t) => (t === "web_search" ? "Searching the web" : doing(t))))];
+  const out = atWork(j);
+  if (out) return `${out} of ${j.helpers!.length} helpers at work`;
+  return doings(j.doing);
+}
+
+/** Its helpers still at work. */
+const atWork = (j: JobView): number => (j.helpers ?? []).filter((h) => h.state === "working").length;
+
+function doings(tools: readonly string[] | undefined): string {
+  const on = [...new Set((tools ?? []).map((t) => (t === "web_search" ? "Searching the web" : doing(t))))];
   return on.length ? on.join(", ") : "Thinking";
 }
 
+/** What one of its helpers is doing, or how it ended. The job waiting, so does it; the job over, whatever it was on is. */
+export function helperNow(h: JobHelper, j: Pick<JobView, "status" | "waiting">): string {
+  if (h.state === "reported") return h.why ? `Part done: ${h.why}, and it reported what it had` : "Done: it has reported to the job";
+  if (h.state === "stopped") return `Came back with nothing: ${h.why ?? "it was stopped"}`;
+  if (j.status !== "running") return "Ended with the job";
+  return j.waiting?.for === "plan" ? "Waiting for the ChatGPT plan" : doings(h.doing);
+}
+
 /** How far it has got down its list; null with none. A dropped line is settled, and is not counted as done. */
-export function progress(j: JobView): string | null {
+export function progress(j: Pick<JobView, "todo">): string | null {
   const of = (j.todo ?? []).filter((t) => t.state !== "dropped").length;
   return of ? `${(j.todo ?? []).filter((t) => t.state === "done").length} of ${of}` : null;
 }
@@ -127,7 +157,8 @@ export function powers(j: JobView): string {
       : "Reads your own things, as far as you may: mail, calendar, memory, house, car and cameras. Does not search the web.";
   const takes = j.limits ? ` Up to ${j.limits.minutes} minutes and ${j.limits.steps} steps, ${j.limits.going} while its list moves.` : "";
   const makes = j.mode === "files" ? " Makes files with programs of its own, on a machine with no network, and gives them to you to save." : "";
-  return `${looks}${makes} Never acts: what it would do, it proposes.${j.mode === "thorough" ? " On the stronger model." : ""}${takes}`;
+  const splits = j.helpers ? " Splits its work between up to three helpers of its own, who may read what it may and nothing more." : "";
+  return `${looks}${makes}${splits} Never acts: what it would do, it proposes.${j.mode === "thorough" ? " On the stronger model." : ""}${takes}`;
 }
 
 /** A file's size, as a person says it. */
@@ -146,11 +177,12 @@ export function ended(r: JobRan, over = false): string {
 /** The last things its person told it, oldest first, and whether each has reached it. */
 export function heard(j: JobView): { said: string; state: string }[] {
   const late = j.status !== "running" || !!j.wrapping;
+  const next = (t: { to?: string; helped?: true }) => (!atWork(j) ? "reaches it at its next step" : t.to ? "reaches it when its helpers are done" : t.helped ? "its helpers have it; it does when they are done" : "reaches its helpers at their next step");
   return (j.told ?? [])
     .slice(-3)
     .map((t) => ({
       said: t.card ? "You changed its card" : t.to ? `Your answer: ${t.text}` : `You said: ${t.text}`,
-      state: t.taken ? "taken in" : late ? "came too late" : "reaches it at its next step",
+      state: t.taken ? "taken in" : late ? "came too late" : next(t),
     }));
 }
 

@@ -569,13 +569,17 @@ export function workshop({ work, drop = true, now = () => Date.now(), jobKb = 50
       if (!bytes) refuse("the file could not be read whole: try again");
       const sha256 = createHash("sha256").update(bytes).digest("hex");
       const to = join(GIVEN, job, sha256);
-      if (!existsSync(to)) {
+      // One at a time: two of a job's helpers may have the same file at once (src/worker/lib/helper-files.ts).
+      const keeping = saving.catch(() => {}).then(async () => {
+        if (existsSync(to)) return;
         if (j.given + bytes.length > MAX_GIVEN) refuse(`a job gives ${MAX_GIVEN / 1_000_000} MB at most, all its versions counted`);
         space(await load());
         await fs.mkdir(join(GIVEN, job), { recursive: true, mode: 0o700 });
         await put(to, bytes);
         j.given += bytes.length;
-      }
+      });
+      saving = keeping;
+      await keeping;
       return { size: bytes.length, sha256 };
     },
     /** The job has finished: nothing of it is left running. What it made is kept (tidy). */

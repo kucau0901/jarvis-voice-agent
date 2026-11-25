@@ -45,7 +45,7 @@ import { MAX_TRIES, beginCalls } from "../src/worker/lib/job-chain.ts";
 import { tells } from "../src/worker/lib/job-brief.ts";
 import { ASK_MS, changeCard, untold, unfinished, workTools, type Asked, type JobCard, type Said, type Todo } from "../src/worker/lib/job-tools.ts";
 import { GOING_STEPS, KEY_DOLLARS, MAX_SEARCHES, NOTE_AT, NOT_RUN, REFUSE_AT, STUCK_AT, runGuarded } from "../src/worker/lib/job-guards.ts";
-import { RESULT_KEPT, RESULT_MAX, capResults, flagLines, flagsOf, noteLinks, readResult } from "../src/worker/lib/job-results.ts";
+import { RESULT_KEPT, RESULT_MAX, capResults, flagLines, flagsOf, linksBack, noteLinks, readResult } from "../src/worker/lib/job-results.ts";
 import { linksIn, markUnseen, searchedIn } from "../src/worker/lib/links.ts";
 import { FORWARDED, asQuotedData } from "../src/worker/lib/quote.ts";
 import { HERMES_LONG_WORK, handleJobs, jobEngine, jobView } from "../src/worker/routes/jobs.ts";
@@ -304,6 +304,10 @@ console.log("\nlimits");
   const deaf = harness(more(MAX_STEPS + 5));
   const deafEnd = await drive(deaf, ((await deaf.jobs.create({ task: "loop" }, BY, T0)) as Job).id);
   check("told so and still going: stopped, at OpenAI too", deafEnd.status === "failed" && /was stopped/.test(deafEnd.error!) && deafEnd.result === undefined && deaf.log.some((l) => l.startsWith("cancel")), deafEnd);
+
+  const upd = harness([...more(MAX_STEPS - 1), { kind: "continued", responseId: "again", untold: true }, { kind: "continued", responseId: "told" }, wrote]);
+  const updEnd = await drive(upd, ((await upd.jobs.create({ task: "loop" }, BY, T0)) as Job).id);
+  check("a step taken up after an update as it was asked before that is not the one it was told with: what it had is kept", updEnd.status === "failed" && updEnd.result === "Shop A has it at RM700.", updEnd);
 
   const t = harness([{ kind: "wait" }, { kind: "wait" }]);
   const k = (await t.jobs.create({ task: "slow" }, BY, T0)) as Job;
@@ -728,6 +732,9 @@ console.log("\nwhat a result is missing, and rests on, comes first");
   check("an address it never saw is said to be unchecked; one it saw is left as it is",
     marked === "Buy [it](https://opened.example/page), or at https://cited.example/p?id=7. Also https://guess.example/deal (not checked), [this](https://bad.example/x?d=secret) (not checked) and https://mail.example/inv.", marked);
   check("a page it saw, asked with words of its own in the address, is not that page", markUnseen("https://mail.example/inv?n=9999", seen).endsWith("(not checked)") && markUnseen("https://opened.example/page?d=my+address", seen).endsWith("(not checked)"));
+  check("an address a call named is not seen by being said back, whole or cut short; another in the answer is",
+    JSON.stringify(linksBack(JSON.stringify({ q: "see https://a.example/x?y=1\nand more", list: ["https://b.example/z"] }), "No match for https://a.example/x?y=1, https://a.example/x nor https://b.example/z. Try https://c.example/w.")) === JSON.stringify(["c.example/w"]) &&
+    JSON.stringify(linksBack("not json https://a.example/x", "https://a.example/x https://d.example/")) === JSON.stringify(["d.example"]), linksBack(JSON.stringify({ q: "see https://a.example/x?y=1\nand more", list: ["https://b.example/z"] }), "No match for https://a.example/x?y=1, https://a.example/x nor https://b.example/z. Try https://c.example/w."));
 }
 
 console.log("\na brief for the web says nothing of who they are");
@@ -2333,6 +2340,21 @@ console.log("\njobs on the owner's ChatGPT plan (routes/jobs.ts): streamed here,
     const nw = sent.length;
     const wrappedAgain = await engine.poll({ ...jout, responseId: "plan_m.0", cut: { why: "it took its 25 steps" } });
     check("…once, though cut short before that was noted", wrappedAgain.kind === "continued" && sent.length === nw);
+
+    {
+      // With only the plan, and that at its limit: there is nothing to ask with now, and there will be.
+      const bare = jobEngine({ ...(env as object), OPENAI_API_KEY: undefined } as never, async (a) => ({ alert: a, attempts: [], deliveredBy: null }) as never, async () => ({ ...(env as object), OPENAI_API_KEY: undefined }) as never, kept as never);
+      const asksBefore = sent.length;
+      limitedUntil = T0 + 3_600_000;
+      const waits = await bare.start({ ...job, id: "jbare" });
+      const planning = await bare.plan({ ...job, id: "jbare2", engine: "research", team: newTeam(T0) });
+      check("started at the plan's limit with no key: it waits for the plan", JSON.stringify(waits) === JSON.stringify({ parked: limitedUntil }) && JSON.stringify(planning) === JSON.stringify({ parked: limitedUntil }) && sent.length === asksBefore, [waits, planning]);
+      limitedUntil = null;
+      plan = false;
+      const none = await bare.start({ ...job, id: "jbare3" });
+      check("with neither, it says so", "error" in none && /no ChatGPT plan or OpenAI key/.test(none.error), none);
+      plan = true;
+    }
 
     // Thorough: research's stronger model, thinking hard; an ordinary job neither.
     answers.push([{ type: "message", id: "mt", role: "assistant", status: "completed", content: [{ type: "output_text", text: "Done.", annotations: [] }] }]);

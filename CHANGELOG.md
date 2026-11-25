@@ -17,8 +17,34 @@ of every release, and in the [README](README.md#updating).
 
 ## [Unreleased]
 
+### Added
+
+- **A background job can have helpers, when you ask for them.** "Compare these
+  three, with helpers", or the new box in **Jobs**: the job splits its work into
+  two or three parts, its helpers do them at the same time, sharing what bears on
+  each other's, and the job checks what they bring and writes the answer. Jobs
+  shows a row for each (what it is on, its list, and **Stop** for that one alone),
+  and Chat shows them under the job's pill. A helper reads what the job may read
+  and nothing more: it cannot ask you anything, propose, look into your memory and
+  past jobs, or have helpers of its own. In the workshop each has a folder of its
+  own, and what you get is only what the job gives you. What you tell the job while
+  they work reaches them too. All of it comes out of the job's one hour, searches
+  and limit on the key; it uses several times an ordinary job's share of them.
+- **Try again harder**, on a finished ordinary job in **Jobs**: its brief, with what
+  you told it while it worked, ready in the form for the stronger model. Nothing
+  starts until you press Start.
+
 ### Fixed
 
+- **A job started while the ChatGPT plan is at its limit waits for it.** With no
+  OpenAI key set it failed at once, saying there was no plan.
+- **A job cut short by an update just as it ran out keeps what it had.** Its next
+  answer was taken for one that had been told to stop, and what it wrote then was
+  thrown away. A research team's finding shared just before the plan's limit, or an
+  update, now reaches the others.
+- **An address a job only named itself is marked "(not checked)"**, as one it never
+  saw is. One put in its checklist, or given to a tool that repeats what it is asked,
+  counted as seen.
 - **What a job may hold in the workshop holds for a command too quick to be
   looked at.** A job's folder was looked at every four seconds, so a short
   command, or one that took the room at once, could go past its 500 MB without

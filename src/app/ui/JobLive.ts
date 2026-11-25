@@ -1,5 +1,5 @@
 import { api } from "../key";
-import { cameOf, heard, linesOf, nowDoing, powers, progress, type JobCard, type JobView, type Todo } from "../jobWords";
+import { cameOf, heard, helperNow, linesOf, nowDoing, powers, progress, type JobCard, type JobView, type Todo } from "../jobWords";
 import { askCard, askedIn, askId } from "./JobAsk";
 import { jobRan } from "./JobFiles";
 import { arm, button, el } from "./util";
@@ -15,12 +15,13 @@ import { arm, button, el } from "./util";
 
 const STATE: Record<Todo["state"], string> = { open: "not yet", doing: "now", done: "done", dropped: "not done" };
 
-/** The checklist, its state said as well as shown. */
-function checklist(todo: readonly Todo[]): HTMLElement {
+/** The checklist, its state said as well as shown. `over`: whose it is has ended, and is on none of its lines. */
+function checklist(todo: readonly Todo[], over = false): HTMLElement {
   const list = el("ul", "jobtodo");
   for (const t of todo) {
-    const li = el("li", t.state);
-    li.append(el("span", "jobstate", `${STATE[t.state]}: `), el("span", "", t.text));
+    const left = over && (t.state === "doing" || t.state === "open");
+    const li = el("li", left ? "open" : t.state);
+    li.append(el("span", "jobstate", `${left ? "not done" : STATE[t.state]}: `), el("span", "", t.text));
     if (t.why) li.appendChild(el("small", "", t.why));
     list.appendChild(li);
   }
@@ -37,13 +38,38 @@ function card(j: JobView, c: JobCard): HTMLElement {
   return box;
 }
 
-/** In Jobs: the card, the list, what it asked and was told. Null for a job with none of them (one or two lookups, research, Hermes). */
-export function jobLive(j: JobView): HTMLElement | null {
+/** Its helpers (src/worker/lib/job-helpers.ts), a row each: what it is on or how it ended, and how far it has got. `whole`: its list too, and Stop while it works. */
+function helpers(j: JobView, whole?: { stop?: (n: number) => void }): HTMLElement[] {
+  return (j.helpers ?? []).map((h) => {
+    const on = h.state === "working" && j.status === "running";
+    const row = el("div", `jobhelper ${h.state}`);
+    const top = el("div", "jobhelptop");
+    const who = el("div", "");
+    const moving = on && !j.waiting;
+    who.append(el("b", "", h.name), el("span", moving ? "jobnow" : "jobnow still", helperNow(h, j)));
+    top.appendChild(who);
+    const far = progress(h);
+    if (far) top.appendChild(el("small", "", far));
+    if (whole?.stop && on) {
+      const stop = whole.stop;
+      const b = button("Stop", () => stop(h.n));
+      b.setAttribute("aria-label", `Stop ${h.name}`);
+      top.appendChild(b);
+    }
+    row.appendChild(top);
+    if (whole && h.todo?.length) row.appendChild(checklist(h.todo, !on));
+    return row;
+  });
+}
+
+/** In Jobs: the card, the list, its helpers, what it asked and was told. Null for a job with none of them (one or two lookups, research, Hermes). `stop`: for one of its helpers. */
+export function jobLive(j: JobView, stop?: (n: number) => void): HTMLElement | null {
   const box = el("div", "jobwork");
   if (j.card) box.appendChild(card(j, j.card));
   if (j.todo?.length) box.appendChild(checklist(j.todo));
+  box.append(...helpers(j, { stop }));
   // The last it ran, while it works; after, all of it is with the whole (ui/Jobs.ts).
-  if (j.status === "running" && j.ran?.length) box.appendChild(jobRan(j.ran.slice(-3)));
+  if (j.status === "running" && j.ran?.length) box.appendChild(jobRan(j.ran.slice(-3), false, j.helpers));
   // With the whole of it, what it asked and what came of that; while it works, the last things it was told.
   const ended = j.status === "running" ? [] : (j.asked ?? []);
   for (const q of ended) box.appendChild(told(`It asked: ${q.text}`, cameOf(q, j) ?? ""));
@@ -86,8 +112,8 @@ const EVERY_MS = 4000;
 const WAITING_MS = 20_000;
 
 /**
- * Under a job's pill in the conversation, while it works: its checklist, the
- * moment, and Stop; the pill says how far it has got, or that it asks them
+ * Under a job's pill in the conversation, while it works: its checklist, its
+ * helpers, the moment, and Stop; the pill says how far it has got, or that it asks them
  * something, and the question is here where its alert did not bring it to this
  * screen (a socket that was down). Asked of the server only
  * while the page is seen, and gone once the result has come, the job has ended
@@ -138,11 +164,11 @@ export function follow(key: string, id: string, row: HTMLElement, ended: (j: Job
         const drawnHere = new Map([...asks.querySelectorAll<HTMLElement>(".askcard")].map((c) => [c.dataset.ask ?? "", c]));
         const mine = open.filter((q) => drawnHere.has(askId(id, q.id)) || !askedIn(thread, id, q.id, box));
         const here = mine.map((q) => q.id).join();
-        const as = JSON.stringify([j.todo, nowDoing(j), open.length]);
+        const as = JSON.stringify([j.todo, j.helpers, nowDoing(j), open.length]);
         if ((as !== drawn || here !== asks.dataset.asks) && pill.classList.contains("working")) {
           drawn = as;
           const atEnd = !!thread && thread.scrollHeight - thread.scrollTop - thread.clientHeight < 40;
-          list.replaceChildren(...(j.todo?.length ? [checklist(j.todo)] : []));
+          list.replaceChildren(...(j.todo?.length ? [checklist(j.todo)] : []), ...helpers(j));
           if (here !== (asks.dataset.asks ?? "")) asks.replaceChildren(...mine.map((q) => drawnHere.get(askId(id, q.id)) ?? askCard(key, j, q, { tag: "It asks you", typed })));
           asks.dataset.asks = here;
           now.textContent = nowDoing(j);

@@ -592,7 +592,7 @@ work with many things to weigh together. It costs many times an ordinary one.
 
 `"mode": "files"` (needs `workshop`, and the workshop set up) has an ordinary
 job make files: its view carries `files: [{n, name, size, at}]` as it gives
-them, and `ran: [{at, cmd, p?, code?, ms?, late?, full?}]`, what it ran (the last
+them, and `ran: [{at, cmd, p?, by?, code?, ms?, late?, full?}]`, what it ran (the last
 three while it works, the last forty with the whole job; no `code` while it
 runs; `p` for one left running, `late` out of time, `full` ended for filling its
 folder). `GET /api/v1/jobs/file?id=&n=` (needs `ask`) is one of its files, as
@@ -601,6 +601,18 @@ bytes to save (`application/octet-stream`, `Content-Disposition: attachment`):
 the workshop does not answer, 409 when the file is not as the job gave it. The
 alert of its result carries `made: [{n, name, size}]`, and its text ends with a
 line naming them.
+
+`"helpers": true` (needs `routines`: it costs several times as much) lets an
+ordinary job of any mode give its work out once, in two or three parts, to helpers
+that work at the same time and report back to it. Its view carries `helpers`: empty
+until it has, then `[{n, name, state, doing?, todo?, why?}]`, with `state`
+`working`, `reported` or `stopped`, its own checklist in `todo` while the job runs or
+with the whole of it, in `doing` the tools it is running, and in `why` the reason it
+has no report, or, with one, what it ran out of (what it had by then is its report). In
+`told`, `helped` is on what every helper still at work has had. A command a helper ran carries `by`, its `n`, in `ran`.
+`POST /api/v1/jobs/cancel {id, helper}` stops one by its `n`: the others go on, and
+the job is told (404 when it is not at work, or there is none of that number). A helper
+may read what the job may, and nothing more.
 
 `engine` is `jarvis` (default: the router, many steps, in OpenAI's background
 mode), `research` (needs `routines`: it spends the family's monthly

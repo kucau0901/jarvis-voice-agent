@@ -12,6 +12,7 @@ import { ASK_MS, MAX_ASKED, MAX_TOLD, changeCard, doneLines, numbered, openLines
 import { secretShaped } from "./memory-guard.ts";
 import { flagLines, flagsOf, type Flags } from "./job-results.ts";
 import { withFile, withRan, type JobFile, type Ran } from "./workshop.ts";
+import { HELPERS_MS, MAX_HELPERS, STOPPED, helperId, helperOut, helpersWorking, newHelpers, reportKept, slimHelpers, withHelper, type HelperChain, type HelperRun, type HelperTask } from "./job-helpers.ts";
 
 /**
  * Background jobs: things that take minutes, answered later.
@@ -121,6 +122,8 @@ export interface Job {
   reach?: Reach;
   /** An ordinary job's: for hard work, research's stronger model, thinking hard; or one that makes files, in the workshop (lib/workshop.ts). */
   mode?: "thorough" | "files";
+  /** Started with helpers (lib/job-helpers.ts): none until it gives its work out, then each one's chain. */
+  help?: HelperRun;
   /** What it made for its person, to download; and what it ran, newest last. */
   files?: JobFile[];
   ran?: Ran[];
@@ -182,7 +185,7 @@ export type Cited = { url: string; title?: string };
 /** What one team of a research team looks into: planned for the question, or one of TEAM_ANGLES. */
 export type TeamAngle = { name: string; brief: string };
 
-/** One team of a research team: its own chain of background responses, from its own angle. */
+/** One team of a research team, or a job's helper (lib/job-helpers.ts): its own chain of background responses, from its own angle. */
 export interface TeamChain {
   state: "working" | "reported" | "stopped";
   /** Its response running at OpenAI, while working. */
@@ -263,15 +266,18 @@ export function usageEntry(j: Job, ok: boolean, now: number): UsageEntry {
 export type Step =
   | { kind: "wait"; usage?: Job["usage"] }
   /**
-   * `shared`: what a team passed to share_findings in this hop. `stuck`: it keeps asking the same thing (lib/job-guards.ts).
+   * `shared`: what a team or a helper passed to share_findings in this hop; `saw`, how much of the board it was told from. `stuck`: it keeps asking the same thing (lib/job-guards.ts).
    * `took`: how much of what its person told it the step now has. `nudged`: it was asked to finish its checklist.
+   * `untold`: one that was cut short, taken up again as it was: asked before it ran out, and so not told to write what it has.
    */
-  | { kind: "continued"; responseId: string; usage?: Job["usage"]; shared?: string[]; stuck?: true; took?: number; nudged?: true }
+  | { kind: "continued"; responseId: string; usage?: Job["usage"]; shared?: string[]; saw?: number; stuck?: true; took?: number; nudged?: true; untold?: true }
   | { kind: "done"; text: string; cited?: Cited[]; usage?: Job["usage"] }
   /** The plan is at its limit: nothing was asked, and it goes on from here then. */
   | { kind: "parked"; until: number }
   /** It has nothing left to do until its person answers what it asked them: looked at again then, its tokens counted now. */
   | { kind: "asks"; usage?: Job["usage"] }
+  /** It gives its work out to helpers, by this call of its: looked at again once they are done, its tokens counted now. */
+  | { kind: "helps"; call: string; tasks: HelperTask[]; usage?: Job["usage"] }
   | { kind: "failed"; error: string };
 
 /** A step started: its response id, the plan to wait for, or why it could not start. */
@@ -279,7 +285,7 @@ export type Started = { responseId: string } | { parked: number } | { error: str
 
 /** `stop`, where a step streams here for minutes (the ChatGPT plan, Hermes): aborted when the person stops the job. */
 export interface JobDeps {
-  /** Start a jarvis job's first step, or team `team`'s of a research team; its response id, or why it could not start. */
+  /** Start a jarvis job's first step, or that of team `team` of a research team, or of helper `team` of a job with them; its response id, or why it could not start. */
   start(job: Job, team?: number, stop?: AbortSignal, say?: (s: Said) => Promise<void>): Promise<Started>;
   /** research: start the check of a written report, continuing from `after`; its response id, or why not. */
   check(job: Job, after: string, stop?: AbortSignal): Promise<Started>;
@@ -287,7 +293,7 @@ export interface JobDeps {
   plan(job: Job, stop?: AbortSignal): Promise<Started>;
   /** research as a team: start merging the teams' reports into one; its response id, or why not. */
   merge(job: Job, stop?: AbortSignal): Promise<Started>;
-  /** Look at the running step (team `team`'s, of a research team); run any tools it asked for and start the next. `say`: what it says of itself meanwhile. */
+  /** Look at the running step (team or helper `team`'s); run any tools it asked for and start the next. `say`: what it says of itself meanwhile. */
   poll(job: Job, team?: number, stop?: AbortSignal, say?: (s: Said) => Promise<void>): Promise<Step>;
   /** Stop a running step at OpenAI. Best effort. */
   cancel(job: Job): Promise<void>;
@@ -302,7 +308,7 @@ export interface JobDeps {
   record?(e: UsageEntry): Promise<void>;
   /** A finished job, for the next question like it (lib/episodes.ts). */
   episode?(j: Job): Promise<void>;
-  /** Tell the workshop a job that makes files is at rest (nothing of it left running) or at its end (nothing of it kept). */
+  /** Tell the workshop a job that makes files, or a helper of one, is at rest (nothing of it left running) or at its end (nothing of it kept). */
   workshop?(what: "rest" | "end", id: string): Promise<void>;
 }
 
@@ -417,6 +423,9 @@ export function readsOnly(t: { name: string; reads?: boolean }): boolean {
   return !WRITES.test(own) && READS.test(own);
 }
 
+/** Their past, which a job's helper does not look into: what it needs of it, the job puts in its brief. */
+const PAST_TOOLS = new Set(["recall", "job_results"]);
+
 /** What a job on the web is handed besides its searches: nothing of its person's, and nothing that remembers. */
 const WEB_TOOLS = new Set(["time_in", "place_info"]);
 export const webTool = (t: { name: string }): boolean => WEB_TOOLS.has(t.name);
@@ -425,6 +434,9 @@ export const webTool = (t: { name: string }): boolean => WEB_TOOLS.has(t.name);
 export function jobTool(t: { name: string; reads?: boolean }): boolean {
   return t.name.includes("__") ? readsOnly(t) : READ_TOOLS.has(t.name);
 }
+
+/** What a helper of a job on its person's own things is handed to read with: less than the job, never more. */
+export const helperTool = (t: { name: string; reads?: boolean }): boolean => jobTool(t) && !PAST_TOOLS.has(t.name);
 
 const ALPHABET = "0123456789abcdefghjkmnpqrstvwxyz";
 const newJobId = () => {
@@ -530,21 +542,24 @@ export function parseAngles(text: string): TeamAngle[] | null {
   return out;
 }
 
-/** How many more findings team `t` may put on the board. */
-export const sharesLeft = (j: Job, t: number): number => Math.max(0, SHARES_PER_TEAM - j.team!.board.filter((b) => b.team === t).length);
+/** A job's chains: a research team's teams, or its helpers. It never has both. */
+const runOf = (j: Job): { chains: readonly TeamChain[]; board: TeamRun["board"] } => j.team ?? j.help!;
 
-/** What happened to one team's chain: it started, a look at it, a look that threw, or it was stopped. */
-export type TeamEvent = { started: string } | { step: Exclude<Step, { kind: "parked" | "asks" }> } | { threw: string } | { stopped: string };
+/** How many more findings team or helper `t` may put on the board. */
+export const sharesLeft = (j: Job, t: number): number => Math.max(0, SHARES_PER_TEAM - runOf(j).board.filter((b) => b.team === t).length);
+
+/** What happened to one chain: it started, a look at it, a look that threw, or it was stopped. */
+export type TeamEvent = { started: string } | { step: Exclude<Step, { kind: "parked" | "asks" | "helps" }> } | { threw: string } | { stopped: string };
 
 /**
- * One event applied to team `t`: the job as it is after, with the step's
- * usage added and `nextAt` the earliest look any team needs (now, for the
- * merge, once none is working).
+ * One event applied to team `t`, or helper `t` (lib/job-helpers.ts): the job
+ * as it is after, with the step's usage added and `nextAt` the earliest look
+ * any of them needs (now, for the merge or the job, once none is working).
  */
 export function teamStep(j: Job, t: number, e: TeamEvent, now: number): Job {
-  const chains = j.team!.chains.map((c) => ({ ...c }));
+  const chains: (TeamChain & Partial<HelperChain>)[] = runOf(j).chains.map((c) => ({ ...c }));
   const c = chains[t]!;
-  let board = j.team!.board;
+  let board = runOf(j).board;
   let usage = j.usage;
   const stop = (why: string) => {
     c.state = "stopped";
@@ -555,7 +570,7 @@ export function teamStep(j: Job, t: number, e: TeamEvent, now: number): Job {
   else if ("stopped" in e) stop(e.stopped);
   else if ("threw" in e) {
     c.fails += 1;
-    if (c.fails >= 3) stop("OpenAI could not be reached, three times running");
+    if (c.fails >= 3) stop(j.team ? "OpenAI could not be reached, three times running" : `it failed three times running: ${tidy(e.threw).slice(0, 160)}`);
     else c.nextAt = now + 30_000;
   } else {
     const s = e.step;
@@ -563,27 +578,60 @@ export function teamStep(j: Job, t: number, e: TeamEvent, now: number): Job {
     c.fails = 0;
     if (s.kind === "wait") c.nextAt = now + nextLook(c.updatedAt, now);
     else if (s.kind === "continued") {
+      // A helper's own (lib/job-helpers.ts): told to write what it has, it is not told twice.
+      const deaf = c.cut?.sent;
+      if (c.cut && !s.untold) c.cut = { ...c.cut, sent: true };
+      if (s.stuck) c.stuck = true;
+      if (s.took) c.heard = s.took;
       if (s.shared) {
         // Posted up to the team's allowance; what it was told in reply is all it has now seen.
         const room = sharesLeft(j, t);
         const posts = s.shared.map((f) => tidy(f).slice(0, FINDING_MAX)).filter(Boolean).slice(0, room);
         board = [...board, ...posts.map((text) => ({ team: t, text }))];
-        c.seen = board.length;
+        // Helpers post beside each other: what came since it was answered, it has not heard.
+        c.seen = s.saw ?? board.length;
       }
-      if (c.steps + 1 > TEAM_MAX_STEPS) stop(`it took more than ${TEAM_MAX_STEPS} steps`);
+      if (deaf) stop(`${c.cut!.why}, and it wrote nothing`);
+      // A helper's steps are in what it has (helperOut).
+      else if (j.team && c.steps + 1 > TEAM_MAX_STEPS) stop(`it took more than ${TEAM_MAX_STEPS} steps`);
       else next(s.responseId);
     } else if (s.kind === "done") {
       c.state = "reported";
-      c.report = s.text.slice(0, MAX_RESULT);
-      c.cited = s.cited ?? [];
+      c.report = j.team ? s.text.slice(0, MAX_RESULT) : reportKept(s.text);
+      if (j.team) c.cited = s.cited ?? [];
     } else stop(s.error);
   }
   if (c.state !== "working") {
     delete c.responseId;
     delete c.nextAt;
+    delete c.doing;
   }
   const looks = chains.filter((x) => x.state === "working").map((x) => x.nextAt ?? now);
-  return { ...j, ...(usage ? { usage } : {}), team: { ...j.team!, chains, board }, nextAt: looks.length ? Math.min(...looks) : now, updatedAt: now };
+  const run = j.team ? { team: { ...j.team, chains, board } } : { help: { ...j.help!, chains: chains as HelperChain[], board } };
+  return { ...j, ...(usage ? { usage } : {}), ...run, nextAt: looks.length ? Math.min(...looks) : now, updatedAt: now };
+}
+
+/** The job, and any chain of it still working, due at `at`. */
+function dueAt(j: Job, at: number): Job {
+  const due = <C extends TeamChain>(all: readonly C[]): C[] => all.map((c) => (c.state === "working" ? { ...c, nextAt: at } : c));
+  return { ...j, ...(j.team ? { team: { ...j.team, chains: due(j.team.chains) } } : {}), ...(j.help ? { help: { ...j.help, chains: due(j.help.chains) } } : {}), nextAt: at };
+}
+
+/** A look at a job, or at helper `t` of it, by its name: in hand, and due. */
+const lookOf = (id: string, t?: number): string => (t === undefined ? id : `${id}#${t}`);
+const looksAll = (id: string): string[] => [lookOf(id), ...Array.from({ length: MAX_HELPERS }, (_, t) => lookOf(id, t))];
+/** Due looks in the order they are taken: the jobs' own as they came, and helpers' among them by how long each has waited, so one job's never keep another's waiting. */
+function inOrder(due: readonly [string, number][]): string[] {
+  const own = due.filter(([look]) => !look.includes("#"));
+  const theirs = due.filter(([look]) => look.includes("#")).sort((a, b) => a[1] - b[1]);
+  const out: string[] = [];
+  while (own.length || theirs.length) out.push((own.length && (!theirs.length || own[0]![1] <= theirs[0]![1]) ? own : theirs).shift()![0]);
+  return out;
+}
+/** The looks a running job needs, and when: its own, or while its helpers work, one at each of them. */
+function looksAt(j: Job): [string, number][] {
+  const theirs = (j.help?.chains ?? []).flatMap((c, t): [string, number][] => (c.state === "working" ? [[lookOf(j.id, t), c.nextAt ?? 0]] : []));
+  return theirs.length ? theirs : [[j.id, j.nextAt ?? 0]];
 }
 
 /** A job that was waiting for the plan and no longer is: how long it waited is not its time. */
@@ -620,9 +668,9 @@ const askAlert = (j: Job, q: Asked): Alert => ({
   ask: { job: j.id, id: q.id },
 });
 
-/** Every response the job has running at OpenAI: its own, and each working team's. */
+/** Every response the job has running at OpenAI: its own, and each working team's or helper's. */
 export function responseIdsOf(j: Job): string[] {
-  return [j.responseId, ...(j.team?.chains ?? []).map((c) => c.responseId)].filter((id): id is string => !!id);
+  return [j.responseId, ...[...(j.team?.chains ?? []), ...(j.help?.chains ?? [])].map((c) => c.responseId)].filter((id): id is string => !!id);
 }
 
 /** The pages the teams cited, taken in turn from each, so a list of fifteen has every team's. */
@@ -674,14 +722,14 @@ const clean = (v: unknown, max: number) =>
 export class Jobs {
   private storage: Storage;
   private deps: () => Promise<JobDeps>;
-  /** The jobs being looked at now, and how to stop each: one look at a job at a time, whatever the alarm does meanwhile. */
+  /** The looks in hand (lookOf), and how to stop each: one at a job, or at a helper, at a time, whatever the alarm does meanwhile. */
   private live = new Map<string, { look: Promise<void>; stop: AbortController; hermes: boolean }>();
-  /** When each running job is next to be looked at: read once, then kept as they are saved, so nothing lists every result to find out. */
+  /** When each look is due: read once, then kept as jobs are saved, so nothing lists every result to find out. */
   private due = new Map<string, number>();
   private read: Promise<void> | null = null;
   /** ASKS, read once and then kept as jobs are saved. */
   private asks: Promise<Set<string>> | null = null;
-  /** What steps say of themselves, kept one at a time: a step's calls run together (note). */
+  /** What is kept of running jobs, one change at a time: a step's calls run together (note), and a job's helpers are looked at together (edit). */
   private noting: Promise<void> = Promise.resolve();
 
   constructor(storage: Storage, deps: () => Promise<JobDeps>) {
@@ -692,7 +740,7 @@ export class Jobs {
   private async waiting(): Promise<Map<string, number>> {
     // One saved while this was being read is already here, and newer than what was read.
     this.read ??= this.list().then((all) => {
-      for (const j of all) if (j.status === "running" && !this.due.has(j.id)) this.due.set(j.id, j.nextAt ?? 0);
+      for (const j of all) if (j.status === "running") for (const [look, at] of looksAt(j)) if (!this.due.has(look)) this.due.set(look, at);
     });
     await this.read;
     return this.due;
@@ -708,8 +756,9 @@ export class Jobs {
   }
 
   private async save(j: Job): Promise<void> {
-    if (j.status === "running") this.due.set(j.id, j.nextAt ?? 0);
-    else this.due.delete(j.id);
+    const looks = j.status === "running" ? looksAt(j) : [];
+    for (const look of looksAll(j.id)) if (!looks.some(([x]) => x === look)) this.due.delete(look);
+    for (const [look, at] of looks) this.due.set(look, at);
     const kept = this.storage.put(J + j.id, j);
     await this.askIs(j.id, j.status === "running" && openQuestions(j.asked).length > 0);
     await kept;
@@ -727,10 +776,12 @@ export class Jobs {
     await this.storage.put(ASKS, [...ids]);
   }
 
-  private async drop({ id, mode }: Job): Promise<boolean> {
-    this.due.delete(id);
+  private async drop(j: Job): Promise<boolean> {
+    const { id } = j;
+    for (const look of looksAll(id)) this.due.delete(look);
     // Its files go with it. A workshop that is off forgets them by itself (docker/workshop/runner.mjs).
-    if (mode === "files") await (await this.deps()).workshop?.("end", id).catch(() => {});
+    if (j.mode === "files") await (await this.deps()).workshop?.("end", id).catch(() => {});
+    await this.helpersGone(j, await this.deps());
     await this.askIs(id, false);
     await clearChain(this.storage, id);
     await this.storage.delete(T + id);
@@ -738,7 +789,7 @@ export class Jobs {
   }
 
   async create(
-    input: { title?: unknown; task?: unknown; engine?: unknown; reach?: unknown; mode?: unknown; team?: unknown; from?: unknown; table?: unknown },
+    input: { title?: unknown; task?: unknown; engine?: unknown; reach?: unknown; mode?: unknown; team?: unknown; from?: unknown; table?: unknown; helpers?: unknown },
     by: { who: string; grants: readonly Grant[] },
     now = Date.now(),
   ): Promise<Job | string> {
@@ -809,6 +860,7 @@ export class Jobs {
       attempts: 0,
       ...(engine === "jarvis" ? { reach: input.reach === "web" ? ("web" as const) : ("private" as const) } : {}),
       ...(thorough ? { mode: "thorough" as const } : engine === "jarvis" && input.mode === "files" ? { mode: "files" as const } : {}),
+      ...(engine === "jarvis" && input.helpers === true ? { help: { chains: [], board: [] } } : {}),
       ...(team ? { team: newTeam(now) } : {}),
       ...(table ? { table: {} } : {}),
       ...(from ? { from } : {}),
@@ -818,27 +870,46 @@ export class Jobs {
   }
 
   async cancel(id: string, now = Date.now()): Promise<Job | string> {
-    const j = await this.get(id);
-    if (!j) return "no such job";
-    if (j.status !== "running") return j;
-    const running = responseIdsOf(j);
-    j.status = "cancelled";
-    j.finishedAt = j.updatedAt = now;
-    delete j.nextAt;
-    delete j.parked;
-    delete j.doing;
-    delete j.waits;
-    if (j.team) j.team = slimTeam(j.team);
-    await this.save(j);
+    const was = await this.edit(id, (j) => {
+      const { nextAt: _n, parked: _p, doing: _d, waits: _w, ...rest } = j;
+      void _n;
+      void _p;
+      void _d;
+      void _w;
+      return { ...rest, status: "cancelled", finishedAt: now, updatedAt: now, ...(j.team ? { team: slimTeam(j.team) } : {}), ...(j.help ? { help: slimHelpers(j.help) } : {}) };
+    });
+    if (!was) return (await this.get(id)) ?? "no such job";
+    const { before, after: j } = was;
+    const running = responseIdsOf(before);
     // A step streaming here is let go at once, rather than paid for to its end.
-    this.live.get(id)?.stop.abort();
+    for (const look of looksAll(id)) this.live.get(look)?.stop.abort();
     const deps = await this.deps();
     for (const id of running) await deps.cancel({ ...j, responseId: id }).catch(() => {});
     await clearChain(this.storage, id);
     // What it spent before it was stopped still counts in Settings → Usage.
     await deps.record?.(usageEntry(j, false, now)).catch(() => {});
     if (j.mode === "files") await deps.workshop?.("rest", id).catch(() => {});
+    await this.helpersGone(j, deps);
     return j;
+  }
+
+  /** Its helpers' folders go, and any of them the workshop did not hear of when it ended: what they made for the job is in the job's. */
+  private async helpersGone(j: Job, deps: JobDeps): Promise<void> {
+    if (j.mode === "files") for (const t of (j.help?.chains ?? []).keys()) await deps.workshop?.("end", helperId(j.id, t)).catch(() => {});
+  }
+
+  /** Its person stops one of its helpers: the others go on, and the job is told it was stopped. */
+  async stopHelper(id: string, t: number, now = Date.now()): Promise<Job | string> {
+    const was = await this.edit(id, (j) => (j.help?.chains[t]?.state === "working" ? teamStep(j, t, { stopped: STOPPED }, now) : j));
+    if (!was) return "it is not working any more";
+    const c = was.before.help?.chains[t];
+    if (!c) return "there is no such helper";
+    if (c.state !== "working") return c.state === "reported" ? "it has already reported" : "it was already stopped";
+    this.live.get(lookOf(id, t))?.stop.abort();
+    const deps = await this.deps();
+    if (c.responseId) await deps.cancel({ ...was.after, responseId: c.responseId }).catch(() => {});
+    if (was.after.mode === "files") await deps.workshop?.("end", helperId(id, t)).catch(() => {});
+    return was.after;
   }
 
   /** A research job that never started gives its monthly slot back. */
@@ -866,10 +937,10 @@ export class Jobs {
     return (await this.storage.get<{ columns: string[]; rows: string[][] }>(T + id)) ?? null;
   }
 
-  /** When the first job that is not already in hand is due; what is in hand keeps the object awake itself (state.ts going), and is followed by whatever waits its turn. */
+  /** When the first look that is not already in hand is due; what is in hand keeps the object awake itself (state.ts going), and is followed by whatever waits its turn. */
   async nextWake(now = Date.now()): Promise<number | null> {
     let next: number | null = null;
-    for (const [id, at] of await this.waiting()) if (!this.live.has(id) && (at > now || this.room()) && (next === null || at < next)) next = at;
+    for (const [look, at] of await this.waiting()) if (!this.live.has(look) && (at > now || this.room()) && (next === null || at < next)) next = at;
     return next === null ? null : Math.max(next, now);
   }
 
@@ -878,29 +949,30 @@ export class Jobs {
   }
 
   /**
-   * Start a look at every job that is due and not already in hand; each, as it
-   * ends (never rejected). The object hands them to waitUntil (state.ts): a step
+   * Start a look at every job that is due and not already in hand, and at every
+   * helper of one; each, as it ends (never rejected). The object hands them to waitUntil (state.ts): a step
    * on the ChatGPT plan streams here for minutes, and a reminder, the house or
    * a tap waits for none of them. Cut short with the object (an update, a
    * restart), a job is due as it was, and the alarm takes it up again.
    */
   async begin(now = Date.now()): Promise<Promise<void>[]> {
-    const ids = [...(await this.waiting())].filter(([id, at]) => at <= now + 1000 && !this.live.has(id)).map(([id]) => id);
-    if (!ids.length) return [];
+    const names = inOrder([...(await this.waiting())].filter(([look, at]) => at <= now + 1000 && !this.live.has(look)));
+    if (!names.length) return [];
     const deps = await this.deps();
     const looks: Promise<void>[] = [];
-    for (const id of ids) {
+    for (const name of names) {
+      const [id = "", at] = name.split("#");
       const j = await this.stillRunning(id);
       const hermes = j?.engine === "hermes";
       // Gone, or ended, since it was read: not due again, or the alarm would wake for it for ever.
-      if (!j) this.due.delete(id);
-      if (!j || this.live.has(id) || (!hermes && !this.room())) continue;
+      if (!j) this.due.delete(name);
+      if (!j || this.live.has(name) || (!hermes && !this.room())) continue;
       const stop = new AbortController();
-      const look = (hermes ? this.advanceHermes(j, deps, now, stop.signal) : this.advanceJarvis(j, deps, now, stop.signal))
+      const look = (at !== undefined ? this.advanceHelper(j, Number(at), deps, now, stop.signal) : hermes ? this.advanceHermes(j, deps, now, stop.signal) : this.advanceJarvis(j, deps, now, stop.signal))
         .catch((e) => this.finish(j, deps, now, { error: e instanceof Error ? e.message : String(e) }))
         .catch((e) => console.error("job", id, e instanceof Error ? e.message : String(e)))
-        .finally(() => this.live.delete(id));
-      this.live.set(id, { look, stop, hermes });
+        .finally(() => this.live.delete(name));
+      this.live.set(name, { look, stop, hermes });
       looks.push(look);
     }
     return looks;
@@ -911,53 +983,82 @@ export class Jobs {
     await Promise.all(await this.begin(now));
   }
 
-  /** Waiting for the plan: the job, and any team of it still working, due again when the plan is. */
+  /** Waiting for the plan: the job, and any team or helper of it still working, due again when the plan is. */
   private async park(id: string, until: number, now: number): Promise<void> {
-    const cur = await this.stillRunning(id);
-    if (!cur) return;
-    const team = cur.team && { ...cur.team, chains: cur.team.chains.map((c) => (c.state === "working" ? { ...c, nextAt: until } : c)) };
-    await this.save({ ...cur, ...(team ? { team } : {}), parked: { since: cur.parked?.since ?? now, until }, nextAt: until });
+    // Moved to the key while this step was finding it so: it goes on there.
+    await this.edit(id, (cur) => (cur.onKey ? dueAt(cur, now) : { ...dueAt(cur, until), parked: { since: cur.parked?.since ?? now, until } }));
   }
 
   /** Its person moved it to the API key rather than wait for the plan: due at once, there. */
   async useKey(id: string, now = Date.now()): Promise<Job | string> {
-    const j = await this.stillRunning(id);
-    if (!j) return "no such job running";
-    const next = resumed(j, now);
-    const team = next.team && { ...next.team, chains: next.team.chains.map((c) => (c.state === "working" ? { ...c, nextAt: now } : c)) };
-    await this.save({ ...next, ...(team ? { team } : {}), onKey: true, nextAt: now });
-    return { ...next, onKey: true };
+    const moved = await this.edit(id, (j) => ({ ...dueAt(resumed(j, now), now), onKey: true as const }));
+    return moved?.after ?? "no such job running";
+  }
+
+  /** Work on what is kept, after the work before it: its helpers' steps and its person change one job at once. */
+  private inTurn<T>(work: () => Promise<T>): Promise<T> {
+    const done = this.noting.then(work);
+    this.noting = done.then(() => {}, () => {});
+    return done;
+  }
+
+  /** A running job as `change` makes it, kept, and as it was before; null once it is not running. */
+  private edit(id: string, change: (j: Job) => Job): Promise<{ before: Job; after: Job } | null> {
+    return this.inTurn(async () => {
+      const before = await this.stillRunning(id);
+      if (!before) return null;
+      const after = change(before);
+      await this.save(after);
+      return { before, after };
+    });
+  }
+
+  /** What helper `t`'s step says of itself while it runs: its list is its own, and what it ran is said to be its. */
+  private async noteHelper(id: string, t: number, s: Said): Promise<void> {
+    await this.edit(id, (j) => {
+      const c = j.help?.chains[t];
+      const ran = (x: Job): Job => (s.ran ? { ...x, ran: withRan(x.ran, { ...s.ran, by: t + 1 }) } : x);
+      // Ended, its list and the rest are as they were; how what it ran ended is still known.
+      if (c?.state !== "working") return ran(j);
+      const next = withHelper(j, t, {
+        ...(s.todo ? { todo: s.todo } : {}),
+        ...(s.doing ? { doing: s.doing } : {}),
+        ...(s.handed ? { handed: [...(c.handed ?? []).filter((f) => f.path !== s.handed!.path), s.handed] } : {}),
+      });
+      return ran(next);
+    }).catch((e) => console.warn("job", id, "not noted:", e instanceof Error ? e.message : String(e)));
   }
 
   /** What a step says of itself while it runs (lib/job-tools.ts), kept at once for whoever is watching. Its card is the job's to set only once. */
   private note(id: string, s: Said): Promise<void> {
-    this.noting = this.noting
-      .then(async () => {
-        const cur = await this.stillRunning(id);
-        if (!cur) return;
-        const ticked = s.todo && doneLines(s.todo) > doneLines(cur.todo);
-        const asked = cur.asked ?? [];
-        // Once each: a step cut short before it was kept is run again, and asks again.
-        const q: Asked | null = s.ask && asked.length < MAX_ASKED && !asked.some((a) => a.text === s.ask!.text) ? { id: `q${asked.length + 1}`, at: Date.now(), ...s.ask } : null;
-        await this.save({
-          ...cur,
-          ...(s.card && !cur.card ? { card: s.card } : {}),
-          ...(s.todo ? { todo: s.todo } : {}),
-          ...(ticked ? { ticked: cur.steps } : {}),
-          ...(s.doing ? { doing: s.doing } : {}),
-          ...(q ? { asked: [...asked, q] } : {}),
-          ...(s.file ? { files: withFile(cur.files, s.file) } : {}),
-          ...(s.ran ? { ran: withRan(cur.ran, s.ran) } : {}),
-        });
-        // Kept first, so an answer finds it; told beside the step, which does not wait for a push.
-        if (q) void this.deps().then((d) => d.deliver(askAlert(cur, q))).catch(() => {});
-      })
-      .catch((e) => console.warn("job", id, "not noted:", e instanceof Error ? e.message : String(e)));
-    return this.noting;
+    return this.inTurn(async () => {
+      const cur = await this.stillRunning(id);
+      if (!cur) return;
+      const ticked = s.todo && doneLines(s.todo) > doneLines(cur.todo);
+      const asked = cur.asked ?? [];
+      // Once each: a step cut short before it was kept is run again, and asks again.
+      const q: Asked | null = s.ask && asked.length < MAX_ASKED && !asked.some((a) => a.text === s.ask!.text) ? { id: `q${asked.length + 1}`, at: Date.now(), ...s.ask } : null;
+      await this.save({
+        ...cur,
+        ...(s.card && !cur.card ? { card: s.card } : {}),
+        ...(s.todo ? { todo: s.todo } : {}),
+        ...(ticked ? { ticked: cur.steps } : {}),
+        ...(s.doing ? { doing: s.doing } : {}),
+        ...(q ? { asked: [...asked, q] } : {}),
+        ...(s.file ? { files: withFile(cur.files, s.file) } : {}),
+        ...(s.ran ? { ran: withRan(cur.ran, s.ran) } : {}),
+      });
+      // Kept first, so an answer finds it; told beside the step, which does not wait for a push.
+      if (q) void this.deps().then((d) => d.deliver(askAlert(cur, q))).catch(() => {});
+    }).catch((e) => console.warn("job", id, "not noted:", e instanceof Error ? e.message : String(e)));
   }
 
   /** Its person changed its card while it works: what they changed reaches it, in their words, at its next step; one that waits for them takes it now. */
-  async changeCard(id: string, input: { outcome?: unknown; limits?: unknown; assumptions?: unknown }, now = Date.now()): Promise<Job | string> {
+  changeCard(id: string, input: { outcome?: unknown; limits?: unknown; assumptions?: unknown }, now = Date.now()): Promise<Job | string> {
+    return this.inTurn(() => this.changing(id, input, now));
+  }
+
+  private async changing(id: string, input: { outcome?: unknown; limits?: unknown; assumptions?: unknown }, now: number): Promise<Job | string> {
     const j = await this.stillRunning(id);
     if (!j) return "it is not working any more";
     if (!j.card) return "it has no card";
@@ -976,7 +1077,11 @@ export class Jobs {
    * as they said it, at its next step, and widens nothing: what it may reach
    * is by what it is handed.
    */
-  async tell(id: string, input: { text?: unknown; question?: unknown; skip?: unknown }, now = Date.now()): Promise<Job | string> {
+  tell(id: string, input: { text?: unknown; question?: unknown; skip?: unknown }, now = Date.now()): Promise<Job | string> {
+    return this.inTurn(() => this.telling(id, input, now));
+  }
+
+  private async telling(id: string, input: { text?: unknown; question?: unknown; skip?: unknown }, now: number): Promise<Job | string> {
     const j = await this.stillRunning(id);
     if (!j) return "it is not working any more";
     if (j.engine !== "jarvis") return "only an ordinary job can be told anything while it works";
@@ -1027,14 +1132,18 @@ export class Jobs {
     return t?.day === new Date(now).toISOString().slice(0, 10) ? t.n : 0;
   }
 
-  /** What a step used of the plan, counted to whoever started it. */
-  private async countTokens(j: Job, u: JobUsage | undefined, now: number): Promise<void> {
-    if (!u?.model?.startsWith("chatgpt:")) return;
+  /** What a step used of the plan, counted to whoever started it: one at a time, or of two helpers' one would be lost. */
+  private countTokens(j: Job, u: JobUsage | undefined, now: number): Promise<void> {
+    if (!u?.model?.startsWith("chatgpt:")) return Promise.resolve();
     const person = personOfWho(j.createdBy);
-    await this.storage.put(TOKENS(person), { day: new Date(now).toISOString().slice(0, 10), n: (await this.tokensToday(person, now)) + u.input + u.output });
+    return this.inTurn(async () => {
+      await this.storage.put(TOKENS(person), { day: new Date(now).toISOString().slice(0, 10), n: (await this.tokensToday(person, now)) + u.input + u.output });
+    });
   }
 
   private async advanceJarvis(j: Job, deps: JobDeps, now: number, stop: AbortSignal): Promise<void> {
+    // Its helpers are looked at, each by itself, until the last is done: kept again, so what is due is theirs.
+    if (helpersWorking(j)) return void (await this.edit(j.id, (x) => x));
     if (j.parked) {
       j = resumed(j, now);
       await this.save(j);
@@ -1128,6 +1237,7 @@ export class Jobs {
     }
     j = { ...cur, ...(usage ? { usage } : {}) };
     if (step.kind === "asks") return this.waitFor({ ...j, counted: polled }, now);
+    if (step.kind === "helps") return this.save({ ...j, counted: polled, help: newHelpers(j, step.call, step.tasks, now), nextAt: now });
     if (step.kind === "wait") {
       j.nextAt = now + nextLook(j.updatedAt, now);
       // updatedAt is when the current step started, so the wait grows while it runs.
@@ -1139,7 +1249,7 @@ export class Jobs {
         await deps.cancel({ ...j, responseId: step.responseId }).catch(() => {});
         return this.finish(j, deps, now, { error: `${j.cut?.why ?? `it took more than ${limits.maxSteps} steps`} and was stopped` });
       }
-      if (j.cut) j.cut = { ...j.cut, sent: true };
+      if (j.cut && !step.untold) j.cut = { ...j.cut, sent: true };
       if (step.stuck) j.stuck = true;
       if (step.nudged) j.nudged = true;
       if (step.took && j.told) j.told = j.told.map((t, i) => (i < step.took! ? { ...t, taken: true as const } : t));
@@ -1233,8 +1343,8 @@ export class Jobs {
         (x: unknown) => ({ threw: x instanceof Error ? x.message : String(x) }),
       );
       if ("step" in looked && looked.step.kind === "parked") return this.park(cur.id, looked.step.until, now);
-      // A team asks nothing of anyone (routes/jobs.ts): never so.
-      if ("step" in looked && looked.step.kind === "asks") continue;
+      // A team asks nothing of anyone, nor has helpers (routes/jobs.ts): never so.
+      if ("step" in looked && (looked.step.kind === "asks" || looked.step.kind === "helps")) continue;
       const e = looked as TeamEvent;
       if ("step" in e && e.step.kind !== "failed") await this.countTokens(cur, e.step.usage, now);
       const after = await this.stillRunning(j.id);
@@ -1254,6 +1364,47 @@ export class Jobs {
       await this.save(next);
       if (left && next.team!.chains[t]!.state === "stopped") await deps.cancel({ ...after, responseId: left }).catch(() => {});
     }
+  }
+
+  /**
+   * One look at helper `t` (lib/job-helpers.ts): started, or its step looked at,
+   * beside the other helpers' looks, so every change is made to the job as it
+   * stands then (edit). The last one done, the job itself is due.
+   */
+  private async advanceHelper(j: Job, t: number, deps: JobDeps, now: number, stop: AbortSignal): Promise<void> {
+    // Another's step ending does not end the wait for the plan: until then, whoever needs it waits, and the job with them.
+    if (j.parked && now + 1000 >= j.parked.until) j = (await this.edit(j.id, (x) => resumed(x, now)))?.after ?? j;
+    const c = j.help?.chains[t];
+    if (c?.state !== "working") return void (await this.edit(j.id, (x) => x));
+    const out = c.responseId && !c.cut ? helperOut(j, t, j.usage ? costOf(usageEntry(j, true, now)) : 0, now) : null;
+    if (out) j = (await this.edit(j.id, (x) => withHelper(x, t, { cut: { why: out } })))?.after ?? j;
+    const say = (s: Said) => this.noteHelper(j.id, t, s);
+    const had = c.responseId;
+    const r = await (had ? deps.poll(j, t, stop, say) : deps.start(j, t, stop, say)).catch((e: unknown) => ({ threw: e instanceof Error ? e.message : String(e) }));
+    await this.noting;
+    if ("parked" in r) return this.park(j.id, r.parked, now);
+    if ("kind" in r && r.kind === "parked") return this.park(j.id, r.until, now);
+    // A helper asks nothing of anyone, nor has helpers (routes/jobs.ts): never so.
+    const e: TeamEvent = "kind" in r ? (r.kind === "asks" || r.kind === "helps" ? { stopped: "it asked what a helper may not" } : { step: r }) : "responseId" in r ? { started: r.responseId } : "error" in r ? { threw: r.error } : r;
+    const spent = "step" in e && e.step.kind !== "failed" ? e.step.usage : undefined;
+    await this.countTokens(j, spent, now);
+    // Stopped meanwhile, or the job was: what this look found it spent still counts, and what it started is let go.
+    const began = "started" in e ? e.started : "step" in e && e.step.kind === "continued" ? e.step.responseId : undefined;
+    const add = (x: Job): Job => (spent ? { ...x, usage: addUsage(x.usage, spent) } : x);
+    const tooLong = now - j.createdAt - (j.waited ?? 0) > HELPERS_MS + WRAP_MS;
+    const kept = await this.edit(j.id, (x) => {
+      if (x.help?.chains[t]?.state !== "working") return add(x);
+      const next = teamStep(x, t, e, now);
+      return tooLong && next.help!.chains[t]!.state === "working" ? teamStep(next, t, { stopped: "the helpers' time was up, and it had written nothing" }, now) : next;
+    });
+    if (kept?.after.help?.chains[t]?.state === "working") return;
+    if (!kept) {
+      const ended = await this.get(j.id);
+      if (ended && spent) await this.save(add(ended));
+    }
+    const left = began ?? ("threw" in e || ("step" in e && e.step.kind === "wait") ? had : undefined);
+    if (left) await deps.cancel({ ...j, responseId: left }).catch(() => {});
+    if (j.mode === "files") await deps.workshop?.("end", helperId(j.id, t)).catch(() => {});
   }
 
   private async advanceHermes(j: Job, deps: JobDeps, now: number, stop: AbortSignal): Promise<void> {
@@ -1289,6 +1440,7 @@ export class Jobs {
     }
     delete done.draft;
     if (done.team) done.team = slimTeam(done.team);
+    if (done.help) done.help = slimHelpers(done.help);
     if ("text" in out) {
       // Into a table: its rows kept to download, the result their summary and the first of them.
       const columns = done.table?.columns;
@@ -1353,6 +1505,7 @@ export class Jobs {
     // How it went, for next time (lib/episodes.ts): not Hermes still working past the wait, which has not failed.
     if (!("late" in out && out.late)) await deps.episode?.(done).catch(() => {});
     if (done.mode === "files") await deps.workshop?.("rest", done.id).catch(() => {});
+    await this.helpersGone(done, deps);
   }
 
   /** Keep each person's newest KEEP_JOBS finished ones: one member's many never prune another's. */

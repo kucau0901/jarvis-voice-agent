@@ -255,6 +255,9 @@ console.log("\nproposals, through the object (lib/proposals.ts)");
   }
   // Not left running: at most three jobs run at once, and those below need theirs.
   if (typeof tidy !== "string") await jarvis.cancelJob(tidy.id);
+  const split = await jarvis.createJob({ title: "Split", task: "Compare them.", engine: "jarvis", helpers: true }, { who: "u_ana", grants: ["*"] });
+  check("a job with helpers, through the object, and one of them it does not have", typeof split !== "string" && split.help?.chains.length === 0 && (await jarvis.stopJobHelper(split.id, 0)) === "there is no such helper" && (await jarvis.stopJobHelper("jnone", 0)) === "it is not working any more", split);
+  if (typeof split !== "string") await jarvis.cancelJob(split.id);
   await jarvis.forgetMember("u_ana");
   check("someone who left: none of theirs kept", (await jarvis.proposalsOf("u_ana", now)).length === 0);
 }
