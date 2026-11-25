@@ -81,6 +81,8 @@ of every release, and in the [README](README.md#updating).
 - **A routine removed or switched off just as it was due stays so.** If Jarvis was
   checking a watch, reading a page or running another routine at that moment, it came
   back, and ran.
+- **Files is offered in Jobs only where the workshop is set up.** The box showed
+  everywhere, and starting a job with it was refused.
 
 ## [2.12.0] - 2026-11-25
 
