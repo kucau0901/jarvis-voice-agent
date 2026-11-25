@@ -18,7 +18,8 @@ import {
 } from "../lib/settings.ts";
 import { carState } from "../tools/tessie.ts";
 import { ping as hermesPing, hermesConfig } from "../tools/hermes.ts";
-import { workshopConfig, workshopUp } from "../lib/workshop.ts";
+import { workshopAsk, workshopConfig, workshopUp } from "../lib/workshop.ts";
+import { repoSeen, reposOf } from "../lib/github.ts";
 import * as google from "../lib/google.ts";
 import * as spotify from "../lib/spotify.ts";
 import { loadServers } from "../lib/config-store.ts";
@@ -255,9 +256,19 @@ const TESTS: Partial<Record<Group, (eff: Env, origin: string) => Promise<TestRes
     const cfg = workshopConfig(eff);
     if (!cfg) return { ok: false, detail: "Needs the door's address and the token." };
     return workshopUp(cfg, timeout()).then(
-      () => ({ ok: true, detail: "The workshop answers." }),
+      async () => {
+        const sites = await workshopAsk(cfg, "sites/list", {}, timeout()).then(() => "So does the sites folder.", (e) => `No site can be published: ${e instanceof Error ? e.message : String(e)}.`);
+        return { ok: true, detail: `The workshop answers. ${sites}` };
+      },
       (e) => ({ ok: false, detail: `Not yet: ${e instanceof Error ? e.message : String(e)}.` }),
     );
+  },
+
+  async github(eff) {
+    const repos = reposOf(eff);
+    if (!repos.length) return { ok: false, detail: "Needs a token and at least one repository." };
+    const seen = await Promise.all(repos.map((r) => repoSeen(eff, r, timeout()).then(() => `${r}: yes`, (e) => `${r}: ${e instanceof Error ? e.message : String(e)}`)));
+    return { ok: seen.every((s) => s.endsWith(": yes")), detail: seen.join(". ") };
   },
 
   async hermes(eff) {

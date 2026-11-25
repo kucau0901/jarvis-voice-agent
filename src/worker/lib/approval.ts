@@ -7,7 +7,8 @@ import { calendarRsvp } from "../tools/calendar.ts";
 import { routineMake } from "../tools/routines.ts";
 import { houseDo } from "../tools/house.ts";
 import { specialtyKeep } from "../tools/specialties.ts";
-import type { Grant } from "./scopes.ts";
+import { PUBLISHING, repoPull, sitePublishTool, sitePutBack } from "../tools/publish.ts";
+import { WILDCARD, covers, type Grant } from "./scopes.ts";
 import { baseTools, outputText } from "../tools/registry.ts";
 
 /**
@@ -18,7 +19,20 @@ import { baseTools, outputText } from "../tools/registry.ts";
  */
 
 /** What only an approval runs: never offered to the router, nor to a job. */
-export const APPROVED_ONLY = [mailDraftSend, calendarRsvp, mailArchiveMany, mailInboxMany, routineMake, houseDo, specialtyKeep];
+export const APPROVED_ONLY = [mailDraftSend, calendarRsvp, mailArchiveMany, mailInboxMany, routineMake, houseDo, specialtyKeep, ...PUBLISHING];
+
+/**
+ * What a tap's person, and whoever taps, must still have for a call that
+ * carries none of it (an approval's grants never hold `workshop`, lib/proposals.ts
+ * runGrants): a card outlives the role it was filed under.
+ */
+const NEEDS: ReadonlyMap<string, Grant> = new Map<string, Grant>([[sitePublishTool.name, "workshop"], [sitePutBack.name, "workshop"], [repoPull.name, WILDCARD]]);
+/** Whether any of them no longer has it. */
+export function lacks(tool: string, ...have: (readonly Grant[] | null | undefined)[]): boolean {
+  const need = NEEDS.get(tool);
+  return !!need && have.some((g) => !covers(g ?? [], [need]));
+}
+export const LACKS = "That is not yours to do any more, so nothing was done.";
 
 const goneSaid = (tool: string) => `That can no longer be done: ${tool} is not set up, or not yours to use now.`;
 
@@ -39,11 +53,16 @@ export function notAsShown(env: Env, p: Proposal): string | null {
 
 /** Put back: what undoes a done call, made by code from its stored arguments; null for one that has no undo. */
 export function inverseOf(env: Env, p: Proposal): { action: Proposal["action"]; weighed: Weighed } | null {
-  if (p.action.tool !== mailArchiveMany.name) return null;
-  const action = { tool: mailInboxMany.name, args: { ids: p.action.args.ids, total: p.action.args.total } };
-  const weighed = weigh(mailInboxMany, action.args, env);
-  return weighed ? { action, weighed } : null;
+  const [undo, args] =
+    p.action.tool === mailArchiveMany.name ? [mailInboxMany, { ids: p.action.args.ids, total: p.action.args.total }]
+      : p.action.tool === sitePublishTool.name ? [sitePutBack, { name: p.action.args.name, sha256: p.action.args.sha256 }]
+        : [null, {}];
+  const weighed = undo && weigh(undo, args, env);
+  return weighed ? { action: { tool: undo.name, args }, weighed } : null;
 }
+
+/** Those whose card offers Put back (src/app/proposal.ts). */
+export const UNDONE: ReadonlySet<string> = new Set([mailArchiveMany.name, sitePublishTool.name]);
 
 /** The stored call, run once with what its tap allowed (Proposals.claim); what came of it, in words. Done only if the tool says it did it. */
 export async function carryOut(env: Env, p: Proposal, grants: readonly Grant[]): Promise<{ ok: boolean; text: string }> {

@@ -46,7 +46,8 @@ function check(name: string, cond: boolean, got?: unknown) {
 // …and then the places nearest them, by name (29 Oct 2026).
 // ask_hermes: nor a tool, bot, webhook or MCP server for Jarvis itself, which is skill_add (30 Oct 2026).
 // control_home gone and ask_hermes's row shorter; job_control's row, and a job's question answered by its person (24 Nov 2026).
-const PROMPT_SHA256 = "d22624ced939b613e835b170e6fcb2def07cd45a869c88a4ca96af4bde521dce";
+// ask_hermes only when Hermes is named, and building is start_job's (25 Nov 2026).
+const PROMPT_SHA256 = "c280befa091ac48db16658f79d8184ff1fd06b5b63e2fed1c926ea0b8c93e8a0";
 // panel_set and panel_remove (tools/panels.ts, scope screen): everyone but the guest (14 Oct 2026).
 // look_back (tools/conversation.ts, scope memory.read): everyone but the guest (16 Oct 2026).
 // panel_list (tools/panels.ts, scope screen): everyone but the guest (16 Oct 2026).
@@ -277,14 +278,14 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
 };
 
 // What every chat question carries before anything of its own: the prompt and the tools' schemas, in bytes, at most
-// (24 Nov 2026, with control_home gone and job_control come). It is sent, and on the plan's route read, with every question, the house's too:
+// (25 Nov 2026, with ask_hermes only when named). It is sent, and on the plan's route read, with every question, the house's too:
 // what background jobs need is theirs (routes/jobs.ts request), and a chat tool added makes room for itself.
 const PREFIX_MAX: Record<string, number> = {
-  "owner key, nothing set up": 50_422,
-  "admin, everything set up": 83_129,
-  "adult": 71_813,
-  "child": 60_307,
-  "guest with a pass": 21_599,
+  "owner key, nothing set up": 50_070,
+  "admin, everything set up": 82_084,
+  "adult": 71_461,
+  "child": 59_955,
+  "guest with a pass": 21_253,
 };
 
 const realFetch = globalThis.fetch;

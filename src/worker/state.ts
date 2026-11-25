@@ -43,7 +43,7 @@ import { Episodes, episodeOfJob, type Episode } from "./lib/episodes.ts";
 import { cardOf, Proposals, type LaterDeps, type Proposal, type ProposalInput } from "./lib/proposals.ts";
 import { PRESENCE, whenSaid } from "./lib/later.ts";
 import { eventById } from "./lib/agenda.ts";
-import { carryOut, inverseOf, notAsShown } from "./lib/approval.ts";
+import { LACKS, carryOut, inverseOf, lacks, notAsShown } from "./lib/approval.ts";
 import { OWNER, personOfWho, withPerson } from "./lib/context.ts";
 import { lookAtPage } from "./lib/page-look.ts";
 import { runBrief } from "./lib/brief.ts";
@@ -730,8 +730,10 @@ export class JarvisState extends DurableObject<Env> {
 
   /** An approved call (lib/proposals.ts tick), made as its person, with no more than its tap allowed and they may reach now. */
   private async makeApproved(p: Proposal, grants: readonly Grant[]): Promise<{ ok: boolean; text: string }> {
-    const reach = reachNow(grants, await this.people.personView(p.person).catch(() => null));
+    const view = await this.people.personView(p.person).catch(() => null);
+    const reach = reachNow(grants, view);
     if (!reach) return { ok: false, text: "Whoever it was for is no longer in the family." };
+    if (lacks(p.action.tool, view?.scopes)) return { ok: false, text: LACKS };
     return carryOut(await this.personEnv(await this.localEnv(), p.who), p, reach);
   }
 
@@ -1570,7 +1572,7 @@ export class JarvisState extends DurableObject<Env> {
   }
 
   // `specialty` and `project`: the ones its person named for it, theirs and kept; any other is none.
-  async createJob(input: { title?: unknown; task?: unknown; engine?: unknown; reach?: unknown; mode?: unknown; team?: unknown; from?: unknown; table?: unknown; helpers?: unknown; specialty?: unknown; project?: unknown }, by: { who: string; grants: readonly Grant[] }) {
+  async createJob(input: { title?: unknown; task?: unknown; engine?: unknown; reach?: unknown; mode?: unknown; repo?: unknown; team?: unknown; from?: unknown; table?: unknown; helpers?: unknown; specialty?: unknown; project?: unknown }, by: { who: string; grants: readonly Grant[] }) {
     const using = typeof input.specialty === "string" && input.specialty ? ((await this.specialties.of(personOfWho(by.who))).find((s) => s.id === input.specialty) ?? null) : null;
     if (typeof input.specialty === "string" && input.specialty && !using) return "that specialty is not kept any more";
     const project = typeof input.project === "string" && input.project ? await this.projects.get(personOfWho(by.who), input.project) : null;

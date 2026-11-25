@@ -27,7 +27,7 @@ interface Out { out?: string; code?: number | string | null; signal?: string; la
 const WAIT_SECONDS = 100;
 const MAX_WAIT = 60;
 /** Their names, for who must know them from the rest (routes/jobs.ts). */
-export const WORKSHOP_TOOLS: ReadonlySet<string> = new Set(["run", "process", "list_files", "read_file", "write_file", "edit_file", "give_file", "mail_file", "hand_file"]);
+export const WORKSHOP_TOOLS: ReadonlySet<string> = new Set(["run", "process", "list_files", "read_file", "write_file", "edit_file", "give_file", "mail_file", "hand_file", "publish_site", "propose_pull", "repo_bring"]);
 /** The job's alone, not a helper's (lib/job-helpers.ts): what its person gets comes from one folder, and one left running keeps the others waiting. */
 const JOBS_OWN: ReadonlySet<string> = new Set(["process", "give_file"]);
 
@@ -54,8 +54,14 @@ function tool(t: Omit<Tool, "pace" | "run"> & { run(args: Record<string, unknown
   };
 }
 
-/** `more`: others that work in its folder (lib/mail-file.ts), made in turn with these. `helper`: for one of a job's helpers, `job` its own folder. */
-export function workshopTools(cfg: WorkshopConfig, job: Pick<Job, "id" | "files" | "ran">, say: (s: Said) => Promise<void>, stop?: AbortSignal, more: Tool[] = [], helper = false): Tool[] {
+/**
+ * `more`: others that work in its folder (lib/mail-file.ts), made in turn with these. `helper`: for one of a job's helpers,
+ * `job` its own folder. `build`: those of a job that builds (lib/build-tools.ts), which give a file as give_file does.
+ */
+export function workshopTools(
+  cfg: WorkshopConfig, job: Pick<Job, "id" | "files" | "ran">, say: (s: Said) => Promise<void>, stop?: AbortSignal, more: Tool[] = [], helper = false,
+  build?: (give: (path: string) => Promise<JobFile | string>) => Tool[],
+): Tool[] {
   const ask: Ask = (what, body, seconds = 60) => {
     const limit = AbortSignal.timeout((seconds + WAIT_SECONDS) * 1000);
     return workshopAsk(cfg, what, { job: job.id, ...body }, stop ? AbortSignal.any([limit, stop]) : limit);
@@ -76,6 +82,17 @@ export function workshopTools(cfg: WorkshopConfig, job: Pick<Job, "id" | "files"
     },
   });
   const strict = { additionalProperties: false } as const;
+  /** A file of its folder, its person's as it is now; why not, in words. */
+  const give = async (path: string): Promise<JobFile | string> => {
+    const name = fileName(path);
+    const n = freeNumber(files, name);
+    if (!n) return `Not given: a job gives ${MAX_FILES} files at most. Put several in one zip.`;
+    const r = await ask<{ size: number; sha256: string }>("give", { path });
+    const f: JobFile = { n, name, size: r.size, sha256: r.sha256, at: Date.now() };
+    files = withFile(files, f);
+    await say({ file: f });
+    return f;
+  };
   const tools = [
     tool({
       name: "run",
@@ -203,17 +220,10 @@ export function workshopTools(cfg: WorkshopConfig, job: Pick<Job, "id" | "files"
       description: `Give the user a file from this job's folder, as it is now: it is in Jobs to download. The same name again replaces it. ${MAX_FILES} at most.`,
       parameters: { type: "object", properties: { path: { type: "string" } }, required: ["path"], ...strict },
       async run(args) {
-        const path = text(args.path);
-        const name = fileName(path);
-        const n = freeNumber(files, name);
-        if (!n) return `Not given: a job gives ${MAX_FILES} files at most. Put several in one zip.`;
-        const r = await ask<{ size: number; sha256: string }>("give", { path });
-        const f: JobFile = { n, name, size: r.size, sha256: r.sha256, at: Date.now() };
-        files = withFile(files, f);
-        await say({ file: f });
-        return `Given: ${name}, ${r.size.toLocaleString("en-US")} bytes. The user can download it in Jobs.`;
+        const f = await give(text(args.path));
+        return typeof f === "string" ? f : `Given: ${f.name}, ${f.size.toLocaleString("en-US")} bytes. The user can download it in Jobs.`;
       },
     }),
   ];
-  return [...tools.filter((t) => !helper || !JOBS_OWN.has(t.name)), ...more].map(inTurn);
+  return [...tools.filter((t) => !helper || !JOBS_OWN.has(t.name)), ...more, ...(build?.(give) ?? [])].map(inTurn);
 }

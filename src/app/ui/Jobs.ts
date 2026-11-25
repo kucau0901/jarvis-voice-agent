@@ -7,6 +7,7 @@ import { askCard, askId } from "./JobAsk";
 import { cardForm, jobLive, jobNow } from "./JobLive";
 import { jobFiles, jobRan, saveFrom } from "./JobFiles";
 import { Projects, type ProjectView } from "./Projects";
+import { Sites } from "./Sites";
 
 /**
  * Background jobs (src/worker/lib/jobs.ts): what is running, what came back,
@@ -30,6 +31,9 @@ const MAX_BRIEF = 4000;
 
 /** What Hermes is asked to do with a finished research report, until the person says otherwise. */
 const HAND_OVER = "Build this with Claude Code in a new project folder, and tell me when it is done";
+
+/** What of /api/hub/me decides what is offered here (src/worker/routes/hub.ts). */
+interface Me { hermes?: boolean; workshop?: boolean; repos?: string[]; scopes?: string[] }
 
 const STATUS: Record<JobView["status"], string> = {
   running: "working",
@@ -56,6 +60,11 @@ export class Jobs {
   private only: { id: string; name: string } | null = null;
   /** Files, in the New job form: offered only where the workshop is set up and theirs to use. */
   private files: HTMLElement;
+  private builds: HTMLElement;
+  /** The repository one that builds works on, for an admin with any to choose. */
+  private repo: HTMLSelectElement;
+  /** What was built and published (ui/Sites.ts). */
+  private sites: Sites;
   /** Research being handed to Hermes: the job, and the instruction as typed so far. */
   private handing = new Map<string, string>();
   /** A working job's card being changed: the job, and the card as typed so far. */
@@ -102,6 +111,8 @@ export class Jobs {
       void this.load().then(() => this.list.scrollIntoView({ block: "start" }));
     });
     sheet.appendChild(this.projects.el);
+    this.sites = new Sites(key);
+    sheet.appendChild(this.sites.el);
     sheet.appendChild(el("h3", "", "New job"));
     const form = el("div", "rform");
     const task = document.createElement("textarea");
@@ -150,11 +161,22 @@ export class Jobs {
     this.files.appendChild(document.createTextNode(" Files: makes them with programs, on a machine with no network, for you to save (a spreadsheet, a document, a chart)"));
     this.files.hidden = true;
     form.appendChild(this.files);
-    hardBox.addEventListener("change", () => {
-      if (hardBox.checked) filesBox.checked = false;
-    });
-    filesBox.addEventListener("change", () => {
-      if (filesBox.checked) hardBox.checked = false;
+    // Build: files too, put to them to publish (lib/build-tools.ts), and always the web's: it has nothing of theirs.
+    this.builds = el("label", "on");
+    const buildBox = document.createElement("input");
+    buildBox.type = "checkbox";
+    this.builds.appendChild(buildBox);
+    this.builds.appendChild(document.createTextNode(" Build: a site, or a change to code, put to you to publish with a tap"));
+    this.builds.hidden = true;
+    form.appendChild(this.builds);
+    // The repository it works on, where there is one to choose: that job has its files, and searches nothing.
+    this.repo = document.createElement("select");
+    this.repo.setAttribute("aria-label", "A repository for it to work on");
+    this.repo.hidden = true;
+    form.appendChild(this.repo);
+    const oneOf = [hardBox, filesBox, buildBox];
+    for (const b of oneOf) b.addEventListener("change", () => {
+      if (b.checked) for (const other of oneOf) if (other !== b) other.checked = false;
     });
     // Research: a stronger model, searching widely, with sources (lib/jobs.ts).
     const deep = el("label", "on");
@@ -187,9 +209,14 @@ export class Jobs {
     });
     // Research is the web's.
     form.addEventListener("change", () => {
-      if (deepBox.checked) reach.value = "web";
-      if (deepBox.checked) hardBox.checked = filesBox.checked = splitBox.checked = false;
-      reach.disabled = hardBox.disabled = filesBox.disabled = splitBox.disabled = this.way.disabled = this.project.disabled = deepBox.checked;
+      this.repo.hidden = !buildBox.checked || deepBox.checked || this.repo.options.length < 2;
+      if (this.repo.hidden) this.repo.value = "";
+      // One on a repository looks neither way: there is nothing to choose.
+      reach.hidden = !!this.repo.value;
+      if (deepBox.checked || buildBox.checked) reach.value = "web";
+      if (deepBox.checked) hardBox.checked = filesBox.checked = buildBox.checked = splitBox.checked = false;
+      hardBox.disabled = filesBox.disabled = buildBox.disabled = splitBox.disabled = this.way.disabled = this.project.disabled = deepBox.checked;
+      reach.disabled = deepBox.checked || buildBox.checked;
       if (deepBox.checked) this.way.value = this.project.value = "";
     });
     let filled = "";
@@ -199,8 +226,11 @@ export class Jobs {
         task.scrollIntoView({ block: "center" });
         return this.msg("Start or clear what is written under New job first.", true);
       }
-      for (const b of [filesBox, splitBox, deepBox, teamBox, tableBox]) b.checked = false;
-      reach.disabled = hardBox.disabled = filesBox.disabled = splitBox.disabled = this.way.disabled = this.project.disabled = false;
+      for (const b of [filesBox, buildBox, splitBox, deepBox, teamBox, tableBox]) b.checked = false;
+      this.repo.value = "";
+      this.repo.hidden = true;
+      reach.hidden = false;
+      reach.disabled = hardBox.disabled = filesBox.disabled = buildBox.disabled = splitBox.disabled = this.way.disabled = this.project.disabled = false;
       this.project.value = j.project && [...this.project.options].some((o) => o.value === j.project!.id) ? j.project.id : "";
       reach.value = j.reach ?? "private";
       this.way.value = j.using && [...this.way.options].some((o) => o.value === j.using!.id) ? j.using.id : "";
@@ -224,7 +254,7 @@ export class Jobs {
           await api(this.key, "POST", "/api/v1/jobs", {
             task: task.value,
             reach: reach.value,
-            ...(hardBox.checked ? { mode: "thorough" } : filesBox.checked ? { mode: "files" } : {}),
+            ...(hardBox.checked ? { mode: "thorough" } : buildBox.checked ? { mode: "build", ...(this.repo.value ? { repo: this.repo.value } : {}) } : filesBox.checked ? { mode: "files" } : {}),
             ...(splitBox.checked ? { helpers: true } : {}),
             ...(this.way.value ? { specialty: this.way.value } : {}),
             ...(this.project.value ? { project: this.project.value } : {}),
@@ -233,9 +263,11 @@ export class Jobs {
             ...(tableBox.checked ? { table: true } : {}),
           });
           task.value = "";
-          hardBox.checked = filesBox.checked = splitBox.checked = deepBox.checked = teamBox.checked = tableBox.checked = false;
-          reach.disabled = hardBox.disabled = filesBox.disabled = splitBox.disabled = this.way.disabled = this.project.disabled = false;
-          this.way.value = "";
+          hardBox.checked = filesBox.checked = buildBox.checked = splitBox.checked = deepBox.checked = teamBox.checked = tableBox.checked = false;
+          reach.disabled = hardBox.disabled = filesBox.disabled = buildBox.disabled = splitBox.disabled = this.way.disabled = this.project.disabled = false;
+          this.way.value = this.repo.value = "";
+          this.repo.hidden = true;
+          reach.hidden = false;
         }, "Started — it arrives as an alert when done."), "primary"),
     );
     sheet.appendChild(form);
@@ -252,10 +284,15 @@ export class Jobs {
     this.el.classList.add("open");
     if (focus) this.open.add(focus);
     // Offered only where Hermes is set up and theirs to ask (routes/hub.ts). A device is not a person: no button.
-    const me = await api(this.key, "GET", "/api/hub/me").then((r) => r as { hermes?: boolean; workshop?: boolean; scopes?: string[] }, () => ({}) as { hermes?: boolean; workshop?: boolean; scopes?: string[] });
+    const me = await api(this.key, "GET", "/api/hub/me").then((r) => r as Me, () => ({}) as Me);
     this.hermes = me.hermes === true;
     this.keeps = !!me.scopes?.some((s) => s === "*" || s === "memory.write");
-    this.files.hidden = me.workshop !== true;
+    this.files.hidden = this.builds.hidden = me.workshop !== true;
+    const picked = this.repo.value;
+    this.repo.replaceChildren(...["", ...(me.repos ?? [])].map((r) => Object.assign(document.createElement("option"), { value: r, textContent: r ? `Works on ${r}, without the web` : "No repository" })));
+    this.repo.value = me.repos?.includes(picked) ? picked : "";
+    if (me.workshop === true) void this.sites.load();
+    else this.sites.el.hidden = true;
     const ways = await api(this.key, "GET", "/api/memory/specialties").then((r) => (r as { specialties: { id: string; name: string }[] }).specialties, () => []);
     const chosen = this.way.value;
     this.way.replaceChildren(...[{ id: "", name: "No specialty" }, ...ways.map(({ id, name }) => ({ id, name: `Following “${name}”` }))].map(({ id, name }) => Object.assign(document.createElement("option"), { value: id, textContent: name })));
@@ -366,14 +403,14 @@ export class Jobs {
     top.appendChild(el("span", `chip ${j.status === "done" || j.asks ? "on" : "off"}`, j.asks ? "asks you" : j.waiting ? "waiting" : j.status === "failed" && j.hasResult ? "part done" : STATUS[j.status]));
     row.appendChild(top);
 
-    const facts: string[] = [j.team ? "Research team" : j.engine === "hermes" ? "Hermes" : j.engine === "research" ? "Research" : j.mode === "thorough" ? "Jarvis, thorough" : j.mode === "files" ? "Jarvis, making files" : "Jarvis", ...(j.helpers && (j.status === "running" || j.helpers.length) ? ["with helpers"] : []), ...(j.using ? [`using “${j.using.name}”`] : []), ...(j.project ? [`in “${j.project.name}”`] : []), ...(j.carried ? [j.carried === 1 ? "went on from its notes" : `went on from its notes, ${j.carried} times`] : []), `started ${when(j.createdAt)}`];
+    const facts: string[] = [j.team ? "Research team" : j.engine === "hermes" ? "Hermes" : j.engine === "research" ? "Research" : j.mode === "thorough" ? "Jarvis, thorough" : j.build ? "Jarvis, building" : j.mode === "files" ? "Jarvis, making files" : "Jarvis", ...(j.helpers && (j.status === "running" || j.helpers.length) ? ["with helpers"] : []), ...(j.using ? [`using “${j.using.name}”`] : []), ...(j.project ? [`in “${j.project.name}”`] : []), ...(j.carried ? [j.carried === 1 ? "went on from its notes" : `went on from its notes, ${j.carried} times`] : []), `started ${when(j.createdAt)}`];
     if (j.status === "running") facts.push(`${Math.max(1, Math.round((Date.now() - j.createdAt) / 60_000))} min so far${j.engine === "jarvis" ? `, step ${j.steps}` : ""}`);
     if (j.team?.phase) facts.push(j.team.phase === "teams" ? `${j.team.reported} of ${j.team.of} teams done` : PHASE[j.team.phase]);
     else if (j.team && j.status !== "running" && j.team.reported < j.team.of) facts.push(`${j.team.reported} of ${j.team.of} teams reported`);
     if (j.finishedAt) facts.push(`took ${Math.max(1, Math.round((j.finishedAt - j.createdAt) / 60_000))} min`);
     if (j.status !== "running" && j.deliveredBy !== undefined) facts.push(j.deliveredBy ? `sent by ${j.deliveredBy}` : "not delivered");
     if (typeof j.cost === "number" && j.cost > 0) facts.push(`about ${j.cost < 0.01 ? "under 1¢" : `$${j.cost.toFixed(2)}`}`);
-    if (j.engine !== "hermes") facts.push(j.engine === "research" || j.reach === "web" ? "the web only" : "your own things, no web");
+    if (j.engine !== "hermes") facts.push(j.repo ? `on ${j.repo}, no web` : j.engine === "research" || j.reach === "web" ? "the web only" : "your own things, no web");
     if (j.onKey) facts.push("on the API key");
     row.appendChild(el("div", "rfacts", facts.join(" · ")));
     if (j.waiting) {

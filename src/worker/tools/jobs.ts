@@ -7,9 +7,10 @@ import { tells } from "../lib/job-brief.ts";
 import { textIn } from "../lib/skill-md.ts";
 import { asksSaid, openQuestions } from "../lib/job-tools.ts";
 import { asQuotedData, ownPart } from "../lib/quote.ts";
-import { allows } from "../lib/scopes.ts";
+import { WILDCARD, allows } from "../lib/scopes.ts";
 import { asFiles } from "../lib/photos.ts";
 import { workshopBring, workshopConfig } from "../lib/workshop.ts";
+import { repoNamed, reposOf } from "../lib/github.ts";
 import { clampLimit } from "./args.ts";
 
 /** As much of what goes with a job on the web as is looked through for who they are (lib/job-brief.ts). */
@@ -47,8 +48,9 @@ const startJob: Tool = {
       reach: { type: "string", enum: ["private", "web"], description: "Research is always the web." },
       mode: {
         type: "string",
-        enum: ["ordinary", "thorough", "files"],
-        description: "'thorough' only if asked, or to weigh many things together: a stronger, dearer model. 'files' makes files to download.",
+        enum: ["ordinary", "thorough", "files", "build"],
+        description: "'thorough' only if asked, or to weigh many things together: a stronger, dearer model. 'files' makes files to download. " +
+          "'build' builds a site or changes code, on the web alone, for the user to publish with a tap.",
       },
       helpers: { type: "boolean", description: "Only if asked for: up to three share the work." },
       research: { type: "string", enum: ["no", "yes", "team", "table"] },
@@ -62,6 +64,9 @@ const startJob: Tool = {
     const research = args.research === "yes" || args.research === "team" || args.research === "table";
     const table = args.research === "table";
     const team = args.research === "team" || table;
+    // Building is the web's: it has nothing of theirs.
+    const build = !research && args.mode === "build";
+    const reach = build ? "web" : args.reach;
     // Research spends the family's monthly allowance: for the family, not a guest.
     if (research && !allows(ctx.grants, "routines")) {
       return "Not started: research in depth is for the family, and this person may not start it. Offer an ordinary job, or to answer now.";
@@ -71,7 +76,7 @@ const startJob: Tool = {
       addresses: [...ctx.memory.facts, ...(ctx.memory.family?.facts ?? [])].flatMap((f) => (f.address ? [f.address] : [])),
     });
     // What goes to the web says nothing of who they are: looked at by code, since the model knows it all (lib/job-brief.ts).
-    if (research || args.reach === "web") {
+    if (research || reach === "web") {
       const said = tells(`${String(args.title ?? "")}\n${String(args.task ?? "")}`, await known(), ctx.asked ?? "");
       if (said.length) {
         return `Not started: the brief says ${said.map((s) => `"${s}"`).join(", ")}. A job on the web is told nothing of who the user is, their family, ` +
@@ -83,10 +88,10 @@ const startJob: Tool = {
     // On the web only one they themselves named just now: what they read may have had a word in the brief.
     const person = ctx.env.JARVIS_PERSON || OWNER;
     const mine = ownPart(ctx.asked ?? "");
-    const used = !research && allows(ctx.grants, "memory.read") ? await state.specialtyNamed(person, args.reach === "web" ? [mine] : [mine, String(args.title ?? ""), String(args.task ?? "")]).catch(() => null) : null;
+    const used = !research && allows(ctx.grants, "memory.read") ? await state.specialtyNamed(person, reach === "web" ? [mine] : [mine, String(args.title ?? ""), String(args.task ?? "")]).catch(() => null) : null;
     // And its project, the same way (lib/job-project.ts).
-    const project = !research && allows(ctx.grants, "memory.read") ? await state.projectNamed(person, args.reach === "web" ? [mine] : [mine, String(args.title ?? ""), String(args.task ?? "")]).catch(() => null) : null;
-    if (args.reach === "web") {
+    const project = !research && allows(ctx.grants, "memory.read") ? await state.projectNamed(person, reach === "web" ? [mine] : [mine, String(args.title ?? ""), String(args.task ?? "")]).catch(() => null) : null;
+    if (reach === "web") {
       /** Why what goes with it may not; null when it may. */
       const stays = async (name: string, words: string[], files: ({ name: string; bytes: Uint8Array } | null)[], where: string): Promise<string | null> => {
         const read = files.map((f) => (f ? textIn(f.bytes) : null));
@@ -105,12 +110,16 @@ const startJob: Tool = {
         (project ? await stays(project.name, project.rules, await Promise.all(project.files.map((f) => state.projectFile(person, project.id, f.n))), "Jobs → Projects") : null);
       if (no) return no;
     }
-    const shop = !research && args.mode === "files" ? workshopConfig(ctx.env) : null;
-    if (!research && args.mode === "files" && (!shop || !allows(ctx.grants, "workshop"))) {
-      return `Not started: making files needs the workshop, which ${shop ? "this person or device may not use" : "is not set up here (Settings → Workshop)"}. Offer an ordinary job, whose answer is words.`;
+    // The owner's repository it works on: one an admin named just now, in their own words. It may be private, so that job searches nothing.
+    const repos = build && ctx.grants.includes(WILDCARD) ? repoNamed(reposOf(ctx.env), mine) : [];
+    if (repos.length > 1) return `Not started: they named ${repos.join(" and ")}, and a job works on one: ask which, or start one for each with its name in their words.`;
+    const makes = !research && (args.mode === "files" || build);
+    const shop = makes ? workshopConfig(ctx.env) : null;
+    if (makes && (!shop || !allows(ctx.grants, "workshop"))) {
+      return `Not started: ${build ? "building" : "making files"} needs the workshop, which ${shop ? "this person or device may not use" : "is not set up here (Settings → Workshop)"}. Offer an ordinary job, whose answer is words.`;
     }
     // What they attached goes to a job on their own things only: on the web it would be something of theirs beside a search.
-    const brought = shop && args.reach !== "web" ? asFiles(ctx.attached) : [];
+    const brought = shop && reach !== "web" ? asFiles(ctx.attached) : [];
     // Counted, not named: a name is its author's words, and list_files gives it quoted.
     const task = `${String(args.task ?? "")}${brought.length ? `\n\n(In its folder, from the user: ${brought.length === 1 ? "a file" : `${brought.length} files`}.)` : ""}`;
     // So do the stronger model and helpers cost: a guest's job is an ordinary one.
@@ -118,7 +127,7 @@ const startJob: Tool = {
     // And only where somebody asked, in words of their own: not a routine, a bot or a page.
     const helpers = !research && args.helpers === true && allows(ctx.grants, "routines") && !!ownPart(ctx.asked ?? "");
     const j = await state.createJob(
-      { title: args.title, task, engine: research ? "research" : "jarvis", reach: args.reach, ...(thorough ? { mode: "thorough" } : shop ? { mode: "files" } : {}), ...(helpers ? { helpers: true } : {}), ...(used ? { specialty: used.id } : {}), ...(project ? { project: project.id } : {}), ...(team ? { team: true } : {}), ...(table ? { table: true } : {}) },
+      { title: args.title, task, engine: research ? "research" : "jarvis", reach, ...(thorough ? { mode: "thorough" } : build ? { mode: "build", ...(repos[0] ? { repo: repos[0] } : {}) } : shop ? { mode: "files" } : {}), ...(helpers ? { helpers: true } : {}), ...(used ? { specialty: used.id } : {}), ...(project ? { project: project.id } : {}), ...(team ? { team: true } : {}), ...(table ? { table: true } : {}) },
       { who: callerWho(ctx.env), grants: ctx.grants },
     );
     if (typeof j === "string") return `Not started: ${j}.`;
@@ -143,8 +152,9 @@ const startJob: Tool = {
     }
     return research
       ? `Started research on "${j.title}". It takes 10 to 40 minutes; the report, with its sources, will reach the user as a message and wait in Jobs. Tell them so.`
-      : `Started "${j.title}" ${j.reach === "web" ? "on the web, with only what its brief says of the user" : "on the user's own things, without the web"}. ` +
+      : `Started "${j.title}" ${j.repo ? `on the repository ${j.repo}, without the web` : j.reach === "web" ? "on the web, with only what its brief says of the user" : "on the user's own things, without the web"}. ` +
         `${brought.length ? `It has what they attached (${brought.length === 1 ? "one file" : `${brought.length} files`}). ` : shop && asFiles(ctx.attached).length ? "It was NOT given what they attached: a job on the web has nothing of theirs. " : ""}` +
+        `${build && !j.repo && reposOf(ctx.env).length && ctx.grants.includes(WILDCARD) ? "It was given NO repository: they named none of those listed (Settings → GitHub). " : ""}` +
         `${used ? `It uses their specialty "${used.name}". ` : ""}${project ? `It is in their project "${project.name}". ` : ""}` +
         `${!research && args.helpers === true && !helpers ? "It has NO helpers: those are for the family, when one of them asks. " : ""}` +
         `It usually takes ${j.mode === "thorough" ? `ten minutes or more, with a stronger model${j.help ? " and helpers" : ""}` : j.help ? "ten minutes or so, splitting the work between helpers" : "a few minutes"}; the result${shop ? ", with its files to download," : ""} will reach the user as a message. Tell them so.`;

@@ -79,6 +79,9 @@ export interface Env {
   /** The workshop's door, and the token shared with it: where a job runs code and makes files (lib/workshop.ts). */
   WORKSHOP_URL?: string;
   WORKSHOP_TOKEN?: string;
+  /** The owner's GitHub, for what a job that builds proposes (lib/github.ts): a token, and the repositories it may be used for. */
+  GITHUB_PULL_TOKEN?: string;
+  GITHUB_REPOS?: string;
 
   /**
    * Backend model that routes delegations. The settings panel overrides this,

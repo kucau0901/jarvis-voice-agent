@@ -122,6 +122,10 @@ export interface Job {
   reach?: Reach;
   /** An ordinary job's: for hard work, research's stronger model, thinking hard; or one that makes files, in the workshop (lib/workshop.ts). */
   mode?: "thorough" | "files";
+  /** One that makes files, to build something (lib/build-tools.ts): on the web, with nothing of its person's. */
+  build?: true;
+  /** That one's, on a repository its person named or chose as it was started: its files, and so no search of the web. */
+  repo?: string;
   /** The specialty its person named for it (lib/job-specialties.ts): given whole from the start, and named on its card. */
   using?: { id: string; name: string };
   /** The project of its person's it is in (lib/job-project.ts). */
@@ -813,7 +817,7 @@ export class Jobs {
   }
 
   async create(
-    input: { title?: unknown; task?: unknown; engine?: unknown; reach?: unknown; mode?: unknown; team?: unknown; from?: unknown; table?: unknown; helpers?: unknown },
+    input: { title?: unknown; task?: unknown; engine?: unknown; reach?: unknown; mode?: unknown; repo?: unknown; team?: unknown; from?: unknown; table?: unknown; helpers?: unknown },
     by: { who: string; grants: readonly Grant[]; using?: { id: string; name: string } | null; project?: { id: string; name: string; rules: readonly string[]; files: readonly { n: number }[] } | null },
     now = Date.now(),
   ): Promise<Job | string> {
@@ -882,11 +886,12 @@ export class Jobs {
       nextAt: now,
       steps: 0,
       attempts: 0,
-      ...(engine === "jarvis" ? { reach: input.reach === "web" ? ("web" as const) : ("private" as const) } : {}),
-      ...(thorough ? { mode: "thorough" as const } : engine === "jarvis" && input.mode === "files" ? { mode: "files" as const } : {}),
+      ...(engine === "jarvis" ? { reach: input.reach === "web" || input.mode === "build" ? ("web" as const) : ("private" as const) } : {}),
+      ...(thorough ? { mode: "thorough" as const } : engine === "jarvis" && (input.mode === "files" || input.mode === "build") ? { mode: "files" as const } : {}),
+      ...(engine === "jarvis" && input.mode === "build" ? { build: true as const, ...(typeof input.repo === "string" && input.repo ? { repo: input.repo } : {}) } : {}),
       ...(engine === "jarvis" && by.using ? { using: { id: by.using.id, name: by.using.name } } : {}),
       ...(engine === "jarvis" && by.project ? { project: { id: by.project.id, name: by.project.name } } : {}),
-      ...(engine === "jarvis" && by.project && input.reach === "web" ? { pinned: { rules: [...by.project.rules], files: by.project.files.map((f) => f.n) } } : {}),
+      ...(engine === "jarvis" && by.project && (input.reach === "web" || input.mode === "build") ? { pinned: { rules: [...by.project.rules], files: by.project.files.map((f) => f.n) } } : {}),
       ...(engine === "jarvis" && input.helpers === true ? { help: { chains: [], board: [] } } : {}),
       ...(team ? { team: newTeam(now) } : {}),
       ...(table ? { table: {} } : {}),

@@ -159,7 +159,7 @@ existence, or argued around.
 | `calendar` | Google Calendar: `calendar_check`, `calendar_add`, `calendar_change`. Reads the diary **and creates, moves, renames and removes events**. |
 | `screen` | `show_place`, `hide_display`, `/api/map`, `make_image` and `/api/image` (pictures Jarvis makes), `make_page` and `/api/page` (pages Jarvis makes), and a person's panels (`panel_set`, `panel_remove`, `/api/hub/panels`). |
 | `voice` | `/api/session`, `/api/tts`, `/api/voices`, and push-to-talk `/api/v1/voice` (which also needs `ask`). |
-| `workshop` | A background job that makes files (`"mode": "files"`): it runs programs in the workshop, a container with no network ([DESIGN.md](DESIGN.md#the-workshop)). No role has it but an admin's and no device has it unless ticked (a `*` device has every scope, this one too); never in a routine, an approved step of a job, or over Telegram. |
+| `workshop` | A background job that makes files (`"mode": "files"`) or builds (`"build"`), and the sites published (`/api/v1/sites`, read only for a device): it runs programs in the workshop, a container with no network ([DESIGN.md](DESIGN.md#the-workshop)). No role has it but an admin's and no device has it unless ticked (a `*` device has every scope, this one too); never in a routine, an approved step of a job, or over Telegram. |
 | `ask` (jobs) | `/api/v1/jobs`, `/api/v1/jobs/cancel`, `/api/v1/jobs/tell`, `/api/v1/jobs/file`, `start_job`, `job_control`. A job for Hermes also needs `hermes`, one that makes files `workshop`. Each job runs with its creator's grants, no more than they hold now; it reads with their reading tools, and what it would do is proposed for their tap (or done at once, for a reversible kind they allowed). |
 | `routines` | `/api/v1/routines`, `/api/v1/routines/run`, `/api/v1/routines/runs`, `/api/v1/trigger`; `routine_add`, `routine_list`, `routine_remove`. A routine's question runs with **its creator's** grants, never more. A device sees, runs and changes only the routines it made, or ones no stronger than itself; revoking or deleting it stops the routines it made, and narrowing it narrows them. |
 | `alerts` | Receiving alerts (`/api/v1/events`, `/api/v1/push`, `/api/v1/alerts`), raising one (`/api/v1/notify`), and `send_note`. The same scope both ways: a device that may be told things may ask to be told something. |
@@ -602,6 +602,14 @@ the workshop does not answer, 409 when the file is not as the job gave it. The
 alert of its result carries `made: [{n, name, size}]`, and its text ends with a
 line naming them.
 
+`"mode": "build"` (needs `workshop` too) is one that makes files in order to build
+something, and is always on the web: its view carries `build: true`, and what it built
+waits as a card for a tap. With `"repo": "owner/name"`, one of those listed in Settings →
+GitHub, it works on that repository and searches nothing (`repo` in its view): only an
+admin, signed in, may give it ([DESIGN.md](DESIGN.md#the-workshop)). `GET /api/v1/sites`
+(needs `workshop`) lists the sites published, `{address, sites: [{name, at, files,
+bytes, down?, before?}]}`, `sites` null where there is no sites folder.
+
 `"helpers": true` (needs `routines`: it costs several times as much) lets an
 ordinary job of any mode give its work out once, in two or three parts, to helpers
 that work at the same time and report back to it. Its view carries `helpers`: empty
@@ -756,7 +764,8 @@ have it build a first version", or pressing **Send to Hermes** on a finished
 research job in Jobs, does the same; the button is there only when
 `GET /api/hub/me` says `"hermes": true` (Hermes is set up, the person may ask
 it, and the profile is not locked; `"workshop": true` says the same of jobs that
-make files). A report is never handed over on its own.
+make files, and `"repos"` lists, for an admin, the repositories one that builds may be
+given). A report is never handed over on its own.
 
 Hermes gets six minutes to answer, and a build takes longer, so it should
 start the build, answer at once, and report back when it is done. Every

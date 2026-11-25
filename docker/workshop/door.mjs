@@ -1,5 +1,6 @@
 // The one way into the workshop (runner.mjs): it lives in Jarvis's own network, where nothing is published, and passes
-// on to the workshop's Unix socket only what Jarvis asks, with their shared token.
+// on to the workshop's Unix socket only what Jarvis asks, with their shared token. The sites folder's (sites.mjs) too,
+// where there is one: a socket on a volume of its own, which the workshop does not have.
 //
 // Jarvis's browser shares that network, and a page it opened can send a request to 127.0.0.1. A browser says so of
 // itself (Origin, Sec-Fetch-Site…), and cannot be told not to: such a request is refused, token or not. Not
@@ -23,7 +24,7 @@ export function refusal(req, token) {
   return null;
 }
 
-export function door({ socket, token }) {
+export function door({ socket, token, sites }) {
   return (req, res) => {
     const no = refusal(req, token);
     const json = (status, error) => {
@@ -33,11 +34,13 @@ export function door({ socket, token }) {
     };
     if (no) return json(...no);
     const { authorization: _a, host: _h, connection: _c, ...headers } = req.headers;
-    const up = request({ socketPath: socket, path: req.url, method: req.method, headers: { ...headers, host: "workshop" } }, (r) => {
+    const site = /^\/v1\/sites(?:\/|$)/.test(req.url ?? "");
+    if (site && !sites) return json(400, "there is no sites folder here");
+    const up = request({ socketPath: site ? sites : socket, path: req.url, method: req.method, headers: { ...headers, host: "workshop" } }, (r) => {
       res.writeHead(r.statusCode ?? 502, r.headers);
       r.on("error", () => res.destroy()).pipe(res);
     });
-    up.on("error", () => json(502, "the workshop is not running"));
+    up.on("error", (e) => (site && (e.code === "ENOENT" || e.code === "ECONNREFUSED") ? json(400, "there is no sites folder here") : json(502, "the workshop is not running")));
     // Whoever asked has gone: the workshop is told (runner.mjs stops what it ran).
     res.on("close", () => !res.writableEnded && up.destroy());
     req.on("error", () => up.destroy()).pipe(up);
@@ -50,7 +53,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
     console.error(`workshop door: set WORKSHOP_TOKEN, ${MIN_TOKEN} characters or more, in .env`);
     process.exit(1);
   }
-  const server = createServer(door({ socket: "/run/workshop/sock", token }));
+  const server = createServer(door({ socket: "/run/workshop/sock", token, sites: "/run/sites/sock" }));
   server.requestTimeout = 0;
   server.listen(PORT, "127.0.0.1", () => console.log("workshop door: open"));
   for (const s of ["SIGTERM", "SIGINT"]) process.on(s, () => process.exit(0));

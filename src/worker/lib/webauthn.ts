@@ -19,9 +19,10 @@
 
 export function b64u(bytes: Uint8Array | ArrayBuffer): string {
   const b = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
-  let s = "";
-  for (const x of b) s += String.fromCharCode(x);
-  return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  // A part at a time: a letter at a time, a file of megabytes takes a hundred times its size.
+  const parts: string[] = [];
+  for (let i = 0; i < b.length; i += 0x8000) parts.push(String.fromCharCode(...b.subarray(i, i + 0x8000)));
+  return btoa(parts.join("")).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
 export function fromB64u(s: string): Uint8Array {

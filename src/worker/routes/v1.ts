@@ -15,6 +15,7 @@ import { handleRoutines } from "./routines.ts";
 import { handleVoice } from "./voice.ts";
 import { handleJobs } from "./jobs.ts";
 import { handleProjects } from "./projects.ts";
+import { handleSites } from "./sites.ts";
 import { handleHouse } from "./house.ts";
 import { handleSpots } from "./spots.ts";
 
@@ -500,6 +501,9 @@ export async function handleV1(
   // Background jobs: minutes of work, answered later.
   const projects = await handleProjects(req, env, url, principal);
   if (projects) return projects;
+
+  const sites = await handleSites(req, env, url, principal);
+  if (sites) return sites;
 
   const jobs = await handleJobs(req, env, url, principal);
   if (jobs) return jobs;

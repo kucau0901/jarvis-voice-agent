@@ -264,6 +264,10 @@ export function requiredScope(pathname: string, method: string): RouteRequiremen
     case "/api/v1/projects/file":
       return m === "GET" ? "memory.read" : "memory.write";
 
+    // What jobs built and a tap published (routes/sites.ts): for whoever may have one built.
+    case "/api/v1/sites":
+      return "workshop";
+
     // Jarvis's component in Home Assistant: what to watch, and what changed. The route
     // takes these from the owner's devices and admins only: they are the house's.
     case "/api/v1/house/watch":

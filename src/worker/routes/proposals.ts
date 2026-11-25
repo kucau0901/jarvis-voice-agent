@@ -7,7 +7,7 @@ import { openQuestions } from "../lib/job-tools.ts";
 import { PROPOSAL_ID, UNDO_MS, viewOf, weigh } from "../lib/proposals.ts";
 import { whenSaid } from "../lib/later.ts";
 import { localeOf } from "../lib/locale.ts";
-import { APPROVED_ONLY, notAsShown } from "../lib/approval.ts";
+import { APPROVED_ONLY, LACKS, UNDONE, lacks, notAsShown } from "../lib/approval.ts";
 import { baseTools } from "../tools/registry.ts";
 
 /**
@@ -49,7 +49,7 @@ export async function handleProposals(req: Request, env: Env, principal: Princip
     const decided = all.filter((p) => p.state !== "pending").sort((a, b) => (b.decidedAt ?? b.createdAt) - (a.decidedAt ?? a.createdAt));
     const newest = decided.slice(0, RECENT);
     // And whatever can still be put back, however far down: its card offers Put back all week.
-    const back = decided.slice(RECENT).filter((p) => p.state === "done" && p.by === "tap" && p.action.tool === "mail_archive_many" && !p.undone && now - (p.decidedAt ?? p.createdAt) < UNDO_MS);
+    const back = decided.slice(RECENT).filter((p) => p.state === "done" && p.by === "tap" && UNDONE.has(p.action.tool) && !p.undone && now - (p.decidedAt ?? p.createdAt) < UNDO_MS);
     return json({ open: all.filter((p) => p.state === "pending").map(viewOf), recent: [...newest, ...back].map(viewOf), allowed, later, asking });
   }
 
@@ -86,13 +86,15 @@ export async function handleProposals(req: Request, env: Env, principal: Princip
   // Who it is for, before it is claimed: a lookup that failed leaves it waiting, to be tapped again.
   const view = await personView(env, me);
   if (view.scopes === undefined) return err(503, "Who it is for could not be checked just now: try again.");
+  // A card outlives the role it was filed under: what it needs, they must still have, and so must whoever taps.
+  const tapped = await state.proposalGet(me, id, now);
+  if (tapped && lacks(tapped.action.tool, view.scopes, grantsOf(principal))) return err(403, LACKS);
   if (b.answer === "undo") {
     const back = await state.proposalUndo(me, id, view.scopes, grantsOf(principal), now);
     return typeof back === "string" ? err(back === "No such proposal." ? 404 : 409, back) : json({ proposal: viewOf(back) });
   }
   // Not claimed unless it would run as its card says: otherwise it stays waiting (a passing blip can be tapped again).
-  const waiting = await state.proposalGet(me, id, now);
-  const unlike = waiting?.state === "pending" ? notAsShown(env, waiting) : null;
+  const unlike = tapped?.state === "pending" ? notAsShown(env, tapped) : null;
   if (unlike) return err(409, unlike);
   // Run by the object's alarm, not here: a slow call (waking the car) finishes even if this screen goes away.
   const claimed = await state.proposalApprove(me, id, view.scopes, grantsOf(principal), now);

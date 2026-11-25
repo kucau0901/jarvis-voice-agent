@@ -7,7 +7,7 @@ import type { EventSink } from "../lib/sse.ts";
 import { err, json, readObject } from "../lib/http.ts";
 import { asQuotedData } from "../lib/quote.ts";
 import { stateStub } from "../lib/state-client.ts";
-import { allows, withoutScreen, type Grant } from "../lib/scopes.ts";
+import { WILDCARD, allows, withoutScreen, type Grant } from "../lib/scopes.ts";
 import { builtinTools, explicitCache, researchModel } from "../lib/router-model.ts";
 import { toToolSchema, type Tool } from "../tools/registry.ts";
 import * as hermes from "../tools/hermes.ts";
@@ -19,7 +19,9 @@ import { DELEGATE, delegateTool, heardBy, helperId, helperMessage, helperScope, 
 import { bringNeeds, handFile } from "../lib/helper-files.ts";
 import { JobSpecialties } from "../lib/job-specialties.ts";
 import { JobProject } from "../lib/job-project.ts";
-import { KEPT_DAYS, WorkshopError, fileHeaders, givenBytes, workshopAsk, workshopConfig } from "../lib/workshop.ts";
+import { KEPT_DAYS, WorkshopError, fileHeaders, givenBytes, workshopAsk, workshopConfig, type JobFile } from "../lib/workshop.ts";
+import { buildReach, buildTools } from "../lib/build-tools.ts";
+import { reposOf } from "../lib/github.ts";
 import { WORKSHOP_TOOLS, workshopTools } from "../lib/workshop-tools.ts";
 import { mailFile } from "../lib/mail-file.ts";
 import { googleConfig } from "../lib/google.ts";
@@ -27,7 +29,7 @@ import { ASK_MS, openLines, openQuestions, unfinished, untold, workTools, type S
 import { RESEARCH_MONTHLY_DEFAULT, helperTool, jobTool, limitsOf, reachOf, webTool, sharesLeft, usageEntry, type Job, type JobDeps, type Step } from "../lib/jobs.ts";
 import { citationsOf, markUnseen } from "../lib/links.ts";
 import { toCsv } from "../lib/research-table.ts";
-import { HELPER_FILES, JOB_FILES, JOB_HELPERS, MERGE_INSTRUCTIONS, PLAN_INSTRUCTIONS, RAN_OUT, RESEARCH_CHECK, TABLE_CHECK, TABLE_MERGE_INSTRUCTIONS, TABLE_PLAN_INSTRUCTIONS, TABLE_TEAM_INSTRUCTIONS, TEAM_INSTRUCTIONS, wrapUp } from "../lib/router-prompt.ts";
+import { HELPER_FILES, JOB_FILES, jobBuild, JOB_HELPERS, MERGE_INSTRUCTIONS, PLAN_INSTRUCTIONS, RAN_OUT, RESEARCH_CHECK, TABLE_CHECK, TABLE_MERGE_INSTRUCTIONS, TABLE_PLAN_INSTRUCTIONS, TABLE_TEAM_INSTRUCTIONS, TEAM_INSTRUCTIONS, wrapUp } from "../lib/router-prompt.ts";
 import { SHARE, angleMessage, mergeMaterial, sharedIn, shareReply, shareTool, teamView } from "../lib/research-team.ts";
 import { prepareRouter, runCalls, type Prepared } from "../lib/router.ts";
 import { held, proposable, type File, type Finish } from "../lib/proposals.ts";
@@ -48,7 +50,7 @@ import type { Storage } from "../lib/state-host.ts";
  *
  *   GET    /api/v1/jobs           the jobs (a device sees its own)
  *   GET    /api/v1/jobs?id=       one, with its whole result
- *   POST   /api/v1/jobs           {task, title?, engine?: "jarvis" | "hermes" | "research", reach?: "private" | "web", mode?: "thorough" | "files", helpers?: true, specialty?: id, project?: id, team?: true, from?: id}
+ *   POST   /api/v1/jobs           {task, title?, engine?: "jarvis" | "hermes" | "research", reach?: "private" | "web", mode?: "thorough" | "files" | "build", repo?: "owner/name", helpers?: true, specialty?: id, project?: id, team?: true, from?: id}
  *   POST   /api/v1/jobs/cancel    {id, helper?}   stops it, or one of its helpers
  *   POST   /api/v1/jobs/key       {id}   a job waiting for the ChatGPT plan goes on with the API key instead; needs `routines`
  *   POST   /api/v1/jobs/card      {id, outcome?, limits?, assumptions?}   its person changes its card while it works
@@ -184,10 +186,11 @@ export function jobEngine(
     const grants: Grant[] = web ? ["ask"] : jobGrants(may);
     // A job that may act proposes instead (lib/proposals.ts); on the web it has nothing to act on.
     // A helper only reads, and has nothing of its person's past: less than the job, whatever its brief says.
-    const toolFilter = web ? webTool : helper ? helperTool : (t: { name: string }) => jobTool(t) || proposable(t) || t.name === mailSend.name;
+    // Given a repository, which may be private, it has no way out beside it: no search, and nothing that asks elsewhere.
+    const toolFilter = job.repo ? () => false : web ? webTool : helper ? helperTool : (t: { name: string }) => jobTool(t) || proposable(t) || t.name === mailSend.name;
     const prepared = await prepareRouter(env, turns, signal(stop), grants, { surface: research ? "research" : "job", reach: reachOf(job), toolFilter, ...(helper ? { helper: true as const } : {}) });
     const p = web || helper ? prepared : proposing(prepared, job);
-    const searches = web ? builtinTools(env) : [];
+    const searches = web && !job.repo ? builtinTools(env) : [];
     // Research, and a thorough job: the stronger model, thinking hard (lib/jobs.ts "research").
     const strong = research || job.mode === "thorough";
     const model = strong ? researchModel(env.RESEARCH_MODEL) : p.model;
@@ -200,6 +203,9 @@ export function jobEngine(
     // Their own ways of doing things, for the job itself: any of theirs, or on the web the one they named (lib/job-specialties.ts).
     const ways = kept && !helper && t === undefined && job.engine === "jarvis" ? new JobSpecialties(kept, job, allows(may, "memory.read")) : null;
     const theirs = ways ? await ways.list() : [];
+    // One that builds has its own besides: to publish what it made, by a tap, and the repository it was started on (lib/build-tools.ts).
+    const building = job.build && shop && kept && !helper && t === undefined ? await buildReach(shop, env, job, may.includes(WILDCARD), stop) : null;
+    const builds = building && shop && kept ? (give: (path: string) => Promise<JobFile | string>) => buildTools(shop, env, job, { ...building, kept, ...(stop ? { stop } : {}) }, give) : undefined;
     // The project it is in: its rules, its files, what its last jobs came back with (lib/job-project.ts).
     const belongs = kept && job.project && t === undefined && job.engine === "jarvis" && allows(may, "memory.read") ? new JobProject(kept, job) : null;
     const project = belongs ? await belongs.it() : null;
@@ -214,7 +220,7 @@ export function jobEngine(
       : t !== undefined
         ? [shareTool("", [], 0)]
         : job.engine === "jarvis"
-          ? [...workTools(job, say), readResult(kept, job.id), ...(shop ? workshopTools(shop, job, say, stop, mailIn) : []), ...(theirs.length ? [ways!.tool(shop, stop)] : []), ...(project?.files.length ? [belongs!.tool(project)] : []), ...(job.help ? [delegateTool(!!shop)] : [])]
+          ? [...workTools(job, say), readResult(kept, job.id), ...(shop ? workshopTools(shop, job, say, stop, mailIn, false, builds) : []), ...(theirs.length ? [ways!.tool(shop, stop)] : []), ...(project?.files.length ? [belongs!.tool(project)] : []), ...(job.help ? [delegateTool(!!shop)] : [])]
           : [];
     const functions = [...p.tools, ...own].map(toToolSchema);
     return {
@@ -238,7 +244,7 @@ export function jobEngine(
       base: {
         model,
         ...(strong ? { reasoning: { effort: "high" as const } } : {}),
-        instructions: p.instructions + (shop ? (helper ? HELPER_FILES : JOB_FILES) : "") + (!helper && job.help ? JOB_HELPERS : ""),
+        instructions: p.instructions + (shop ? (helper ? HELPER_FILES : JOB_FILES) : "") + (building ? jobBuild(building) : "") + (!helper && job.help ? JOB_HELPERS : ""),
         tools: [...functions, ...searches],
         tool_choice: "auto" as const,
         // Background mode: the step runs at OpenAI, and nobody has to stay connected for it.
@@ -785,14 +791,20 @@ export async function handleJobs(req: Request, env: Env, url: URL, principal: Pr
     if (b.mode === "thorough" && !allows(grants, "routines")) return err(403, 'a thorough job needs "routines"', { need: "routines" });
     // Several times an ordinary job's share of what the house pays for.
     if (b.helpers === true && !allows(grants, "routines")) return err(403, 'a job with helpers needs "routines"', { need: "routines" });
-    if (b.mode === "files") {
+    if (b.mode === "files" || b.mode === "build") {
       if (!allows(grants, "workshop")) return err(403, 'a job that makes files needs "workshop"', { need: "workshop" });
       if (!workshopConfig(env)) return err(400, "making files needs the workshop, which is not set up (Settings → Workshop)");
     }
     const named = [b.specialty, b.project].some((x) => typeof x === "string" && x);
     if (named && !allows(grants, "memory.read")) return err(403, 'using a specialty or a project needs "memory.read"', { need: "memory.read" });
     // Theirs, beside a search: only their own hand puts it there (the form), or their own words (tools/jobs.ts).
-    if (named && b.reach === "web" && principal.kind === "device") return err(403, "a device's job on the web has nothing of its owner's");
+    if (named && (b.reach === "web" || b.mode === "build") && principal.kind === "device") return err(403, "a device's job on the web has nothing of its owner's");
+    // The owner's, beside nothing: an admin's hand puts it there (the form), or their own words (tools/jobs.ts).
+    if (b.repo !== undefined) {
+      if (b.mode !== "build") return err(400, "repo goes with mode \"build\"");
+      if (principal.kind === "device" || !grants.includes(WILDCARD)) return err(403, "a repository is an admin's to choose, signed in");
+      if (typeof b.repo !== "string" || !reposOf(env).includes(b.repo)) return err(400, "that repository is not listed in Settings → GitHub");
+    }
     const j = await state.createJob(b, { who, grants });
     return typeof j === "string" ? err(400, j) : json({ ok: true, job: jobView(j) }, { status: 201 });
   }
