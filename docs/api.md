@@ -832,6 +832,16 @@ sends nothing, and its last result says why. What is said is at most 300
 characters, sent with what waits for their OK as `proposals`, and at most four
 things a day to one person. One each: posting another replaces its schedule,
 keeping its id. It needs a ChatGPT plan or an OpenAI key.
+A `once`, `daily` or `cron` routine may instead start a background job: `"job":
+"private"` or `"web"` (its `reach`) with the brief, up to 4,000 characters, as `ask`;
+`"thorough": true` for the stronger model, and `"cap"`, a number: the dollars of the API
+key at about which a run stops and writes up what it has (0.05 to 2; the step it is on and
+that writing come on top; nothing is counted on the ChatGPT plan; with a model that has no
+listed price, a run with a cap stops at its first paid step). Its result is the job's own
+to send; a run while the one before is still at work starts none, unless that one only
+waits for an answer. A `daily` or `cron` routine of any kind may have a last day, as a
+date, `"until": "2026-12-14"`: it runs then, is off after, and goes a week later. The job's view carries `routine: {id, name}` and `cap`.
+
 `GET /api/v1/routines` lists them with plain-English `when` and `does`, the
 next run and the last result; `PATCH` takes `{id, enabled?, name?}`; `DELETE
 ?id=` removes one; `POST /api/v1/routines/run {id}` runs one now.

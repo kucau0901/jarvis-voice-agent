@@ -68,12 +68,15 @@ console.log("\nroutines: a small JSON object, or 400");
 {
   const { env, calls } = fakeState({ addRoutine: "give when: once, daily, event, leave or watch" });
   const post = async (path: string, body: string) => answer(await handleRoutines(req("POST", path, body), env, new URL(`https://j.test${path}`), OWNER));
-  for (const [what, body] of [["not JSON", "{"], ["an array", "[1]"], ["over 8 KB", big(8 * 1024)]] as const) {
+  for (const [what, body] of [["not JSON", "{"], ["an array", "[1]"], ["over 16 KB", big(16 * 1024)]] as const) {
     const r = await post("/api/v1/routines", body);
     check(`a routine, ${what}: 400, "${SMALL}"`, r.status === 400 && r.body.error === SMALL, r);
   }
   const ok = await post("/api/v1/routines", "{}");
   check("an object is passed on to be checked", ok.status === 400 && ok.body.error === "give when: once, daily, event, leave or watch" && calls.some((c) => c.method === "addRoutine"), ok);
+  calls.length = 0;
+  await post("/api/v1/routines", JSON.stringify({ when: "daily", time: "18:00", job: "private", ask: "查".repeat(4000) }));
+  check("a job's brief of 4,000 characters, in any script, is passed on whole", calls.some((c) => c.method === "addRoutine" && (c.args[0] as { ask: string }).ask.length === 4000), calls.length);
   const trigger = await post("/api/v1/trigger", "{");
   check("an event that is not JSON: 400, no event", trigger.status === 400 && trigger.body.error!.startsWith("event is required"), trigger);
 }

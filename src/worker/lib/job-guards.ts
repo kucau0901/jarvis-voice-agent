@@ -41,7 +41,10 @@ export function outOf(j: Job, limits: Limits, cost: number | null, now: number):
   if (j.engine === "research") return null;
   if (j.stuck) return "it kept asking the same thing and getting the same answer";
   if ((j.usage?.searches ?? 0) >= MAX_SEARCHES) return `it made its ${MAX_SEARCHES} web searches`;
-  if (cost !== null && cost >= KEY_DOLLARS) return `it used $${KEY_DOLLARS} of the API key`;
+  // A model with no listed price: what it has cost cannot be told, and a limit its person set is not to be gone past unseen.
+  if (cost === null) return j.cap === undefined ? null : "its model has no listed price, so the limit set for it on the API key could not be kept";
+  if (j.cap !== undefined && cost >= j.cap) return `it had used $${cost.toFixed(2)} of the API key, and was to stop at about $${j.cap.toFixed(2)}`;
+  if (cost >= KEY_DOLLARS) return `it used $${KEY_DOLLARS} of the API key`;
   return null;
 }
 

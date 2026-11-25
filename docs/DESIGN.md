@@ -1937,6 +1937,20 @@ object. Anything in there that reaches state through `stateStub(env)` — memory
 alerts — is handed the object itself rather than a stub, so it is a plain
 method call, not a request from the object to itself.
 
+**A routine may start a background job** (`job`), for what takes many steps: on their
+own things or the web, as any job, ordinary or thorough, never one that makes files or has
+helpers, which are for when somebody asked. At a time only: an event may be a component's
+words, and a watch or a page's a stranger's, and none of those is a brief. It runs as its
+maker, no further than they may reach now; its brief, when set up by asking, says nothing
+of who or where they are if it is the web's. The scheduler only starts it: its result, its
+questions and its cards are the job's. One still at work is not joined by another; one
+that only waits for an answer is. Set up by asking, it needs the person's own words in
+that message: an event or a page read there is not to make work that comes round. It may
+be given less of the API key than a job's $2: spending is known once a step is over, so it
+stops at about that, and says what it had used. And it may have a last day, which any
+daily or cron routine may: something set up for a month should not need remembering to
+stop. That is a date, kept as one, whatever the time zone is by then.
+
 **Watches cost nothing; a page watch a little.** A watch is a Home Assistant
 template checked every minute, with no model. A page watch, set only from a
 panel's tile, reads a public https page at the tile's own pace, at most hourly:
@@ -1944,7 +1958,12 @@ the page fetched, then the cheapest model with no tools asked YES, NO or
 UNKNOWN. Both say their message once each time their condition comes true, and
 a page's message carries the reading it rests on. Each is tried once before it
 is kept, and a page watch's try is its first look, so one already true is said
-at once. Ten of each at most.
+at once. Ten of each at most. A page whose words are the same as at the last look is
+not read again: what it said then is what it says now, and that look is free. The model
+is told nothing but the page and the condition, not even the time, so nothing else of
+what it answers from could have changed; with other instructions or another model, after
+an update, it is read again, as it is when the watch is switched off and on. A look that
+could not say, or failed, is not kept: the next one asks again.
 
 **"When I get home" is a watch on their person.** Asked to do something when
 they get home or leave, the router says so (`arrive_home`, `leave_home`) and

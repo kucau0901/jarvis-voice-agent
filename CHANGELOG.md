@@ -54,11 +54,17 @@ of every release, and in the [README](README.md#updating).
   you started it, opens as a pull request, and that job searches nothing. Nothing is live
   until you tap, and what is published is exactly what the card listed. Jobs → **Sites**
   lists them. Needs the workshop; how to set up the rest is in the README.
+- **A routine can start a background job.** "Every Friday at six, go through the week's mail
+  and plan the next", or **Start a background job** in **Routines**: on your own things or
+  the web. In **Routines** it may also be thorough, or stop at about what you set on the API
+  key. Any daily or cron routine may have a last day, after which it is off. **Run now**
+  starts one at once.
 - "What did the solar job find about the rebate?" also looks in what finished jobs came
   back with, not only their titles and briefs.
 
 ### Changed
 
+- **A watched page that has not changed is not read again**, so a look at it costs nothing.
 - **Hermes is asked only when you name it.** Jarvis used to send it code, and anything on
   its computer, by itself. Say "ask Hermes to…" for that; your next words after it answers
   still reach it. Sites and code can be a background job's instead. A tile that asks it is

@@ -287,6 +287,44 @@ console.log("\na brief whose maker can no longer reach anything by its end (stat
   }
 }
 
+console.log("\na routine that starts a background job (state.ts job hook)");
+{
+  const hub: { people: { personView(p: string): Promise<unknown> } } = jarvis as never;
+  const realView = hub.people.personView;
+  let scopes: string[] | null = ["ask", "routines", "memory.read"];
+  hub.people.personView = async () => ({ scopes });
+  try {
+    const inside: { schedulerDeps(): Promise<{ job(r: unknown): Promise<{ ok: boolean; text: string }> }> } = jarvis as never;
+    const deps = await inside.schedulerDeps();
+    const r = { id: "rjob", name: "Week", enabled: true, trigger: { kind: "daily", time: "18:00", days: [] }, action: { kind: "job", task: "Plan the week.", reach: "web", thorough: true, cap: 0.2 }, grants: ["*"], createdBy: "u_ana", createdAt: 1 };
+    const one = await deps.job(r);
+    const job = (await jarvis.listJobs()).find((j) => j.routine?.id === "rjob")!;
+    check("started as its maker, no further than they may reach now, with what it says", one.ok && one.text === "Week" && job.createdBy === "u_ana" && job.reach === "web" && job.mode === "thorough" && job.cap === 0.2 && job.task === "Plan the week." && !job.grants.includes("*") && [...job.grants].sort().join() === "ask,memory.read,routines", { one, job });
+    const two = await deps.job(r);
+    check("not while the one before is still at work", !two.ok && /still at work/.test(two.text) && (await jarvis.listJobs()).filter((j) => j.routine?.id === "rjob").length === 1, two);
+    const rec = { ...(await jarvis.getJob(job.id))!, waits: { since: Date.now() } };
+    await (jarvis as unknown as { jobs: { save(j: unknown): Promise<void> } }).jobs.save(rec);
+    const meanwhile = await deps.job(r);
+    const second = (await jarvis.listJobs()).find((j) => j.routine?.id === "rjob" && j.id !== job.id)!;
+    check("one that only waits for an answer holds up none", meanwhile.ok && !!second, meanwhile);
+    await jarvis.cancelJob(second.id);
+    scopes = ["routines"];
+    const mute = await deps.job(r);
+    check("none for whoever may no longer ask", !mute.ok && /may no longer ask/.test(mute.text), mute);
+    await jarvis.cancelJob(job.id);
+    scopes = ["ask"];
+    const three = await deps.job(r);
+    const plain = (await jarvis.listJobs()).find((j) => j.routine?.id === "rjob" && j.status === "running")!;
+    check("an ordinary one for who may no longer start a thorough", three.ok && plain.mode === undefined, plain);
+    await jarvis.cancelJob(plain.id);
+    scopes = null;
+    const left = await deps.job(r);
+    check("none for one who has left", !left.ok && /no longer in the family/.test(left.text), left);
+  } finally {
+    hub.people.personView = realView;
+  }
+}
+
 console.log("\nanswering what a look around said (state.ts lookAnswer)");
 {
   const now = Date.now();

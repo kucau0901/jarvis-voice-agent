@@ -1,4 +1,4 @@
-import type { Tool } from "./registry.ts";
+import type { Tool, ToolContext } from "./registry.ts";
 import { stateStub } from "../lib/state-client.ts";
 import { OWNER, callerWho, maySteer, mayWork } from "../lib/context.ts";
 import { wordsOf, type Job } from "../lib/jobs.ts";
@@ -15,6 +15,22 @@ import { clampLimit } from "./args.ts";
 
 /** As much of what goes with a job on the web as is looked through for who they are (lib/job-brief.ts). */
 const LOOKED_THROUGH = 400_000;
+
+/** What a person's names and addresses are, to look for in what goes to the web (lib/job-brief.ts). */
+const known = async (ctx: ToolContext) => ({
+  names: [ctx.env.JARVIS_PERSON_NAME ?? "", ctx.env.JARVIS_PERSON_NICKNAME ?? "", ...((await stateStub(ctx.env)?.familyPeople().catch(() => [])) ?? []).map((p) => p.name)],
+  addresses: [...ctx.memory.facts, ...(ctx.memory.family?.facts ?? [])].flatMap((f) => (f.address ? [f.address] : [])),
+});
+
+/** Why a brief may not go to the web, what it says of who they are (lib/job-brief.ts) named; null when it may. */
+export async function webBrief(brief: string, ctx: ToolContext): Promise<string | null> {
+  const said = tells(brief, await known(ctx), ctx.asked ?? "");
+  return said.length
+    ? `the brief says ${said.map((s) => `"${s}"`).join(", ")}. A job on the web is told nothing of who the user is, their family, ` +
+      "or exactly where they live: start it again without, as 'the user' and at most their town. Only what they themselves said in this " +
+      "message may be in it; if they want that looked up, ask them to say so."
+    : null;
+}
 
 /**
  * Starting a background job by voice (lib/jobs.ts). The job keeps the
@@ -71,18 +87,10 @@ const startJob: Tool = {
     if (research && !allows(ctx.grants, "routines")) {
       return "Not started: research in depth is for the family, and this person may not start it. Offer an ordinary job, or to answer now.";
     }
-    const known = async () => ({
-      names: [ctx.env.JARVIS_PERSON_NAME ?? "", ctx.env.JARVIS_PERSON_NICKNAME ?? "", ...((await state.familyPeople().catch(() => [])) ?? []).map((p) => p.name)],
-      addresses: [...ctx.memory.facts, ...(ctx.memory.family?.facts ?? [])].flatMap((f) => (f.address ? [f.address] : [])),
-    });
     // What goes to the web says nothing of who they are: looked at by code, since the model knows it all (lib/job-brief.ts).
     if (research || reach === "web") {
-      const said = tells(`${String(args.title ?? "")}\n${String(args.task ?? "")}`, await known(), ctx.asked ?? "");
-      if (said.length) {
-        return `Not started: the brief says ${said.map((s) => `"${s}"`).join(", ")}. A job on the web is told nothing of who the user is, their family, ` +
-          "or exactly where they live: start it again without, as 'the user' and at most their town. Only what they themselves said in this " +
-          "message may be in it; if they want that looked up, ask them to say so.";
-      }
+      const no = await webBrief(`${String(args.title ?? "")}\n${String(args.task ?? "")}`, ctx);
+      if (no) return `Not started: ${no}`;
     }
     // One of their specialties, named in the brief: it is given to the job whole (lib/job-specialties.ts).
     // On the web only one they themselves named just now: what they read may have had a word in the brief.
@@ -98,7 +106,7 @@ const startJob: Tool = {
         if (read.includes(null)) return `Not started: "${name}" has a file nothing here can look through, and a job on the web is told nothing of who the user is. They can start it themselves in Jobs, or it can be started on their own things.`;
         const all = [...words, ...files.map((f) => f!.name), ...read].join("\n");
         if (all.length > LOOKED_THROUGH) return `Not started: "${name}" is more than can be looked through here, and a job on the web is told nothing of who the user is. They can start it themselves in Jobs, or it can be started on their own things.`;
-        const said = tells(all, await known(), ctx.asked ?? "");
+        const said = tells(all, await known(ctx), ctx.asked ?? "");
         return said.length
           ? `Not started: "${name}", which they named, says ${said.slice(0, 5).map((s) => `"${s.slice(0, 60)}"`).join(", ")}${said.length > 5 ? ` and ${said.length - 5} more` : ""}, and a job on the web is told nothing of who the user is, their family, or exactly where ` +
             `they live. Start it on their own things, or without it, with what is needed of it in the brief; or they can change it in ${where}.`

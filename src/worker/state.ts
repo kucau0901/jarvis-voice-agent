@@ -45,7 +45,7 @@ import { PRESENCE, whenSaid } from "./lib/later.ts";
 import { eventById } from "./lib/agenda.ts";
 import { LACKS, carryOut, inverseOf, lacks, notAsShown } from "./lib/approval.ts";
 import { OWNER, personOfWho, withPerson } from "./lib/context.ts";
-import { lookAtPage } from "./lib/page-look.ts";
+import { lookAtPage, type PageSeen } from "./lib/page-look.ts";
 import { runBrief } from "./lib/brief.ts";
 import { MeetingsSeen, meetingsSaid, runMeetings } from "./lib/meetings.ts";
 import { Noticed, runNotice } from "./lib/notice.ts";
@@ -445,9 +445,9 @@ export class JarvisState extends DurableObject<Env> {
       // A page watch's look (lib/page-look.ts): counted in its maker's usage, as any model call is.
       ...(reads
         ? {
-            readPage: async (r: Routine) => {
+            readPage: async (r: Routine, last?: PageSeen) => {
               if (r.trigger.kind !== "page") return { state: null, text: "", error: "not a page watch" };
-              const look = await lookAtPage(env, r.trigger.url, r.trigger.question, r.trigger.condition);
+              const look = await lookAtPage(env, r.trigger.url, r.trigger.question, r.trigger.condition, fetch, undefined, last);
               if (look.usage) {
                 const at = Date.now();
                 await this.recordUsage(
@@ -459,6 +459,21 @@ export class JarvisState extends DurableObject<Env> {
             },
           }
         : {}),
+      // A background job, as its maker, no further than they may reach now; not while the one before is still at work.
+      job: async (r) => {
+        if (r.action.kind !== "job") return { ok: false, text: "not a routine that starts one" };
+        const grants = reachNow(r.grants, await this.people.personView(personOfWho(r.createdBy)).catch(() => null));
+        if (!grants) return { ok: false, text: "whoever made it is no longer in the family" };
+        if (!allows(grants, "ask")) return { ok: false, text: "whoever made it may no longer ask" };
+        // Not one that only waits for its person's answer: it holds up nothing, and may for a day.
+        if ((await this.jobs.list()).some((j) => j.routine?.id === r.id && j.status === "running" && !j.waits)) return { ok: false, text: "the one it started last is still at work" };
+        const { task, reach, thorough, cap } = r.action;
+        const j = await this.jobs.create(
+          { title: r.name, task, engine: "jarvis", reach, ...(thorough && allows(grants, "routines") ? { mode: "thorough" } : {}) },
+          { who: r.createdBy, grants, routine: { id: r.id, name: r.name }, ...(cap !== undefined ? { cap } : {}) },
+        );
+        return typeof j === "string" ? { ok: false, text: j } : { ok: true, text: j.title };
+      },
       // A brief (lib/brief.ts): as far as its maker may reach now, its opening counted in their usage,
       // what it puts to them filed as a job's calls are, with no more than it may reach.
       brief: async (r, now) => {

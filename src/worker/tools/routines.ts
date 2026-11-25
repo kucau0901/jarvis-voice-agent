@@ -4,12 +4,13 @@ import { localeOf } from "../lib/locale.ts";
 import { describeAction, describeTrigger, whenSaid, type Routine } from "../lib/routines.ts";
 import { callerWho, mayWork, OWNER } from "../lib/context.ts";
 import { MAX_ASK } from "../lib/habits.ts";
-import { asQuotedData, tidy } from "../lib/quote.ts";
+import { asQuotedData, ownPart, tidy } from "../lib/quote.ts";
 import { findSpot, placeEvent } from "../lib/spots.ts";
 import { PRESENCE } from "../lib/later.ts";
 import { haConfig } from "../lib/ha.ts";
 import { allows } from "../lib/scopes.ts";
 import { unattendedSaid } from "./components.ts";
+import { webBrief } from "./jobs.ts";
 
 /**
  * Making routines by voice (lib/routines.ts). The routine keeps the caller's
@@ -31,7 +32,7 @@ export const homeCondition = (presence: string, arrive: boolean): string =>
 
 function said(r: Routine, tz: string): string {
   const next = r.nextAt ? ` Next: ${whenSaid(r.nextAt, tz)}.` : "";
-  return `"${r.name}" — ${describeTrigger(r.trigger, tz)}; ${describeAction(r.action)}.${next}`;
+  return `"${r.name}" — ${describeTrigger(r.trigger, tz, r.until)}; ${describeAction(r.action)}.${next}`;
 }
 
 const routineAdd: Tool = {
@@ -102,6 +103,7 @@ const routineAdd: Tool = {
     "with location turned on in its settings; nothing else knows where they are. place=null is anywhere they arrive " +
     "or leave, for 'when I get somewhere, tell me one useful thing about it or stay quiet' (ask, with " +
     "notify=if-important): the ask is then given the place's name. " +
+    "Work of many steps on a schedule ('every Friday, plan my week'): ask, its brief, with job. " +
     "Afterwards read back what was set and when it will next happen.",
   parameters: {
     type: "object",
@@ -139,6 +141,8 @@ const routineAdd: Tool = {
         type: ["string", "null"],
         description: "A request for Jarvis to carry out at the time, with the answer sent to the user.",
       },
+      job: { type: ["string", "null"], enum: ["private", "web", null], description: "With ask, at a time: a background job, as start_job's reach." },
+      until: { type: ["string", "null"], description: "daily, cron: the last day, YYYY-MM-DD, or null." },
       brief: { type: ["boolean", "null"], description: "true for a brief of their day in place of say or ask; daily or once only. Null otherwise." },
       meetings: { type: ["boolean", "null"], description: "true to put meetings emailed to them in their calendar, in place of say or ask; cron, daily or once. Null otherwise." },
       notice: { type: ["boolean", "null"], description: "true for a look around that speaks only when something is worth it, in place of say or ask; cron, daily or once. Null otherwise." },
@@ -159,7 +163,7 @@ const routineAdd: Tool = {
         description: "With pass_to: how long they have to answer before the user (or family) is told; nudged halfway. Null for the family's usual (an hour). Medicine might be 20.",
       },
     },
-    required: ["name", "when", "local_time", "in_minutes", "time", "days", "cron", "event", "place", "buffer_min", "condition", "for_minutes", "say", "ask", "brief", "meetings", "notice", "notify", "pass_to", "pass_kind", "points", "escalate", "answer_within_minutes"],
+    required: ["name", "when", "local_time", "in_minutes", "time", "days", "cron", "event", "place", "buffer_min", "condition", "for_minutes", "say", "ask", "job", "until", "brief", "meetings", "notice", "notify", "pass_to", "pass_kind", "points", "escalate", "answer_within_minutes"],
     additionalProperties: false,
   },
   async run(args, ctx) {
@@ -193,6 +197,11 @@ const routineAdd: Tool = {
         "Getting home (person.their_name), or an admin does on their page in Family. Tell them that plainly."
       );
     }
+    // Work that comes round and costs is set up by a person asking, in words of their own: not by an event's, a bot's or a page's.
+    if (args.job && !ownPart(ctx.asked ?? "")) return "Not set up: a background job on a schedule is set up only when the user asks for it themselves.";
+    // A job on the web is told nothing of who they are, whenever it starts.
+    const no = args.job && args.job !== "private" ? await webBrief(`${String(args.name ?? "")}\n${String(args.ask ?? "")}`, ctx) : null;
+    if (no) return `Not set up: ${no}`;
     const r = await state.addRoutine(
       {
         name: args.name,
@@ -209,6 +218,8 @@ const routineAdd: Tool = {
         ...(watched ? { onChange: true } : {}),
         say: args.say,
         ask: args.ask,
+        job: args.job,
+        until: args.until,
         brief: args.brief,
         meetings: args.meetings,
         notice: args.notice,
@@ -248,6 +259,8 @@ const routineAdd: Tool = {
     const told = from ? "" : alone;
     return r.action.kind === "relay"
       ? `Set up: ${said(r, tz)}${extra} Each time, it reaches them on their own screens and phone, and what they say comes back to the user.`
+      : r.action.kind === "job"
+        ? `Set up: ${said(r, tz)}${extra} Its result reaches the user as any job's does; not started while the one before is still at work. It is an ordinary one, with the usual limits: thorough, or a lower limit on the API key, they choose in Routines.`
       : r.action.kind === "ask" && r.action.notify === "if-important"
         ? `Set up: ${said(r, tz)}${extra} It will reach the user as an alert only when there is something worth telling.${told}`
         : `Set up: ${said(r, tz)}${extra} It will reach the user as an alert.${told}`;
