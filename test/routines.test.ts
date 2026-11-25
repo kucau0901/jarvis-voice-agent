@@ -947,6 +947,24 @@ console.log("\nwatches: changed while Home Assistant is being asked");
   check("paused and renamed during a check: stays so", after.enabled === false && after.name === "Paused gate" && h.sent.length === 0, after);
 }
 {
+  // Another, due at the same moment, removed, or switched off, while a watch is checked.
+  const h = harness();
+  await h.s.add({ when: "watch", condition: "{{ true }}", say: "gate" }, OWNER, T0);
+  const gone = (await h.s.add({ when: "daily", time: "10:30", say: "gone" }, OWNER, T0)) as Exclude<Awaited<ReturnType<typeof h.s.add>>, string>;
+  const off = (await h.s.add({ when: "daily", time: "10:30", say: "off" }, OWNER, T0)) as Exclude<Awaited<ReturnType<typeof h.s.add>>, string>;
+  await h.s.add({ when: "daily", time: "10:30", say: "stays" }, OWNER, T0);
+  const at = zonedToUtc(2026, 9, 25, 10, 30, tz);
+  h.state.ha = () => {
+    void h.s.remove(gone.id);
+    void h.s.update(off.id, { enabled: false }, at);
+    return "False";
+  };
+  await h.s.tick(at);
+  const left = await h.s.list();
+  check("one due, removed while a watch was checked: not brought back, nor run", !left.some((x) => x.id === gone.id) && !h.sent.some((a) => a.text === "gone"), [left.map((x) => x.name), h.sent.map((a) => a.text)]);
+  check("…switched off: off, and not run; the rest run", left.find((x) => x.id === off.id)?.enabled === false && h.sent.map((a) => a.text).join() === "stays", h.sent.map((a) => a.text));
+}
+{
   // Two watches whose checks take a while: asked together, not one after the other.
   const h = harness();
   await h.s.add({ when: "watch", condition: "{{ a }}", say: "a" }, OWNER, T0);

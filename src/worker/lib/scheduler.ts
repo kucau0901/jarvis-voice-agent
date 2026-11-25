@@ -385,14 +385,17 @@ export class Scheduler {
     // left as it is, so nextWake is now and it goes in an alarm of its own straight after.
     const reads = (r: Routine) => r.action.kind === "brief" || r.action.kind === "notice";
     let briefed = false;
-    for (const r of all) {
+    for (const { id } of all) {
       try {
-        if (reads(r) && briefed) continue;
+        // As it is now: the looks waited on the network, as does each one before it in turn, and meanwhile it may have
+        // been removed, switched off or changed. Saving the copy from before brought a removed one back, and ran it.
+        const r = await this.get(id);
+        if (!r || (reads(r) && briefed)) continue;
         if ((await this.tickOne(r, deps, now)) && reads(r)) briefed = true;
-        const look = looks.get(r.id);
-        if (look) await this.applyWatch(r.id, look, deps, now);
+        const look = looks.get(id);
+        if (look) await this.applyWatch(id, look, deps, now);
       } catch (e) {
-        await this.record(r.id, { at: now, ok: false, detail: `failed: ${e instanceof Error ? e.message : String(e)}` });
+        await this.record(id, { at: now, ok: false, detail: `failed: ${e instanceof Error ? e.message : String(e)}` });
       }
     }
     // One leave routine per person, each with its own calendar.
