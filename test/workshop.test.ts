@@ -268,7 +268,7 @@ console.log("\nwhat was attached");
   const tool = baseTools({} as never).find((t) => t.name === "start_job") as Tool;
   const jobs: { task: string; mode?: string }[] = [];
   const stopped: string[] = [];
-  const state = { familyPeople: async () => [], specialtyNamed: async () => null, createJob: async (b: { task: string; title: string; mode?: string; reach: string }) => (jobs.push(b), { id: `jatt000000${jobs.length}`, ...b, engine: "jarvis" }), cancelJob: async (id: string) => void stopped.push(id) };
+  const state = { familyPeople: async () => [], specialtyNamed: async () => null, projectNamed: async () => null, createJob: async (b: { task: string; title: string; mode?: string; reach: string }) => (jobs.push(b), { id: `jatt000000${jobs.length}`, ...b, engine: "jarvis" }), cancelJob: async (id: string) => void stopped.push(id) };
   const ask = async (args: Record<string, unknown>, over: Record<string, unknown> = {}, grants = ["*"], attached: unknown = { files: got }) =>
     String(await tool.run({ title: "Sheet", task: "Add it up.", reach: "private", mode: "files", research: "no", ...args }, { env: { STATE: { idFromName: () => "j", get: () => state }, WORKSHOP_URL: URL_, WORKSHOP_TOKEN: TOKEN, ...over }, grants, attached, memory: { facts: [] }, signal: soon(), progress() {}, display() {} } as never));
   const started = await ask({});

@@ -6,6 +6,7 @@ import type { JobCard, JobView } from "../jobWords";
 import { askCard, askId } from "./JobAsk";
 import { cardForm, jobLive, jobNow } from "./JobLive";
 import { jobFiles, jobRan, saveFrom } from "./JobFiles";
+import { Projects, type ProjectView } from "./Projects";
 
 /**
  * Background jobs (src/worker/lib/jobs.ts): what is running, what came back,
@@ -49,6 +50,10 @@ export class Jobs {
   private keeps = false;
   /** A specialty, in the New job form. */
   private way: HTMLSelectElement;
+  /** A project, in the New job form, and the one whose jobs alone are listed. */
+  private project: HTMLSelectElement;
+  private projects: Projects;
+  private only: { id: string; name: string } | null = null;
   /** Files, in the New job form: offered only where the workshop is set up and theirs to use. */
   private files: HTMLElement;
   /** Research being handed to Hermes: the job, and the instruction as typed so far. */
@@ -92,6 +97,11 @@ export class Jobs {
     sheet.appendChild(this.asks.el);
     this.list = el("div", "rlist");
     sheet.appendChild(this.list);
+    this.projects = new Projects(key, (all) => this.inProjects(all), (p) => {
+      this.only = p;
+      void this.load().then(() => this.list.scrollIntoView({ block: "start" }));
+    });
+    sheet.appendChild(this.projects.el);
     sheet.appendChild(el("h3", "", "New job"));
     const form = el("div", "rform");
     const task = document.createElement("textarea");
@@ -113,6 +123,11 @@ export class Jobs {
     this.way.setAttribute("aria-label", "A specialty for it to follow");
     this.way.hidden = true;
     form.appendChild(this.way);
+    // One of their projects, for it to be part of.
+    this.project = document.createElement("select");
+    this.project.setAttribute("aria-label", "A project for it to be part of");
+    this.project.hidden = true;
+    form.appendChild(this.project);
     // Thorough: research's model, for an ordinary job.
     const hard = el("label", "on");
     const hardBox = document.createElement("input");
@@ -174,8 +189,8 @@ export class Jobs {
     form.addEventListener("change", () => {
       if (deepBox.checked) reach.value = "web";
       if (deepBox.checked) hardBox.checked = filesBox.checked = splitBox.checked = false;
-      reach.disabled = hardBox.disabled = filesBox.disabled = splitBox.disabled = this.way.disabled = deepBox.checked;
-      if (deepBox.checked) this.way.value = "";
+      reach.disabled = hardBox.disabled = filesBox.disabled = splitBox.disabled = this.way.disabled = this.project.disabled = deepBox.checked;
+      if (deepBox.checked) this.way.value = this.project.value = "";
     });
     let filled = "";
     this.again = (j) => {
@@ -185,7 +200,8 @@ export class Jobs {
         return this.msg("Start or clear what is written under New job first.", true);
       }
       for (const b of [filesBox, splitBox, deepBox, teamBox, tableBox]) b.checked = false;
-      reach.disabled = hardBox.disabled = filesBox.disabled = splitBox.disabled = this.way.disabled = false;
+      reach.disabled = hardBox.disabled = filesBox.disabled = splitBox.disabled = this.way.disabled = this.project.disabled = false;
+      this.project.value = j.project && [...this.project.options].some((o) => o.value === j.project!.id) ? j.project.id : "";
       reach.value = j.reach ?? "private";
       this.way.value = j.using && [...this.way.options].some((o) => o.value === j.using!.id) ? j.using.id : "";
       hardBox.checked = true;
@@ -211,13 +227,14 @@ export class Jobs {
             ...(hardBox.checked ? { mode: "thorough" } : filesBox.checked ? { mode: "files" } : {}),
             ...(splitBox.checked ? { helpers: true } : {}),
             ...(this.way.value ? { specialty: this.way.value } : {}),
+            ...(this.project.value ? { project: this.project.value } : {}),
             ...(deepBox.checked ? { engine: "research" } : {}),
             ...(teamBox.checked ? { team: true } : {}),
             ...(tableBox.checked ? { table: true } : {}),
           });
           task.value = "";
           hardBox.checked = filesBox.checked = splitBox.checked = deepBox.checked = teamBox.checked = tableBox.checked = false;
-          reach.disabled = hardBox.disabled = filesBox.disabled = splitBox.disabled = this.way.disabled = false;
+          reach.disabled = hardBox.disabled = filesBox.disabled = splitBox.disabled = this.way.disabled = this.project.disabled = false;
           this.way.value = "";
         }, "Started — it arrives as an alert when done."), "primary"),
     );
@@ -244,11 +261,28 @@ export class Jobs {
     this.way.replaceChildren(...[{ id: "", name: "No specialty" }, ...ways.map(({ id, name }) => ({ id, name: `Following “${name}”` }))].map(({ id, name }) => Object.assign(document.createElement("option"), { value: id, textContent: name })));
     this.way.value = ways.some((w) => w.id === chosen) ? chosen : "";
     this.way.hidden = !ways.length;
+    // A job pointed at is shown, whatever was listed alone before.
+    if (focus) this.only = null;
+    this.projects.el.hidden = !me.scopes?.some((s) => s === "*" || s === "memory.read");
+    if (!this.projects.el.hidden) await this.projects.load();
     await this.load();
     const row = focus ? [...this.list.querySelectorAll<HTMLElement>(".routine")].find((r) => r.dataset.id === focus) : undefined;
     if (!row) return;
     row.scrollIntoView({ block: "center" });
     row.classList.add("flash");
+  }
+
+  /** The projects there are, to choose one for a new job. */
+  private inProjects(all: ProjectView[]): void {
+    const chosen = this.project.value;
+    this.project.replaceChildren(...[{ id: "", name: "No project" }, ...all.map(({ id, name }) => ({ id, name: `In “${name}”` }))].map(({ id, name }) => Object.assign(document.createElement("option"), { value: id, textContent: name })));
+    this.project.value = all.some((p) => p.id === chosen) ? chosen : "";
+    this.project.hidden = !all.length;
+    const was = this.only;
+    if (was && !all.some((p) => p.id === was.id)) {
+      this.only = null;
+      void this.load();
+    }
   }
 
   hide(): void {
@@ -297,11 +331,14 @@ export class Jobs {
     for (const k of this.answering.keys()) {
       if (!jobs.some((j) => j.asks?.some((q) => askId(j.id, q.id) === k))) this.answering.delete(k);
     }
-    if (!jobs.length) {
-      this.list.replaceChildren(el("p", "note", "None yet."));
-    } else {
-      this.list.replaceChildren(...jobs.map((j) => this.row(j)));
-    }
+    const only = this.only;
+    const listed = only ? jobs.filter((j) => j.project?.id === only.id) : jobs;
+    const alone = el("div", "rowbtns");
+    if (only) alone.append(el("span", "note", `Only the jobs of “${only.name}”.`), button("Show all", () => {
+      this.only = null;
+      void this.load();
+    }));
+    this.list.replaceChildren(...(only ? [alone] : []), ...(listed.length ? listed.map((j) => this.row(j)) : [el("p", "note", "None yet.")]));
     // Keep up with running jobs while the panel is open, but not while something is being written to one.
     const running = jobs.filter((j) => j.status === "running");
     if (this.el.classList.contains("open") && running.length) this.soon(running.every((j) => j.waiting) ? 20_000 : 5000);
@@ -329,7 +366,7 @@ export class Jobs {
     top.appendChild(el("span", `chip ${j.status === "done" || j.asks ? "on" : "off"}`, j.asks ? "asks you" : j.waiting ? "waiting" : j.status === "failed" && j.hasResult ? "part done" : STATUS[j.status]));
     row.appendChild(top);
 
-    const facts: string[] = [j.team ? "Research team" : j.engine === "hermes" ? "Hermes" : j.engine === "research" ? "Research" : j.mode === "thorough" ? "Jarvis, thorough" : j.mode === "files" ? "Jarvis, making files" : "Jarvis", ...(j.helpers && (j.status === "running" || j.helpers.length) ? ["with helpers"] : []), ...(j.using ? [`using “${j.using.name}”`] : []), `started ${when(j.createdAt)}`];
+    const facts: string[] = [j.team ? "Research team" : j.engine === "hermes" ? "Hermes" : j.engine === "research" ? "Research" : j.mode === "thorough" ? "Jarvis, thorough" : j.mode === "files" ? "Jarvis, making files" : "Jarvis", ...(j.helpers && (j.status === "running" || j.helpers.length) ? ["with helpers"] : []), ...(j.using ? [`using “${j.using.name}”`] : []), ...(j.project ? [`in “${j.project.name}”`] : []), ...(j.carried ? [j.carried === 1 ? "went on from its notes" : `went on from its notes, ${j.carried} times`] : []), `started ${when(j.createdAt)}`];
     if (j.status === "running") facts.push(`${Math.max(1, Math.round((Date.now() - j.createdAt) / 60_000))} min so far${j.engine === "jarvis" ? `, step ${j.steps}` : ""}`);
     if (j.team?.phase) facts.push(j.team.phase === "teams" ? `${j.team.reported} of ${j.team.of} teams done` : PHASE[j.team.phase]);
     else if (j.team && j.status !== "running" && j.team.reported < j.team.of) facts.push(`${j.team.reported} of ${j.team.of} teams reported`);
@@ -387,6 +424,12 @@ export class Jobs {
         }),
       );
     }
+    // What it made, for the project's next jobs to have.
+    const home = j.project && j.files?.length ? this.projects.all.find((p) => p.id === j.project!.id) : undefined;
+    if (home) btns.appendChild(button(`Keep ${j.files!.length === 1 ? "its file" : "its files"} in “${home.name}”`, () => void this.act(async () => {
+      for (const f of j.files!) await api(this.key, "POST", "/api/v1/projects/file", { id: home.id, job: j.id, n: f.n });
+      await this.projects.load();
+    }, `Kept in “${home.name}”.`)));
     // How it was done, to be done so again: read over and saved there, nothing kept by this.
     if (this.keeps && j.engine === "jarvis" && j.status === "done") btns.appendChild(button("Keep for next time", () => this.keep(j.id)));
     // Never by itself: the same brief, on the stronger model, for them to read over and start.

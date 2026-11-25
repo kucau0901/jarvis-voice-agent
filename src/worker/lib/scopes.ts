@@ -175,7 +175,7 @@ export function requiredScope(pathname: string, method: string): RouteRequiremen
     if (pathname === "/api/memory/move") return "memory.write";
     // Read from their calendar, so a person's alone: the route checks `calendar`.
     if (pathname === "/api/memory/work") return "person";
-    if (pathname === "/api/memory/specialties" || pathname.startsWith("/api/memory/specialties/") || pathname === "/api/memory/past") return m === "GET" ? "memory.read" : "memory.write";
+    if (pathname === "/api/memory/true" || pathname === "/api/memory/specialties" || pathname.startsWith("/api/memory/specialties/") || pathname === "/api/memory/past") return m === "GET" ? "memory.read" : "memory.write";
     return "owner";
   }
   // Each person's own devices; an admin's view is everyone's (routes/v1.ts). Never a device's.
@@ -259,6 +259,10 @@ export function requiredScope(pathname: string, method: string): RouteRequiremen
     case "/api/v1/jobs/csv":
     case "/api/v1/jobs/file":
       return "ask";
+    // The projects they may be in (routes/projects.ts): its person's own, as what is saved about them is.
+    case "/api/v1/projects":
+    case "/api/v1/projects/file":
+      return m === "GET" ? "memory.read" : "memory.write";
 
     // Jarvis's component in Home Assistant: what to watch, and what changed. The route
     // takes these from the owner's devices and admins only: they are the house's.

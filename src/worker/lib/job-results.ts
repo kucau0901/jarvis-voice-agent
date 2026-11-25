@@ -13,9 +13,10 @@ import { asQuotedData, tidy, unquoted } from "./quote.ts";
  * So it is cut once, as it arrives, and never edited later: an exchange that
  * changed behind the model would be paid for whole again, and would no longer
  * be what it answered from. All of it is kept beside the exchange
- * (`jobitem:<job>:big:<n>`), gone with the job, and read on with read_result.
- * Every part of it is quoted again, as a cut may have taken the fence's end
- * with it (lib/quote.ts).
+ * (`jobitem:<job>:big:<n>`), gone with the job, and read on with read_result;
+ * so is each short one, which a job that goes on in a new conversation
+ * (lib/job-checkpoint.ts) reads again by its number. Every part of it is quoted
+ * again, as a cut may have taken the fence's end with it (lib/quote.ts).
  */
 
 /** About ten thousand tokens. */
@@ -32,32 +33,25 @@ const countKey = (job: string) => `${jobRows(job)}bigs`;
 const WRITER = "WHOEVER WROTE WHAT A TOOL READ";
 const chars = (n: number) => n.toLocaleString("en-US");
 
-/** A step's tool outputs, the long ones cut and kept. Pictures, and what read_result itself gives, stay as they are. */
-export async function capResults(
-  kept: Storage,
-  job: string,
-  outputs: OpenAI.Responses.ResponseInput,
-): Promise<OpenAI.Responses.ResponseInput> {
-  const out: OpenAI.Responses.ResponseInput = [];
-  for (const o of outputs) {
-    if (!("output" in o) || typeof o.output !== "string" || o.output.length <= RESULT_MAX) {
-      out.push(o);
-      continue;
-    }
-    const whole = unquoted(o.output);
-    const n = ((await kept.get<number>(countKey(job))) ?? 0) + 1;
-    await kept.put(countKey(job), n);
-    await kept.put(key(job, n), whole.slice(0, RESULT_KEPT));
-    const size = Math.min(whole.length, RESULT_KEPT);
-    out.push({
-      ...o,
-      output:
-        `${asQuotedData(`result ${n}`, whole.slice(0, RESULT_MAX), WRITER)}\n` +
-        `(Cut: the first ${chars(RESULT_MAX)} of ${chars(whole.length)} characters. This is result ${n}; read_result reads on or searches it` +
-        `${whole.length > size ? `, as far as ${chars(size)}: ask for less, or more narrowly, to see past that` : ""}.)`,
-    } as (typeof outputs)[number]);
-  }
-  return out;
+type Output = OpenAI.Responses.ResponseInput[number];
+
+/** A tool's answer, kept under a number of its own and, when it is long, cut to be read on by it. A picture has none, and stays as it is. */
+export async function keepResult(kept: Storage, job: string, o: Output): Promise<{ shown: Output; n?: number }> {
+  if (!("output" in o) || typeof o.output !== "string") return { shown: o };
+  const whole = unquoted(o.output);
+  const n = ((await kept.get<number>(countKey(job))) ?? 0) + 1;
+  await kept.put(countKey(job), n);
+  await kept.put(key(job, n), whole.slice(0, RESULT_KEPT));
+  if (o.output.length <= RESULT_MAX) return { shown: o, n };
+  const size = Math.min(whole.length, RESULT_KEPT);
+  const shown = {
+    ...o,
+    output:
+      `${asQuotedData(`result ${n}`, whole.slice(0, RESULT_MAX), WRITER)}\n` +
+      `(Cut: the first ${chars(RESULT_MAX)} of ${chars(whole.length)} characters. This is result ${n}; read_result reads on or searches it` +
+      `${whole.length > size ? `, as far as ${chars(size)}: ask for less, or more narrowly, to see past that` : ""}.)`,
+  } as Output;
+  return { shown, n };
 }
 
 /** Reading on in a long result. Offered to jobs alone (routes/jobs.ts). */
@@ -67,7 +61,7 @@ export function readResult(kept: Storage | undefined, job: string): Tool {
     pace: "fast",
     reads: true,
     description:
-      "Read more of a tool's answer that was cut for length, by the number it was given. Give `find` to see the passages " +
+      "Read a tool's answer again, or more of one that was cut for length, by the number it was given. Give `find` to see the passages " +
       "around a word or phrase (quicker than reading all of it), or `from` to read on from a character.",
     parameters: {
       type: "object",

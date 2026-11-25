@@ -1,4 +1,5 @@
 import type { Env } from "../types.ts";
+import { sha256Hex } from "./devices.ts";
 import { wellFormed } from "./quote.ts";
 
 /**
@@ -60,6 +61,12 @@ export async function workshopGiven(cfg: WorkshopConfig, job: string, sum: strin
   return r.arrayBuffer().catch(() => {
     throw new WorkshopError(OFF);
   });
+}
+
+/** The same, only if it still is what was given: its sum is looked at here, not in the workshop. Null when it is not. */
+export async function givenBytes(cfg: WorkshopConfig, job: string, f: { sha256: string }): Promise<ArrayBuffer | null> {
+  const bytes = await workshopGiven(cfg, job, f.sha256, AbortSignal.timeout(60_000));
+  return (await sha256Hex(bytes)) === f.sha256 ? bytes : null;
 }
 
 /** Bytes put in a job's folder: what its person attached. */

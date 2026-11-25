@@ -90,8 +90,12 @@ export interface JobView {
   mode?: "thorough" | "files";
   /** The specialty you named for it (ui/Specialties.ts). */
   using?: { id: string; name: string };
+  /** The project of yours it is in (ui/Projects.ts). */
+  project?: { id: string; name: string };
   /** Started with helpers: none until it gives its work out, then each of them. */
   helpers?: JobHelper[];
+  /** It outgrew one conversation, and went on from its notes: how often. */
+  carried?: number;
   /** What it made, and what it ran: the last of it while it works, all that is kept with the whole. */
   files?: JobFile[];
   ran?: JobRan[];
@@ -161,7 +165,8 @@ export function powers(j: JobView): string {
   const makes = j.mode === "files" ? " Makes files with programs of its own, on a machine with no network, and gives them to you to save." : "";
   const splits = j.helpers ? " Splits its work between up to three helpers of its own, who may read what it may and nothing more." : "";
   const way = j.using ? ` Follows “${j.using.name}”, of your specialties${j.reach === "web" ? ", which goes with it to the web" : ""}.` : "";
-  return `${looks}${makes}${splits}${way} Never acts: what it would do, it proposes.${j.mode === "thorough" ? " On the stronger model." : ""}${takes}`;
+  const part = j.project ? ` Part of “${j.project.name}”: its rules, its files${j.reach === "web" ? ", which go with it to the web" : " and what its last jobs found"}.` : "";
+  return `${looks}${makes}${splits}${way}${part} Never acts: what it would do, it proposes.${j.mode === "thorough" ? " On the stronger model." : ""}${takes}`;
 }
 
 /** A file's size, as a person says it. */

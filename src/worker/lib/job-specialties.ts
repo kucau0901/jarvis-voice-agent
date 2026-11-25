@@ -68,11 +68,11 @@ export class JobSpecialties {
       .slice(0, LISTED);
   }
 
-  /** What it is given of them at its start; null when there are none. The named one's files are put in its folder, where it has one. */
-  async said(list: readonly Way[], shop: WorkshopConfig | null, stop?: AbortSignal): Promise<string | null> {
+  /** What it is given of them at its start; null when there are none. The named one's files are put in its folder, where it has one; `placed`, they are there already. */
+  async said(list: readonly Way[], shop: WorkshopConfig | null, stop?: AbortSignal, placed = false): Promise<string | null> {
     const named = list.find((s) => s.id === this.job.using?.id);
     const w = named ? await this.more.whole(this.person, named.id) : null;
-    const put = w && shop ? await this.bring(w.specialty, w.more, shop, stop) : "";
+    const put = !w || !shop || !w.more.files.length ? "" : placed ? `\nIts files were put in your folder, in ${this.at(w.specialty)}/, as you began.` : await this.bring(w.specialty, w.more, shop, stop);
     const others = list.filter((s) => s !== named);
     const parts = [
       w ? `The user named this one for the task:\n${whole(w.specialty, w.more)}${put}` : "",
@@ -83,9 +83,13 @@ export class JobSpecialties {
     return parts.length ? parts.join("\n\n") : null;
   }
 
+  private at(s: Specialty): string {
+    return `specialty/${slugOf(s.name)}`;
+  }
+
   /** Its files, in the job's folder, under its name; what is said of them. */
   private async bring(s: Specialty, more: More, shop: WorkshopConfig, stop?: AbortSignal): Promise<string> {
-    const at = `specialty/${slugOf(s.name)}`;
+    const at = this.at(s);
     const not: string[] = [];
     for (const f of more.files) {
       const got = await this.more.file(this.person, s.id, f.n);
@@ -129,7 +133,7 @@ export class JobSpecialties {
         if (!got) return "It has no file of that name.";
         const text = textIn(got.bytes);
         if (shop) {
-          const at = `specialty/${slugOf(w.specialty.name)}/${got.name}`;
+          const at = `${this.at(w.specialty)}/${got.name}`;
           try {
             await workshopBring(shop, this.job.id, at, got.bytes, AbortSignal.any([AbortSignal.timeout(30_000), ...(stop ? [stop] : [])]));
           } catch (e) {

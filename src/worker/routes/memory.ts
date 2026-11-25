@@ -4,8 +4,10 @@ import { MemoryStore, memoryFor, relationOf, sane, sanitise, slugify, PROFILE_BU
 import { allows, type Grant } from "../lib/scopes.ts";
 import { workFromCalendar } from "../lib/work-place.ts";
 import { stateStub } from "../lib/state-client.ts";
-import { OWNER } from "../lib/context.ts";
+import { OWNER, bookOf } from "../lib/context.ts";
 import { handleSpecialties } from "./specialties.ts";
+import { localeOf } from "../lib/locale.ts";
+import { closeInMeaning, closeInWords, doubts, oneKey, pairKey } from "../lib/true-now.ts";
 
 const KINDS: readonly Kind[] = ["place", "person", "preference", "vehicle", "routine", "note", "reference"];
 
@@ -48,6 +50,8 @@ export async function handleMemory(req: Request, env: Env, grants: readonly Gran
   // Their own book comes with the family's attached, so "what Jarvis reads" shows both, as the router reads them.
   const store = family ? new MemoryStore(env, env.JARVIS_FAMILY) : memoryFor(env, grants);
   await store.load();
+
+  if (url.pathname === "/api/memory/true") return trueNow(req, env, family ? store : new MemoryStore(env), family ? (env.JARVIS_FAMILY ?? "") : bookOf(env.JARVIS_PERSON));
 
   // Where they work, as their calendar suggests: only offered (ui/Profile.ts), never saved here.
   if (url.pathname === "/api/memory/work") {
@@ -282,6 +286,43 @@ async function move(req: Request, env: Env, grants: readonly Grant[]): Promise<R
   await to.save();
   await from.save();
   return json({ ok: true, fact: made });
+}
+
+/**
+ *   GET  /api/memory/true   {pairs: [{older, newer}], passed: [{fact, day}], byMeaning}: facts that may say one thing twice, or
+ *                           disagree, and ones whose day has passed (lib/true-now.ts). ?book=family, the family's
+ *   POST /api/memory/true   {pair: [id, id], keep: [id…], seen: {id: updatedAt}} or {id, keep: true | false, seen}: what is true.
+ *                           The rest is forgotten, as DELETE does, to Trash; with all of it kept, it is not asked about again
+ *                           until it changes. 409 when one was changed since it was shown
+ */
+async function trueNow(req: Request, env: Env, store: MemoryStore, book: string): Promise<Response> {
+  const state = stateStub(env);
+  if (!state) return err(503, "this needs the STATE Durable Object");
+  await store.load();
+  // What every question carries, not the reference shelf: a roster's lines are alike by nature.
+  const facts = store.facts;
+  if (req.method === "GET") {
+    const near = await closeInMeaning(env, book, facts).catch(() => null);
+    const names = [...facts.flatMap((f) => (f.kind === "person" && f.slug ? [f.slug] : [])), ...((await state.familyPeople().catch(() => [])) ?? []).map((p) => p.name)];
+    return json({ ...doubts(facts, near ?? closeInWords(facts), names, await state.trueKept(book), Date.now(), localeOf(env).timeZone), byMeaning: !!near });
+  }
+  if (req.method !== "POST") return err(405, "GET or POST");
+  const b = await body(req);
+  const one = typeof b?.id === "string" ? facts.find((f) => f.id === b.id) : undefined;
+  const pair = Array.isArray(b?.pair) ? b.pair.map((id) => facts.find((f) => f.id === id)) : [];
+  const [x, y] = pair;
+  if (!one && !(pair.length === 2 && x && y && x !== y)) return err(404, "one of them is not kept any more");
+  const keep = one ? (b?.keep === true ? [one.id] : b?.keep === false ? [] : null) : Array.isArray(b?.keep) ? b.keep : null;
+  if (!keep) return err(400, "say which to keep");
+  const all = one ? [one] : [x!, y!];
+  // What they chose between is what they were shown: the family's may have been changed by someone else meanwhile.
+  const seen = (b?.seen && typeof b.seen === "object" ? b.seen : {}) as Record<string, unknown>;
+  if (all.some((f) => seen[f.id] !== f.updatedAt)) return err(409, "one of them was changed since: look again");
+  const going = all.filter((f) => !keep.includes(f.id));
+  for (const f of going) store.remove(f.id);
+  if (going.length) await store.save();
+  else await state.trueKeep(book, one ? oneKey(one) : pairKey(x!, y!));
+  return json({ ok: true, forgotten: going.map((f) => f.id) });
 }
 
 /**

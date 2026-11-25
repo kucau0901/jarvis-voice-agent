@@ -35,7 +35,7 @@ export function tells(brief: string, known: Known, asked: string): string[] {
     .filter((p) => /\d/.test(p) && /\p{L}/u.test(p) && ((p.match(/\p{L}{2,}/gu) ?? []).length >= 2 || /\d{4}/.test(p)));
   const said = brief.toLowerCase();
   for (const p of parts) if (said.includes(p.toLowerCase()) && !theirs.includes(p.toLowerCase())) out.add(p);
-  for (const m of brief.matchAll(/[\w.+-]+@[\w-]+\.[\w.]{2,}|\+?\d[\d ()-]{7,}\d/g)) {
+  for (const m of brief.matchAll(/(?<![\w.+-])[\w.+-]{1,64}@[\w-]{1,63}\.[\w.]{2,}|\+?\d[\d ()-]{7,40}\d/g)) {
     const found = m[0].trim();
     // A phone number has nine digits or more; fewer may be a price, a year or a model.
     if (!found.includes("@") && found.replace(/\D/g, "").length < 9) continue;

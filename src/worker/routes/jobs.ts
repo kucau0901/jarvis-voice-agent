@@ -14,14 +14,15 @@ import * as hermes from "../tools/hermes.ts";
 import { INTERRUPTED, JobChain, beginCalls, stepId, stepOf, type Answered } from "../lib/job-chain.ts";
 import { NOT_RUN, runGuarded } from "../lib/job-guards.ts";
 import { linksBack, noteLinks, readResult, takeLinks } from "../lib/job-results.ts";
+import { FRESH_AT, GOES_ON, MAX_FRESH, NOTES_ASK, NOTES_HEAD, contextOf, everythingTold, noteActs, record, searchActs, tooLong } from "../lib/job-checkpoint.ts";
 import { DELEGATE, delegateTool, heardBy, helperId, helperMessage, helperScope, helperUntold, helperView, reportsOf, tasksOf } from "../lib/job-helpers.ts";
 import { bringNeeds, handFile } from "../lib/helper-files.ts";
 import { JobSpecialties } from "../lib/job-specialties.ts";
-import { KEPT_DAYS, WorkshopError, fileHeaders, workshopAsk, workshopConfig, workshopGiven } from "../lib/workshop.ts";
+import { JobProject } from "../lib/job-project.ts";
+import { KEPT_DAYS, WorkshopError, fileHeaders, givenBytes, workshopAsk, workshopConfig } from "../lib/workshop.ts";
 import { WORKSHOP_TOOLS, workshopTools } from "../lib/workshop-tools.ts";
 import { mailFile } from "../lib/mail-file.ts";
 import { googleConfig } from "../lib/google.ts";
-import { sha256Hex } from "../lib/devices.ts";
 import { ASK_MS, openLines, openQuestions, unfinished, untold, workTools, type Said } from "../lib/job-tools.ts";
 import { RESEARCH_MONTHLY_DEFAULT, helperTool, jobTool, limitsOf, reachOf, webTool, sharesLeft, usageEntry, type Job, type JobDeps, type Step } from "../lib/jobs.ts";
 import { citationsOf, markUnseen } from "../lib/links.ts";
@@ -47,7 +48,7 @@ import type { Storage } from "../lib/state-host.ts";
  *
  *   GET    /api/v1/jobs           the jobs (a device sees its own)
  *   GET    /api/v1/jobs?id=       one, with its whole result
- *   POST   /api/v1/jobs           {task, title?, engine?: "jarvis" | "hermes" | "research", reach?: "private" | "web", mode?: "thorough" | "files", helpers?: true, specialty?: id, team?: true, from?: id}
+ *   POST   /api/v1/jobs           {task, title?, engine?: "jarvis" | "hermes" | "research", reach?: "private" | "web", mode?: "thorough" | "files", helpers?: true, specialty?: id, project?: id, team?: true, from?: id}
  *   POST   /api/v1/jobs/cancel    {id, helper?}   stops it, or one of its helpers
  *   POST   /api/v1/jobs/key       {id}   a job waiting for the ChatGPT plan goes on with the API key instead; needs `routines`
  *   POST   /api/v1/jobs/card      {id, outcome?, limits?, assumptions?}   its person changes its card while it works
@@ -109,6 +110,8 @@ const researchLimit = (raw: string | undefined): number => {
  * response id at OpenAI.
  */
 const isPlanStep = (id: string | undefined): id is string => !!id && id.startsWith("plan_");
+/** Whether a job may go on in a new conversation, once more (lib/job-checkpoint.ts). */
+const mayGoOn = (j: Job): boolean => !j.cut && (j.fresh?.n ?? 0) < MAX_FRESH;
 /** A step kept whole by a version before the rows: read once, by a job that was running across the update. */
 interface OldPlanStep {
   input: OpenAI.Responses.ResponseInput;
@@ -117,6 +120,8 @@ interface OldPlanStep {
 /** A research team's chains, beside the job's own: each team's, the plan's and the merge's (its check follows on it); and each helper's. */
 const CHAIN = {
   job: "m",
+  /** The job's, gone on in a new conversation (lib/job-checkpoint.ts). */
+  fresh: (n: number) => `m${n}`,
   team: (t: number) => `t${t}`,
   helper: (t: number) => `h${t}`,
   plan: "p",
@@ -195,6 +200,9 @@ export function jobEngine(
     // Their own ways of doing things, for the job itself: any of theirs, or on the web the one they named (lib/job-specialties.ts).
     const ways = kept && !helper && t === undefined && job.engine === "jarvis" ? new JobSpecialties(kept, job, allows(may, "memory.read")) : null;
     const theirs = ways ? await ways.list() : [];
+    // The project it is in: its rules, its files, what its last jobs came back with (lib/job-project.ts).
+    const belongs = kept && job.project && t === undefined && job.engine === "jarvis" && allows(may, "memory.read") ? new JobProject(kept, job) : null;
+    const project = belongs ? await belongs.it() : null;
     const own: Tool[] = helper
       ? [
           // Its list, and nothing else of the job's own: no card, no question, no helpers.
@@ -206,7 +214,7 @@ export function jobEngine(
       : t !== undefined
         ? [shareTool("", [], 0)]
         : job.engine === "jarvis"
-          ? [...workTools(job, say), readResult(kept, job.id), ...(shop ? workshopTools(shop, job, say, stop, mailIn) : []), ...(theirs.length ? [ways!.tool(shop, stop)] : []), ...(job.help ? [delegateTool(!!shop)] : [])]
+          ? [...workTools(job, say), readResult(kept, job.id), ...(shop ? workshopTools(shop, job, say, stop, mailIn) : []), ...(theirs.length ? [ways!.tool(shop, stop)] : []), ...(project?.files.length ? [belongs!.tool(project)] : []), ...(job.help ? [delegateTool(!!shop)] : [])]
           : [];
     const functions = [...p.tools, ...own].map(toToolSchema);
     return {
@@ -221,8 +229,12 @@ export function jobEngine(
       functions,
       own,
       shop,
-      /** What it is told of their specialties, as it starts. */
-      ways: () => (theirs.length ? ways!.said(theirs, shop, stop) : Promise.resolve(null)),
+      /** What it is told of its project and their specialties, as it starts. */
+      /** `placed`: their files are in its folder already, as it has them now, and are not put there again. */
+      given: async (placed = false): Promise<OpenAI.Responses.ResponseInput> => {
+        const said = [project ? await belongs!.said(project, shop, stop, placed) : null, theirs.length ? await ways!.said(theirs, shop, stop, placed) : null];
+        return said.flatMap((content) => (content ? [{ role: "user" as const, content }] : []));
+      },
       base: {
         model,
         ...(strong ? { reasoning: { effort: "high" as const } } : {}),
@@ -308,13 +320,30 @@ export function jobEngine(
     return { responseId: res.id, took };
   }
 
+  /** Its notes could not be had: null, and it goes on without them. Not where it was stopped, or waits for the plan. */
+  const noNotes = (stop?: AbortSignal) => (e: unknown): null => {
+    if (e instanceof PlanParked || stop?.aborted) throw e;
+    console.warn("job: went on without its notes:", e instanceof Error ? e.message : String(e));
+    return null;
+  };
+
   /** What a step that was cut short was about to ask, or where it got to: its tools are not run, nor it asked, a second time. */
-  async function pickUp(r: Awaited<ReturnType<typeof request>>, to: { after: string } | { begin: string }, toolChoice: "auto" | "none" = "auto"): Promise<{ responseId: string; took?: number; untold?: true } | null> {
+  async function pickUp(r: Awaited<ReturnType<typeof request>>, to: { after: string } | { begin: string }, toolChoice: "auto" | "none" = "auto"): Promise<{ responseId: string; took?: number; untold?: true; noting?: true; unnoted?: true } | null> {
     const at = "after" in to ? stepOf(to.after) : { chain: to.begin, n: -1 };
     const next = kept && at ? await new JobChain(kept, r.job.id).next(at.chain, at.n) : null;
     if (!next || !at) return null;
-    const told = next.input.some((i) => "role" in i && "content" in i && i.role === "developer" && typeof i.content === "string" && i.content.startsWith(RAN_OUT));
-    return { ...(next.answered ? { responseId: stepId(at.chain, at.n + 1), took: next.took } : await send(r, next.input, to, toolChoice, next.took)), ...(told ? {} : { untold: true as const }) };
+    const asked = (head: string) => next.input.some((i) => "role" in i && "content" in i && i.role === "developer" && typeof i.content === "string" && i.content.startsWith(head));
+    const noting = asked(NOTES_HEAD);
+    // Asked for its notes and not given them, again: it goes on without.
+    if (noting && !next.answered) {
+      const again = await send(r, next.input, to, "none", next.took).catch(noNotes(r.stop));
+      return again ? { ...again, untold: true as const, noting: true as const } : { responseId: "", unnoted: true as const };
+    }
+    return {
+      ...(next.answered ? { responseId: stepId(at.chain, at.n + 1), took: next.took } : await send(r, next.input, to, toolChoice, next.took)),
+      ...(asked(RAN_OUT) ? {} : { untold: true as const }),
+      ...(noting ? { noting: true as const } : {}),
+    };
   }
 
   /** Neither a plan nor a key. A plan at its limit is still one: what needs it waits (PlanParked), rather than fail as though there were none. */
@@ -327,6 +356,40 @@ export function jobEngine(
     const { processes } = await workshopAsk<{ processes: { id: string; running: boolean }[] }>(shop, "process", { job: job.id, op: "list" }, AbortSignal.timeout(10_000)).catch(() => ({ processes: [] }));
     const on = processes.filter((p) => p.running).map((p) => p.id);
     return on.length ? `Not given out: ${on.join(", ")} of yours is still running, and your helpers could run nothing beside it. Wait for it with process, or stop it, then give the work out.` : null;
+  }
+
+  /**
+   * A job on in a new conversation, from what code kept of the last and the notes it wrote (lib/job-checkpoint.ts).
+   * Cut short, or at the plan's limit: what was about to be asked is, as it was.
+   */
+  async function goOn(job: Job, notes: string, usage: Usage, stop?: AbortSignal, say?: (s: Said) => Promise<void>): Promise<Step> {
+    const to = { begin: CHAIN.fresh((job.fresh?.n ?? 0) + 1) };
+    const last = job.cut ? ("none" as const) : ("auto" as const);
+    const begun = (x: { responseId: string; took?: number; untold?: true }): Step => ({ kind: "continued", responseId: x.responseId, usage, fresh: "begun", ...(x.took ? { took: x.took } : {}), ...(x.untold ? { untold: true as const } : {}) });
+    try {
+      const r = await request(job, [{ role: "user", text: job.task }], undefined, stop, say);
+      const before = await pickUp(r, to, last);
+      if (before) return begun(before);
+      const state = stateStub(r.env);
+      const person = personOfWho(job.createdBy);
+      const [now, later] = kept && state ? await Promise.all([state.proposalsOf(person, Date.now()), state.proposalsLater(person)]) : [[], []];
+      const mine = <T extends { from: { id: string } }>(all: readonly T[] | null | undefined) => (all ?? []).filter((p) => p.from.id === job.id);
+      const proposed = [...mine(now).map((p) => `${p.says} (${p.state})`), ...mine(later).map((p) => `${p.says} (waiting for its time)`)];
+      const input: OpenAI.Responses.ResponseInput = [
+        ...r.p.input,
+        ...(await r.given(true)),
+        ...everythingTold(job),
+        ...(kept ? [{ role: "user" as const, content: await record(kept, job, notes, proposed) }] : []),
+        // What its helpers brought, as it was brought.
+        ...(job.help?.call ? [{ role: "user" as const, content: reportsOf(job.help) }] : []),
+        { role: "developer", content: GOES_ON },
+        ...(job.cut ? [{ role: "developer" as const, content: wrapUp(job.cut.why) }] : []),
+      ];
+      return begun(await send(r, input, to, last, job.told?.length));
+    } catch (e) {
+      if (e instanceof PlanParked) return { kind: "parked", until: e.until };
+      throw e;
+    }
   }
 
   /** A step on the plan, as it was answered; null when it is no longer kept. */
@@ -356,11 +419,11 @@ export function jobEngine(
         // A helper's: its person's whole task, then its part as the job put it, with copies of what it was said to need.
         const got = helper?.needs.length && r.shop ? await bringNeeds(r.shop, job.id, t!, helper.needs, stop) : "";
         // A research team's: the same for every team, then its own angle, planned from the user's brief.
-        const said = t === undefined ? await r.ways() : null;
+        const said = t === undefined ? await r.given() : [];
         const input: OpenAI.Responses.ResponseInput = helper
           ? [...r.p.input, { role: "user", content: helperMessage(helper, got) }]
           : t === undefined
-            ? [...r.p.input, ...(said ? [{ role: "user" as const, content: said }] : [])]
+            ? [...r.p.input, ...said]
             : [
                 ...r.p.input,
                 // Into a table: the same team, filling its share of the rows (lib/research-table.ts).
@@ -425,8 +488,12 @@ export function jobEngine(
       if (r.status === "queued" || r.status === "in_progress") return { kind: "wait" };
       // On the plan: part of what the owner already pays for (lib/usage.ts).
       const usage = onPlan ? { ...usageOf(r), model: `chatgpt:${r.model}` } : usageOf(r);
+      // Asked for its notes: with them, or with none if that failed, it goes on in a new conversation.
+      if (t === undefined && job.fresh?.noting) return goOn(job, r.status === "completed" ? (r.output_text?.trim() ?? "") : "", usage, stop, say);
       if (r.status !== "completed") {
         const why = r.error?.message ?? r.incomplete_details?.reason ?? r.status ?? "unknown";
+        // Longer than its model takes: on in a new conversation, without its notes.
+        if (t === undefined && job.engine === "jarvis" && mayGoOn(job) && tooLong({ code: r.error?.code, message: why })) return goOn(job, "", usage, stop, say);
         return { kind: "failed", error: `OpenAI stopped it (${why})` };
       }
       const calls = r.output.filter((o): o is OpenAI.Responses.ResponseFunctionToolCall => o.type === "function_call");
@@ -481,7 +548,8 @@ export function jobEngine(
       const resumed = onPlan ? await pickUp(req, { after: id }, wraps ? "none" : "auto").catch(parked) : null;
       // What it shared in that step is not on the board yet: it goes there with it.
       const given = t === undefined ? [] : sharedIn(calls);
-      if (resumed) return "kind" in resumed ? resumed : { kind: "continued", responseId: resumed.responseId, usage, ...took(resumed), ...(resumed.untold ? { untold: true as const } : {}), ...(given.length ? { shared: given, saw: (job.team ?? job.help)!.chains[t!]!.seen } : {}) };
+      if (resumed && "unnoted" in resumed) return goOn(job, "", usage, stop, say);
+      if (resumed) return "kind" in resumed ? resumed : { kind: "continued", responseId: resumed.responseId, usage, ...took(resumed), ...(resumed.untold ? { untold: true as const } : {}), ...(resumed.noting ? { fresh: "noting" as const } : {}), ...(given.length ? { shared: given, saw: (job.team ?? job.help)!.chains[t!]!.seen } : {}) };
       // Out of its budget: nothing more is run, and it writes what it has, its helpers' reports with it.
       if (cut && wraps) {
         const unrun = calls.map((c) => answered(c, c.call_id === job.help?.call ? reports.get(c.call_id)! : NOT_RUN));
@@ -496,11 +564,13 @@ export function jobEngine(
       // What acts by itself is never begun twice (lib/job-chain.ts): a run cut short may have made it.
       const acts = calls.filter((c) => byName.get(c.name)?.alone);
       const begun = kept && acts.length ? await beginCalls(kept, scope, id, acts.map((c) => c.call_id)) : new Set<string>();
+      // What it looked up itself, and what may have been done when it was cut short: for what it goes on from.
+      if (kept && ordinary) await noteActs(kept, scope, [...searchActs(r.output), ...acts.filter((c) => begun.has(c.call_id)).map((c) => ({ name: c.name, args: c.arguments, acted: true as const, cut: true as const }))]);
       const fresh = calls.filter((c) => !begun.has(c.call_id) && !reports.has(c.call_id));
       await say?.({ doing: [...new Set(fresh.map((c) => c.name))] });
       const runThem = (some: typeof calls) => runCalls(some, byName, { env: theirs, signal: signal(stop), memory: p.memory, grants }, quiet);
       // An ordinary job's, and a helper's: kept from going round in a circle (lib/job-guards.ts), and its long answers cut (lib/job-results.ts).
-      const guarded = kept && job.engine === "jarvis" ? await runGuarded(kept, scope, fresh, runThem) : null;
+      const guarded = kept && job.engine === "jarvis" ? await runGuarded(kept, scope, fresh, runThem, (name) => !!byName.get(name)?.alone) : null;
       const ran = guarded?.outputs ?? (await runThem(fresh));
       if (guarded && kept) {
         // Not what came from the workshop, nor was kept of that: a job that reads back what it wrote has not seen where it leads.
@@ -512,10 +582,20 @@ export function jobEngine(
       const outputs: OpenAI.Responses.ResponseInput = [...ran, ...[...begun].map((call_id) => answered({ call_id }, INTERRUPTED)), ...[...reports].map(([call_id, said]) => answered({ call_id }, said))];
       await p.memory.save().catch(() => {});
       await say?.({ doing: [] });
+      // Full: asked for its notes, with what its tools gave, and then on in a new conversation.
+      const brims = works && contextOf(usage) >= FRESH_AT;
+      const full = brims && mayGoOn(job);
       // On the plan, the whole exchange goes again; at OpenAI, the chain carries it.
-      const next = await send(req, [...outputs, ...told], { after: id }, "auto", all).catch(parked);
+      const next = await send(req, [...outputs, ...told, ...(full ? [{ role: "developer" as const, content: NOTES_ASK }] : [])], { after: id }, full ? "none" : "auto", all).catch((e: unknown) => {
+        if (e instanceof PlanParked) return parked(e);
+        // No notes to be had; or, short of the mark, longer than its model takes.
+        if (full) return noNotes(stop)(e);
+        if (works && mayGoOn(job) && tooLong(e)) return null;
+        throw e;
+      });
+      if (!next) return goOn(job, "", usage, stop, say);
       if ("kind" in next) return next;
-      return { kind: "continued", responseId: next.responseId, usage, ...took(next), ...(guarded?.stuck ? { stuck: true as const } : {}), ...(calls.some((c) => c.name === SHARE.name) ? { shared, saw: (job.team ?? job.help)?.board.length ?? 0 } : {}) };
+      return { kind: "continued", responseId: next.responseId, usage, ...(full ? { fresh: "noting" as const } : brims ? { fresh: "spent" as const } : {}), ...took(next), ...(guarded?.stuck ? { stuck: true as const } : {}), ...(calls.some((c) => c.name === SHARE.name) ? { shared, saw: (job.team ?? job.help)?.board.length ?? 0 } : {}) };
     },
 
     async cancel(job) {
@@ -556,8 +636,9 @@ const MAX_BODY = 16 * 1024;
  * waiting for the plan, whether whoever is looking may move it to the key, with what its tokens so far would have cost there.
  */
 export function jobView(j: Job, whole = false, mayKey = false) {
-  const { grants: _g, responseId: _r, draft: _d, team: _t, waited: _w, ticked: _k, stuck: _s, nudged: _n, counted: _o, help, told, asked, waits, cut, parked, files, ran, ...rest } = j;
+  const { grants: _g, responseId: _r, draft: _d, team: _t, waited: _w, ticked: _k, stuck: _s, nudged: _n, counted: _o, pinned: _p, help, told, asked, waits, cut, parked, files, ran, fresh, ...rest } = j;
   void _o;
+  void _p;
   void _k;
   void _s;
   void _n;
@@ -582,6 +663,8 @@ export function jobView(j: Job, whole = false, mayKey = false) {
     // What it may take, and once it is out of that, what of: it is writing what it has.
     ...(j.status === "running" && j.engine === "jarvis" ? { limits: { steps: limitsOf(j.engine).maxSteps, going: limitsOf(j.engine).going, minutes: limitsOf(j.engine).maxMs / 60_000 } } : {}),
     ...(j.status === "running" && cut ? { wrapping: cut.why } : {}),
+    // Gone on in a new conversation, from its notes: how often.
+    ...(fresh?.n ? { carried: fresh.n } : {}),
     // What it asks and has not had, for whoever is looking to answer; all of it, with the whole.
     ...(j.status === "running" && openQuestions(asked).length ? { asks: openQuestions(asked).map(({ id, at, text, choices }) => ({ id, at, text, choices })) } : {}),
     ...(whole && asked ? { asked } : {}),
@@ -658,8 +741,8 @@ export async function handleJobs(req: Request, env: Env, url: URL, principal: Pr
     const cfg = workshopConfig(env);
     if (!cfg) return err(503, "the workshop it is in is not set up");
     try {
-      const bytes = await workshopGiven(cfg, j.id, f.sha256, AbortSignal.timeout(60_000));
-      if ((await sha256Hex(bytes)) !== f.sha256) return err(409, "that file is not as the job gave it, so it is not handed over");
+      const bytes = await givenBytes(cfg, j.id, f);
+      if (!bytes) return err(409, "that file is not as the job gave it, so it is not handed over");
       return new Response(bytes, { headers: fileHeaders(f.name, bytes.byteLength) });
     } catch (e) {
       if (!(e instanceof WorkshopError)) throw e;
@@ -706,7 +789,10 @@ export async function handleJobs(req: Request, env: Env, url: URL, principal: Pr
       if (!allows(grants, "workshop")) return err(403, 'a job that makes files needs "workshop"', { need: "workshop" });
       if (!workshopConfig(env)) return err(400, "making files needs the workshop, which is not set up (Settings → Workshop)");
     }
-    if (typeof b.specialty === "string" && b.specialty && !allows(grants, "memory.read")) return err(403, 'using a specialty needs "memory.read"', { need: "memory.read" });
+    const named = [b.specialty, b.project].some((x) => typeof x === "string" && x);
+    if (named && !allows(grants, "memory.read")) return err(403, 'using a specialty or a project needs "memory.read"', { need: "memory.read" });
+    // Theirs, beside a search: only their own hand puts it there (the form), or their own words (tools/jobs.ts).
+    if (named && b.reach === "web" && principal.kind === "device") return err(403, "a device's job on the web has nothing of its owner's");
     const j = await state.createJob(b, { who, grants });
     return typeof j === "string" ? err(400, j) : json({ ok: true, job: jobView(j) }, { status: 201 });
   }

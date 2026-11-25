@@ -30,6 +30,8 @@ import { alertSaid, Conversation, type Said } from "./lib/conversation.ts";
 import { Images, type StoredImage } from "./lib/images.ts";
 import { Specialties, type Procedure, type Specialty } from "./lib/specialties.ts";
 import { SpecialtyMore, type MoreInput, type Source } from "./lib/specialty-more.ts";
+import { TrueNow } from "./lib/true-now.ts";
+import { Projects } from "./lib/projects.ts";
 import { ASKED_MS, FAILED_MS, learned, learnedBody, scriptsOf, type Learned } from "./lib/learn.ts";
 import { whole as wholeWay } from "./lib/job-specialties.ts";
 import { specialtyKeep } from "./tools/specialties.ts";
@@ -101,6 +103,9 @@ export class JarvisState extends DurableObject<Env> {
   private images: Images;
   private specialties: Specialties;
   private ways: SpecialtyMore;
+  /** What its person said of facts that may no longer be true (lib/true-now.ts). */
+  private trueNow: TrueNow;
+  private projects: Projects;
   /** The family's skills: outside services added in chat (lib/skills.ts). */
   private skills: Skills;
   /** Outside systems plugged in (lib/components.ts). */
@@ -126,6 +131,8 @@ export class JarvisState extends DurableObject<Env> {
     this.images = new Images(ctx.storage);
     this.specialties = new Specialties(ctx.storage);
     this.ways = new SpecialtyMore(ctx.storage);
+    this.trueNow = new TrueNow(ctx.storage);
+    this.projects = new Projects(ctx.storage);
     this.skills = new Skills(ctx.storage);
     this.components = new Components(ctx.storage);
     this.pages = new Pages(ctx.storage);
@@ -364,6 +371,8 @@ export class JarvisState extends DurableObject<Env> {
     await this.pages.clear(person);
     await this.specialties.clear(person);
     await this.ways.clear(person);
+    await this.trueNow.clear(person);
+    await this.projects.clear(person);
     await this.episodes.clear(person);
     await this.proposals.forget(person);
     await this.meetingsSeen.forget(person);
@@ -1029,6 +1038,18 @@ export class JarvisState extends DurableObject<Env> {
     return gone;
   }
 
+  memoryPairs(put: readonly { id: string; hash: string; v: string }[], ids: readonly string[], book: string) {
+    return this.trueNow.pairs(put, ids, book);
+  }
+
+  trueKept(book: string) {
+    return this.trueNow.kept(book);
+  }
+
+  trueKeep(book: string, what: string) {
+    return this.trueNow.keep(book, what);
+  }
+
   specialtiesAll(person: string) {
     return this.ways.all(person);
   }
@@ -1520,11 +1541,41 @@ export class JarvisState extends DurableObject<Env> {
     return this.jobs.get(id);
   }
 
-  // `specialty`: the one its person named for it, theirs and kept; any other is none.
-  async createJob(input: { title?: unknown; task?: unknown; engine?: unknown; reach?: unknown; mode?: unknown; team?: unknown; from?: unknown; table?: unknown; helpers?: unknown; specialty?: unknown }, by: { who: string; grants: readonly Grant[] }) {
+  projectsOf(person: string) {
+    return this.projects.of(person);
+  }
+
+  projectSave(person: string, input: { id?: unknown; name?: unknown; rules?: unknown }, now: number) {
+    return this.projects.save(person, input, now);
+  }
+
+  projectForget(person: string, id: string) {
+    return this.projects.forget(person, id);
+  }
+
+  projectPut(person: string, id: string, name: unknown, bytes: Uint8Array, now: number, beside?: boolean) {
+    return this.projects.put(person, id, name, bytes, now, beside);
+  }
+
+  projectDrop(person: string, id: string, n: number, now: number) {
+    return this.projects.drop(person, id, n, now);
+  }
+
+  projectFile(person: string, id: string, n: number) {
+    return this.projects.file(person, id, n);
+  }
+
+  projectNamed(person: string, texts: readonly string[]) {
+    return this.projects.named(person, texts);
+  }
+
+  // `specialty` and `project`: the ones its person named for it, theirs and kept; any other is none.
+  async createJob(input: { title?: unknown; task?: unknown; engine?: unknown; reach?: unknown; mode?: unknown; team?: unknown; from?: unknown; table?: unknown; helpers?: unknown; specialty?: unknown; project?: unknown }, by: { who: string; grants: readonly Grant[] }) {
     const using = typeof input.specialty === "string" && input.specialty ? ((await this.specialties.of(personOfWho(by.who))).find((s) => s.id === input.specialty) ?? null) : null;
     if (typeof input.specialty === "string" && input.specialty && !using) return "that specialty is not kept any more";
-    const j = await this.jobs.create(input, { ...by, using });
+    const project = typeof input.project === "string" && input.project ? await this.projects.get(personOfWho(by.who), input.project) : null;
+    if (typeof input.project === "string" && input.project && !project) return "that project is not kept any more";
+    const j = await this.jobs.create(input, { ...by, using, project });
     await this.rearm();
     return j;
   }

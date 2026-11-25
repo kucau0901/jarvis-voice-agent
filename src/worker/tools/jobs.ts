@@ -12,6 +12,9 @@ import { asFiles } from "../lib/photos.ts";
 import { workshopBring, workshopConfig } from "../lib/workshop.ts";
 import { clampLimit } from "./args.ts";
 
+/** As much of what goes with a job on the web as is looked through for who they are (lib/job-brief.ts). */
+const LOOKED_THROUGH = 400_000;
+
 /**
  * Starting a background job by voice (lib/jobs.ts). The job keeps the
  * caller's grants, and reads but never acts.
@@ -81,16 +84,26 @@ const startJob: Tool = {
     const person = ctx.env.JARVIS_PERSON || OWNER;
     const mine = ownPart(ctx.asked ?? "");
     const used = !research && allows(ctx.grants, "memory.read") ? await state.specialtyNamed(person, args.reach === "web" ? [mine] : [mine, String(args.title ?? ""), String(args.task ?? "")]).catch(() => null) : null;
-    if (used && args.reach === "web") {
-      const w = await state.specialtyWhole(person, used.id);
-      const files = await Promise.all((w?.more.files ?? []).map((f) => state.specialtyFile(person, used.id, f.n)));
-      const read = files.map((f) => (f ? textIn(f.bytes) : null));
-      if (read.includes(null)) return `Not started: "${used.name}" has a file nothing here can look through, and a job on the web is told nothing of who the user is. They can start it themselves in Jobs, or it can be started on their own things.`;
-      const said = tells([used.when, used.steps, used.why ?? "", w?.more.text ?? "", files.map((f) => f!.name), read].flat().join("\n"), await known(), ctx.asked ?? "");
-      if (said.length) {
-        return `Not started: "${used.name}", which they named, says ${said.map((s) => `"${s}"`).join(", ")}, and a job on the web is told nothing of who the user is, their family, or exactly where ` +
-          "they live. Start it on their own things, or without it, with what is needed of it in the brief; or they can change it in Memory → Specialties.";
-      }
+    // And its project, the same way (lib/job-project.ts).
+    const project = !research && allows(ctx.grants, "memory.read") ? await state.projectNamed(person, args.reach === "web" ? [mine] : [mine, String(args.title ?? ""), String(args.task ?? "")]).catch(() => null) : null;
+    if (args.reach === "web") {
+      /** Why what goes with it may not; null when it may. */
+      const stays = async (name: string, words: string[], files: ({ name: string; bytes: Uint8Array } | null)[], where: string): Promise<string | null> => {
+        const read = files.map((f) => (f ? textIn(f.bytes) : null));
+        if (read.includes(null)) return `Not started: "${name}" has a file nothing here can look through, and a job on the web is told nothing of who the user is. They can start it themselves in Jobs, or it can be started on their own things.`;
+        const all = [...words, ...files.map((f) => f!.name), ...read].join("\n");
+        if (all.length > LOOKED_THROUGH) return `Not started: "${name}" is more than can be looked through here, and a job on the web is told nothing of who the user is. They can start it themselves in Jobs, or it can be started on their own things.`;
+        const said = tells(all, await known(), ctx.asked ?? "");
+        return said.length
+          ? `Not started: "${name}", which they named, says ${said.slice(0, 5).map((s) => `"${s.slice(0, 60)}"`).join(", ")}${said.length > 5 ? ` and ${said.length - 5} more` : ""}, and a job on the web is told nothing of who the user is, their family, or exactly where ` +
+            `they live. Start it on their own things, or without it, with what is needed of it in the brief; or they can change it in ${where}.`
+          : null;
+      };
+      const w = used ? await state.specialtyWhole(person, used.id) : null;
+      const no =
+        (used ? await stays(used.name, [...used.when, ...used.steps, used.why ?? "", w?.more.text ?? ""], await Promise.all((w?.more.files ?? []).map((f) => state.specialtyFile(person, used.id, f.n))), "Memory → Specialties") : null) ??
+        (project ? await stays(project.name, project.rules, await Promise.all(project.files.map((f) => state.projectFile(person, project.id, f.n))), "Jobs → Projects") : null);
+      if (no) return no;
     }
     const shop = !research && args.mode === "files" ? workshopConfig(ctx.env) : null;
     if (!research && args.mode === "files" && (!shop || !allows(ctx.grants, "workshop"))) {
@@ -105,7 +118,7 @@ const startJob: Tool = {
     // And only where somebody asked, in words of their own: not a routine, a bot or a page.
     const helpers = !research && args.helpers === true && allows(ctx.grants, "routines") && !!ownPart(ctx.asked ?? "");
     const j = await state.createJob(
-      { title: args.title, task, engine: research ? "research" : "jarvis", reach: args.reach, ...(thorough ? { mode: "thorough" } : shop ? { mode: "files" } : {}), ...(helpers ? { helpers: true } : {}), ...(used ? { specialty: used.id } : {}), ...(team ? { team: true } : {}), ...(table ? { table: true } : {}) },
+      { title: args.title, task, engine: research ? "research" : "jarvis", reach: args.reach, ...(thorough ? { mode: "thorough" } : shop ? { mode: "files" } : {}), ...(helpers ? { helpers: true } : {}), ...(used ? { specialty: used.id } : {}), ...(project ? { project: project.id } : {}), ...(team ? { team: true } : {}), ...(table ? { table: true } : {}) },
       { who: callerWho(ctx.env), grants: ctx.grants },
     );
     if (typeof j === "string") return `Not started: ${j}.`;
@@ -132,7 +145,7 @@ const startJob: Tool = {
       ? `Started research on "${j.title}". It takes 10 to 40 minutes; the report, with its sources, will reach the user as a message and wait in Jobs. Tell them so.`
       : `Started "${j.title}" ${j.reach === "web" ? "on the web, with only what its brief says of the user" : "on the user's own things, without the web"}. ` +
         `${brought.length ? `It has what they attached (${brought.length === 1 ? "one file" : `${brought.length} files`}). ` : shop && asFiles(ctx.attached).length ? "It was NOT given what they attached: a job on the web has nothing of theirs. " : ""}` +
-        `${used ? `It uses their specialty "${used.name}". ` : ""}` +
+        `${used ? `It uses their specialty "${used.name}". ` : ""}${project ? `It is in their project "${project.name}". ` : ""}` +
         `${!research && args.helpers === true && !helpers ? "It has NO helpers: those are for the family, when one of them asks. " : ""}` +
         `It usually takes ${j.mode === "thorough" ? `ten minutes or more, with a stronger model${j.help ? " and helpers" : ""}` : j.help ? "ten minutes or so, splitting the work between helpers" : "a few minutes"}; the result${shop ? ", with its files to download," : ""} will reach the user as a message. Tell them so.`;
   },
@@ -179,7 +192,7 @@ const jobResults: Tool = {
     properties: {
       about: {
         type: ["string", "null"],
-        description: "Words from the job's title or brief, e.g. 'dashcam'. Null for the latest.",
+        description: "Words of its title, brief or answer, e.g. 'dashcam'. Null for the latest.",
       },
       engine: {
         type: "string",
@@ -198,7 +211,8 @@ const jobResults: Tool = {
     const engine = args.engine === "hermes" || args.engine === "research" || args.engine === "jarvis" ? args.engine : null;
     const jobs = (await state.listJobs()).filter((j) => {
       if (!mayWork(j, ctx.env, ctx.grants) || (engine && j.engine !== engine)) return false;
-      const has = wordsOf(`${j.title} ${j.task}`);
+      // Its title and brief, and what came of it.
+      const has = wordsOf(`${j.title} ${j.task} ${j.summary ?? ""} ${j.result ?? ""}`);
       return want.every((w) => has.some((h) => h.startsWith(w)));
     }).slice(0, clampLimit(args.limit, 3, 10));
     if (!jobs.length) {

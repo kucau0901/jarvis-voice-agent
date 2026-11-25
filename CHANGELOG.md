@@ -36,6 +36,19 @@ of every release, and in the [README](README.md#updating).
   exported the same way. Characters nobody can see are taken out, and an import gets no
   tools of its own.
 
+- **Long background jobs go on.** One that outgrew a single conversation would have
+  failed; it now carries on in a new one from what it did, with everything you told it
+  word for word. Jobs says so ("went on from its notes").
+- **Which is true now?**, in Memory: saved facts that may say the same thing twice, or
+  disagree, and ones whose day has passed, with a choice for each. Nothing changes until
+  you choose, and what you drop goes to Recently forgotten.
+- **Projects**, in Jobs: a name, a few rules and files for jobs that belong together.
+  Choose one for a new job, or name it ("for my Kitchen project"), and the job has its
+  rules, its files and what its last jobs came back with. What a job makes is kept there
+  with a tap.
+- "What did the solar job find about the rebate?" also looks in what finished jobs came
+  back with, not only their titles and briefs.
+
 ### Fixed
 
 - **A job moved from the ChatGPT plan to the API key costs only what it runs
