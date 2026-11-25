@@ -13,17 +13,19 @@ import { toToolSchema, type Tool } from "../tools/registry.ts";
 import * as hermes from "../tools/hermes.ts";
 import { INTERRUPTED, JobChain, beginCalls, stepId, stepOf, type Answered } from "../lib/job-chain.ts";
 import { NOT_RUN, runGuarded } from "../lib/job-guards.ts";
-import { noteLinks, readResult } from "../lib/job-results.ts";
+import { noteLinks, readResult, takeLinks } from "../lib/job-results.ts";
+import { DELEGATE, delegateTool, heardBy, helperId, helperMessage, helperScope, helperUntold, helperView, reportsOf, tasksOf } from "../lib/job-helpers.ts";
+import { bringNeeds, handFile } from "../lib/helper-files.ts";
 import { KEPT_DAYS, WorkshopError, fileHeaders, workshopAsk, workshopConfig, workshopGiven } from "../lib/workshop.ts";
 import { WORKSHOP_TOOLS, workshopTools } from "../lib/workshop-tools.ts";
 import { mailFile } from "../lib/mail-file.ts";
 import { googleConfig } from "../lib/google.ts";
 import { sha256Hex } from "../lib/devices.ts";
 import { ASK_MS, openLines, openQuestions, unfinished, untold, workTools, type Said } from "../lib/job-tools.ts";
-import { RESEARCH_MONTHLY_DEFAULT, jobTool, limitsOf, reachOf, webTool, sharesLeft, usageEntry, type Job, type JobDeps, type Step } from "../lib/jobs.ts";
+import { RESEARCH_MONTHLY_DEFAULT, helperTool, jobTool, limitsOf, reachOf, webTool, sharesLeft, usageEntry, type Job, type JobDeps, type Step } from "../lib/jobs.ts";
 import { citationsOf, markUnseen } from "../lib/links.ts";
 import { toCsv } from "../lib/research-table.ts";
-import { JOB_FILES, MERGE_INSTRUCTIONS, PLAN_INSTRUCTIONS, RESEARCH_CHECK, TABLE_CHECK, TABLE_MERGE_INSTRUCTIONS, TABLE_PLAN_INSTRUCTIONS, TABLE_TEAM_INSTRUCTIONS, TEAM_INSTRUCTIONS, wrapUp } from "../lib/router-prompt.ts";
+import { HELPER_FILES, JOB_FILES, JOB_HELPERS, MERGE_INSTRUCTIONS, PLAN_INSTRUCTIONS, RESEARCH_CHECK, TABLE_CHECK, TABLE_MERGE_INSTRUCTIONS, TABLE_PLAN_INSTRUCTIONS, TABLE_TEAM_INSTRUCTIONS, TEAM_INSTRUCTIONS, wrapUp } from "../lib/router-prompt.ts";
 import { SHARE, angleMessage, mergeMaterial, shareReply, shareTool, teamView } from "../lib/research-team.ts";
 import { prepareRouter, runCalls, type Prepared } from "../lib/router.ts";
 import { held, proposable, type File, type Finish } from "../lib/proposals.ts";
@@ -39,12 +41,13 @@ import type { Storage } from "../lib/state-host.ts";
 
 /**
  * Background jobs (lib/jobs.ts): the engine that runs them, and the HTTP
- * surface. All paths need `ask`; a Hermes job also needs `hermes`, one that makes files `workshop`, and research or a thorough job `routines`.
+ * surface. All paths need `ask`; a Hermes job also needs `hermes`, one that makes files `workshop`, and research, a thorough job or one with
+ * helpers `routines`.
  *
  *   GET    /api/v1/jobs           the jobs (a device sees its own)
  *   GET    /api/v1/jobs?id=       one, with its whole result
- *   POST   /api/v1/jobs           {task, title?, engine?: "jarvis" | "hermes" | "research", reach?: "private" | "web", mode?: "thorough" | "files", team?: true, from?: id}
- *   POST   /api/v1/jobs/cancel    {id}
+ *   POST   /api/v1/jobs           {task, title?, engine?: "jarvis" | "hermes" | "research", reach?: "private" | "web", mode?: "thorough" | "files", helpers?: true, team?: true, from?: id}
+ *   POST   /api/v1/jobs/cancel    {id, helper?}   stops it, or one of its helpers
  *   POST   /api/v1/jobs/key       {id}   a job waiting for the ChatGPT plan goes on with the API key instead; needs `routines`
  *   POST   /api/v1/jobs/card      {id, outcome?, limits?, assumptions?}   its person changes its card while it works
  *   POST   /api/v1/jobs/tell      {id, text, question?} or {id, question, skip: true}   tells it something while it works, or answers what it asked
@@ -107,10 +110,11 @@ interface OldPlanStep {
   input: OpenAI.Responses.ResponseInput;
   response: OpenAI.Responses.Response;
 }
-/** A research team's chains, beside the job's own: each team's, the plan's and the merge's (its check follows on it). */
+/** A research team's chains, beside the job's own: each team's, the plan's and the merge's (its check follows on it); and each helper's. */
 const CHAIN = {
   job: "m",
   team: (t: number) => `t${t}`,
+  helper: (t: number) => `h${t}`,
   plan: "p",
   merge: "g",
   /** One carried on from an old step, by its id: a team's three were each on one of their own. */
@@ -158,9 +162,10 @@ export function jobEngine(
   /** A minute, or until the person stops the job. */
   const signal = (stop?: AbortSignal, ms = 60_000) => (stop ? AbortSignal.any([AbortSignal.timeout(ms), stop]) : AbortSignal.timeout(ms));
 
-  /** `team`: for a research team's chain, which is offered share_findings besides. */
-  async function request(job: Job, turns: { role: "user"; text: string }[], team = false, stop?: AbortSignal, say: (s: Said) => Promise<void> = async () => {}) {
+  /** `t`: for a research team's chain, or a helper's (lib/job-helpers.ts), which is offered share_findings besides. */
+  async function request(job: Job, turns: { role: "user"; text: string }[], t?: number, stop?: AbortSignal, say: (s: Said) => Promise<void> = async () => {}) {
     const research = job.engine === "research";
+    const helper = t === undefined ? null : (job.help?.chains[t] ?? null);
     // Its person's own things, or the web, never both (lib/jobs.ts Reach): by what it is handed, not by what it is told.
     const web = reachOf(job) === "web";
     // As whoever started it (lib/context.ts): their memory, their mail. On the web, as nobody in particular.
@@ -169,9 +174,10 @@ export function jobEngine(
     if (!may) throw new Error("whoever started it is no longer in the family");
     const grants: Grant[] = web ? ["ask"] : jobGrants(may);
     // A job that may act proposes instead (lib/proposals.ts); on the web it has nothing to act on.
-    const toolFilter = web ? webTool : (t: { name: string }) => jobTool(t) || proposable(t) || t.name === mailSend.name;
-    const prepared = await prepareRouter(env, turns, signal(stop), grants, { surface: research ? "research" : "job", reach: reachOf(job), toolFilter });
-    const p = web ? prepared : proposing(prepared, job);
+    // A helper only reads, and has nothing of its person's past: less than the job, whatever its brief says.
+    const toolFilter = web ? webTool : helper ? helperTool : (t: { name: string }) => jobTool(t) || proposable(t) || t.name === mailSend.name;
+    const prepared = await prepareRouter(env, turns, signal(stop), grants, { surface: research ? "research" : "job", reach: reachOf(job), toolFilter, ...(helper ? { helper: true as const } : {}) });
+    const p = web || helper ? prepared : proposing(prepared, job);
     const searches = web ? builtinTools(env) : [];
     // Research, and a thorough job: the stronger model, thinking hard (lib/jobs.ts "research").
     const strong = research || job.mode === "thorough";
@@ -179,11 +185,22 @@ export function jobEngine(
     // Its own tools, which no question in the conversation is ever offered: an ordinary job's, or a research team's one.
     // The workshop's, for one that makes files, while its person may have one use it.
     const shop = job.mode === "files" && allows(may, "workshop") ? workshopConfig(env) : null;
-    const own: Tool[] = team
-      ? [shareTool("", [], 0)]
-      : job.engine === "jarvis"
-        ? [...workTools(job, say), readResult(kept, job.id), ...(shop ? workshopTools(shop, job, say, stop, allows(grants, "mail") && googleConfig(env, "https://jarvis.invalid") ? [mailFile(shop, job.id, stop)] : []) : [])]
-        : [];
+    // In the workshop a helper is somebody of its own: its own user, its own folder (lib/helper-files.ts).
+    const bench = helper ? helperId(job.id, t!) : job.id;
+    const mailIn = shop && allows(grants, "mail") && googleConfig(env, "https://jarvis.invalid") ? [mailFile(shop, bench, stop)] : [];
+    const own: Tool[] = helper
+      ? [
+          // Its list, and nothing else of the job's own: no card, no question, no helpers.
+          ...workTools({ todo: helper.todo }, say).filter((x) => x.name === "job_tick"),
+          readResult(kept, helperScope(job.id, t!)),
+          shareTool("", [], 0, true),
+          ...(shop ? workshopTools(shop, { id: bench, ran: (job.ran ?? []).filter((x) => x.by === t! + 1) }, say, stop, [...mailIn, handFile(shop, job, t!, say, stop)], true) : []),
+        ]
+      : t !== undefined
+        ? [shareTool("", [], 0)]
+        : job.engine === "jarvis"
+          ? [...workTools(job, say), readResult(kept, job.id), ...(shop ? workshopTools(shop, job, say, stop, mailIn) : []), ...(job.help ? [delegateTool(!!shop)] : [])]
+          : [];
     const functions = [...p.tools, ...own].map(toToolSchema);
     return {
       job,
@@ -196,10 +213,11 @@ export function jobEngine(
       searches,
       functions,
       own,
+      shop,
       base: {
         model,
         ...(strong ? { reasoning: { effort: "high" as const } } : {}),
-        instructions: p.instructions + (shop ? JOB_FILES : ""),
+        instructions: p.instructions + (shop ? (helper ? HELPER_FILES : JOB_FILES) : "") + (!helper && job.help ? JOB_HELPERS : ""),
         tools: [...functions, ...searches],
         tool_choice: "auto" as const,
         // Background mode: the step runs at OpenAI, and nobody has to stay connected for it.
@@ -289,6 +307,15 @@ export function jobEngine(
     return next.answered ? { responseId: stepId(at.chain, at.n + 1), took: next.took } : send(r, next.input, to, toolChoice, next.took);
   }
 
+  /** Why a job cannot give its work out now: something it left running, which would keep its helpers from running anything. */
+  async function busy(job: Job): Promise<string | null> {
+    const shop = job.mode === "files" ? workshopConfig(env) : null;
+    if (!shop) return null;
+    const { processes } = await workshopAsk<{ processes: { id: string; running: boolean }[] }>(shop, "process", { job: job.id, op: "list" }, AbortSignal.timeout(10_000)).catch(() => ({ processes: [] }));
+    const on = processes.filter((p) => p.running).map((p) => p.id);
+    return on.length ? `Not given out: ${on.join(", ")} of yours is still running, and your helpers could run nothing beside it. Wait for it with process, or stop it, then give the work out.` : null;
+  }
+
   /** A step on the plan, as it was answered; null when it is no longer kept. */
   const planStep = async (job: Job, id: string): Promise<Answered | null> =>
     kept ? ((await new JobChain(kept, job.id).answer(id)) ?? (await kept.get<OldPlanStep>(`jobplan:${id}`))?.response ?? null) : null;
@@ -308,10 +335,17 @@ export function jobEngine(
     async start(job, t, stop, say) {
       if (!(await canAsk(env))) return { error: "no ChatGPT plan or OpenAI key is set" };
       try {
-        const r = await request(job, [{ role: "user", text: job.task }], t !== undefined, stop, say);
+        const r = await request(job, [{ role: "user", text: job.task }], t, stop, say);
+        const helper = t === undefined ? undefined : job.help?.chains[t];
+        const to = { begin: t === undefined ? CHAIN.job : helper ? CHAIN.helper(t) : CHAIN.team(t) };
+        const before = await pickUp(r, to);
+        if (before) return before;
+        // A helper's: its person's whole task, then its part as the job put it, with copies of what it was said to need.
+        const got = helper?.needs.length && r.shop ? await bringNeeds(r.shop, job.id, t!, helper.needs, stop) : "";
         // A research team's: the same for every team, then its own angle, planned from the user's brief.
-        const input: OpenAI.Responses.ResponseInput =
-          t === undefined
+        const input: OpenAI.Responses.ResponseInput = helper
+          ? [...r.p.input, { role: "user", content: helperMessage(helper, got) }]
+          : t === undefined
             ? r.p.input
             : [
                 ...r.p.input,
@@ -319,8 +353,7 @@ export function jobEngine(
                 { role: "developer", content: TEAM_INSTRUCTIONS + (job.table?.columns ? TABLE_TEAM_INSTRUCTIONS : "") },
                 { role: "user", content: angleMessage(job.team!.angles![t]!, job.table?.columns) },
               ];
-        const to = { begin: t === undefined ? CHAIN.job : CHAIN.team(t) };
-        return (await pickUp(r, to)) ?? (await send(r, input, to));
+        return await send(r, input, to);
       } catch (e) {
         if (e instanceof PlanParked) return { parked: e.until };
         return { error: `it could not start: ${e instanceof Error ? e.message : String(e)}`.slice(0, 300) };
@@ -331,7 +364,7 @@ export function jobEngine(
       if (!(await canAsk(env))) return { error: "no ChatGPT plan or OpenAI key is set" };
       try {
         // One answer, no searching: the angles, as JSON (lib/jobs.ts parseAngles).
-        const r = await request(job, [{ role: "user", text: job.task }], false, stop);
+        const r = await request(job, [{ role: "user", text: job.task }], undefined, stop);
         const to = { begin: CHAIN.plan };
         return (await pickUp(r, to, "none")) ?? (await send(r, [...r.p.input, { role: "developer", content: job.table ? TABLE_PLAN_INSTRUCTIONS : PLAN_INSTRUCTIONS }], to, "none"));
       } catch (e) {
@@ -343,7 +376,7 @@ export function jobEngine(
     async merge(job, stop) {
       try {
         // One answer, no searching: what the teams found is all it has, quoted (lib/research-team.ts).
-        const r = await request(job, [{ role: "user", text: job.task }], false, stop);
+        const r = await request(job, [{ role: "user", text: job.task }], undefined, stop);
         const to = { begin: CHAIN.merge };
         return (await pickUp(r, to, "none")) ?? (await send(r, [...r.p.input, { role: "developer", content: job.table?.columns ? TABLE_MERGE_INSTRUCTIONS : MERGE_INSTRUCTIONS }, { role: "user", content: mergeMaterial(job) }], to, "none"));
       } catch (e) {
@@ -355,7 +388,7 @@ export function jobEngine(
     async check(job, after, stop) {
       try {
         // The next turn of the chain that wrote the report, with web search still on.
-        const r = await request(job, [], false, stop);
+        const r = await request(job, [], undefined, stop);
         const check: OpenAI.Responses.ResponseInput = [{ role: "developer", content: job.table?.columns ? TABLE_CHECK : RESEARCH_CHECK }];
         // Written on the plan: its whole exchange, then the check.
         if (isPlanStep(after) && !(await planStep(job, after))) return { error: "the report's step is no longer kept" };
@@ -367,7 +400,10 @@ export function jobEngine(
     },
 
     async poll(job, t, stop, say): Promise<Step> {
-      const id = t === undefined ? job.responseId! : job.team!.chains[t]!.responseId!;
+      const helper = t === undefined ? undefined : job.help?.chains[t];
+      const id = t === undefined ? job.responseId! : (job.team ?? job.help)!.chains[t]!.responseId!;
+      // What it keeps beside its exchange: the job's, or the helper's own.
+      const scope = helper ? helperScope(job.id, t!) : job.id;
       // A step on the plan is over by the time it is kept: read here, not at OpenAI.
       const onPlan = isPlanStep(id) ? await planStep(job, id) : null;
       if (isPlanStep(id) && !onPlan) return { kind: "failed", error: "its step on the ChatGPT plan is no longer kept" };
@@ -385,15 +421,16 @@ export function jobEngine(
         if (e instanceof PlanParked) return { kind: "parked", until: e.until };
         throw e;
       };
-      // An ordinary job's own: what its person told it since, and its checklist.
+      // An ordinary job's own: what its person told it since, and its checklist. A helper hears what they said, too.
       const ordinary = t === undefined && job.engine === "jarvis";
-      const works = ordinary && !job.cut;
+      const cut = helper ? helper.cut : job.cut;
+      const works = ordinary && !cut;
       // Out of its budget, it still has what they said before that, with being told to write what it has.
-      const told = ordinary && !job.cut?.sent ? untold(job) : [];
+      const told = cut?.sent ? [] : ordinary ? untold(job) : helper ? helperUntold(job, t!) : [];
       const all = told.length ? job.told!.length : undefined;
       const took = (x: { took?: number }) => (x.took ? { took: x.took } : {});
-      const last = job.cut ? "none" as const : "auto" as const;
-      const wrap = job.cut ? [{ role: "developer" as const, content: wrapUp(job.cut.why) }] : [];
+      const last = cut ? "none" as const : "auto" as const;
+      const wrap = cut ? [{ role: "developer" as const, content: wrapUp(cut.why) }] : [];
       if (!calls.length) {
         const text = r.output_text?.trim() ?? "";
         if (!text) return { kind: "failed", error: "it finished without an answer" };
@@ -402,7 +439,7 @@ export function jobEngine(
         // Its answer before it has heard them, or with its checklist unfinished: it goes on, the second only once.
         const nudge = works && !told.length && !job.nudged && openLines(job.todo).length > 0;
         if (told.length || nudge) {
-          const req = await request(job, [], false, stop, say);
+          const req = await request(job, [], t, stop, say);
           // Cut short, or waiting for the plan, after it was told something: that, as it was. What they said since goes with the step after.
           const before = onPlan ? await pickUp(req, { after: id }, last).catch(parked) : null;
           if (before) return "kind" in before ? before : { kind: "continued", responseId: before.responseId, usage, ...took(before), ...(before.took ? {} : { nudged: true as const }) };
@@ -410,48 +447,59 @@ export function jobEngine(
           return "kind" in next ? next : { kind: "continued", responseId: next.responseId, usage, ...took(next), ...(nudge ? { nudged: true as const } : {}) };
         }
         // An address it never saw is said to be unchecked; its brief and what it was told count as seen.
-        const seen = kept && ordinary ? await noteLinks(kept, job.id, r.output, [job.task, ...(job.told ?? []).map((x) => x.text)]) : null;
+        const seen = kept && (ordinary || helper) ? await noteLinks(kept, scope, r.output, [job.task, ...(job.told ?? []).map((x) => x.text)]) : null;
         // Research lists them (lib/jobs.ts withSources), after its check.
         return { kind: "done", text: seen ? markUnseen(text, seen) : text, cited: citationsOf(r.output), usage };
       }
+      // Its work given out (lib/job-helpers.ts): nothing else is run, and it is looked at again once its helpers are done.
+      const gives = ordinary && job.help ? calls.filter((c) => c.name === DELEGATE) : [];
+      const tasks = works && gives[0] && !job.help!.chains.length ? ((await busy(job)) ?? tasksOf(job, gives[0].arguments, Date.now())) : null;
+      if (gives[0] && Array.isArray(tasks)) return { kind: "helps", call: gives[0].call_id, tasks, usage };
+      // Done: the call that gave it out is answered with what they wrote, any other with why not. What they saw, it has seen.
+      const reports = new Map(gives.map((c) => [c.call_id, c.call_id === job.help!.call ? reportsOf(job.help!) : typeof tasks === "string" && c === gives[0] ? tasks : "You have had your helpers: they work once in a job."]));
+      if (kept && gives.some((c) => c.call_id === job.help!.call)) for (const i of job.help!.chains.keys()) await takeLinks(kept, helperScope(job.id, i), job.id);
+      const answered = (c: { call_id: string }, output: string) => ({ type: "function_call_output" as const, call_id: c.call_id, output });
       // The tools it asked for run here, between steps; then the next step starts.
-      const req = await request(job, [], t !== undefined, stop, say);
+      const req = await request(job, [], t, stop, say);
       const { p, env: theirs, grants } = req;
       // Told to write what it has; the check of a report written so is not told again, and may look things up.
-      const wraps = !!job.cut && !job.draft;
+      const wraps = !!cut && !job.draft;
       const resumed = onPlan ? await pickUp(req, { after: id }, wraps ? "none" : "auto").catch(parked) : null;
       if (resumed) return "kind" in resumed ? resumed : { kind: "continued", responseId: resumed.responseId, usage, ...took(resumed) };
-      // Out of its budget: nothing more is run, and it writes what it has.
-      if (job.cut && wraps) {
-        const unrun = calls.map((c) => ({ type: "function_call_output" as const, call_id: c.call_id, output: NOT_RUN }));
+      // Out of its budget: nothing more is run, and it writes what it has, its helpers' reports with it.
+      if (cut && wraps) {
+        const unrun = calls.map((c) => answered(c, c.call_id === job.help?.call ? reports.get(c.call_id)! : NOT_RUN));
         const end = await send(req, [...unrun, ...told, ...wrap], { after: id }, "none", all).catch(parked);
         return "kind" in end ? end : { kind: "continued", responseId: end.responseId, usage, ...took(end) };
       }
       // A team's share_findings: posted by lib/jobs.ts teamStep, answered with what the others shared.
       const shared: string[] = [];
       const byName = new Map(p.byName);
-      for (const tool of t === undefined ? req.own : [shareTool(shareReply(job, t), shared, sharesLeft(job, t))]) byName.set(tool.name, tool);
+      for (const tool of req.own) byName.set(tool.name, tool);
+      if (t !== undefined) byName.set(SHARE.name, shareTool(shareReply(job, t), shared, sharesLeft(job, t)));
       // What acts by itself is never begun twice (lib/job-chain.ts): a run cut short may have made it.
       const acts = calls.filter((c) => byName.get(c.name)?.alone);
-      const begun = kept && acts.length ? await beginCalls(kept, job.id, id, acts.map((c) => c.call_id)) : new Set<string>();
-      const fresh = calls.filter((c) => !begun.has(c.call_id));
+      const begun = kept && acts.length ? await beginCalls(kept, scope, id, acts.map((c) => c.call_id)) : new Set<string>();
+      const fresh = calls.filter((c) => !begun.has(c.call_id) && !reports.has(c.call_id));
       await say?.({ doing: [...new Set(fresh.map((c) => c.name))] });
       const runThem = (some: typeof calls) => runCalls(some, byName, { env: theirs, signal: signal(stop), memory: p.memory, grants }, quiet);
-      // An ordinary job's: kept from going round in a circle (lib/job-guards.ts), and its long answers cut (lib/job-results.ts).
-      const guarded = kept && job.engine === "jarvis" ? await runGuarded(kept, job.id, fresh, runThem) : null;
+      // An ordinary job's, and a helper's: kept from going round in a circle (lib/job-guards.ts), and its long answers cut (lib/job-results.ts).
+      const guarded = kept && job.engine === "jarvis" ? await runGuarded(kept, scope, fresh, runThem) : null;
       const ran = guarded?.outputs ?? (await runThem(fresh));
       if (guarded && kept) {
         // Not what came from the workshop, nor was kept of that: a job that reads back what it wrote has not seen where it leads.
         const own = new Set(fresh.filter((c) => WORKSHOP_TOOLS.has(c.name) || (job.mode === "files" && c.name === "read_result")).map((c) => c.call_id));
-        await noteLinks(kept, job.id, r.output, ran.map((o) => ("output" in o && typeof o.output === "string" && !("call_id" in o && own.has(o.call_id ?? "")) ? o.output : "")));
+        // Nor what another helper told it: that one's word, until it has looked.
+        for (const c of fresh) if (c.name === SHARE.name) own.add(c.call_id);
+        await noteLinks(kept, scope, r.output, ran.map((o) => ("output" in o && typeof o.output === "string" && !("call_id" in o && own.has(o.call_id ?? "")) ? o.output : "")));
       }
-      const outputs: OpenAI.Responses.ResponseInput = [...ran, ...[...begun].map((call_id) => ({ type: "function_call_output" as const, call_id, output: INTERRUPTED }))];
+      const outputs: OpenAI.Responses.ResponseInput = [...ran, ...[...begun].map((call_id) => answered({ call_id }, INTERRUPTED)), ...[...reports].map(([call_id, said]) => answered({ call_id }, said))];
       await p.memory.save().catch(() => {});
       await say?.({ doing: [] });
       // On the plan, the whole exchange goes again; at OpenAI, the chain carries it.
       const next = await send(req, [...outputs, ...told], { after: id }, "auto", all).catch(parked);
       if ("kind" in next) return next;
-      return { kind: "continued", responseId: next.responseId, usage, ...took(next), ...(guarded?.stuck ? { stuck: true as const } : {}), ...(calls.some((c) => c.name === SHARE.name) ? { shared } : {}) };
+      return { kind: "continued", responseId: next.responseId, usage, ...took(next), ...(guarded?.stuck ? { stuck: true as const } : {}), ...(calls.some((c) => c.name === SHARE.name) ? { shared, saw: (job.team ?? job.help)?.board.length ?? 0 } : {}) };
     },
 
     async cancel(job) {
@@ -492,7 +540,7 @@ const MAX_BODY = 16 * 1024;
  * waiting for the plan, whether whoever is looking may move it to the key, with what its tokens so far would have cost there.
  */
 export function jobView(j: Job, whole = false, mayKey = false) {
-  const { grants: _g, responseId: _r, draft: _d, team: _t, waited: _w, ticked: _k, stuck: _s, nudged: _n, counted: _o, told, asked, waits, cut, parked, files, ran, ...rest } = j;
+  const { grants: _g, responseId: _r, draft: _d, team: _t, waited: _w, ticked: _k, stuck: _s, nudged: _n, counted: _o, help, told, asked, waits, cut, parked, files, ran, ...rest } = j;
   void _o;
   void _k;
   void _s;
@@ -508,11 +556,13 @@ export function jobView(j: Job, whole = false, mayKey = false) {
   const view = {
     ...rest,
     // What it set out to do: while it works, and with the whole of it; a list of thirty need not carry it.
-    ...(whole || j.status === "running" ? (told ? { told: told.filter((t) => !t.by) } : {}) : { card: undefined, todo: undefined }),
+    ...(whole || j.status === "running" ? (told ? { told: told.map((t, i) => ({ ...t, ...(heardBy(j, i) ? { helped: true as const } : {}) })).filter((t) => !t.by) } : {}) : { card: undefined, todo: undefined }),
     // What it made, to save; and what it ran: the last of it while it works, all that is kept with the whole.
     ...(files ? { files: files.map(({ n, name, size, at }) => ({ n, name, size, at })) } : {}),
     ...(ran && (whole || j.status === "running") ? { ran: whole ? ran : ran.slice(-3) } : {}),
     ...(j.team ? { team: teamView(j) } : {}),
+    // Started with helpers: none until it gives its work out, then each, with its list while it works or with the whole.
+    ...(help ? { helpers: helperView(help, whole || j.status === "running") } : {}),
     // What it may take, and once it is out of that, what of: it is writing what it has.
     ...(j.status === "running" && j.engine === "jarvis" ? { limits: { steps: limitsOf(j.engine).maxSteps, going: limitsOf(j.engine).going, minutes: limitsOf(j.engine).maxMs / 60_000 } } : {}),
     ...(j.status === "running" && cut ? { wrapping: cut.why } : {}),
@@ -606,7 +656,8 @@ export async function handleJobs(req: Request, env: Env, url: URL, principal: Pr
     const b = await readObject(req, MAX_BODY);
     const j = await state.getJob(typeof b?.id === "string" ? b.id : "");
     if (!j || !mine(j)) return err(404, "no such job");
-    const r = await state.cancelJob(j.id);
+    // One of its helpers, by its number; or all of it.
+    const r = b?.helper === undefined ? await state.cancelJob(j.id) : await state.stopJobHelper(j.id, Number(b.helper) - 1);
     return typeof r === "string" ? err(404, r) : json({ ok: true, job: jobView(r) });
   }
 
@@ -633,6 +684,8 @@ export async function handleJobs(req: Request, env: Env, url: URL, principal: Pr
     // Research spends the family's monthly allowance (Settings → OpenAI), and a thorough job the stronger model: not a guest's to spend.
     if (b.engine === "research" && !allows(grants, "routines")) return err(403, 'a research job needs "routines"', { need: "routines" });
     if (b.mode === "thorough" && !allows(grants, "routines")) return err(403, 'a thorough job needs "routines"', { need: "routines" });
+    // Several times an ordinary job's share of what the house pays for.
+    if (b.helpers === true && !allows(grants, "routines")) return err(403, 'a job with helpers needs "routines"', { need: "routines" });
     if (b.mode === "files") {
       if (!allows(grants, "workshop")) return err(403, 'a job that makes files needs "workshop"', { need: "workshop" });
       if (!workshopConfig(env)) return err(400, "making files needs the workshop, which is not set up (Settings → Workshop)");

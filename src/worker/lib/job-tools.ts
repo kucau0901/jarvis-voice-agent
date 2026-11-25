@@ -76,6 +76,8 @@ export interface Said {
   /** A file made for its person, and a command it ran (lib/workshop-tools.ts). */
   file?: JobFile;
   ran?: Ran;
+  /** A helper's: what it handed the job (lib/helper-files.ts). */
+  handed?: { path: string; size: number };
 }
 
 export const MAX_ASKED = 3;
@@ -179,7 +181,7 @@ export function workTools(job: Pick<Job, "card" | "todo" | "asked">, say: (s: Sa
           now.state = "doing";
           delete now.why;
         }
-        if (!todo.length) return "There is no checklist: set one with job_plan.";
+        if (!todo.length) return "There is no checklist yet.";
         await say({ todo: todo.map((t) => ({ ...t })) });
         return listed(todo);
       },

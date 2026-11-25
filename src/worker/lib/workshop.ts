@@ -87,6 +87,8 @@ export interface Ran {
   cmd: string;
   /** Left running, as this. */
   p?: string;
+  /** By its helper of this number (lib/job-helpers.ts), not the job itself. */
+  by?: number;
   /** How it ended; absent while it is running, or if that was never learned. */
   code?: number | string | null;
   ms?: number;
@@ -128,7 +130,8 @@ export function apart(): (name: string) => string {
 /** What it ran, with this: how one written down already ended, or a new one. */
 export function withRan(ran: readonly Ran[] | undefined, r: Ran): Ran[] {
   const all = ran ?? [];
-  return (all.some((x) => x.at === r.at) ? all.map((x) => (x.at === r.at ? r : x)) : [...all, r]).slice(-MAX_RAN);
+  const same = (x: Ran) => x.at === r.at && x.by === r.by;
+  return (all.some(same) ? all.map((x) => (same(x) ? r : x)) : [...all, r]).slice(-MAX_RAN);
 }
 
 /** A file kept for its person: a name given again is the newer of the two. */

@@ -1,5 +1,5 @@
 import { authHeaders } from "../key";
-import { ended, sizeSaid, type JobFile, type JobRan } from "../jobWords";
+import { ended, sizeSaid, type JobFile, type JobHelper, type JobRan } from "../jobWords";
 import { button, el } from "./util";
 
 /**
@@ -43,12 +43,13 @@ export function jobFiles(key: string, id: string, files: readonly Omit<JobFile, 
   return box;
 }
 
-/** What it ran, newest last, and how each ended; `over`, its job is too. */
-export function jobRan(ran: readonly JobRan[], over = false): HTMLElement {
+/** What it ran, newest last, and how each ended; `over`, its job is too. One of its helpers' says whose it was. */
+export function jobRan(ran: readonly JobRan[], over = false, helpers: readonly JobHelper[] = []): HTMLElement {
   const list = el("ol", "jobran");
   for (const r of ran) {
     const li = el("li", "");
-    li.append(el("code", "", r.cmd), el("small", "", ended(r, over)));
+    const by = r.by ? helpers.find((h) => h.n === r.by) : undefined;
+    li.append(el("code", "", r.cmd), el("small", "", `${by ? `${by.name}: ` : ""}${ended(r, over)}`));
     list.appendChild(li);
   }
   return list;

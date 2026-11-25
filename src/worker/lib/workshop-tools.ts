@@ -27,7 +27,9 @@ interface Out { out?: string; code?: number | string | null; signal?: string; la
 const WAIT_SECONDS = 100;
 const MAX_WAIT = 60;
 /** Their names, for who must know them from the rest (routes/jobs.ts). */
-export const WORKSHOP_TOOLS: ReadonlySet<string> = new Set(["run", "process", "list_files", "read_file", "write_file", "edit_file", "give_file", "mail_file"]);
+export const WORKSHOP_TOOLS: ReadonlySet<string> = new Set(["run", "process", "list_files", "read_file", "write_file", "edit_file", "give_file", "mail_file", "hand_file"]);
+/** The job's alone, not a helper's (lib/job-helpers.ts): what its person gets comes from one folder, and one left running keeps the others waiting. */
+const JOBS_OWN: ReadonlySet<string> = new Set(["process", "give_file"]);
 
 const ended = (r: Out): string =>
   r.emptied ? "was undone: this job's folder went far past what it may hold, or past it with the disk nearly full, so all that was in it is gone; what you gave is kept" : r.full ? "was stopped: this job's folder went past what it may hold, or the disk is nearly full" : r.late ? `stopped: it took its whole ${Math.round((r.ms ?? 0) / 1000) || RUN_SECONDS} seconds` : r.signal ? `ended by ${r.signal}${r.signal === "SIGKILL" ? " (out of memory, or stopped)" : ""}` : `ended with ${r.code ?? "no code"}`;
@@ -52,8 +54,8 @@ function tool(t: Omit<Tool, "pace" | "run"> & { run(args: Record<string, unknown
   };
 }
 
-/** `more`: others that work in its folder (lib/mail-file.ts), made in turn with these. */
-export function workshopTools(cfg: WorkshopConfig, job: Pick<Job, "id" | "files" | "ran">, say: (s: Said) => Promise<void>, stop?: AbortSignal, more: Tool[] = []): Tool[] {
+/** `more`: others that work in its folder (lib/mail-file.ts), made in turn with these. `helper`: for one of a job's helpers, `job` its own folder. */
+export function workshopTools(cfg: WorkshopConfig, job: Pick<Job, "id" | "files" | "ran">, say: (s: Said) => Promise<void>, stop?: AbortSignal, more: Tool[] = [], helper = false): Tool[] {
   const ask: Ask = (what, body, seconds = 60) => {
     const limit = AbortSignal.timeout((seconds + WAIT_SECONDS) * 1000);
     return workshopAsk(cfg, what, { job: job.id, ...body }, stop ? AbortSignal.any([limit, stop]) : limit);
@@ -82,20 +84,20 @@ export function workshopTools(cfg: WorkshopConfig, job: Pick<Job, "id" | "files"
       description:
         "Run a command in this job's own folder, with bash. There is no network. It has python3 (pandas, openpyxl, docx, reportlab, pypdf, " +
         "matplotlib, PIL, bs4, lxml, yaml, jinja2), node, pandoc, pdftotext, qpdf, hugo, jq, rg, sqlite3, zip. " +
-        `${RUN_SECONDS} seconds at most; set background for longer (${LONG_SECONDS / 60} minutes), and look at it with process.`,
+        `${RUN_SECONDS} seconds at most${helper ? "." : `; set background for longer (${LONG_SECONDS / 60} minutes), and look at it with process.`}`,
       parameters: {
         type: "object",
         properties: {
           command: { type: "string", description: "What to run. For more than a few lines, write it to a file first and run that." },
           seconds: { type: ["integer", "null"], description: "The most it may take. Null for the most there is." },
-          background: { type: "boolean", description: "Leave it running and go on." },
+          ...(helper ? {} : { background: { type: "boolean", description: "Leave it running and go on." } }),
         },
-        required: ["command", "seconds", "background"],
+        required: ["command", "seconds", ...(helper ? [] : ["background"])],
         ...strict,
       },
       async run(args) {
         const cmd = text(args.command);
-        const background = args.background === true;
+        const background = !helper && args.background === true;
         const most = background ? LONG_SECONDS : RUN_SECONDS;
         const seconds = Math.min(most, Math.max(1, Number(args.seconds) || most));
         const it: Ran = { at: Math.max(Date.now(), (ran.at(-1)?.at ?? 0) + 1), cmd: cmd.trim().slice(0, SHOWN) };
@@ -213,5 +215,5 @@ export function workshopTools(cfg: WorkshopConfig, job: Pick<Job, "id" | "files"
       },
     }),
   ];
-  return [...tools, ...more].map(inTurn);
+  return [...tools.filter((t) => !helper || !JOBS_OWN.has(t.name)), ...more].map(inTurn);
 }

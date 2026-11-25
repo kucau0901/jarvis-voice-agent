@@ -31,7 +31,15 @@ Usage, and the job's line in Jobs); minutes; questions it asked; cards it filed,
 and how many were approved; and whether a question from the family waited or
 failed because of it (must be none).
 
-What the free tests cover instead, with no model: `test/jobs.test.ts` (a restart
+**With helpers.** Helpers are only ever asked for, until these tasks show a kind
+of work where they do better. Ask 1, 3, 5 and 8 twice more: "with helpers", and as a
+thorough job without them, and note the same things. Helpers
+are worth having by default for a kind of task only where they come out right more often
+than one agent thinking harder, at no more tokens; being quicker alone is not a
+reason.
+
+What the free tests cover instead, with no model: `test/job-helpers.test.ts` (helpers
+at once, and a restart at every save while they work), `test/jobs.test.ts` (a restart
 at every save, a step that never ends, the plan used up, a page that asks for
 every tool there is), `test/router-inputs.test.ts` (what every question carries
 has not grown) and `test/router-loop.test.ts` (the house answers before any

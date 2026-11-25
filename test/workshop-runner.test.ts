@@ -249,6 +249,9 @@ console.log("\ngiven");
   check("what is had is what was given, though it changed it, and gave it again, since", got.status === 200 && got.raw.toString("utf8") === "a,b\n1,2\n" && (await send("GET", `/v1/given?job=${JOB}&sum=${again.body.sha256}`)).raw.toString() === "changed");
   check("no such file, no such sum, another's", (await send("GET", `/v1/given?job=${JOB}&sum=${"0".repeat(64)}`)).status === 400 && (await send("GET", `/v1/given?job=${JOB}&sum=../x`)).status === 400 && (await send("GET", `/v1/given?job=../x&sum=${want}`)).status === 400 && (await send("GET", `/v1/given?job=jother00001&sum=${want}`)).status === 400 && (await post("give", { job: JOB, path: "nope" })).status === 400);
   await post("run", { job: JOB, cmd: "head -c 21000000 /dev/zero > big.bin" });
+  await post("file", { job: JOB, op: "write", path: "twin.csv", text: "x".repeat(50_000) });
+  const twins = await Promise.all([1, 2, 3].map(() => post("give", { job: JOB, path: "twin.csv" })));
+  check("the same file asked for three times at once: kept once, and each has it", twins.every((x) => x.status === 200 && x.body.sha256 === twins[0]!.body.sha256), twins.map((x) => [x.status, x.body]));
   check("too big to give", /21 MB, more than 20 MB/.test(String((await post("give", { job: JOB, path: "big.bin" })).body.error)));
   await post("run", { job: JOB, cmd: "rm big.bin" });
 }

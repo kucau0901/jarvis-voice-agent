@@ -1398,7 +1398,8 @@ start research, and only where the key may stand in for the plan at all
 (`CHATGPT_FALLBACK`). A question someone asks still carries on with the key as
 before: somebody is waiting for it. One person's jobs may use so much of the plan
 a day (`DAILY_PLAN_TOKENS`, counted by code, since OpenAI gives no figure for what
-is left), six run in the house at once, and three are looked at at once. What
+is left), six run in the house at once, and three are looked at at once (a job's
+helpers each count). What
 the numbers should be is a guess until there is a month of real use.
 
 **Out of its budget, a job writes what it has.** One that reached its 25 steps
@@ -1525,6 +1526,59 @@ beside the exchange, and `read_result` reads on in it or finds a word in it, alw
 quoted again, since a cut can take the fence's end with it. These tools, like a
 research team's `share_findings`, are added to a job's own request and are never
 in `ALL`: no question in the conversation carries them.
+
+**A job may have helpers, when it is asked for.** Some work is several pieces that
+do not wait on each other (three villas, four months of mail), and one chain does
+them one after another, each step sending everything the ones before it read. So an
+ordinary job started with helpers (`help`, `lib/job-helpers.ts`) may once call
+`delegate` with two or three parts. Each helper is a chain of its own on the job's
+record, as a research team's is, with a conversation of its own; the job waits, and
+the call is answered with their reports. It is off unless it is asked for, by the box
+in Jobs or in words ("with helpers"): it costs several times as much, and nothing here
+yet shows which kinds of work it is better at than one agent
+([the twelve tasks](agent-tasks.md) are for that). In words, whether they asked is the
+model's reading; code holds it to messages with words of theirs, so never a routine, a
+bot or a forwarded mail, and to those who may start research. Hence also no second
+giving out, and no helpers of helpers.
+
+A helper has less than its job, never more, and by what it is handed rather than
+what it is told (`request` in `routes/jobs.ts`): the same side of private and web,
+the reading tools alone, and none of what asks the person, proposes, looks into
+their memory or past jobs (`recall`, `job_results`; nor is it given their profile, or
+what was tried before) or gives work out. Its brief is written by the job, which may
+have read a page that wanted something. So it goes between marks it cannot write, as
+the job's words and not the user's, to be done as far as it serves the person's task,
+which goes before it whole, as theirs; and the worst such a brief can ask for is what
+the job could have done itself. What its person says meanwhile reaches every helper at
+its next step, as it reaches the job.
+ What a helper reports is what it read: cut to 9,000
+characters, quoted, and said to be unchecked, with what it shared with the others
+on the board teams share on. An address it saw counts as seen by the job; one it
+was only told of, or only named, does not.
+
+They work at the same time, unlike a team's chains, which are looked at in turn.
+A look is at a job or at one helper of it (`lookOf` in `lib/jobs.ts`), each with a
+signal of its own, so a slow one holds up nothing, one can be stopped alone, and
+helpers count among the three looked at in the house at once. On the plan a helper's
+next step is due the moment the last ends, so a free place goes to whoever has waited
+longest (`inOrder`): first come first served, three helpers kept every place, and
+another person's job first got one twelve minutes on. Looks at one job run beside each other, so whatever they change
+is changed one at a time on the record as it then stands (`edit`), as is what
+their person does to it: two saves of a copy read earlier would each lose the
+other's. While any works, the job itself is not due. A restart finds each chain
+where it was. One refused at the plan's limit waits for it and the job with it;
+another's step that was already streaming may still end, which does not end that
+wait, nor make it the job's time.
+
+Their budget is the job's: 15 steps each, and for all of them 40 minutes, 45
+searches or $1.50 of the key, so that a third of the hour and a quarter of the rest
+are left to check what they brought and write from it. Out of that, a helper is told
+to write what it has, as a job is, and what it wrote is its report: part done, which
+code says, to the job and on the screen. One whose step does not end is let go a
+quarter of an hour on; the job is not looked at while its helpers are, so nothing
+else would end it. If the job is itself out by the time they are done, their reports
+still reach its last call. One that fails three times running, or is stopped, says
+why in its place, and the others go on.
 
 **Read; propose, never act.** A job runs with nobody watching and reads text
 written by others — web pages, mail — so it reads with Jarvis's reading tools
@@ -2412,6 +2466,17 @@ else works without it.
   on what carries the shared token. Jarvis's own browser shares that network: a
   request that says it is a browser's (`Origin`, `Sec-Fetch-Site`) is refused,
   token or not.
+- **A job's helpers are each somebody of their own** (`lib/helper-files.ts`): a
+  user and a folder apiece, as any job has, so none can open another's, nor the
+  job's. A file goes across as a copy, by the ways a file is given to a person and
+  brought in from Chat: into a helper's folder what the job said it needs, and into
+  the job's, under `from-1/`, what the helper hands over. Only the job gives its
+  person anything, so there is one writer of what they get. A helper leaves nothing
+  running, since one job at a time runs anything, and a job with something of its own
+  still running gives no work out, as its helpers could run nothing beside it. A
+  helper's folder goes when it has ended, and whatever the workshop did not hear of
+  then, with the job. Keeping a given copy is done one at a time: two helpers may need the same
+  file at the same moment.
 - **What comes back is data.** A program prints what it read, and what it read
   may be a page or a mail: all of it reaches the model quoted, names of files
   included. A failure, the workshop being off included, is something the job is

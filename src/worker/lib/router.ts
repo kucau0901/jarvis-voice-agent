@@ -49,7 +49,7 @@ import {
   recordFallback,
   resolveRouterModel,
 } from "./router-model.ts";
-import { CHAT_INSTRUCTIONS, JOB_WORK, jobInstructions, outOfSteps, RESEARCH_INSTRUCTIONS, ROUTER_PROMPT, familyBlock, nowLine } from "./router-prompt.ts";
+import { CHAT_INSTRUCTIONS, JOB_WORK, helperInstructions, jobInstructions, outOfSteps, RESEARCH_INSTRUCTIONS, ROUTER_PROMPT, familyBlock, nowLine } from "./router-prompt.ts";
 
 /** Notes while a tool is still working. */
 const WAITING = [
@@ -131,6 +131,8 @@ export interface RunOptions {
   relayed?: boolean;
   /** A background job's: what it may look at (lib/jobs.ts Reach). */
   reach?: Reach;
+  /** One of a background job's helpers (lib/job-helpers.ts), not the job itself. */
+  helper?: true;
   /** A routine's own words, its maker's (routes/routines.ts): what it may keep from what it reads is judged by them. */
   standing?: string;
   /**
@@ -188,7 +190,9 @@ export async function prepareRouter(
   // offered to save, which a question they asked from a screen or device takes, saving them or not: the
   // same test that offers them (run()), so a routine, a tile, a bot or a job never takes them.
   const asked = lastAsk(turns);
-  const recalls = !!asked && allows(grants, "memory.read");
+  // A job's helper is given nothing of their past: what its part needs of it, the job puts in its brief.
+  const remembers = allows(grants, "memory.read") && !opts.helper;
+  const recalls = !!asked && remembers;
   const takes = !!opts.origin && allows(grants, "memory.write");
   // The skills that have a key (lib/skills.ts), for those who may send to them.
   const skilled = allows(grants, "skills");
@@ -281,8 +285,9 @@ export async function prepareRouter(
       : "") +
     (opts.surface === "voice" ? spokenReplyInstructions(env.JARVIS_AGENT_NAME) : "") +
     (opts.openMic ? OVERHEARD_RULE : "") +
-    (opts.surface === "job" || opts.surface === "research" ? jobInstructions(opts.surface === "research" ? "web" : (opts.reach ?? "private"), opts.surface === "job") : "") +
-    (opts.surface === "job" ? JOB_WORK : "") +
+    (opts.helper ? helperInstructions(opts.reach ?? "private") : "") +
+    (!opts.helper && (opts.surface === "job" || opts.surface === "research") ? jobInstructions(opts.surface === "research" ? "web" : (opts.reach ?? "private"), opts.surface === "job") : "") +
+    (!opts.helper && opts.surface === "job" ? JOB_WORK : "") +
     (opts.surface === "research" ? RESEARCH_INSTRUCTIONS : "") +
     (opts.surface === "chat" ? CHAT_INSTRUCTIONS : "") +
     (opts.bot ? botAsks(opts.bot) : "") +
@@ -327,7 +332,7 @@ export async function prepareRouter(
    */
   // What is saved about the user is theirs: a caller not allowed to read memory
   // (a family member, a gate controller) is not handed it in the prompt either.
-  const profile = allows(grants, "memory.read") ? memory.buildProfile() : "";
+  const profile = remembers ? memory.buildProfile() : "";
   const cacheable = explicitCache(model);
   const input: OpenAI.Responses.ResponseInput = [
     {

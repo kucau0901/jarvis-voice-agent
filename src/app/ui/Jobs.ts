@@ -103,6 +103,13 @@ export class Jobs {
     hard.appendChild(hardBox);
     hard.appendChild(document.createTextNode(" Thorough: a stronger model, for work with many things to weigh; several times the cost, five a day"));
     form.appendChild(hard);
+    // Helpers (src/worker/lib/job-helpers.ts): asked for, never by itself.
+    const split = el("label", "on");
+    const splitBox = document.createElement("input");
+    splitBox.type = "checkbox";
+    split.appendChild(splitBox);
+    split.appendChild(document.createTextNode(" Helpers: splits the work between up to three, who work at the same time; several times the cost"));
+    form.appendChild(split);
     // Files: in the workshop, for whoever may have one use it (show).
     this.files = el("label", "on");
     const filesBox = document.createElement("input");
@@ -149,8 +156,8 @@ export class Jobs {
     // Research is the web's.
     form.addEventListener("change", () => {
       if (deepBox.checked) reach.value = "web";
-      if (deepBox.checked) hardBox.checked = filesBox.checked = false;
-      reach.disabled = hardBox.disabled = filesBox.disabled = deepBox.checked;
+      if (deepBox.checked) hardBox.checked = filesBox.checked = splitBox.checked = false;
+      reach.disabled = hardBox.disabled = filesBox.disabled = splitBox.disabled = deepBox.checked;
     });
     teamBox.addEventListener("change", () => {
       if (!teamBox.checked) tableBox.checked = false;
@@ -162,12 +169,14 @@ export class Jobs {
             task: task.value,
             reach: reach.value,
             ...(hardBox.checked ? { mode: "thorough" } : filesBox.checked ? { mode: "files" } : {}),
+            ...(splitBox.checked ? { helpers: true } : {}),
             ...(deepBox.checked ? { engine: "research" } : {}),
             ...(teamBox.checked ? { team: true } : {}),
             ...(tableBox.checked ? { table: true } : {}),
           });
           task.value = "";
-          hardBox.checked = filesBox.checked = deepBox.checked = teamBox.checked = tableBox.checked = reach.disabled = hardBox.disabled = filesBox.disabled = false;
+          hardBox.checked = filesBox.checked = splitBox.checked = deepBox.checked = teamBox.checked = tableBox.checked = false;
+          reach.disabled = hardBox.disabled = filesBox.disabled = splitBox.disabled = false;
         }, "Started — it arrives as an alert when done."), "primary"),
     );
     sheet.appendChild(form);
@@ -272,7 +281,7 @@ export class Jobs {
     top.appendChild(el("span", `chip ${j.status === "done" || j.asks ? "on" : "off"}`, j.asks ? "asks you" : j.waiting ? "waiting" : j.status === "failed" && j.hasResult ? "part done" : STATUS[j.status]));
     row.appendChild(top);
 
-    const facts: string[] = [j.team ? "Research team" : j.engine === "hermes" ? "Hermes" : j.engine === "research" ? "Research" : j.mode === "thorough" ? "Jarvis, thorough" : j.mode === "files" ? "Jarvis, making files" : "Jarvis", `started ${when(j.createdAt)}`];
+    const facts: string[] = [j.team ? "Research team" : j.engine === "hermes" ? "Hermes" : j.engine === "research" ? "Research" : j.mode === "thorough" ? "Jarvis, thorough" : j.mode === "files" ? "Jarvis, making files" : "Jarvis", ...(j.helpers && (j.status === "running" || j.helpers.length) ? ["with helpers"] : []), `started ${when(j.createdAt)}`];
     if (j.status === "running") facts.push(`${Math.max(1, Math.round((Date.now() - j.createdAt) / 60_000))} min so far${j.engine === "jarvis" ? `, step ${j.steps}` : ""}`);
     if (j.team?.phase) facts.push(j.team.phase === "teams" ? `${j.team.reported} of ${j.team.of} teams done` : PHASE[j.team.phase]);
     else if (j.team && j.status !== "running" && j.team.reported < j.team.of) facts.push(`${j.team.reported} of ${j.team.of} teams reported`);
@@ -292,7 +301,7 @@ export class Jobs {
 
     if (j.status === "running") {
       for (const q of j.asks ?? []) row.appendChild(askCard(this.key, j, q, { tag: "It asks you", typed: this.answering, after: () => void this.load() }));
-      const work = jobLive(j);
+      const work = jobLive(j, (n) => void this.act(() => api(this.key, "POST", "/api/v1/jobs/cancel", { id: j.id, helper: n }), "Stopped: the job is told."));
       if (work) row.appendChild(work);
       if (j.engine === "jarvis" && !j.waiting) row.appendChild(jobNow(j));
       if (this.telling.has(j.id)) row.appendChild(this.tell(j));
@@ -430,7 +439,7 @@ export class Jobs {
       if (j.result) box.appendChild(markdown(j.result, j.engine === "jarvis" ? "jobtext whole" : "jobtext"));
       if (j.ran?.length) {
         const ran = el("details", "");
-        ran.append(el("summary", "", "What it ran"), jobRan(j.ran, j.status !== "running"));
+        ran.append(el("summary", "", "What it ran"), jobRan(j.ran, j.status !== "running", j.helpers));
         box.appendChild(ran);
       }
       const went = j.status === "running" ? null : jobLive(j);

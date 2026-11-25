@@ -141,6 +141,13 @@ export function flagLines(f: Partial<Flags>, most = MAX_FLAGS): string {
 const linksKey = (job: string) => `${jobRows(job)}links`;
 const MAX_LINKS = 1_000;
 
+/** What `scope` (a helper, lib/job-helpers.ts) saw, seen by the job too. */
+export async function takeLinks(kept: Storage, scope: string, job: string): Promise<void> {
+  const was = (await kept.get<string[]>(linksKey(job))) ?? [];
+  const all = new Set([...was, ...((await kept.get<string[]>(linksKey(scope))) ?? [])]);
+  if (all.size > was.length) await kept.put(linksKey(job), [...all].slice(0, MAX_LINKS));
+}
+
 /** Addresses in what a step read: its tools' answers, the pages its searches opened, gave or cited. */
 export async function noteLinks(kept: Storage, job: string, output: readonly unknown[], texts: readonly string[]): Promise<Set<string>> {
   const was = (await kept.get<string[]>(linksKey(job))) ?? [];

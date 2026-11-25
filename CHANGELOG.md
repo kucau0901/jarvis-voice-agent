@@ -17,6 +17,20 @@ of every release, and in the [README](README.md#updating).
 
 ## [Unreleased]
 
+### Added
+
+- **A background job can have helpers, when you ask for them.** "Compare these
+  three, with helpers", or the new box in **Jobs**: the job splits its work into
+  two or three parts, its helpers do them at the same time, sharing what bears on
+  each other's, and the job checks what they bring and writes the answer. Jobs
+  shows a row for each (what it is on, its list, and **Stop** for that one alone),
+  and Chat shows them under the job's pill. A helper reads what the job may read
+  and nothing more: it cannot ask you anything, propose, look into your memory and
+  past jobs, or have helpers of its own. In the workshop each has a folder of its
+  own, and what you get is only what the job gives you. What you tell the job while
+  they work reaches them too. All of it comes out of the job's one hour, searches
+  and limit on the key; it uses several times an ordinary job's share of them.
+
 ### Fixed
 
 - **What a job may hold in the workshop holds for a command too quick to be

@@ -19,22 +19,22 @@ const startJob: Tool = {
   name: "start_job",
   pace: "fast",
   description:
-    "Start a background job for anything that needs many steps or several minutes: comparing, going " +
-    "through a lot of mail or calendar, planning a trip, checking many things. It runs on its own; the " +
-    "result reaches the user as a message and in Jobs. " +
+    "Start a background job for what needs many steps or several minutes: comparing, going " +
+    "through a lot of mail or calendar, planning a trip, checking many things. The result reaches the " +
+    "user as a message and in Jobs. " +
     "It reads and never acts; what it would do, it proposes. It reads ONE side (`reach`): 'private', " +
     "the user's own mail, calendar, memory, house, car and cameras, without the web; or 'web', without " +
     "any of those. For work that needs both (a trip around their diary), read the private part here " +
     "first and put only the facts it needs in `task`. Write `task` as a complete brief, names resolved: " +
     "it will not see the conversation, and the user can read it. Tell them it has started and, on the " +
-    "web, which of their facts it was given. Not for quick questions: answer those now. " +
+    "web, which of their facts it was given. Answer quick questions now. " +
     "Set research to 'yes' only when asked for research in depth ('research…', 'dig into…', 'find " +
     "out everything about…'): a stronger model, searching widely, 10 to 40 minutes, roughly one to two " +
     "dollars, a report with its sources. 'team' only when asked for research as a team in so many " +
     "words: three teams from different angles sharing what they find, 20 to 55 minutes, roughly four " +
     "to seven dollars. 'table' for a list or table of many items found and compared ('the 10 " +
     "cheapest…', 'every dentist near…', 'a spreadsheet of…'): the same team fills rows, to download " +
-    "from Jobs as CSV, same cost and time. Otherwise 'no'. Say the time and cost when you start any.",
+    "as CSV, same cost and time. Else 'no'. Say the time and cost when you start any.",
   parameters: {
     type: "object",
     properties: {
@@ -46,13 +46,10 @@ const startJob: Tool = {
         enum: ["ordinary", "thorough", "files"],
         description: "'thorough' only if asked, or to weigh many things together: a stronger, dearer model. 'files' makes files to download.",
       },
-      research: {
-        type: "string",
-        enum: ["no", "yes", "team", "table"],
-        description: "'no' for an ordinary job.",
-      },
+      helpers: { type: "boolean", description: "Only if asked for: up to three share the work." },
+      research: { type: "string", enum: ["no", "yes", "team", "table"] },
     },
-    required: ["title", "task", "reach", "mode", "research"],
+    required: ["title", "task", "reach", "mode", "helpers", "research"],
     additionalProperties: false,
   },
   async run(args, ctx) {
@@ -86,10 +83,12 @@ const startJob: Tool = {
     const brought = shop && args.reach !== "web" ? asFiles(ctx.attached) : [];
     // Counted, not named: a name is its author's words, and list_files gives it quoted.
     const task = `${String(args.task ?? "")}${brought.length ? `\n\n(In its folder, from the user: ${brought.length === 1 ? "a file" : `${brought.length} files`}.)` : ""}`;
-    // So does the stronger model cost: a guest's job is an ordinary one.
+    // So do the stronger model and helpers cost: a guest's job is an ordinary one.
     const thorough = !research && args.mode === "thorough" && allows(ctx.grants, "routines");
+    // And only where somebody asked, in words of their own: not a routine, a bot or a page.
+    const helpers = !research && args.helpers === true && allows(ctx.grants, "routines") && !!ownPart(ctx.asked ?? "");
     const j = await state.createJob(
-      { title: args.title, task, engine: research ? "research" : "jarvis", reach: args.reach, ...(thorough ? { mode: "thorough" } : shop ? { mode: "files" } : {}), ...(team ? { team: true } : {}), ...(table ? { table: true } : {}) },
+      { title: args.title, task, engine: research ? "research" : "jarvis", reach: args.reach, ...(thorough ? { mode: "thorough" } : shop ? { mode: "files" } : {}), ...(helpers ? { helpers: true } : {}), ...(team ? { team: true } : {}), ...(table ? { table: true } : {}) },
       { who: callerWho(ctx.env), grants: ctx.grants },
     );
     if (typeof j === "string") return `Not started: ${j}.`;
@@ -116,7 +115,8 @@ const startJob: Tool = {
       ? `Started research on "${j.title}". It takes 10 to 40 minutes; the report, with its sources, will reach the user as a message and wait in Jobs. Tell them so.`
       : `Started "${j.title}" ${j.reach === "web" ? "on the web, with only what its brief says of the user" : "on the user's own things, without the web"}. ` +
         `${brought.length ? `It has what they attached (${brought.length === 1 ? "one file" : `${brought.length} files`}). ` : shop && asFiles(ctx.attached).length ? "It was NOT given what they attached: a job on the web has nothing of theirs. " : ""}` +
-        `It usually takes ${j.mode === "thorough" ? "ten minutes or more, with a stronger model" : "a few minutes"}; the result${shop ? ", with its files to download," : ""} will reach the user as a message. Tell them so.`;
+        `${!research && args.helpers === true && !helpers ? "It has NO helpers: those are for the family, when one of them asks. " : ""}` +
+        `It usually takes ${j.mode === "thorough" ? `ten minutes or more, with a stronger model${j.help ? " and helpers" : ""}` : j.help ? "ten minutes or so, splitting the work between helpers" : "a few minutes"}; the result${shop ? ", with its files to download," : ""} will reach the user as a message. Tell them so.`;
   },
 };
 

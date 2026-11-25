@@ -11,6 +11,9 @@ import type { Tool } from "../tools/registry.ts";
  * a model only inside asQuotedData, in a tool's output or a user message,
  * never a developer message. The angles come from the user's own brief,
  * planned by a call that cannot search, and reach each team as a user message.
+ *
+ * A job's helpers (lib/job-helpers.ts) share in the same way, on the job's own
+ * side of private and web.
  */
 
 /**
@@ -37,13 +40,19 @@ export const SHARE = {
   },
 };
 
+/** The same, as a job's helper is offered it. */
+const SHARE_HELPERS =
+  "Tell the job's other helpers something you have found that bears on their part, or a dead end not worth repeating, and hear what they " +
+  "have found since you last asked. Only where it would save them looking.";
+
 const CAPPED = "You have shared as often as a team may: this was not passed on. Keep to your angle, and write your report when you are ready.";
 
 /** The share tool for one hop: what it is told goes into `into`; the first call hears `reply`, a later one whether it fitted the `room` the team had left. */
-export function shareTool(reply: string, into: string[], room: number): Tool {
+export function shareTool(reply: string, into: string[], room: number, helper = false): Tool {
   let told = false;
   return {
     ...SHARE,
+    ...(helper ? { description: SHARE_HELPERS } : {}),
     pace: "fast",
     async run(args) {
       if (typeof args.findings === "string") into.push(args.findings);
@@ -51,21 +60,23 @@ export function shareTool(reply: string, into: string[], room: number): Tool {
         told = true;
         return reply;
       }
-      return into.length > room ? CAPPED : "Posted for the other teams.";
+      return into.length > room ? CAPPED : posted(helper);
     },
   };
 }
 
-const nameOf = (team: TeamRun, i: number) => team.angles?.[i]?.name ?? "";
-const lines = (team: TeamRun, board: TeamRun["board"]) => board.map((b) => `Team ${b.team + 1} (${nameOf(team, b.team)}): ${b.text}`).join("\n");
+const posted = (helper: boolean) => `Posted for the other ${helper ? "helpers" : "teams"}.`;
+const nameOf = (j: Job, i: number) => (j.team ? j.team.angles?.[i]?.name : j.help?.chains[i]?.name) ?? "";
+const lines = (j: Job, board: TeamRun["board"]) => board.map((b) => `${j.team ? "Team" : "Helper"} ${b.team + 1} (${nameOf(j, b.team)}): ${b.text}`).join("\n");
 
-/** What team `t` hears when it shares: whether it was posted, and what the others shared since it last asked, never its own. */
+/** What team or helper `t` hears when it shares: whether it was posted, and what the others shared since it last asked, never its own. */
 export function shareReply(j: Job, t: number): string {
-  const team = j.team!;
-  const head = sharesLeft(j, t) <= 0 ? CAPPED : "Posted for the other teams.";
-  const news = team.board.slice(team.chains[t]?.seen ?? 0).filter((b) => b.team !== t);
-  if (!news.length) return `${head} Nothing new from the other teams yet.`;
-  return `${head} New from the other teams since you last asked:\n\n${asQuotedData("shared", lines(team, news), "THE OTHER RESEARCH TEAMS, FROM WHAT THEY READ ON THE WEB")}`;
+  const run = j.team ?? j.help!;
+  const all = j.team ? "teams" : "helpers";
+  const head = sharesLeft(j, t) <= 0 ? CAPPED : posted(!j.team);
+  const news = run.board.slice(run.chains[t]?.seen ?? 0).filter((b) => b.team !== t);
+  if (!news.length) return `${head} Nothing new from the other ${all} yet.`;
+  return `${head} New from the other ${all} since you last asked:\n\n${asQuotedData("shared", lines(j, news), j.team ? "THE OTHER RESEARCH TEAMS, FROM WHAT THEY READ ON THE WEB" : "THE JOB'S OTHER HELPERS, FROM WHAT THEY READ")}`;
 }
 
 /** What the merge is given, as a user message: each team's report with its pages, or why it has none, and the board. */
@@ -73,7 +84,7 @@ export function mergeMaterial(j: Job): string {
   const team = j.team!;
   const parts = [j.table?.columns ? `The research teams' work on this brief, for a table with the columns: ${j.table.columns.join(" | ")}` : "The research teams' work on this brief:"];
   team.chains.forEach((c, i) => {
-    const who = `Team ${i + 1} (${nameOf(team, i)})`;
+    const who = `Team ${i + 1} (${nameOf(j, i)})`;
     const shared = team.board.some((b) => b.team === i);
     parts.push(
       c.state === "reported" && c.report
@@ -82,7 +93,7 @@ export function mergeMaterial(j: Job): string {
     );
   });
   if (team.board.length) {
-    parts.push(`What the teams shared as they went:\n${asQuotedData("shared", lines(team, team.board), "THE RESEARCH TEAMS, FROM WHAT THEY READ ON THE WEB")}`);
+    parts.push(`What the teams shared as they went:\n${asQuotedData("shared", lines(j, team.board), "THE RESEARCH TEAMS, FROM WHAT THEY READ ON THE WEB")}`);
   }
   return parts.join("\n\n");
 }
