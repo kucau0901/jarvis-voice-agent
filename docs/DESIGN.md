@@ -727,6 +727,21 @@ beyond 500 the oldest goes. A note can carry what a site or a tool said, so it
 is always quoted as data. Memory → Past attempts lists them, each forgettable;
 they are in the export, and gone when the person leaves.
 
+**Which is true now?** A memory that only grows comes to hold what is no longer so: two
+gate codes, a villa booked for last August. Rewriting it overnight with a model was
+measured worse than the raw records (43% against 77% of questions right, in one study),
+so nothing here is rewritten. When its person presses the button, code looks
+(`lib/true-now.ts`): pairs of facts close in meaning (0.7 and above, where restatements
+measure 0.8 and facts that merely sound alike 0.6), or in words without a key, less those
+about two different people; and facts whose day began after the day they were saved, in
+the family's time, and is over, so a birthday, or a day something was bought, is never one,
+nor what goes on ("every evening"). Each is a choice for them, with its dates:
+the older, the newer, both, neither; still true, or forget. What is not kept is forgotten
+as forgetting does, to Recently forgotten; two said to be both true are not asked about
+again until one changes. A choice between facts one of which someone changed since it was
+shown is refused. The reference shelf is left out: a roster's lines are alike by
+nature.
+
 **Recall by meaning, only when searching.** The facts that matter everywhere
 travel with every question, so an ordinary question makes no extra call. Only
 an explicit search (`recall`) embeds the question, with OpenAI's
@@ -1493,6 +1508,21 @@ what it was handed. It is drawn in Jobs and under the job's pill in Chat
 is seen and the job works. A Chat screen that asked through a device's token is
 not shown the job its person started, so its pill is as it was.
 
+**A project is a name, a few rules and files** (`lib/projects.ts`), for jobs that
+belong together: thin on purpose. A job in one, by the box in Jobs or by being named in
+what its person asked, is given its rules, as their words, for only they can write them;
+its files, to read with `project_read` or in its folder; and what the project's last five
+jobs came back with. Nothing of any other project, and no helper has it. Files and
+earlier results are data whatever they are called: an `AGENTS.md` or `CLAUDE.md` is
+somebody's file. Reading one is for who may read what is saved about them
+(`memory.read`). On the web, as with a specialty, it must be named in their own latest
+words and say nothing of who or where they are, files and all, which are looked through as
+far as 400,000 characters and no more; the job then has the rules and files as they were
+at that moment, nothing added since, and nothing its earlier jobs found. In the form they
+chose it themselves; a device's job on the web has none. A file a job made joins the
+project by a tap, as the job gave it and checked to be, beside what is there and never in
+its place. A name of one word ("Home") is a project's only in quotes or beside the word.
+
 **A job asks, and is told; an answer is only ever its person's.** What only they
 can settle and would change the result (which of two, how much, for whom) a job
 asks with `ask_person`, three times at most, with choices where there are a few.
@@ -1577,9 +1607,33 @@ because a job sends its whole exchange at every step and one long list would be
 paid for at each. Cut once and never edited afterwards: an exchange changed
 behind the model is no longer cached, nor what it answered from. The rest is kept
 beside the exchange, and `read_result` reads on in it or finds a word in it, always
-quoted again, since a cut can take the fence's end with it. These tools, like a
+quoted again, since a cut can take the fence's end with it. A short answer is kept under
+a number too, for a job that goes on in a new conversation (below). These tools, like a
 research team's `share_findings`, are added to a job's own request and are never
 in `ALL`: no question in the conversation carries them.
+
+**A job that outgrows one conversation goes on in a new one.** At about 200,000 tokens
+of input (`FRESH_AT` in `lib/job-checkpoint.ts`) a step is asked, after its tools have
+run, for a short note, without tools; then the job begins a new conversation, three times
+at most. What that holds is made by code: the task; everything its person told it, word
+for word and as theirs; its project and specialty, given again (their files are in its
+folder as it has them now, and are not put there twice); and a record of the card, the
+checklist, what it asked them, what it did, what it looked at with the number each answer
+is read again by, what it proposed and gave, its helpers' reports. What it did is never
+let go for what it read, and one cut short is said to be. A page read on the web is not
+kept, only what was searched for, so the note is asked for what matters of it. The note is
+the one thing a model writes, of what code cannot know (what it found and decided, what is
+open, what it has not checked), and goes back inside the record's marks as the job's own
+and unverified: it is made from all the job read, and one page's sentence must not come
+back as its person's. If the note fails, the record does without it; and a conversation
+that proves too long for its model, short of the mark, goes on the same way. A summary
+written whole by a model, as most agents make one, loses the person's words first. A step
+that searched is counted once for each turn the model took inside it, since OpenAI's count
+adds them up. On the plan each step of it is kept before it is asked, so an update or the
+plan's limit in between costs nothing; on the key, as with any step there, one cut short
+just then is asked again. Past the last conversation it may have, a job writes what it has.
+A helper's work is short enough to need none, and research keeps one conversation, which
+its check reads.
 
 **A job may have helpers, when it is asked for.** Some work is several pieces that
 do not wait on each other (three villas, four months of mail), and one chain does

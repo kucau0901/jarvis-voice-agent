@@ -124,6 +124,10 @@ export interface Job {
   mode?: "thorough" | "files";
   /** The specialty its person named for it (lib/job-specialties.ts): given whole from the start, and named on its card. */
   using?: { id: string; name: string };
+  /** The project of its person's it is in (lib/job-project.ts). */
+  project?: { id: string; name: string };
+  /** On the web, what of it the job may have: as it was when it was looked through (tools/jobs.ts), and nothing added since. */
+  pinned?: { rules: string[]; files: number[] };
   /** Started with helpers (lib/job-helpers.ts): none until it gives its work out, then each one's chain. */
   help?: HelperRun;
   /** What it made for its person, to download; and what it ran, newest last. */
@@ -155,6 +159,8 @@ export interface Job {
   counted?: string;
   /** Asked once already to finish its checklist. */
   nudged?: true;
+  /** Gone on in a new conversation, how often; and asked now for its notes, to (lib/job-checkpoint.ts). */
+  fresh?: { n: number; noting?: true };
 }
 
 /**
@@ -286,8 +292,9 @@ export type Step =
    * `shared`: what a team or a helper passed to share_findings in this hop; `saw`, how much of the board it was told from. `stuck`: it keeps asking the same thing (lib/job-guards.ts).
    * `took`: how much of what its person told it the step now has. `nudged`: it was asked to finish its checklist.
    * `untold`: one that was cut short, taken up again as it was: asked before it ran out, and so not told to write what it has.
+   * `fresh`: it was asked for its notes, or has begun a new conversation with them; or has filled the last it may have.
    */
-  | { kind: "continued"; responseId: string; usage?: Job["usage"]; shared?: string[]; saw?: number; stuck?: true; took?: number; nudged?: true; untold?: true }
+  | { kind: "continued"; responseId: string; usage?: Job["usage"]; shared?: string[]; saw?: number; stuck?: true; took?: number; nudged?: true; untold?: true; fresh?: "noting" | "begun" | "spent" }
   | { kind: "done"; text: string; cited?: Cited[]; usage?: Job["usage"] }
   /** The plan is at its limit: nothing was asked, and it goes on from here then. */
   | { kind: "parked"; until: number }
@@ -807,7 +814,7 @@ export class Jobs {
 
   async create(
     input: { title?: unknown; task?: unknown; engine?: unknown; reach?: unknown; mode?: unknown; team?: unknown; from?: unknown; table?: unknown; helpers?: unknown },
-    by: { who: string; grants: readonly Grant[]; using?: { id: string; name: string } | null },
+    by: { who: string; grants: readonly Grant[]; using?: { id: string; name: string } | null; project?: { id: string; name: string; rules: readonly string[]; files: readonly { n: number }[] } | null },
     now = Date.now(),
   ): Promise<Job | string> {
     const task = clean(input.task, MAX_TASK);
@@ -878,6 +885,8 @@ export class Jobs {
       ...(engine === "jarvis" ? { reach: input.reach === "web" ? ("web" as const) : ("private" as const) } : {}),
       ...(thorough ? { mode: "thorough" as const } : engine === "jarvis" && input.mode === "files" ? { mode: "files" as const } : {}),
       ...(engine === "jarvis" && by.using ? { using: { id: by.using.id, name: by.using.name } } : {}),
+      ...(engine === "jarvis" && by.project ? { project: { id: by.project.id, name: by.project.name } } : {}),
+      ...(engine === "jarvis" && by.project && input.reach === "web" ? { pinned: { rules: [...by.project.rules], files: by.project.files.map((f) => f.n) } } : {}),
       ...(engine === "jarvis" && input.helpers === true ? { help: { chains: [], board: [] } } : {}),
       ...(team ? { team: newTeam(now) } : {}),
       ...(table ? { table: {} } : {}),
@@ -1270,6 +1279,8 @@ export class Jobs {
       if (j.cut && !step.untold) j.cut = { ...j.cut, sent: true };
       if (step.stuck) j.stuck = true;
       if (step.nudged) j.nudged = true;
+      if (step.fresh === "spent") j.cut ??= { why: "it filled every conversation it may have" };
+      else if (step.fresh) j.fresh = step.fresh === "noting" ? { n: j.fresh?.n ?? 0, noting: true } : { n: (j.fresh?.n ?? 0) + 1 };
       if (step.took && j.told) j.told = j.told.map((t, i) => (i < step.took! ? { ...t, taken: true as const } : t));
       delete j.doing;
       j.responseId = step.responseId;

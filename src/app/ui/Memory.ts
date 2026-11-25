@@ -3,6 +3,7 @@ import { ago, arm, esc } from "./util";
 import { SectionMenu, type NavGroup } from "./sections";
 import { showPast } from "./memory-recall";
 import { Specialties, type WayDraft } from "./Specialties";
+import { TrueNow } from "./TrueNow";
 
 /**
  * What Jarvis remembers, where the owner can see it.
@@ -155,6 +156,13 @@ export class Memory {
               <div class="pastlist"></div>
             </section>
 
+            <section class="svc" data-section="true" data-title="Which is true now?">
+              <h3>Which is true now?</h3>
+              <p class="note">Saved facts that may say the same thing twice, or disagree, and ones whose day has passed.
+                Nothing changes until you choose; what you drop goes to Recently forgotten.</p>
+              <div class="truelist"></div>
+            </section>
+
             <section class="svc" data-section="trash" data-title="Recently forgotten">
               <h3>Recently forgotten</h3>
               <div class="gonelist"></div>
@@ -164,6 +172,7 @@ export class Memory {
       </div>`;
     document.body.appendChild(this.el);
     this.menu = new SectionMenu(this.$(".sheet"), REMEMBER);
+    new TrueNow(this.key, this.$(".truelist"), () => (this.hasFamily ? ["mine", "family"] : ["mine"]), () => void this.load());
     this.ways = new Specialties(this.key, this.$(".speclist"), (n) => this.count("specialties", n));
 
     this.el.querySelector(".close")!.addEventListener("click", () => this.hide());
@@ -495,7 +504,7 @@ export class Memory {
       ? gone.map(({ f, b }) => `<div class="gone">${esc(f.text)}${this.hasFamily && b === "family" ? ` <span class="dim">the family's</span>` : ""}</div>`).join("")
       : `<p class="note">Nothing forgotten lately.</p>`;
 
-    groups.push(["Add and check", ["add", "find", "reads", "specialties", "past", "trash"]]);
+    groups.push(["Add and check", ["add", "find", "reads", "true", "specialties", "past", "trash"]]);
     // Their counts arrive after the menu is drawn: put in its buttons as they do.
     // Not while one is being written: what was typed stays.
     if (!this.ways.writing) void this.ways.load();

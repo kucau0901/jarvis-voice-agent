@@ -586,6 +586,31 @@ console.log("specialties with more to them, through the object");
   check("  gone when they leave", ![...(await storage.list({ prefix: "specialt" })).keys()].some((k) => k.includes("u_gone2")), [...(await storage.list({ prefix: "specialt" })).keys()]);
 }
 
+// Projects, and what was said to be still true (lib/projects.ts, lib/true-now.ts), through the object.
+console.log("projects, through the object");
+{
+  const made = await jarvis.projectSave("u_sara", { name: "Kitchen", rules: ["Prices in ringgit"] }, 1_000);
+  const id = typeof made === "string" ? "" : made.id;
+  const put = await jarvis.projectPut("u_sara", id, "a.txt", new Uint8Array([65]), 2_000);
+  check("  made and given a file, whose, and when", typeof put !== "string" && put.createdAt === 1_000 && put.files[0]?.at === 2_000 && (await jarvis.projectFile("u_sara", id, 1))?.bytes[0] === 65 && (await jarvis.projectFile("owner", id, 1)) === null && (await jarvis.projectsOf("owner")).length === 0, put);
+  check("  named, theirs alone", (await jarvis.projectNamed("u_sara", ["x", "my Kitchen project"]))?.id === id && (await jarvis.projectNamed("owner", ["my Kitchen project"])) === null);
+  const j = await jarvis.createJob({ title: "Tiles", task: "Find tiles.", engine: "jarvis", project: id }, { who: "u_sara", grants: ["*"] });
+  check("  a job says which it is in; another's, or one that is gone, is refused", typeof j !== "string" && JSON.stringify(j.project) === JSON.stringify({ id, name: "Kitchen" }) && (await jarvis.createJob({ title: "T", task: "x", engine: "jarvis", project: id }, { who: "owner", grants: ["*"] })) === "that project is not kept any more", j);
+  if (typeof j !== "string") await jarvis.cancelJob(j.id);
+  const beside = await jarvis.projectPut("u_sara", id, "a.txt", new Uint8Array([66]), 2_500, true);
+  check("  one a job made, beside it", typeof beside !== "string" && beside.files.map((x) => x.name).join() === "a.txt,a (2).txt", beside);
+  await jarvis.projectDrop("u_sara", id, 2, 2_600);
+  const dropped = await jarvis.projectDrop("u_sara", id, 1, 3_000);
+  check("  a file taken out", typeof dropped !== "string" && dropped.updatedAt === 3_000 && dropped.files.length === 0);
+  check("  forgotten", (await jarvis.projectForget("u_sara", id)) && (await jarvis.projectsOf("u_sara")).length === 0);
+  await jarvis.projectSave("u_gone3", { name: "X" }, 1);
+  await jarvis.trueKeep("u_gone3", "a~b");
+  await storage.put("vec2:u_gone3:a", { h: "h", v: "AACAPw==" });
+  check("  close facts, of the book asked", (await jarvis.memoryPairs([{ id: "b", hash: "h", v: "AACAPw==" }], ["a", "b"], "u_gone3")).length === 1 && (await jarvis.memoryPairs([], ["a", "b"], "u_other")).length === 0 && (await jarvis.trueKept("u_gone3")).join() === "a~b" && (await jarvis.trueKept("u_other")).length === 0);
+  await jarvis.forgetMember("u_gone3");
+  check("  gone when they leave", (await jarvis.projectsOf("u_gone3")).length === 0 && (await jarvis.trueKept("u_gone3")).length === 0);
+}
+
 // The family's skills (lib/skills.ts), through the object: each pass-through forwards what it is given, the key and the clock too.
 console.log("skills, through the object");
 {

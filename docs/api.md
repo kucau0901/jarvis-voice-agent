@@ -147,7 +147,7 @@ existence, or argued around.
 |---|---|
 | `*` | Everything, **including capabilities added in future**. |
 | `ask` | The baseline. Needed to call the agent at all. Web search, `place_info` (ratings, opening hours, reviews, what is at coordinates), `recall`-free questions. |
-| `memory.read` | `recall`; `GET /api/memory`, `POST /api/memory/search`. |
+| `memory.read` | `recall`; `GET /api/memory`, `POST /api/memory/search`, `GET /api/memory/specialties`, `GET /api/v1/projects`. |
 | `memory.write` | `remember`, `forget`. |
 | `car.read` | `car_state`, `directions`. |
 | `car.control` | `car_command` — including unlock and sending a destination. |
@@ -617,6 +617,14 @@ may read what the job may, and nothing more.
 `"specialty": id` (needs `memory.read`) has an ordinary job follow one of its person's
 specialties (`GET /api/memory/specialties`), given to it whole; its view then carries
 `using: {id, name}`. 400 when it is not kept any more.
+
+`"project": id` (needs `memory.read`) puts an ordinary job in one of its person's
+projects: its view then carries `project: {id, name}`. A device's job on the web takes
+neither a specialty nor a project (403). `GET /api/v1/projects` (`memory.read`) is
+`{projects: [{id, name, rules, files: [{n, name, size, at}]}]}`, and
+`GET /api/v1/projects/file?id=&n=` one of its files, as bytes to save; changing them
+(`memory.write`) is for people, never a device. `carried`, on a job's view, is how often
+a long one has gone on in a new conversation, from its notes.
 
 `engine` is `jarvis` (default: the router, many steps, in OpenAI's background
 mode), `research` (needs `routines`: it spends the family's monthly

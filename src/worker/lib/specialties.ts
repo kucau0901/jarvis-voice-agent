@@ -60,7 +60,7 @@ const key = (person: string) => `specialties:${person}`;
 const offerKey = (person: string) => `specialty-offer:${person}`;
 const saidKey = (person: string) => `specialty-offer-said:${person}`;
 /** A name as compared: its letters and digits, in any script. */
-const nameOf = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+export const nameOf = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
 const ALPHABET = "0123456789abcdefghjkmnpqrstvwxyz";
 
 /** One line, as compared for what was said. */
@@ -134,8 +134,8 @@ function texts(raw: unknown, max: number, len: number, what: string): string[] |
   return out;
 }
 
-/** Whether a text names one: a name of one word, a word like any other, only where it stands in quotes. */
-function names(text: string, name: string): boolean {
+/** Whether a text names one: a name of one word, a word like any other, only where it stands in quotes. `name`, as nameOf has it. */
+export function names(text: string, name: string): boolean {
   if (!name) return false;
   if (name.includes(" ")) return ` ${nameOf(text)} `.includes(` ${name} `);
   return [...text.matchAll(/["“”«»]([^"“”«»\n]{1,80})["“”«»]/g)].some((m) => nameOf(m[1]!) === name);

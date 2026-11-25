@@ -14,7 +14,7 @@ import { viewOf } from "../lib/proposals.ts";
  *   GET /api/export   everything Jarvis keeps of the asker, as one JSON file
  *
  * Their memory (and the family's shared book, for one in a family), their
- * specialties, past attempts, routines, panels, conversation, jobs and what they proposed, and the household's settings with
+ * specialties, projects, past attempts, routines, panels, conversation, jobs and what they proposed, and the household's settings with
  * no secret among them: a secret is never sent to the browser, here as in
  * Settings. Admins only (lib/scopes.ts), and only their own: nobody else's
  * words are in it.
@@ -30,7 +30,7 @@ export async function handleExport(req: Request, env: Env, principal: Principal)
   const me = personOf(principal);
   const book = bookOf(env.JARVIS_PERSON);
   const now = Date.now();
-  const [memory, reference, familyMemory, familyReference, routines, panels, conversation, jobs, saved, specialties, past, proposals] = await Promise.all([
+  const [memory, reference, familyMemory, familyReference, routines, panels, conversation, jobs, saved, specialties, past, proposals, projects] = await Promise.all([
     state.loadMemory(book),
     state.loadReference(book),
     env.JARVIS_FAMILY ? state.loadMemory(env.JARVIS_FAMILY) : null,
@@ -43,6 +43,7 @@ export async function handleExport(req: Request, env: Env, principal: Principal)
     state.specialtiesAll(me),
     state.episodesOf(me, now),
     state.proposalsOf(me, now),
+    state.projectsOf(me),
   ]);
   // With its notes; its files are the zip Memory → Specialties saves of each.
   const ways = await Promise.all(specialties.map(async (s) => ({ ...s, text: (await state.specialtyWhole(me, s.id))?.more.text ?? null })));
@@ -59,6 +60,7 @@ export async function handleExport(req: Request, env: Env, principal: Principal)
     panels,
     specialties: ways,
     past,
+    projects,
     conversation,
     jobs: jobs.filter((j) => isTheirs(j.createdBy, me)).map((j) => jobView(j, true)),
     // Without the grants each would run with: what it was, not what it could reach.

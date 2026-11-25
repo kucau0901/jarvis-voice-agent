@@ -39,6 +39,7 @@ const DOING: Record<string, string> = {
   share_findings: "Comparing notes",
   hand_file: "Handing over a file",
   specialty_read: "Reading how you like it done",
+  project_read: "Reading the project's files",
   run: "Running a program",
   process: "Checking a program",
   list_files: "Looking at its files",

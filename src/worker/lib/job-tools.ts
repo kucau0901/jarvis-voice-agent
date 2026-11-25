@@ -105,7 +105,7 @@ export const doneLines = (todo: readonly Todo[] | undefined): number => (todo ??
 export const openLines = (todo: readonly Todo[] | undefined): { n: number; text: string }[] =>
   (todo ?? []).flatMap((t, i) => (t.state === "open" || t.state === "doing" ? [{ n: i + 1, text: t.text }] : []));
 
-const listed = (todo: readonly Todo[]): string => todo.map((t, i) => `${i + 1}. [${t.state}] ${t.text}${t.why ? ` (${t.why})` : ""}`).join("\n");
+export const listed = (todo: readonly Todo[]): string => todo.map((t, i) => `${i + 1}. [${t.state}] ${t.text}${t.why ? ` (${t.why})` : ""}`).join("\n");
 
 /** The tools, for one look at a job: what they are told is kept by `say`. */
 export function workTools(job: Pick<Job, "card" | "todo" | "asked">, say: (s: Said) => Promise<void>): Tool[] {

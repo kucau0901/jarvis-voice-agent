@@ -677,6 +677,7 @@ console.log("\nwhat a helper is handed, and how it is asked (routes/jobs.ts), on
       call("read_result", { result: 1, from: null, find: "https://made-up.example/found" }, "call_n3"),
     ]);
     await namedBy.put(`${jobRows(jn.id)}s0:big:1`, "a long answer, with https://shop.example/seen in it");
+    await namedBy.put(`${jobRows(jn.id)}s0:bigs`, 1);
     await en.start(jn, 0);
     answers.push([call("read_result", { result: 1, from: 0, find: null }, "call_n4"), call("job_tick", { done: [1], doing: null, add: [], dropped: [] }, "call_n5")]);
     await en.poll(jn, 0);

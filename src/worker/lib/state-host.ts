@@ -11,6 +11,8 @@ import type { StoredImage } from "./images.ts";
 import type { Procedure, Specialty } from "./specialties.ts";
 import type { More, MoreInput, Source, Way } from "./specialty-more.ts";
 import type { Learned } from "./learn.ts";
+import type { Pair } from "./true-now.ts";
+import type { Project } from "./projects.ts";
 import type { Skill, SkillView } from "./skills.ts";
 import type { ComponentView, Listed, Offered } from "./components.ts";
 import type { ReportReply, Suggested } from "./component-reports.ts";
@@ -81,7 +83,7 @@ const REF = "ref";
 const memKey = (book = "") => (book ? `${MEM}:${book}` : MEM);
 const refKey = (book = "") => (book ? `${REF}:${book}` : REF);
 /** Vectors per book too, so one book's search never prunes another's. "vec2:" never matches "vec:". */
-const vecPrefix = (book = "") => (book ? `vec2:${book}:` : VEC);
+export const vecPrefix = (book = "") => (book ? `vec2:${book}:` : VEC);
 /** Present once memory has been copied out of KV. */
 const MIGRATED = "migrated:v1";
 /** Where memory lived before, kept in KV untouched as a backup. */
@@ -576,7 +578,14 @@ interface RoutineApi {
 interface JobApi {
   listJobs(): Promise<Job[]>;
   getJob(id: string): Promise<Job | undefined>;
-  createJob(input: { title?: unknown; task?: unknown; engine?: unknown; reach?: unknown; mode?: unknown; team?: unknown; from?: unknown; table?: unknown; helpers?: unknown; specialty?: unknown }, by: { who: string; grants: readonly Grant[] }): Promise<Job | string>;
+  createJob(input: { title?: unknown; task?: unknown; engine?: unknown; reach?: unknown; mode?: unknown; team?: unknown; from?: unknown; table?: unknown; helpers?: unknown; specialty?: unknown; project?: unknown }, by: { who: string; grants: readonly Grant[] }): Promise<Job | string>;
+  projectsOf(person: string): Promise<Project[]>;
+  projectSave(person: string, input: { id?: unknown; name?: unknown; rules?: unknown }, now: number): Promise<Project | string>;
+  projectForget(person: string, id: string): Promise<boolean>;
+  projectPut(person: string, id: string, name: unknown, bytes: Uint8Array, now: number, beside?: boolean): Promise<Project | string>;
+  projectDrop(person: string, id: string, n: number, now: number): Promise<Project | string>;
+  projectFile(person: string, id: string, n: number): Promise<{ name: string; bytes: Uint8Array } | null>;
+  projectNamed(person: string, texts: readonly string[]): Promise<Project | null>;
   jobTable(id: string): Promise<{ columns: string[]; rows: string[][] } | null>;
   cancelJob(id: string): Promise<Job | string>;
   stopJobHelper(id: string, t: number): Promise<Job | string>;
@@ -680,8 +689,11 @@ interface PageApi {
   pageOpen(id: string, token: string, now: number): Promise<StoredPage | null>;
 }
 
-/** Each person's specialties (lib/specialties.ts), and what is recalled with a question (lib/router.ts). */
+/** Each person's specialties (lib/specialties.ts), what is recalled with a question (lib/router.ts), and which of what is saved may no longer be true (lib/true-now.ts). */
 interface RecallApi {
+  memoryPairs(put: readonly { id: string; hash: string; v: string }[], ids: readonly string[], book: string): Promise<Pair[]>;
+  trueKept(book: string): Promise<string[]>;
+  trueKeep(book: string, what: string): Promise<void>;
   specialtySave(person: string, input: { name: unknown; when: unknown; steps: unknown; why?: unknown }, now: number): Promise<Specialty | string>;
   specialtyForget(person: string, which: string): Promise<boolean>;
   specialtiesAll(person: string): Promise<Way[]>;

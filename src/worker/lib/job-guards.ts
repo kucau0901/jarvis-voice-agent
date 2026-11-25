@@ -2,7 +2,8 @@ import type OpenAI from "openai";
 import type { Job } from "./jobs.ts";
 import type { Storage } from "./state-host.ts";
 import { jobRows } from "./job-chain.ts";
-import { capResults } from "./job-results.ts";
+import { keepResult } from "./job-results.ts";
+import { OWN_CALLS, noteActs, type Act } from "./job-checkpoint.ts";
 import { sha256Hex } from "./devices.ts";
 import { unquoted } from "./quote.ts";
 
@@ -75,19 +76,20 @@ async function callKey(c: Call): Promise<string> {
 }
 
 /**
- * Run a step's calls, its long answers cut (lib/job-results.ts), keeping count
- * of those that were made before and gave the same: the answer says so at
+ * Run a step's calls, their answers kept and the long ones cut (lib/job-results.ts),
+ * what was asked noted (lib/job-checkpoint.ts), keeping count of those that were made before and gave the same: the answer says so at
  * NOTE_AT, at REFUSE_AT the call is not made, and at STUCK_AT (`stuck`) the job
  * has nothing left to try. What a step found before its answer was lost (an
  * update) is found again, and counted again: counts are a nudge, not a record.
  */
-export async function runGuarded(kept: Storage, job: string, calls: readonly Call[], run: (calls: Call[]) => Promise<Items>): Promise<{ outputs: Items; stuck: boolean }> {
+export async function runGuarded(kept: Storage, job: string, calls: readonly Call[], run: (calls: Call[]) => Promise<Items>, does: (name: string) => boolean = () => false): Promise<{ outputs: Items; stuck: boolean }> {
   const seen = (await kept.get<Seen>(seenKey(job))) ?? {};
   const keys = await Promise.all(calls.map(callKey));
   const refused = keys.map((k) => (seen[k]?.n ?? 0) >= REFUSE_AT - 1);
   const ran = await run(calls.filter((_, i) => !refused[i]));
   const byId = new Map(ran.map((o) => ["call_id" in o ? o.call_id : "", o]));
   const outputs: Items = [];
+  const acts: Act[] = [];
   for (const [i, c] of calls.entries()) {
     const k = keys[i]!;
     const before = seen[k];
@@ -102,13 +104,16 @@ export async function runGuarded(kept: Storage, job: string, calls: readonly Cal
     const out = (await sha256Hex("output" in o ? (typeof o.output === "string" ? unquoted(o.output) : JSON.stringify(o.output)) : "")).slice(0, 16);
     const n = before?.out === out && !AGAIN.has(c.name) ? before.n + 1 : 1;
     seen[k] = { out, n };
-    const [shown] = await capResults(kept, job, [o]);
+    const own = OWN_CALLS.has(c.name);
+    const { shown, n: at } = own ? { shown: o } : await keepResult(kept, job, o);
+    if (!own) acts.push({ name: c.name, args: c.arguments, ...(at ? { n: at } : {}), ...(does(c.name) ? { acted: true as const } : {}) });
     outputs.push(
-      n >= NOTE_AT && shown && "output" in shown && typeof shown.output === "string"
+      n >= NOTE_AT && "output" in shown && typeof shown.output === "string"
         ? ({ ...shown, output: `${shown.output}\n\n(The same answer as the last ${n - 1} times you asked exactly this. Asking again will not change it.)` } as Items[number])
-        : shown!,
+        : shown,
     );
   }
+  await noteActs(kept, job, acts);
   await kept.put(seenKey(job), seen);
   return { outputs, stuck: keys.some((k) => (seen[k]?.n ?? 0) >= STUCK_AT) };
 }
