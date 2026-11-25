@@ -559,9 +559,9 @@ export function jobView(j: Job, whole = false, mayKey = false) {
   void _d;
   void _t;
   void _w;
-  // What it cost so far, at OpenAI's prices (lib/usage.ts); null for a model with no price.
+  // What it cost so far, at OpenAI's prices (lib/usage.ts): the key's part of it alone; null for a model with no price.
   const cost = j.usage ? costOf(usageEntry(j, true, j.updatedAt)) : null;
-  const keyCost = mayKey && parked && j.usage ? costOf({ ...usageEntry(j, true, j.updatedAt), by: (j.usage.model ?? "").replace(/^chatgpt:/, "") }) : null;
+  const keyCost = mayKey && parked && j.usage ? costOf({ ...usageEntry(j, true, j.updatedAt), by: (j.usage.model ?? "").replace(/^chatgpt:/, ""), key: undefined }) : null;
   const view = {
     ...rest,
     // What it set out to do: while it works, and with the whole of it; a list of thirty need not carry it.

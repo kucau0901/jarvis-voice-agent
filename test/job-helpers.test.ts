@@ -457,6 +457,22 @@ console.log("\nout of what it has, a helper writes what it found");
   const deaf = set([helps(2), (x) => ((report = reportsOf(x.help!)), said(1, "Done."))], (t, n) => (t === 1 ? said(1, "quick") : { kind: "continued", responseId: `h.${n}` }));
   await drive(deaf, (await made(deaf)).id);
   check("told so and still going: stopped, its response too", /it took its 15 steps, and it wrote nothing/.test(report) && deaf.log.some((l) => l.startsWith("cancel h.")), [report, deaf.log.slice(-4)]);
+
+  // Of the key's dollars, only what ran on the key: a job moved there with much of the plan behind it has them all still to use.
+  const used = (model: string, input: number) => ({ input, cached: 0, output: 0, model });
+  const seen: (string | undefined)[][] = [[], []];
+  const shared = (first: number, theirs: (t: number) => ReturnType<typeof used>) =>
+    set([{ ...helps(2), usage: used("chatgpt:gpt-6-sol", first) } as Step, said(1, "Done.")], (t, n, x) => {
+      seen[t]!.push(x.help!.chains[t]!.cut?.why);
+      return n === 0 ? { kind: "continued", responseId: `h${t}`, usage: theirs(t) } : said(1, "what it had");
+    });
+  const moved = shared(1_500_000, () => used("gpt-6-sol", 2000));
+  await drive(moved, (await made(moved)).id);
+  check("what the job used on the plan is not the helpers' share of the key", seen.flat().length === 4 && seen.flat().every((w) => w === undefined), seen);
+  seen[0]!.length = seen[1]!.length = 0;
+  const mixed = shared(100, (t) => (t === 0 ? used("gpt-6-sol", 1_000_000) : used("chatgpt:gpt-6-sol", 100)));
+  await drive(mixed, (await made(mixed)).id);
+  check("…and what one ran there counts, though another's step on the plan came after", seen.every((w) => w.length === 2 && /\$1.5 of the API key/.test(w[1] ?? "")), seen);
 }
 
 console.log("\nwhat their person says while they work reaches them");

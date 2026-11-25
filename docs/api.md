@@ -643,10 +643,13 @@ is the summary and the first 20 rows as a markdown table, and
 `GET /api/v1/jobs/csv?id=` (needs `ask`) is all of them as CSV, at most 100
 rows, a cell a spreadsheet would run as a formula made text. A plan that gives
 no columns makes it ordinary team research.
-Each job's `cost` so far, at OpenAI's prices, comes with it. `task` must
-be complete on its own: a job never sees a conversation. `GET /api/v1/jobs`
-lists them (a device sees its own); `GET ?id=` returns one with its whole
-result; `POST /api/v1/jobs/cancel {id}` stops one; `DELETE ?id=` removes it.
+Each job's `cost` so far, at OpenAI's prices, comes with it: the dollars of what
+ran on the API key, nothing for what ran on the ChatGPT plan. `usage` has the
+tokens of both and, on a job that ran on both, the key's part of them in
+`usage.key`. `task` must be complete on its own: a job never sees a
+conversation. `GET /api/v1/jobs` lists them (a device sees its own); `GET ?id=`
+returns one with its whole result; `POST /api/v1/jobs/cancel {id}` stops one;
+`DELETE ?id=` removes it.
 
 An ordinary job of any size sets itself a card, `card: {outcome, limits,
 assumptions}`, and a checklist, `todo: [{text, state, why?}]` with `state`

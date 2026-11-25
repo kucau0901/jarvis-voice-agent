@@ -39,6 +39,12 @@ console.log("\nwhat a question costs");
   check("a live minute is five cents", near(costOf(q({ by: "gpt-live-1", seconds: 120, input: 0, cached: 0, output: 0 })), 0.1));
   check("an unknown model: no guess", costOf(q({ by: "gpt-7-nova" })) === null);
   check("on the owner's ChatGPT plan: nothing, searches included", costOf(q({ by: "chatgpt:gpt-6-luna", searches: 3 })) === 0);
+  // A job on the plan and on the key (lib/jobs.ts JobUsage.key): whichever came last, only the key's part is paid for.
+  const key = { by: "gpt-6-luna", input: 1000, cached: 0, written: 0, output: 300, searches: 1 };
+  for (const by of ["gpt-6-luna", "chatgpt:gpt-6-luna", "chatgpt:gpt-6-sol"]) {
+    check(`on both, last on ${by}: the key's part`, near(costOf(q({ surface: "job", by, input: 1_500_000, searches: 9, key })), (1000 * 0.1 + 300 * 0.5) / 1e6 + 0.01));
+  }
+  check("…at the key's own model's price, and no guess for one without", near(costOf(q({ by: "chatgpt:gpt-6-luna", key: { ...key, by: "gpt-6-sol" } })), (1000 * 2 + 300 * 10) / 1e6 + 0.01) && costOf(q({ key: { ...key, by: "gpt-7-nova" } })) === null);
 }
 
 console.log("\na day, and the month");
@@ -53,6 +59,10 @@ console.log("\na day, and the month");
   check("the house's share", d.byHouse === 1);
   check("costs split by what spent them", near(d.cost.live, 0.5) && near(d.cost.jobs, costOf(q())!) && near(d.cost.router, costOf(q())!), d.cost);
   check("tokens with no price are noted", d.unpriced === 21_300);
+  const both = q({ surface: "job", by: "chatgpt:gpt-6-sol", input: 1_500_000, key: { by: "gpt-6-luna", input: 1000, cached: 0, written: 0, output: 300, searches: 0 } });
+  const moved = addToDay(emptyDay("2026-09-26"), both);
+  check("a job on the plan and the key: the key's dollars, its person's too", near(moved.cost.jobs, 0.00025) && near(moved.people!.owner!.cost.jobs, 0.00025) && moved.jobs === 1 && moved.unpriced === 0, moved);
+  check("…and with no price there, the key's tokens, not the plan's", addToDay(emptyDay("2026-09-26"), { ...both, key: { ...both.key!, by: "gpt-7-nova" } }).unpriced === 1300);
   let big = emptyDay("2026-09-26");
   for (let i = 0; i < 10; i++) big = addToDay(big, q({ by: "gpt-live-1", seconds: 4 * 3600, input: 0, cached: 0, output: 0, surface: "live" }));
   check("a day holds 24 hours of live at most, however much is reported", big.liveSeconds === 86_400 && Math.abs(big.cost.live - 72) < 1e-9, big);

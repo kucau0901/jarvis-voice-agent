@@ -17,6 +17,15 @@ of every release, and in the [README](README.md#updating).
 
 ## [Unreleased]
 
+### Fixed
+
+- **A job moved from the ChatGPT plan to the API key costs only what it runs
+  there.** All it had used on the plan was priced as the key's too: a long one was
+  told at once that its two dollars were gone, and Jobs, Settings → Usage and the
+  month's budget counted dollars nobody had paid. From the key to the plan, the
+  key's dollars counted as nothing. What is already in Usage stays as it was. For
+  devices: a job's `usage` has a new field, `key` (`docs/api.md`).
+
 ## [2.12.0] - 2026-11-25
 
 ### Added
