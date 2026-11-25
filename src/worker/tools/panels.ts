@@ -8,6 +8,8 @@ import { TOGETHER } from "../lib/panel-view.ts";
 import { areasOf, arrange, lightIds } from "../lib/panel-arrange.ts";
 import { isAsk, parseTile, tileSpec } from "../lib/panel-tiles.ts";
 import { readsOnly } from "../lib/jobs.ts";
+import { ownPart } from "../lib/quote.ts";
+import { hermesNamed } from "./hermes.ts";
 import { everyWords } from "../../shared/panels.ts";
 import { idsOf, ticked, type Panel, type PanelItem } from "../lib/panels.ts";
 
@@ -46,8 +48,12 @@ const why = (e: unknown) => (e instanceof Error ? e.message : String(e));
 function tileFor(label: string, read: unknown, buttons: unknown, ctx: ToolContext): PanelItem | string {
   if (!label) return "a tile needs its name, in label.";
   const offered = (ctx.offered ?? []).filter((t) => !t.name.startsWith("panel_"));
+  // What runs commands where it lives is on a button only where its person named it (tools/hermes.ts): a press asks no model.
+  const named = (ctx.lately ?? []).some((w) => hermesNamed(ownPart(w)));
+  const HERMES = "a button that asks Hermes is made only when the user names Hermes, in their own words.";
   const call = (tool: unknown, args: unknown, reading = false): { tool: string; args: unknown } | string => {
     const one = offered.find((t) => t.name === tool);
+    if (one && one.name === "ask_hermes" && !named) return HERMES;
     if (typeof tool !== "string" || !one) return `"${String(tool)}" is not one of the tools you can use.`;
     if (reading && !readsOnly(one)) {
       return (
@@ -72,6 +78,7 @@ function tileFor(label: string, read: unknown, buttons: unknown, ctx: ToolContex
     const { label: words, tool, args, ask, input } = (b ?? {}) as { label?: unknown; tool?: unknown; args?: unknown; ask?: unknown; input?: unknown };
     const c = tool === null || tool === undefined ? undefined : call(tool, args);
     if (typeof c === "string") return c;
+    if (typeof ask === "string" && hermesNamed(ask) && !named) return HERMES;
     wired.push({ label: words, ...(c ? { tool: c } : {}), ask, input });
   }
   const spec = tileSpec({ ...(readCall ? { read: readCall } : {}), buttons: wired });

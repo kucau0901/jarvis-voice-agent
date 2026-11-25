@@ -107,7 +107,31 @@ services:
       WORKSHOP_TOKEN: ${WORKSHOP_TOKEN:-}
     volumes:
       - workshop-socket:/run/workshop
+      - sites-socket:/run/sites
     command: ["node", "/opt/workshop/door.mjs"]
+
+  # Where a site a job built is published, by a tap: `--profile workshop --profile sites`.
+  # Static files on a port of their own, read only, for whoever is on this network (or
+  # behind a proxy of yours); put there through a socket that the door holds and the
+  # workshop does not. SITES_ADDRESS is where you open it, for Jarvis to say;
+  # SITES_DIR, a folder of this machine's to keep them in (one user 1000 may write).
+  sites:
+    image: jarvis-workshop
+    profiles: ["sites"]
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    user: "1000:1000"
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 256m
+    environment:
+      SITES_ADDRESS: ${SITES_ADDRESS:-}
+    ports:
+      - "${SITES_PORT:-8090}:8090"
+    volumes:
+      - ${SITES_DIR:-sites-files}:/sites
+      - sites-socket:/run/sites
+    command: ["node", "/opt/workshop/sites.mjs"]
 
   caddy:
     image: caddy:2
@@ -128,4 +152,6 @@ volumes:
   browser-data:
   workshop-files:
   workshop-socket:
+  sites-files:
+  sites-socket:
   caddy-data:

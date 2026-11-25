@@ -14,6 +14,14 @@ import { OWNER } from "../lib/context.ts";
  *   - there is no /health; GET /v1/models is the liveness and auth probe
  */
 
+/**
+ * Its name, as it is typed or heard, in the letters speech is written down in.
+ * A Latin word that runs into it ("thermes") is another word; one that follows
+ * it may be an ending ("Hermesiltä"), and other scripts put no space between.
+ */
+const NAMED = /(?<!\p{Script=Latin})herm[eèéi]s|гермес|هيرميس|هرمس|ヘルメス|헤르메스|เฮอร์มีส|赫[尔爾]墨斯/iu;
+export const hermesNamed = (words: string): boolean => NAMED.test(words.normalize("NFC"));
+
 /** Stable per-device key so Hermes accumulates memory across drives. */
 const SESSION_KEY = "jarvis:tesla";
 

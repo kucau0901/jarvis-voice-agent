@@ -77,8 +77,8 @@ function draw(key: string, card: HTMLElement, p: ProposalView): void {
     if (p.state === "running") watch(key, p.id);
     // Put back tapped: its own card says what came of it, and a Put back that did not work is offered again.
     if (p.undone) card.appendChild(el("small", "pagesaid", "Put back: tapped."));
-    // Archived promotions: Put back, for a week, once; its own card follows this one, as it is made.
-    else if (p.state === "done" && p.by === "tap" && p.action.tool === "mail_archive_many" && Date.now() - (p.decidedAt ?? 0) < UNDO_MS) {
+    // Archived promotions, or a site published: Put back, for a week, once; its own card follows this one, as it is made.
+    else if (p.state === "done" && p.by === "tap" && (p.action.tool === "mail_archive_many" || p.action.tool === "site_publish") && Date.now() - (p.decidedAt ?? 0) < UNDO_MS) {
       const back = button("Put back", async () => {
         back.disabled = true;
         try {

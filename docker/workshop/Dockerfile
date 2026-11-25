@@ -16,8 +16,9 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/* /var/cache/apt/* \
  && rm -rf /usr/local/lib/node_modules /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack /usr/local/bin/yarn* /opt/yarn* \
  && find / -xdev -perm /6000 -type f -exec chmod a-s {} + \
- && mkdir -p /work /run/workshop
-COPY runner.mjs files.mjs door.mjs /opt/workshop/
+ && mkdir -p /work /run/workshop /sites /run/sites \
+ && chown 1000:1000 /sites /run/sites
+COPY runner.mjs files.mjs door.mjs sites.mjs /opt/workshop/
 # The first process reads the end of every one left without a parent: otherwise they count against a job's own for ever.
 ENTRYPOINT ["tini", "--"]
 CMD ["node", "/opt/workshop/runner.mjs"]

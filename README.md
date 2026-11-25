@@ -82,8 +82,8 @@ enough) or run it yourself with **Docker**.
   so no screen has to be open.
 - **Your own agents** — any MCP server, outside services you add in chat as
   skills (a bot, an automation, your own code), and optionally a
-  [Hermes](https://github.com/NousResearch/hermes-agent) agent at home, which
-  can also build what research found and deploy it.
+  [Hermes](https://github.com/NousResearch/hermes-agent) agent at home, asked only
+  when you name it, which can also build what research found and deploy it.
   [Hermes guide](docs/hermes.md).
 - **Components** — plug another system into Jarvis: a school's timetable, a
   shop's till. It is an MCP server an admin approves tool by tool and shares
@@ -258,6 +258,30 @@ machine: on a kernel with a flaw in it, a program could get out. On an old
 kernel, or where that worries you, leave it off, or run Jarvis's containers in a
 virtual machine of their own. Why it is built this way:
 [DESIGN.md](docs/DESIGN.md#the-workshop).
+
+**A sites folder, for what those jobs build** (optional, with the workshop): a small
+server of static files, where **Publish** on a job's card puts a site. Anyone on your
+network who knows its address can open it, so publish there what may be read there.
+
+```bash
+mkdir -p sites && sudo chown 1000:1000 sites
+echo "SITES_DIR=./sites" >> .env
+echo "SITES_ADDRESS=http://192.0.2.10:8090" >> .env
+docker compose --profile workshop --profile sites up -d --build
+```
+
+`SITES_ADDRESS` is where you open it, for Jarvis to say (this machine's address; a
+proxy's, if you put one in front), and `SITES_PORT` another port than 8090. Without
+`SITES_DIR` they are kept in a Docker volume; a folder of your own must be one that user
+1000 may write, as above. A folder in it that Jarvis did not make is left alone.
+**Settings → Workshop → Test** says whether it answers.
+
+**Pull requests** (optional, with the workshop): in **Settings → GitHub**, a
+[fine-grained token](https://github.com/settings/personal-access-tokens) for the
+repositories you choose, with **Contents** and **Pull requests** read and write and
+nothing else, and their names as `owner/name`. An admin then says which one as they ask
+("change the footer in owner/name"), or chooses it in **Jobs**. Keep your main branch
+protected: Jarvis opens pull requests on branches of its own and merges nothing.
 
 **Backups:** everything is in the `jarvis-data` volume.
 

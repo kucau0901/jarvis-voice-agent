@@ -7,7 +7,7 @@ import { usePass } from "../tools/pass.ts";
 import { haConfig, haUrl, passThings } from "../lib/ha.ts";
 import { passActions } from "../lib/access.ts";
 import { burst } from "../lib/limits.ts";
-import { SCOPES, allows, type Grant } from "../lib/scopes.ts";
+import { SCOPES, WILDCARD, allows, type Grant } from "../lib/scopes.ts";
 import { ROLES, ROLE_SCOPES, type HubApi, type Prefs } from "../lib/hub.ts";
 import { forgetPerson, forgetSessions, hubStub } from "../lib/hub-client.ts";
 import * as devices from "../lib/devices.ts";
@@ -17,6 +17,7 @@ import { originOf } from "../lib/mcp-config.ts";
 import { stateStub } from "../lib/state-client.ts";
 import { hermesConfig } from "../tools/hermes.ts";
 import { workshopConfig } from "../lib/workshop.ts";
+import { reposOf } from "../lib/github.ts";
 import {
   creationOptions,
   fromB64u,
@@ -335,6 +336,8 @@ export async function handleHub(req: Request, env: Env, principal: Principal): P
       // Whether the Browser panel is offered: one is set up, and theirs to use.
       browser: !locked && !!env.BROWSER_URL && allows(grantsOf(principal), "browser"),
       workshop: !locked && !!workshopConfig(env) && allows(grantsOf(principal), "workshop"),
+      // The owner's repositories, for an admin to have a job work on one (lib/github.ts).
+      repos: !locked && grantsOf(principal).includes(WILDCARD) ? reposOf(env) : [],
       // Live voice is GPT-Live, which only an OpenAI key runs: a ChatGPT plan has no part of it (lib/chatgpt-plan.ts).
       live: !!env.OPENAI_API_KEY,
       // What this person may reach, so the app offers only that.

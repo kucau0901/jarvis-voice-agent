@@ -46,8 +46,23 @@ of every release, and in the [README](README.md#updating).
   Choose one for a new job, or name it ("for my Kitchen project"), and the job has its
   rules, its files and what its last jobs came back with. What a job makes is kept there
   with a tap.
+- **Jarvis builds things itself, and publishes them with your tap.** "Build a page with our
+  holiday plan", or **Build** in **Jobs**, starts a job that works in the workshop, on the
+  web and with nothing of yours. What it made comes as a card: **Publish** puts a site in
+  your sites folder (a new, optional Docker service), where the version before can be put
+  back; a change to a repository you listed (**Settings → GitHub**), and named or chose as
+  you started it, opens as a pull request, and that job searches nothing. Nothing is live
+  until you tap, and what is published is exactly what the card listed. Jobs → **Sites**
+  lists them. Needs the workshop; how to set up the rest is in the README.
 - "What did the solar job find about the rebate?" also looks in what finished jobs came
   back with, not only their titles and briefs.
+
+### Changed
+
+- **Hermes is asked only when you name it.** Jarvis used to send it code, and anything on
+  its computer, by itself. Say "ask Hermes to…" for that; your next words after it answers
+  still reach it. Sites and code can be a background job's instead. A tile that asks it is
+  made only when you name it too; those you have go on working.
 
 ### Fixed
 

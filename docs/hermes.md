@@ -38,12 +38,15 @@ person. A device needs `hermes` ticked as well.
   answered?"), Jarvis reads the answer from the finished job (`job_results`)
   rather than asking again: that is how a caller that never sees the alert,
   such as Grok or `/api/v1/ask`, gets it.
-- **Code and your computer, without naming Hermes**: asked to change your
-  website, fix or deploy an app, or do something with files, folders, scripts
-  or programs on the computer Hermes runs on, Jarvis hands it to Hermes itself
-  (`ask_hermes`), saying what to change, where, and to report when it is done.
-  "Make the footer say 2027 on my website" is enough. Only for those with
-  `hermes`; for anything else Hermes stays the last resort.
+- **Only by name.** Jarvis never sends Hermes anything on its own idea: your own
+  words must name it ("ask Hermes to…"), or answer what Jarvis asked you about that, or
+  what Hermes came back with: within two hours of its answer, or twelve of a question it
+  was still working on when Jarvis stopped waiting. In those, not in a message that had
+  Jarvis read mail or a page as well: name it then. Say what you want changed, and
+  where, by name: "ask Hermes to make the footer of my bakery site say 2027". A
+  site to build, or code to change, Jarvis can do itself in a background job
+  ([The workshop](DESIGN.md#the-workshop)); files and programs on the computer
+  Hermes runs on are Hermes's, when you say so.
 - **Research to build from**: see [Building from research](#building-from-research).
 
 ## Six minutes, and longer work

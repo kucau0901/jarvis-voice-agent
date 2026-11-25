@@ -30,8 +30,9 @@ import { passTool } from "./pass.ts";
 import { panelTools } from "./panels.ts";
 import { skillTools } from "./skills.ts";
 import { browserTools } from "./browser.ts";
+import { ownPart } from "../lib/quote.ts";
 import { stateStub } from "../lib/state-client.ts";
-import { voiceWho } from "../lib/context.ts";
+import { isTheirs, OWNER, voiceWho } from "../lib/context.ts";
 import { researchFor, type Job } from "../lib/jobs.ts";
 import type { Attached } from "../lib/photos.ts";
 
@@ -83,6 +84,12 @@ export interface ToolContext {
   offered?: readonly Pick<Tool, "name" | "reads">[];
   /** The user's latest message, as they said it: what only they can ask for must be in it (tools/specialties.ts). */
   asked?: string;
+  /**
+   * Words of theirs that may have named what only they may name (ask_hermes): their latest, even where Jarvis has said
+   * more since, or a pressed tile's sentence; and what they said before it, where Jarvis's words between were a
+   * question. Nothing of a bot's, a routine's or another program's.
+   */
+  lately?: readonly string[];
   /** What came with it (lib/photos.ts), for a job that makes files to be given (tools/jobs.ts). */
   attached?: Attached;
   /**
@@ -176,28 +183,25 @@ export interface Tool {
 const str = (v: unknown, fallback = ""): string =>
   typeof v === "string" && v.trim() ? v.trim() : fallback;
 
+/** How long after Hermes answered their next words may be to it, without its name; and after it was too long to, when it may report by an alert (docs/hermes.md). */
+const HERMES_ANSWER_MS = 2 * 3_600_000;
+const HERMES_LATE_MS = 12 * 3_600_000;
+
 const askHermes: Tool = {
   name: "ask_hermes",
   scope: "hermes",
   available: (env) => !!hermes.hermesConfig(env),
   pace: "fast",
   description:
-    "The user's own agent on their computer at home, which can run commands there; it takes one " +
-    "to four minutes. Send it, without the user having to name Hermes, only these: (1) code — " +
-    "writing or changing it, and building, fixing or deploying the user's own websites and apps; " +
-    "(2) files, folders, scripts and programs on that computer. Never start a job for those (jobs " +
-    "only read). The house, the car and anything in Home Assistant (entity ids like sensor.… or " +
-    "lock.…, their states) are NOT that computer: read and work them with the house and car tools, " +
-    "never with Hermes. Nor is a website to be worked as a person does (signing in to a portal, " +
-    "reading it, filling in or approving something on it): with the browser tools on offer, that is " +
-    "theirs, never Hermes's. Nor is Jarvis itself: a tool, a bot, a webhook or an MCP server for Jarvis " +
-    "to send requests to, and keys for one, are a skill Jarvis adds itself (skill_add), even before " +
-    "the user has given its address. For anything else it is the last resort: only when no other tool can " +
-    "answer, or when the user asks for Hermes. The question goes to Hermes as a background job and " +
-    "this returns at once: Hermes's answer reaches the user as a message when it is ready, " +
-    "even if the screen is closed — tell them that, and do not wait for it or guess it. Asked " +
-    "later whether it has answered, read it with job_results; never ask Hermes again to find out. It " +
-    "does NOT have the user's saved facts; those are in the profile block and in recall.",
+    "The user's own Hermes agent, on their computer at home, which can run commands there; one to " +
+    "four minutes. ONLY when the user names Hermes in their latest message, or answers what Hermes " +
+    "asked them: never your own idea, nor a way round something that failed. A site to build or code " +
+    "to change is start_job's 'build'; a tool, a bot, a webhook or an MCP server for Jarvis itself is skill_add. " +
+    "The question goes to Hermes as a background job and this returns at once: its answer reaches " +
+    "the user as a message when it is ready, even if the screen is closed — tell them that, and do " +
+    "not wait for it or guess it. Asked later whether it has answered, read it with job_results; never " +
+    "ask Hermes again to find out. It does NOT have the user's saved facts; those are in the profile " +
+    "block and in recall.",
   parameters: {
     type: "object",
     properties: {
@@ -228,6 +232,15 @@ const askHermes: Tool = {
     const question = str(args.question);
     if (!question) return "No question was supplied.";
     const state = stateStub(ctx.env);
+    // It runs commands where it lives: by name, in their own latest words, and never on a model's own idea. Without its
+    // name, in answer to Jarvis's question about it, or to what it came back with (HERMES_ANSWER_MS): never in a turn that
+    // has read what someone else wrote, which could have put the words. A tile's tap is a person's, with no model to have one.
+    const [own = "", before = ""] = (ctx.lately ?? []).map(ownPart);
+    if (ctx.offered && !hermes.hermesNamed(own)) {
+      const person = ctx.env.JARVIS_PERSON || OWNER;
+      const came = async () => (state ? await state.listJobs() : []).some((j) => j.engine === "hermes" && isTheirs(j.createdBy, person) && ((j.status === "done" && Date.now() - (j.finishedAt ?? 0) < HERMES_ANSWER_MS) || (j.status === "failed" && Date.now() - (j.finishedAt ?? 0) < HERMES_LATE_MS)));
+      if (!own || ctx.outside || !(hermes.hermesNamed(before) || (await came()))) return "Not asked: Hermes is asked only when the user names it, in their own words. If it would help, say so: they can say \"ask Hermes\".";
+    }
     // Research handed over, only when asked for: the caller's own finished research, whole and quoted (lib/jobs.ts).
     let from: Job | undefined;
     const research = str(args.research);

@@ -129,6 +129,8 @@ export interface RunOptions {
   bot?: string;
   /** A question the user did not word: an MCP client's model (routes/v1.ts), a Home tile's sentence (routes/panels.ts). Nothing in it is passed on as theirs. */
   relayed?: boolean;
+  /** That sentence, pressed by its person on their own tile: what it names, they named when it was made (tools/panels.ts). */
+  pressed?: true;
   /** A background job's: what it may look at (lib/jobs.ts Reach). */
   reach?: Reach;
   /** One of a background job's helpers (lib/job-helpers.ts), not the job itself. */
@@ -404,9 +406,21 @@ export function ownWords(turns: Turn[], opts: Pick<RunOptions, "surface" | "assi
   if (opts.surface === "routine" || opts.bot) return undefined;
   const [before, last] = turns.slice(-2);
   const handed = before?.role === "user" && last?.role === "assistant" && last.text.trim().length <= HANDING_OVER ? before.text : "";
-  const said = opts.assistAsk ?? lastAsk(turns) ?? handed;
-  const reply = /^\(Replying to this answer of yours: "[\s\S]*?"\)\n/.exec(said);
-  return (reply ? said.slice(reply[0].length) : said).trim() || undefined;
+  return withoutReply(opts.assistAsk ?? lastAsk(turns) ?? handed) || undefined;
+}
+
+/** What they said, without the answer of Jarvis's that it replies to (src/app/reply.ts). */
+const withoutReply = (said: string): string => said.replace(/^\(Replying to this answer of yours: "[\s\S]*?"\)\n/, "").trim();
+
+/** Their own words that may have named what only they may name (ToolContext.lately), the latest first. */
+export function lately(turns: Turn[], opts: Pick<RunOptions, "surface" | "assistAsk" | "bot" | "relayed" | "pressed">): string[] {
+  if (opts.surface === "routine" || opts.bot || (opts.relayed && !opts.pressed)) return [];
+  if (opts.assistAsk !== undefined) return [withoutReply(opts.assistAsk)];
+  const at = turns.map((t) => t.role).lastIndexOf("user");
+  if (at < 0) return [];
+  const [before, between] = [turns[at - 2], turns[at - 1]];
+  const asked = before?.role === "user" && between?.role === "assistant" && /[?？؟]\s*$/.test(between.text);
+  return [turns[at]!, ...(asked ? [before] : [])].map((t) => withoutReply(t.text));
 }
 
 /**
@@ -653,7 +667,7 @@ export async function run(
     runCalls: async (calls) => {
       made.push(...calls.map((c) => ({ name: c.name, arguments: c.arguments })));
       const out = await runCalls(calls as OpenAI.Responses.ResponseFunctionToolCall[], p!.byName, {
-        env, signal, memory: p!.memory, grants, offered: p!.tools, asked: opts.relayed ? undefined : ownWords(turns, opts), screenless: opts.screenless === true,
+        env, signal, memory: p!.memory, grants, offered: p!.tools, asked: opts.relayed ? undefined : ownWords(turns, opts), lately: lately(turns, opts), screenless: opts.screenless === true,
         ...(opts.images?.length || opts.files?.length ? { attached: { images: opts.images, files: opts.files } } : {}),
         ...(opts.browserSites ? { browserSites: opts.browserSites } : {}),
         ...(p!.procedure && !repliesToEarlier(turns) ? { procedure: p!.procedure } : {}),
@@ -766,7 +780,7 @@ export async function run(
 export async function runCalls(
   calls: OpenAI.Responses.ResponseFunctionToolCall[],
   byName: Map<string, Tool>,
-  { screenless, ...base }: { env: Env; signal: AbortSignal; memory: MemoryStore; grants: readonly Grant[]; offered?: ToolContext["offered"]; asked?: string; attached?: ToolContext["attached"]; procedure?: Procedure; outside?: ToolContext["outside"]; screenless?: boolean; browserSites?: readonly string[] },
+  { screenless, ...base }: { env: Env; signal: AbortSignal; memory: MemoryStore; grants: readonly Grant[]; offered?: ToolContext["offered"]; asked?: string; lately?: readonly string[]; attached?: ToolContext["attached"]; procedure?: Procedure; outside?: ToolContext["outside"]; screenless?: boolean; browserSites?: readonly string[] },
   sse: EventSink,
 ): Promise<OpenAI.Responses.ResponseInput> {
   return Promise.all(

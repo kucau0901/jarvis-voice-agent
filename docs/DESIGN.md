@@ -173,7 +173,7 @@ asked for, and without WebGL the old backdrop stays.
 | "any new mail / what did X say" | Gmail REST, direct | **~2s** |
 | "what's my next meeting" | Calendar REST, direct | **~2s** |
 | "when do I need to leave" | calendar + Tessie + Routes | **~4s** |
-| anything else | Hermes | 30–230s |
+| "ask Hermes …" | Hermes, only by name | 30–230s |
 
 Times were measured in September 2026 and move with the router model, the
 network and how long Hermes thinks.
@@ -1009,7 +1009,8 @@ The router is told the difference and picks:
 | reads a state, operates a device | yes | yes |
 | reasoning, memory, survey of the house | no | yes |
 
-So state and control go direct to HA; judgement goes to Hermes.
+So state and control go direct to HA. Judgement used to go to Hermes; it is Jarvis's
+own agent's now, and Hermes is asked only by name ([below](#background-jobs)).
 
 If Jarvis cannot see a device, the cause is almost never the token, and it is
 also **not** Home Assistant's "expose to Assist" setting. The MCP server
@@ -1798,6 +1799,19 @@ instructions: it was written from strangers' pages, and Hermes can run
 commands at home. It is handed over only when the person asks, never
 automatically when research finishes, so what reaches a machine that can run
 commands is always something they chose to send.
+
+**Hermes only by name.** It used to be sent code, and work on the computer it lives
+on, unasked, since Jarvis could do neither. Now a job builds and makes files itself
+([The workshop](#the-workshop)), so Hermes is asked only when its person names it, and
+code holds that, not the prompt (`tools/registry.ts`): where a model chose the call,
+their own latest words must have the name in them, as it is typed or heard in any script;
+not in something they forwarded. Without it, they may be answering Jarvis's question about
+what they asked of it just before, or what Hermes came back with (two hours after an
+answer, twelve after one that took too long to wait for, which it may report by an alert):
+neither counts in a turn that read what someone else wrote. A tile's tap is a person's,
+with no model to have the idea, so a tile is only made to ask it where their own words
+named it then (`tools/panels.ts`). It can run commands at home, and a page a model read
+must not be what sends it there.
 
 **Research is checked before it is sent.** Research is the same loop on a
 stronger model (`RESEARCH_MODEL`) thinking hard, told to search widely and
@@ -2609,7 +2623,7 @@ else works without it.
   job can no longer change is kept, by its sum. What its person downloads is
   checked against that sum, and goes as an attachment of no type, with
   `nosniff` and a policy that runs nothing: Jarvis never shows what a program
-  made as a page. Code says which files there are, and that there are none: the
+  made as a page (a site published by a tap is at an address of its own, below). Code says which files there are, and that there are none: the
   answer's own word for it is not taken. In **Jobs**, *What it ran* has the
   last forty commands, the first 300 letters of each, written down before each
   is run; not what those ran in turn.
@@ -2617,6 +2631,64 @@ else works without it.
   but an admin's, no device's preset, no guest's pass, and never in a routine, a
   habit, an approved step, a bot's address or Telegram. It is looked at again at
   every step.
+
+**Building, and publishing by a tap.** A job that builds (`build`) is one that makes
+files, on the web and with nothing of its person's (`Reach`), whatever was asked: what
+it publishes has nothing of theirs in it but what they gave it themselves. It has no
+packages to fetch, only what is in the image (hugo, node, python), and is told to plan,
+run what it makes and say how each part was checked. What it made it cannot publish: it
+puts a zip to its person as a card (`lib/build-tools.ts`), and a tap publishes it
+(`tools/publish.ts`), or they download the zip, or leave it.
+
+- **A repository, or the web.** A repository may be private, and a search is a way out,
+  so one job never has both. The repository is one an admin chose in the form, or named
+  in their own words as they asked (`repoNamed`), and is kept on the job (`repo`): that
+  job has its files and no search, nor anything else that asks elsewhere, its helpers
+  too. A job that was not started on one is never given one, whatever a page it read
+  would have it ask for.
+- **What is published is what was approved.** The card is made from the zip as it was
+  given, by its sum: which files, how many, what other places its pages name, what it
+  replaces, all by code (`lib/site-files.ts`). The tap fetches that copy again, checks
+  the sum here and not in the workshop, and looks through the files again the same way.
+  What the job does after filing the card changes nothing. A card of a change lists all
+  of it, what it removes first, or is not filed; the job's own words come after, marked
+  as its own.
+- **A card outlives the role it was filed under**, and an approved call carries no
+  `workshop`, so what publishing needs (`workshop`; for a pull request, an admin) is
+  looked at again in its person and in whoever taps, at the tap and as it is made
+  (`lib/approval.ts` `lacks`). One that could not be done, or that nobody tapped in time,
+  may be put to them again by the job; one they declined may not.
+- **The sites folder** (`docker/workshop/sites.mjs`, the `sites` profile) is two faces:
+  a Unix socket that only the workshop's door has, by which Jarvis puts a site there;
+  and a port that serves it, read only. The workshop has no network and not that
+  socket. A site is put in place whole, by a rename, and the one before is kept: its
+  card has Put back for a week, and Jobs → Sites puts back or takes down any time. A
+  card's Put back undoes that card alone: once something else is there, or the site was
+  taken down, it changes nothing. What a site's folder should hold is written down before
+  a folder is moved, and made so (`settle`), as each change is made and as it starts: one
+  cut short anywhere (an update, a power cut) ends as it was to be, with both versions. A
+  folder there that Jarvis did not make is its owner's: never written over, moved or taken
+  down, and its name cannot be used. Its pages may have been made from what a stranger
+  wrote, so they load nothing from elsewhere (Content-Security-Policy), no link in the
+  folder is followed, and they are an origin of their own, not Jarvis's. That does not
+  stop a page from taking whoever opens it to another address, with what it knows; and
+  all the sites are one origin, so one's pages can read another's. The card names the
+  other places a site's files do; what its family would not want read by another site,
+  or by whoever is on the network, does not belong in one. The owner serves the same
+  folder another way if a site needs more. It is the one place where what a program made
+  is shown as a page: never by Jarvis, never at its address, and only after a tap.
+- **A pull request, never a push** (`lib/github.ts`). Only the repositories the owner
+  listed, and only for an admin's job. The token is the Worker's, never the workshop's
+  or a model's. Its files are brought to the job whole, as data, when it asks, and the
+  commit they were of is kept: the change is made on that, so it undoes nothing merged
+  since. Each is on a new branch (`jarvis/<job>-…`), made from the files approved, with
+  the permissions each has there. Only a file is written over or removed, never a folder,
+  a link or a submodule. Nor is anything a host or a tool runs or obeys by its name: any
+  name that begins with a dot but a few of plain settings, and CODEOWNERS, a lefthook, or
+  a build service's file (`lib/site-files.ts`), in whatever case or form of letter. That
+  list is of names: code that a repository's checks run is still code, and they may run
+  the change, with what those checks may reach. The card says so; it is why opening one
+  asks, though it can be closed. Nothing is merged by it.
 
 **What it does not protect against.** A container shares its host's kernel: a
 flaw there would be a way out, onto the machine Jarvis itself runs on. Docker's

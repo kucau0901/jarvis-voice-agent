@@ -88,6 +88,9 @@ export interface JobView {
   reach?: "private" | "web";
   /** The stronger model, for hard work; or it makes files, in the workshop. */
   mode?: "thorough" | "files";
+  /** It builds something, to publish with a tap; and the repository it works on, with no search of the web. */
+  build?: true;
+  repo?: string;
   /** The specialty you named for it (ui/Specialties.ts). */
   using?: { id: string; name: string };
   /** The project of yours it is in (ui/Projects.ts). */
@@ -157,12 +160,13 @@ export function progress(j: Pick<JobView, "todo">): string | null {
 
 /** What it may look at, do and take. */
 export function powers(j: JobView): string {
-  const looks =
-    j.reach === "web"
+  const looks = j.repo
+    ? `Has the files of ${j.repo}, and nothing else of yours but what it was asked. Does not search the web.`
+    : j.reach === "web"
       ? "Searches the web, and has nothing of yours but what it was asked."
       : "Reads your own things, as far as you may: mail, calendar, memory, house, car and cameras. Does not search the web.";
   const takes = j.limits ? ` Up to ${j.limits.minutes} minutes and ${j.limits.steps} steps, ${j.limits.going} while its list moves.` : "";
-  const makes = j.mode === "files" ? " Makes files with programs of its own, on a machine with no network, and gives them to you to save." : "";
+  const makes = j.build ? " Builds with programs of its own, on a machine with no network, and puts what it made to you to publish." : j.mode === "files" ? " Makes files with programs of its own, on a machine with no network, and gives them to you to save." : "";
   const splits = j.helpers ? " Splits its work between up to three helpers of its own, who may read what it may and nothing more." : "";
   const way = j.using ? ` Follows “${j.using.name}”, of your specialties${j.reach === "web" ? ", which goes with it to the web" : ""}.` : "";
   const part = j.project ? ` Part of “${j.project.name}”: its rules, its files${j.reach === "web" ? ", which go with it to the web" : " and what its last jobs found"}.` : "";

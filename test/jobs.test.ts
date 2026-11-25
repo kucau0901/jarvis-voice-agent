@@ -687,7 +687,15 @@ console.log("\nthorough: the stronger model, for hard work");
     typeof (await h.jobs.create({ task: "plain" }, BY, T0)) !== "string" && typeof (await h.jobs.create({ task: "theirs", mode: "thorough" }, { who: "u_sara", grants: ["*"] }, T0)) !== "string" &&
       typeof (await h.jobs.create({ task: "next", mode: "thorough" }, BY, T0 + 86_400_000)) !== "string");
   const r = (await h.jobs.create({ task: "r", engine: "research", mode: "thorough" }, { who: "u_adam", grants: ["*"] }, T0)) as Job;
-  check("research is never that too; anything else is ordinary", r.mode === undefined && ((await h.jobs.create({ task: "o", mode: "build" }, { who: "u_siti", grants: ["*"] }, T0)) as Job).mode === undefined);
+  check("research is never that too; anything else is ordinary", r.mode === undefined && ((await h.jobs.create({ task: "o", mode: "fast" }, { who: "u_siti", grants: ["*"] }, T0)) as Job).mode === undefined);
+  const built = (await h.jobs.create({ task: "b", mode: "build", reach: "private" }, { who: "u_siti", grants: ["*"] }, T0)) as Job;
+  check("one that builds makes files, on the web whatever was asked; research builds nothing", built.mode === "files" && built.build === true && built.reach === "web" && ((await h.jobs.create({ task: "b", mode: "build", engine: "research" }, { who: "u_siti", grants: ["*"] }, T0)) as Job).build === undefined, built);
+  const apart = harness([]);
+  const other = harness();
+  const works = (await other.jobs.create({ task: "b", mode: "build", repo: "ana/site" }, { who: "u_adam", grants: ["*"] }, T0)) as Job;
+  check("one started on a repository keeps which; one that does not build has none", works.repo === "ana/site" && ((await other.jobs.create({ task: "b", mode: "files", repo: "ana/site" }, { who: "u_adam", grants: ["*"] }, T0)) as Job).repo === undefined, works);
+  const inIt = (await apart.jobs.create({ task: "b", mode: "build" }, { who: "u_adam", grants: ["*"], project: { id: "p1", name: "Site", rules: ["Plain words"], files: [{ n: 3 }] } }, T0)) as Job;
+  check("…and has its project as it was, as any on the web", JSON.stringify(inIt.pinned) === '{"rules":["Plain words"],"files":[3]}', inIt.pinned);
   // Asked for in chat by a guest: an ordinary job.
   const tool = baseTools({} as never).find((t) => t.name === "start_job")!;
   const made: Record<string, unknown>[] = [];

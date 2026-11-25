@@ -1,3 +1,4 @@
+import { REPO } from "./github.ts";
 import type { Env } from "../types.ts";
 import { DEFAULT_ORDER, validateOrder } from "./alerts.ts";
 import { validateCameraList } from "./cameras.ts";
@@ -31,6 +32,7 @@ export type Group =
   | "hermes"
   | "browser"
   | "workshop"
+  | "github"
   | "google"
   | "spotify"
   | "maps"
@@ -173,6 +175,14 @@ export const GROUPS: readonly GroupDef[] = [
     intro:
       "Optional: where a background job runs code and makes files (a spreadsheet, a document, a chart, a small site) for whoever an admin gives the workshop reach to (Family, or a device's scopes). Nobody but an admin has it until then. It has no network and nothing of yours but what the job was given. Its walls are the machine's own: a flaw in that machine's kernel would be a way out of it. With Docker, set WORKSHOP_TOKEN in .env and `docker compose --profile workshop up -d --build` runs one beside Jarvis.",
     needs: ["WORKSHOP_URL", "WORKSHOP_TOKEN"],
+    testable: true,
+  },
+  {
+    id: "github",
+    title: "GitHub",
+    intro:
+      "Optional: lets a background job that builds things (with the workshop) be given the files of the repositories listed here and propose changes to them, for admins. A change is a pull request, opened only when you tap its card, on a branch of its own: nothing is merged, and what a repository runs by itself (.github, hooks) cannot be changed. The token stays here, never in the workshop.",
+    needs: ["GITHUB_PULL_TOKEN", "GITHUB_REPOS"],
     testable: true,
   },
   {
@@ -390,6 +400,21 @@ export const SETTINGS: readonly SettingDef[] = [
     name: "WORKSHOP_TOKEN", group: "workshop", kind: "secret",
     label: "Token", help: "The same as its door's WORKSHOP_TOKEN in .env: 24 characters or more, for instance from `openssl rand -hex 24`.",
     validate: (v) => (v.length < 24 ? "must be 24 characters or more" : null),
+  },
+
+  // --- GitHub
+  {
+    name: "GITHUB_PULL_TOKEN", group: "github", kind: "secret",
+    label: "Token", help: "A fine-grained personal access token from github.com → Settings → Developer settings, for these repositories alone, with Contents and Pull requests: Read and write.",
+    validate: (v) => (/^(?:github_pat_|gh[ps]_)[A-Za-z0-9_]{20,}$/.test(v) ? null : "should be a GitHub token (github_pat_…)"),
+  },
+  {
+    name: "GITHUB_REPOS", group: "github", kind: "text",
+    label: "Repositories", help: "Which a job may be given and propose changes to: owner/name, a comma between.",
+    validate: (v) => {
+      const bad = v.split(/[\s,]+/).filter(Boolean).find((r) => !REPO.test(r));
+      return bad === undefined ? null : `${bad.slice(0, 60)} is not owner/name`;
+    },
   },
 
   // --- Google
