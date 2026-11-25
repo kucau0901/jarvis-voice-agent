@@ -36,7 +36,9 @@ These come from the owner and hold for every change.
   make files has its tools. The container is the wall: it has no network, no
   secret and nothing of Jarvis's, and no list of commands stands in front of it.
   What it prints is quoted, and what it makes is saved, never shown as a page
-  (`docs/DESIGN.md`, "The workshop").
+  (`docs/DESIGN.md`, "The workshop"). The one exception is a site its person
+  publishes with a tap: static files, served by the sites container at an
+  address of their own, never by Jarvis nor at Jarvis's address.
 - **The browser is signed in as the family.** The `browser` scope follows
   the same rule as `hermes`, and is kept from jobs, habits and Telegram. A
   routine has it only on the sites its maker chose for routines in the
