@@ -40,10 +40,12 @@ export async function handleExport(req: Request, env: Env, principal: Principal)
     state.conversationOf(me, now),
     state.listJobs(),
     state.getSettings(),
-    state.specialtiesOf(me),
+    state.specialtiesAll(me),
     state.episodesOf(me, now),
     state.proposalsOf(me, now),
   ]);
+  // With its notes; its files are the zip Memory → Specialties saves of each.
+  const ways = await Promise.all(specialties.map(async (s) => ({ ...s, text: (await state.specialtyWhole(me, s.id))?.more.text ?? null })));
   // Only what Settings would show as a value: a secret's never, nor a name no setting has.
   const plain = new Set(SETTINGS.filter((s) => s.kind !== "secret").map((s) => s.name));
   const settings = Object.fromEntries(Object.entries(saved).filter(([name]) => plain.has(name)).map(([name, s]) => [name, s.v]));
@@ -55,7 +57,7 @@ export async function handleExport(req: Request, env: Env, principal: Principal)
     family: familyMemory && familyReference ? { facts: familyMemory.facts, trash: familyMemory.trash, reference: familyReference.facts } : null,
     routines: routines.filter((r) => isTheirs(r.createdBy, me)),
     panels,
-    specialties,
+    specialties: ways,
     past,
     conversation,
     jobs: jobs.filter((j) => isTheirs(j.createdBy, me)).map((j) => jobView(j, true)),

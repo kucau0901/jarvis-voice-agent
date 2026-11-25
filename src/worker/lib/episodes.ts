@@ -122,6 +122,12 @@ export class Episodes {
       .map((x) => x.e);
   }
 
+  /** One that failed since `since`, of the same thing as `goal` (as `add` would count it the same); null with none. */
+  async failedLike(person: string, goal: string, since: number, now: number): Promise<Episode | null> {
+    const keys = [...new Set(tokenise(cut(goal)))];
+    return (await this.of(person, now)).find((e) => e.outcome === "failed" && e.at >= since && overlap(e.keys, keys) >= SAME) ?? null;
+  }
+
   async forget(person: string, id: string): Promise<boolean> {
     const all = (await this.storage.get<Episode[]>(key(person))) ?? [];
     const keep = all.filter((e) => e.id !== id);

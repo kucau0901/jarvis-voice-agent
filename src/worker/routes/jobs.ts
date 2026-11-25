@@ -16,6 +16,7 @@ import { NOT_RUN, runGuarded } from "../lib/job-guards.ts";
 import { linksBack, noteLinks, readResult, takeLinks } from "../lib/job-results.ts";
 import { DELEGATE, delegateTool, heardBy, helperId, helperMessage, helperScope, helperUntold, helperView, reportsOf, tasksOf } from "../lib/job-helpers.ts";
 import { bringNeeds, handFile } from "../lib/helper-files.ts";
+import { JobSpecialties } from "../lib/job-specialties.ts";
 import { KEPT_DAYS, WorkshopError, fileHeaders, workshopAsk, workshopConfig, workshopGiven } from "../lib/workshop.ts";
 import { WORKSHOP_TOOLS, workshopTools } from "../lib/workshop-tools.ts";
 import { mailFile } from "../lib/mail-file.ts";
@@ -46,7 +47,7 @@ import type { Storage } from "../lib/state-host.ts";
  *
  *   GET    /api/v1/jobs           the jobs (a device sees its own)
  *   GET    /api/v1/jobs?id=       one, with its whole result
- *   POST   /api/v1/jobs           {task, title?, engine?: "jarvis" | "hermes" | "research", reach?: "private" | "web", mode?: "thorough" | "files", helpers?: true, team?: true, from?: id}
+ *   POST   /api/v1/jobs           {task, title?, engine?: "jarvis" | "hermes" | "research", reach?: "private" | "web", mode?: "thorough" | "files", helpers?: true, specialty?: id, team?: true, from?: id}
  *   POST   /api/v1/jobs/cancel    {id, helper?}   stops it, or one of its helpers
  *   POST   /api/v1/jobs/key       {id}   a job waiting for the ChatGPT plan goes on with the API key instead; needs `routines`
  *   POST   /api/v1/jobs/card      {id, outcome?, limits?, assumptions?}   its person changes its card while it works
@@ -191,6 +192,9 @@ export function jobEngine(
     // In the workshop a helper is somebody of its own: its own user, its own folder (lib/helper-files.ts).
     const bench = helper ? helperId(job.id, t!) : job.id;
     const mailIn = shop && allows(grants, "mail") && googleConfig(env, "https://jarvis.invalid") ? [mailFile(shop, bench, stop)] : [];
+    // Their own ways of doing things, for the job itself: any of theirs, or on the web the one they named (lib/job-specialties.ts).
+    const ways = kept && !helper && t === undefined && job.engine === "jarvis" ? new JobSpecialties(kept, job, allows(may, "memory.read")) : null;
+    const theirs = ways ? await ways.list() : [];
     const own: Tool[] = helper
       ? [
           // Its list, and nothing else of the job's own: no card, no question, no helpers.
@@ -202,7 +206,7 @@ export function jobEngine(
       : t !== undefined
         ? [shareTool("", [], 0)]
         : job.engine === "jarvis"
-          ? [...workTools(job, say), readResult(kept, job.id), ...(shop ? workshopTools(shop, job, say, stop, mailIn) : []), ...(job.help ? [delegateTool(!!shop)] : [])]
+          ? [...workTools(job, say), readResult(kept, job.id), ...(shop ? workshopTools(shop, job, say, stop, mailIn) : []), ...(theirs.length ? [ways!.tool(shop, stop)] : []), ...(job.help ? [delegateTool(!!shop)] : [])]
           : [];
     const functions = [...p.tools, ...own].map(toToolSchema);
     return {
@@ -217,6 +221,8 @@ export function jobEngine(
       functions,
       own,
       shop,
+      /** What it is told of their specialties, as it starts. */
+      ways: () => (theirs.length ? ways!.said(theirs, shop, stop) : Promise.resolve(null)),
       base: {
         model,
         ...(strong ? { reasoning: { effort: "high" as const } } : {}),
@@ -350,10 +356,11 @@ export function jobEngine(
         // A helper's: its person's whole task, then its part as the job put it, with copies of what it was said to need.
         const got = helper?.needs.length && r.shop ? await bringNeeds(r.shop, job.id, t!, helper.needs, stop) : "";
         // A research team's: the same for every team, then its own angle, planned from the user's brief.
+        const said = t === undefined ? await r.ways() : null;
         const input: OpenAI.Responses.ResponseInput = helper
           ? [...r.p.input, { role: "user", content: helperMessage(helper, got) }]
           : t === undefined
-            ? r.p.input
+            ? [...r.p.input, ...(said ? [{ role: "user" as const, content: said }] : [])]
             : [
                 ...r.p.input,
                 // Into a table: the same team, filling its share of the rows (lib/research-table.ts).
@@ -699,6 +706,7 @@ export async function handleJobs(req: Request, env: Env, url: URL, principal: Pr
       if (!allows(grants, "workshop")) return err(403, 'a job that makes files needs "workshop"', { need: "workshop" });
       if (!workshopConfig(env)) return err(400, "making files needs the workshop, which is not set up (Settings → Workshop)");
     }
+    if (typeof b.specialty === "string" && b.specialty && !allows(grants, "memory.read")) return err(403, 'using a specialty needs "memory.read"', { need: "memory.read" });
     const j = await state.createJob(b, { who, grants });
     return typeof j === "string" ? err(400, j) : json({ ok: true, job: jobView(j) }, { status: 201 });
   }

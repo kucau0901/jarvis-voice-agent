@@ -6,6 +6,7 @@ import { mailArchiveMany, mailInboxMany } from "./mail-bulk.ts";
 import { calendarRsvp } from "../tools/calendar.ts";
 import { routineMake } from "../tools/routines.ts";
 import { houseDo } from "../tools/house.ts";
+import { specialtyKeep } from "../tools/specialties.ts";
 import type { Grant } from "./scopes.ts";
 import { baseTools, outputText } from "../tools/registry.ts";
 
@@ -17,7 +18,7 @@ import { baseTools, outputText } from "../tools/registry.ts";
  */
 
 /** What only an approval runs: never offered to the router, nor to a job. */
-export const APPROVED_ONLY = [mailDraftSend, calendarRsvp, mailArchiveMany, mailInboxMany, routineMake, houseDo];
+export const APPROVED_ONLY = [mailDraftSend, calendarRsvp, mailArchiveMany, mailInboxMany, routineMake, houseDo, specialtyKeep];
 
 const goneSaid = (tool: string) => `That can no longer be done: ${tool} is not set up, or not yours to use now.`;
 

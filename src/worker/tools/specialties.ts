@@ -22,7 +22,7 @@ import { saidIn } from "../lib/specialties.ts";
 
 const said = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim();
 /** Asking to save, in their words: "save this as…", "remember how to…", or in Malay. */
-const SAVE = /\b(save|remember|keep|store|simpan|ingat)\b/i;
+const SAVE = /\b(save|remember|keep|store|learn|simpan|ingat|belajar)\b/i;
 
 export const specialtySave: Tool = {
   name: "specialty_save",
@@ -30,8 +30,8 @@ export const specialtySave: Tool = {
   pace: "fast",
   description:
     "Save the steps of the answer you just gave, so you do it the same way next time: a specialty. Only " +
-    "when the user asks you to in their latest message ('save this as my Monday report'), after an answer " +
-    "that ended by offering it. Jarvis keeps the steps itself, as they were done: give only the user's " +
+    "when the user asks you to in their latest message ('save this as my Monday report', 'learn this'), after " +
+    "an answer that offered it or a job. Jarvis keeps the steps itself: give only the user's " +
     "words asking, the name they gave it, and why, if they said.",
   parameters: {
     type: "object",
@@ -52,7 +52,12 @@ export const specialtySave: Tool = {
       return "Not saved: only the user can ask for a specialty, in their own latest message. Ask them whether to save it.";
     }
     const offered = ctx.procedure;
-    if (!offered) return "Not saved: only the steps of an answer that offered to save them can be kept, by the very next message. Say so.";
+    if (!offered) {
+      // "Learn this", of a background job: a card, for their tap (lib/learn.ts). Nothing is kept here.
+      const from = await state.specialtyLearn(ctx.env.JARVIS_PERSON || OWNER, Date.now());
+      if (typeof from === "object") return from.card === "pending" ? `Not saved yet: a card to keep how "${from.title}" was done waits for their tap, in Chat and in Jobs. Say so.` : `A card for that was already answered (${from.card}). It can be kept by hand in Jobs, under that job.`;
+      return `Not saved: only the steps of an answer that offered to save them can be kept, by the very next message, or how a background job was done; ${from}. Say so.`;
+    }
     const theirs = (v: unknown) => (typeof v === "string" && saidIn(asked, v) ? v : null);
     const s = await state.specialtySave(
       ctx.env.JARVIS_PERSON || OWNER,
@@ -80,6 +85,37 @@ export const specialtyForget: Tool = {
     if (!state) return "Specialties cannot be kept on this deployment: it has no state object.";
     const name = typeof args.name === "string" ? args.name.trim() : "";
     return (await state.specialtyForget(ctx.env.JARVIS_PERSON || OWNER, name)) ? `Forgot the specialty "${name}".` : `No specialty is called "${name}".`;
+  },
+};
+
+/**
+ * How a finished job was done, kept by its person's tap on the card that shows
+ * it whole (lib/learn.ts, lib/approval.ts): never offered to the router or a job.
+ */
+export const specialtyKeep: Tool = {
+  name: "specialty_keep",
+  scope: "memory.write",
+  pace: "fast",
+  description: "Keep how a job was done.",
+  parameters: { type: "object", properties: {}, required: [], additionalProperties: false },
+  propose(args) {
+    const name = typeof args.name === "string" ? args.name : "";
+    if (!name || !Array.isArray(args.steps) || !args.steps.length) return null;
+    return { risk: "reversible", says: args.id ? `Change how “${name}” is done, for next time` : `Keep how “${name}” was done, for next time`, verb: "Save" };
+  },
+  async run(args, ctx) {
+    const state = stateStub(ctx.env);
+    if (!state) return "Specialties cannot be kept on this deployment: it has no state object.";
+    // Where it came from is only said of a new one; a change keeps the one it changes (SpecialtyMore.save), its notes and files as they are.
+    const person = ctx.env.JARVIS_PERSON || OWNER;
+    const id = typeof args.id === "string" ? args.id : undefined;
+    const was = id ? await state.specialtyWhole(person, id) : null;
+    // Their own change of it since is not undone by a card that showed what it was before.
+    if (was && was.specialty.updatedAt !== args.at) return `Not kept: "${was.specialty.name}" was changed after this was offered. It can be changed by hand in Memory → Specialties.`;
+    const s = await state.specialtyKeep(person, { ...(id ? { id } : {}), name: args.name, when: args.when, steps: args.steps, why: args.why, ...(was?.more.text ? { text: was.more.text } : {}) }, "learned", false, Date.now());
+    if (typeof s === "string") return `Not kept: ${s}.`;
+    ctx.done?.();
+    return `Kept as "${s.name}", in Memory → Specialties. A background job may be told to use it, and asking for it by name follows it.`;
   },
 };
 

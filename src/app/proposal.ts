@@ -70,7 +70,7 @@ function draw(key: string, card: HTMLElement, p: ProposalView): void {
   );
   // Not done, with why (an errand for later not needed, its event cancelled): the why is the whole line.
   const why = (p.state === "expired" || p.state === "withdrawn") && p.outcome?.text;
-  const done = why || (p.state === "declined" && p.about ? "Not suggested again." : SAID[p.state]);
+  const done = why || (p.state === "declined" && p.about ? "Not suggested again." : p.state === "declined" && p.action.tool === "specialty_keep" ? "Not kept from this card." : SAID[p.state]);
   const said = el("small", "pagesaid", done + (p.by === "standing" ? " without asking (you allow it)" : "") + (!why && p.outcome?.text ? `: ${p.outcome.text}` : ""));
   if (p.state !== "pending") {
     card.appendChild(said);
@@ -131,7 +131,12 @@ function draw(key: string, card: HTMLElement, p: ProposalView): void {
       void refresh(key, [p.id]);
     }
   };
-  btns.append(button(p.verb ?? "Approve", answer("approve"), "docopen primary"), button(p.about ? "Don't suggest this again" : "Not now", answer("decline"), "docopen"));
+  // How a job was done, to be kept (src/worker/lib/learn.ts): changed first, in its form, if they like; saved there, this card is settled.
+  const a = p.action.args as { id?: string; at?: number; add?: string[]; name?: string; when?: string[]; steps?: string[]; why?: string };
+  const change = p.action.tool === "specialty_keep"
+    ? [button("Change it first", () => document.dispatchEvent(new CustomEvent("jarvis:way", { detail: { ...(a.id ? { id: a.id, at: a.at, add: a.add } : {}), name: a.name ?? "", when: a.when ?? [], steps: a.steps ?? [], ...(a.why ? { why: a.why } : {}), text: "", files: [], notes: [], source: "learned", card: p.id } })), "docopen")]
+    : [];
+  btns.append(button(p.verb ?? "Approve", answer("approve"), "docopen primary"), ...change, button(p.about ? "Don't suggest this again" : "Not now", answer("decline"), "docopen"));
   card.appendChild(btns);
 }
 

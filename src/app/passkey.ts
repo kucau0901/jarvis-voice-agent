@@ -16,7 +16,7 @@ const toBytes = (s: string): Uint8Array<ArrayBuffer> => {
   return out;
 };
 
-const toB64u = (b: ArrayBuffer | null): string => {
+export const toB64u = (b: ArrayBuffer | null): string => {
   if (!b) return "";
   let s = "";
   for (const x of new Uint8Array(b)) s += String.fromCharCode(x);

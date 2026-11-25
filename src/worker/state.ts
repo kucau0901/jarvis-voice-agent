@@ -28,7 +28,11 @@ import { Chat, dmId, talksAbout, type ChatMessage } from "./lib/chat.ts";
 import { Panels, type PanelItem, type PanelRefreshDeps, type Reading } from "./lib/panels.ts";
 import { alertSaid, Conversation, type Said } from "./lib/conversation.ts";
 import { Images, type StoredImage } from "./lib/images.ts";
-import { Specialties, type Procedure } from "./lib/specialties.ts";
+import { Specialties, type Procedure, type Specialty } from "./lib/specialties.ts";
+import { SpecialtyMore, type MoreInput, type Source } from "./lib/specialty-more.ts";
+import { ASKED_MS, FAILED_MS, learned, learnedBody, scriptsOf, type Learned } from "./lib/learn.ts";
+import { whole as wholeWay } from "./lib/job-specialties.ts";
+import { specialtyKeep } from "./tools/specialties.ts";
 import { heldToRelease, Skills } from "./lib/skills.ts";
 import { Components, didAlert, type Listed } from "./lib/components.ts";
 import { sealed, takeReport, type ReportDeps } from "./lib/component-reports.ts";
@@ -96,6 +100,7 @@ export class JarvisState extends DurableObject<Env> {
   private conversation: Conversation;
   private images: Images;
   private specialties: Specialties;
+  private ways: SpecialtyMore;
   /** The family's skills: outside services added in chat (lib/skills.ts). */
   private skills: Skills;
   /** Outside systems plugged in (lib/components.ts). */
@@ -120,6 +125,7 @@ export class JarvisState extends DurableObject<Env> {
     this.conversation = new Conversation(ctx.storage);
     this.images = new Images(ctx.storage);
     this.specialties = new Specialties(ctx.storage);
+    this.ways = new SpecialtyMore(ctx.storage);
     this.skills = new Skills(ctx.storage);
     this.components = new Components(ctx.storage);
     this.pages = new Pages(ctx.storage);
@@ -136,7 +142,11 @@ export class JarvisState extends DurableObject<Env> {
       // Each job runs as whoever started it: their memory, their mail (lib/context.ts).
       // Its storage, for steps run on the owner's ChatGPT plan (routes/jobs.ts).
       // What the job proposed goes with its result: one alert, its cards in the conversation (lib/proposals.ts).
-      const deliverJob = async (given: Alert) => deliver(env, this, await this.proposals.attach(given, given.for ?? OWNER, Date.now(), localeOf(env).timeZone));
+      const deliverJob = async (given: Alert) => {
+        // What it could be done the same way by, next time: one more card, where there is anything to keep (lib/learn.ts).
+        if (given.job) await this.learnFrom(given.job, Date.now()).catch((e) => console.warn("job", given.job, "nothing learned:", e instanceof Error ? e.message : String(e)));
+        return deliver(env, this, await this.proposals.attach(given, given.for ?? OWNER, Date.now(), localeOf(env).timeZone));
+      };
       // How it went, for the next question like it (lib/episodes.ts).
       const episode = (job: Job) => this.episodes.add(personOfWho(job.createdBy), episodeOfJob(job), Date.now());
       // A job reaches no further than whoever started it may now, as a routine (reachNow).
@@ -353,6 +363,7 @@ export class JarvisState extends DurableObject<Env> {
     await this.images.clear(person);
     await this.pages.clear(person);
     await this.specialties.clear(person);
+    await this.ways.clear(person);
     await this.episodes.clear(person);
     await this.proposals.forget(person);
     await this.meetingsSeen.forget(person);
@@ -999,16 +1010,99 @@ export class JarvisState extends DurableObject<Env> {
     return this.pages.open(id, token, now);
   }
 
-  specialtiesOf(person: string) {
-    return this.specialties.of(person);
+  // Saved by asking, over one of that name: what that was is kept, as a change of it in Memory is.
+  async specialtySave(person: string, input: { name: unknown; when: unknown; steps: unknown; why?: unknown }, now: number) {
+    const was = await this.specialties.of(person);
+    const s = await this.specialties.save(person, input, now);
+    const before = typeof s === "string" ? undefined : was.find((x) => x.id === s.id);
+    if (before) await this.ways.changed(person, before, now);
+    return s;
   }
 
-  specialtySave(person: string, input: { name: unknown; when: unknown; steps: unknown; why?: unknown }, now: number) {
-    return this.specialties.save(person, input, now);
+  async specialtyForget(person: string, which: string) {
+    const was = await this.specialties.of(person);
+    const gone = await this.specialties.forget(person, which);
+    if (gone) {
+      const left = new Set((await this.specialties.of(person)).map((s) => s.id));
+      for (const s of was) if (!left.has(s.id)) await this.ways.forget(person, s.id);
+    }
+    return gone;
   }
 
-  specialtyForget(person: string, which: string) {
-    return this.specialties.forget(person, which);
+  specialtiesAll(person: string) {
+    return this.ways.all(person);
+  }
+
+  specialtyWhole(person: string, id: string) {
+    return this.ways.whole(person, id);
+  }
+
+  specialtyKeep(person: string, input: MoreInput, source: Source, mayFiles: boolean, now: number) {
+    return this.ways.save(person, input, source, mayFiles, now);
+  }
+
+  specialtyPutBack(person: string, id: string, at: number, now: number) {
+    return this.ways.putBack(person, id, at, now);
+  }
+
+  specialtyFile(person: string, id: string, n: number) {
+    return this.ways.file(person, id, n);
+  }
+
+  specialtyExport(person: string, id: string) {
+    return this.ways.exported(person, id);
+  }
+
+  /** The one whose whole name is in one of `texts`, for a job to use (tools/jobs.ts). */
+  specialtyNamed(person: string, texts: readonly string[]) {
+    return this.specialties.named(person, texts);
+  }
+
+  /** What a job used, as it stands now; null when it used none, or that is kept no more. */
+  private async usedBy(person: string, j: Job): Promise<Specialty | null> {
+    return j.using ? ((await this.specialties.of(person)).find((s) => s.id === j.using!.id) ?? null) : null;
+  }
+
+  /**
+   * A card to keep how a finished job was done (lib/learn.ts), for its person's
+   * tap: when they corrected it, when one like it failed lately, or when they
+   * asked (`asked`). Filed as what a job proposes is. Null when there is nothing to keep.
+   */
+  private async learnFrom(id: string, now: number, asked = false): Promise<Proposal | string | null> {
+    const j = await this.jobs.get(id);
+    if (!j || !allows(j.grants, "memory.write")) return null;
+    const person = personOfWho(j.createdBy);
+    const used = await this.usedBy(person, j);
+    const failed = await this.episodes.failedLike(person, j.title || j.task, now - FAILED_MS, now);
+    const draft = learned(j, { used, failed, asked });
+    if (!draft) return null;
+    const args = { ...draft, job: id };
+    const weighed = specialtyKeep.propose!(args, this.env);
+    if (!weighed) return null;
+    return this.proposals.add({ who: j.createdBy, person, from: { kind: "job", id, title: j.title }, action: { tool: specialtyKeep.name, args }, weighed, body: learnedBody(draft, used), grants: ["ask", "memory.write"] }, now);
+  }
+
+  /** "Learn this": of the job of theirs that ended last, within a day; why not, in words. */
+  async specialtyLearn(person: string, now: number): Promise<{ title: string; card: string } | string> {
+    const last = (await this.jobs.list())
+      .filter((j) => personOfWho(j.createdBy) === person && j.engine === "jarvis" && j.status === "done" && now - (j.finishedAt ?? 0) < ASKED_MS)
+      .sort((a, b) => (b.finishedAt ?? 0) - (a.finishedAt ?? 0))[0];
+    if (!last) return "no background job of theirs has finished in the last day";
+    const p = await this.learnFrom(last.id, now, true);
+    if (p === null) return `there is nothing to keep from "${last.title}": they told it nothing as it worked, and it was run as any other`;
+    if (typeof p === "string") return p;
+    const env = await this.localEnv();
+    const alert = makeAlert({ title: "Keep how that was done?", text: p.says, speak: false }, "job", now, person);
+    if (alert && p.state === "pending") await deliver(env, this, { ...alert, proposals: [cardOf(p)] });
+    return { title: last.title, card: p.state };
+  }
+
+  /** What a finished job of theirs could be kept as, for the form (routes/memory.ts): its draft, and the scripts it ran that worked. */
+  async specialtyDraft(person: string, id: string, now: number): Promise<{ draft: Learned | null; scripts: string[]; title: string } | null> {
+    const j = await this.jobs.get(id);
+    if (!j || personOfWho(j.createdBy) !== person || j.engine !== "jarvis" || j.status !== "done") return null;
+    const used = await this.usedBy(person, j);
+    return { draft: learned(j, { used, failed: await this.episodes.failedLike(person, j.title || j.task, now - FAILED_MS, now), asked: true }), scripts: scriptsOf(j), title: j.title };
   }
 
   specialtyOffer(person: string, p: Procedure, now: number, said: boolean) {
@@ -1255,7 +1349,7 @@ export class JarvisState extends DurableObject<Env> {
    * and, taken by a question the person asked themselves, the steps their last answer offered to save. One call, so
    * the question waits on one.
    */
-  async recallFor(person: string, ask: string, take: boolean) {
+  async recallFor(person: string, ask: string, take: boolean, whole = false) {
     const now = Date.now();
     const [specialty, past, procedure, offerSaid] = await Promise.all([
       this.specialties.match(person, ask),
@@ -1263,7 +1357,11 @@ export class JarvisState extends DurableObject<Env> {
       take ? this.specialties.take(person, now) : null,
       this.specialties.offerSaid(person),
     ]);
-    return { specialty, past, procedure, offerSaid };
+    // More than its steps, which a background job reads; and all of it, for a routine that names it (lib/router.ts), as a job is given one.
+    const named = whole ? await this.specialties.named(person, [ask]) : null;
+    const of = named ?? specialty;
+    const more = of ? (await this.ways.whole(person, of.id))?.more : undefined;
+    return { specialty: of, past, procedure, offerSaid, ...(more?.text || more?.files.length ? { more: true as const } : {}), ...(named && more ? { whole: wholeWay(named, more) } : {}) };
   }
 
   conversationOf(person: string, now: number) {
@@ -1422,8 +1520,11 @@ export class JarvisState extends DurableObject<Env> {
     return this.jobs.get(id);
   }
 
-  async createJob(input: { title?: unknown; task?: unknown; engine?: unknown; reach?: unknown; mode?: unknown; team?: unknown; from?: unknown; table?: unknown; helpers?: unknown }, by: { who: string; grants: readonly Grant[] }) {
-    const j = await this.jobs.create(input, by);
+  // `specialty`: the one its person named for it, theirs and kept; any other is none.
+  async createJob(input: { title?: unknown; task?: unknown; engine?: unknown; reach?: unknown; mode?: unknown; team?: unknown; from?: unknown; table?: unknown; helpers?: unknown; specialty?: unknown }, by: { who: string; grants: readonly Grant[] }) {
+    const using = typeof input.specialty === "string" && input.specialty ? ((await this.specialties.of(personOfWho(by.who))).find((s) => s.id === input.specialty) ?? null) : null;
+    if (typeof input.specialty === "string" && input.specialty && !using) return "that specialty is not kept any more";
+    const j = await this.jobs.create(input, { ...by, using });
     await this.rearm();
     return j;
   }

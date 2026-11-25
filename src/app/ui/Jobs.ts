@@ -45,6 +45,10 @@ export class Jobs {
   private timer = 0;
   /** Whether this person may ask Hermes: only then is a finished report offered to it. */
   private hermes = false;
+  /** Whether they may keep how a job was done: what is remembered is theirs to change. */
+  private keeps = false;
+  /** A specialty, in the New job form. */
+  private way: HTMLSelectElement;
   /** Files, in the New job form: offered only where the workshop is set up and theirs to use. */
   private files: HTMLElement;
   /** Research being handed to Hermes: the job, and the instruction as typed so far. */
@@ -61,10 +65,13 @@ export class Jobs {
   /** Told what is listed each time, so the chat's job pills keep up (fromRoutine.ts jobsSeen). */
   private seen: (jobs: JobView[]) => void;
   private asks: { el: HTMLElement; load(): Promise<void> };
+  /** Opens Memory → Specialties with how a finished job was done, to keep (ui/Specialties.ts). */
+  private keep: (job: string) => void;
 
-  constructor(key: string, seen: (jobs: JobView[]) => void) {
+  constructor(key: string, seen: (jobs: JobView[]) => void, keep: (job: string) => void) {
     this.key = key;
     this.seen = seen;
+    this.keep = keep;
     this.asks = proposalsBox(key);
     this.el = el("div", "panel");
     this.el.id = "jobs";
@@ -101,6 +108,11 @@ export class Jobs {
     }
     reach.setAttribute("aria-label", "Where this job may look");
     form.appendChild(reach);
+    // One of their specialties, for it to follow; offered where they have any (show).
+    this.way = document.createElement("select");
+    this.way.setAttribute("aria-label", "A specialty for it to follow");
+    this.way.hidden = true;
+    form.appendChild(this.way);
     // Thorough: research's model, for an ordinary job.
     const hard = el("label", "on");
     const hardBox = document.createElement("input");
@@ -162,7 +174,8 @@ export class Jobs {
     form.addEventListener("change", () => {
       if (deepBox.checked) reach.value = "web";
       if (deepBox.checked) hardBox.checked = filesBox.checked = splitBox.checked = false;
-      reach.disabled = hardBox.disabled = filesBox.disabled = splitBox.disabled = deepBox.checked;
+      reach.disabled = hardBox.disabled = filesBox.disabled = splitBox.disabled = this.way.disabled = deepBox.checked;
+      if (deepBox.checked) this.way.value = "";
     });
     let filled = "";
     this.again = (j) => {
@@ -172,8 +185,9 @@ export class Jobs {
         return this.msg("Start or clear what is written under New job first.", true);
       }
       for (const b of [filesBox, splitBox, deepBox, teamBox, tableBox]) b.checked = false;
-      reach.disabled = hardBox.disabled = filesBox.disabled = splitBox.disabled = false;
+      reach.disabled = hardBox.disabled = filesBox.disabled = splitBox.disabled = this.way.disabled = false;
       reach.value = j.reach ?? "private";
+      this.way.value = j.using && [...this.way.options].some((o) => o.value === j.using!.id) ? j.using.id : "";
       hardBox.checked = true;
       // With what they said to it as it worked: their own words, which it would otherwise get wrong again.
       const said = (j.told ?? []).filter((t) => !t.to && !t.card).map((t) => t.text);
@@ -196,13 +210,15 @@ export class Jobs {
             reach: reach.value,
             ...(hardBox.checked ? { mode: "thorough" } : filesBox.checked ? { mode: "files" } : {}),
             ...(splitBox.checked ? { helpers: true } : {}),
+            ...(this.way.value ? { specialty: this.way.value } : {}),
             ...(deepBox.checked ? { engine: "research" } : {}),
             ...(teamBox.checked ? { team: true } : {}),
             ...(tableBox.checked ? { table: true } : {}),
           });
           task.value = "";
           hardBox.checked = filesBox.checked = splitBox.checked = deepBox.checked = teamBox.checked = tableBox.checked = false;
-          reach.disabled = hardBox.disabled = filesBox.disabled = splitBox.disabled = false;
+          reach.disabled = hardBox.disabled = filesBox.disabled = splitBox.disabled = this.way.disabled = false;
+          this.way.value = "";
         }, "Started — it arrives as an alert when done."), "primary"),
     );
     sheet.appendChild(form);
@@ -219,9 +235,15 @@ export class Jobs {
     this.el.classList.add("open");
     if (focus) this.open.add(focus);
     // Offered only where Hermes is set up and theirs to ask (routes/hub.ts). A device is not a person: no button.
-    const me = await api(this.key, "GET", "/api/hub/me").then((r) => r as { hermes?: boolean; workshop?: boolean }, () => ({}) as { hermes?: boolean; workshop?: boolean });
+    const me = await api(this.key, "GET", "/api/hub/me").then((r) => r as { hermes?: boolean; workshop?: boolean; scopes?: string[] }, () => ({}) as { hermes?: boolean; workshop?: boolean; scopes?: string[] });
     this.hermes = me.hermes === true;
+    this.keeps = !!me.scopes?.some((s) => s === "*" || s === "memory.write");
     this.files.hidden = me.workshop !== true;
+    const ways = await api(this.key, "GET", "/api/memory/specialties").then((r) => (r as { specialties: { id: string; name: string }[] }).specialties, () => []);
+    const chosen = this.way.value;
+    this.way.replaceChildren(...[{ id: "", name: "No specialty" }, ...ways.map(({ id, name }) => ({ id, name: `Following “${name}”` }))].map(({ id, name }) => Object.assign(document.createElement("option"), { value: id, textContent: name })));
+    this.way.value = ways.some((w) => w.id === chosen) ? chosen : "";
+    this.way.hidden = !ways.length;
     await this.load();
     const row = focus ? [...this.list.querySelectorAll<HTMLElement>(".routine")].find((r) => r.dataset.id === focus) : undefined;
     if (!row) return;
@@ -307,7 +329,7 @@ export class Jobs {
     top.appendChild(el("span", `chip ${j.status === "done" || j.asks ? "on" : "off"}`, j.asks ? "asks you" : j.waiting ? "waiting" : j.status === "failed" && j.hasResult ? "part done" : STATUS[j.status]));
     row.appendChild(top);
 
-    const facts: string[] = [j.team ? "Research team" : j.engine === "hermes" ? "Hermes" : j.engine === "research" ? "Research" : j.mode === "thorough" ? "Jarvis, thorough" : j.mode === "files" ? "Jarvis, making files" : "Jarvis", ...(j.helpers && (j.status === "running" || j.helpers.length) ? ["with helpers"] : []), `started ${when(j.createdAt)}`];
+    const facts: string[] = [j.team ? "Research team" : j.engine === "hermes" ? "Hermes" : j.engine === "research" ? "Research" : j.mode === "thorough" ? "Jarvis, thorough" : j.mode === "files" ? "Jarvis, making files" : "Jarvis", ...(j.helpers && (j.status === "running" || j.helpers.length) ? ["with helpers"] : []), ...(j.using ? [`using “${j.using.name}”`] : []), `started ${when(j.createdAt)}`];
     if (j.status === "running") facts.push(`${Math.max(1, Math.round((Date.now() - j.createdAt) / 60_000))} min so far${j.engine === "jarvis" ? `, step ${j.steps}` : ""}`);
     if (j.team?.phase) facts.push(j.team.phase === "teams" ? `${j.team.reported} of ${j.team.of} teams done` : PHASE[j.team.phase]);
     else if (j.team && j.status !== "running" && j.team.reported < j.team.of) facts.push(`${j.team.reported} of ${j.team.of} teams reported`);
@@ -365,6 +387,8 @@ export class Jobs {
         }),
       );
     }
+    // How it was done, to be done so again: read over and saved there, nothing kept by this.
+    if (this.keeps && j.engine === "jarvis" && j.status === "done") btns.appendChild(button("Keep for next time", () => this.keep(j.id)));
     // Never by itself: the same brief, on the stronger model, for them to read over and start.
     if (j.engine === "jarvis" && !j.mode && (j.status === "done" || j.status === "failed")) {
       btns.appendChild(button("Try again harder", () =>

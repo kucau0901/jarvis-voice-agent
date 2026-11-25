@@ -691,7 +691,7 @@ console.log("\nthorough: the stronger model, for hard work");
   // Asked for in chat by a guest: an ordinary job.
   const tool = baseTools({} as never).find((t) => t.name === "start_job")!;
   const made: Record<string, unknown>[] = [];
-  const stub = { createJob: async (i: Record<string, unknown>) => (made.push(i), { id: "j", title: "x", engine: "jarvis", ...i }), familyPeople: async () => [] };
+  const stub = { createJob: async (i: Record<string, unknown>) => (made.push(i), { id: "j", title: "x", engine: "jarvis", ...i }), familyPeople: async () => [], specialtyNamed: async () => null };
   const say = async (grants: string[]) => String(await tool.run({ title: "x", task: "x", reach: "web", mode: "thorough", research: "no" }, { env: { STATE: { idFromName: () => "j", get: () => stub } }, grants, memory: { facts: [] } } as never));
   check("start_job: the family's is thorough, and says it takes longer", /stronger model/.test(await say(["ask", "routines"])) && made[0]!.mode === "thorough");
   check("a guest's is ordinary", !/stronger/.test(await say(["ask"])) && !("mode" in made[1]!));
@@ -760,7 +760,7 @@ console.log("\na brief for the web says nothing of who they are");
   // Through start_job: refused, with what to leave out, so that it is written again.
   const tool = baseTools({} as never).find((t) => t.name === "start_job")!;
   const made: Record<string, unknown>[] = [];
-  const stub = { createJob: async (i: Record<string, unknown>) => (made.push(i), { id: "j", title: "x", engine: "jarvis", ...i }), familyPeople: async () => [{ person: "u_adam", name: "Adam" }] };
+  const stub = { createJob: async (i: Record<string, unknown>) => (made.push(i), { id: "j", title: "x", engine: "jarvis", ...i }), familyPeople: async () => [{ person: "u_adam", name: "Adam" }], specialtyNamed: async () => null };
   const run = async (args: Record<string, unknown>, asked = "plan us a trip") => String(await tool.run({ title: "Trip", mode: "ordinary", research: "no", ...args }, {
     env: { STATE: { idFromName: () => "j", get: () => stub }, JARVIS_PERSON_NAME: "Sara", JARVIS_PERSON_NICKNAME: "Sasa" }, grants: ["*"], asked,
     memory: { facts: [{ text: "home", address: "No 12, Jalan Example 5, 31650 Ipoh" }], family: { facts: [{ text: "gran", address: "9 Example Street, Penang" }] } },
@@ -1082,7 +1082,7 @@ console.log("\nask_hermes: handing over research by voice");
 console.log("\nstart_job: the job is reported to typed chat, for its pill");
 {
   const h = harness();
-  const stub = { listJobs: () => h.jobs.list(), familyPeople: async () => [], createJob: (input: Record<string, unknown>, by: unknown) => h.jobs.create(input as never, by as never, T0) };
+  const stub = { listJobs: () => h.jobs.list(), familyPeople: async () => [], specialtyNamed: async () => null, createJob: (input: Record<string, unknown>, by: unknown) => h.jobs.create(input as never, by as never, T0) };
   const env = { TIMEZONE: "Asia/Kuala_Lumpur", STATE: { idFromName: () => "jarvis", get: () => stub } } as never;
   const tool = baseTools(env).find((t) => t.name === "start_job")!;
   const started: { id: string; title: string; engine: string }[] = [];

@@ -1,9 +1,10 @@
 import type { Tool } from "./registry.ts";
 import { stateStub } from "../lib/state-client.ts";
-import { callerWho, maySteer, mayWork } from "../lib/context.ts";
+import { OWNER, callerWho, maySteer, mayWork } from "../lib/context.ts";
 import { wordsOf, type Job } from "../lib/jobs.ts";
 import { flagLines } from "../lib/job-results.ts";
 import { tells } from "../lib/job-brief.ts";
+import { textIn } from "../lib/skill-md.ts";
 import { asksSaid, openQuestions } from "../lib/job-tools.ts";
 import { asQuotedData, ownPart } from "../lib/quote.ts";
 import { allows } from "../lib/scopes.ts";
@@ -62,17 +63,33 @@ const startJob: Tool = {
     if (research && !allows(ctx.grants, "routines")) {
       return "Not started: research in depth is for the family, and this person may not start it. Offer an ordinary job, or to answer now.";
     }
+    const known = async () => ({
+      names: [ctx.env.JARVIS_PERSON_NAME ?? "", ctx.env.JARVIS_PERSON_NICKNAME ?? "", ...((await state.familyPeople().catch(() => [])) ?? []).map((p) => p.name)],
+      addresses: [...ctx.memory.facts, ...(ctx.memory.family?.facts ?? [])].flatMap((f) => (f.address ? [f.address] : [])),
+    });
     // What goes to the web says nothing of who they are: looked at by code, since the model knows it all (lib/job-brief.ts).
     if (research || args.reach === "web") {
-      const family = await state.familyPeople().catch(() => []);
-      const said = tells(`${String(args.title ?? "")}\n${String(args.task ?? "")}`, {
-        names: [ctx.env.JARVIS_PERSON_NAME ?? "", ctx.env.JARVIS_PERSON_NICKNAME ?? "", ...(family ?? []).map((p) => p.name)],
-        addresses: [...ctx.memory.facts, ...(ctx.memory.family?.facts ?? [])].flatMap((f) => (f.address ? [f.address] : [])),
-      }, ctx.asked ?? "");
+      const said = tells(`${String(args.title ?? "")}\n${String(args.task ?? "")}`, await known(), ctx.asked ?? "");
       if (said.length) {
         return `Not started: the brief says ${said.map((s) => `"${s}"`).join(", ")}. A job on the web is told nothing of who the user is, their family, ` +
           "or exactly where they live: start it again without, as 'the user' and at most their town. Only what they themselves said in this " +
           "message may be in it; if they want that looked up, ask them to say so.";
+      }
+    }
+    // One of their specialties, named in the brief: it is given to the job whole (lib/job-specialties.ts).
+    // On the web only one they themselves named just now: what they read may have had a word in the brief.
+    const person = ctx.env.JARVIS_PERSON || OWNER;
+    const mine = ownPart(ctx.asked ?? "");
+    const used = !research && allows(ctx.grants, "memory.read") ? await state.specialtyNamed(person, args.reach === "web" ? [mine] : [mine, String(args.title ?? ""), String(args.task ?? "")]).catch(() => null) : null;
+    if (used && args.reach === "web") {
+      const w = await state.specialtyWhole(person, used.id);
+      const files = await Promise.all((w?.more.files ?? []).map((f) => state.specialtyFile(person, used.id, f.n)));
+      const read = files.map((f) => (f ? textIn(f.bytes) : null));
+      if (read.includes(null)) return `Not started: "${used.name}" has a file nothing here can look through, and a job on the web is told nothing of who the user is. They can start it themselves in Jobs, or it can be started on their own things.`;
+      const said = tells([used.when, used.steps, used.why ?? "", w?.more.text ?? "", files.map((f) => f!.name), read].flat().join("\n"), await known(), ctx.asked ?? "");
+      if (said.length) {
+        return `Not started: "${used.name}", which they named, says ${said.map((s) => `"${s}"`).join(", ")}, and a job on the web is told nothing of who the user is, their family, or exactly where ` +
+          "they live. Start it on their own things, or without it, with what is needed of it in the brief; or they can change it in Memory → Specialties.";
       }
     }
     const shop = !research && args.mode === "files" ? workshopConfig(ctx.env) : null;
@@ -88,7 +105,7 @@ const startJob: Tool = {
     // And only where somebody asked, in words of their own: not a routine, a bot or a page.
     const helpers = !research && args.helpers === true && allows(ctx.grants, "routines") && !!ownPart(ctx.asked ?? "");
     const j = await state.createJob(
-      { title: args.title, task, engine: research ? "research" : "jarvis", reach: args.reach, ...(thorough ? { mode: "thorough" } : shop ? { mode: "files" } : {}), ...(helpers ? { helpers: true } : {}), ...(team ? { team: true } : {}), ...(table ? { table: true } : {}) },
+      { title: args.title, task, engine: research ? "research" : "jarvis", reach: args.reach, ...(thorough ? { mode: "thorough" } : shop ? { mode: "files" } : {}), ...(helpers ? { helpers: true } : {}), ...(used ? { specialty: used.id } : {}), ...(team ? { team: true } : {}), ...(table ? { table: true } : {}) },
       { who: callerWho(ctx.env), grants: ctx.grants },
     );
     if (typeof j === "string") return `Not started: ${j}.`;
@@ -115,6 +132,7 @@ const startJob: Tool = {
       ? `Started research on "${j.title}". It takes 10 to 40 minutes; the report, with its sources, will reach the user as a message and wait in Jobs. Tell them so.`
       : `Started "${j.title}" ${j.reach === "web" ? "on the web, with only what its brief says of the user" : "on the user's own things, without the web"}. ` +
         `${brought.length ? `It has what they attached (${brought.length === 1 ? "one file" : `${brought.length} files`}). ` : shop && asFiles(ctx.attached).length ? "It was NOT given what they attached: a job on the web has nothing of theirs. " : ""}` +
+        `${used ? `It uses their specialty "${used.name}". ` : ""}` +
         `${!research && args.helpers === true && !helpers ? "It has NO helpers: those are for the family, when one of them asks. " : ""}` +
         `It usually takes ${j.mode === "thorough" ? `ten minutes or more, with a stronger model${j.help ? " and helpers" : ""}` : j.help ? "ten minutes or so, splitting the work between helpers" : "a few minutes"}; the result${shop ? ", with its files to download," : ""} will reach the user as a message. Tell them so.`;
   },

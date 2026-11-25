@@ -122,6 +122,8 @@ export interface Job {
   reach?: Reach;
   /** An ordinary job's: for hard work, research's stronger model, thinking hard; or one that makes files, in the workshop (lib/workshop.ts). */
   mode?: "thorough" | "files";
+  /** The specialty its person named for it (lib/job-specialties.ts): given whole from the start, and named on its card. */
+  using?: { id: string; name: string };
   /** Started with helpers (lib/job-helpers.ts): none until it gives its work out, then each one's chain. */
   help?: HelperRun;
   /** What it made for its person, to download; and what it ran, newest last. */
@@ -805,7 +807,7 @@ export class Jobs {
 
   async create(
     input: { title?: unknown; task?: unknown; engine?: unknown; reach?: unknown; mode?: unknown; team?: unknown; from?: unknown; table?: unknown; helpers?: unknown },
-    by: { who: string; grants: readonly Grant[] },
+    by: { who: string; grants: readonly Grant[]; using?: { id: string; name: string } | null },
     now = Date.now(),
   ): Promise<Job | string> {
     const task = clean(input.task, MAX_TASK);
@@ -875,6 +877,7 @@ export class Jobs {
       attempts: 0,
       ...(engine === "jarvis" ? { reach: input.reach === "web" ? ("web" as const) : ("private" as const) } : {}),
       ...(thorough ? { mode: "thorough" as const } : engine === "jarvis" && input.mode === "files" ? { mode: "files" as const } : {}),
+      ...(engine === "jarvis" && by.using ? { using: { id: by.using.id, name: by.using.name } } : {}),
       ...(engine === "jarvis" && input.helpers === true ? { help: { chains: [], board: [] } } : {}),
       ...(team ? { team: newTeam(now) } : {}),
       ...(table ? { table: {} } : {}),
