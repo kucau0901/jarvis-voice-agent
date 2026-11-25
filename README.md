@@ -30,7 +30,12 @@ enough) or run it yourself with **Docker**.
   pharmacist?" finds the "Assistant Pharmacy Officer", and a Malay question
   finds a fact saved in English. Stored in your own deployment, applied
   atomically, and shown in the app's **memory** panel, where you can add a
-  fact or forget one.
+  fact or forget one. *Which is true now?* there finds facts that may disagree,
+  or whose day has passed, for you to choose between.
+- **It does things your way** — a *specialty* is how you like something done: "save
+  this as my Monday report", and it is done that way next time. Jarvis offers to
+  keep what you put right in a job, with a card and never without your tap; or
+  write one in a form, or bring in a skill made for another agent (`SKILL.md`).
 - **It speaks first** — alerts reach an open Jarvis screen and are said aloud
   there without opening a paid voice session, or arrive as a notification on
   your phone. Telegram, ntfy, a signed webhook and Home Assistant are optional
@@ -61,25 +66,38 @@ enough) or run it yourself with **Docker**.
 - **Background jobs** — "look into the best dashcams under RM800 and let me
   know": work that takes minutes runs on its own, even with every screen
   closed, and the result arrives as an alert and waits in the **jobs** panel.
-  Jobs read (web, mail, calendar, memory, car, cameras) and never act on their
-  own: what one would do (lock the car, add an event, archive mail, send an
-  email, a Home Assistant call) it proposes, and only your tap does it, unless
-  you let jobs do one kind that can be undone without asking (Jobs lists those,
-  with Stop); anything irreversible, and anything for the house, always asks. Ask for
+  A job reads your own things (mail, calendar, memory, the house, the car,
+  cameras) or the web, never both, so nothing it reads of yours leaves in a search. You
+  see its checklist and what it is doing, put it right as it works, and answer what
+  it asks; what it could not do, and what it took for granted, comes first in its
+  result. It never acts on its own: what it would do (lock the car, add an event,
+  archive mail, send an email, a Home Assistant call) it proposes, and only your tap
+  does it, unless you let jobs do one kind that can be undone without asking (Jobs
+  lists those, with Stop); anything irreversible, and anything for the house, always
+  asks. For hard work, a stronger model; for work that splits, up to three helpers
+  at once; for jobs that belong together, a project with its own rules and files.
+  A long one carries on past what one conversation holds, and at your ChatGPT
+  plan's limit it waits for the plan. Ask for
   research in depth and it runs on a stronger model, searches widely and comes
   back as a report, checked against its sources, for roughly $1–2 (the Jobs panel shows
   what each one cost), or as a team: three teams take different angles and
   share what they find, and one checked report comes back for roughly $4–7.
   A question for Hermes runs the same way, so its answer
-  is never lost.
+  is never lost. [Background jobs guide](docs/jobs.md).
+- **It makes and builds things** — with the optional [workshop](#run-with-docker), a
+  container with no network, a job makes a spreadsheet, a PDF or a chart for you to
+  save, or builds a small site or a change to code. Nothing goes out but by your tap: a
+  site to a folder on your own machine, where the version before can be put back, or a
+  pull request to a repository you listed.
 - **Routines** — "remind me at five to call Mum", "every weekday at 7:30 tell
   me my first meeting and the traffic", "tell me when to leave for my
   appointments" (from your calendar, the car's position and live traffic), or
   anything set off by an event your home automation or phone sends. And
   **watches**: "tell me if the gate stays open ten minutes", "let me know when
   the car has finished charging" — Home Assistant checked every minute, at no
-  AI cost. Said aloud or set up in the **routines** panel; run by the server,
-  so no screen has to be open.
+  AI cost. A routine can also start a background job ("every Friday at six, plan my
+  next week"), with a limit on its cost and a last day. Said aloud or set up in the
+  **routines** panel; run by the server, so no screen has to be open.
 - **Your own agents** — any MCP server, outside services you add in chat as
   skills (a bot, an automation, your own code), and optionally a
   [Hermes](https://github.com/NousResearch/hermes-agent) agent at home, asked only
