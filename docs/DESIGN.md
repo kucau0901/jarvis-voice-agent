@@ -1501,7 +1501,8 @@ model: a checklist line neither done nor dropped is missing whatever the answer
 says, and with no word of its own, the lines it dropped and the card's assumptions
 are. An address in the answer that was on nothing the job read (`markUnseen` in
 `lib/links.ts`: its tools' answers, the pages its searches opened, gave or cited,
-its brief) is followed by "(not checked)". One with no query is on record with any
+its brief) is followed by "(not checked)"; nor does one count that a call named and its
+answer only said back, its own list included. One with no query is on record with any
 address of that page; one with a query only as it was seen, since a query can
 carry anything. Jobs shows the whole address beside a link's words, so a name
 does not stand for somewhere else; a research report's are its searches' own

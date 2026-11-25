@@ -45,7 +45,7 @@ import { MAX_TRIES, beginCalls } from "../src/worker/lib/job-chain.ts";
 import { tells } from "../src/worker/lib/job-brief.ts";
 import { ASK_MS, changeCard, untold, unfinished, workTools, type Asked, type JobCard, type Said, type Todo } from "../src/worker/lib/job-tools.ts";
 import { GOING_STEPS, KEY_DOLLARS, MAX_SEARCHES, NOTE_AT, NOT_RUN, REFUSE_AT, STUCK_AT, runGuarded } from "../src/worker/lib/job-guards.ts";
-import { RESULT_KEPT, RESULT_MAX, capResults, flagLines, flagsOf, noteLinks, readResult } from "../src/worker/lib/job-results.ts";
+import { RESULT_KEPT, RESULT_MAX, capResults, flagLines, flagsOf, linksBack, noteLinks, readResult } from "../src/worker/lib/job-results.ts";
 import { linksIn, markUnseen, searchedIn } from "../src/worker/lib/links.ts";
 import { FORWARDED, asQuotedData } from "../src/worker/lib/quote.ts";
 import { HERMES_LONG_WORK, handleJobs, jobEngine, jobView } from "../src/worker/routes/jobs.ts";
@@ -732,6 +732,9 @@ console.log("\nwhat a result is missing, and rests on, comes first");
   check("an address it never saw is said to be unchecked; one it saw is left as it is",
     marked === "Buy [it](https://opened.example/page), or at https://cited.example/p?id=7. Also https://guess.example/deal (not checked), [this](https://bad.example/x?d=secret) (not checked) and https://mail.example/inv.", marked);
   check("a page it saw, asked with words of its own in the address, is not that page", markUnseen("https://mail.example/inv?n=9999", seen).endsWith("(not checked)") && markUnseen("https://opened.example/page?d=my+address", seen).endsWith("(not checked)"));
+  check("an address a call named is not seen by being said back, whole or cut short; another in the answer is",
+    JSON.stringify(linksBack(JSON.stringify({ q: "see https://a.example/x?y=1\nand more", list: ["https://b.example/z"] }), "No match for https://a.example/x?y=1, https://a.example/x nor https://b.example/z. Try https://c.example/w.")) === JSON.stringify(["c.example/w"]) &&
+    JSON.stringify(linksBack("not json https://a.example/x", "https://a.example/x https://d.example/")) === JSON.stringify(["d.example"]), linksBack(JSON.stringify({ q: "see https://a.example/x?y=1\nand more", list: ["https://b.example/z"] }), "No match for https://a.example/x?y=1, https://a.example/x nor https://b.example/z. Try https://c.example/w."));
 }
 
 console.log("\na brief for the web says nothing of who they are");

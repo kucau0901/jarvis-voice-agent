@@ -42,6 +42,9 @@ of every release, and in the [README](README.md#updating).
   answer was taken for one that had been told to stop, and what it wrote then was
   thrown away. A research team's finding shared just before the plan's limit, or an
   update, now reaches the others.
+- **An address a job only named itself is marked "(not checked)"**, as one it never
+  saw is. One put in its checklist, or given to a tool that repeats what it is asked,
+  counted as seen.
 - **What a job may hold in the workshop holds for a command too quick to be
   looked at.** A job's folder was looked at every four seconds, so a short
   command, or one that took the room at once, could go past its 500 MB without

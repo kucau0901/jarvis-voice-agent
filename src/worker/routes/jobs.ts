@@ -13,7 +13,7 @@ import { toToolSchema, type Tool } from "../tools/registry.ts";
 import * as hermes from "../tools/hermes.ts";
 import { INTERRUPTED, JobChain, beginCalls, stepId, stepOf, type Answered } from "../lib/job-chain.ts";
 import { NOT_RUN, runGuarded } from "../lib/job-guards.ts";
-import { noteLinks, readResult, takeLinks } from "../lib/job-results.ts";
+import { linksBack, noteLinks, readResult, takeLinks } from "../lib/job-results.ts";
 import { DELEGATE, delegateTool, heardBy, helperId, helperMessage, helperScope, helperUntold, helperView, reportsOf, tasksOf } from "../lib/job-helpers.ts";
 import { bringNeeds, handFile } from "../lib/helper-files.ts";
 import { KEPT_DAYS, WorkshopError, fileHeaders, workshopAsk, workshopConfig, workshopGiven } from "../lib/workshop.ts";
@@ -54,6 +54,9 @@ import type { Storage } from "../lib/state-host.ts";
  *   GET    /api/v1/jobs/file?id=&n=   a file it made, to save
  *   DELETE /api/v1/jobs?id=
  */
+
+/** What only says back what the job itself said, or another of its helpers. */
+const SAID_BACK = new Set(["job_plan", "job_tick", SHARE.name]);
 
 /** Nowhere to show anything: a job's result is read later. An admin's wildcard too, or the job was never told. */
 const jobGrants = (g: readonly Grant[]): Grant[] => withoutScreen(g);
@@ -494,10 +497,10 @@ export function jobEngine(
       const ran = guarded?.outputs ?? (await runThem(fresh));
       if (guarded && kept) {
         // Not what came from the workshop, nor was kept of that: a job that reads back what it wrote has not seen where it leads.
-        const own = new Set(fresh.filter((c) => WORKSHOP_TOOLS.has(c.name) || (job.mode === "files" && c.name === "read_result")).map((c) => c.call_id));
-        // Nor what another helper told it: that one's word, until it has looked.
-        for (const c of fresh) if (c.name === SHARE.name) own.add(c.call_id);
-        await noteLinks(kept, scope, r.output, ran.map((o) => ("output" in o && typeof o.output === "string" && !("call_id" in o && own.has(o.call_id ?? "")) ? o.output : "")));
+        // Nor its own list said back, or what another helper told it, until it has looked.
+        const own = (c: { name: string }) => WORKSHOP_TOOLS.has(c.name) || (job.mode === "files" && c.name === "read_result") || SAID_BACK.has(c.name);
+        const answerTo = new Map(ran.map((o) => ["call_id" in o ? o.call_id : "", "output" in o && typeof o.output === "string" ? o.output : ""]));
+        await noteLinks(kept, scope, r.output, [], fresh.flatMap((c) => (own(c) ? [] : linksBack(c.arguments, answerTo.get(c.call_id) ?? ""))));
       }
       const outputs: OpenAI.Responses.ResponseInput = [...ran, ...[...begun].map((call_id) => answered({ call_id }, INTERRUPTED)), ...[...reports].map(([call_id, said]) => answered({ call_id }, said))];
       await p.memory.save().catch(() => {});

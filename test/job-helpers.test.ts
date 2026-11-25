@@ -651,6 +651,26 @@ console.log("\nwhat a helper is handed, and how it is asked (routes/jobs.ts), on
     const two = await engine.poll({ ...working, told: undefined, help: { ...working.help!, chains: working.help!.chains.map((c, i) => (i === 0 ? { ...c, responseId: "plan_h0.1", heard: 1 } : c)) } }, 0);
     check("its report: an address it never saw is said to be unchecked", two.kind === "done" && /made-up\.example\/a \(not checked\)/.test(two.text) && !/shop\.example\/b \(not checked\)/.test(two.text), two);
 
+    /* what it only named itself */
+    const namedBy = fakeStorage();
+    const en = jobEngine(env, async (a) => ({ alert: a, attempts: [], deliveredBy: null }) as never, async () => env, namedBy as never);
+    const jn = { ...working, id: "jname0000001", told: undefined } as Job;
+    answers.push([
+      call("job_tick", { done: [], doing: 1, add: ["Read https://made-up.example/pay?acct=1"], dropped: [] }, "call_n1"),
+      call("time_in", { place: "https://made-up.example/here" }, "call_n2"),
+      call("read_result", { result: 1, from: null, find: "https://made-up.example/found" }, "call_n3"),
+    ]);
+    await namedBy.put(`${jobRows(jn.id)}s0:big:1`, "a long answer, with https://shop.example/seen in it");
+    await en.start(jn, 0);
+    answers.push([call("read_result", { result: 1, from: 0, find: null }, "call_n4"), call("job_tick", { done: [1], doing: null, add: [], dropped: [] }, "call_n5")]);
+    await en.poll(jn, 0);
+    answers.push([words("SUMMARY: https://made-up.example/pay?acct=1 https://made-up.example/here https://made-up.example/found https://shop.example/seen")]);
+    const at1 = (id: string) => ({ ...jn, help: { ...jn.help!, chains: jn.help!.chains.map((c, i) => (i === 0 ? { ...c, responseId: id } : c)) } }) as Job;
+    // Its list, said back by a call that does not name it.
+    await en.poll({ ...at1("plan_h0.1"), help: { ...jn.help!, chains: jn.help!.chains.map((c, i) => (i === 0 ? { ...c, responseId: "plan_h0.1", todo: [{ text: "Read https://made-up.example/pay?acct=1", state: "doing" as const }] } : c)) } }, 0);
+    const ends = await en.poll(at1("plan_h0.2"), 0);
+    check("an address it only named itself, in its list or to a tool that says it back, is not one it has seen", ends.kind === "done" && ["pay?acct=1", "here", "found"].every((x) => ends.text.includes(`made-up.example/${x} (not checked)`)) && !/seen \(not checked\)/.test(ends.text), ends);
+
     /* out of what it has */
     answers.push([call("time_in", { place: "Paris" }, "call_x")]);
     await engine.start({ ...helped, id: "jcut00000001" }, 1);
@@ -660,7 +680,7 @@ console.log("\nwhat a helper is handed, and how it is asked (routes/jobs.ts), on
     check("told to write what it has: its call is not run, and no tools are allowed", cut.kind === "continued" && wrap.tool_choice === "none" && wrap.input.at(-2)!.output === NOT_RUN && JSON.stringify(wrap.input.at(-1)).includes(JSON.stringify(wrapUp("the helpers' 40 minutes are up")).slice(1, 60)), wrap.input.slice(-2));
 
     /* what one shares */
-    answers.push([call("share_findings", { findings: "The second is closed. See https://told.example/z" }, "call_s")]);
+    answers.push([call("share_findings", { findings: "The second is closed." }, "call_s")]);
     await engine.start({ ...helped, id: "jshare000001" }, 1);
     answers.push([words("SUMMARY: Done. https://told.example/z")]);
     const board = { ...helped, id: "jshare000001", help: { ...helped.help!, board: [{ team: 0, text: "RM900 a night, from https://told.example/z" }], chains: helped.help!.chains.map((c, i) => (i === 1 ? { ...c, responseId: "plan_h1.0" } : c)) } } as Job;
