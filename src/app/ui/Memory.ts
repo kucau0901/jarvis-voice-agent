@@ -1,7 +1,8 @@
 import { authHeaders } from "../key";
 import { ago, arm, esc } from "./util";
 import { SectionMenu, type NavGroup } from "./sections";
-import { showPast, showSpecialties } from "./memory-recall";
+import { showPast } from "./memory-recall";
+import { Specialties, type WayDraft } from "./Specialties";
 
 /**
  * What Jarvis remembers, where the owner can see it.
@@ -73,6 +74,7 @@ export class Memory {
   private data: Record<Book, Loaded | null> = { mine: null, family: null };
   /** The last Test recall, ranked, from each book; null when not testing. */
   private hits: { book: Book; hit: Hit }[] | null = null;
+  private ways: Specialties;
   /** Whether there is a family memory to show at all. */
   private hasFamily = false;
 
@@ -142,7 +144,8 @@ export class Memory {
 
             <section class="svc" data-section="specialties" data-title="Specialties">
               <h3>Specialties</h3>
-              <p class="note">Ways of doing something you asked Jarvis to save, followed again when you ask for them.</p>
+              <p class="note">Ways of doing something, kept to be done the same way again. Asked for by name or much as you
+                usually would, its steps are followed; a background job may read all of it.</p>
               <div class="speclist"></div>
             </section>
 
@@ -161,6 +164,7 @@ export class Memory {
       </div>`;
     document.body.appendChild(this.el);
     this.menu = new SectionMenu(this.$(".sheet"), REMEMBER);
+    this.ways = new Specialties(this.key, this.$(".speclist"), (n) => this.count("specialties", n));
 
     this.el.querySelector(".close")!.addEventListener("click", () => this.hide());
     this.el.querySelector(".save")!.addEventListener("click", () => void this.add());
@@ -183,13 +187,21 @@ export class Memory {
     this.shapeForm();
   }
 
-  async show(): Promise<void> {
+  /** Open; at Specialties with how a finished job was done in its form (ui/Jobs.ts), or a card's draft being changed (proposal.ts). */
+  async show(ways?: { job: string } | { draft: WayDraft }): Promise<void> {
     this.el.classList.add("open");
     this.menu.toList();
     this.msg("");
     // Is there a family memory? Only with a family, and for someone who may read memory.
     this.hasFamily = await fetch("/api/memory?book=family", { headers: authHeaders(this.key) }).then((r) => r.ok).catch(() => false);
     this.$(".fbook").hidden = !this.hasFamily;
+    if (ways) {
+      await this.load();
+      this.menu.choose("specialties", true);
+      if ("job" in ways) await this.ways.fromJob(ways.job);
+      else await this.ways.fromCard(ways.draft);
+      return;
+    }
     await this.load();
   }
 
@@ -485,14 +497,16 @@ export class Memory {
 
     groups.push(["Add and check", ["add", "find", "reads", "specialties", "past", "trash"]]);
     // Their counts arrive after the menu is drawn: put in its buttons as they do.
-    const count = (id: string) => (n: number) => {
-      this.$(`.setbody [data-section=${id}]`).dataset.aside = String(n);
-      const b = this.el.querySelector(`.setnav button[data-for="${id}"]`);
-      if (b) (b.querySelector(".st.aside") ?? b.appendChild(Object.assign(document.createElement("span"), { className: "st aside" }))).textContent = String(n);
-    };
-    void showSpecialties(this.key, this.$(".speclist")).then(count("specialties"));
-    void showPast(this.key, this.$(".pastlist")).then(count("past"));
+    // Not while one is being written: what was typed stays.
+    if (!this.ways.writing) void this.ways.load();
+    void showPast(this.key, this.$(".pastlist")).then((n) => this.count("past", n));
     this.menu.build(groups, groups[0]?.[1][0] ?? "add");
+  }
+
+  private count(id: string, n: number): void {
+    this.$(`.setbody [data-section=${id}]`).dataset.aside = String(n);
+    const b = this.el.querySelector(`.setnav button[data-for="${id}"]`);
+    if (b) (b.querySelector(".st.aside") ?? b.appendChild(Object.assign(document.createElement("span"), { className: "st aside" }))).textContent = String(n);
   }
 
   /** The summary that rides on every request: yours, with the family's attached. */

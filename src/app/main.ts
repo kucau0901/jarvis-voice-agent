@@ -4,6 +4,7 @@ import { History, alertHistory, askHistory, isComponent, skillHistory } from "./
 import { Settings } from "./ui/Settings";
 import { Devices } from "./ui/Devices";
 import { Memory } from "./ui/Memory";
+import type { WayDraft } from "./ui/Specialties";
 import { Routines } from "./ui/Routines";
 import { Jobs } from "./ui/Jobs";
 import { Browser } from "./ui/Browser";
@@ -1090,12 +1091,20 @@ $("openMemory").addEventListener("click", () => {
   memory ??= new Memory(key);
   void memory.show();
 });
+/** Memory → Specialties, with a job's way of doing it in its form, or a card's being changed. */
+function openWays(ways: { job: string } | { draft: WayDraft }) {
+  if (!key) { requireKey(); return; }
+  memory ??= new Memory(key);
+  jobs?.hide();
+  void memory.show(ways);
+}
+document.addEventListener("jarvis:way", (e) => openWays({ draft: (e as CustomEvent<WayDraft>).detail }));
 
 let jobs: Jobs | null = null;
 /** Jobs, with one of them opened out when a job's pill in the conversation was pressed. */
 function openJob(id?: string) {
   if (!key) { requireKey(); return; }
-  jobs ??= new Jobs(key, jobsSeen);
+  jobs ??= new Jobs(key, jobsSeen, (job) => openWays({ job }));
   void jobs.show(id);
 }
 $("openJobs").addEventListener("click", () => openJob());

@@ -1151,6 +1151,13 @@
   .panel .routine .rruns { display: grid; gap: 6px; margin-top: 8px; }
   .panel .routine .rruns[hidden] { display: none; }
   .panel .routine .rruns .note { margin: 0 0 4px; }
+  .panel .wayform label { display: grid; gap: 4px; font-size: 13px; color: var(--dim); }
+  .panel .wayform h4 { margin: 4px 0 0; font-size: 14px; font-weight: 500; }
+  .panel .wayfiles, .panel .wayearlier { display: grid; gap: 8px; }
+  .panel .wayfile { display: grid; gap: 4px; font-size: 13px; overflow-wrap: anywhere; }
+  .panel .wayfile .rowbtns { align-items: center; }
+  .panel .wayfile pre { max-height: 40vh; overflow: auto; margin: 4px 0 0; padding: 10px; border-radius: 12px; background: var(--field); color: var(--fg);
+    font: 12px/1.5 ui-monospace, Menlo, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
   .panel .rform { display: grid; gap: 8px; margin-top: 10px; }
   /* The browser Jarvis works in (src/app/ui/Browser.ts): its screen as a picture that takes taps and drags. */
   #browser .sheet { padding-inline: max(16px, calc((100% - 1100px) / 2)); }

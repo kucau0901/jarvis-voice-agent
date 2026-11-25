@@ -524,6 +524,68 @@ console.log("steps offered to save, through the object");
   check("  and for nobody else", (await jarvis.recallFor("owner", "what's my week", true)).offerSaid === 0);
 }
 
+// What a specialty holds besides its steps, and what a finished job may be kept as (lib/specialty-more.ts, lib/learn.ts), through the object.
+console.log("specialties with more to them, through the object");
+{
+  const now = Date.now();
+  const made = await jarvis.specialtyKeep("u_sara", { name: "Weekly report", when: ["what we spent"], steps: ["Read the mail"], text: "Mind the VAT.", files: [{ name: "a.py", data: "MQ" }] }, "imported", true, now);
+  const id = typeof made === "string" ? "" : made.id;
+  check("  kept: whose, what, where it came from, and when", typeof made !== "string" && made.updatedAt === now && (await jarvis.specialtyWhole("u_sara", id))?.more.source === "imported" && (await jarvis.specialtyFile("u_sara", id, 1))?.bytes[0] === 0x31 && (await jarvis.specialtiesAll("owner")).length === 0, made);
+  check("  files only for who may have them", /workshop/.test(String(await jarvis.specialtyKeep("u_sara", { name: "Other", steps: ["x"], files: [{ name: "a", data: "MQ" }] }, "written", false, now))));
+  const ask = "do my weekly report";
+  const told = [await jarvis.recallFor("u_sara", ask, false), await jarvis.recallFor("u_sara", ask, false, true), await jarvis.recallFor("u_sara", "a report, the weekly sort", false, true)];
+  check("  a question is told there is more; a routine that names it is given it; one that only sounds like it is not", told[0]!.specialty?.id === id && told[0]!.more === true && told[0]!.whole === undefined && /^--- specialty Weekly report:\w{8} \(A WAY OF DOING SOMETHING WRITTEN ELSEWHERE[\s\S]*Mind the VAT\./.test(told[1]!.whole ?? "") && told[2]!.specialty?.id === id && told[2]!.whole === undefined, told);
+  check("  named in words, and taken by a job of theirs alone", (await jarvis.specialtyNamed("u_sara", ["x", "use my Weekly report"]))?.id === id && (await jarvis.specialtyNamed("owner", ["use my Weekly report"])) === null && (await jarvis.createJob({ title: "R", task: "Do it.", engine: "jarvis", specialty: id }, { who: "owner", grants: ["*"] })) === "that specialty is not kept any more");
+  const j = await jarvis.createJob({ title: "R", task: "Do it.", engine: "jarvis", specialty: id }, { who: "u_sara", grants: ["*"] });
+  check("  a job says which it uses", typeof j !== "string" && JSON.stringify(j.using) === JSON.stringify({ id, name: "Weekly report" }), j);
+  if (typeof j !== "string") await jarvis.cancelJob(j.id);
+  check("  one that is not kept: said so, not another", (await jarvis.createJob({ title: "R", task: "Do it.", engine: "jarvis", specialty: "snone" }, { who: "u_sara", grants: ["*"] })) === "that specialty is not kept any more");
+  // Saved over by asking: what it was is kept.
+  await jarvis.specialtySave("u_sara", { name: "weekly report", when: ["x"], steps: ["calendar_check"] }, now + 1);
+  const over = (await jarvis.specialtyWhole("u_sara", id))!;
+  check("  saved over by asking: what it was is kept, with its notes and files", over.specialty.steps.join() === "calendar_check" && over.more.before[0]?.steps.join() === "Read the mail" && over.more.text === "Mind the VAT.", over);
+  check("  put back", typeof (await jarvis.specialtyPutBack("u_sara", id, now + 1, now + 2)) !== "string" && (await jarvis.specialtyWhole("u_sara", id))?.specialty.steps.join() === "Read the mail");
+  check("  exported", (await jarvis.specialtyExport("u_sara", id))?.name === "weekly-report.zip");
+
+  // A job its person put right, done: its card goes with its result; once, and only to who may keep it.
+  const done = (over: Record<string, unknown> = {}) => ({ id: "jlearned0001", title: "Villas", task: "Find villas.", engine: "jarvis", status: "done", createdBy: "u_sara", grants: ["*"], createdAt: now, updatedAt: now, finishedAt: now, steps: 3, attempts: 0, reach: "web", told: [{ at: now, text: "Only ones with a pool." }], result: "R", ...over });
+  const inside: { learnFrom(id: string, now: number, asked?: boolean): Promise<unknown> } = jarvis as never;
+  const cards = async () => (await jarvis.proposalsOf("u_sara", now)).filter((p) => p.action.tool === "specialty_keep");
+  await storage.put("job:jlearned0001", done());
+  // As its result is sent, then again (one that was not delivered).
+  const engine: { jobs: { deps(): Promise<{ deliver(a: unknown): Promise<{ alert: { proposals?: unknown[] } }> }> } } = jarvis as never;
+  const deliverIt = async () => (await (await engine.jobs.deps()).deliver({ id: "a1", title: "Villas", text: "R", source: "job", job: "jlearned0001", for: "u_sara", at: now, speak: false })).alert;
+  const sentWith = await deliverIt();
+  await deliverIt();
+  check("  filed as the job's result is sent, and with it", sentWith.proposals?.length === 1, sentWith);
+  const card = (await cards())[0];
+  check("  a card, once, for their tap; nothing kept by itself", (await cards()).length === 1 && card?.state === "pending" && card.from.id === "jlearned0001" && /Only ones with a pool/.test(card.body ?? "") && JSON.stringify(card.grants) === '["ask","memory.write"]' && (await jarvis.specialtiesAll("u_sara")).length === 1, card);
+  const deliverer: { proposals: { attach(a: unknown, p: string, now: number, tz: string): Promise<{ proposals?: unknown[] }> } } = jarvis as never;
+  check("  it goes with the job's result", (await deliverer.proposals.attach({ id: "a1", title: "Villas", text: "R", job: "jlearned0001", for: "u_sara", at: now }, "u_sara", now, "UTC")).proposals?.length === 1);
+  await storage.put("job:jlearned0002", done({ id: "jlearned0002", grants: ["ask"] }));
+  await storage.put("job:jlearned0003", done({ id: "jlearned0003", told: [] }));
+  check("  none for who may keep no memory, nor for one nobody put right", (await inside.learnFrom("jlearned0002", now)) === null && (await inside.learnFrom("jlearned0003", now)) === null && (await cards()).length === 1);
+  // One like it failed lately: how the one that worked was run.
+  await jarvis.episodeAdd("u_sara", { id: "e1", source: "job", goal: "Lake houses for June", outcome: "failed", lesson: "x" }, now);
+  await storage.put("job:jlearned0004", done({ id: "jlearned0004", title: "Lake houses for June", told: [], mode: "thorough" }));
+  await inside.learnFrom("jlearned0004", now);
+  check("  one that worked where one like it failed: a card too", (await cards()).length === 2 && (await cards()).some((p) => /As a thorough job/.test(p.body ?? "") && /earlier try/.test(p.body ?? "")));
+  // "Learn this": the one that ended last, theirs, within a day.
+  for (const n of [2, 3]) await storage.delete(`job:jlearned000${n}`);
+  await storage.put("job:jlearned0005", done({ id: "jlearned0005", title: "Boats", told: [{ at: now, text: "Not over RM500." }], finishedAt: now + 5 }));
+  await storage.put("job:jlearned0006", done({ id: "jlearned0006", createdBy: "u_ben", title: "Theirs", finishedAt: now + 9 }));
+  check("  learn this: the last of their own, as a card", JSON.stringify(await jarvis.specialtyLearn("u_sara", now + 10)) === '{"title":"Boats","card":"pending"}' && (await cards()).length === 3);
+  check("  none within a day: said so", /in the last day/.test(String(await jarvis.specialtyLearn("u_sara", now + 25 * 3_600_000))));
+  const d = await jarvis.specialtyDraft("u_sara", "jlearned0005", now);
+  check("  its draft, theirs alone", d?.draft?.steps.join() === "Not over RM500." && (await jarvis.specialtyDraft("owner", "jlearned0005", now)) === null);
+  for (const n of [1, 4, 5, 6]) await storage.delete(`job:jlearned000${n}`);
+  // Forgotten, or gone with them: nothing of it is left.
+  check("  forgotten with all of it", (await jarvis.specialtyForget("u_sara", "Weekly report")) && ![...(await storage.list({ prefix: "specialty" })).keys()].some((k) => k.includes(id)), [...(await storage.list({ prefix: "specialt" })).keys()]);
+  await jarvis.specialtyKeep("u_gone2", { name: "N", steps: ["x"], text: "t", files: [{ name: "a", data: "MQ" }] }, "written", true, now);
+  await jarvis.forgetMember("u_gone2");
+  check("  gone when they leave", ![...(await storage.list({ prefix: "specialt" })).keys()].some((k) => k.includes("u_gone2")), [...(await storage.list({ prefix: "specialt" })).keys()]);
+}
+
 // The family's skills (lib/skills.ts), through the object: each pass-through forwards what it is given, the key and the clock too.
 console.log("skills, through the object");
 {

@@ -9,6 +9,8 @@ import {
 } from "./settings.ts";
 import type { StoredImage } from "./images.ts";
 import type { Procedure, Specialty } from "./specialties.ts";
+import type { More, MoreInput, Source, Way } from "./specialty-more.ts";
+import type { Learned } from "./learn.ts";
 import type { Skill, SkillView } from "./skills.ts";
 import type { ComponentView, Listed, Offered } from "./components.ts";
 import type { ReportReply, Suggested } from "./component-reports.ts";
@@ -574,7 +576,7 @@ interface RoutineApi {
 interface JobApi {
   listJobs(): Promise<Job[]>;
   getJob(id: string): Promise<Job | undefined>;
-  createJob(input: { title?: unknown; task?: unknown; engine?: unknown; reach?: unknown; mode?: unknown; team?: unknown; from?: unknown; table?: unknown; helpers?: unknown }, by: { who: string; grants: readonly Grant[] }): Promise<Job | string>;
+  createJob(input: { title?: unknown; task?: unknown; engine?: unknown; reach?: unknown; mode?: unknown; team?: unknown; from?: unknown; table?: unknown; helpers?: unknown; specialty?: unknown }, by: { who: string; grants: readonly Grant[] }): Promise<Job | string>;
   jobTable(id: string): Promise<{ columns: string[]; rows: string[][] } | null>;
   cancelJob(id: string): Promise<Job | string>;
   stopJobHelper(id: string, t: number): Promise<Job | string>;
@@ -680,14 +682,22 @@ interface PageApi {
 
 /** Each person's specialties (lib/specialties.ts), and what is recalled with a question (lib/router.ts). */
 interface RecallApi {
-  specialtiesOf(person: string): Promise<Specialty[]>;
   specialtySave(person: string, input: { name: unknown; when: unknown; steps: unknown; why?: unknown }, now: number): Promise<Specialty | string>;
   specialtyForget(person: string, which: string): Promise<boolean>;
+  specialtiesAll(person: string): Promise<Way[]>;
+  specialtyWhole(person: string, id: string): Promise<{ specialty: Specialty; more: More } | null>;
+  specialtyKeep(person: string, input: MoreInput, source: Source, mayFiles: boolean, now: number): Promise<Specialty | string>;
+  specialtyPutBack(person: string, id: string, at: number, now: number): Promise<Specialty | string>;
+  specialtyFile(person: string, id: string, n: number): Promise<{ name: string; bytes: Uint8Array } | null>;
+  specialtyExport(person: string, id: string): Promise<{ name: string; bytes: Uint8Array } | null>;
+  specialtyNamed(person: string, texts: readonly string[]): Promise<Specialty | null>;
+  specialtyLearn(person: string, now: number): Promise<{ title: string; card: string } | string>;
+  specialtyDraft(person: string, id: string, now: number): Promise<{ draft: Learned | null; scripts: string[]; title: string } | null>;
   specialtyOffer(person: string, p: Procedure, now: number, said: boolean): Promise<void>;
   episodesOf(person: string, now: number): Promise<Episode[]>;
   episodeAdd(person: string, e: Omit<Episode, "at" | "keys" | "seen">, now: number): Promise<void>;
   episodeForget(person: string, id: string): Promise<boolean>;
-  recallFor(person: string, ask: string, take: boolean): Promise<{ specialty: Specialty | null; past: Episode[]; procedure: Procedure | null; offerSaid: number }>;
+  recallFor(person: string, ask: string, take: boolean, whole?: boolean): Promise<{ specialty: Specialty | null; past: Episode[]; procedure: Procedure | null; offerSaid: number; more?: true; whole?: string }>;
 }
 
 /** The family's skills (lib/skills.ts): added in chat, keys set in Settings → Skills. */

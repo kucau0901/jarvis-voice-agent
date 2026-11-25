@@ -218,7 +218,7 @@ export async function prepareRouter(
       ? (stateStub(env)?.recentShared(opts.origin!.id, Date.now(), bookOf(env.JARVIS_PERSON)) ?? Promise.resolve([] as SharedTurn[])).catch(() => [] as SharedTurn[])
       : Promise.resolve([] as SharedTurn[]),
     talks ? familyBlock(env).catch(() => "") : Promise.resolve(""),
-    recalls ? (stateStub(env)?.recallFor(env.JARVIS_PERSON || OWNER, asked!, takes) ?? Promise.resolve(null)).catch(() => null) : Promise.resolve(null),
+    recalls ? (stateStub(env)?.recallFor(env.JARVIS_PERSON || OWNER, asked!, takes, opts.surface === "routine") ?? Promise.resolve(null)).catch(() => null) : Promise.resolve(null),
     skilled ? (stateStub(env)?.skillsReady() ?? Promise.resolve([] as Skill[])).catch(() => [] as Skill[]) : Promise.resolve([] as Skill[]),
     since !== null ? (stateStub(env)?.conversationOf(env.JARVIS_PERSON || OWNER, Date.now()) ?? Promise.resolve([] as Said[])).catch(() => [] as Said[]) : Promise.resolve([] as Said[]),
     near ? aroundUser(env, grants, opts.waitUntil).catch(() => "") : Promise.resolve(""),
@@ -347,8 +347,8 @@ export async function prepareRouter(
     },
     { role: "developer" as const, content: context },
     ...(profile ? [{ role: "user" as const, content: profile }] : []),
-    // The user's own approved way, to follow if it fits: theirs, so a user message, as the profile is.
-    ...(recalled?.specialty ? [{ role: "user" as const, content: specialtyBlock(recalled.specialty) }] : []),
+    // The user's own approved way, to follow if it fits: theirs, so a user message, as the profile is. A job is given them itself (lib/job-specialties.ts).
+    ...(recalled?.specialty && opts.surface !== "job" ? [{ role: "user" as const, content: specialtyBlock(recalled.specialty, recalled.more, recalled.whole) }] : []),
     // What happened before, quoted as data: it can carry what a site or a tool said.
     ...(recalled?.past?.length ? [{ role: "user" as const, content: pastBlock(recalled.past, localeOf(env).timeZone) }] : []),
     // What was asked on the glasses before a pause: dated, quoted as data, never the live conversation.

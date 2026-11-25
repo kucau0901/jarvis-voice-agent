@@ -650,9 +650,10 @@ accounts. "Save this as my Monday
 report" in the next message keeps them (`lib/specialties.ts`), and a later
 question that names it, or shares two words with it, gets them beside the
 profile. Steps are followed, so they are a standing instruction of the
-user's, and only the user can make one: `specialty_save` takes their own
-words asking for it, which must be in their latest message, so a page, a
-mail or a tool's output cannot save one, and jobs are never offered it. Nor
+user's, and only the user can make one: by asking in words, by their own hand in
+Memory → Specialties, or by a tap on a card that shows it whole. `specialty_save`
+takes their own words asking for it, which must be in their latest message, so a
+page, a mail or a tool's output cannot save one, and jobs are never offered it. Nor
 does the model write the steps: Jarvis keeps them itself when it offers,
 each tool in order with only the values the person said, so nothing a tool
 found (a code read from mail) or the answer said is kept, nor any character
@@ -664,6 +665,55 @@ profile does, worded as a procedure the user approved, to follow only if it
 fits and with the tools it has now. Matched by words, in the same wait as the rest of the question's
 preparation (one call to the Durable Object), so a question pays no model call
 and the car no extra wait.
+
+**More than its steps, for background jobs.** A specialty may have notes at length
+(pitfalls, examples) and small files, kept beside its record under keys of their own
+(`lib/specialty-more.ts`), so the record is what it always was. They are read by a
+job, and only when it needs them: it is told the names of twenty at most and what
+they are for, and reads one whole with `specialty_read` (`lib/job-specialties.ts`).
+One its person named (the box in Jobs, or its whole name in what they asked) is given
+to it whole from the start, its files in its folder where it has one, and its card
+says so. A question in the conversation is given its steps, as before, and told that
+there is more: the house, and every other question, pays nothing for it. One with no
+steps, or another agent's, is asked for by its name alone: what such a one says it is
+for is a paragraph of common words, and two of them would be in half of what is asked.
+A routine that names one is given all of it, as a job is, having nobody waiting.
+
+A job on its person's own things may read any of theirs; one on the web is given only
+the one they named, since what is in one is theirs and a search is a way out. Started by
+asking, it must be named in their own latest words: the brief is the model's, and a mail
+it read may have had a word in it. One that says who they are or where they live, in its
+words or its files, is refused, as a brief that does is, and so is one with a file
+nothing here can read; in the form they chose it, and its card says it goes with it. A
+job's helpers have none: what their part needs, the job puts in its brief. It is given as
+a user's message, between marks it cannot write, as a way to follow as far as it fits
+the task.
+
+**Learned, by a tap.** When a job ends well, Jarvis drafts how it was done and puts
+a card with the result, in three cases only: its person corrected it as it worked; one
+like it failed within a month (Past attempts says so); or they say "learn this" of a
+job within a day. Code drafts it (`lib/learn.ts`) from what they said to the job, each
+word of it, and how it was run ("As a thorough job."), never from what it read, found or
+wrote: a page that talked one job round would otherwise be followed every time after.
+Their answers to its questions are left out, and what they changed on its card, both
+being to the job's own words. Where it used a specialty, the card is a change of that
+one, and shows what it was beside what it would be; if they changed it by hand
+meanwhile, the tap does nothing. Scripts that ran in the workshop and worked may go with
+it, but only through the form, where each is shown whole. Nothing is kept without the
+tap or Save, there is no library that grows by itself, and the last five versions of
+each can be put back.
+
+**Another agent's skill** (a `SKILL.md`, or a zip of a folder with one, as
+agentskills.io describes) is read by an admin from a file they choose, never from an
+address, and is a draft in the form until they save it: all of its words and files are
+there to read. What nobody could see is taken out of everything kept, its files that are
+text too (zero-width and tag characters, marks that reverse a line), and how many is
+said; a comment a page would hide is shown like the rest. Nothing kept is cut without a
+word: what is too long is refused, and an import says what it left out. Its `allowed-tools` is noted and gives it nothing: what a
+job may do is the job's. Kept, it goes to a job as written elsewhere and read over by
+its person. The zip is opened by code of our own (`lib/zip.ts`, some 160 lines over
+`DecompressionStream`, rather than a dependency): no links, no way out of its folder,
+nothing over its size whatever its headers say. Export writes the same.
 
 **Past attempts: what happened last time.** Each background job, question
 for Hermes and research run, and each question whose tools failed, is noted

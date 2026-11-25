@@ -614,6 +614,10 @@ has no report, or, with one, what it ran out of (what it had by then is its repo
 the job is told (404 when it is not at work, or there is none of that number). A helper
 may read what the job may, and nothing more.
 
+`"specialty": id` (needs `memory.read`) has an ordinary job follow one of its person's
+specialties (`GET /api/memory/specialties`), given to it whole; its view then carries
+`using: {id, name}`. 400 when it is not kept any more.
+
 `engine` is `jarvis` (default: the router, many steps, in OpenAI's background
 mode), `research` (needs `routines`: it spends the family's monthly
 allowance), or `hermes` (one question to the Hermes agent; needs `hermes`).
@@ -1459,6 +1463,8 @@ an empty value clears one.
   `family`.
 - `POST /api/memory/move {id, to: "family" | "mine"}` moves a fact between
   a person's own memory and the family's (needs `family`).
+- `GET /api/memory/specialties` (`memory.read`) lists a person's own specialties, and
+  with `?id=` gives one whole. Changing them is for people: never a device.
 - `/api/google/*`, `/api/spotify/*`, `/api/usage` and `/api/hub/*` are for
   people: any member, for their own; never a device.
 

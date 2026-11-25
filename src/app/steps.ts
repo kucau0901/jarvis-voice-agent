@@ -38,6 +38,7 @@ const DOING: Record<string, string> = {
   delegate: "Giving its work out",
   share_findings: "Comparing notes",
   hand_file: "Handing over a file",
+  specialty_read: "Reading how you like it done",
   run: "Running a program",
   process: "Checking a program",
   list_files: "Looking at its files",

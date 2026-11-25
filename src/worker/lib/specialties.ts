@@ -134,6 +134,13 @@ function texts(raw: unknown, max: number, len: number, what: string): string[] |
   return out;
 }
 
+/** Whether a text names one: a name of one word, a word like any other, only where it stands in quotes. */
+function names(text: string, name: string): boolean {
+  if (!name) return false;
+  if (name.includes(" ")) return ` ${nameOf(text)} `.includes(` ${name} `);
+  return [...text.matchAll(/["“”«»]([^"“”«»\n]{1,80})["“”«»]/g)].some((m) => nameOf(m[1]!) === name);
+}
+
 export class Specialties {
   private storage: Storage;
   constructor(storage: Storage) {
@@ -155,19 +162,33 @@ export class Specialties {
     if (!steps.length) return "a specialty needs its steps";
     const why = input.why === undefined || input.why === null || input.why === "" ? undefined : sanitise(input.why);
     if (why && !why.ok) return `why: ${why.why}`;
+    return this.keep(person, { name: name.text, when, steps, ...(why?.ok ? { why: why.text } : {}) }, now);
+  }
+
+  /**
+   * Kept as it is given: what may be in it is its caller's to have checked
+   * (save, above; lib/specialty-more.ts, for what a person wrote themselves).
+   * The one of that id, or of that name, is changed; with neither, a new one.
+   * `fresh`: only a new one will do. `byName`: a question asks for it by its
+   * name alone, what it says it is for being someone else's words.
+   */
+  async keep(person: string, input: { id?: string; fresh?: boolean; name: string; when: string[]; steps: string[]; why?: string; byName?: boolean }, now: number): Promise<Specialty | string> {
     const all = await this.of(person);
-    const named = name.text.slice(0, MAX_NAME);
+    const named = input.name.slice(0, MAX_NAME).trim();
     if (!nameOf(named)) return "its name needs a letter or a digit";
-    const same = all.find((s) => nameOf(s.name) === nameOf(named));
+    const alike = all.find((s) => nameOf(s.name) === nameOf(named));
+    const same = input.id ? all.find((s) => s.id === input.id) : alike;
+    if (input.id && !same) return "it is not kept any more";
+    if (alike && (alike !== same || input.fresh)) return `another is called "${alike.name}" already`;
     if (!same && all.length >= MAX_SPECIALTIES) return `that is ${MAX_SPECIALTIES} already: forget one first`;
     const bytes = crypto.getRandomValues(new Uint8Array(8));
     const s: Specialty = {
       id: same?.id ?? "s" + [...bytes].map((b) => ALPHABET[b % 32]).join(""),
       name: named,
-      when,
-      steps,
-      ...(why?.ok ? { why: why.text.slice(0, MAX_WHY) } : {}),
-      keys: [...new Set(tokenise(`${named} ${when.join(" ")}`))],
+      when: input.when,
+      steps: input.steps,
+      ...(input.why ? { why: input.why.slice(0, MAX_WHY) } : {}),
+      keys: [...new Set(tokenise(input.byName ? named : `${named} ${input.when.join(" ")}`))],
       createdAt: same?.createdAt ?? now,
       updatedAt: now,
     };
@@ -185,10 +206,16 @@ export class Specialties {
     return true;
   }
 
+  /** The one whose whole name is in one of `texts`: by name alone, where nothing less would do (tools/jobs.ts start_job). The longest, where one name is in another. */
+  async named(person: string, texts: readonly string[]): Promise<Specialty | null> {
+    return (await this.of(person)).filter((s) => texts.some((t) => names(t, nameOf(s.name)))).sort((a, b) => nameOf(b.name).length - nameOf(a.name).length)[0] ?? null;
+  }
+
   /**
    * The one a question asks for: named in it ("run my Monday report"), or
    * sharing at least two words with its name and phrases. Otherwise none: a
-   * procedure followed for the wrong question is worse than none.
+   * procedure followed for the wrong question is worse than none. One with no
+   * steps is a background job's to read: named as it must be for one.
    */
   async match(person: string, ask: string): Promise<Specialty | null> {
     const all = await this.of(person);
@@ -198,8 +225,8 @@ export class Specialties {
     let best: { s: Specialty; n: number } | null = null;
     for (const s of all) {
       const name = nameOf(s.name);
-      const named = !!name && asked.includes(` ${name} `);
-      const n = (named ? 100 : 0) + s.keys.filter((k) => words.has(k)).length;
+      const named = !!name && (s.steps.length ? asked.includes(` ${name} `) : names(ask, name));
+      const n = (named ? 100 : 0) + (s.steps.length ? s.keys.filter((k) => words.has(k)).length : 0);
       if ((named || n >= 2) && (!best || n > best.n)) best = { s, n };
     }
     return best?.s ?? null;
@@ -237,11 +264,14 @@ export class Specialties {
  * if it fits, with the tools it has now. A user message, never an
  * instruction, as the profile is (lib/router.ts).
  */
-export function specialtyBlock(s: Specialty): string {
+/** `more`: it holds more than its steps (lib/specialty-more.ts), which only a background job reads; `whole`, all of it, between its marks, for a routine that names it. */
+export function specialtyBlock(s: Specialty, more = false, whole?: string): string {
+  if (whole) return `This names a specialty the user saved. Follow it only as far as it fits, using only the tools you have now.\n${whole}`;
   return (
     `A SPECIALTY THE USER SAVED AND APPROVED: "${s.name}"\n` +
     "Follow it only if it fits this request, using only the tools you have now; if it does not fit, ignore it.\n" +
     s.steps.map((step, i) => `${i + 1}. ${step}`).join("\n") +
-    (s.why ? `\nWhy: ${s.why}` : "")
+    (s.why ? `\nWhy: ${s.why}` : "") +
+    (more ? `\nThere is more to it, which a background job reads: to follow it all, start one whose brief says to use "${s.name}".` : "")
   );
 }

@@ -88,6 +88,8 @@ export interface JobView {
   reach?: "private" | "web";
   /** The stronger model, for hard work; or it makes files, in the workshop. */
   mode?: "thorough" | "files";
+  /** The specialty you named for it (ui/Specialties.ts). */
+  using?: { id: string; name: string };
   /** Started with helpers: none until it gives its work out, then each of them. */
   helpers?: JobHelper[];
   /** What it made, and what it ran: the last of it while it works, all that is kept with the whole. */
@@ -158,7 +160,8 @@ export function powers(j: JobView): string {
   const takes = j.limits ? ` Up to ${j.limits.minutes} minutes and ${j.limits.steps} steps, ${j.limits.going} while its list moves.` : "";
   const makes = j.mode === "files" ? " Makes files with programs of its own, on a machine with no network, and gives them to you to save." : "";
   const splits = j.helpers ? " Splits its work between up to three helpers of its own, who may read what it may and nothing more." : "";
-  return `${looks}${makes}${splits} Never acts: what it would do, it proposes.${j.mode === "thorough" ? " On the stronger model." : ""}${takes}`;
+  const way = j.using ? ` Follows “${j.using.name}”, of your specialties${j.reach === "web" ? ", which goes with it to the web" : ""}.` : "";
+  return `${looks}${makes}${splits}${way} Never acts: what it would do, it proposes.${j.mode === "thorough" ? " On the stronger model." : ""}${takes}`;
 }
 
 /** A file's size, as a person says it. */

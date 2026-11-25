@@ -124,6 +124,11 @@ console.log("\njobs: a research team's view shows its progress, not its workings
   const { env: env2, calls } = fakeState({ createJob: teamJob });
   const r = await answer(await handleJobs(req("POST", "/api/v1/jobs", JSON.stringify({ task: "Research home EV chargers.", engine: "research", team: true })), env2, new URL("https://j.test/api/v1/jobs"), OWNER));
   const made = calls.find((c) => c.method === "createJob")?.args[0] as { engine?: string; team?: unknown } | undefined;
+  // One of their specialties, for it to follow: for who may read their memory.
+  const follow = (who: unknown) => handleJobs(req("POST", "/api/v1/jobs", JSON.stringify({ task: "Do the report.", specialty: "s1" })), env2, new URL("https://j.test/api/v1/jobs"), who as never).then((x) => answer(x));
+  const refused = await follow({ kind: "device", id: "d1", name: "Hall", scopes: ["ask"] });
+  const mayFollow = await follow({ kind: "device", id: "d1", name: "Hall", scopes: ["ask", "memory.read"] });
+  check("a specialty named for a job: passed on from who may read it", refused.status === 403 && mayFollow.status === 201 && (calls.filter((c) => c.method === "createJob").at(-1)?.args[0] as { specialty?: string }).specialty === "s1" && calls.filter((c) => c.method === "createJob").length === 2, { refused, mayFollow });
   check("asked for with team: true beside engine research", r.status === 201 && made?.engine === "research" && made.team === true, { r, made });
 }
 

@@ -17,6 +17,25 @@ of every release, and in the [README](README.md#updating).
 
 ## [Unreleased]
 
+### Added
+
+- **Specialties can be written, changed and put back**, in Memory → Specialties: when
+  to use one, its steps, notes at length and, for an admin, small files, each in a form.
+  Every change keeps what it was, the last five times, under **Earlier**.
+- **A background job follows your specialties.** One on your own things reads those that
+  fit; name one ("do it with my Weekly report", or the new box in **Jobs**) and it is given
+  that one whole, its files too. One on the web is given only the one you name. Its card
+  says which it uses. A routine that names one reads its notes as well as its steps.
+- **Jarvis offers to keep how a job was done** when you put it right as it worked, when
+  one like it had failed before, or when you say "learn this". A card shows what would be
+  kept, which is what you told the job and how it was run, never what it read: **Save**,
+  **Change it first**, or **Not now**. A finished job in **Jobs** also has **Keep for next
+  time**. Nothing is kept without your tap.
+- **Skills made for other agents** (a `SKILL.md`, or a zip with one) are imported in
+  Memory → Specialties, by an admin, read whole before they are saved; any of yours can be
+  exported the same way. Characters nobody can see are taken out, and an import gets no
+  tools of its own.
+
 ### Fixed
 
 - **A job moved from the ChatGPT plan to the API key costs only what it runs

@@ -5,6 +5,7 @@ import { allows, type Grant } from "../lib/scopes.ts";
 import { workFromCalendar } from "../lib/work-place.ts";
 import { stateStub } from "../lib/state-client.ts";
 import { OWNER } from "../lib/context.ts";
+import { handleSpecialties } from "./specialties.ts";
 
 const KINDS: readonly Kind[] = ["place", "person", "preference", "vehicle", "routine", "note", "reference"];
 
@@ -41,7 +42,7 @@ export async function handleMemory(req: Request, env: Env, grants: readonly Gran
   if (family && !reading && !allows(grants, "family")) return err(403, 'changing what the family shares needs "family"', { need: "family" });
 
   if (url.pathname === "/api/memory/move") return move(req, env, grants);
-  if (url.pathname === "/api/memory/specialties") return family ? err(404, "specialties are each person's own") : specialties(req, env, url);
+  if (url.pathname === "/api/memory/specialties" || url.pathname.startsWith("/api/memory/specialties/")) return family ? err(404, "specialties are each person's own") : handleSpecialties(req, env, url, grants, device);
   if (url.pathname === "/api/memory/past") return family ? err(404, "past attempts are each person's own") : past(req, env, url);
 
   // Their own book comes with the family's attached, so "what Jarvis reads" shows both, as the router reads them.
@@ -281,21 +282,6 @@ async function move(req: Request, env: Env, grants: readonly Grant[]): Promise<R
   await to.save();
   await from.save();
   return json({ ok: true, fact: made });
-}
-
-/**
- *   GET    /api/memory/specialties        {specialties}: yours (lib/specialties.ts)
- *   DELETE /api/memory/specialties?id=    one forgotten
- *
- * Saved by asking Jarvis (tools/specialties.ts), never here: the steps are what it did.
- */
-async function specialties(req: Request, env: Env, url: URL): Promise<Response> {
-  const state = stateStub(env);
-  if (!state) return err(503, "specialties need the STATE Durable Object");
-  const person = env.JARVIS_PERSON || OWNER;
-  if (req.method === "GET") return json({ specialties: await state.specialtiesOf(person) });
-  if (req.method !== "DELETE") return err(405, "GET or DELETE");
-  return (await state.specialtyForget(person, url.searchParams.get("id") ?? "")) ? json({ ok: true }) : err(404, "no such specialty");
 }
 
 /**
