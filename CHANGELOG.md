@@ -30,6 +30,9 @@ of every release, and in the [README](README.md#updating).
   own, and what you get is only what the job gives you. What you tell the job while
   they work reaches them too. All of it comes out of the job's one hour, searches
   and limit on the key; it uses several times an ordinary job's share of them.
+- **Try again harder**, on a finished ordinary job in **Jobs**: its brief, with what
+  you told it while it worked, ready in the form for the stronger model. Nothing
+  starts until you press Start.
 
 ### Fixed
 

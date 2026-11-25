@@ -24,6 +24,9 @@ const PHASE: Record<"planning" | "merging" | "checking", string> = {
   checking: "checking the report",
 };
 
+/** A brief's length at most (src/worker/lib/jobs.ts MAX_TASK). */
+const MAX_BRIEF = 4000;
+
 /** What Hermes is asked to do with a finished research report, until the person says otherwise. */
 const HAND_OVER = "Build this with Claude Code in a new project folder, and tell me when it is done";
 
@@ -52,6 +55,8 @@ export class Jobs {
   private telling = new Map<string, string>();
   /** Answers to what jobs ask, as typed so far (ui/JobAsk.ts). */
   private answering = new Map<string, string>();
+  /** Puts an ended job's brief in the New job form, set to think harder; nothing starts until they press Start. */
+  private again: (j: JobView) => void;
 
   /** Told what is listed each time, so the chat's job pills keep up (fromRoutine.ts jobsSeen). */
   private seen: (jobs: JobView[]) => void;
@@ -159,12 +164,33 @@ export class Jobs {
       if (deepBox.checked) hardBox.checked = filesBox.checked = splitBox.checked = false;
       reach.disabled = hardBox.disabled = filesBox.disabled = splitBox.disabled = deepBox.checked;
     });
+    let filled = "";
+    this.again = (j) => {
+      // Never over something half written.
+      if (task.value.trim() && task.value !== filled) {
+        task.scrollIntoView({ block: "center" });
+        return this.msg("Start or clear what is written under New job first.", true);
+      }
+      for (const b of [filesBox, splitBox, deepBox, teamBox, tableBox]) b.checked = false;
+      reach.disabled = hardBox.disabled = filesBox.disabled = splitBox.disabled = false;
+      reach.value = j.reach ?? "private";
+      hardBox.checked = true;
+      // With what they said to it as it worked: their own words, which it would otherwise get wrong again.
+      const said = (j.told ?? []).filter((t) => !t.to && !t.card).map((t) => t.text);
+      task.value = filled = [j.task, ...said].join("\n\n");
+      task.scrollIntoView({ block: "center" });
+      task.focus();
+      // Those were to the job's own words, which may come from a page: theirs to say again, if they still hold.
+      const left = (j.told ?? []).some((t) => t.to || t.card) ? " What you answered it, and what you changed on its card, is not in it." : "";
+      this.msg(`Read it over, then Start: the stronger model, several times the cost.${left}`);
+    };
     teamBox.addEventListener("change", () => {
       if (!teamBox.checked) tableBox.checked = false;
     });
     form.appendChild(
       button("Start", () =>
         void this.act(async () => {
+          if (task.value.length > MAX_BRIEF) throw new Error(`It is ${task.value.length} characters, and a brief is ${MAX_BRIEF} at most: shorten it, or its end would be left out.`);
           await api(this.key, "POST", "/api/v1/jobs", {
             task: task.value,
             reach: reach.value,
@@ -338,6 +364,11 @@ export class Jobs {
           void this.load();
         }),
       );
+    }
+    // Never by itself: the same brief, on the stronger model, for them to read over and start.
+    if (j.engine === "jarvis" && !j.mode && (j.status === "done" || j.status === "failed")) {
+      btns.appendChild(button("Try again harder", () =>
+        void api(this.key, "GET", `/api/v1/jobs?id=${encodeURIComponent(j.id)}`).then((r) => this.again((r as { job: JobView }).job), (e: unknown) => this.msg(e instanceof Error ? e.message : String(e), true))));
     }
     if (j.table?.rows) btns.appendChild(button(`Download CSV (${j.table.rows} rows)`, () => void this.act(() => this.csv(j))));
     if (j.engine === "research" && j.status === "done" && this.hermes) {

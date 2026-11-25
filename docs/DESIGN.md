@@ -1580,6 +1580,15 @@ else would end it. If the job is itself out by the time they are done, their rep
 still reach its last call. One that fails three times running, or is stopped, says
 why in its place, and the others go on.
 
+**Trying harder is a tap.** A finished ordinary job has **Try again harder**: its
+brief, with what its person said to it meanwhile, in the New job form, set to the
+stronger model. Nothing starts until they press Start, so nothing is spent because
+a model judged its own work poor, and they can mend the brief, which is often what
+was wrong. What they answered it and what they changed on its card are left out, and
+the form says so: those were to the job's own words, which would come back as theirs.
+What came back the first time does not go with it either: an answer to improve on is
+an answer to be anchored by.
+
 **Read; propose, never act.** A job runs with nobody watching and reads text
 written by others — web pages, mail — so it reads with Jarvis's reading tools
 and the MCP tools whose names say they read (`ha_get_state` in,

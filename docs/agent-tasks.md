@@ -33,7 +33,7 @@ failed because of it (must be none).
 
 **With helpers.** Helpers are only ever asked for, until these tasks show a kind
 of work where they do better. Ask 1, 3, 5 and 8 twice more: "with helpers", and as a
-thorough job without them, and note the same things. Helpers
+thorough job without them (Try again harder), and note the same things. Helpers
 are worth having by default for a kind of task only where they come out right more often
 than one agent thinking harder, at no more tokens; being quicker alone is not a
 reason.
