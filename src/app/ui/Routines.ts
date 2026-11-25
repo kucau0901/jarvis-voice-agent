@@ -165,7 +165,7 @@ export class Routines {
   private async run(r: RoutineView, btn: HTMLButtonElement, row: HTMLElement): Promise<void> {
     btn.disabled = true;
     btn.textContent = "Running…";
-    const status = el("div", "rfacts", r.action?.notify === "if-important" ? "Running — an alert comes only if there is anything to tell." : "Running — it arrives as an alert.");
+    const status = el("div", "rfacts", r.action?.kind === "job" ? "Starting a job — its result comes when it is done." : r.action?.notify === "if-important" ? "Running — an alert comes only if there is anything to tell." : "Running — it arrives as an alert.");
     btn.parentElement!.before(status);
     try {
       const { routine } = (await api(this.key, "POST", "/api/v1/routines/run", { id: r.id })) as { routine: RoutineView & { pending?: { at: number } } };
@@ -226,7 +226,7 @@ export class Routines {
     const bufferRow = el("label", "on");
     bufferRow.appendChild(buffer);
     bufferRow.appendChild(document.createTextNode(" minutes to spare on top of the drive"));
-    const doKind = select([["say", "Send this message"], ["ask", "Ask Jarvis this, and send the answer"], ["brief", "Brief me on my day"], ["meetings", "Add meetings emailed to me to my calendar"], ["notice", "Look around, and tell me only what is worth it"]]);
+    const doKind = select([["say", "Send this message"], ["ask", "Ask Jarvis this, and send the answer"], ["job", "Start a background job, whose result comes as a message"], ["brief", "Brief me on my day"], ["meetings", "Add meetings emailed to me to my calendar"], ["notice", "Look around, and tell me only what is worth it"]]);
     const text = document.createElement("textarea");
     text.rows = 2;
     text.placeholder = "Call Mum";
@@ -237,6 +237,20 @@ export class Routines {
     quietRow.appendChild(quiet);
     quietRow.appendChild(document.createTextNode(" Only if there is something worth telling me"));
 
+    // A background job: where it may look, and what one run may cost on the API key (lib/job-guards.ts); nothing, on the plan.
+    const reach = select([["private", "In my own things, not the web"], ["web", "On the web, and nothing of mine"]]);
+    reach.setAttribute("aria-label", "Where this job may look");
+    const hard = document.createElement("input");
+    hard.type = "checkbox";
+    const hardRow = el("label", "on");
+    hardRow.append(hard, document.createTextNode(" Thorough: a stronger model, several times the cost, five a day"));
+    const cap = input("number", "2");
+    Object.assign(cap, { min: "0.05", max: "2", step: "0.05" });
+    const capRow = el("label", "on");
+    capRow.append(cap, document.createTextNode(" dollars of the API key, at about which one run stops and writes up what it has (nothing is counted on the ChatGPT plan)"));
+    const last = input("date", "");
+    const lastRow = el("label", "on");
+    lastRow.append(last, document.createTextNode(" its last day (leave empty for none)"));
     const tzline = el("p", "note tzline");
     const shown: Record<string, HTMLElement[]> = { once: [at], daily: [time, days], cron: [cron], event: [event], leave: [bufferRow] };
     const all = [at, time, days, cron, event, bufferRow];
@@ -248,7 +262,10 @@ export class Routines {
       // A brief writes itself (lib/brief.ts), meetings come from mail (lib/meetings.ts), a look around judges for itself (lib/notice.ts): nothing to type.
       text.style.display = leave || doKind.value === "brief" || doKind.value === "meetings" || doKind.value === "notice" ? "none" : "";
       quietRow.style.display = !leave && doKind.value === "ask" ? "" : "none";
-      text.placeholder = doKind.value === "ask" ? "What's on my calendar today, and the traffic to work?" : "Call Mum";
+      for (const x of [reach, hardRow, capRow]) x.style.display = !leave && doKind.value === "job" ? "" : "none";
+      lastRow.style.display = kind.value === "daily" || kind.value === "cron" ? "" : "none";
+      text.rows = doKind.value === "job" ? 4 : 2;
+      text.placeholder = doKind.value === "job" ? "Go through this week's mail, list what still needs an answer, and plan next week around my calendar." : doKind.value === "ask" ? "What's on my calendar today, and the traffic to work?" : "Call Mum";
     };
     kind.addEventListener("change", sync);
     doKind.addEventListener("change", sync);
@@ -268,15 +285,18 @@ export class Routines {
         else if (doKind.value === "brief") body.brief = true;
         else if (doKind.value === "meetings") body.meetings = true;
         else if (doKind.value === "notice") body.notice = true;
+        else if (doKind.value === "job") Object.assign(body, { ask: text.value, job: reach.value, ...(hard.checked ? { thorough: true } : {}), ...(cap.value ? { cap: Number(cap.value) } : {}) });
         else body[doKind.value] = text.value;
+        if ((kind.value === "daily" || kind.value === "cron") && last.value) body.until = last.value;
         if (kind.value !== "leave" && doKind.value === "ask" && quiet.checked) body.notify = "if-important";
         await api(this.key, "POST", "/api/v1/routines", body);
         name.value = "";
         text.value = "";
-        quiet.checked = false;
+        quiet.checked = hard.checked = false;
+        cap.value = last.value = "";
       }, "Added."), "primary");
 
-    for (const x of [name, kind, at, time, days, cron, event, bufferRow, doKind, text, quietRow, tzline, add]) f.appendChild(x);
+    for (const x of [name, kind, at, time, days, cron, event, bufferRow, lastRow, doKind, text, reach, hardRow, capRow, quietRow, tzline, add]) f.appendChild(x);
     return f;
   }
 

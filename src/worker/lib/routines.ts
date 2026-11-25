@@ -1,3 +1,4 @@
+import { KEY_DOLLARS } from "./job-guards.ts";
 import { saneGrants, type Grant } from "./scopes.ts";
 import { pageCondition, pageUrl } from "./page-look.ts";
 
@@ -28,6 +29,8 @@ import { pageCondition, pageUrl } from "./page-look.ts";
  *           opening (lib/brief.ts): daily or once only
  *   meetings  meetings emailed to them put in their calendar
  *           (lib/meetings.ts): at a time, said only when one was added
+ *   job     a background job (lib/jobs.ts), whose result comes as its own
+ *           alert; at a time, never on an event or a watch
  *   notice  a look around (lib/notice.ts): said only when something is
  *           worth the interruption; at a time, one routine each
  *
@@ -62,6 +65,8 @@ export type Action =
   | { kind: "say"; text: string }
   /** notify "if-important": the answer is sent only when it is not NOTHING (lib/scheduler.ts); absent, always. */
   | { kind: "ask"; prompt: string; notify?: "if-important" }
+  /** A background job started (lib/jobs.ts), on their own things or the web; `cap`, the dollars of the API key it may use. Its result comes as any job's. */
+  | { kind: "job"; task: string; reach: "private" | "web"; thorough?: true; cap?: number }
   | { kind: "leave" }
   /** Their day as a document (lib/brief.ts). */
   | { kind: "brief" }
@@ -113,6 +118,8 @@ export interface Routine {
   /** "owner", or the device id that made it. */
   createdBy: string;
   createdAt: number;
+  /** Its last day (daily, cron), as a date: after it, it is off. */
+  until?: string;
   /** When a once or daily routine next fires. */
   nextAt?: number;
   /** Queued by an event or by "run now", for the next alarm to pick up. */
@@ -150,6 +157,8 @@ export const MAX_ROUTINES = 50;
 /** Briefs each person may have: one each way through the day is plenty, and each is a dozen requests. */
 export const MAX_BRIEFS = 2;
 const MAX_TEXT = 1000;
+/** A job's brief, as long as any (lib/jobs.ts). */
+const MAX_TASK = 4000;
 const MAX_NAME = 60;
 export const EVENT_NAME = /^[a-z0-9][a-z0-9_.:-]{0,39}$/;
 const HHMM = /^([01]\d|2[0-3]):([0-5]\d)$/;
@@ -308,13 +317,12 @@ export function nextCron(expr: string, timeZone: string, after: number): number 
   return undefined;
 }
 
-/** When a routine next fires by the clock; undefined for those that wait on something else. */
-export function nextRun(r: Pick<Routine, "trigger">, timeZone: string, now: number): number | undefined {
+/** When a routine next fires by the clock; undefined for those that wait on something else, and past its last day. */
+export function nextRun(r: Pick<Routine, "trigger" | "until">, timeZone: string, now: number): number | undefined {
   const t = r.trigger;
   if (t.kind === "once") return t.at > now ? t.at : undefined;
-  if (t.kind === "daily") return nextDaily(t.time, t.days, timeZone, now);
-  if (t.kind === "cron") return nextCron(t.expr, timeZone, now);
-  return undefined;
+  const next = t.kind === "daily" ? nextDaily(t.time, t.days, timeZone, now) : t.kind === "cron" ? nextCron(t.expr, timeZone, now) : undefined;
+  return next !== undefined && r.until !== undefined && next > dayEnds(r.until, timeZone) ? undefined : next;
 }
 
 /* ---------- saying what a routine does -------------------------------------- */
@@ -335,14 +343,28 @@ export function whenSaid(ts: number, timeZone: string): string {
   }).format(new Date(ts));
 }
 
-export function describeTrigger(t: Trigger, timeZone: string): string {
+/** The last moment of a day ("2026-12-14") where the family is. */
+export function dayEnds(date: string, timeZone: string): number {
+  const [y, mo, d] = date.split("-").map(Number);
+  const next = new Date(Date.UTC(y!, mo! - 1, d! + 1));
+  return dayBegins(next.getUTCFullYear(), next.getUTCMonth() + 1, next.getUTCDate(), timeZone) - 1;
+}
+
+/** Whether it has had its last day: none is left for it to run. */
+export const ended = (r: Pick<Routine, "trigger" | "until">, timeZone: string, now: number): boolean => r.until !== undefined && nextRun(r, timeZone, now) === undefined;
+
+/** The last day of one, as it is said. */
+export const untilSaid = (until: string): string => new Intl.DateTimeFormat("en-GB", { timeZone: "UTC", weekday: "short", day: "numeric", month: "short", year: "numeric" }).format(new Date(`${until}T00:00:00Z`));
+
+export function describeTrigger(t: Trigger, timeZone: string, until?: string): string {
+  const ends = until === undefined ? "" : `, until ${untilSaid(until)}`;
   switch (t.kind) {
     case "once":
       return `once, ${whenSaid(t.at, timeZone)}`;
     case "daily":
-      return `${daysSaid(t.days)} at ${t.time}`;
+      return `${daysSaid(t.days)} at ${t.time}${ends}`;
     case "cron":
-      return `on the schedule "${t.expr}" (minute hour day month weekday)`;
+      return `on the schedule "${t.expr}" (minute hour day month weekday)${ends}`;
     case "event":
       return `when the event "${t.event}" arrives`;
     case "leave":
@@ -369,6 +391,10 @@ export function describeAction(a: Action): string {
   if (a.kind === "ask") {
     return `ask Jarvis "${a.prompt.length > 80 ? a.prompt.slice(0, 80) + "…" : a.prompt}" and send the answer` +
       (a.notify === "if-important" ? " only if something deserves attention" : "");
+  }
+  if (a.kind === "job") {
+    const how = `${a.reach === "web" ? "on the web" : "on your own things"}${a.thorough ? ", thorough" : ""}${a.cap !== undefined ? `, stopping at about $${a.cap.toFixed(2)} of the API key` : ""}`;
+    return `start a background job ${how}: "${a.task.length > 80 ? a.task.slice(0, 80) + "…" : a.task}"`;
   }
   return "say when to set off, with the drive time";
 }
@@ -418,6 +444,13 @@ export interface RoutineInput {
   meetings?: unknown;
   /** true: a look around, said only when worth it (lib/notice.ts), in place of say or ask; at a time only. */
   notice?: unknown;
+  /** With ask: "private" or "web": the words are a background job's brief, started then (lib/jobs.ts). At a time only. */
+  job?: unknown;
+  /** job: the stronger model; and the dollars of the API key one run may use. */
+  thorough?: unknown;
+  cap?: unknown;
+  /** daily, cron: its last day, YYYY-MM-DD. */
+  until?: unknown;
   /** ask: "always" (the default) or "if-important", sent only when something deserves attention, as Hark's checks do. */
   notify?: unknown;
   /** Pass it on to these family members (already named as people: lib/relays.ts), in turn if several. */
@@ -434,6 +467,8 @@ export interface RoutineInput {
 
 const DAY_KEYS: Record<string, number> = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
 const str = (v: unknown) => (typeof v === "string" ? v.trim() : "");
+/** Whether an input says something at all. */
+const given = (v: unknown): boolean => v !== undefined && v !== null && v !== "";
 
 function parseDays(v: unknown): number[] | string {
   if (v === undefined || v === null) return [];
@@ -447,7 +482,7 @@ function parseDays(v: unknown): number[] | string {
   return out.sort();
 }
 
-export type Built = { ok: true; trigger: Trigger; action: Action; name: string } | { ok: false; error: string };
+export type Built = { ok: true; trigger: Trigger; action: Action; name: string; until?: string } | { ok: false; error: string };
 
 export function buildRoutine(input: RoutineInput, timeZone: string, now: number): Built {
   const when = str(input.when).toLowerCase();
@@ -513,6 +548,19 @@ export function buildRoutine(input: RoutineInput, timeZone: string, now: number)
     return { ok: false, error: "when must be once, daily, cron, event, leave, watch or page" };
   }
 
+  let until: string | undefined;
+  if (given(input.until)) {
+    const d = str(input.until);
+    if (trigger.kind !== "daily" && trigger.kind !== "cron") return { ok: false, error: "only a daily or cron routine has a last day" };
+    // A date there is, written so: 2026-02-31 comes back as another.
+    if (Number.isNaN(Date.parse(d)) || new Date(Date.parse(d)).toISOString().slice(0, 10) !== d) return { ok: false, error: "the last day is a date, like 2026-12-14" };
+    until = d;
+    if (ended({ trigger, until }, timeZone, now)) return { ok: false, error: "it would never run: its last day is before its first time" };
+  }
+  // What goes with a job alone is refused without one, never left out of what is set up.
+  if (!given(input.job) && (given(input.cap) || input.thorough === true)) return { ok: false, error: "thorough and cap go with job" };
+  if (given(input.job) && (input.brief === true || input.meetings === true || input.notice === true)) return { ok: false, error: "a background job is one thing, a brief, meetings or a look around another: give one of them" };
+
   let action: Action;
   const passTo = Array.isArray(input.passTo)
     ? (input.passTo as { person?: unknown; name?: unknown }[]).filter((p) => typeof p?.person === "string" && typeof p?.name === "string")
@@ -532,6 +580,17 @@ export function buildRoutine(input: RoutineInput, timeZone: string, now: number)
     if (trigger.kind !== "daily" && trigger.kind !== "cron" && trigger.kind !== "once") return { ok: false, error: "a look around goes at a time: make it daily, cron or once" };
     if (str(input.say) || str(input.ask) || passTo.length || input.brief === true || input.meetings === true) return { ok: false, error: "a look around says what it finds: leave say, ask, brief, meetings and pass_to out" };
     action = { kind: "notice" };
+  } else if (given(input.job)) {
+    // At a time: a job costs what it costs, and what starts an event or a watch is not always theirs (a component's report, a page).
+    const reach = str(input.job);
+    if (reach !== "private" && reach !== "web") return { ok: false, error: 'job is "private" or "web"' };
+    if (trigger.kind !== "daily" && trigger.kind !== "cron" && trigger.kind !== "once") return { ok: false, error: "a background job starts at a time: make it daily, cron or once" };
+    const task = str(input.ask);
+    if (!task || str(input.say) || passTo.length) return { ok: false, error: "a background job needs its brief as ask, and nothing to say or pass on" };
+    if (task.length > MAX_TASK) return { ok: false, error: `keep the brief under ${MAX_TASK} characters` };
+    const cap = given(input.cap) ? input.cap : undefined;
+    if (cap !== undefined && !(typeof cap === "number" && cap >= 0.05 && cap <= KEY_DOLLARS)) return { ok: false, error: `what one run may cost is $0.05 to $${KEY_DOLLARS}` };
+    action = { kind: "job", task, reach, ...(input.thorough === true ? { thorough: true as const } : {}), ...(cap !== undefined ? { cap } : {}) };
   } else if (trigger.kind === "leave") {
     action = { kind: "leave" };
   } else if (passTo.length) {
@@ -564,9 +623,9 @@ export function buildRoutine(input: RoutineInput, timeZone: string, now: number)
   }
 
   const fallback =
-    action.kind === "say" ? action.text : action.kind === "ask" ? action.prompt : action.kind === "relay" ? action.text : action.kind === "brief" ? "Your brief" : action.kind === "meetings" ? "Meetings from my mail" : action.kind === "notice" ? "Anything worth knowing" : "Time to leave";
+    action.kind === "say" ? action.text : action.kind === "ask" ? action.prompt : action.kind === "job" ? action.task : action.kind === "relay" ? action.text : action.kind === "brief" ? "Your brief" : action.kind === "meetings" ? "Meetings from my mail" : action.kind === "notice" ? "Anything worth knowing" : "Time to leave";
   const name = (str(input.name) || fallback).replace(/[\u0000-\u001f\u007f]/g, " ").slice(0, MAX_NAME);
-  return { ok: true, trigger, action, name };
+  return { ok: true, trigger, action, name, ...(until !== undefined ? { until } : {}) };
 }
 
 const ALPHABET = "0123456789abcdefghjkmnpqrstvwxyz";
@@ -588,6 +647,7 @@ export function makeRoutine(
     enabled: true,
     trigger: built.trigger,
     action: built.action,
+    ...(built.until !== undefined ? { until: built.until } : {}),
     grants: saneGrants([...by.grants]),
     createdBy: by.who,
     createdAt: now,

@@ -278,13 +278,13 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
 };
 
 // What every chat question carries before anything of its own: the prompt and the tools' schemas, in bytes, at most
-// (25 Nov 2026, with ask_hermes only when named). It is sent, and on the plan's route read, with every question, the house's too:
+// (25 Nov 2026, with ask_hermes only when named and a routine's job: no more than on 24 Nov). It is sent, and on the plan's route read, with every question, the house's too:
 // what background jobs need is theirs (routes/jobs.ts request), and a chat tool added makes room for itself.
 const PREFIX_MAX: Record<string, number> = {
-  "owner key, nothing set up": 50_070,
-  "admin, everything set up": 82_084,
-  "adult": 71_461,
-  "child": 59_955,
+  "owner key, nothing set up": 50_419,
+  "admin, everything set up": 82_433,
+  "adult": 71_810,
+  "child": 60_304,
   "guest with a pass": 21_253,
 };
 

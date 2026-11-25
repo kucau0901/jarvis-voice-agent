@@ -8,6 +8,8 @@ import {
   MAX_ROUTINES,
   MAX_WATCHES,
   buildRoutine,
+  dayEnds,
+  ended,
   makeRoutine,
   nextRun,
   whenSaid,
@@ -17,6 +19,7 @@ import {
   type RunRecord,
   type WatchState,
 } from "./routines.ts";
+import type { PageSeen } from "./page-look.ts";
 import { tidy } from "./quote.ts";
 import { truthy } from "./ha.ts";
 import {
@@ -60,8 +63,13 @@ export interface SchedulerDeps {
   travel(destination: string, person: string): Promise<Travel | null>;
   /** Home Assistant renders a watch's condition; null when it is not set up. */
   renderTemplate: ((template: string) => Promise<string>) | null;
-  /** A page watch's look: the page fetched and read by the cheapest model (lib/page-look.ts); absent without an OpenAI key. */
-  readPage?(r: Routine): Promise<{ state: boolean | null; text: string; error?: string }>;
+  /**
+   * A page watch's look: the page fetched and read by the cheapest model (lib/page-look.ts); absent without an OpenAI
+   * key. `last`, what its last look saw: a page whose words are the same is not read again, and says what it said.
+   */
+  readPage?(r: Routine, last?: PageSeen): Promise<{ state: boolean | null; text: string; error?: string; seen?: PageSeen }>;
+  /** A background job started for the maker (lib/jobs.ts): its title, or why not. */
+  job?(r: Routine): Promise<{ ok: boolean; text: string }>;
   /**
    * Pass a routine's words on to someone in the family (lib/relays.ts).
    * Null when it was; else why not.
@@ -82,6 +90,8 @@ const R = "routine:";
  * returns) stays as it was. Not under "routine:", which list() reads.
  */
 const RUNS = "runs:";
+/** What each page watch's last look saw (lib/page-look.ts PageSeen). */
+const SEEN = "pageseen:";
 const MAX_RUNS = 20;
 /** What a past run said, kept: enough for a whole message, which an if-important ask is shown again (toldBefore). */
 const SAID_MAX = 1500;
@@ -168,7 +178,7 @@ export class Scheduler {
     }
     // A page is read once before it is kept, as a watch is tried: one that does not say is no use.
     // That read is its first look, so setting one up costs one look, and an alert already true is said now.
-    let first: { state: boolean | null; text: string; error?: string } | undefined;
+    let first: { state: boolean | null; text: string; error?: string; seen?: PageSeen } | undefined;
     if (built.trigger.kind === "page") {
       if (!deps.readPage) return "page watches need your ChatGPT plan connected, or an OpenAI key";
       if (all.filter((r) => r.trigger.kind === "page").length >= MAX_PAGES) return `there are already ${MAX_PAGES} pages watched; remove one first`;
@@ -201,12 +211,13 @@ export class Scheduler {
     }
     if (built.action.kind === "brief") {
       const mine = personOfWho(by.who);
-      // A one-off whose time has passed is kept a week to show it ran, and cannot be switched back on: it does not count.
-      const theirs = all.filter((r) => r.action.kind === "brief" && personOfWho(r.createdBy) === mine && (r.trigger.kind !== "once" || r.enabled || r.trigger.at > now));
+      // One whose time, or last day, has passed is kept a week to show it ran, and cannot be switched back on: it does not count.
+      const theirs = all.filter((r) => r.action.kind === "brief" && personOfWho(r.createdBy) === mine && (r.enabled || (r.trigger.kind === "once" ? r.trigger.at > now : !ended(r, timeZone, now))));
       if (theirs.length >= MAX_BRIEFS) {
         return `there are already ${MAX_BRIEFS} briefs for you; remove one first`;
       }
     }
+    if (built.action.kind === "job" && !allows(by.grants, "ask")) return "a background job asks things, which this person or device may not";
     if (all.length >= MAX_ROUTINES) return `there are already ${MAX_ROUTINES} routines; remove one first`;
 
     const r = makeRoutine(built, by, timeZone, now);
@@ -214,6 +225,7 @@ export class Scheduler {
     if (r.trigger.kind === "watch" && input.onChange === true) r.watch = { nextCheck: now, onChange: true, fired: already === true };
     await this.save(r);
     if (first && r.trigger.kind === "page") {
+      if (first.seen) await this.storage.put(SEEN + r.id, first.seen);
       await this.applyWatch(r.id, { template: `${r.trigger.url}\n${r.trigger.condition}`, state: first.state, error: "", text: first.text }, deps, now);
       return (await this.get(r.id)) ?? r;
     }
@@ -230,7 +242,10 @@ export class Scheduler {
       if (patch.enabled) {
         const next = nextRun(r, (await this.deps()).timeZone, now);
         if (r.trigger.kind === "once" && next === undefined) return "that one-off time has passed; make a new one";
+        if (ended(r, (await this.deps()).timeZone, now)) return "its last day has passed; make a new one";
         r.enabled = true;
+        // So is what its page said: read afresh, whatever its words.
+        await this.storage.delete(SEEN + id);
         if (next !== undefined) r.nextAt = next;
         // Switched back on, a watch starts afresh: what it saw before is old news. One said on a change waits for one.
         if (r.trigger.kind === "watch" || r.trigger.kind === "page") r.watch = r.watch?.onChange ? { nextCheck: now, onChange: true, fired: true } : { nextCheck: now };
@@ -254,6 +269,7 @@ export class Scheduler {
     if (!r) return false;
     await this.storage.delete(R + id);
     await this.storage.delete(RUNS + id);
+    await this.storage.delete(SEEN + id);
     if (r.trigger.kind === "leave") {
       await this.storage.delete(plansKey(r.createdBy));
       await this.storage.delete(scanKey(r.createdBy));
@@ -387,7 +403,7 @@ export class Scheduler {
         await this.record(leave.id, { at: now, ok: false, detail: `failed: ${e instanceof Error ? e.message : String(e)}` });
       }
     }
-    await this.prune(now);
+    await this.prune(deps.timeZone, now);
     return this.nextWake(now);
   }
 
@@ -409,6 +425,8 @@ export class Scheduler {
       const next = nextRun(r, deps.timeZone, Math.max(now, dueAt));
       if (next === undefined) delete r.nextAt;
       else r.nextAt = next;
+      // This was its last day: it runs, and is off.
+      if (ended(r, deps.timeZone, Math.max(now, dueAt))) r.enabled = false;
     } else {
       delete r.nextAt;
       r.enabled = false;
@@ -437,7 +455,9 @@ export class Scheduler {
     if (r.trigger.kind === "page") {
       const template = `${r.trigger.url}\n${r.trigger.condition}`;
       if (!deps.readPage) return { template, state: null, error: "no ChatGPT plan or OpenAI key is set" };
-      const got = await deps.readPage(r);
+      const got = await deps.readPage(r, await this.storage.get<PageSeen>(SEEN + r.id));
+      // Not for one removed while it was read.
+      if (got.seen && (await this.get(r.id))) await this.storage.put(SEEN + r.id, got.seen);
       return { template, state: got.state, error: got.error ?? "", text: got.text };
     }
     const template = r.trigger.kind === "watch" ? r.trigger.template : "";
@@ -573,6 +593,11 @@ export class Scheduler {
         await this.record(r.id, { at: now, ok: true, detail: "nothing to report" });
         return;
       }
+    } else if (r.action.kind === "job") {
+      // Its result is the job's own to send: here it is only started, or why not.
+      const j = deps.job ? await deps.job(r) : { ok: false, text: "background jobs cannot run here" };
+      await this.record(r.id, { at: now, ok: j.ok, detail: j.ok ? `started “${j.text}”: its result comes when it is done` : `no job started: ${j.text}` });
+      return;
     } else if (r.action.kind === "brief") {
       if (!deps.brief) {
         await this.record(r.id, { at: now, ok: false, detail: "briefs cannot run here" });
@@ -725,10 +750,11 @@ export class Scheduler {
     await this.storage.put(RUNS + id, [entry, ...(await this.runs(id))].slice(0, MAX_RUNS));
   }
 
-  /** One-offs that fired a week ago, and leave plans long past. */
-  private async prune(now: number): Promise<void> {
+  /** One-offs that fired a week ago, what had its last day a week ago, and leave plans long past. */
+  private async prune(timeZone: string, now: number): Promise<void> {
     for (const r of await this.list()) {
-      if (r.trigger.kind === "once" && !r.enabled && r.lastRun && now - r.lastRun.at > KEEP_DONE_MS) {
+      const over = r.trigger.kind === "once" ? r.lastRun?.at : r.until === undefined ? undefined : dayEnds(r.until, timeZone);
+      if (!r.enabled && over !== undefined && now - over > KEEP_DONE_MS) {
         await this.storage.delete(R + r.id);
         await this.storage.delete(RUNS + r.id);
       }

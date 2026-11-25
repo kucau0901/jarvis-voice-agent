@@ -122,6 +122,9 @@ export interface Job {
   reach?: Reach;
   /** An ordinary job's: for hard work, research's stronger model, thinking hard; or one that makes files, in the workshop (lib/workshop.ts). */
   mode?: "thorough" | "files";
+  /** The routine that started it (lib/routines.ts), and the dollars of the API key it may use, where that is less than any job's. */
+  routine?: { id: string; name: string };
+  cap?: number;
   /** One that makes files, to build something (lib/build-tools.ts): on the web, with nothing of its person's. */
   build?: true;
   /** That one's, on a repository its person named or chose as it was started: its files, and so no search of the web. */
@@ -818,7 +821,7 @@ export class Jobs {
 
   async create(
     input: { title?: unknown; task?: unknown; engine?: unknown; reach?: unknown; mode?: unknown; repo?: unknown; team?: unknown; from?: unknown; table?: unknown; helpers?: unknown },
-    by: { who: string; grants: readonly Grant[]; using?: { id: string; name: string } | null; project?: { id: string; name: string; rules: readonly string[]; files: readonly { n: number }[] } | null },
+    by: { who: string; grants: readonly Grant[]; using?: { id: string; name: string } | null; project?: { id: string; name: string; rules: readonly string[]; files: readonly { n: number }[] } | null; routine?: { id: string; name: string }; cap?: number },
     now = Date.now(),
   ): Promise<Job | string> {
     const task = clean(input.task, MAX_TASK);
@@ -889,6 +892,8 @@ export class Jobs {
       ...(engine === "jarvis" ? { reach: input.reach === "web" || input.mode === "build" ? ("web" as const) : ("private" as const) } : {}),
       ...(thorough ? { mode: "thorough" as const } : engine === "jarvis" && (input.mode === "files" || input.mode === "build") ? { mode: "files" as const } : {}),
       ...(engine === "jarvis" && input.mode === "build" ? { build: true as const, ...(typeof input.repo === "string" && input.repo ? { repo: input.repo } : {}) } : {}),
+      ...(by.routine ? { routine: { id: by.routine.id, name: by.routine.name } } : {}),
+      ...(by.cap !== undefined ? { cap: by.cap } : {}),
       ...(engine === "jarvis" && by.using ? { using: { id: by.using.id, name: by.using.name } } : {}),
       ...(engine === "jarvis" && by.project ? { project: { id: by.project.id, name: by.project.name } } : {}),
       ...(engine === "jarvis" && by.project && (input.reach === "web" || input.mode === "build") ? { pinned: { rules: [...by.project.rules], files: by.project.files.map((f) => f.n) } } : {}),

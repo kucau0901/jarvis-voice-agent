@@ -88,6 +88,8 @@ export interface JobView {
   reach?: "private" | "web";
   /** The stronger model, for hard work; or it makes files, in the workshop. */
   mode?: "thorough" | "files";
+  /** The routine that started it. */
+  routine?: { id: string; name: string };
   /** It builds something, to publish with a tap; and the repository it works on, with no search of the web. */
   build?: true;
   repo?: string;

@@ -30,6 +30,8 @@ import { canAsk } from "../lib/openai-auth.ts";
  */
 
 const MAX_BODY = 8 * 1024;
+/** A routine whole: a job's brief (lib/routines.ts MAX_TASK) in any script, as /api/v1/jobs takes one. */
+const MAX_ROUTINE = 16 * 1024;
 
 /**
  *   POST   /api/hub/looks/answer     {id, answer: "later" | "less"}: Not now, or Less of this, on what a look around
@@ -55,7 +57,7 @@ const creator = (p: Principal) => ({ who: whoOf(p), grants: grantsOf(p) });
 
 /** A routine as the panel and the API show it. */
 function view(r: Routine, timeZone: string) {
-  return { ...r, when: describeTrigger(r.trigger, timeZone), does: describeAction(r.action) };
+  return { ...r, when: describeTrigger(r.trigger, timeZone, r.until), does: describeAction(r.action) };
 }
 
 export async function handleRoutines(req: Request, env: Env, url: URL, principal: Principal): Promise<Response | null> {
@@ -114,7 +116,7 @@ export async function handleRoutines(req: Request, env: Env, url: URL, principal
     if (!(await theirs(id))) return err(404, "no such routine");
     return (await state.removeRoutine(id)) ? json({ ok: true, id }) : err(404, "no such routine");
   }
-  const b = await readObject(req, MAX_BODY);
+  const b = await readObject(req, MAX_ROUTINE);
   if (!b) return err(400, "body must be a small JSON object");
   if (req.method === "POST") {
     const r = await state.addRoutine(b, creator(principal));
