@@ -27,8 +27,11 @@ const id = await run("id -u; id -G; pwd; umask");
 const uid = Number(String(id.out).split("\n")[0]);
 check("a user of its own, in no group but its own", uid >= 20000 && String(id.out).split("\n")[1] === String(uid), id);
 check("another job, another user", Number((await run("id -u", B)).out) !== uid);
-const net = await run("python3 -c \"import socket; socket.create_connection(('1.1.1.1', 53), 3)\"; python3 -c \"import socket; print(socket.gethostbyname('example.com'))\"; ls /sys/class/net");
-check("it can reach nothing, and look nothing up", /unreachable/i.test(net.out) && /resol|Name or service/i.test(net.out) && /\nlo\n$/.test(net.out), net);
+const net = await run("python3 -c \"import socket; socket.create_connection(('1.1.1.1', 53), 3)\"; python3 -c \"import socket; print(socket.gethostbyname('example.com'))\"; for i in /sys/class/net/*; do [ $(($(cat $i/flags) & 1)) = 1 ] && echo up: ${i##*/}; done; ls /sys/class/net");
+// An older kernel puts a tunnel's device (sit0) in every container: it is down, and nothing here may put it up.
+check("it can reach nothing, and look nothing up", /unreachable/i.test(net.out) && /resol|Name or service/i.test(net.out) && /\nup: lo\n(?!up:)/.test(net.out), net);
+const raise = await run("python3 -c \"import fcntl,socket,struct; s=socket.socket(); n=b'sit0' if 'sit0' in [x[1] for x in socket.if_nameindex()] else b'lo'; fcntl.ioctl(s, 0x8914, struct.pack('16sH14x', n, 0x41)); print('CHANGED')\"");
+check("nor change its network", /not permitted/i.test(raise.out) && !/CHANGED/.test(raise.out), raise);
 await run("echo secret > mine; mkdir -p d; chmod 755 . mine; chmod 755 .. ", B);
 const peep = await run(`cat /work/${B}/f/mine; ls /work/${B} /work/${B}/f /work; echo x > /work/${B}/f/y; cd /work/${B}/f && echo IN`);
 check("another's folder, though it opened it: not to be entered, read or written", !/secret|\bIN\b|mine\n/.test(peep.out) && /denied/i.test(peep.out), peep);
@@ -61,9 +64,19 @@ check("a great many processes: held", Number(bomb.out) < 320 || bomb.code !== 0,
 check("…and another job is not, nor its own next", (await run("echo fine", B)).out === "fine\n" && (await run("echo mine")).out === "mine\n");
 const dead = await run("for i in $(seq 1 200); do (setsid sleep 0.01 &) ; done; sleep 2; grep -l '^State:.Z' /proc/[0-9]*/status 2>/dev/null | wc -l");
 check("the ends of those left without a parent are read", Number(dead.out) < 20, dead);
-const full = await run("i=0; while [ $i -lt 12 ]; do head -c 150000000 /dev/zero > f$i; i=$((i+1)); done; echo ALL", A, { seconds: 100 });
-check("a folder too full: stopped", full.full === true && !/ALL/.test(full.out), full);
-check("…and it may remove what it wrote", (await run("rm -f f*; echo gone")).out === "gone\n" && (await send("file", { job: A, op: "write", path: "x", text: "x" })).size === 1);
+// Room taken at once, with nothing written: however fast or slow the disk, it is there before anything is looked at.
+const take = (n) => `for i in $(seq ${n}); do fallocate -l 150000000 f$i || head -c 150000000 /dev/zero > f$i; done; `;
+const full = await run(`${take(4)}sleep 60; echo ALL`, A, { seconds: 100 });
+check("a folder too full: stopped", full.full === true && !full.emptied && full.kb > 500_000 && !/ALL/.test(full.out), full);
+const more = await run("head -c 1000 /dev/zero > more; fallocate -l 1000 even; echo $(stat -c %s more even)");
+check("…and may have no more written to it", /^0 0$/m.test(more.out), more);
+check("…until it removes what it wrote", (await run("rm -f f* more even; echo gone")).out === "gone\n" && (await run("echo again > x; cat x")).out === "again\n" && (await send("file", { job: A, op: "write", path: "x", text: "x" })).size === 1);
+const burst = await run(`mkdir d; cd d; ${take(4)}cd ..; chmod 000 d; echo ALL`);
+check("…by one that ended first, and closed it: counted", /ALL/.test(burst.out) && burst.kb > 500_000 && (await run("chmod 700 d; rm -r d; echo gone")).out === "gone\n", burst);
+const kept = await send("give", { job: A, path: "x" });
+const far = await run(`${take(15)}echo ALL`, A, { seconds: 100 });
+check("far too full: nothing of it is left", far.emptied === true && far.kb < 1000 && (await run("ls")).out === "", far);
+check("…but what it gave, and another job's", (await fetch(`${BASE}/v1/given?job=${A}&sum=${kept.sha256}`, { headers: { authorization: `Bearer ${TOKEN}` } }).then((r) => r.text())) === "x" && (await run("cat mine", B)).out === "secret\n", kept);
 check("a file too big: stopped", /exceeded|too large/i.test((await run("head -c 400000000 /dev/zero > big; ls -l big | awk '{print $5}'; rm -f big")).out));
 check("time: stopped", (await run("while :; do :; done", A, { seconds: 2 })).late === true);
 await run("sleep 30 & kill -9 -1; kill -9 1; true");

@@ -91,7 +91,7 @@ export interface Ran {
   code?: number | string | null;
   ms?: number;
   late?: true;
-  /** Ended for what it wrote: past what a job may hold, or the disk nearly full. */
+  /** Ended, or undone, for what it wrote: past what a job may hold, or the disk nearly full. */
   full?: true;
 }
 

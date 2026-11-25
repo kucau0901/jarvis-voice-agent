@@ -219,6 +219,22 @@ console.log("\nwhat it may hold");
   check("past it, what is writing is ended", r.full === true && !/ALL/.test(r.out), r);
   check("…and no more is written, though it may run what removes some", /over 30 MB/.test(String(await small.api.file({ job: "jfull000001", op: "write", path: "x", text: "x" }).catch((e: Error) => e.message))) && ((await small.api.run({ job: "jfull000001", cmd: "rm -f f*; echo gone" })) as { out: string }).out === "gone\n" && ((await small.api.file({ job: "jfull000001", op: "write", path: "x", text: "x" })) as { size: number }).size === 1);
   await small.api.end({ job: "jfull000001" });
+  // Never looked at while they run: what a quick command took is told by what follows its end.
+  const quick = apart("burst", { jobKb: 10_000, watchMs: 600_000 });
+  const burst = (cmd: string) => quick.api.run({ job: "jburst00001", cmd }) as Promise<{ out: string; full?: boolean; emptied?: boolean; kb: number }>;
+  const list = async () => ((await quick.api.file({ job: "jburst00001", op: "list" })) as { files: { path: string }[] }).files.map((f) => f.path);
+  const hid = await burst("mkdir d; head -c 15000000 /dev/zero > d/f; chmod 000 d; echo ALL");
+  check("a command that ended before it was looked at is counted, in a folder it closed too", hid.out === "ALL\n" && hid.kb > 14_000 && !hid.full && /over 10 MB/.test(String(await quick.api.file({ job: "jburst00001", op: "write", path: "x", text: "x" }).catch((e: Error) => e.message))), hid);
+  check("…and is what it was once that is removed", (await burst("rm -r d; echo kept > x")).kb < 1000 && (await list()).join() === "x");
+  const kept = (await quick.api.give({ job: "jburst00001", path: "x" })) as { sha256: string };
+  const far = await burst("head -c 45000000 /dev/zero > f; echo ALL");
+  check("far past it, nothing in its folder is left, and what it gave is", far.full === true && far.emptied === true && far.kb < 1000 && (await list()).length === 0 && existsSync(join(dir, "burst", ".given", "jburst00001", kept.sha256)), far);
+  check("…and it goes on", (await burst("echo on > y; cat y")).out === "on\n");
+  await quick.api.run({ job: "jburst00001", cmd: "head -c 45000000 /dev/zero > f", background: true });
+  const left = async () => ((await quick.api.process({ job: "jburst00001", op: "list" })) as { processes: { running: boolean; emptied?: boolean }[] }).processes[0];
+  for (let i = 0; i < 100 && !(await left())?.emptied; i += 1) await new Promise((r) => setTimeout(r, 100));
+  check("so too one left running", (await left())?.running === false && (await left())?.emptied === true && (await list()).length === 0, await left());
+  await quick.api.end({ job: "jburst00001" });
 }
 
 console.log("\ngiven");
