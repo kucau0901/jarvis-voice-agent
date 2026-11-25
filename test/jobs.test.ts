@@ -34,13 +34,14 @@ import {
   sharesLeft,
   splitResult,
   teamStep,
+  usageEntry,
   withSources,
   type Job,
   type JobDeps,
   type Step,
 } from "../src/worker/lib/jobs.ts";
 import type { Alert, Delivery } from "../src/worker/lib/alerts.ts";
-import type { UsageEntry } from "../src/worker/lib/usage.ts";
+import { costOf, type UsageEntry } from "../src/worker/lib/usage.ts";
 import { MAX_TRIES, beginCalls } from "../src/worker/lib/job-chain.ts";
 import { tells } from "../src/worker/lib/job-brief.ts";
 import { ASK_MS, changeCard, untold, unfinished, workTools, type Asked, type JobCard, type Said, type Todo } from "../src/worker/lib/job-tools.ts";
@@ -318,15 +319,20 @@ console.log("\nlimits");
   await t.jobs.tick(T0 + MAX_JOB_MS + WRAP_MS + 1);
   check("…but not for ever", (await t.jobs.get(k.id))!.status === "failed" && t.log.includes("cancel resp_1"));
 
-  const spent = async (usage: NonNullable<Job["usage"]>) => {
-    const s = harness([{ kind: "continued", responseId: "r1", usage }, { kind: "continued", responseId: "r2" }, wrote]);
+  const spent = async (...usages: NonNullable<Job["usage"]>[]) => {
+    const s = harness([...usages.map((usage, i): Step => ({ kind: "continued", responseId: `r${i + 1}`, usage })), { kind: "continued", responseId: "last" }, wrote]);
     return drive(s, ((await s.jobs.create({ task: "x" }, BY, T0)) as Job).id);
   };
   const luna = { input: 0, cached: 0, output: 0, model: "gpt-6-luna" };
   check(`${MAX_SEARCHES} web searches: the same`, /60 web searches/.test((await spent({ ...luna, searches: MAX_SEARCHES })).error ?? ""));
   const sol = { input: 2_000_000, cached: 0, output: 0, model: "gpt-6-sol" };
   check(`$${KEY_DOLLARS} of the key: the same`, /\$2 of the API key/.test((await spent(sol)).error ?? ""), (await spent(sol)).error);
-  check("…and nothing, on the plan", (await spent({ ...sol, model: "chatgpt:gpt-6-sol" })).status === "done");
+  const onPlan = { ...sol, model: "chatgpt:gpt-6-sol" };
+  check("…and nothing, on the plan", (await spent(onPlan)).status === "done");
+  const little = { ...sol, input: 2000 };
+  const moved = await spent(onPlan, little);
+  check("moved from the plan to the key: what it used on the plan is not the key's", moved.status === "done", moved.error);
+  check("…and the key's own is still its limit", /\$2 of the API key/.test((await spent(onPlan, little, sol)).error ?? ""));
 
   const r = harness();
   for (let i = 0; i < MAX_RUNNING; i++) await r.jobs.create({ task: `t${i}` }, BY, T0);
@@ -2224,6 +2230,48 @@ console.log("\nwhat a job spent");
 {
   const u = addUsage(addUsage(undefined, { input: 100, cached: 50, output: 10, written: 20, searches: 2, model: "gpt-6-sol" }), { input: 200, cached: 150, output: 5, searches: 1 });
   check("tokens, cache writes and searches add up, the model kept", u.input === 300 && u.cached === 200 && u.written === 20 && u.searches === 3 && u.output === 15 && u.model === "gpt-6-sol", u);
+
+  // On the ChatGPT plan and on the key: every token in the total, and only the key's in the dollars.
+  const near = (a: number | null | undefined, b: number) => typeof a === "number" && Math.abs(a - b) < 1e-9;
+  type Used = NonNullable<Job["usage"]>;
+  const plan: Used = { input: 1_500_000, cached: 500_000, output: 20_000, written: 100, searches: 4, model: "chatgpt:gpt-6-sol" };
+  const key: Used = { input: 2000, cached: 500, output: 100, searches: 1, model: "gpt-6-sol" };
+  const KEY = (1500 * 2 + 500 * 0.2 + 100 * 10) / 1e6 + 0.01;
+  const of = (usage: Used, over: Partial<Job> = {}) => ({ id: "j", title: "x", task: "x", engine: "jarvis", status: "running", createdBy: "voice", grants: [], createdAt: T0, updatedAt: T0, steps: 1, attempts: 0, usage, ...over }) as Job;
+  const cost = (...steps: Used[]) => costOf(usageEntry(of(steps.reduce((a: Used | undefined, b) => addUsage(a, b), undefined)!), true, T0));
+  check("on one of the two alone, nothing is kept apart", !("key" in addUsage(addUsage(undefined, plan), plan)) && !("key" in addUsage(addUsage(undefined, key), key)) && cost(plan, plan) === 0 && near(cost(key, key), 2 * KEY));
+  check("plan then key: the key's alone", near(cost(plan, key), KEY), cost(plan, key));
+  check("key then plan: the same", near(cost(key, plan), KEY), cost(key, plan));
+  check("back and forth: each of the key's steps, once", near(cost(plan, key, plan, key, key, plan), 3 * KEY) && near(cost(key, plan, key, plan, plan, key), 3 * KEY), cost(plan, key, plan, key, key, plan));
+  const both = addUsage(addUsage(addUsage(undefined, plan), key), plan);
+  check("…and the plan's are still in its totals", both.input === 3_002_000 && both.cached === 1_000_500 && both.output === 40_100 && both.written === 200 && both.searches === 9 && both.model === "chatgpt:gpt-6-sol", both);
+  const entry = usageEntry(of(both), true, T0);
+  check("…and in what Usage is given", entry.input === 3_002_000 && entry.searches === 9 && entry.by === "chatgpt:gpt-6-sol" && entry.key?.by === "gpt-6-sol" && entry.key.input === 2000, entry);
+  check("Jobs shows the key's dollars", near((jobView(of(both)) as { cost: number | null }).cost, KEY));
+  const waits = jobView(of(both, { parked: { since: T0, until: T0 + 1 } }), false, true) as { waiting?: { key?: { soFar: number | null } } };
+  check("…and what moving it would come to is still all of its tokens, at the key's price", near(waits.waiting?.key?.soFar, (2_001_300 * 2 + 1_000_500 * 0.2 + 200 * 2.5 + 40_100 * 10) / 1e6 + 0.09), waits.waiting);
+  check("a model with no price: still not known, whatever the plan did", cost(plan, { ...key, model: "gpt-7-nova" }) === null);
+
+  // A record from before the key's was kept apart is all its one model's, as it was; and goes on from there.
+  check("kept by a version before: priced as it was", near(costOf(usageEntry(of({ ...plan, model: "gpt-6-sol" }), true, T0)), (999_900 * 2 + 500_000 * 0.2 + 100 * 2.5 + 20_000 * 10) / 1e6 + 0.04) && costOf(usageEntry(of(plan), true, T0)) === 0 && costOf(usageEntry({ ...of(plan), usage: undefined }, true, T0)) === null);
+
+  // A whole job moved on the way: its day's share of the plan, Settings → Usage, and what is kept.
+  const run = async (first: Used, then: Used) => {
+    const h = harness([{ kind: "continued", responseId: "r1", usage: first }, { kind: "done", text: "SUMMARY: Done.", usage: then }]);
+    const end = await drive(h, ((await h.jobs.create({ task: "x" }, BY, T0)) as Job).id);
+    return { end, e: h.recorded[0]!, day: ([...h.storage._m].find(([k]) => k.startsWith("jobs:tokens:"))?.[1] as { n: number } | undefined)?.n };
+  };
+  for (const [name, r] of [["plan then key", await run(plan, key)], ["key then plan", await run(key, plan)]] as const) {
+    check(`${name}, a whole job: the key's dollars in Jobs and in Usage`, r.end.status === "done" && near((jobView(r.end) as { cost: number | null }).cost, KEY) && near(costOf(r.e), KEY), [r.end.usage, r.e]);
+    check("…every token in Usage, and only the plan's in the day's share of it", r.e.input === 1_502_000 && r.e.output === 20_100 && r.day === 1_520_000, [r.e, r.day]);
+  }
+  // Running across the update, on the key: what it spent there before still counts once the plan takes it on.
+  const old = harness([{ kind: "done", text: "SUMMARY: Done.", usage: plan }]);
+  const was = (await old.jobs.create({ task: "x" }, BY, T0)) as Job;
+  await old.jobs.tick(T0);
+  await old.storage.put(`job:${was.id}`, { ...(await old.jobs.get(was.id))!, usage: key });
+  await drive(old, was.id, T0 + 10_000);
+  check("running across the update: what the key had run is not forgotten", near(costOf(old.recorded[0]!), KEY), old.recorded[0]);
 }
 
 console.log("\na job has no screen, whoever asked for it");

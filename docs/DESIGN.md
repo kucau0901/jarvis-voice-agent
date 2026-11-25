@@ -1395,8 +1395,11 @@ waits (`parked`): still running, nothing lost, what its tools gave kept, and due
 again when the plan is, the wait not counted as its time. Moving it to the key is
 a tap in Jobs, with what its tokens so far would have cost there, for those who may
 start research, and only where the key may stand in for the plan at all
-(`CHATGPT_FALLBACK`). A question someone asks still carries on with the key as
-before: somebody is waiting for it. One person's jobs may use so much of the plan
+(`CHATGPT_FALLBACK`). From then on what runs on the key is counted apart
+(`JobUsage.key`): one total priced by its last step's model charged the key for
+all the plan had done, and a job moved there was out of its two dollars at once.
+A question someone asks still carries on with the key as before: somebody is
+waiting for it. One person's jobs may use so much of the plan
 a day (`DAILY_PLAN_TOKENS`, counted by code, since OpenAI gives no figure for what
 is left), six run in the house at once, and three are looked at at once (a job's
 helpers each count). What

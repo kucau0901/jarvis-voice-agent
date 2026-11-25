@@ -5,7 +5,7 @@ import { emptied, parseTablePlan, tableOf, tableResult } from "./research-table.
 import { makeAlert, type Alert, type Delivery } from "./alerts.ts";
 import { personOfWho } from "./context.ts";
 import { tidy } from "./quote.ts";
-import { costOf, type UsageEntry } from "./usage.ts";
+import { costOf, onPlan, type UsageEntry } from "./usage.ts";
 import { clearChain } from "./job-chain.ts";
 import { outOf, type Limits } from "./job-guards.ts";
 import { ASK_MS, MAX_ASKED, MAX_TOLD, changeCard, doneLines, numbered, openLines, openQuestions, unanswered, type Asked, type JobCard, type Said, type Todo, type Told } from "./job-tools.ts";
@@ -100,7 +100,7 @@ export interface Job {
   assumed?: string[];
   error?: string;
   deliveredBy?: string | null;
-  /** Tokens over every step, and the model that spent them, for Settings → Usage. */
+  /** Tokens over every step, and which of them the key paid for, for Settings → Usage. */
   usage?: JobUsage;
   /**
    * research: the report as written, the pages it cited, and the response that
@@ -227,11 +227,16 @@ export interface JobUsage {
   written?: number;
   /** Web searches, charged by the call: most of what research costs besides tokens. */
   searches?: number;
+  /** The last step's: "chatgpt:" and its name, on the plan. */
   model?: string;
+  /**
+   * Of all that, what ran on the key, once it has run on both the plan and the key: what is paid for, at its own
+   * model's price. Absent, all of it ran where `model` says, as it is taken to have in a record from before this.
+   */
+  key?: Omit<JobUsage, "key">;
 }
 
-/** A step's usage added to the job's so far. */
-export function addUsage(a: JobUsage | undefined, b: JobUsage): JobUsage {
+function summed(a: JobUsage | undefined, b: JobUsage): Omit<JobUsage, "key"> {
   const model = b.model ?? a?.model;
   return {
     input: (a?.input ?? 0) + b.input,
@@ -243,8 +248,17 @@ export function addUsage(a: JobUsage | undefined, b: JobUsage): JobUsage {
   };
 }
 
+/** A step's usage added to the job's so far, what ran on the key kept apart from what ran on the plan. */
+export function addUsage(a: JobUsage | undefined, b: JobUsage): JobUsage {
+  const all = summed(a, b);
+  if (!a || (!a.key && onPlan(a.model) === onPlan(all.model))) return all;
+  const before = a.key ?? (onPlan(a.model) ? undefined : a);
+  return { ...all, key: onPlan(all.model) ? before : summed(before, b) };
+}
+
 /** A job as Settings → Usage counts it (lib/usage.ts): finished, failed or cancelled. */
 export function usageEntry(j: Job, ok: boolean, now: number): UsageEntry {
+  const key = j.usage?.key;
   return {
     at: j.createdAt,
     surface: "job",
@@ -259,6 +273,7 @@ export function usageEntry(j: Job, ok: boolean, now: number): UsageEntry {
     tools: [],
     ask: j.title.slice(0, 80),
     who: personOfWho(j.createdBy),
+    ...(key ? { key: { by: key.model ?? "unknown", input: key.input, cached: key.cached, written: key.written ?? 0, output: key.output, searches: key.searches ?? 0 } } : {}),
   };
 }
 
@@ -1134,7 +1149,7 @@ export class Jobs {
 
   /** What a step used of the plan, counted to whoever started it: one at a time, or of two helpers' one would be lost. */
   private countTokens(j: Job, u: JobUsage | undefined, now: number): Promise<void> {
-    if (!u?.model?.startsWith("chatgpt:")) return Promise.resolve();
+    if (!u || !onPlan(u.model)) return Promise.resolve();
     const person = personOfWho(j.createdBy);
     return this.inTurn(async () => {
       await this.storage.put(TOKENS(person), { day: new Date(now).toISOString().slice(0, 10), n: (await this.tokensToday(person, now)) + u.input + u.output });

@@ -35,13 +35,19 @@ export interface UsageEntry {
   ask: string;
   /** Whose (lib/context.ts): "owner" for the first person, else a member's id. */
   who?: string;
+  /** A job that ran on both the ChatGPT plan and the key: of all the above, the key's, and its model there. */
+  key?: Pick<UsageEntry, "by" | "input" | "cached" | "written" | "output" | "searches">;
 }
+
+/** Whether a model is the owner's ChatGPT plan's (lib/chatgpt-plan.ts): part of what they already pay for. */
+export const onPlan = (model: string | undefined): boolean => model?.startsWith("chatgpt:") === true;
 
 /** US dollars, or null for a model with no known price (tokens are still counted). */
 export function costOf(e: UsageEntry): number | null {
+  // Of what ran on both, only the key's is paid for.
+  if (e.key) return costOf({ ...e, ...e.key, key: undefined });
   if (e.by === "home-assistant") return 0;
-  // On the owner's ChatGPT plan (lib/chatgpt-plan.ts): part of what they already pay for.
-  if (e.by.startsWith("chatgpt:")) return 0;
+  if (onPlan(e.by)) return 0;
   if (e.seconds !== undefined) return (e.seconds / 60) * LIVE_PER_MINUTE;
   const p = priceOf(e.by);
   if (!p) return null;
@@ -94,7 +100,7 @@ export function addToDay(d: DayTotals, e: UsageEntry): DayTotals {
 function addTo<T extends Totals>(d: T, e: UsageEntry): T {
   const out: T = { ...d, cost: { ...d.cost } };
   const cost = costOf(e);
-  if (cost === null) out.unpriced += e.input + e.output;
+  if (cost === null) out.unpriced += (e.key ?? e).input + (e.key ?? e).output;
   if (e.seconds !== undefined) {
     // A day holds 24 hours of live session at most, whatever a screen reports:
     // the route takes a screen's word for it, so a bad one cannot run the bill up.
