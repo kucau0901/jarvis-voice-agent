@@ -307,6 +307,9 @@ export function jobEngine(
     return next.answered ? { responseId: stepId(at.chain, at.n + 1), took: next.took } : send(r, next.input, to, toolChoice, next.took);
   }
 
+  /** Neither a plan nor a key. A plan at its limit is still one: what needs it waits (PlanParked), rather than fail as though there were none. */
+  const nothingToAsk = async () => !(await canAsk(env)) && !(await planLimitedUntil(env, Date.now()));
+
   /** Why a job cannot give its work out now: something it left running, which would keep its helpers from running anything. */
   async function busy(job: Job): Promise<string | null> {
     const shop = job.mode === "files" ? workshopConfig(env) : null;
@@ -333,7 +336,7 @@ export function jobEngine(
     },
 
     async start(job, t, stop, say) {
-      if (!(await canAsk(env))) return { error: "no ChatGPT plan or OpenAI key is set" };
+      if (await nothingToAsk()) return { error: "no ChatGPT plan or OpenAI key is set" };
       try {
         const r = await request(job, [{ role: "user", text: job.task }], t, stop, say);
         const helper = t === undefined ? undefined : job.help?.chains[t];
@@ -361,7 +364,7 @@ export function jobEngine(
     },
 
     async plan(job, stop) {
-      if (!(await canAsk(env))) return { error: "no ChatGPT plan or OpenAI key is set" };
+      if (await nothingToAsk()) return { error: "no ChatGPT plan or OpenAI key is set" };
       try {
         // One answer, no searching: the angles, as JSON (lib/jobs.ts parseAngles).
         const r = await request(job, [{ role: "user", text: job.task }], undefined, stop);

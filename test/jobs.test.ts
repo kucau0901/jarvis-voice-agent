@@ -2334,6 +2334,21 @@ console.log("\njobs on the owner's ChatGPT plan (routes/jobs.ts): streamed here,
     const wrappedAgain = await engine.poll({ ...jout, responseId: "plan_m.0", cut: { why: "it took its 25 steps" } });
     check("…once, though cut short before that was noted", wrappedAgain.kind === "continued" && sent.length === nw);
 
+    {
+      // With only the plan, and that at its limit: there is nothing to ask with now, and there will be.
+      const bare = jobEngine({ ...(env as object), OPENAI_API_KEY: undefined } as never, async (a) => ({ alert: a, attempts: [], deliveredBy: null }) as never, async () => ({ ...(env as object), OPENAI_API_KEY: undefined }) as never, kept as never);
+      const asksBefore = sent.length;
+      limitedUntil = T0 + 3_600_000;
+      const waits = await bare.start({ ...job, id: "jbare" });
+      const planning = await bare.plan({ ...job, id: "jbare2", engine: "research", team: newTeam(T0) });
+      check("started at the plan's limit with no key: it waits for the plan", JSON.stringify(waits) === JSON.stringify({ parked: limitedUntil }) && JSON.stringify(planning) === JSON.stringify({ parked: limitedUntil }) && sent.length === asksBefore, [waits, planning]);
+      limitedUntil = null;
+      plan = false;
+      const none = await bare.start({ ...job, id: "jbare3" });
+      check("with neither, it says so", "error" in none && /no ChatGPT plan or OpenAI key/.test(none.error), none);
+      plan = true;
+    }
+
     // Thorough: research's stronger model, thinking hard; an ordinary job neither.
     answers.push([{ type: "message", id: "mt", role: "assistant", status: "completed", content: [{ type: "output_text", text: "Done.", annotations: [] }] }]);
     await engine.start({ ...job, id: "jthor", mode: "thorough" });

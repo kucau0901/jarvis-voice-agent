@@ -36,6 +36,8 @@ of every release, and in the [README](README.md#updating).
 
 ### Fixed
 
+- **A job started while the ChatGPT plan is at its limit waits for it.** With no
+  OpenAI key set it failed at once, saying there was no plan.
 - **What a job may hold in the workshop holds for a command too quick to be
   looked at.** A job's folder was looked at every four seconds, so a short
   command, or one that took the room at once, could go past its 500 MB without
