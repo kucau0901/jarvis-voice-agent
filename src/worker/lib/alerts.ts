@@ -87,7 +87,8 @@ export interface Alert {
   /**
    * What that job or brief proposed for the person's tap (lib/proposals.ts):
    * the app draws each as a card with its verb (Approve when it has none). Nothing here approves anything: an id
-   * is done only by its person's own tap, signed in.
+   * is done only by its person, signed in: their tap, or for one that can be undone, their own words once it was
+   * read to them (tools/inbox.ts).
    */
   proposals?: { id: string; risk: "reversible" | "irreversible"; says: string; verb?: string }[];
   /**

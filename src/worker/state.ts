@@ -1353,6 +1353,15 @@ export class JarvisState extends DurableObject<Env> {
     return r;
   }
 
+  // Read to them whole in words, before a yes in words approves it (tools/inbox.ts).
+  proposalHeard(person: string, id: string, asked: string, now: number) {
+    return this.proposals.heard(person, id, asked, now);
+  }
+
+  proposalWasHeard(person: string, id: string, asked: string, now: number) {
+    return this.proposals.wasHeard(person, id, asked, now);
+  }
+
   /** Their errands for later (lib/later.ts), the soonest first. */
   proposalsLater(person: string) {
     return this.proposals.later(person);

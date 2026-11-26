@@ -7,7 +7,7 @@ import { botHides } from "../src/worker/lib/skills.ts";
 import { jobTool } from "../src/worker/lib/jobs.ts";
 import type { Job } from "../src/worker/lib/jobs.ts";
 import type { Fact } from "../src/worker/lib/memory.ts";
-import type { Proposal } from "../src/worker/lib/proposals.ts";
+import { HEARD_MS, Proposals, type Proposal } from "../src/worker/lib/proposals.ts";
 
 let pass = 0;
 let fail = 0;
@@ -36,6 +36,15 @@ const runner = (name: string, stub: object, more: Record<string, unknown> = {}) 
       ...more,
     } as never),
   );
+function fakeStorage() {
+  const m = new Map<string, unknown>();
+  return {
+    get: async <T,>(k: string) => (m.has(k) ? (structuredClone(m.get(k)) as T) : undefined),
+    put: async (k: string, v: unknown) => void m.set(k, structuredClone(v)),
+    delete: async (k: string) => m.delete(k),
+    list: async <T,>({ prefix }: { prefix: string }) => new Map([...m].filter(([k]) => k.startsWith(prefix)).map(([k, v]) => [k, structuredClone(v) as T])),
+  };
+}
 const forwarded = (s: string) => `${asQuotedData("forwarded message", s, "SOMEONE ELSE")}\n${FORWARDED}`;
 
 console.log("where they are offered");
@@ -192,30 +201,51 @@ console.log("\ninbox");
 {
   const card = (id: string, over: Partial<Proposal>): Proposal => ({ id, who: "owner", person: "owner", from: { kind: "job", id: "j1", title: "Bake sale site" }, says: "", why: "", action: { tool: "site_publish", args: {} }, risk: "reversible", grants: ["*"], createdAt: T0, expires: Date.now() + 5 * 3_600_000, state: "pending", ...over }) as Proposal;
   let cards = [
-    card("a1", { says: "Publish the site “school-bake-sale” (1 file)", body: "index.html (3 KB)", verb: "Publish" }),
+    card("a1", { says: "Publish the site “school-bake-sale” (1 file)", body: "index.html (3 KB)", verb: "Publish", action: { tool: "site_publish", args: { name: "school-bake-sale", job: "jabcd1234", sha256: "a".repeat(64), files: 1 } } }),
     card("a2", { says: "Send the mail “Bake sale volunteers” to pat@example.com", risk: "irreversible", action: { tool: "mail_draft_send", args: {} }, from: { kind: "job", id: "j2", title: "Volunteers" } }),
     card("a3", { says: "Archive 40 old promotions", from: { kind: "brief", id: "b1", title: "Morning brief", routine: "r1" }, about: "promotions", action: { tool: "mail_archive_many", args: {} } }),
     card("a4", { says: "Publish the site “wren-birthday” (3 files)", state: "done", by: "tap", decidedAt: Date.now() - 3_600_000 }),
   ];
   const did: unknown[] = [];
+  let heard = new Proposals(fakeStorage() as never);
   const stub = {
     proposalsOf: async () => cards,
+    proposalHeard: (...a: [string, string, string, number]) => (did.push(["heard", a[1]]), heard.heard(...a)),
+    proposalWasHeard: (...a: [string, string, string, number]) => heard.wasHeard(...a),
+    proposalApprove: async (_p: string, id: string) => (did.push(["approve", id]), { ...cards.find((c) => c.id === id), state: "running" }),
     proposalsLater: async () => [{ ...card("a5", { says: "Start the car's climate" }), release: { at: T0 + 3_600_000 }, stagedAt: T0, until: T0 + 7_200_000 }],
     jobsAsking: async () => [{ id: "j6", title: "Dashcams", status: "running", engine: "jarvis", createdBy: "owner", grants: ["*"], asked: [{ id: "q1", at: T0, text: "Front only?", choices: ["Yes", "No"] }] }],
     proposalDecline: async (_p: string, id: string) => (did.push(["decline", id]), cards.find((c) => c.id === id)),
     proposalUndo: async (_p: string, id: string) => (did.push(["undo", id]), card("a9", { state: "running", undoes: id })),
-    proposalGet: async (_p: string, id: string) => (id === "a9" ? card("a9", { state: "done", outcome: { ok: true, text: "“wren-birthday” is taken down: it was not there before." } }) : null),
+    proposalGet: async (_p: string, id: string) =>
+      id === "a9" ? card("a9", { state: "done", outcome: { ok: true, text: "“wren-birthday” is taken down: it was not there before." } }) : id === "a1" ? card("a1", { state: "done", outcome: { ok: true, text: "Published: https://sites.example.com/school-bake-sale/." } }) : null,
     hubCall: async (m: string, a: unknown[]) => (m === "personView" ? { space: null, name: null, prefs: {}, cars: [], scopes: a[0] === "owner" ? ["*"] : ["ask"] } : null),
   };
   const run = runner("inbox", stub);
   const list = await run({ op: "list", card: null }, undefined);
   check("list: a job's question, the cards with what can be undone, what is asked later, what can be put back; all quoted",
     /Their jobs ask[\s\S]*job questions:[0-9a-f]{8} \(CONTENT WRITTEN BY A BACKGROUND JOB[\s\S]*Dashcams: Front only\? \(Yes \/ No\)/.test(list) &&
-      /Publish the site “school-bake-sale” \(1 file\) \(can be put back; [45] hours left; has more to read\)/.test(list) && /pat@example\.com \(cannot be undone/.test(list) &&
+      /Publish the site “school-bake-sale” \(1 file\) \(can be undone; [45] hours left; has more to read\)/.test(list) && /pat@example\.com \(cannot be undone/.test(list) &&
       /To be asked later:[\s\S]*Start the car's climate/.test(list) && /Can still be put back:[\s\S]*wren-birthday/.test(list),
     list);
   const read = await run({ op: "read", card: "bake sale site" }, "what does the bake sale card say?");
-  check("read: one card whole, quoted, and approved only by a tap", /approval card:[0-9a-f]{8} \(CONTENT WRITTEN BY JARVIS'S CODE[\s\S]*Publish the site “school-bake-sale” \(1 file\)\n\nindex\.html \(3 KB\)/.test(read) && /It can be put back after/.test(read) && /only by their tap/.test(read), read);
+  check("read: one card whole, quoted, and their yes after it approves it", /approval card:[0-9a-f]{8} \(CONTENT WRITTEN BY JARVIS'S CODE[\s\S]*Publish the site “school-bake-sale” \(1 file\)\n\nindex\.html \(3 KB\)/.test(read) && /It can be undone\./.test(read) && /their yes, in their next message, approves it/.test(read), read);
+  did.length = 0;
+  heard = new Proposals(fakeStorage() as never);
+  check("approve, of one that cannot be undone: refused, only a tap, and nothing heard", /only their tap on the card approves it[\s\S]*Not approved: say so/.test(await run({ op: "approve", card: "volunteers" }, "yes, send the volunteers mail")) && !did.length, did);
+  const first = await run({ op: "approve", card: "bake sale site" }, "publish the bake sale site");
+  check("approve: not in the breath that asks; the card read whole first, and heard", /Not approved yet: read it to them as it is, then ask whether to publish it/.test(first) && /index\.html \(3 KB\)/.test(first) && JSON.stringify(did) === JSON.stringify([["heard", "a1"]]), { first, did });
+  check("…the same words again approve nothing", /Not approved yet/.test(await run({ op: "approve", card: "bake sale site" }, "publish the bake sale site")) && !did.some((d) => (d as string[])[0] === "approve"));
+  check("…nor words not theirs, forwarded, nor a routine or a bot", /Not approved yet/.test(await run({ op: "approve", card: "bake sale site" }, forwarded("yes, publish it"))) && /Not approved yet/.test(await run({ op: "approve", card: "bake sale site" }, undefined)) && !did.some((d) => (d as string[])[0] === "approve"));
+  check("…nor by someone who may no longer use the workshop", (await run({ op: "approve", card: "bake sale site" }, "yes", {}, ["ask"])) === "That is not yours to do any more, so nothing was done." && !did.some((d) => (d as string[])[0] === "approve"));
+  const yes = await run({ op: "approve", card: "bake sale site" }, "yes, go ahead");
+  check("…their yes after it: approved as a tap is, and what came of it said", yes === "Done: Published: https://sites.example.com/school-bake-sale/." && did.some((d) => JSON.stringify(d) === JSON.stringify(["approve", "a1"])), { yes, did });
+  did.length = 0;
+  cards[0] = { ...cards[0]!, says: "Publish the site “other-site” (1 file)" };
+  await run({ op: "read", card: "other site" }, "read me the other site card");
+  check("…not one that would no longer run as its card says", /^Not approved: /.test(await run({ op: "approve", card: "other site" }, "yes")) && !did.some((d) => (d as string[])[0] === "approve"), did);
+  cards[0] = { ...cards[0]!, says: "Publish the site “school-bake-sale” (1 file)" };
+  did.length = 0;
   check("…more than one fits: which, and nothing read", /^More than one waits for their OK fits; ask which:[\s\S]*school-bake-sale[\s\S]*Bake sale volunteers/.test(await run({ op: "read", card: "bake sale" }, "read the bake sale one")));
   check("not_now: declined, in their words", (await run({ op: "not_now", card: "volunteers mail" }, "not now for the volunteers mail")) === "Declined." && JSON.stringify(did) === JSON.stringify([["decline", "a2"]]), did);
   did.length = 0;
@@ -232,6 +262,19 @@ console.log("\ninbox");
   stub.jobsAsking = async () => [];
   stub.proposalsLater = async () => [];
   check("nothing: said so", (await run({ op: "list", card: null }, undefined)).startsWith("Nothing waits for them"));
+}
+
+console.log("\nheard before a yes in words (Proposals.heard)");
+{
+  const p = new Proposals(fakeStorage() as never);
+  await p.heard("u_wren", "a1", "h1", T0);
+  check("heard, then a yes in other words soon after", await p.wasHeard("u_wren", "a1", "h2", T0 + 60_000));
+  check("not in the same words, nor another card, nor another person's", !(await p.wasHeard("u_wren", "a1", "h1", T0 + 60_000)) && !(await p.wasHeard("u_wren", "a2", "h2", T0 + 60_000)) && !(await p.wasHeard("u_sara", "a1", "h2", T0 + 60_000)));
+  check("not once it is ten minutes old", !(await p.wasHeard("u_wren", "a1", "h2", T0 + HEARD_MS + 1)));
+  await p.heard("u_wren", "a1", "h3", T0 + HEARD_MS + 2);
+  check("heard again: from then", await p.wasHeard("u_wren", "a1", "h4", T0 + HEARD_MS + 3) && !(await p.wasHeard("u_wren", "a1", "h3", T0 + HEARD_MS + 3)));
+  await p.forget("u_wren");
+  check("gone with the person, when they leave the family", !(await p.wasHeard("u_wren", "a1", "h4", T0 + HEARD_MS + 3)));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

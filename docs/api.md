@@ -718,7 +718,8 @@ as a draft) is proposed instead, and its result alert carries them as
 `proposals: [{id, risk, says, verb?}]`, `verb` being the card's button
 ("Lock", "Send"; absent, Approve). Only the person who started it can approve
 one, signed in, with `POST /api/hub/proposals/answer {id, answer: "approve" |
-"decline" | "undo"}`; an approved one comes back `running`, and Jarvis makes the call
+"decline" | "undo"}`, or, for one that can be undone, in their own words to Jarvis
+once it has read the card to them; an approved one comes back `running`, and Jarvis makes the call
 in the background. `GET /api/hub/proposals` is `{open, recent, allowed, later, asking}`,
 and says what came of it. `asking` is what their jobs ask them, `[{job, title, reach?,
 id, at, text, choices}]`. `later` is what waits to be put to them: `[{id, says,

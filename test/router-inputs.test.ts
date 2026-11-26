@@ -297,13 +297,14 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
 // (25 Nov 2026, with ask_hermes only when named and a routine's job: no more than on 24 Nov). It is sent, and on the plan's route read, with every question, the house's too:
 // what background jobs need is theirs (routes/jobs.ts request), and a chat tool added makes room for itself.
 // Raised on 26 Nov 2026, at the owner's word, by inbox, project_control, true_now and job_control's two ops: by chat
-// and voice, everything the panels do for jobs (about 2.5 KB, the guest's 0.8 KB).
+// and voice, everything the panels do for jobs (about 2.5 KB, the guest's 0.8 KB); and by 102 bytes for inbox's approve,
+// a card that can be undone approved in words once read to them (26 Nov 2026).
 const PREFIX_MAX: Record<string, number> = {
-  "owner key, nothing set up": 52_909,
-  "admin, everything set up": 84_923,
-  "adult": 74_300,
-  "child": 62_794,
-  "guest with a pass": 22_019,
+  "owner key, nothing set up": 53_011,
+  "admin, everything set up": 85_025,
+  "adult": 74_402,
+  "child": 62_896,
+  "guest with a pass": 22_121,
 };
 
 const realFetch = globalThis.fetch;

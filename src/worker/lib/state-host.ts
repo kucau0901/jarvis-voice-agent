@@ -769,6 +769,8 @@ interface ProposalApi {
   houseWatchList(now: number): Promise<{ version: string; entities: string[]; urgent: string[] } | string>;
   houseEvents(batch: Change[], now: number): Promise<{ version: string; changed: number }>;
   noteAsk(person: string, who: string, ask: string, tools: string[], grants: readonly Grant[], now: number, house?: boolean): Promise<void>;
+  proposalHeard(person: string, id: string, asked: string, now: number): Promise<void>;
+  proposalWasHeard(person: string, id: string, asked: string, now: number): Promise<boolean>;
   proposalsLater(person: string): Promise<Staged[]>;
   proposalUndo(person: string, id: string, scopesNow: readonly Grant[] | null | undefined, approver: readonly Grant[], now: number): Promise<Proposal | string>;
   proposalFinish(person: string, id: string, outcome: { ok: boolean; text: string }, now: number): Promise<Proposal | null>;

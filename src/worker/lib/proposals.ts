@@ -97,6 +97,7 @@ export interface Proposal {
   createdAt: number;
   expires: number;
   state: ProposalState;
+  /** "tap": by its person, a tap or, for one that can be undone, their own words once it was read to them (tools/inbox.ts); "standing": allowed without asking. */
   by?: "tap" | "standing";
   decidedAt?: number;
   outcome?: { ok: boolean; text: string };
@@ -150,6 +151,21 @@ export const GONE_MS = 30 * 86_400_000;
 const MAX_GONE = 200;
 /** A subject a brief tried lately (approved, whatever came of it) is not offered again for a week. */
 export const TRIED_MS = 7 * 86_400_000;
+/**
+ * Cards read to their person whole in words (tools/inbox.ts), with a hash of
+ * what they had said then: one that can be undone is approved in words only
+ * by what they say after. Not under prop:, so never listed with them.
+ */
+const heardKey = (person: string) => `proptold:${person}`;
+/** How long a card read out stays heard: their yes follows it, or it is read again. */
+export const HEARD_MS = 10 * 60_000;
+const MAX_HEARD = 20;
+interface Heard {
+  id: string;
+  at: number;
+  /** A hash of their words when it was read to them. */
+  asked: string;
+}
 /** How long Put back is offered once something is done. */
 export const UNDO_MS = 7 * 86_400_000;
 /**
@@ -740,6 +756,19 @@ export class Proposals {
     }
     await this.storage.delete(allowKey(person));
     await this.storage.delete(goneKey(person));
+    await this.storage.delete(heardKey(person));
+  }
+
+  /** Read to its person whole, in words, while they had said `asked` (a hash of their words). */
+  async heard(person: string, id: string, asked: string, now: number): Promise<void> {
+    const kept = ((await this.storage.get<Heard[]>(heardKey(person))) ?? []).filter((h) => h.id !== id && now - h.at < HEARD_MS);
+    await this.storage.put(heardKey(person), [...kept, { id, at: now, asked }].slice(-MAX_HEARD));
+  }
+
+  /** Whether it was read to them whole in the last minutes, before what they say now (`asked`): a yes in the same breath is not one. */
+  async wasHeard(person: string, id: string, asked: string, now: number): Promise<boolean> {
+    const h = ((await this.storage.get<Heard[]>(heardKey(person))) ?? []).find((x) => x.id === id);
+    return !!h && now - h.at < HEARD_MS && h.asked !== asked;
   }
 
   /** The decided are kept a month, the newest hundred; the pending until decided. */
