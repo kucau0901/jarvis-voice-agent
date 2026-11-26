@@ -18,7 +18,7 @@ import { baseTools, outputText } from "../tools/registry.ts";
  * (Proposals.tick, state.ts).
  */
 
-/** What only an approval runs: never offered to the router, nor to a job. */
+/** What only an approval runs: never offered to the router, nor to a job (the router may approve a card, as its person says, never make its call). */
 export const APPROVED_ONLY = [mailDraftSend, calendarRsvp, mailArchiveMany, mailInboxMany, routineMake, houseDo, specialtyKeep, ...PUBLISHING];
 
 /**

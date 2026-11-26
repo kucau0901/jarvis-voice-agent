@@ -22,8 +22,7 @@ of every release, and in the [README](README.md#updating).
 - **What the panels do for jobs, you can now ask for**, typed or spoken, on the glasses too:
   - "What's waiting for me?" lists your jobs' questions, the cards waiting for your OK
     and whether each can be undone, what will be asked later, and what can still be put
-    back. Jarvis reads a card whole, says Not now to one, or puts one back. Approving a
-    card is still a tap.
+    back. Jarvis reads a card whole, says Not now to one, or puts one back.
   - "Remove that job", and "try the dashcam one again, harder", which starts it at once
     with the stronger model.
   - Sites: "which sites are up?", "take the bake sale site down", "put it back".
@@ -31,6 +30,14 @@ of every release, and in the [README](README.md#updating).
     name or a rule is kept only as you said it.
   - Which is true now?: Jarvis says the facts that may disagree, a few at a time, and
     keeps or forgets them as you say.
+
+### Security
+
+- **A card that can be undone can be approved in words**, as well as by a tap: "publish
+  the bake sale site", then Jarvis reads the card to you whole, then "yes". Only your own
+  next words approve it, within ten minutes, with the same checks as a tap. A card that
+  cannot be undone (sending a mail, opening a pull request, anything for the house) still
+  needs the tap, and a device, Telegram, a routine or a bot cannot approve any.
 
 ## [2.13.0] - 2026-11-25
 

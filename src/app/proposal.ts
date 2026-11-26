@@ -6,7 +6,8 @@ import { button, el } from "./ui/util";
  * a card: the call in words, as the server's code wrote them, where it came
  * from, how long it waits, and its verb (Approve when it has none) beside Not
  * now, or, on a brief's card, X: "Don't suggest this again", which the server
- * remembers. Only a tap here does it: nothing a model says can. Every card for
+ * remembers. A tap here does it, or for one that can be undone, the person's own
+ * words once it was read to them (tools/inbox.ts): nothing a model says can. Every card for
  * the same proposal on this screen (an alert's, the conversation's) shows the
  * same, once one is answered. Archived promotions can be put back for a week.
  */

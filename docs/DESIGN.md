@@ -1588,7 +1588,19 @@ their jobs' questions, the cards waiting for their OK with whether each can be u
 what will be put to them later, and what can still be put back, all quoted. It reads one
 card whole, declines one and puts one back, in their own words and as a tap's would:
 what the card needs, they must still have. A device is told none of it, as
-`/api/hub/` is a person's.
+`/api/hub/` is a person's, and Telegram is one.
+
+**A card that can be undone is approved in words.** On the glasses there is nothing to
+tap, so a card whose call can be undone (a site published, promotions archived, the
+car's climate started) is approved by saying so, as a tap would approve it and with its checks.
+It is read to them whole first, and recorded as heard with a hash of what they had said
+(`proptold:`, `Proposals.heard`); only what they say after, within ten minutes, approves
+it: a yes in the very message that asked for it is none, so the model cannot read it and
+approve it in one turn. What approves it is their own words (`ownPart`), never a page's,
+a mail's or a tool's, and never in a routine, for a bot or an MCP client, where nobody
+spoke. One that cannot be undone (a mail sent, a pull request opened, the house) still
+needs the tap, and "let jobs do this without asking" stays on the card. It is recorded as
+a tap is (`by: "tap"`, by its person), so Put back is offered on every screen alike.
 
 **A result says first what it lacks.** A confident report hides its holes, and
 nobody watched it being made. So an answer begins with its summary, then what was
@@ -1723,7 +1735,8 @@ copy, the same name and arguments, whose run files that one call for the
 person who started the job, and the real run is never among its tools. It
 cannot be talked into sending, deleting or unlocking, because nothing it has
 can. The person approves with a tap, on the card the job's result brings
-(`routes/proposals.ts`, under the ordinary sign-in), and the stored call runs
+(`routes/proposals.ts`, under the ordinary sign-in), or, for a call that can be
+undone, in their own words (`inbox`, below), and the stored call runs
 once, with no model, with no more than the job had, its maker still may and
 the approver may, and never Hermes or a screen. The tap only claims it: the
 object's alarm makes the call (`Proposals.tick`), so a slow one (waking the car takes up to a minute and a half) finishes
