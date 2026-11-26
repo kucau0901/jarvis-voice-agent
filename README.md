@@ -31,7 +31,8 @@ enough) or run it yourself with **Docker**.
   finds a fact saved in English. Stored in your own deployment, applied
   atomically, and shown in the app's **memory** panel, where you can add a
   fact or forget one. *Which is true now?* there finds facts that may disagree,
-  or whose day has passed, for you to choose between.
+  or whose day has passed, for you to choose between; or ask Jarvis which facts
+  disagree, and say which still hold.
 - **It does things your way** — a *specialty* is how you like something done: "save
   this as my Monday report", and it is done that way next time. Jarvis offers to
   keep what you put right in a job, with a card and never without your tap; or
@@ -71,8 +72,9 @@ enough) or run it yourself with **Docker**.
   see its checklist and what it is doing, put it right as it works, and answer what
   it asks; what it could not do, and what it took for granted, comes first in its
   result. It never acts on its own: what it would do (lock the car, add an event,
-  archive mail, send an email, a Home Assistant call) it proposes, and only your tap
-  does it, unless you let jobs do one kind that can be undone without asking (Jobs
+  archive mail, send an email, a Home Assistant call) it proposes, and only you
+  approve it: a tap, or for one that can be undone, your "yes" once Jarvis has read
+  it to you. You may also let jobs do one kind that can be undone without asking (Jobs
   lists those, with Stop); anything irreversible, and anything for the house, always
   asks. For hard work, a stronger model; for work that splits, up to three helpers
   at once; for jobs that belong together, a project with its own rules and files.
@@ -86,9 +88,10 @@ enough) or run it yourself with **Docker**.
   is never lost. [Background jobs guide](docs/jobs.md).
 - **It makes and builds things** — with the optional [workshop](#run-with-docker), a
   container with no network, a job makes a spreadsheet, a PDF or a chart for you to
-  save, or builds a small site or a change to code. Nothing goes out but by your tap: a
-  site to a folder on your own machine, where the version before can be put back, or a
-  pull request to a repository you listed.
+  save, or builds a small site or a change to code. Nothing goes out without your OK: a
+  site to a folder on your own machine, by a tap or by saying yes once Jarvis has read
+  you its card, where the version before can be put back; or a pull request to a
+  repository you listed, by a tap.
 - **Routines** — "remind me at five to call Mum", "every weekday at 7:30 tell
   me my first meeting and the traffic", "tell me when to leave for my
   appointments" (from your calendar, the car's position and live traffic), or
