@@ -6,7 +6,12 @@ with every screen closed, and its result reaches you as an alert and waits in
 **Jobs** (in the menu) and in your Chat.
 
 A job reads, and never acts. What it would do, such as send an email or add an
-event, it puts to you as a card, and only your tap does it.
+event, it puts to you as a card, and only you approve it: a tap, or, for one that
+can be undone, your own "yes" once Jarvis has read it to you.
+
+Most of what Jobs does can be asked for in Chat or by voice, on the glasses too:
+"what's waiting for me?", "remove the dashcam job", "try that again, harder",
+"take the bake sale site down", "make a project called Kitchen".
 
 This page is how to use them. Why they are built this way:
 [DESIGN.md](DESIGN.md#background-jobs). For devices: [api.md](api.md).
@@ -31,7 +36,7 @@ voice or in Chat, and you can read it in Jobs ("What was asked").
 | **Thorough** | "a thorough job" | many things to weigh: a stronger model, thinking hard; five a day | ten minutes or more | several times an ordinary one, stops at $2 |
 | **Helpers** | "with helpers" | work that splits: up to three work at the same time and report back | ten minutes or so | several times, the same $2 for all |
 | **Files** | "make me a spreadsheet of…" | a spreadsheet, document, PDF or chart to save (needs the [workshop](#files-sites-and-code)) | minutes | stops at $2 |
-| **Build** | "build a page…" | a site, or a change to code, published with your tap (needs the workshop) | minutes | stops at $2 |
+| **Build** | "build a page…" | a site, or a change to code, published once you approve its card (needs the workshop) | minutes | stops at $2 |
 | **Research in depth** | "research…", "dig into…" | a report with its sources, checked against them | 10 to 40 minutes | roughly $1 to 2 |
 | **As a team** | "research as a team" | three teams from different angles, one checked report | 20 to 55 minutes | roughly $4 to 7 |
 | **As a table** | "a list of the 10 cheapest…" | the same team fills rows, to download as CSV | 20 to 55 minutes | roughly $4 to 7 |
@@ -86,12 +91,22 @@ cost so far.
 - **What it could not do, and what it took for granted, comes first.** An address
   it only named itself, and never saw, is marked "(not checked)".
 - **Cards for what it would do**: at most five a job, each for you to approve or
-  decline within 24 hours. A kind that can be undone, such as archiving mail or
-  locking the car, you may let jobs do without asking; **Jobs** lists those,
-  with **Stop**. Anything irreversible, and anything in the house, always asks.
+  decline within 24 hours. One that can be undone, such as publishing a site or
+  archiving mail, you may also approve in words: "publish the bake sale site", and
+  Jarvis reads you the card whole and asks; your "yes" after that approves it, as a
+  tap would. Sending an email, opening a pull request or anything for the house needs
+  the tap. A kind that can be undone, such as archiving mail or locking the car, you
+  may let jobs do without asking; **Jobs** lists those, with **Stop**. Anything
+  irreversible, and anything in the house, always asks.
+- **"What's waiting for me?"** lists what your jobs ask, the cards waiting for your
+  OK, what will be asked later, and what can still be put back. Jarvis reads a card
+  whole, says **Not now** to one, or puts one back, as you say.
 - **Its files**, to **Save**, and *What it ran*, the commands it used to make them.
 - **Try again harder** copies its brief, with what you told it, to a thorough
-  job for you to read over and start.
+  job for you to read over and start. Asked in words ("try that again, harder"),
+  it starts at once, the same brief.
+- **Remove** deletes a job with its files, and withdraws its cards; or say "remove
+  the dashcam job".
 - **Keep for next time** turns how it was done into a
   [specialty](#specialties-your-way-of-doing-things).
 
@@ -118,7 +133,8 @@ address can open it. Without a sites folder, save the zip.
 - **Put back** on the card, for a week, undoes that publishing; after something
   else has been published there, or it was taken down, it changes nothing.
 - **Jobs → Sites** lists them: **Put back** the version before, or **Take down**,
-  any time.
+  any time. Or ask: "which sites are up?", "take the bake sale site down", "put it
+  back".
 
 **A change to code.** An admin lists repositories in **Settings → GitHub**, and
 names one as they ask ("change the footer in owner/name") or chooses it in the
@@ -135,6 +151,12 @@ to ten rules in your own words, and up to 20 files. Choose it for a new job, or 
 it ("for my Kitchen project"). The job has the rules, the files and what the project's
 last jobs came back with, and nothing of any other project's. What it makes is kept
 there with a tap.
+
+In Chat or by voice: "make a project called Kitchen with the rule no peanuts", "add a
+rule to Kitchen: …", "drop the peanut rule", "keep the spreadsheet from the groceries
+job in Kitchen", "forget my Kitchen project". A name or a rule is kept only as you
+said it, so nothing a page or an email says becomes one. A file from your phone is
+added in Jobs → Projects.
 
 On the web, a project goes with a job only when you choose it yourself, or name it
 in your own words; then code first looks through it for who you are and where you

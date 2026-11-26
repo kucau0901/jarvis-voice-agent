@@ -651,7 +651,8 @@ report" in the next message keeps them (`lib/specialties.ts`), and a later
 question that names it, or shares two words with it, gets them beside the
 profile. Steps are followed, so they are a standing instruction of the
 user's, and only the user can make one: by asking in words, by their own hand in
-Memory → Specialties, or by a tap on a card that shows it whole. `specialty_save`
+Memory → Specialties, or by approving a card that shows it whole (a tap, or their yes
+once Jarvis has read it to them). `specialty_save`
 takes their own words asking for it, which must be in their latest message, so a
 page, a mail or a tool's output cannot save one, and jobs are never offered it. Nor
 does the model write the steps: Jarvis keeps them itself when it offers,
@@ -689,7 +690,7 @@ job's helpers have none: what their part needs, the job puts in its brief. It is
 a user's message, between marks it cannot write, as a way to follow as far as it fits
 the task.
 
-**Learned, by a tap.** When a job ends well, Jarvis drafts how it was done and puts
+**Learned, by their OK.** When a job ends well, Jarvis drafts how it was done and puts
 a card with the result, in three cases only: its person corrected it as it worked; one
 like it failed within a month (Past attempts says so); or they say "learn this" of a
 job within a day. Code drafts it (`lib/learn.ts`) from what they said to the job, each
@@ -699,8 +700,8 @@ Their answers to its questions are left out, and what they changed on its card, 
 being to the job's own words. Where it used a specialty, the card is a change of that
 one, and shows what it was beside what it would be; if they changed it by hand
 meanwhile, the tap does nothing. Scripts that ran in the workshop and worked may go with
-it, but only through the form, where each is shown whole. Nothing is kept without the
-tap or Save, there is no library that grows by itself, and the last five versions of
+it, but only through the form, where each is shown whole. Nothing is kept without their
+OK or Save, there is no library that grows by itself, and the last five versions of
 each can be put back.
 
 **Another agent's skill** (a `SKILL.md`, or a zip of a folder with one, as
@@ -903,7 +904,8 @@ promised:
   promotion, older than two days, neither starred nor important); the count
   on the card is what runs, and only those still matching when the tap is
   made; it only takes them out of the Inbox, never trashes; it is made only
-  by a tap, never offered to the router or a job; and Put back returns them,
+  by its person's OK (a tap, or their yes once the card was read to them), never
+  offered to the router or a job; and Put back returns them,
   for a week.
 
 **Draft first** (Settings → Google, off by default) takes sending away from
@@ -2680,13 +2682,15 @@ else works without it.
   habit, an approved step, a bot's address or Telegram. It is looked at again at
   every step.
 
-**Building, and publishing by a tap.** A job that builds (`build`) is one that makes
+**Building, and publishing by their OK.** A job that builds (`build`) is one that makes
 files, on the web and with nothing of its person's (`Reach`), whatever was asked: what
 it publishes has nothing of theirs in it but what they gave it themselves. It has no
 packages to fetch, only what is in the image (hugo, node, python), and is told to plan,
 run what it makes and say how each part was checked. What it made it cannot publish: it
-puts a zip to its person as a card (`lib/build-tools.ts`), and a tap publishes it
-(`tools/publish.ts`), or they download the zip, or leave it.
+puts a zip to its person as a card (`lib/build-tools.ts`), and their OK publishes it
+(`tools/publish.ts`), a tap or a yes once Jarvis has read them the card, or they
+download the zip, or leave it. The tool is described as filing a card that publishes
+nothing: a job told "not before I approve" once took it for publishing and filed none.
 
 - **A repository, or the web.** A repository may be private, and a search is a way out,
   so one job never has both. The repository is one an admin chose in the form, or named
