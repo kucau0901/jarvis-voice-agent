@@ -72,8 +72,10 @@ export function buildTools(
       name: "publish_site",
       pace: "fast",
       description:
-        "Put a finished site to the user, to publish with a tap: a zip in your folder of its files, index.html at its root. It is " +
-        "static files alone, and its pages can load nothing from elsewhere. The same name again replaces the one published, which can be put back.",
+        "File a finished site for the user's OK. This publishes nothing: it puts a card to them, and the site goes live only when they " +
+        "approve it, so it is how a site waits for their approval, and is filed even when told not to publish without it. A zip in your " +
+        "folder of its files, index.html at its root. It is static files alone, and its pages can load nothing from elsewhere. The same " +
+        "name again replaces the one published, which can be put back.",
       parameters: {
         type: "object",
         properties: {

@@ -376,6 +376,9 @@ try {
     const run = async (name: string, a: Record<string, unknown>, o = { sites: true, repo: "ana/site" }) => String(await tools(o).find((t) => t.name === name)!.run(a, {} as never));
     check("only what is there: no sites folder, no repository, nothing", tools({ sites: false, repo: null }).length === 0 && tools({ sites: true, repo: null }).map((t) => t.name).join() === "publish_site" && tools({ sites: false, repo: "ana/site" }).map((t) => t.name).join() === "repo_bring,propose_pull");
     for (const t of tools({ sites: true, repo: "ana/site" })) check(`${t.name}: a strict schema, and no scope of its own`, (t.parameters as { additionalProperties: boolean }).additionalProperties === false && Object.keys((t.parameters as { properties: object }).properties).join() === (t.parameters as { required: string[] }).required.join() && !t.scope);
+    // 26 Nov 2026: a job told "do not publish until I approve" took publish_site for publishing, and filed no card at all.
+    const describes = tools({ sites: true, repo: null })[0]!.description;
+    check("publish_site says it publishes nothing, and is how a site waits for their OK", /This publishes nothing: it puts a card to them/.test(describes) && /filed even when told not to publish without it/.test(describes), describes);
     const put = await run("publish_site", { name: "menu", zip: "menu.zip" });
     check("a site goes to its person as a card that lists it, and nothing is published", /Nothing is published until they do/.test(put) && filed.length === 1 && (filed[0]!.action as { tool: string }).tool === "site_publish" && JSON.stringify((filed[0]!.action as { args: object }).args) === JSON.stringify({ job: "jbuild00001", name: "menu", sha256: sum, files: 2 }) && filed[0]!.person === "u_ana" && JSON.stringify(filed[0]!.grants) === '["ask"]' && /index\.html \(11 bytes\)/.test(String(filed[0]!.body)) && /It replaces the one published/.test(String(filed[0]!.body)), filed[0]);
     given = zip(...site(f("a.html", 'see https://elsewhere.example')));
@@ -435,6 +438,7 @@ try {
       return { names: b.tools.map((x) => x.name ?? x.type), say: b.instructions + JSON.stringify(b.input) };
     };
     const b = await start({});
+    check("a job that builds is told publish_site files a card and publishes nothing", /file it with publish_site, which publishes nothing: it puts a card to the user/.test(b.say) && /until the user approves its card/.test(b.say), b.say);
     check("a job that builds: the workshop, the web, and what it publishes with; none of theirs, and no repository", ["run", "give_file", "publish_site", "web_search"].every((n) => b.names.includes(n)) && !b.names.some((n) => /mail|recall|calendar|car_|specialty|propose_pull|repo_bring/.test(n)) && /\n\nBUILDING\n/.test(b.say) && !/repo_bring/.test(b.say), b.names);
     const on1 = await start({ repo: "ana/site" });
     check("one started on a repository: its files, and no way out beside them", ["run", "publish_site", "propose_pull", "repo_bring"].every((n) => on1.names.includes(n)) && !on1.names.some((n) => /web_search|place_info|time_in|mail|recall|calendar/.test(n)) && /works on the repository ana\/site, and has no search/.test(on1.say), on1.names);
