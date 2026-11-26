@@ -31,6 +31,11 @@ of every release, and in the [README](README.md#updating).
   - Which is true now?: Jarvis says the facts that may disagree, a few at a time, and
     keeps or forgets them as you say.
 
+### Fixed
+
+- **A Build job told not to publish without your OK now still files its Publish card.**
+  It used to take that as a reason to file nothing, and gave you only the zip.
+
 ### Security
 
 - **A card that can be undone can be approved in words**, as well as by a tap: "publish
