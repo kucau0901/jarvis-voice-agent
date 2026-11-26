@@ -4,6 +4,7 @@ import { vecPrefix } from "./state-host.ts";
 import { MAX_BACKFILL, cosine, embed, embedText, factHash, fromB64, toB64 } from "./embeddings.ts";
 import { tokenise, type Fact } from "./memory.ts";
 import { stateStub } from "./state-client.ts";
+import { localeOf } from "./locale.ts";
 
 /**
  * Memory → Which is true now?: saved facts that may say one thing twice, or
@@ -12,9 +13,9 @@ import { stateStub } from "./state-client.ts";
  * there are vectors (lib/embeddings.ts), else words, and dates that were still
  * to come when the fact was saved.
  *
- * Nothing here writes a fact. What its person does not choose goes to Trash,
- * as forgetting does; two they say are both true are not asked about again
- * until one of them changes.
+ * Nothing here writes a fact. What its person does not choose goes to Trash
+ * (settle), as forgetting does; two they say are both true are not asked about
+ * again until one of them changes.
  */
 
 /** As close in meaning as two facts must be to be asked about: a restatement measures 0.8, different facts that sound alike 0.6. */
@@ -207,4 +208,30 @@ export async function closeInMeaning(env: Env, book: string, facts: readonly Fac
   const vecs = todo.length ? await embed(env, todo.map(embedText)) : [];
   if (!vecs) return null;
   return state.memoryPairs(todo.map((f, i) => ({ id: f.id, hash: hashes.get(f.id)!, v: toB64(vecs[i]!) })), facts.map((f) => f.id), book);
+}
+
+/**
+ * What to ask about in `book` now, as Memory shows it and as Jarvis says it
+ * (tools/true-now.ts): close in meaning where the key allows (one embeddings
+ * call for facts not yet measured), else in words. Null without the state object.
+ */
+export async function doubtsOf(env: Env, facts: readonly Fact[], book: string, now = Date.now()): Promise<{ pairs: Doubt[]; passed: Passed[]; byMeaning: boolean } | null> {
+  const state = stateStub(env);
+  if (!state) return null;
+  const near = await closeInMeaning(env, book, facts).catch(() => null);
+  const names = [...facts.flatMap((f) => (f.kind === "person" && f.slug ? [f.slug] : [])), ...((await state.familyPeople().catch(() => [])) ?? []).map((p) => p.name)];
+  return { ...doubts(facts, near ?? closeInWords(facts), names, await state.trueKept(book), now, localeOf(env).timeZone), byMeaning: !!near };
+}
+
+/**
+ * One answered, of a pair or a fact whose day passed (`all`): those not in
+ * `keep` go to Trash, as forgetting does; with all kept, it is not asked about
+ * again until one of them changes. The ids forgotten.
+ */
+export async function settle(env: Env, store: { remove(id: string): unknown; save(): Promise<void> }, book: string, all: readonly Fact[], keep: readonly unknown[]): Promise<string[]> {
+  const going = all.filter((f) => !keep.includes(f.id));
+  for (const f of going) store.remove(f.id);
+  if (going.length) await store.save();
+  else await stateStub(env)?.trueKeep(book, all.length === 1 ? oneKey(all[0]!) : pairKey(all[0]!, all[1]!));
+  return going.map((f) => f.id);
 }

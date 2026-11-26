@@ -27,7 +27,7 @@ async function zipOf(env: Env, args: Record<string, unknown>): Promise<{ cfg: Wo
 }
 
 /** A tap's call: what went wrong there is said, and never a program's own words. */
-const said = (run: Tool["run"]): Tool["run"] => async (args, ctx) => {
+export const said = (run: Tool["run"]): Tool["run"] => async (args, ctx) => {
   try {
     return await run(args, ctx);
   } catch (e) {
@@ -36,7 +36,7 @@ const said = (run: Tool["run"]): Tool["run"] => async (args, ctx) => {
   }
 };
 
-const where = (name: string, address: string | null) => (address ? `${address.replace(/\/+$/, "")}/${name}/` : `"${name}", in the sites folder`);
+export const where = (name: string, address: string | null) => (address ? `${address.replace(/\/+$/, "")}/${name}/` : `"${name}", in the sites folder`);
 
 export const sitePublishTool: Tool = {
   name: "site_publish",

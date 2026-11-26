@@ -518,6 +518,20 @@ export const ownResearch = (j: Job, who: string): boolean =>
 export const wordsOf = (s: string): string[] => s.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
 
 /**
+ * A finished ordinary job, tried again with the stronger model, as the web's
+ * Try again harder fills its form (src/app/ui/Jobs.ts again): its brief with
+ * what they told it as it worked, their own words it would otherwise get wrong
+ * again (not their answers or card changes, which were to its words), its reach,
+ * specialty and project. Why not, for any other.
+ */
+export function harderOf(j: Job): { title: string; task: string; engine: "jarvis"; reach: Reach; mode: "thorough"; specialty?: string; project?: string } | string {
+  if (j.engine !== "jarvis" || j.mode || j.build || (j.status !== "done" && j.status !== "failed")) return "only a finished ordinary job can be tried again harder";
+  const task = [j.task, ...(j.told ?? []).filter((t) => !t.to && !t.card).map((t) => t.text)].join("\n\n");
+  if (task.length > MAX_TASK) return `with what they told it, its brief is ${task.length} characters, over the ${MAX_TASK} a job takes: it can be shortened and started in Jobs`;
+  return { title: j.title, task, engine: "jarvis", reach: j.reach ?? "private", mode: "thorough", ...(j.using ? { specialty: j.using.id } : {}), ...(j.project ? { project: j.project.id } : {}) };
+}
+
+/**
  * The finished research of `who`'s that `asked` names: the most recently
  * finished for "latest", else the most recently finished whose title has every
  * word asked for (each the start of one of its words). By when it finished,

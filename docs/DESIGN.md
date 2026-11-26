@@ -740,7 +740,9 @@ the older, the newer, both, neither; still true, or forget. What is not kept is 
 as forgetting does, to Recently forgotten; two said to be both true are not asked about
 again until one changes. A choice between facts one of which someone changed since it was
 shown is refused. The reference shelf is left out: a roster's lines are alike by
-nature.
+nature. Asked in words, `true_now` (`tools/true-now.ts`) says a few at a time and settles
+one as they say: each fact is named by its id and the start of its hash, so one changed
+since it was said is not settled on what it said before.
 
 **Recall by meaning, only when searching.** The facts that matter everywhere
 travel with every question, so an ordinary question makes no extra call. Only
@@ -1523,6 +1525,10 @@ at that moment, nothing added since, and nothing its earlier jobs found. In the 
 chose it themselves; a device's job on the web has none. A file a job made joins the
 project by a tap, as the job gave it and checked to be, beside what is there and never in
 its place. A name of one word ("Home") is a project's only in quotes or beside the word.
+Asked in words, `project_control` (`tools/projects.ts`) lists, makes and forgets them, adds
+or drops a rule and keeps a job's file in one; a name or a rule is kept only where it is in
+their latest message, as they said it, so nothing a page or a mail says becomes one, and a
+device, a routine or a bot changes none.
 
 **A job asks, and is told; an answer is only ever its person's.** What only they
 can settle and would change the result (which of two, how much, for whom) a job
@@ -1574,7 +1580,15 @@ an answer, where only one question waits, whatever it is called by, and a change
 a stop only by more than a third of them, since neither is given to whatever is there.
 It took `control_home`'s place among the tools: that one, changing the house
 through Hermes, was a last resort of one to four minutes that a live voice session
-was let go for, and Home Assistant does what it did.
+was let go for, and Home Assistant does what it did. It also removes one of theirs, and
+tries a finished one again harder (below).
+
+**What waits for them, asked.** `inbox` (`tools/inbox.ts`) says what the Inbox lists:
+their jobs' questions, the cards waiting for their OK with whether each can be undone,
+what will be put to them later, and what can still be put back, all quoted. It reads one
+card whole, declines one and puts one back, in their own words and as a tap's would:
+what the card needs, they must still have. A device is told none of it, as
+`/api/hub/` is a person's.
 
 **A result says first what it lacks.** A confident report hides its holes, and
 nobody watched it being made. So an answer begins with its summary, then what was
@@ -1689,11 +1703,13 @@ else would end it. If the job is itself out by the time they are done, their rep
 still reach its last call. One that fails three times running, or is stopped, says
 why in its place, and the others go on.
 
-**Trying harder is a tap.** A finished ordinary job has **Try again harder**: its
+**Trying harder is asked for.** A finished ordinary job has **Try again harder**: its
 brief, with what its person said to it meanwhile, in the New job form, set to the
 stronger model. Nothing starts until they press Start, so nothing is spent because
 a model judged its own work poor, and they can mend the brief, which is often what
-was wrong. What they answered it and what they changed on its card are left out, and
+was wrong. Asked in words ("try that again, harder"), `job_control` starts the same
+brief at once (`harderOf` in `lib/jobs.ts`): their asking is the press of Start, and on
+the web it is looked through again for who they are, its project as it is now. What they answered it and what they changed on its card are left out, and
 the form says so: those were to the job's own words, which would come back as theirs.
 What came back the first time does not go with it either: an answer to improve on is
 an answer to be anchored by.
@@ -2681,7 +2697,8 @@ puts a zip to its person as a card (`lib/build-tools.ts`), and a tap publishes i
   a Unix socket that only the workshop's door has, by which Jarvis puts a site there;
   and a port that serves it, read only. The workshop has no network and not that
   socket. A site is put in place whole, by a rename, and the one before is kept: its
-  card has Put back for a week, and Jobs → Sites puts back or takes down any time. A
+  card has Put back for a week, and Jobs → Sites, or `site_control` asked in their own
+words, puts back or takes down any time. A
   card's Put back undoes that card alone: once something else is there, or the site was
   taken down, it changes nothing. What a site's folder should hold is written down before
   a folder is moved, and made so (`settle`), as each change is made and as it starts: one

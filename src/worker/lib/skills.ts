@@ -156,9 +156,10 @@ export const SKILL_MCP = "skill-";
 /**
  * Tools a bot is not offered, whatever it may reach: the person's Chat
  * (look_back), background jobs it would never hear the end of (start_job,
- * job_results), and the person's glasses.
+ * job_results), the person's glasses, and what is theirs to see and answer:
+ * what waits for them, their projects, their sites and saved facts.
  */
-const BOT_HIDDEN = new Set(["look_back", "start_job", "job_results", "open_on_glasses"]);
+const BOT_HIDDEN = new Set(["look_back", "start_job", "job_results", "open_on_glasses", "inbox", "project_control", "site_control", "true_now"]);
 export const botHides = (t: { name: string }): boolean => BOT_HIDDEN.has(t.name) || t.name.startsWith(SKILL_MCP);
 
 /** What the router is told when a bot asks through its own address (lib/router.ts). */

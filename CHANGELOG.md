@@ -17,6 +17,21 @@ of every release, and in the [README](README.md#updating).
 
 ## [Unreleased]
 
+### Added
+
+- **What the panels do for jobs, you can now ask for**, typed or spoken, on the glasses too:
+  - "What's waiting for me?" lists your jobs' questions, the cards waiting for your OK
+    and whether each can be undone, what will be asked later, and what can still be put
+    back. Jarvis reads a card whole, says Not now to one, or puts one back. Approving a
+    card is still a tap.
+  - "Remove that job", and "try the dashcam one again, harder", which starts it at once
+    with the stronger model.
+  - Sites: "which sites are up?", "take the bake sale site down", "put it back".
+  - Projects: make one, add or drop a rule, keep a file a job made in one, forget one. A
+    name or a rule is kept only as you said it.
+  - Which is true now?: Jarvis says the facts that may disagree, a few at a time, and
+    keeps or forgets them as you say.
+
 ## [2.13.0] - 2026-11-25
 
 ### Added

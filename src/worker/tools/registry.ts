@@ -30,6 +30,10 @@ import { passTool } from "./pass.ts";
 import { panelTools } from "./panels.ts";
 import { skillTools } from "./skills.ts";
 import { browserTools } from "./browser.ts";
+import { siteControl } from "./sites.ts";
+import { projectControl } from "./projects.ts";
+import { trueNow } from "./true-now.ts";
+import { inbox } from "./inbox.ts";
 import { ownPart } from "../lib/quote.ts";
 import { stateStub } from "../lib/state-client.ts";
 import { isTheirs, OWNER, voiceWho } from "../lib/context.ts";
@@ -274,6 +278,7 @@ const askHermes: Tool = {
 const ALL: Tool[] = [
   ...memoryTools,
   ...specialtyTools,
+  trueNow,
   lookBackTool,
   ...tessieTools,
   ...directionsTools,
@@ -291,6 +296,9 @@ const ALL: Tool[] = [
   timeIn,
   ...routineTools,
   ...jobTools,
+  inbox,
+  projectControl,
+  siteControl,
   ...familyTools,
   passTool,
   ...panelTools,
