@@ -1,7 +1,7 @@
 import type { Tool, ToolContext } from "./registry.ts";
 import { stateStub } from "../lib/state-client.ts";
 import { OWNER, callerWho, maySteer, mayWork } from "../lib/context.ts";
-import { wordsOf, type Job } from "../lib/jobs.ts";
+import { harderOf, wordsOf, type Job } from "../lib/jobs.ts";
 import { flagLines } from "../lib/job-results.ts";
 import { tells } from "../lib/job-brief.ts";
 import { textIn } from "../lib/skill-md.ts";
@@ -11,7 +11,7 @@ import { WILDCARD, allows } from "../lib/scopes.ts";
 import { asFiles } from "../lib/photos.ts";
 import { workshopBring, workshopConfig } from "../lib/workshop.ts";
 import { repoNamed, reposOf } from "../lib/github.ts";
-import { clampLimit } from "./args.ts";
+import { clampLimit, nearest } from "./args.ts";
 
 /** As much of what goes with a job on the web as is looked through for who they are (lib/job-brief.ts). */
 const LOOKED_THROUGH = 400_000;
@@ -30,6 +30,33 @@ export async function webBrief(brief: string, ctx: ToolContext): Promise<string 
       "or exactly where they live: start it again without, as 'the user' and at most their town. Only what they themselves said in this " +
       "message may be in it; if they want that looked up, ask them to say so."
     : null;
+}
+
+/** The state object, to hand to a helper. */
+type State = NonNullable<ReturnType<typeof stateStub>>;
+
+/**
+ * Why a job on the web may not have this specialty or project of theirs, what
+ * it says of who the user is (lib/job-brief.ts) named; null when it may.
+ */
+async function webWith(ctx: ToolContext, state: State, person: string, used: { id: string; name: string } | null, project: { id: string; name: string; rules: readonly string[]; files: readonly { n: number }[] } | null): Promise<string | null> {
+  /** Why what goes with it may not; null when it may. */
+  const stays = async (name: string, words: string[], files: ({ name: string; bytes: Uint8Array } | null)[], where: string): Promise<string | null> => {
+    const read = files.map((f) => (f ? textIn(f.bytes) : null));
+    if (read.includes(null)) return `Not started: "${name}" has a file nothing here can look through, and a job on the web is told nothing of who the user is. They can start it themselves in Jobs, or it can be started on their own things.`;
+    const all = [...words, ...files.map((f) => f!.name), ...read].join("\n");
+    if (all.length > LOOKED_THROUGH) return `Not started: "${name}" is more than can be looked through here, and a job on the web is told nothing of who the user is. They can start it themselves in Jobs, or it can be started on their own things.`;
+    const said = tells(all, await known(ctx), ctx.asked ?? "");
+    return said.length
+      ? `Not started: "${name}", which they named, says ${said.slice(0, 5).map((s) => `"${s.slice(0, 60)}"`).join(", ")}${said.length > 5 ? ` and ${said.length - 5} more` : ""}, and a job on the web is told nothing of who the user is, their family, or exactly where ` +
+        `they live. Start it on their own things, or without it, with what is needed of it in the brief; or they can change it in ${where}.`
+      : null;
+  };
+  const w = used ? await state.specialtyWhole(person, used.id) : null;
+  return (
+    (w ? await stays(w.specialty.name, [...w.specialty.when, ...w.specialty.steps, w.specialty.why ?? "", w.more.text ?? ""], await Promise.all((w.more.files ?? []).map((f) => state.specialtyFile(person, w.specialty.id, f.n))), "Memory → Specialties") : null) ??
+    (project ? await stays(project.name, [...project.rules], await Promise.all(project.files.map((f) => state.projectFile(person, project.id, f.n))), "Jobs → Projects") : null)
+  );
 }
 
 /**
@@ -100,22 +127,7 @@ const startJob: Tool = {
     // And its project, the same way (lib/job-project.ts).
     const project = !research && allows(ctx.grants, "memory.read") ? await state.projectNamed(person, reach === "web" ? [mine] : [mine, String(args.title ?? ""), String(args.task ?? "")]).catch(() => null) : null;
     if (reach === "web") {
-      /** Why what goes with it may not; null when it may. */
-      const stays = async (name: string, words: string[], files: ({ name: string; bytes: Uint8Array } | null)[], where: string): Promise<string | null> => {
-        const read = files.map((f) => (f ? textIn(f.bytes) : null));
-        if (read.includes(null)) return `Not started: "${name}" has a file nothing here can look through, and a job on the web is told nothing of who the user is. They can start it themselves in Jobs, or it can be started on their own things.`;
-        const all = [...words, ...files.map((f) => f!.name), ...read].join("\n");
-        if (all.length > LOOKED_THROUGH) return `Not started: "${name}" is more than can be looked through here, and a job on the web is told nothing of who the user is. They can start it themselves in Jobs, or it can be started on their own things.`;
-        const said = tells(all, await known(ctx), ctx.asked ?? "");
-        return said.length
-          ? `Not started: "${name}", which they named, says ${said.slice(0, 5).map((s) => `"${s.slice(0, 60)}"`).join(", ")}${said.length > 5 ? ` and ${said.length - 5} more` : ""}, and a job on the web is told nothing of who the user is, their family, or exactly where ` +
-            `they live. Start it on their own things, or without it, with what is needed of it in the brief; or they can change it in ${where}.`
-          : null;
-      };
-      const w = used ? await state.specialtyWhole(person, used.id) : null;
-      const no =
-        (used ? await stays(used.name, [...used.when, ...used.steps, used.why ?? "", w?.more.text ?? ""], await Promise.all((w?.more.files ?? []).map((f) => state.specialtyFile(person, used.id, f.n))), "Memory → Specialties") : null) ??
-        (project ? await stays(project.name, project.rules, await Promise.all(project.files.map((f) => state.projectFile(person, project.id, f.n))), "Jobs → Projects") : null);
+      const no = await webWith(ctx, state, person, used, project);
       if (no) return no;
     }
     // The owner's repository it works on: one an admin named just now, in their own words. It may be private, so that job searches nothing.
@@ -274,11 +286,12 @@ const jobControl: Tool = {
   pace: "fast",
   description:
     "Steer a background job of theirs: 'correct' passes on a change, 'answer' their answer to its " +
-    "question, 'stop' ends it. It is told their latest message as they said it. Never answer for them.",
+    "question, 'stop' ends it. It is told their latest message as they said it. Never answer for them. " +
+    "'remove' deletes one with its files; 'harder' tries a finished one again with the stronger model, at several times the cost.",
   parameters: {
     type: "object",
     properties: {
-      op: { type: "string", enum: ["correct", "answer", "stop"] },
+      op: { type: "string", enum: ["correct", "answer", "stop", "remove", "harder"] },
       job: { type: ["string", "null"], description: "Words from its title, or the question answered; null for the only one." },
     },
     required: ["op", "job"],
@@ -289,8 +302,9 @@ const jobControl: Tool = {
     if (!state) return "Background jobs cannot run on this deployment: it has no state object.";
     const said = ownPart(ctx.asked ?? "");
     if (!said) return "Only the user can do that, in their own words.";
-    const op = args.op === "answer" || args.op === "stop" ? args.op : "correct";
     const want = wordsOf(typeof args.job === "string" ? args.job : "");
+    if (args.op === "remove" || args.op === "harder") return finished(args.op, want, state, ctx);
+    const op = args.op === "answer" || args.op === "stop" ? args.op : "correct";
     const atWork = (await state.listJobs()).filter((j) => j.status === "running" && (op === "stop" || j.engine === "jarvis") && maySteer(j, ctx.env, ctx.grants));
     if (op === "answer") {
       // One answer is to one question: the one its words name, with its job's title; the only one, whatever they are.
@@ -314,25 +328,43 @@ const jobControl: Tool = {
   },
 };
 
+/**
+ * Removing one of theirs, with its files and what it waits on an OK for, as
+ * Remove in Jobs does; or a finished ordinary one tried again harder, as its
+ * button fills the form there (lib/jobs.ts harderOf). Their asking is the press
+ * of Start: nothing is spent because a model judged its own work poor.
+ */
+async function finished(op: "remove" | "harder", want: readonly string[], state: State, ctx: ToolContext): Promise<string> {
+  const theirs = (await state.listJobs()).filter((j) => mayWork(j, ctx.env, ctx.grants) && (op === "remove" || typeof harderOf(j) !== "string"));
+  const fits = nearest(theirs, want, (j) => j.title, true);
+  if (!fits.length) return `No job of theirs ${op === "harder" ? "that can be tried again harder " : ""}is called that.${theirs.length ? ` Theirs: ${theirs.slice(0, 8).map((j) => `"${j.title}"`).join(", ")}.` : ""}`;
+  if (fits.length > 1) return `More than one is: ${fits.slice(0, 8).map((j) => `"${j.title}"`).join(", ")}. Ask which, and say its title.`;
+  const j = fits[0]!;
+  if (op === "remove") return (await state.removeJob(j.id)) ? `Removed "${j.title}", with its files; anything it waited on their OK for is withdrawn.` : `"${j.title}" is gone already.`;
+  // The stronger model costs several times as much: the family's, as in Jobs.
+  if (!allows(ctx.grants, "routines")) return "Not started: trying again harder uses the stronger model, which is for the family, and this person may not.";
+  const again = harderOf(j);
+  if (typeof again === "string") return `Not started: ${again}.`;
+  const named = allows(ctx.grants, "memory.read");
+  const start = { ...again, ...(named ? {} : { specialty: undefined, project: undefined }) };
+  if (start.reach === "web") {
+    const no = await webBrief(`${start.title}\n${start.task}`, ctx);
+    if (no) return `Not started: ${no}`;
+    // As it is now, which may not be as it was when the first one went.
+    const person = ctx.env.JARVIS_PERSON || OWNER;
+    const project = start.project ? ((await state.projectsOf(person)).find((p) => p.id === start.project) ?? null) : null;
+    const theirsNow = await webWith(ctx, state, person, start.specialty && j.using ? j.using : null, project);
+    if (theirsNow) return theirsNow;
+  }
+  const n = await state.createJob(start, { who: callerWho(ctx.env), grants: ctx.grants });
+  if (typeof n === "string") return `Not started: ${n}.`;
+  ctx.started?.({ id: n.id, title: n.title, engine: n.engine });
+  const left = (j.told ?? []).some((t) => t.to || t.card) ? " What they answered it, and changed on its card, is not in it: theirs to say again if it still holds." : "";
+  return `Started "${n.title}" again with the stronger model, ${n.reach === "web" ? "on the web" : "on their own things"}, with what they told it as it worked. It usually takes ten minutes or more, at several times the cost; the result will reach the user as a message.${left} Tell them so.`;
+}
+
 /** What came of telling a job something. */
 const told = (j: Job, r: Job | string): string =>
   typeof r === "string" ? `Not passed on: ${r}.` : `Passed on to "${j.title}", in their words: it takes it in at its next step. Say so, briefly.`;
-
-/**
- * Those most of `want` names, by the start of their words: the model calls a
- * job by what it was about ("the power bank comparison"), not by its title.
- * With no words, all of them; with none that fit, all, or where `named` (a
- * change or a stop is not given to whatever is there) none, as where a third
- * of the words or fewer fit.
- */
-function nearest<T>(all: readonly T[], want: readonly string[], words: (x: T) => string, named = false): T[] {
-  const fit = all.map((x) => {
-    const has = wordsOf(words(x));
-    return want.filter((w) => has.some((h) => h.startsWith(w))).length;
-  });
-  const best = Math.max(0, ...fit);
-  if (named && want.length && best * 3 <= want.length) return [];
-  return all.filter((_, i) => fit[i] === best);
-}
 
 export const jobTools: Tool[] = [startJob, jobControl, jobResults];

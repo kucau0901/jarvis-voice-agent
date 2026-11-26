@@ -74,6 +74,9 @@ const PROMPT_SHA256 = "c280befa091ac48db16658f79d8184ff1fd06b5b63e2fed1c926ea0b8
 // refused in code otherwise; sixteen of Jarvis's own tools say `reads: true`, which is not sent to the model. Names, scopes
 // and who is offered what are as before, so no entry below changes (12 Nov 2026).
 // job_control (tools/jobs.ts, no scope beyond ask): everyone, as start_job; control_home gone (24 Nov 2026).
+// inbox (tools/inbox.ts, no scope beyond ask): everyone, the guest too; project_control (tools/projects.ts) and true_now
+// (tools/true-now.ts), scope memory.write: everyone but the guest; site_control (tools/sites.ts, scope workshop, with the
+// workshop set up): none of these cases. job_control gains remove and harder (26 Nov 2026).
 const EXPECTED: Record<string, { model: string; tools: string[]; input: string }> = {
  "owner key, nothing set up": {
   "model": "gpt-6-luna",
@@ -81,6 +84,7 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
    "alert_talk",
    "forget",
    "hide_display",
+   "inbox",
    "job_control",
    "job_results",
    "look_back",
@@ -90,6 +94,7 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
    "panel_list",
    "panel_remove",
    "panel_set",
+   "project_control",
    "recall",
    "remember",
    "routine_add",
@@ -102,7 +107,8 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
    "specialty_forget",
    "specialty_save",
    "start_job",
-   "time_in"
+   "time_in",
+   "true_now"
   ],
   "input": "802a8e76891d234f"
  },
@@ -131,6 +137,7 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
    "forget",
    "hide_display",
    "house_watch",
+   "inbox",
    "job_control",
    "job_results",
    "look_at_camera",
@@ -150,6 +157,7 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
    "panel_set",
    "pass_on",
    "place_info",
+   "project_control",
    "recall",
    "remember",
    "reply_family_room",
@@ -165,7 +173,8 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
    "specialty_forget",
    "specialty_save",
    "start_job",
-   "time_in"
+   "time_in",
+   "true_now"
   ],
   "input": "caf9f336c9eb88fe"
  },
@@ -186,6 +195,7 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
    "forget",
    "hide_display",
    "house_watch",
+   "inbox",
    "job_control",
    "job_results",
    "look_at_camera",
@@ -205,6 +215,7 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
    "panel_set",
    "pass_on",
    "place_info",
+   "project_control",
    "recall",
    "remember",
    "reply_family_room",
@@ -217,7 +228,8 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
    "specialty_forget",
    "specialty_save",
    "start_job",
-   "time_in"
+   "time_in",
+   "true_now"
   ],
   "input": "a5251b80a9958cc9" // car levels said as check/control (28 Sep 2026)
  },
@@ -236,6 +248,7 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
    "family_messages",
    "forget",
    "hide_display",
+   "inbox",
    "job_control",
    "job_results",
    "look_back",
@@ -247,6 +260,7 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
    "panel_set",
    "pass_on",
    "place_info",
+   "project_control",
    "recall",
    "remember",
    "reply_family_room",
@@ -258,13 +272,15 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
    "specialty_forget",
    "specialty_save",
    "start_job",
-   "time_in"
+   "time_in",
+   "true_now"
   ],
   "input": "478d7761db526908"
  },
  "guest with a pass": {
   "model": "gpt-6-luna",
   "tools": [
+   "inbox",
    "job_control",
    "job_results",
    "open_on_glasses",
@@ -280,12 +296,14 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
 // What every chat question carries before anything of its own: the prompt and the tools' schemas, in bytes, at most
 // (25 Nov 2026, with ask_hermes only when named and a routine's job: no more than on 24 Nov). It is sent, and on the plan's route read, with every question, the house's too:
 // what background jobs need is theirs (routes/jobs.ts request), and a chat tool added makes room for itself.
+// Raised on 26 Nov 2026, at the owner's word, by inbox, project_control, true_now and job_control's two ops: by chat
+// and voice, everything the panels do for jobs (about 2.5 KB, the guest's 0.8 KB).
 const PREFIX_MAX: Record<string, number> = {
-  "owner key, nothing set up": 50_419,
-  "admin, everything set up": 82_433,
-  "adult": 71_810,
-  "child": 60_304,
-  "guest with a pass": 21_253,
+  "owner key, nothing set up": 52_909,
+  "admin, everything set up": 84_923,
+  "adult": 74_300,
+  "child": 62_794,
+  "guest with a pass": 22_019,
 };
 
 const realFetch = globalThis.fetch;

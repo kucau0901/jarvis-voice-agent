@@ -1,10 +1,9 @@
 import type { Env } from "../types.ts";
 import { err, json, readObject } from "../lib/http.ts";
 import { personOf, type Principal } from "../lib/auth.ts";
-import { isTheirs } from "../lib/context.ts";
 import { stateStub } from "../lib/state-client.ts";
-import { MAX_FILE, bytesOf } from "../lib/projects.ts";
-import { KEPT_DAYS, WorkshopError, fileHeaders, givenBytes, workshopConfig } from "../lib/workshop.ts";
+import { MAX_FILE, bytesOf, jobFileOf } from "../lib/projects.ts";
+import { fileHeaders } from "../lib/workshop.ts";
 
 /**
  * A person's projects (lib/projects.ts), in Jobs. Reading them needs
@@ -51,21 +50,10 @@ export async function handleProjects(req: Request, env: Env, url: URL, principal
   let name = b.name;
   let bytes = bytesOf(b.data);
   if (b.job !== undefined) {
-    const j = await state.getJob(typeof b.job === "string" ? b.job : "");
-    const f = j && isTheirs(j.createdBy, person) ? j.files?.find((x) => x.n === b.n) : undefined;
-    if (!j || !f) return err(404, "no such file");
-    const cfg = workshopConfig(env);
-    if (!cfg) return err(503, "the workshop it is in is not set up");
-    if (f.size > MAX_FILE) return err(400, `${f.name} is over ${MAX_FILE / 1_000_000} MB`);
-    try {
-      const got = await givenBytes(cfg, j.id, f);
-      if (!got) return err(409, "that file is not as the job gave it, so it is not kept");
-      name = f.name;
-      bytes = new Uint8Array(got);
-    } catch (e) {
-      if (!(e instanceof WorkshopError)) throw e;
-      return err(e.refused ? 404 : 503, e.refused ? `it is no longer kept: the workshop keeps files for ${KEPT_DAYS} days` : e.message);
-    }
+    const got = await jobFileOf(env, (j) => state.getJob(j), person, typeof b.job === "string" ? b.job : "", typeof b.n === "number" ? b.n : NaN);
+    if ("why" in got) return err(got.status, got.why);
+    name = got.name;
+    bytes = got.bytes;
   }
   if (!bytes) return err(400, "that file could not be read");
   const r = await state.projectPut(person, b.id, name, bytes, now, b.job !== undefined);

@@ -3,7 +3,10 @@ import { seen } from "./skill-md.ts";
 import { fromB64u } from "./webauthn.ts";
 import { moreName } from "./specialty-more.ts";
 import { nameOf, names } from "./specialties.ts";
-import { apart } from "./workshop.ts";
+import { KEPT_DAYS, WorkshopError, apart, givenBytes, workshopConfig } from "./workshop.ts";
+import { isTheirs } from "./context.ts";
+import type { Job } from "./jobs.ts";
+import type { Env } from "../types.ts";
 
 /**
  * A person's projects: a name, a few rules they typed, and files, for jobs that
@@ -11,8 +14,9 @@ import { apart } from "./workshop.ts";
  * given its rules, its files and what its earlier jobs came back with, and
  * nothing of any other's.
  *
- * Only its person changes one, by hand: its rules are their words, followed as
- * such. Its files may be anyone's, and are read as data.
+ * Only its person changes one, by hand or in their own words (tools/projects.ts):
+ * its rules are their words, followed as such. Its files may be anyone's, and
+ * are read as data.
  */
 
 export interface ProjectFile {
@@ -157,3 +161,24 @@ export const bytesOf = (v: unknown): Uint8Array | null => {
     return null;
   }
 };
+
+/**
+ * A file a job of theirs gave, as it gave it (its sum checked again), to keep in
+ * one of their projects (Projects.put, beside what is there): its name and bytes,
+ * or why not, with the status a route answers.
+ */
+export async function jobFileOf(env: Env, getJob: (id: string) => Promise<Job | undefined>, person: string, job: string, n: number): Promise<{ name: string; bytes: Uint8Array } | { status: number; why: string }> {
+  const j = await getJob(job);
+  const f = j && isTheirs(j.createdBy, person) ? j.files?.find((x) => x.n === n) : undefined;
+  if (!j || !f) return { status: 404, why: "no such file" };
+  const cfg = workshopConfig(env);
+  if (!cfg) return { status: 503, why: "the workshop it is in is not set up" };
+  if (f.size > MAX_FILE) return { status: 400, why: `${f.name} is over ${MAX_FILE / 1_000_000} MB` };
+  try {
+    const got = await givenBytes(cfg, j.id, f);
+    return got ? { name: f.name, bytes: new Uint8Array(got) } : { status: 409, why: "that file is not as the job gave it, so it is not kept" };
+  } catch (e) {
+    if (!(e instanceof WorkshopError)) throw e;
+    return e.refused ? { status: 404, why: `it is no longer kept: the workshop keeps files for ${KEPT_DAYS} days` } : { status: 503, why: e.message };
+  }
+}

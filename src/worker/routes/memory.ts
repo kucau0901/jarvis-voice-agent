@@ -6,8 +6,7 @@ import { workFromCalendar } from "../lib/work-place.ts";
 import { stateStub } from "../lib/state-client.ts";
 import { OWNER, bookOf } from "../lib/context.ts";
 import { handleSpecialties } from "./specialties.ts";
-import { localeOf } from "../lib/locale.ts";
-import { closeInMeaning, closeInWords, doubts, oneKey, pairKey } from "../lib/true-now.ts";
+import { doubtsOf, settle } from "../lib/true-now.ts";
 
 const KINDS: readonly Kind[] = ["place", "person", "preference", "vehicle", "routine", "note", "reference"];
 
@@ -301,11 +300,7 @@ async function trueNow(req: Request, env: Env, store: MemoryStore, book: string)
   await store.load();
   // What every question carries, not the reference shelf: a roster's lines are alike by nature.
   const facts = store.facts;
-  if (req.method === "GET") {
-    const near = await closeInMeaning(env, book, facts).catch(() => null);
-    const names = [...facts.flatMap((f) => (f.kind === "person" && f.slug ? [f.slug] : [])), ...((await state.familyPeople().catch(() => [])) ?? []).map((p) => p.name)];
-    return json({ ...doubts(facts, near ?? closeInWords(facts), names, await state.trueKept(book), Date.now(), localeOf(env).timeZone), byMeaning: !!near });
-  }
+  if (req.method === "GET") return json(await doubtsOf(env, facts, book));
   if (req.method !== "POST") return err(405, "GET or POST");
   const b = await body(req);
   const one = typeof b?.id === "string" ? facts.find((f) => f.id === b.id) : undefined;
@@ -318,11 +313,7 @@ async function trueNow(req: Request, env: Env, store: MemoryStore, book: string)
   // What they chose between is what they were shown: the family's may have been changed by someone else meanwhile.
   const seen = (b?.seen && typeof b.seen === "object" ? b.seen : {}) as Record<string, unknown>;
   if (all.some((f) => seen[f.id] !== f.updatedAt)) return err(409, "one of them was changed since: look again");
-  const going = all.filter((f) => !keep.includes(f.id));
-  for (const f of going) store.remove(f.id);
-  if (going.length) await store.save();
-  else await state.trueKeep(book, one ? oneKey(one) : pairKey(x!, y!));
-  return json({ ok: true, forgotten: going.map((f) => f.id) });
+  return json({ ok: true, forgotten: await settle(env, store, book, all, keep) });
 }
 
 /**
