@@ -2783,10 +2783,18 @@ So the boundary is who may ask and when, and it is drawn in code:
   on the glasses), where a stranger may be what was heard. The output of a
   command it ran itself is its own, fenced as data but not as someone else's,
   so a second command can follow the first.
-- **What the screen shows is someone else's.** A look is the front window's
+- **Used where it is, so its person goes on working.** An app is looked at by
+  its name, behind the one they are using or not, and pressed, typed and
+  scrolled in where it is, through the Accessibility API; keys go to that app
+  alone. Input goes only to the app last looked at, never to whatever happens
+  to be in front, so nothing lands in the app they are working in. An app
+  opened opens behind. Only what cannot be done from behind needs it in front,
+  and `front` brings it there once they agree.
+- **What the screen shows is someone else's.** A look is that app's window,
   words and a numbered list of what can be pressed, quoted as data; a password
-  field's value is never read. A screenshot goes to the router model as a
-  picture, only when asked. An act says back only which app is in front.
+  field's value is never read. A screenshot of that window goes to the router
+  model as a picture, only when asked. An act says back only that it was done,
+  and in which app.
 - **The Mac keeps its own rules** (the desktop app's `rules.ts`). It never
   types or presses into a terminal, Script Editor, Automator, Shortcuts, System
   Settings, a security prompt or Jarvis itself, so the GUI is no way round the

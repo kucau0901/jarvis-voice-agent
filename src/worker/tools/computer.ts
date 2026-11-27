@@ -21,6 +21,9 @@ import type { ComputerAct, ComputerOp, ComputerRequest } from "../lib/computer.t
  * someone else's, so a second may follow it. What the screen shows is
  * someone else's (a mail open in a window), so it is quoted.
  *
+ * An app is used where it is, behind the one its person works in or not, so
+ * they go on working; it comes to the front only when they agree ('front').
+ *
  * The Mac keeps the rest of the wall (jarvis-desktop): control is off until
  * its person turns it on there, it shows while Jarvis uses it and stops on a
  * shortcut, it never types into a terminal or a password field, and it opens
@@ -33,7 +36,7 @@ const RUN_MS = 120_000;
 const SCREEN = "WHAT IS ON THEIR MAC'S SCREEN, WHICH CAN SHOW WHAT OTHERS WROTE";
 
 const OPS: readonly ComputerOp[] = ["look", "do", "run"];
-const ACTS: readonly ComputerAct[] = ["press", "type", "key", "scroll", "open"];
+const ACTS: readonly ComputerAct[] = ["press", "type", "key", "scroll", "open", "front"];
 const words = (v: unknown): string[] => wordsOf(typeof v === "string" ? v : "");
 const str = (v: unknown): string | null => (typeof v === "string" && v.trim() ? v.trim() : null);
 
@@ -63,14 +66,14 @@ const whoOf = (m: Device): string => deviceWho(m.id, m.owner);
 function requestOf(args: Record<string, unknown>, op: ComputerOp): ComputerRequest | string {
   const text = str(args.text);
   if (op === "run") return text ? { op, act: null, element: null, text, picture: false, ms: RUN_MS } : "Say the command, in text.";
-  if (op === "look") return { op, act: null, element: null, text: null, picture: args.picture === true, ms: LOOK_MS };
+  if (op === "look") return { op, act: null, element: null, text, picture: args.picture === true, ms: LOOK_MS };
   const act = ACTS.find((a) => a === args.act);
   if (!act) return `Say what to do, in act: one of ${ACTS.join(", ")}.`;
   const element = typeof args.element === "number" && Number.isInteger(args.element) && args.element > 0 ? args.element : null;
   if (act === "press" && element === null) return "Say which element to press, by its number from the last look.";
-  if (act !== "press" && !text) return `Say what to ${act}, in text.`;
+  if (act !== "press" && act !== "front" && !text) return `Say what to ${act}, in text.`;
   if (act === "scroll" && text !== "up" && text !== "down") return "Scroll says up or down, in text.";
-  return { op, act, element, text: act === "press" ? null : text, picture: false, ms: LOOK_MS };
+  return { op, act, element, text: act === "press" || act === "front" ? null : text, picture: false, ms: LOOK_MS };
 }
 
 export const computer: Tool = {
@@ -78,17 +81,19 @@ export const computer: Tool = {
   scope: "computer",
   description:
     "The user's own Macs, where the Jarvis app runs with control on. Only when they ask for something on their Mac. " +
-    "'list' their Macs; 'look' at the front window (numbered elements; picture true for a screenshot); 'do' one act: press element N, " +
-    "type text, key a combo like 'cmd+t', scroll up/down, open an app by name or an https address; 'run' a shell command (zsh, in their home). " +
+    "'list' their Macs; 'look' at an app by its name in text (null: the one in front), where it is, behind their own or not " +
+    "(numbered elements; picture true for its window); 'do' one act in the app last looked at: press element N, type into its " +
+    "focused field, key a combo like 'cmd+t', scroll up/down, open an app by name or an https address (it opens behind); 'front' " +
+    "brings that app forward, only once they agree, for what cannot be done from behind; 'run' a shell command (zsh, in their home). " +
     "Look before pressing. For several Macs, one call each, together. Never a password.",
   parameters: {
     type: "object",
     properties: {
       op: { type: "string", enum: ["list", "look", "do", "run"] },
       mac: { type: ["string", "null"], description: "Words of the Mac's name, e.g. 'office'; null for the only one online." },
-      act: { type: ["string", "null"], enum: ["press", "type", "key", "scroll", "open", null] },
+      act: { type: ["string", "null"], enum: ["press", "type", "key", "scroll", "open", "front", null] },
       element: { type: ["integer", "null"], description: "For press: its number from the last look." },
-      text: { type: ["string", "null"], description: "run: the command; type: the words; key: e.g. 'cmd+shift+t'; scroll: up or down; open: an app's name or an https address." },
+      text: { type: ["string", "null"], description: "look: the app's name, or null; run: the command; type: the words; key: e.g. 'cmd+shift+t'; scroll: up or down; open: an app's name or an https address." },
       picture: { type: ["boolean", "null"], description: "look: true to see a screenshot too." },
     },
     required: ["op", "mac", "act", "element", "text", "picture"],
