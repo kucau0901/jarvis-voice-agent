@@ -54,6 +54,8 @@ function tileFor(label: string, read: unknown, buttons: unknown, ctx: ToolContex
   const call = (tool: unknown, args: unknown, reading = false): { tool: string; args: unknown } | string => {
     const one = offered.find((t) => t.name === tool);
     if (one && one.name === "ask_hermes" && !named) return HERMES;
+    // A press runs it with nobody's words, and their Mac is used only on their own (tools/computer.ts).
+    if (one && one.name === "computer") return "their Mac is used only when they ask, in their own words: never from a tile.";
     if (typeof tool !== "string" || !one) return `"${String(tool)}" is not one of the tools you can use.`;
     if (reading && !readsOnly(one)) {
       return (

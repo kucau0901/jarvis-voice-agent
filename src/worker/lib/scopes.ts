@@ -37,6 +37,13 @@ export const SCOPES = [
    * nobody asking has it.
    */
   "workshop",
+  /**
+   * The person's own Macs, through the Jarvis desktop app (tools/computer.ts):
+   * commands run there as them, and other apps are used. Like Hermes, its own
+   * scope, in no role but an admin's, and nothing that runs with nobody asking
+   * has it. On a device it only marks one of their Macs; no device uses it.
+   */
+  "computer",
   "media",
   "mail",
   "calendar",

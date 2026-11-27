@@ -39,6 +39,7 @@ const MEANING: Record<string, string> = {
   hermes: "Hermes, your own agent: it can run commands on its machine",
   workshop: "The workshop: jobs may run code and make files, with no network",
   browser: "a browser Jarvis drives, signed in wherever you signed it in",
+  computer: "one of your Macs: Jarvis runs commands and uses its apps there when you ask",
   media: "Spotify",
   screen: "maps on the screen, and its owner's Home panels",
   voice: "live voice sessions",

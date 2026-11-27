@@ -672,6 +672,7 @@ export async function run(
         ...(opts.browserSites ? { browserSites: opts.browserSites } : {}),
         ...(p!.procedure && !repliesToEarlier(turns) ? { procedure: p!.procedure } : {}),
         ...(outside ? { outside: { said: ownPart(ownWords(turns, opts) ?? opts.standing ?? "") } } : {}),
+        ...(opts.openMic ? { overheard: true as const } : {}),
       }, watched);
       const said = (o: (typeof out)[number]): string => (!("output" in o) ? "" : typeof o.output === "string" ? o.output : Array.isArray(o.output) ? o.output.map((x) => ("text" in x ? x.text : "")).join("\n") : "");
       if (out.some((o) => hasQuoted(said(o)))) outside = true;
@@ -780,7 +781,7 @@ export async function run(
 export async function runCalls(
   calls: OpenAI.Responses.ResponseFunctionToolCall[],
   byName: Map<string, Tool>,
-  { screenless, ...base }: { env: Env; signal: AbortSignal; memory: MemoryStore; grants: readonly Grant[]; offered?: ToolContext["offered"]; asked?: string; lately?: readonly string[]; attached?: ToolContext["attached"]; procedure?: Procedure; outside?: ToolContext["outside"]; screenless?: boolean; browserSites?: readonly string[] },
+  { screenless, ...base }: { env: Env; signal: AbortSignal; memory: MemoryStore; grants: readonly Grant[]; offered?: ToolContext["offered"]; asked?: string; lately?: readonly string[]; attached?: ToolContext["attached"]; procedure?: Procedure; outside?: ToolContext["outside"]; overheard?: true; screenless?: boolean; browserSites?: readonly string[] },
   sse: EventSink,
 ): Promise<OpenAI.Responses.ResponseInput> {
   return Promise.all(

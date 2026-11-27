@@ -195,6 +195,13 @@ console.log("\nfailures, said plainly");
   check(`work in the browser goes on past ${MAX_STEPS} hops`, h.asks.length === 13 && last(h.events).type === "result", h.asks.length);
 }
 {
+  // A Mac is used a look and a press at a time too (tools/computer.ts).
+  const steps = [call("computer"), ...Array.from({ length: 9 }, () => call("computer"))];
+  const h = harness([...steps.map((c, i) => reply(`r${i}`, { output: [c] })), reply("done", { output_text: "Opened and pressed." })]);
+  await routerLoop(h.deps);
+  check(`work on a Mac goes on past ${MAX_STEPS} hops`, h.asks.length === 11 && last(h.events).type === "result", h.asks.length);
+}
+{
   const answers = Array.from({ length: BROWSER_MAX_STEPS + 2 }, (_, i) => reply(`r${i}`, { output: [call("browser_press")] }));
   const h = harness(answers);
   await routerLoop(h.deps);

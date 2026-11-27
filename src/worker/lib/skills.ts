@@ -140,9 +140,10 @@ export const ADDRESS_PREFIX = "jbt1_";
  * bot asking never makes Jarvis send to a bot), the person's alerts, the
  * family's chat, live voice, the screen, routines, which would go on
  * running in its name, components, which act in worlds of their own, and
- * the workshop, which is a background job's.
+ * the workshop, which is a background job's, and the person's Macs, used
+ * only when they ask in their own words (tools/computer.ts).
  */
-export const NEVER_FOR_BOTS: readonly Grant[] = ["skills", "alerts", "chat", "voice", "screen", "routines", "components", "workshop"];
+export const NEVER_FOR_BOTS: readonly Grant[] = ["skills", "alerts", "chat", "voice", "screen", "routines", "components", "workshop", "computer"];
 /** What may be ticked for one: Hermes among them, never unless ticked. */
 export const BOT_REACH: readonly Grant[] = SCOPES.filter((s) => !NEVER_FOR_BOTS.includes(s));
 /** A new address may ask questions, and no more until more is ticked. */

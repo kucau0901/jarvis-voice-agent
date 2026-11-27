@@ -2753,6 +2753,74 @@ those are not closed: two jobs both talked round, one after the other, could
 pass a few words. Where that is not enough, Jarvis's containers belong in a
 virtual machine of their own.
 
+## The Mac
+
+A person may let Jarvis use their own Macs, from wherever they talk to it (the
+glasses, a phone, the web): run a command, open an app, look at what is on the
+screen, press and type there (`lib/computer.ts`, `tools/computer.ts`). The
+desktop app does the work on the Mac (its own repository); Jarvis decides when.
+
+There is no wall here as there is around the workshop. A Mac is the person's
+real computer, signed in to everything they are, and a command runs as them.
+So the boundary is who may ask and when, and it is drawn in code:
+
+- **Its own scope, never a default.** `computer` is in no role but an admin's,
+  and an admin gives it in Family. Nothing that runs with nobody asking has
+  it: not a routine, a habit, a job, an approval, a Home tile's reading, the
+  panel look-up, Telegram, or a bot, however ticked.
+- **Only its person, only their own Mac, only in their own words.** Each Mac is
+  a device of its person's, made by the desktop app when they turn on "Let
+  Jarvis control this Mac" there (off until then). The tool is used only when
+  the latest message has words of theirs (`ownPart`), so a forwarded message,
+  a routine, a bot, a tile press and another program's call do nothing; never
+  by a device, Telegram included. A request goes to that one Mac and only that
+  Mac's socket can answer it; another person's Mac is never asked.
+- **A command only in a clean turn.** A command is refused in a turn that has
+  read something someone else wrote (`ctx.outside`: mail, a page, a web search,
+  quoted text in the message, or the Mac's own screen, which can show a mail),
+  as Hermes is: a page a model read must not be what runs a command. It is
+  refused too when heard by a microphone open to whoever is near (a follow-up
+  on the glasses), where a stranger may be what was heard. The output of a
+  command it ran itself is its own, fenced as data but not as someone else's,
+  so a second command can follow the first.
+- **What the screen shows is someone else's.** A look is the front window's
+  words and a numbered list of what can be pressed, quoted as data; a password
+  field's value is never read. A screenshot goes to the router model as a
+  picture, only when asked. An act says back only which app is in front.
+- **The Mac keeps its own rules** (the desktop app's `rules.ts`). It never
+  types or presses into a terminal, Script Editor, Automator, Shortcuts, System
+  Settings, a security prompt or Jarvis itself, so the GUI is no way round the
+  command's gate; never into a password field, and never while the system
+  says secure input is on; it opens only an app by name or a web address,
+  never a file, since opening a file can run one. A command has no keyboard,
+  so `sudo` cannot ask for a password: Jarvis never types one.
+- **Seen, and stopped.** While Jarvis uses the Mac, a banner says so on its
+  screen (kept out of screenshots) and the menu bar's icon changes. A shortcut
+  stops what runs and turns control off; every look, act and command is in a
+  log on the Mac.
+- **Several Macs, each on its own.** A person may have any number; each is
+  named, and one is picked by its name's words, or is the only one online.
+  "All my Macs" is one call per Mac in the same hop, run at once. A Mac asleep,
+  off or with control off is offline; Jarvis says so and never wakes it.
+
+Why the app's own process and not the page: the page in its window is the web
+app, signed in as its person. Had the page been able to run commands, anything
+that ran in it could. Instead the app keeps the Mac's own token (`alerts`,
+`computer`) in its main process, in the system's keychain, and opens its own
+socket with it; the page only hands it over once, at linking. The answers come
+back on that socket, as a screen's ack does: no route is added.
+
+**What it does not protect against.** A command's output can steer the next
+command in the same turn (a page fetched with `curl`); a past answer that
+carried someone else's words, followed by their own "yes, do it", runs what it
+said; the context a question carries (past attempts, a job's question, a family
+message, what is playing) is not counted as read, or Hermes would never run and
+a command asked twice would be refused the second time. Opening an app that runs
+what it is given (an editor's own terminal) is not refused. A process that
+detaches itself survives Stop. And a Mac's permission prompts (Files and
+Folders, Automation) wait for a person: a command that meets one waits until it
+runs out of time.
+
 ## Architecture
 
 One Cloudflare Worker serves both the app and `/api/*`, so the app needs no CORS
@@ -2847,6 +2915,11 @@ changes. Version 1, which the other repository builds against:
 - `passkeys: boolean`: false where the platform passkey cannot work
   (Electron on a Mac). The page then offers no passkey, and pairing signs the
   window in.
+- `onLinkComputer(cb(name))` and `computerLinked({ token } | { error })`,
+  optional, so looked for and not assumed: the person turned on "Let Jarvis
+  control this Mac", and the page makes a device of theirs named so, with
+  `alerts` and `computer`, and hands its token over once
+  (`src/app/computerLink.ts`; "The Mac", above).
 
 Push-to-talk records and sends the audio there even where the browser's own
 recognition is chosen: Electron has the object but not Google's service

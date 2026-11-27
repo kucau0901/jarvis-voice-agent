@@ -165,7 +165,8 @@ export async function routerLoop(deps: LoopDeps): Promise<void> {
   };
 
   try {
-    const most = () => (used.some((name) => name.startsWith("browser_")) ? BROWSER_MAX_STEPS : (deps.steps ?? MAX_STEPS));
+    // A browser or a Mac is used a look and a press at a time.
+    const most = () => (used.some((name) => name.startsWith("browser_") || name === "computer") ? BROWSER_MAX_STEPS : (deps.steps ?? MAX_STEPS));
     for (let step = 0; step < most(); step++) {
       if (signal.aborted) {
         // Cut off between hops: what the hops so far spent still counts.
