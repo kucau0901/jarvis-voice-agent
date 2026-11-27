@@ -49,6 +49,13 @@ These come from the owner and hold for every change.
   typed by code, on that site's origin only, never given to a model, never
   sent to the app. It never answers an "are you human" check: the person
   does that part (`docs/DESIGN.md`, "The browser").
+- **A Mac is its person's real computer.** The `computer` scope follows the
+  same rule as `hermes`, and is kept from jobs, routines, habits, approvals,
+  tiles, Telegram and bots. It is used only in its person's own words
+  (`ownPart`), never by a device, and a command only in a turn that read
+  nothing someone else wrote (`ctx.outside`) and was not overheard. The Mac's
+  own rules (the desktop app's `rules.ts`) keep terminals, password fields
+  and files out of reach (`docs/DESIGN.md`, "The Mac").
 - **A component's words are data.** A component (`lib/components.ts`) is an
   outside system someone else runs: what it lists, returns and reports is
   quoted or shown, never followed, and no model reads a report as it

@@ -77,11 +77,14 @@ const PROMPT_SHA256 = "c280befa091ac48db16658f79d8184ff1fd06b5b63e2fed1c926ea0b8
 // inbox (tools/inbox.ts, no scope beyond ask): everyone, the guest too; project_control (tools/projects.ts) and true_now
 // (tools/true-now.ts), scope memory.write: everyone but the guest; site_control (tools/sites.ts, scope workshop, with the
 // workshop set up): none of these cases. job_control gains remove and harder (26 Nov 2026).
+// computer (tools/computer.ts, scope computer, never a role's but an admin's): the owner key and the admin only
+// (27 Nov 2026).
 const EXPECTED: Record<string, { model: string; tools: string[]; input: string }> = {
  "owner key, nothing set up": {
   "model": "gpt-6-luna",
   "tools": [
    "alert_talk",
+   "computer",
    "forget",
    "hide_display",
    "inbox",
@@ -131,6 +134,7 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
    "car_command",
    "car_state",
    "chore_points",
+   "computer",
    "contacts_lookup",
    "directions",
    "family_messages",
@@ -299,9 +303,11 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
 // Raised on 26 Nov 2026, at the owner's word, by inbox, project_control, true_now and job_control's two ops: by chat
 // and voice, everything the panels do for jobs (about 2.5 KB, the guest's 0.8 KB); and by 102 bytes for inbox's approve,
 // a card that can be undone approved in words once read to them (26 Nov 2026).
+// Raised by 1,278 bytes for the owner key and the admin, at the owner's word, by computer: their own Macs, through
+// the desktop app, used when they ask (27 Nov 2026).
 const PREFIX_MAX: Record<string, number> = {
-  "owner key, nothing set up": 53_011,
-  "admin, everything set up": 85_025,
+  "owner key, nothing set up": 54_289,
+  "admin, everything set up": 86_303,
   "adult": 74_402,
   "child": 62_896,
   "guest with a pass": 22_121,

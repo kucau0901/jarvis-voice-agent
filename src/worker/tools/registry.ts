@@ -30,6 +30,7 @@ import { passTool } from "./pass.ts";
 import { panelTools } from "./panels.ts";
 import { skillTools } from "./skills.ts";
 import { browserTools } from "./browser.ts";
+import { computer } from "./computer.ts";
 import { siteControl } from "./sites.ts";
 import { projectControl } from "./projects.ts";
 import { trueNow } from "./true-now.ts";
@@ -102,6 +103,12 @@ export interface ToolContext {
    * judged by `said`, their own words or, of a routine, its maker's.
    */
   outside?: { said?: string };
+  /**
+   * Heard by a microphone open to whoever is near (RunOptions.openMic): a
+   * stranger may be what it heard, so a command on their Mac is not run on
+   * it (tools/computer.ts).
+   */
+  overheard?: true;
   /** The steps the answer before this question offered to save (lib/specialties.ts): all specialty_save may keep. */
   procedure?: Procedure;
   /**
@@ -305,6 +312,7 @@ const ALL: Tool[] = [
   houseWatch,
   ...skillTools,
   ...browserTools,
+  computer,
   askHermes,
 ];
 

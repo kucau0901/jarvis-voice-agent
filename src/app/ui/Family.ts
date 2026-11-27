@@ -86,6 +86,7 @@ const SCOPE_WORDS: Record<string, string> = {
   hermes: "Hermes (runs commands)",
   workshop: "Workshop (jobs run code, offline)",
   browser: "the browser (signed in as you left it)",
+  computer: "their Macs (runs commands)",
   media: "Spotify",
   mail: "mail",
   calendar: "calendar",

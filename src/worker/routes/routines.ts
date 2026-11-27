@@ -159,7 +159,7 @@ export async function askForRoutine(
   const sink = new Collector();
   const sites = env.BROWSER_URL && allows(grants, "browser") ? ((await stateStub(env)?.vaultAloneSites(env.JARVIS_PERSON || OWNER).catch(() => [])) ?? []) : [];
   // Nothing to show a map on: screen tools are left out rather than offered and lost; Hermes too (above), and the browser without sites chosen.
-  const unattended = (grants.includes(WILDCARD) ? SCOPES : grants).filter((g) => g !== "screen" && g !== "hermes" && g !== "workshop" && (g !== "browser" || sites.length > 0));
+  const unattended = (grants.includes(WILDCARD) ? SCOPES : grants).filter((g) => g !== "screen" && g !== "hermes" && g !== "workshop" && g !== "computer" && (g !== "browser" || sites.length > 0));
   await run(env, [{ role: "user", text: prompt }], sink, AbortSignal.timeout(120_000), unattended, {
     surface: "routine",
     // Nor Home Assistant's own configuration: an automation is written when someone asks, in the conversation.

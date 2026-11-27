@@ -102,6 +102,7 @@ console.log("\nwhat may be noted");
     { name: "directions" }, { name: "calendar_check", scope: "calendar" as const }, { name: "car_command", scope: "car.control" as const },
     { name: "mail_send", scope: "mail" as const }, { name: "remember", scope: "memory.write" as const }, { name: "home-assistant__ha_call_service" },
     { name: "notes__create_page" }, { name: "ask_hermes", scope: "hermes" as const }, { name: "make_page", scope: "screen" as const },
+    { name: "computer", scope: "computer" as const },
   ];
   const n = (tools: string[], grants: string[] = ["*"], ok = true) => noteworthy({ ok, tools }, grants as never, offered);
   check("answered by reading: yes", n(["directions", "calendar_check"]));
@@ -109,6 +110,7 @@ console.log("\nwhat may be noted");
   check("the house, the car, mail, memory, another server's change: yes, a routine can do them", n(["home-assistant__ha_call_service"]) && n(["car_command"]) && n(["mail_send"]) && n(["remember"]) && n(["notes__create_page"]));
   check("Hermes: no, a routine runs without it", !n(["ask_hermes"]) && !n(["directions", "ask_hermes"]));
   check("drawing on a screen: no, a routine has none", !n(["make_page"]));
+  check("their Mac: no, it is used only in their own words", !n(["computer"]));
   check("a tool it was not given: no", !n(["unknown_tool"]));
   check("a failed answer: no", !n([], ["*"], false));
   check("someone who may not have routines (a guest): no", !n([], ["ask", "voice"]));

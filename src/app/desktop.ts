@@ -17,6 +17,14 @@ export interface DesktopBridge {
   onTalk(cb: () => void): void;
   /** False where the platform's passkey cannot work (Electron on a Mac). */
   passkeys: boolean;
+  /**
+   * Its person turned on "Let Jarvis control this Mac" (computerLink.ts):
+   * asks for a device of theirs, named so. Absent in apps from before, so
+   * looked for, not assumed; the version stays 1.
+   */
+  onLinkComputer?(cb: (name: string) => void): void;
+  /** The answer to that: the new device's token, handed over once, or why not. */
+  computerLinked?(r: { token: string } | { error: string }): void;
 }
 
 declare global {

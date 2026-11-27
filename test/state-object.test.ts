@@ -165,6 +165,23 @@ try {
   globalThis.fetch = realFetch;
 }
 
+console.log("\na person's Mac is asked, and answers on its own socket (lib/computer.ts)");
+{
+  const sent: string[] = [];
+  const mac = { tags: ["u_sara~d_mac"], close() {}, send: (d: string) => void sent.push(d), deserializeAttachment: () => ({ who: "u_sara~d_mac", label: "Mac", visible: false, since: 1 }), serializeAttachment() {} };
+  sockets.push(mac);
+  check("online: the Macs asked about that have a socket open", JSON.stringify(await jarvis.computersOnline(["u_sara~d_mac", "u_sara~d_air"])) === JSON.stringify(["u_sara~d_mac"]));
+  const req = { op: "run" as const, act: null, element: null, text: "uptime", picture: false, ms: 1000 };
+  const asked = jarvis.computerAsk("u_sara", "u_sara~d_mac", req);
+  const msg = JSON.parse(sent[0] ?? "{}") as { type?: string; id?: string; text?: string; ms?: number };
+  check("the request reaches that Mac with every part of it", msg.type === "computer.do" && msg.text === "uptime" && msg.ms === 1000, msg);
+  jarvis.webSocketMessage(mac as never, JSON.stringify({ type: "computer.answer", id: msg.id, ok: true, text: "up 3 days", image: null }));
+  const r = await asked;
+  check("its answer comes back through the object", typeof r === "object" && r.text === "up 3 days", r);
+  check("someone else's Mac is not asked for them", (await jarvis.computerAsk("u_ben", "u_sara~d_mac", req)) === "offline" && sent.length === 1);
+  sockets.length = 0;
+}
+
 console.log("\nsigning out closes that sign-in's open screens, and no others");
 {
   const screen = (tags: string[]) => ({ tags, closed: undefined as number | undefined, why: "", close(code: number, reason = "") { this.closed = code; this.why = reason; } });

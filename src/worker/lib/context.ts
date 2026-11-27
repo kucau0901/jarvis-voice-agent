@@ -57,7 +57,7 @@ export const maySteer = (
   grants: readonly Grant[],
 ): boolean =>
   mayWork(
-    { createdBy: job.createdBy, grants: withoutScreen(job.grants).filter((s) => s !== "hermes" && s !== "browser" && (s !== "workshop" || job.mode === "files")) },
+    { createdBy: job.createdBy, grants: withoutScreen(job.grants).filter((s) => s !== "hermes" && s !== "browser" && s !== "computer" && (s !== "workshop" || job.mode === "files")) },
     env,
     grants,
   );

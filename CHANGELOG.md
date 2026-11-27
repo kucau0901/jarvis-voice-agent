@@ -19,6 +19,12 @@ of every release, and in the [README](README.md#updating).
 
 ### Added
 
+- **Jarvis can use your Macs**, through the Jarvis desktop app, from the glasses, the phone
+  or the web: "how much disk is free on my Mac?", "open Spotify on the office Mac", "what's
+  on my Mac's screen?", then press and type there. Each Mac with the app and "Let Jarvis
+  control this Mac" turned on is yours to name; several can be asked in one go. It needs
+  the new `computer` scope, which only an admin has until they give it in Family, and a
+  desktop app that knows how (the next release of jarvis-desktop).
 - **What the panels do for jobs, you can now ask for**, typed or spoken, on the glasses too:
   - "What's waiting for me?" lists your jobs' questions, the cards waiting for your OK
     and whether each can be undone, what will be asked later, and what can still be put
@@ -38,6 +44,11 @@ of every release, and in the [README](README.md#updating).
 
 ### Security
 
+- **Your Mac is used only in your own words, and a command only in a clean turn.** Never by
+  a routine, a job, an approval, a Home tile, Telegram, a bot or a device. A command is
+  refused in a turn that read mail, a page or the Mac's own screen, or that was heard with
+  the glasses' microphone open; the Mac itself never types into a terminal or a password
+  field, and opens only an app or a web address, never a file.
 - **A card that can be undone can be approved in words**, as well as by a tap: "publish
   the bake sale site", then Jarvis reads the card to you whole, then "yes". Only your own
   next words approve it, within ten minutes, with the same checks as a tap. A card that

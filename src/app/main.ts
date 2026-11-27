@@ -52,6 +52,7 @@ import { proposalCards } from "./proposal";
 import { hubStatus, inviteInfo, joinWithInvite, pairThisScreen, signInWithPasskey } from "./account";
 import { passkeyError, passkeysSupported } from "./passkey";
 import { desktop } from "./desktop";
+import { linkComputers } from "./computerLink";
 import { describe, dropPerson, endSignIn, keepPerson, loadPeople, lockPerson, unlockPerson, type Person } from "./people";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -1308,6 +1309,8 @@ desktop?.onTalk(() => {
   showTab("chat");
   els.orb.click();
 });
+// Linking this computer, when the desktop app asks (computerLink.ts).
+linkComputers(() => key);
 /* ---------- typing ------------------------------------------------------ */
 /*
  * The conversation so far goes to the router as text and the answer comes

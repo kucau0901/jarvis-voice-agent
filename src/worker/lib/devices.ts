@@ -213,6 +213,20 @@ export async function list(env: Env): Promise<Device[]> {
 }
 
 /**
+ * A person's Macs (tools/computer.ts): their own devices made for it, which
+ * hold `computer` itself (a `*` device is not one), not revoked or lapsed,
+ * with when each was last seen. Only their seen keys are read.
+ */
+export async function computersOf(env: Env, person: string): Promise<Device[]> {
+  const now = Date.now();
+  const macs = (await readIndex(env)).filter(
+    (d) => !d.revokedAt && !(d.expiresAt && d.expiresAt < now) && (d.owner ?? "owner") === person && d.scopes.includes("computer"),
+  );
+  const seen = await Promise.all(macs.map((d) => env.CONFIG.get(SEEN_KEY(d.id)).catch(() => null)));
+  return macs.map((d, i) => (Number(seen[i]) > 0 ? { ...d, lastSeenAt: Number(seen[i]) } : d)).map(strip);
+}
+
+/**
  * Mint one. The returned token is the ONLY time it exists in readable form;
  * everything stored is a digest, so it genuinely cannot be recovered later.
  */

@@ -33,5 +33,14 @@ console.log("\nthe bridge");
   delete w.window;
 }
 
+console.log("\nlinking a Mac: its name");
+{
+  const { uniqueName } = await import("../src/app/computerLink.ts");
+  check("a name nobody has: kept", uniqueName("Mac mini", ["Office iMac"]) === "Mac mini");
+  check("one they have: numbered", uniqueName("Mac mini", ["mac mini"]) === "Mac mini 2");
+  check("numbered past those taken", uniqueName("Mac mini", ["Mac mini", "Mac mini 2", "Mac mini 3"]) === "Mac mini 4");
+  check("spaces tidied, and none at all: Mac", uniqueName("  Mac   mini ", []) === "Mac mini" && uniqueName("   ", []) === "Mac");
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

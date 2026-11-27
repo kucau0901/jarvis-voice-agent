@@ -5,6 +5,7 @@ import type { Changeset, RefChangeset } from "./lib/memory.ts";
 import type { Turn } from "./lib/history.ts";
 import type { Changes } from "./lib/settings.ts";
 import { LiveHub, type LiveClient, type LiveSocket } from "./lib/live.ts";
+import { Computers, type ComputerRequest } from "./lib/computer.ts";
 import type { Alert, Delivery } from "./lib/alerts.ts";
 import type { PushRecord } from "./lib/state-host.ts";
 import { deliver, makeAlert } from "./lib/alerts.ts";
@@ -89,6 +90,8 @@ export class JarvisState extends DurableObject<Env> {
   /** Who uses this Jarvis and how they sign in (lib/hub.ts). */
   private people: HubHost;
   private hub = new LiveHub();
+  /** Requests waiting on a person's Macs (lib/computer.ts), on the same sockets. */
+  private computers = new Computers();
   private scheduler: Scheduler;
   private jobs: Jobs;
   /** Work going on that the alarm does not wait for (goesOn). */
@@ -314,7 +317,9 @@ export class JarvisState extends DurableObject<Env> {
   }
 
   webSocketMessage(ws: WebSocket, msg: string | ArrayBuffer) {
-    this.hub.receive(this.wrap(ws), msg);
+    // A Mac's answer first: it can be longer than the screens' hub takes.
+    const sock = this.wrap(ws);
+    if (!this.computers.receive(sock, msg)) this.hub.receive(sock, msg);
   }
 
   webSocketClose(ws: WebSocket, code: number, reason: string) {
@@ -347,6 +352,16 @@ export class JarvisState extends DurableObject<Env> {
 
   glassesOpen(person: string) {
     return this.hub.openGlasses(this.sockets(), person);
+  }
+
+  /** Which of a person's Macs have a socket open (tools/computer.ts). */
+  computersOnline(whos: string[]) {
+    return this.computers.online(this.sockets(), whos);
+  }
+
+  /** Ask one of a person's Macs, and wait for its answer (lib/computer.ts). */
+  computerAsk(person: string, who: string, req: ComputerRequest) {
+    return this.computers.ask(this.sockets(), person, who, req);
   }
 
   /**
@@ -765,7 +780,7 @@ export class JarvisState extends DurableObject<Env> {
       // As them, with what they may reach, less the house (no MCP to discover on an alarm), Hermes and the browser.
       look: async (person, text) => {
         const v = await view(person);
-        const grants = narrow(v?.scopes ?? [], SCOPES.filter((s) => s !== "home" && s !== "hermes" && s !== "browser" && s !== "workshop"));
+        const grants = narrow(v?.scopes ?? [], SCOPES.filter((s) => s !== "home" && s !== "hermes" && s !== "browser" && s !== "workshop" && s !== "computer"));
         return lookUp(await this.personEnv(env, person), text, grants, AbortSignal.timeout(90_000));
       },
     };

@@ -37,6 +37,7 @@ import { generateVapid, type VapidKeys } from "./webpush.ts";
 import { cosine, fromB64, type Near } from "./embeddings.ts";
 import type { Alert, Delivery, LiveResult, PushTarget } from "./alerts.ts";
 import type { LiveClient } from "./live.ts";
+import type { ComputerRequest, ComputerResult } from "./computer.ts";
 import type { Routine, RoutineInput, RunEntry } from "./routines.ts";
 import type { Job } from "./jobs.ts";
 import type { Relay, RelayKind } from "./relays.ts";
@@ -800,6 +801,10 @@ interface LiveApi {
   liveClients(): Promise<LiveClient[]>;
   /** Jarvis opened on the person's display glasses, by the glasses app on their phone: how many of their screens were told. */
   glassesOpen(person: string): Promise<number>;
+  /** Which of these Macs (lib/computer.ts), by `who`, have a socket open now. */
+  computersOnline(whos: string[]): Promise<string[]>;
+  /** Ask one of `person`'s Macs to look, act or run a command, and wait for its answer. */
+  computerAsk(person: string, who: string, req: ComputerRequest): Promise<ComputerResult>;
   /** Close a device's open screens and drop its notifications, when it is revoked or narrowed. */
   forgetDevice(who: string): Promise<void>;
   /**
