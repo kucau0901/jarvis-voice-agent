@@ -477,7 +477,7 @@ and connects to `/api/v1/events?ticket=…`. A ticket works once.
 | ← | `{"type":"conversation.said","said":[…]}` when a bot's exchange with Jarvis is kept in the person's conversation ([Bots](#bots-skills-both-ways)), rows as `GET /api/hub/conversation` gives them: sent to the person's own screens, signed in, never to a device |
 | → | `{"type":"presence","visible":true}` whenever the screen is shown or hidden |
 | → | `{"type":"ack","id":…,"visible":true}` on each alert, if someone can see it |
-| ← | `{"type":"computer.do","id","op","act","element","text","picture","ms"}` to one of a person's Macs (a device holding `computer`, the desktop app): `op` is `look`, `do` or `run`; `ms`, how long it has |
+| ← | `{"type":"computer.do","id","op","act","element","text","picture","ms"}` to one of a person's Macs (a device holding `computer`, the desktop app): `op` is `look` (`text`: an app's name, or null for the one in front), `do` (`act`: `press`, `type`, `key`, `scroll`, `open` or `front`, in the app last looked at) or `run`; `ms`, how long it has |
 | → | From that Mac: `{"type":"computer.got","id"}` at once, then `{"type":"computer.answer","id","ok","text","image"}` (`image` a `data:image/jpeg;base64,` screenshot or null; at most 512 KB in all). Sent with `type` first. Not answered within 5 s it counts as offline; only the Mac it went to can answer it |
 | → / ← | `ping` / `pong`, every 25 seconds or so, to keep proxies from closing it |
 

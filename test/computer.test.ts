@@ -185,6 +185,10 @@ console.log("\nthe tool");
   check("but a look after reading, or overheard, is done", asked.length === none + 1 && looked.text.includes("Finder"));
   check("what the screen shows is quoted as someone else's", hasQuoted(looked.text));
   check("on the only Mac online, unnamed, as its own person", asked.at(-1)!.who === "d_office" && asked.at(-1)!.person === "owner");
+  await run({ op: "look", text: "Spotify" }, "what is Spotify playing on my Mac?");
+  check("a look names the app, behind theirs or not", asked.at(-1)!.req.op === "look" && asked.at(-1)!.req.text === "Spotify");
+  await run({ op: "do", act: "front", text: "anything" }, "yes, bring it to the front");
+  check("front brings the app last looked at forward, and says nothing else", asked.at(-1)!.req.act === "front" && asked.at(-1)!.req.text === null);
 
   reply = { ok: true, text: "Filesystem  Size  Used\n/dev/disk3  460G  200G", image: null };
   const ran = await run({ op: "run", text: "df -h" }, "how much disk is free on my Mac?");

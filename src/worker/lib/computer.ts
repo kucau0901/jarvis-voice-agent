@@ -21,7 +21,7 @@ import type { LiveSocket } from "./live.ts";
  */
 
 export type ComputerOp = "look" | "do" | "run";
-export type ComputerAct = "press" | "type" | "key" | "scroll" | "open";
+export type ComputerAct = "press" | "type" | "key" | "scroll" | "open" | "front";
 
 /** What a Mac is asked: one look, act or command, and how long it has. */
 export interface ComputerRequest {

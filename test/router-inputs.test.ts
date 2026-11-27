@@ -305,9 +305,11 @@ const EXPECTED: Record<string, { model: string; tools: string[]; input: string }
 // a card that can be undone approved in words once read to them (26 Nov 2026).
 // Raised by 1,278 bytes for the owner key and the admin, at the owner's word, by computer: their own Macs, through
 // the desktop app, used when they ask (27 Nov 2026).
+// Raised by 264 more for the same two, at the owner's word: an app on their Mac is looked at by its name and used
+// where it is, behind their own, and brought forward only when they agree (27 Nov 2026).
 const PREFIX_MAX: Record<string, number> = {
-  "owner key, nothing set up": 54_289,
-  "admin, everything set up": 86_303,
+  "owner key, nothing set up": 54_553,
+  "admin, everything set up": 86_567,
   "adult": 74_402,
   "child": 62_896,
   "guest with a pass": 22_121,

@@ -21,8 +21,10 @@ of every release, and in the [README](README.md#updating).
 
 - **Jarvis can use your Macs**, through the Jarvis desktop app, from the glasses, the phone
   or the web: "how much disk is free on my Mac?", "open Spotify on the office Mac", "what's
-  on my Mac's screen?", then press and type there. Each Mac with the app and "Let Jarvis
-  control this Mac" turned on is yours to name; several can be asked in one go. It needs
+  on my Mac's screen?", then press and type there. Apps are used where they are, behind the
+  one you are working in, so you go on working; one comes to the front only when you agree.
+  Each Mac with the app and "Let Jarvis control this Mac" turned on is yours to name; several
+  can be asked in one go. It needs
   the new `computer` scope, which only an admin has until they give it in Family, and a
   desktop app that knows how (the next release of jarvis-desktop).
 - **What the panels do for jobs, you can now ask for**, typed or spoken, on the glasses too:
