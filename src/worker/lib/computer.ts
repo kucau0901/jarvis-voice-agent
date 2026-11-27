@@ -33,6 +33,20 @@ export interface ComputerRequest {
   ms: number;
 }
 
+/**
+ * A build for Claude Code on a Mac (lib/mac-build.ts): what its person asked,
+ * what their job found, and the job's name. Started by their tap; the Mac says
+ * it got it, and sends what came of it later by its own request
+ * (routes/computer.ts), never on the socket.
+ */
+export interface BuildRequest {
+  op: "build";
+  task: string;
+  notes: string;
+  name: string;
+  ms: number;
+}
+
 /** What a Mac said: whether it worked, in words, and a screenshot for a look that asked for one. */
 export interface ComputerAnswer {
   ok: boolean;
@@ -60,6 +74,12 @@ interface Waiting {
   answer(a: ComputerAnswer): void;
 }
 
+/** The newest socket of `person`'s Mac `who`; none for another person's: a slip elsewhere must not reach someone else's. */
+function newestOf(sockets: LiveSocket[], person: string, who: string): LiveSocket | undefined {
+  if (personOfWho(who) !== person) return undefined;
+  return sockets.filter((s) => s.client()?.who === who).sort((a, b) => (b.client()?.since ?? 0) - (a.client()?.since ?? 0))[0];
+}
+
 export class Computers {
   /** Requests waiting on a Mac. In memory only: the object is awake while it waits. */
   private waiting = new Map<string, Waiting>();
@@ -72,11 +92,7 @@ export class Computers {
 
   /** Ask one Mac of `person`'s: to its newest socket, waited for until it answers, or did not say it got it, or ran out of time. */
   ask(sockets: LiveSocket[], person: string, who: string, req: ComputerRequest, id: string = crypto.randomUUID()): Promise<ComputerResult> {
-    // Only its own person's Mac: a slip elsewhere must not reach someone else's.
-    if (personOfWho(who) !== person) return Promise.resolve("offline");
-    const newest = sockets
-      .filter((s) => s.client()?.who === who)
-      .sort((a, b) => (b.client()?.since ?? 0) - (a.client()?.since ?? 0))[0];
+    const newest = newestOf(sockets, person, who);
     if (!newest) return Promise.resolve("offline");
     return new Promise((resolve) => {
       const end = (r: ComputerResult) => {
@@ -97,6 +113,26 @@ export class Computers {
         newest.send(JSON.stringify({ type: "computer.do", id, ...req }));
       } catch {
         end("offline"); // closing; the runtime will report it
+      }
+    });
+  }
+
+  /** Start a build on one Mac of `person`'s: true once it says it got it, false when it did not. What came of it comes later, by its own request. */
+  start(sockets: LiveSocket[], person: string, who: string, req: BuildRequest, id: string): Promise<boolean> {
+    const newest = newestOf(sockets, person, who);
+    if (!newest) return Promise.resolve(false);
+    return new Promise((resolve) => {
+      const end = (ok: boolean) => {
+        clearTimeout(timer);
+        this.waiting.delete(id);
+        resolve(ok);
+      };
+      const timer = setTimeout(() => end(false), GOT_MS);
+      this.waiting.set(id, { who, got: () => end(true), answer: () => {} });
+      try {
+        newest.send(JSON.stringify({ type: "computer.do", id, ...req }));
+      } catch {
+        end(false);
       }
     });
   }

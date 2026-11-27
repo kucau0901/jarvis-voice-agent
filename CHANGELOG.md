@@ -19,6 +19,14 @@ of every release, and in the [README](README.md#updating).
 
 ### Added
 
+- **A Build job can hand its coding to Claude Code on your Mac** when you say so: "build a
+  page for the bakery, use Claude Code". The job researches as before, then puts a card to
+  you with what you asked and what it found; your tap starts Claude Code on your Mac, in a
+  folder of its own. Its files come back to the job, which checks them and puts the usual
+  Publish card to you. Without "Claude Code" in your words, a Build job writes the site
+  itself as before. It needs the `computer` scope, a linked Mac, and a Jarvis desktop app
+  that knows how (the next release of jarvis-desktop).
+
 - **Jarvis can use your Macs**, through the Jarvis desktop app, from the glasses, the phone
   or the web: "how much disk is free on my Mac?", "open Spotify on the office Mac", "what's
   on my Mac's screen?", then press and type there. Apps are used where they are, behind the
@@ -46,6 +54,14 @@ of every release, and in the [README](README.md#updating).
 
 ### Security
 
+- **A Claude Code build is started only by your tap, and is fenced on the Mac.** Its card
+  shows all that goes to the Mac, and cannot be approved in words. On the Mac it runs in
+  Claude Code's sandbox:
+  - it can write only in its own folder, outside your home folder;
+  - it can read nothing in your home folder;
+  - it reaches only npm's registry, with no web tools.
+
+  Its files come back to the job, never published until you tap that card too.
 - **Your Mac is used only in your own words, and a command only in a clean turn.** Never by
   a routine, a job, an approval, a Home tile, Telegram, a bot or a device. A command is
   refused in a turn that read mail, a page or the Mac's own screen, or that was heard with

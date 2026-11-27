@@ -12,6 +12,8 @@ import { ASK_MS, MAX_ASKED, MAX_TOLD, changeCard, doneLines, numbered, openLines
 import { secretShaped } from "./memory-guard.ts";
 import { flagLines, flagsOf, type Flags } from "./job-results.ts";
 import { withFile, withRan, type JobFile, type Ran } from "./workshop.ts";
+import { buildIdOf, jobOfBuild, macUntil, BUILD_MS, type MacWait } from "./mac-build.ts";
+import type { BuildRequest } from "./computer.ts";
 import { HELPERS_MS, MAX_HELPERS, STOPPED, helperId, helperOut, helpersWorking, newHelpers, reportKept, slimHelpers, withHelper, type HelperChain, type HelperRun, type HelperTask } from "./job-helpers.ts";
 
 /**
@@ -129,6 +131,10 @@ export interface Job {
   build?: true;
   /** That one's, on a repository its person named or chose as it was started: its files, and so no search of the web. */
   repo?: string;
+  /** That one's coding handed to Claude Code on its person's Mac, as they asked in their own words (lib/mac-build.ts); the hand-off it waits on, or made last; how many it has made. */
+  coder?: "claude_code";
+  mac?: MacWait;
+  macs?: number;
   /** The specialty its person named for it (lib/job-specialties.ts): given whole from the start, and named on its card. */
   using?: { id: string; name: string };
   /** The project of its person's it is in (lib/job-project.ts). */
@@ -309,6 +315,8 @@ export type Step =
   | { kind: "asks"; usage?: Job["usage"] }
   /** It gives its work out to helpers, by this call of its: looked at again once they are done, its tokens counted now. */
   | { kind: "helps"; call: string; tasks: HelperTask[]; usage?: Job["usage"] }
+  /** It handed its coding to Claude Code on its person's Mac, its card filed (lib/mac-build.ts): looked at again once the build is over. */
+  | { kind: "mac"; wait: MacWait; usage?: Job["usage"] }
   | { kind: "failed"; error: string };
 
 /** A step started: its response id, the plan to wait for, or why it could not start. */
@@ -594,7 +602,7 @@ const runOf = (j: Job): { chains: readonly TeamChain[]; board: TeamRun["board"] 
 export const sharesLeft = (j: Job, t: number): number => Math.max(0, SHARES_PER_TEAM - runOf(j).board.filter((b) => b.team === t).length);
 
 /** What happened to one chain: it started, a look at it, a look that threw, or it was stopped. */
-export type TeamEvent = { started: string } | { step: Exclude<Step, { kind: "parked" | "asks" | "helps" }> } | { threw: string } | { stopped: string };
+export type TeamEvent = { started: string } | { step: Exclude<Step, { kind: "parked" | "asks" | "helps" | "mac" }> } | { threw: string } | { stopped: string };
 
 /**
  * One event applied to team `t`, or helper `t` (lib/job-helpers.ts): the job
@@ -691,6 +699,14 @@ function heard(j: Job, now: number): Job {
   return waits ? { ...rest, waited: (j.waited ?? 0) + Math.max(0, now - waits.since), nextAt: now } : j;
 }
 
+/** Waiting for its person, or for the Mac it handed its coding to: not one of those running. */
+const waiting = (j: Job): boolean => !!j.waits || (!!j.mac && !j.mac.done);
+
+/** What came of its hand-off to the Mac: due now, and how long it waited is not its time. */
+function macHeard(j: Job, done: NonNullable<MacWait["done"]>, now: number): Job {
+  return { ...j, mac: { ...j.mac!, done }, waited: (j.waited ?? 0) + Math.max(0, now - j.mac!.since), nextAt: now };
+}
+
 /** The changes its person has told it of: an answer to what it asked is not one. */
 const changesTold = (j: Job): number => (j.told ?? []).filter((t) => !t.by && !t.to).length;
 
@@ -706,6 +722,12 @@ function unheard(j: Job, now: number): Job {
     told: [...(j.told ?? []), ...(open.length ? [{ at: now, text: unanswered(numbered(j.asked ?? [], open), "late"), by: "jarvis" as const }] : [])],
   };
 }
+
+/** Its hand-off's card, as its person is told of it at once: the job waits on their tap, so no result carries it (lib/mac-build.ts). */
+const macAlert = (j: Job, w: MacWait, now: number): Alert => ({
+  ...makeAlert({ title: `Waiting for your OK: ${j.title}`, text: `${w.says}\n\nThe job has done its research; Claude Code builds it on your Mac once you tap.` }, "job", now, personOfWho(j.createdBy))!,
+  proposals: [{ id: w.card, risk: "irreversible", says: w.says, verb: "Build" }],
+});
 
 /** A question of a job's, as its person is told of it: the job's words, under the job's name. */
 const askAlert = (j: Job, q: Asked): Alert => ({
@@ -834,7 +856,7 @@ export class Jobs {
   }
 
   async create(
-    input: { title?: unknown; task?: unknown; engine?: unknown; reach?: unknown; mode?: unknown; repo?: unknown; team?: unknown; from?: unknown; table?: unknown; helpers?: unknown },
+    input: { title?: unknown; task?: unknown; engine?: unknown; reach?: unknown; mode?: unknown; repo?: unknown; team?: unknown; from?: unknown; table?: unknown; helpers?: unknown; coder?: unknown },
     by: { who: string; grants: readonly Grant[]; using?: { id: string; name: string } | null; project?: { id: string; name: string; rules: readonly string[]; files: readonly { n: number }[] } | null; routine?: { id: string; name: string }; cap?: number },
     now = Date.now(),
   ): Promise<Job | string> {
@@ -856,11 +878,11 @@ export class Jobs {
     const team = engine === "research" && (input.team === true || table);
     const all = await this.list();
     const person = personOfWho(by.who);
-    if (all.filter((j) => j.status === "running" && !j.waits && personOfWho(j.createdBy) === person).length >= MAX_RUNNING) {
+    if (all.filter((j) => j.status === "running" && !waiting(j) && personOfWho(j.createdBy) === person).length >= MAX_RUNNING) {
       return `${MAX_RUNNING} jobs are already running; wait for one to finish`;
     }
     if (team && all.some((j) => j.status === "running" && j.team)) return "a research team is already working; wait for it to finish";
-    if (engine !== "hermes" && all.filter((j) => j.status === "running" && !j.waits && j.engine !== "hermes").length >= HOUSE_RUNNING) {
+    if (engine !== "hermes" && all.filter((j) => j.status === "running" && !waiting(j) && j.engine !== "hermes").length >= HOUSE_RUNNING) {
       return `${HOUSE_RUNNING} jobs are already running in the house; wait for one to finish`;
     }
     const today = new Date(now).toISOString().slice(0, 10);
@@ -905,7 +927,7 @@ export class Jobs {
       attempts: 0,
       ...(engine === "jarvis" ? { reach: input.reach === "web" || input.mode === "build" ? ("web" as const) : ("private" as const) } : {}),
       ...(thorough ? { mode: "thorough" as const } : engine === "jarvis" && (input.mode === "files" || input.mode === "build") ? { mode: "files" as const } : {}),
-      ...(engine === "jarvis" && input.mode === "build" ? { build: true as const, ...(typeof input.repo === "string" && input.repo ? { repo: input.repo } : {}) } : {}),
+      ...(engine === "jarvis" && input.mode === "build" ? { build: true as const, ...(typeof input.repo === "string" && input.repo ? { repo: input.repo } : input.coder === "claude_code" ? { coder: "claude_code" as const } : {}) } : {}),
       ...(by.routine ? { routine: { id: by.routine.id, name: by.routine.name } } : {}),
       ...(by.cap !== undefined ? { cap: by.cap } : {}),
       ...(engine === "jarvis" && by.using ? { using: { id: by.using.id, name: by.using.name } } : {}),
@@ -1160,6 +1182,47 @@ export class Jobs {
     return next;
   }
 
+  /**
+   * Its person's tap on its hand-off's card (lib/mac-build.ts): the build sent
+   * to that Mac, `who` (null: not theirs, or not linked any more), which must
+   * say it got it. True once it has; else why nothing was built.
+   */
+  async macStart(person: string, id: string, mac: string, sum: string, who: string | null, send: (who: string, req: BuildRequest, build: string) => Promise<boolean>, now = Date.now()): Promise<true | string> {
+    const j = await this.stillRunning(id);
+    if (!j || personOfWho(j.createdBy) !== person) return "Its job is not running any more, so nothing was built.";
+    const w = j.mac;
+    if (!w || w.done || w.sent || w.sum !== sum || w.mac !== mac) return "Its job is not waiting for that any more, so nothing was built.";
+    if (!who) return `${w.name} is not one of their linked Macs any more, so nothing was built.`;
+    const build = buildIdOf(j.id);
+    if (!(await send(who, { op: "build", task: j.task, notes: w.notes, name: j.title, ms: BUILD_MS }, build))) {
+      return `${w.name} did not answer: it may be asleep or off, or have control switched off in its Jarvis app. Nothing was built.`;
+    }
+    const sent = { id: build, who, at: now };
+    await this.edit(j.id, (x) => (x.mac && x.mac.sum === sum && !x.mac.done ? { ...x, mac: { ...x.mac, sent }, nextAt: macUntil({ ...x.mac, sent }) } : x));
+    return true;
+  }
+
+  /** The job a Mac's build is for, while it waits on that build from that Mac; else null. */
+  async macPending(who: string, build: string): Promise<string | null> {
+    const id = jobOfBuild(build);
+    const j = id ? await this.stillRunning(id) : undefined;
+    return j?.mac && !j.mac.done && j.mac.sent?.id === build && j.mac.sent.who === who ? j.id : null;
+  }
+
+  /**
+   * What came of its hand-off: from the Mac, for that build; or, `build` null,
+   * from Jarvis, for a card declined or not run. It goes on now. False when
+   * nothing waited for it.
+   */
+  macDone(id: string, build: string | null, done: { ok: boolean; files: boolean; said?: string; claude?: string }, now = Date.now()): Promise<boolean> {
+    return this.inTurn(async () => {
+      const j = await this.stillRunning(id);
+      if (!j?.mac || j.mac.done || (build === null ? !!j.mac.sent : j.mac.sent?.id !== build)) return false;
+      await this.save(macHeard(j, { ...done, at: now }, now));
+      return true;
+    });
+  }
+
   /** The jobs of a person's that have asked them something and not had it. */
   async asking(person: string): Promise<Job[]> {
     const out: Job[] = [];
@@ -1203,6 +1266,12 @@ export class Jobs {
       // Woken early (an update): it waits on. A day gone by with no answer, it goes on without one.
       if (now < j.waits.since + ASK_MS) return this.save({ ...j, nextAt: j.waits.since + ASK_MS });
       j = unheard(j, now);
+      await this.save(j);
+    }
+    if (j.mac && !j.mac.done) {
+      // The same for its Mac: until its card is tapped and the build is over, or its time for that is up.
+      if (now < macUntil(j.mac)) return this.save({ ...j, nextAt: macUntil(j.mac) });
+      j = macHeard(j, { ok: false, files: false, at: now, said: j.mac.sent ? "Claude Code did not report back in time" : "nobody tapped its card in time" }, now);
       await this.save(j);
     }
     const limits = limitsOf(j.engine);
@@ -1289,6 +1358,11 @@ export class Jobs {
     j = { ...cur, ...(usage ? { usage } : {}) };
     if (step.kind === "asks") return this.waitFor({ ...j, counted: polled }, now);
     if (step.kind === "helps") return this.save({ ...j, counted: polled, help: newHelpers(j, step.call, step.tasks, now), nextAt: now });
+    if (step.kind === "mac") {
+      await this.save({ ...j, counted: polled, mac: step.wait, macs: (j.macs ?? 0) + 1, nextAt: macUntil(step.wait) });
+      await deps.deliver(macAlert(j, step.wait, now)).catch(() => {});
+      return;
+    }
     if (step.kind === "wait") {
       j.nextAt = now + nextLook(j.updatedAt, now);
       // updatedAt is when the current step started, so the wait grows while it runs.
@@ -1397,7 +1471,7 @@ export class Jobs {
       );
       if ("step" in looked && looked.step.kind === "parked") return this.park(cur.id, looked.step.until, now);
       // A team asks nothing of anyone, nor has helpers (routes/jobs.ts): never so.
-      if ("step" in looked && (looked.step.kind === "asks" || looked.step.kind === "helps")) continue;
+      if ("step" in looked && (looked.step.kind === "asks" || looked.step.kind === "helps" || looked.step.kind === "mac")) continue;
       const e = looked as TeamEvent;
       if ("step" in e && e.step.kind !== "failed") await this.countTokens(cur, e.step.usage, now);
       const after = await this.stillRunning(j.id);
@@ -1438,7 +1512,7 @@ export class Jobs {
     if ("parked" in r) return this.park(j.id, r.parked, now);
     if ("kind" in r && r.kind === "parked") return this.park(j.id, r.until, now);
     // A helper asks nothing of anyone, nor has helpers (routes/jobs.ts): never so.
-    const e: TeamEvent = "kind" in r ? (r.kind === "asks" || r.kind === "helps" ? { stopped: "it asked what a helper may not" } : { step: r }) : "responseId" in r ? { started: r.responseId } : "error" in r ? { threw: r.error } : r;
+    const e: TeamEvent = "kind" in r ? (r.kind === "asks" || r.kind === "helps" || r.kind === "mac" ? { stopped: "it asked what a helper may not" } : { step: r }) : "responseId" in r ? { started: r.responseId } : "error" in r ? { threw: r.error } : r;
     const spent = "step" in e && e.step.kind !== "failed" ? e.step.usage : undefined;
     await this.countTokens(j, spent, now);
     // Stopped meanwhile, or the job was: what this look found it spent still counts, and what it started is let go.

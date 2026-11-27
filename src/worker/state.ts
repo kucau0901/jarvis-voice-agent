@@ -45,7 +45,9 @@ import { cardOf, Proposals, type LaterDeps, type Proposal, type ProposalInput } 
 import { PRESENCE, whenSaid } from "./lib/later.ts";
 import { eventById } from "./lib/agenda.ts";
 import { LACKS, carryOut, inverseOf, lacks, notAsShown } from "./lib/approval.ts";
-import { OWNER, personOfWho, withPerson } from "./lib/context.ts";
+import { OWNER, deviceWho, personOfWho, withPerson } from "./lib/context.ts";
+import { macBuildStart } from "./lib/mac-build.ts";
+import { computersOf } from "./lib/devices.ts";
 import { lookAtPage, type PageSeen } from "./lib/page-look.ts";
 import { runBrief } from "./lib/brief.ts";
 import { MeetingsSeen, meetingsSaid, runMeetings } from "./lib/meetings.ts";
@@ -362,6 +364,27 @@ export class JarvisState extends DurableObject<Env> {
   /** Ask one of a person's Macs, and wait for its answer (lib/computer.ts). */
   computerAsk(person: string, who: string, req: ComputerRequest) {
     return this.computers.ask(this.sockets(), person, who, req);
+  }
+
+  /** A tap's start of a job's build on its person's Mac (lib/mac-build.ts): that Mac, while it is still theirs, says it got it. */
+  async macBuildStart(person: string, job: string, mac: string, sum: string) {
+    const m = (await computersOf(await this.localEnv(), person)).find((d) => d.id === mac);
+    const r = await this.jobs.macStart(person, job, mac, sum, m ? deviceWho(m.id, m.owner) : null, (who, req, build) => this.computers.start(this.sockets(), person, who, req, build));
+    await this.rearm();
+    return r;
+  }
+
+  /** The Mac's answer to a build (routes/computer.ts): the job it is for, while that waits on it from this Mac. */
+  macBuildPending(who: string, build: string) {
+    return this.jobs.macPending(who, build);
+  }
+
+  /** And what came of it: the job goes on now. */
+  async macBuildDone(who: string, build: string, done: { ok: boolean; files: boolean; said?: string; claude?: string }) {
+    const id = await this.jobs.macPending(who, build);
+    const ok = !!id && (await this.jobs.macDone(id, build, done));
+    await this.rearm();
+    return ok;
   }
 
   /**
@@ -758,8 +781,15 @@ export class JarvisState extends DurableObject<Env> {
     };
   }
 
-  /** An approved call (lib/proposals.ts tick), made as its person, with no more than its tap allowed and they may reach now. */
+  /** An approved call (lib/proposals.ts tick). A build that did not start: its job hears why now, not when its wait is up (lib/mac-build.ts). */
   private async makeApproved(p: Proposal, grants: readonly Grant[]): Promise<{ ok: boolean; text: string }> {
+    const out = await this.madeApproved(p, grants);
+    if (p.action.tool === macBuildStart.name && !out.ok && (await this.jobs.macDone(String(p.action.args.job), null, { ok: false, files: false, said: `its card was tapped, but: ${out.text}` }))) await this.rearm();
+    return out;
+  }
+
+  /** Made as its person, with no more than its tap allowed and they may reach now. */
+  private async madeApproved(p: Proposal, grants: readonly Grant[]): Promise<{ ok: boolean; text: string }> {
     const view = await this.people.personView(p.person).catch(() => null);
     const reach = reachNow(grants, view);
     if (!reach) return { ok: false, text: "Whoever it was for is no longer in the family." };
@@ -1364,6 +1394,8 @@ export class JarvisState extends DurableObject<Env> {
   // An errand for later declined no longer wakes the alarm.
   async proposalDecline(person: string, id: string, now: number) {
     const r = await this.proposals.decline(person, id, now);
+    // A build's card: its job hears it now (lib/mac-build.ts).
+    if (typeof r !== "string" && r.action.tool === macBuildStart.name) await this.jobs.macDone(String(r.action.args.job), null, { ok: false, files: false, said: "the user said not now to its card" });
     await this.rearm();
     return r;
   }
@@ -1611,7 +1643,7 @@ export class JarvisState extends DurableObject<Env> {
   }
 
   // `specialty` and `project`: the ones its person named for it, theirs and kept; any other is none.
-  async createJob(input: { title?: unknown; task?: unknown; engine?: unknown; reach?: unknown; mode?: unknown; repo?: unknown; team?: unknown; from?: unknown; table?: unknown; helpers?: unknown; specialty?: unknown; project?: unknown }, by: { who: string; grants: readonly Grant[] }) {
+  async createJob(input: { title?: unknown; task?: unknown; engine?: unknown; reach?: unknown; mode?: unknown; repo?: unknown; team?: unknown; from?: unknown; table?: unknown; helpers?: unknown; specialty?: unknown; project?: unknown; coder?: unknown }, by: { who: string; grants: readonly Grant[] }) {
     const using = typeof input.specialty === "string" && input.specialty ? ((await this.specialties.of(personOfWho(by.who))).find((s) => s.id === input.specialty) ?? null) : null;
     if (typeof input.specialty === "string" && input.specialty && !using) return "that specialty is not kept any more";
     const project = typeof input.project === "string" && input.project ? await this.projects.get(personOfWho(by.who), input.project) : null;

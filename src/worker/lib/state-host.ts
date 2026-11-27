@@ -579,7 +579,7 @@ interface RoutineApi {
 interface JobApi {
   listJobs(): Promise<Job[]>;
   getJob(id: string): Promise<Job | undefined>;
-  createJob(input: { title?: unknown; task?: unknown; engine?: unknown; reach?: unknown; mode?: unknown; repo?: unknown; team?: unknown; from?: unknown; table?: unknown; helpers?: unknown; specialty?: unknown; project?: unknown }, by: { who: string; grants: readonly Grant[] }): Promise<Job | string>;
+  createJob(input: { title?: unknown; task?: unknown; engine?: unknown; reach?: unknown; mode?: unknown; repo?: unknown; team?: unknown; from?: unknown; table?: unknown; helpers?: unknown; specialty?: unknown; project?: unknown; coder?: unknown }, by: { who: string; grants: readonly Grant[] }): Promise<Job | string>;
   projectsOf(person: string): Promise<Project[]>;
   projectSave(person: string, input: { id?: unknown; name?: unknown; rules?: unknown }, now: number): Promise<Project | string>;
   projectForget(person: string, id: string): Promise<boolean>;
@@ -805,6 +805,9 @@ interface LiveApi {
   computersOnline(whos: string[]): Promise<string[]>;
   /** Ask one of `person`'s Macs to look, act or run a command, and wait for its answer. */
   computerAsk(person: string, who: string, req: ComputerRequest): Promise<ComputerResult>;
+  macBuildStart(person: string, job: string, mac: string, sum: string): Promise<true | string>;
+  macBuildPending(who: string, build: string): Promise<string | null>;
+  macBuildDone(who: string, build: string, done: { ok: boolean; files: boolean; said?: string; claude?: string }): Promise<boolean>;
   /** Close a device's open screens and drop its notifications, when it is revoked or narrowed. */
   forgetDevice(who: string): Promise<void>;
   /**

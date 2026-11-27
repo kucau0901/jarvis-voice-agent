@@ -21,12 +21,15 @@ import { JobSpecialties } from "../lib/job-specialties.ts";
 import { JobProject } from "../lib/job-project.ts";
 import { KEPT_DAYS, WorkshopError, fileHeaders, givenBytes, workshopAsk, workshopConfig, type JobFile } from "../lib/workshop.ts";
 import { buildReach, buildTools } from "../lib/build-tools.ts";
+import { MAC_BUILD, handOff, macBuildTool, macReport, type MacWait } from "../lib/mac-build.ts";
+import { computersOf } from "../lib/devices.ts";
+import { nearest } from "../tools/args.ts";
 import { reposOf } from "../lib/github.ts";
 import { WORKSHOP_TOOLS, workshopTools } from "../lib/workshop-tools.ts";
 import { mailFile } from "../lib/mail-file.ts";
 import { googleConfig } from "../lib/google.ts";
 import { ASK_MS, openLines, openQuestions, unfinished, untold, workTools, type Said } from "../lib/job-tools.ts";
-import { RESEARCH_MONTHLY_DEFAULT, helperTool, jobTool, limitsOf, reachOf, webTool, sharesLeft, usageEntry, type Job, type JobDeps, type Step } from "../lib/jobs.ts";
+import { RESEARCH_MONTHLY_DEFAULT, helperTool, jobTool, limitsOf, reachOf, webTool, sharesLeft, usageEntry, wordsOf, type Job, type JobDeps, type Step } from "../lib/jobs.ts";
 import { citationsOf, markUnseen } from "../lib/links.ts";
 import { toCsv } from "../lib/research-table.ts";
 import { HELPER_FILES, JOB_FILES, jobBuild, JOB_HELPERS, MERGE_INSTRUCTIONS, PLAN_INSTRUCTIONS, RAN_OUT, RESEARCH_CHECK, TABLE_CHECK, TABLE_MERGE_INSTRUCTIONS, TABLE_PLAN_INSTRUCTIONS, TABLE_TEAM_INSTRUCTIONS, TEAM_INSTRUCTIONS, wrapUp } from "../lib/router-prompt.ts";
@@ -173,6 +176,15 @@ export function jobEngine(
   /** A minute, or until the person stops the job. */
   const signal = (stop?: AbortSignal, ms = 60_000) => (stop ? AbortSignal.any([AbortSignal.timeout(ms), stop]) : AbortSignal.timeout(ms));
 
+  /** Its coding handed to Claude Code on one of its person's Macs (lib/mac-build.ts): the one its brief names, else the one seen last. */
+  async function macHandOff(job: Job, call: { call_id: string; arguments: string }): Promise<MacWait | string> {
+    const macs = await computersOf(env, personOfWho(job.createdBy));
+    if (!macs.length) return "Not put to them: no Mac of theirs is linked now, so Claude Code cannot build it. Finish, saying so.";
+    const named = nearest(macs, wordsOf(job.task), (m) => m.name, true);
+    const mac = named.length === 1 ? named[0]! : [...macs].sort((a, b) => (b.lastSeenAt ?? 0) - (a.lastSeenAt ?? 0))[0]!;
+    return handOff(env, job, call, mac, Date.now());
+  }
+
   /** `t`: for a research team's chain, or a helper's (lib/job-helpers.ts), which is offered share_findings besides. */
   async function request(job: Job, turns: { role: "user"; text: string }[], t?: number, stop?: AbortSignal, say: (s: Said) => Promise<void> = async () => {}) {
     const research = job.engine === "research";
@@ -206,6 +218,8 @@ export function jobEngine(
     // One that builds has its own besides: to publish what it made, by a tap, and the repository it was started on (lib/build-tools.ts).
     const building = job.build && shop && kept && !helper && t === undefined ? await buildReach(shop, env, job, may.includes(WILDCARD), stop) : null;
     const builds = building && shop && kept ? (give: (path: string) => Promise<JobFile | string>) => buildTools(shop, env, job, { ...building, kept, ...(stop ? { stop } : {}) }, give) : undefined;
+    // Its coding Claude Code's on their Mac, as they asked (lib/mac-build.ts): only where what it makes can be put to them to publish.
+    const claude = !!building?.sites && !building.repo && job.coder === "claude_code";
     // The project it is in: its rules, its files, what its last jobs came back with (lib/job-project.ts).
     const belongs = kept && job.project && t === undefined && job.engine === "jarvis" && allows(may, "memory.read") ? new JobProject(kept, job) : null;
     const project = belongs ? await belongs.it() : null;
@@ -220,7 +234,7 @@ export function jobEngine(
       : t !== undefined
         ? [shareTool("", [], 0)]
         : job.engine === "jarvis"
-          ? [...workTools(job, say), readResult(kept, job.id), ...(shop ? workshopTools(shop, job, say, stop, mailIn, false, builds) : []), ...(theirs.length ? [ways!.tool(shop, stop)] : []), ...(project?.files.length ? [belongs!.tool(project)] : []), ...(job.help ? [delegateTool(!!shop)] : [])]
+          ? [...workTools(job, say), readResult(kept, job.id), ...(shop ? workshopTools(shop, job, say, stop, mailIn, false, builds) : []), ...(theirs.length ? [ways!.tool(shop, stop)] : []), ...(project?.files.length ? [belongs!.tool(project)] : []), ...(job.help ? [delegateTool(!!shop)] : []), ...(claude ? [macBuildTool()] : [])]
           : [];
     const functions = [...p.tools, ...own].map(toToolSchema);
     return {
@@ -244,7 +258,7 @@ export function jobEngine(
       base: {
         model,
         ...(strong ? { reasoning: { effort: "high" as const } } : {}),
-        instructions: p.instructions + (shop ? (helper ? HELPER_FILES : JOB_FILES) : "") + (building ? jobBuild(building) : "") + (!helper && job.help ? JOB_HELPERS : ""),
+        instructions: p.instructions + (shop ? (helper ? HELPER_FILES : JOB_FILES) : "") + (building ? jobBuild({ ...building, claude }) : "") + (!helper && job.help ? JOB_HELPERS : ""),
         tools: [...functions, ...searches],
         tool_choice: "auto" as const,
         // Background mode: the step runs at OpenAI, and nobody has to stay connected for it.
@@ -545,6 +559,12 @@ export function jobEngine(
       // Done: the call that gave it out is answered with what they wrote, any other with why not. What they saw, it has seen.
       const reports = new Map(gives.map((c) => [c.call_id, c.call_id === job.help!.call ? reportsOf(job.help!) : typeof tasks === "string" && c === gives[0] ? tasks : "You have had your helpers: they work once in a job."]));
       if (kept && gives.some((c) => c.call_id === job.help!.call)) for (const i of job.help!.chains.keys()) await takeLinks(kept, helperScope(job.id, i), job.id);
+      // Its coding handed to Claude Code on their Mac (lib/mac-build.ts): its card filed, and it is looked at again once the build is over.
+      const handing = ordinary && job.coder ? calls.filter((c) => c.name === MAC_BUILD) : [];
+      const hand = handing[0];
+      const handed = works && hand && (!job.mac || (job.mac.done && job.mac.call !== hand.call_id)) ? await macHandOff(job, hand) : null;
+      if (handed && typeof handed !== "string") return { kind: "mac", wait: handed, usage };
+      for (const c of handing) reports.set(c.call_id, c.call_id === job.mac?.call && job.mac.done ? macReport(job.mac) : c === hand && typeof handed === "string" ? handed : "Not put to them: one hand-off at a time, alone.");
       const answered = (c: { call_id: string }, output: string) => ({ type: "function_call_output" as const, call_id: c.call_id, output });
       // The tools it asked for run here, between steps; then the next step starts.
       const req = await request(job, [], t, stop, say);
@@ -558,7 +578,7 @@ export function jobEngine(
       if (resumed) return "kind" in resumed ? resumed : { kind: "continued", responseId: resumed.responseId, usage, ...took(resumed), ...(resumed.untold ? { untold: true as const } : {}), ...(resumed.noting ? { fresh: "noting" as const } : {}), ...(given.length ? { shared: given, saw: (job.team ?? job.help)!.chains[t!]!.seen } : {}) };
       // Out of its budget: nothing more is run, and it writes what it has, its helpers' reports with it.
       if (cut && wraps) {
-        const unrun = calls.map((c) => answered(c, c.call_id === job.help?.call ? reports.get(c.call_id)! : NOT_RUN));
+        const unrun = calls.map((c) => answered(c, c.call_id === job.help?.call || c.call_id === job.mac?.call ? (reports.get(c.call_id) ?? NOT_RUN) : NOT_RUN));
         const end = await send(req, [...unrun, ...told, ...wrap], { after: id }, "none", all).catch(parked);
         return "kind" in end ? end : { kind: "continued", responseId: end.responseId, usage, ...took(end) };
       }

@@ -154,7 +154,7 @@ existence, or argued around.
 | `home` | Home Assistant, `show_camera`, `look_at_camera`, `/api/camera`. |
 | `hermes` | `ask_hermes`: Hermes can run commands on its machine, so sharing the house never shares it. A device made before 2.0 with `home` keeps it. |
 | `browser` | `browser_open`, `browser_read`, `browser_press`, `browser_fill`, `browser_close_tab`, `browser_sign_in`, `browser_show`, and the app's Browser panel (`/api/browser/screen`, `/api/browser/input`, and `/api/browser/logins` for a person's saved sign-ins and `/api/browser/alone` for the sites their routines may use it on, both never a device's): a full browser Jarvis drives, signed in wherever the family signed it in ([DESIGN.md](DESIGN.md#the-browser)). No role has it but an admin's and no device has it unless ticked (a `*` device has every scope, this one too); in a routine only on the sites its maker chose; never in an approved step of a job, or over Telegram. |
-| `computer` | `computer`: the token's person's own Macs, through the Jarvis desktop app, where they turned control on: a command run as them, an app opened, the screen looked at, a press or typing ([DESIGN.md](DESIGN.md#the-mac)). No role has it but an admin's; never in a routine, a job, an approved step, a Home tile, over Telegram or for a bot; never used by a device, whatever it holds. On a device it marks one of its person's Macs (the desktop app makes it, with `alerts`); a `*` device is not one. |
+| `computer` | `computer`: the token's person's own Macs, through the Jarvis desktop app, where they turned control on: a command run as them, an app opened, the screen looked at, a press or typing ([DESIGN.md](DESIGN.md#the-mac)). No role has it but an admin's; never in a routine, a job, an approved step, a Home tile, over Telegram or for a bot; never used by a device, whatever it holds. On a device it marks one of its person's Macs (the desktop app makes it, with `alerts`), which uses it only to send what came of a build their tap started (`POST /api/v1/computer/build`); a `*` device is not one. The one approved step that reaches a Mac is that build, which needs `computer` at the tap. |
 | `media` | Spotify. |
 | `mail` | Gmail: `mail_check`, `mail_search`, `mail_send`, `mail_manage`, `contacts_lookup`. Reads, sends, replies, drafts, trashes and archives — there is no read-only half. Also reads Google Contacts to turn a name into an address. |
 | `calendar` | Google Calendar: `calendar_check`, `calendar_add`, `calendar_change`. Reads the diary **and creates, moves, renames and removes events**. |
@@ -479,6 +479,7 @@ and connects to `/api/v1/events?ticket=…`. A ticket works once.
 | → | `{"type":"ack","id":…,"visible":true}` on each alert, if someone can see it |
 | ← | `{"type":"computer.do","id","op","act","element","text","picture","ms"}` to one of a person's Macs (a device holding `computer`, the desktop app): `op` is `look` (`text`: an app's name, or null for the one in front), `do` (`act`: `press`, `type`, `key`, `scroll`, `open` or `front`, in the app last looked at) or `run`; `ms`, how long it has |
 | → | From that Mac: `{"type":"computer.got","id"}` at once, then `{"type":"computer.answer","id","ok","text","image"}` (`image` a `data:image/jpeg;base64,` screenshot or null; at most 512 KB in all). Sent with `type` first. Not answered within 5 s it counts as offline; only the Mac it went to can answer it |
+| ← | `{"type":"computer.do","id","op":"build","task","notes","name","ms"}`: a build job's coding for Claude Code on that Mac, started by its person's tap ([DESIGN.md](DESIGN.md#claude-code-on-the-mac)). `task` is what they asked (4,000 characters at most), `notes` what the job found, as reference (3,500 at most), `name` the job's title, `ms` how long it has (30 minutes). The Mac says `computer.got` at once and nothing more on the socket: what came of it is its POST to `/api/v1/computer/build` |
 | → / ← | `ping` / `pong`, every 25 seconds or so, to keep proxies from closing it |
 
 An alert counts as delivered live only when a **visible** screen acknowledges
@@ -612,6 +613,15 @@ GitHub, it works on that repository and searches nothing (`repo` in its view): o
 admin, signed in, may give it ([DESIGN.md](DESIGN.md#the-workshop)). `GET /api/v1/sites`
 (needs `workshop`) lists the sites published, `{address, sites: [{name, at, files,
 bytes, down?, before?}]}`, `sites` null where there is no sites folder.
+
+A build job its person asked, in their own words, to have Claude Code write is handed
+to one of their Macs with their tap on a card ([DESIGN.md](DESIGN.md#claude-code-on-the-mac));
+it is not asked for here. That Mac sends what came of it with `POST /api/v1/computer/build`
+(needs `computer`; a person's own session gets 403): `{id, ok, said, zip}`, `id` the
+build's from its `computer.do`, `said` Claude Code's own words (2,000 characters are
+kept), `zip` base64url of the site's files (10 MB at most, 413 past it) or null. 404
+when no job waits on that build from this Mac. `{ok: true, files}`: whether the files
+were put in the job's folder.
 
 `"helpers": true` (needs `routines`: it costs several times as much) lets an
 ordinary job of any mode give its work out once, in two or three parts, to helpers
