@@ -2692,7 +2692,8 @@ puts a zip to its person as a card (`lib/build-tools.ts`), and their OK publishe
 download the zip, or leave it. The tool is described as filing a card that publishes
 nothing: a job told "not before I approve" once took it for publishing and filed none.
 When its person asks for Claude Code, the coding is done on their Mac instead and comes
-back to the job, which publishes the same way ("Claude Code on the Mac").
+back to the job, which publishes, opens a pull request or gives the files the same way
+("Claude Code on the Mac").
 
 - **A repository, or the web.** A repository may be private, and a search is a way out,
   so one job never has both. The repository is one an admin chose in the form, or named
@@ -2770,7 +2771,7 @@ So the boundary is who may ask and when, and it is drawn in code:
   and an admin gives it in Family. Nothing that runs with nobody asking has
   it: not a routine, a habit, a job, an approval, a Home tile's reading, the
   panel look-up, Telegram, or a bot, however ticked. The one exception, a
-  build their tap starts, is below ("Claude Code on the Mac").
+  Claude Code session their tap starts, is below ("Claude Code on the Mac").
 - **Only its person, only their own Mac, only in their own words.** Each Mac is
   a device of its person's, made by the desktop app when they turn on "Let
   Jarvis control this Mac" there (off until then). The tool is used only when
@@ -2835,52 +2836,88 @@ runs out of time.
 ### Claude Code on the Mac
 
 A build job may hand its coding to Claude Code on its person's Mac, instead of
-writing the site itself in the workshop (`lib/mac-build.ts`). The owner wanted
-the larger sites written by Claude Code, and the simple ones as before; so it is
-theirs to ask for, each time, and nothing else turns it on.
+writing it itself in the workshop (`lib/mac-build.ts`). The owner wanted the
+larger work, a site, an app or a tool, done by Claude Code and the simple sites
+as before; so it is theirs to ask for, each time, and nothing else turns it on.
+A larger program does not fit one run: Claude Code stops to ask, or stops half
+way, and the work takes as long as it takes. So a build is a session of rounds,
+and the job answers each.
 
 - **Only when they say so.** A build job is Claude Code's only when its person's
   own words in the message that started it name Claude Code (`namesClaudeCode`,
   looked at by code, as a repository's name is), they hold `computer`, and a Mac
   of theirs is linked. The model cannot choose it, and someone else's words
-  cannot either. Otherwise the job writes the site itself, and they are told why.
-- **The job never has the Mac.** It researches on the web as any build job does,
-  then calls `mac_build` with its notes. That files a card and the job waits,
-  like a job waiting on its helpers; the wait is not its time. Its person is
-  told of the card at once: no result carries it while the job waits. The card shows what
-  they asked, in their words, and the notes, as reference and not instructions,
-  and what the build may and may not do. It cannot be undone, so only a tap
-  approves it, never words. Declined, or never tapped in a day, the job is told
-  so and finishes without building the site itself.
-- **The tap starts it, and nothing else.** The tap runs `mac_build_start` (an
-  approved call, `lib/approval.ts`). An approval's own grants still never hold
-  `computer`. Instead, as publishing needs `workshop`, the person and whoever
-  taps must hold `computer` at that moment (`NEEDS`). It checks that the job
-  still waits on exactly those notes (their sum) and that the Mac is still that
-  person's. It sends the build to that Mac only, which must say at once that it
-  got it (`Computers.start`). It waits for nothing more: the build takes up to
-  30 minutes, and what came of it comes back by the Mac's own request.
-- **The fence is on the Mac** (the desktop app). Each build runs in a new folder
-  outside the home folder, in Claude Code's sandbox:
-  - it can write only in that folder and read nothing in the home folder;
-  - its network reaches only npm's registry, and it has no web tools;
-  - it starts with a clean environment and stops at its time or on Stop;
-  - its files go back as regular files only: no links.
-- **What it made comes back to the job, not to anyone.** The Mac POSTs a zip to
-  `/api/v1/computer/build` with its own device token. That is the one thing a
-  Mac's `computer` is used for, and only for a build its job still waits on from
-  that very Mac. The zip goes into the job's workshop folder. The job is woken
-  with it and with Claude Code's own words, quoted as someone else's. It checks
-  the site as it would its own and files the usual Publish card. Nothing is live
-  until that card is tapped too, and what is published is the zip that card
-  showed.
+  cannot either. Otherwise the job writes it itself, and they are told why. On a
+  repository they named it may be Claude Code's too.
+- **The job never has the Mac.** It researches on the web as any build job does
+  (on a repository, brings its files instead, and has no web), then calls
+  `mac_build` with its notes. That files a card and the job waits, like a job
+  waiting on its helpers; the wait is not its time. Its person is told of the
+  card at once: no result carries it while the job waits. The card shows what
+  they asked, in their words, and the notes, as reference and not instructions;
+  the folder it builds in, which stays on the Mac; that Jarvis answers it, up to
+  50 rounds, with no time limit but their Claude plan's; the fence; and where
+  what it makes goes. It cannot be undone, so only a tap approves it, never
+  words. Declined, or never tapped in a day, the job is told so and finishes
+  without building it itself.
+- **The tap starts a session, and nothing else.** The tap runs
+  `mac_build_start` (an approved call, `lib/approval.ts`). An approval's own
+  grants still never hold `computer`. Instead, as publishing needs `workshop`,
+  the person and whoever taps must hold `computer` at that moment (`NEEDS`). It
+  checks that the job still waits on exactly those notes (their sum), that the
+  Mac is still that person's, and that no other job has a session open on it.
+  It sends the start to that Mac only, which must say at once that it got it
+  (`Computers.start`), and waits for nothing more.
+- **Rounds, answered by the job.** Each time Claude Code stops, the Mac says
+  what it said (`POST /api/v1/computer/build`), and the job is woken with it,
+  quoted as someone else's. The job answers with `mac_reply`, in the same folder
+  and session: what it asked, from what the person asked and what the job found;
+  what failed, to be fixed; to run its tests. What only the person can decide,
+  the job asks them first (`ask_person`), with nothing running on the Mac
+  meanwhile. Its answers need no tap: they go into the session the tap began,
+  behind the same fence, and nowhere else on the Mac. Each round gives the job
+  two steps and three minutes more of its own (`limitsOf`).
+- **No time of Jarvis's own.** The Mac says every ten minutes that it still
+  works; half an hour of nothing, and the session is over and stopped there. At
+  its person's Claude plan's limit, the Mac waits for it to reset and goes on by
+  itself, up to a day, and says until when, so the job waits too. What bounds a
+  session is the plan, and its 50 rounds, after which the job can only bring
+  back what there is.
+- **The fence is on the Mac** (the desktop app). Each build runs in a folder of
+  its own, outside the home folder (`/Users/Shared/JarvisBuilds`), in Claude
+  Code's sandbox, under settings given on its command line:
+  - it can write only in that folder, and reads nothing in the home folder but
+    the Android SDK, read-only;
+  - its network reaches only the package registries (npm, GitHub, Google's and
+    Maven's, Gradle, crates.io, PyPI), and it has no web tools;
+  - it starts with a clean environment, its tools' caches in the folder;
+  - Stop on the Mac ends it.
+- **What it made comes back to the job, not to anyone.** When Claude Code says
+  it is done, the job calls `mac_finish`. The Mac sends, by its own device
+  token, what its person installs (its `out` folder), the site and the source:
+  plain files only, no links, 20 MB each. They go into the job's workshop
+  folder, under `from-mac`. Whatever is bigger stays on the Mac, and the job is
+  told so. Then the job checks it as it would its own and files the usual
+  Publish card for a site, the pull request card for a change to its
+  repository, or gives the files in Jobs. Nothing is live until that card is
+  tapped too.
+- **The folder stays.** It is the project's when the job is in one, so a later
+  Claude Code job in the same project goes on from what is there; else the
+  job's own. It ends when the job ends: a job that stops, or finishes without
+  bringing the files back, stops its session on the Mac.
 
-**What it does not protect against.** The notes come from the web: a page
-could steer them, and so the build. The person sees them on the card, and
-Claude Code is told they are reference only. Still, what a steered build could
-do is bounded by its folder, npm, and a home folder it cannot read. npm packages
-run their install scripts inside the same sandbox. A process that detaches
-itself from the build survives Stop. The time is the person's Claude plan's.
+**What it does not protect against.** The notes come from the web: a page could
+steer them, and so the build; and the job's answers carry what it read too. The
+person sees the notes on the card, and Claude Code is told they are reference
+only. Still, what a steered build could do is bounded by its folder, the package
+registries and a home folder it cannot read. Packages run their install scripts
+inside the same sandbox, and one that means harm can publish what is in the
+folder with an account of its own on a registry: for a private repository that
+is its files, and the card says so. A process that detaches itself from the
+build survives Stop. The time is the person's Claude plan's, bounded only by the
+rounds and by a day's wait for its limit. Kept folders grow, caches included,
+until the person removes them. And an app it made runs only when its person
+opens or installs it: nobody has read its code.
 
 ## Architecture
 

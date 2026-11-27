@@ -20,8 +20,8 @@ import { bringNeeds, handFile } from "../lib/helper-files.ts";
 import { JobSpecialties } from "../lib/job-specialties.ts";
 import { JobProject } from "../lib/job-project.ts";
 import { KEPT_DAYS, WorkshopError, fileHeaders, givenBytes, workshopAsk, workshopConfig, type JobFile } from "../lib/workshop.ts";
-import { buildReach, buildTools } from "../lib/build-tools.ts";
-import { MAC_BUILD, handOff, macBuildTool, macReport, type MacWait } from "../lib/mac-build.ts";
+import { baseKey, buildReach, buildTools } from "../lib/build-tools.ts";
+import { MAC_BUILD, MAC_REPLY, MAC_TOOLS, MAX_REPLY, handOff, macBuildTool, macFinishTool, macReplyTool, macReport, macWaits, type MacWait } from "../lib/mac-build.ts";
 import { computersOf } from "../lib/devices.ts";
 import { nearest } from "../tools/args.ts";
 import { reposOf } from "../lib/github.ts";
@@ -182,7 +182,26 @@ export function jobEngine(
     if (!macs.length) return "Not put to them: no Mac of theirs is linked now, so Claude Code cannot build it. Finish, saying so.";
     const named = nearest(macs, wordsOf(job.task), (m) => m.name, true);
     const mac = named.length === 1 ? named[0]! : [...macs].sort((a, b) => (b.lastSeenAt ?? 0) - (a.lastSeenAt ?? 0))[0]!;
-    return handOff(env, job, call, mac, Date.now());
+    // On a repository, the commit its files were brought at: Claude Code starts from those.
+    const base = job.repo && kept ? ((await kept.get<string>(baseKey(job.id))) ?? null) : null;
+    return handOff(env, job, call, mac, base, Date.now());
+  }
+
+  /** Its answer to a round of Claude Code's, or its end: sent to the Mac, and what it waits on now; else why not. */
+  async function macCall(job: Job, call: { call_id: string; name: string; arguments: string }): Promise<MacWait | string> {
+    const state = stateStub(env);
+    if (!state) return "Not sent: this deployment has no state object.";
+    if (call.name !== MAC_REPLY) return state.macBuildSend(job.id, call.call_id, { finish: true });
+    let text = "";
+    try {
+      const t = (JSON.parse(call.arguments) as { text?: unknown }).text;
+      text = typeof t === "string" ? t.trim() : "";
+    } catch {
+      // nothing to send
+    }
+    if (!text) return "Not sent: write what to tell Claude Code in text.";
+    if (text.length > MAX_REPLY) return `Not sent: it is ${text.length.toLocaleString("en-US")} characters, and is ${MAX_REPLY.toLocaleString("en-US")} at most.`;
+    return state.macBuildSend(job.id, call.call_id, { reply: text });
   }
 
   /** `t`: for a research team's chain, or a helper's (lib/job-helpers.ts), which is offered share_findings besides. */
@@ -218,8 +237,8 @@ export function jobEngine(
     // One that builds has its own besides: to publish what it made, by a tap, and the repository it was started on (lib/build-tools.ts).
     const building = job.build && shop && kept && !helper && t === undefined ? await buildReach(shop, env, job, may.includes(WILDCARD), stop) : null;
     const builds = building && shop && kept ? (give: (path: string) => Promise<JobFile | string>) => buildTools(shop, env, job, { ...building, kept, ...(stop ? { stop } : {}) }, give) : undefined;
-    // Its coding Claude Code's on their Mac, as they asked (lib/mac-build.ts): only where what it makes can be put to them to publish.
-    const claude = !!building?.sites && !building.repo && job.coder === "claude_code";
+    // Its coding Claude Code's on their Mac, as they asked (lib/mac-build.ts).
+    const claude = !!building && job.coder === "claude_code";
     // The project it is in: its rules, its files, what its last jobs came back with (lib/job-project.ts).
     const belongs = kept && job.project && t === undefined && job.engine === "jarvis" && allows(may, "memory.read") ? new JobProject(kept, job) : null;
     const project = belongs ? await belongs.it() : null;
@@ -234,7 +253,7 @@ export function jobEngine(
       : t !== undefined
         ? [shareTool("", [], 0)]
         : job.engine === "jarvis"
-          ? [...workTools(job, say), readResult(kept, job.id), ...(shop ? workshopTools(shop, job, say, stop, mailIn, false, builds) : []), ...(theirs.length ? [ways!.tool(shop, stop)] : []), ...(project?.files.length ? [belongs!.tool(project)] : []), ...(job.help ? [delegateTool(!!shop)] : []), ...(claude ? [macBuildTool()] : [])]
+          ? [...workTools(job, say), readResult(kept, job.id), ...(shop ? workshopTools(shop, job, say, stop, mailIn, false, builds) : []), ...(theirs.length ? [ways!.tool(shop, stop)] : []), ...(project?.files.length ? [belongs!.tool(project)] : []), ...(job.help ? [delegateTool(!!shop)] : []), ...(claude ? [macBuildTool(), macReplyTool(), macFinishTool()] : [])]
           : [];
     const functions = [...p.tools, ...own].map(toToolSchema);
     return {
@@ -559,12 +578,16 @@ export function jobEngine(
       // Done: the call that gave it out is answered with what they wrote, any other with why not. What they saw, it has seen.
       const reports = new Map(gives.map((c) => [c.call_id, c.call_id === job.help!.call ? reportsOf(job.help!) : typeof tasks === "string" && c === gives[0] ? tasks : "You have had your helpers: they work once in a job."]));
       if (kept && gives.some((c) => c.call_id === job.help!.call)) for (const i of job.help!.chains.keys()) await takeLinks(kept, helperScope(job.id, i), job.id);
-      // Its coding handed to Claude Code on their Mac (lib/mac-build.ts): its card filed, and it is looked at again once the build is over.
-      const handing = ordinary && job.coder ? calls.filter((c) => c.name === MAC_BUILD) : [];
-      const hand = handing[0];
-      const handed = works && hand && (!job.mac || (job.mac.done && job.mac.call !== hand.call_id)) ? await macHandOff(job, hand) : null;
+      // Its coding handed to Claude Code on their Mac (lib/mac-build.ts): its card filed, a round answered, or its files asked for; looked at
+      // again once the Mac has done it, when the call that waited on it is answered with what came of it.
+      const handing = ordinary && job.coder ? calls.filter((c) => MAC_TOOLS.has(c.name)) : [];
+      const w = job.mac;
+      const waited = w && !macWaits(w) ? handing.find((c) => c.call_id === w.call) : undefined;
+      const hand = handing.find((c) => c !== waited);
+      const free = !w || !macWaits(w);
+      const handed = works && hand && free && !waited ? await (hand.name === MAC_BUILD ? macHandOff(job, hand) : macCall(job, hand)) : null;
       if (handed && typeof handed !== "string") return { kind: "mac", wait: handed, usage };
-      for (const c of handing) reports.set(c.call_id, c.call_id === job.mac?.call && job.mac.done ? macReport(job.mac) : c === hand && typeof handed === "string" ? handed : "Not put to them: one hand-off at a time, alone.");
+      for (const c of handing) reports.set(c.call_id, c === waited ? macReport(w!, !!job.repo) : c === hand && typeof handed === "string" ? handed : "Not done: one call to the Mac at a time, alone.");
       const answered = (c: { call_id: string }, output: string) => ({ type: "function_call_output" as const, call_id: c.call_id, output });
       // The tools it asked for run here, between steps; then the next step starts.
       const req = await request(job, [], t, stop, say);
@@ -687,7 +710,7 @@ export function jobView(j: Job, whole = false, mayKey = false) {
     // Started with helpers: none until it gives its work out, then each, with its list while it works or with the whole.
     ...(help ? { helpers: helperView(help, whole || j.status === "running") } : {}),
     // What it may take, and once it is out of that, what of: it is writing what it has.
-    ...(j.status === "running" && j.engine === "jarvis" ? { limits: { steps: limitsOf(j.engine).maxSteps, going: limitsOf(j.engine).going, minutes: limitsOf(j.engine).maxMs / 60_000 } } : {}),
+    ...(j.status === "running" && j.engine === "jarvis" ? { limits: { steps: limitsOf(j.engine, j.mac?.round).maxSteps, going: limitsOf(j.engine, j.mac?.round).going, minutes: limitsOf(j.engine, j.mac?.round).maxMs / 60_000 } } : {}),
     ...(j.status === "running" && cut ? { wrapping: cut.why } : {}),
     // Gone on in a new conversation, from its notes: how often.
     ...(fresh?.n ? { carried: fresh.n } : {}),

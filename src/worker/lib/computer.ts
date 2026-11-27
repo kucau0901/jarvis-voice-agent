@@ -34,18 +34,19 @@ export interface ComputerRequest {
 }
 
 /**
- * A build for Claude Code on a Mac (lib/mac-build.ts): what its person asked,
- * what their job found, and the job's name. Started by their tap; the Mac says
- * it got it, and sends what came of it later by its own request
+ * A Claude Code session on a Mac (lib/mac-build.ts), in its folder there, by
+ * its session id, under the job's name; and what it is told: to begin, with
+ * what its person asked and what their job found (their tap); to go on, with
+ * the job's answer to its round; to bring back what it made; or to stop. The
+ * Mac says it got it, and says what came of it later by its own requests
  * (routes/computer.ts), never on the socket.
  */
-export interface BuildRequest {
-  op: "build";
-  task: string;
-  notes: string;
-  name: string;
-  ms: number;
-}
+export type BuildRequest = { op: "build"; folder: string; session: string; name: string } & (
+  | { start: { task: string; notes: string; repo: boolean } }
+  | { round: number; reply: string }
+  | { finish: true }
+  | { stop: true }
+);
 
 /** What a Mac said: whether it worked, in words, and a screenshot for a look that asked for one. */
 export interface ComputerAnswer {
@@ -117,10 +118,10 @@ export class Computers {
     });
   }
 
-  /** Start a build on one Mac of `person`'s: true once it says it got it, false when it did not. What came of it comes later, by its own request. */
+  /** Tell one Mac of `person`'s what its build is to do: true once it says it got it, false when it did not, or one for that build is still on its way. What came of it comes later, by its own request. */
   start(sockets: LiveSocket[], person: string, who: string, req: BuildRequest, id: string): Promise<boolean> {
     const newest = newestOf(sockets, person, who);
-    if (!newest) return Promise.resolve(false);
+    if (!newest || this.waiting.has(id)) return Promise.resolve(false);
     return new Promise((resolve) => {
       const end = (ok: boolean) => {
         clearTimeout(timer);

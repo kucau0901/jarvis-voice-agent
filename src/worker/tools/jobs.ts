@@ -95,7 +95,7 @@ const startJob: Tool = {
         type: "string",
         enum: ["ordinary", "thorough", "files", "build"],
         description: "'thorough' only if asked, or to weigh many things together: a stronger, dearer model. 'files' makes files to download. " +
-          "'build' builds a site or changes code, on the web alone, for the user to publish with a tap.",
+          "'build' builds a site or changes code (apps too), on the web alone, to publish with a tap.",
       },
       helpers: { type: "boolean", description: "Only if asked for: up to three share the work." },
       research: { type: "string", enum: ["no", "yes", "team", "table"] },
@@ -136,7 +136,7 @@ const startJob: Tool = {
     const repos = build && ctx.grants.includes(WILDCARD) ? repoNamed(reposOf(ctx.env), mine) : [];
     if (repos.length > 1) return `Not started: they named ${repos.join(" and ")}, and a job works on one: ask which, or start one for each with its name in their words.`;
     // Claude Code on their Mac writes it, where they asked for that in their own words and may have it (lib/mac-build.ts).
-    const wantsClaude = build && !repos.length && namesClaudeCode(mine);
+    const wantsClaude = build && namesClaudeCode(mine);
     const claudeWhy = !wantsClaude ? "" : !allows(ctx.grants, "computer") ? "Claude Code on a Mac is not theirs to use, so the job writes it itself. " : !(await computersOf(ctx.env, person)).length ? 'No Mac of theirs is linked (the Jarvis desktop app, "Let Jarvis control this Mac"), so the job writes it itself. ' : "";
     const claude = wantsClaude && !claudeWhy;
     const makes = !research && (args.mode === "files" || build);
@@ -153,7 +153,7 @@ const startJob: Tool = {
     // And only where somebody asked, in words of their own: not a routine, a bot or a page.
     const helpers = !research && args.helpers === true && allows(ctx.grants, "routines") && !!ownPart(ctx.asked ?? "");
     const j = await state.createJob(
-      { title: args.title, task, engine: research ? "research" : "jarvis", reach, ...(thorough ? { mode: "thorough" } : build ? { mode: "build", ...(repos[0] ? { repo: repos[0] } : claude ? { coder: "claude_code" } : {}) } : shop ? { mode: "files" } : {}), ...(helpers ? { helpers: true } : {}), ...(used ? { specialty: used.id } : {}), ...(project ? { project: project.id } : {}), ...(team ? { team: true } : {}), ...(table ? { table: true } : {}) },
+      { title: args.title, task, engine: research ? "research" : "jarvis", reach, ...(thorough ? { mode: "thorough" } : build ? { mode: "build", ...(repos[0] ? { repo: repos[0] } : {}), ...(claude ? { coder: "claude_code" } : {}) } : shop ? { mode: "files" } : {}), ...(helpers ? { helpers: true } : {}), ...(used ? { specialty: used.id } : {}), ...(project ? { project: project.id } : {}), ...(team ? { team: true } : {}), ...(table ? { table: true } : {}) },
       { who: callerWho(ctx.env), grants: ctx.grants },
     );
     if (typeof j === "string") return `Not started: ${j}.`;
@@ -181,7 +181,7 @@ const startJob: Tool = {
       : `Started "${j.title}" ${j.repo ? `on the repository ${j.repo}, without the web` : j.reach === "web" ? "on the web, with only what its brief says of the user" : "on the user's own things, without the web"}. ` +
         `${brought.length ? `It has what they attached (${brought.length === 1 ? "one file" : `${brought.length} files`}). ` : shop && asFiles(ctx.attached).length ? "It was NOT given what they attached: a job on the web has nothing of theirs. " : ""}` +
         `${build && !j.repo && reposOf(ctx.env).length && ctx.grants.includes(WILDCARD) ? "It was given NO repository: they named none of those listed (Settings → GitHub). " : ""}` +
-        `${j.coder ? "Claude Code on their Mac writes it, once they tap the card the job puts to them with what it found. " : claudeWhy}` +
+        `${j.coder ? "Claude Code on their Mac builds it, once they tap the card the job puts to them with what it found; the job answers it as it works, and asks them what only they can decide. " : claudeWhy}` +
         `${used ? `It uses their specialty "${used.name}". ` : ""}${project ? `It is in their project "${project.name}". ` : ""}` +
         `${!research && args.helpers === true && !helpers ? "It has NO helpers: those are for the family, when one of them asks. " : ""}` +
         `It usually takes ${j.mode === "thorough" ? `ten minutes or more, with a stronger model${j.help ? " and helpers" : ""}` : j.help ? "ten minutes or so, splitting the work between helpers" : "a few minutes"}; the result${shop ? ", with its files to download," : ""} will reach the user as a message. Tell them so.`;

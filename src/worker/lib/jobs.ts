@@ -12,7 +12,7 @@ import { ASK_MS, MAX_ASKED, MAX_TOLD, changeCard, doneLines, numbered, openLines
 import { secretShaped } from "./memory-guard.ts";
 import { flagLines, flagsOf, type Flags } from "./job-results.ts";
 import { withFile, withRan, type JobFile, type Ran } from "./workshop.ts";
-import { buildIdOf, jobOfBuild, macUntil, BUILD_MS, type MacWait } from "./mac-build.ts";
+import { buildIdOf, jobOfBuild, macOpen, macUntil, macWaits, MAX_ROUNDS, MAX_SAID, type MacWait, type RoundEnd } from "./mac-build.ts";
 import type { BuildRequest } from "./computer.ts";
 import { HELPERS_MS, MAX_HELPERS, STOPPED, helperId, helperOut, helpersWorking, newHelpers, reportKept, slimHelpers, withHelper, type HelperChain, type HelperRun, type HelperTask } from "./job-helpers.ts";
 
@@ -190,7 +190,7 @@ function flagged(j: Job, f: Flags): Flags {
 }
 
 /** What is kept while a step runs (note), not by whoever is looking at the job: never saved over by a record read before it. */
-const live = ({ card, todo, ticked, told, asked, files, ran }: Job): Partial<Job> => ({
+const live = ({ card, todo, ticked, told, asked, files, ran, mac }: Job): Partial<Job> => ({
   ...(card ? { card } : {}),
   ...(todo ? { todo } : {}),
   ...(ticked !== undefined ? { ticked } : {}),
@@ -198,6 +198,7 @@ const live = ({ card, todo, ticked, told, asked, files, ran }: Job): Partial<Job
   ...(asked ? { asked } : {}),
   ...(files ? { files } : {}),
   ...(ran ? { ran } : {}),
+  ...(mac ? { mac } : {}),
 });
 
 /** A page the web search cited: what a report's Sources list is made of. */
@@ -315,9 +316,17 @@ export type Step =
   | { kind: "asks"; usage?: Job["usage"] }
   /** It gives its work out to helpers, by this call of its: looked at again once they are done, its tokens counted now. */
   | { kind: "helps"; call: string; tasks: HelperTask[]; usage?: Job["usage"] }
-  /** It handed its coding to Claude Code on its person's Mac, its card filed (lib/mac-build.ts): looked at again once the build is over. */
+  /** It handed its coding to Claude Code on its person's Mac, its card filed; or answered a round, or asked for its files (lib/mac-build.ts): looked at again once the Mac has done it. */
   | { kind: "mac"; wait: MacWait; usage?: Job["usage"] }
   | { kind: "failed"; error: string };
+
+/** What a Mac says of a build of a job's (routes/computer.ts): only what its job waits on is taken (Jobs.macHeard). */
+export type MacReport =
+  | { state: "working" }
+  | { state: "paused"; until: number }
+  | { state: "said"; round: number; said: string; how: RoundEnd }
+  | { state: "done"; files: string[]; left: { name: string; why: string }[]; path: string }
+  | { state: "stopped" };
 
 /** A step started: its response id, the plan to wait for, or why it could not start. */
 export type Started = { responseId: string } | { parked: number } | { error: string };
@@ -349,6 +358,8 @@ export interface JobDeps {
   episode?(j: Job): Promise<void>;
   /** Tell the workshop a job that makes files, or a helper of one, is at rest (nothing of it left running) or at its end (nothing of it kept). */
   workshop?(what: "rest" | "end", id: string): Promise<void>;
+  /** Tell `person`'s Mac `who` what a Claude Code session there is to do, under its build's id (lib/computer.ts start): whether it said it got it. */
+  mac?(person: string, who: string, req: BuildRequest, build: string): Promise<boolean>;
 }
 
 const J = "job:";
@@ -378,6 +389,9 @@ export const KEEP_JOBS = 30;
 /** Steps a job gets, and with its checklist moving; then it writes what it has (lib/job-guards.ts). */
 export const MAX_STEPS = 25;
 export const MAX_STEPS_GOING = 60;
+/** For each round of Claude Code's on its person's Mac, a job has this many steps more, and this long more, to read it and answer it. */
+export const ROUND_STEPS = 2;
+export const ROUND_MS = 3 * 60_000;
 export const RESEARCH_MAX_STEPS = 40;
 export const RESEARCH_MAX_MS = 45 * 60_000;
 /** The check of a research report gets this long more, however late the report was written. */
@@ -489,11 +503,12 @@ const newJobId = () => {
  * sentences. `whole` is everything, summary included, for when it is short
  * enough to send as it is.
  */
-/** How long, and how many steps, a job of each kind may take. */
-export function limitsOf(engine: JobEngine): Limits {
+/** How long, and how many steps, a job of each kind may take. `rounds`: Claude Code's on its person's Mac so far, each given its own (lib/mac-build.ts). */
+export function limitsOf(engine: JobEngine, rounds = 0): Limits {
+  const more = Math.min(Math.max(rounds, 0), MAX_ROUNDS);
   return engine === "research"
     ? { maxMs: RESEARCH_MAX_MS, maxSteps: RESEARCH_MAX_STEPS, going: RESEARCH_MAX_STEPS }
-    : { maxMs: MAX_JOB_MS, maxSteps: MAX_STEPS, going: MAX_STEPS_GOING };
+    : { maxMs: MAX_JOB_MS + more * ROUND_MS, maxSteps: MAX_STEPS + more * ROUND_STEPS, going: MAX_STEPS_GOING + more * ROUND_STEPS };
 }
 
 /**
@@ -699,13 +714,19 @@ function heard(j: Job, now: number): Job {
   return waits ? { ...rest, waited: (j.waited ?? 0) + Math.max(0, now - waits.since), nextAt: now } : j;
 }
 
-/** Waiting for its person, or for the Mac it handed its coding to: not one of those running. */
-const waiting = (j: Job): boolean => !!j.waits || (!!j.mac && !j.mac.done);
+/** Waiting for its person, or on the Mac it handed its coding to: not one of those running. */
+const waiting = (j: Job): boolean => !!j.waits || (!!j.mac && macWaits(j.mac));
 
-/** What came of its hand-off to the Mac: due now, and how long it waited is not its time. */
-function macHeard(j: Job, done: NonNullable<MacWait["done"]>, now: number): Job {
-  return { ...j, mac: { ...j.mac!, done }, waited: (j.waited ?? 0) + Math.max(0, now - j.mac!.since), nextAt: now };
+/** What it waited on from its Mac is over, as `w` has it now: due now, and how long it waited is not its time. */
+function macHeard(j: Job, w: MacWait, now: number): Job {
+  const { heard: _h, until: _u, ...rest } = w;
+  void _h;
+  void _u;
+  return { ...j, mac: rest, waited: (j.waited ?? 0) + Math.max(0, now - j.mac!.since), nextAt: now };
 }
+
+/** Its session over, for `why`, Jarvis's words. */
+const macEnded = (j: Job, why: string, now: number): Job => macHeard(j, { ...j.mac!, phase: "over", end: { at: now, why } }, now);
 
 /** The changes its person has told it of: an answer to what it asked is not one. */
 const changesTold = (j: Job): number => (j.told ?? []).filter((t) => !t.by && !t.to).length;
@@ -927,7 +948,7 @@ export class Jobs {
       attempts: 0,
       ...(engine === "jarvis" ? { reach: input.reach === "web" || input.mode === "build" ? ("web" as const) : ("private" as const) } : {}),
       ...(thorough ? { mode: "thorough" as const } : engine === "jarvis" && (input.mode === "files" || input.mode === "build") ? { mode: "files" as const } : {}),
-      ...(engine === "jarvis" && input.mode === "build" ? { build: true as const, ...(typeof input.repo === "string" && input.repo ? { repo: input.repo } : input.coder === "claude_code" ? { coder: "claude_code" as const } : {}) } : {}),
+      ...(engine === "jarvis" && input.mode === "build" ? { build: true as const, ...(typeof input.repo === "string" && input.repo ? { repo: input.repo } : {}), ...(input.coder === "claude_code" ? { coder: "claude_code" as const } : {}) } : {}),
       ...(by.routine ? { routine: { id: by.routine.id, name: by.routine.name } } : {}),
       ...(by.cap !== undefined ? { cap: by.cap } : {}),
       ...(engine === "jarvis" && by.using ? { using: { id: by.using.id, name: by.using.name } } : {}),
@@ -958,6 +979,7 @@ export class Jobs {
     for (const look of looksAll(id)) this.live.get(look)?.stop.abort();
     const deps = await this.deps();
     for (const id of running) await deps.cancel({ ...j, responseId: id }).catch(() => {});
+    await this.macStop(before, deps);
     await clearChain(this.storage, id);
     // What it spent before it was stopped still counts in Settings → Usage.
     await deps.record?.(usageEntry(j, false, now)).catch(() => {});
@@ -1183,44 +1205,121 @@ export class Jobs {
   }
 
   /**
-   * Its person's tap on its hand-off's card (lib/mac-build.ts): the build sent
-   * to that Mac, `who` (null: not theirs, or not linked any more), which must
-   * say it got it. True once it has; else why nothing was built.
+   * Its person's tap on its hand-off's card (lib/mac-build.ts): the session
+   * begun on that Mac, `who` (null: not theirs, or not linked any more), which
+   * must say it got it. One session at a time on a Mac. True once it has; else
+   * why nothing was built. It is taken as begun before the Mac is told, so
+   * what the Mac says back is never early.
    */
-  async macStart(person: string, id: string, mac: string, sum: string, who: string | null, send: (who: string, req: BuildRequest, build: string) => Promise<boolean>, now = Date.now()): Promise<true | string> {
+  async macStart(person: string, id: string, mac: string, sum: string, who: string | null, now = Date.now()): Promise<true | string> {
     const j = await this.stillRunning(id);
     if (!j || personOfWho(j.createdBy) !== person) return "Its job is not running any more, so nothing was built.";
     const w = j.mac;
-    if (!w || w.done || w.sent || w.sum !== sum || w.mac !== mac) return "Its job is not waiting for that any more, so nothing was built.";
+    if (!w || w.phase !== "card" || w.sum !== sum || w.mac !== mac) return "Its job is not waiting for that any more, so nothing was built.";
     if (!who) return `${w.name} is not one of their linked Macs any more, so nothing was built.`;
-    const build = buildIdOf(j.id);
-    if (!(await send(who, { op: "build", task: j.task, notes: w.notes, name: j.title, ms: BUILD_MS }, build))) {
-      return `${w.name} did not answer: it may be asleep or off, or have control switched off in its Jarvis app. Nothing was built.`;
+    const other = (await this.list()).find((o) => o.id !== j.id && o.status === "running" && o.mac?.sent?.who === who && macOpen(o.mac));
+    if (other) return `${w.name} is building “${other.title}” for another job: one at a time. Nothing was built.`;
+    const deps = await this.deps();
+    if (!deps.mac) return "Nothing was built: Macs cannot be reached here.";
+    const sent = { id: buildIdOf(j.id), who, at: now };
+    // Its card's wait over: not its time.
+    const begun = await this.edit(j.id, (x) => (x.mac?.phase === "card" && x.mac.sum === sum ? { ...x, waited: (x.waited ?? 0) + Math.max(0, now - x.mac.since), mac: { ...x.mac, phase: "round", round: 1, sent, since: now, heard: now } } : x));
+    if (!begun || begun.after.mac?.sent?.id !== sent.id) return "Its job is not waiting for that any more, so nothing was built.";
+    const req: BuildRequest = { op: "build", folder: w.folder, session: w.session, name: j.title, start: { task: j.task, notes: w.notes, repo: !!j.repo } };
+    if (await deps.mac(person, who, req, sent.id)) {
+      await this.edit(j.id, (x) => (x.mac?.sent?.id === sent.id ? { ...x, nextAt: macUntil(x.mac) } : x));
+      return true;
     }
-    const sent = { id: build, who, at: now };
-    await this.edit(j.id, (x) => (x.mac && x.mac.sum === sum && !x.mac.done ? { ...x, mac: { ...x.mac, sent }, nextAt: macUntil({ ...x.mac, sent }) } : x));
-    return true;
-  }
-
-  /** The job a Mac's build is for, while it waits on that build from that Mac; else null. */
-  async macPending(who: string, build: string): Promise<string | null> {
-    const id = jobOfBuild(build);
-    const j = id ? await this.stillRunning(id) : undefined;
-    return j?.mac && !j.mac.done && j.mac.sent?.id === build && j.mac.sent.who === who ? j.id : null;
+    // Not begun after all: its card's end tells the job (state.ts makeApproved).
+    await this.edit(j.id, (x) => {
+      if (x.mac?.sent?.id !== sent.id) return x;
+      const { sent: _s, heard: _h, ...back } = x.mac;
+      void _s;
+      void _h;
+      return { ...x, waited: begun.before.waited ?? 0, mac: { ...back, phase: "card", round: 0, since: w.since } };
+    });
+    return `${w.name} did not answer: it may be asleep or off, or have control switched off in its Jarvis app. Nothing was built.`;
   }
 
   /**
-   * What came of its hand-off: from the Mac, for that build; or, `build` null,
-   * from Jarvis, for a card declined or not run. It goes on now. False when
-   * nothing waited for it.
+   * The job's answer to a round, or its end, by its call `call` (routes/jobs.ts
+   * poll): sent to its Mac, which must say it got it. What it waits on now;
+   * else why not, which answers the call.
    */
-  macDone(id: string, build: string | null, done: { ok: boolean; files: boolean; said?: string; claude?: string }, now = Date.now()): Promise<boolean> {
+  async macSend(id: string, call: string, what: { reply: string } | { finish: true }, now = Date.now()): Promise<MacWait | string> {
+    const j = await this.stillRunning(id);
+    const w = j?.mac;
+    if (!j || !w?.sent || w.phase === "over") return "Not sent: no session of Claude Code's is open in this job. Start one with mac_build.";
+    if (w.phase !== "turn") return "Not sent: Claude Code is still at work on it; you are told when it stops.";
+    if ("reply" in what && w.round >= MAX_ROUNDS) return `Not sent: Claude Code has had its ${MAX_ROUNDS} rounds. Bring what it made with mac_finish.`;
+    const deps = await this.deps();
+    if (!deps.mac) return "Not sent: Macs cannot be reached here.";
+    const { said: _s, ...was } = w;
+    void _s;
+    const next: MacWait = { ...was, call, since: now, heard: now, ...("reply" in what ? { phase: "round", round: w.round + 1 } : { phase: "finish" }) };
+    const taken = await this.edit(j.id, (x) => (x.mac?.phase === "turn" && x.mac.sent?.id === w.sent!.id ? { ...x, mac: next } : x));
+    if (!taken || taken.after.mac?.call !== call) return "Not sent: try again.";
+    const req: BuildRequest = { op: "build", folder: w.folder, session: w.session, name: j.title, ...("reply" in what ? { round: next.round, reply: what.reply } : { finish: true as const }) };
+    if (await deps.mac(personOfWho(j.createdBy), w.sent.who, req, w.sent.id)) return next;
+    await this.edit(j.id, (x) => (x.mac?.call === call ? { ...x, mac: w } : x));
+    return `Not sent: ${w.name} did not answer; it may be asleep or off, or have control switched off in its Jarvis app. What there is stays on it: finish, saying so.`;
+  }
+
+  /** The job a Mac's build is for, while it waits on that build from that Mac; else null. */
+  async macPending(who: string, build: string): Promise<Job | null> {
+    const id = jobOfBuild(build);
+    const j = id ? await this.stillRunning(id) : undefined;
+    return j?.mac && j.mac.sent?.id === build && j.mac.sent.who === who && (j.mac.phase === "round" || j.mac.phase === "finish") ? j : null;
+  }
+
+  /**
+   * What a Mac says of its build (routes/computer.ts), already found to be its
+   * (macPending): it still works, or waits for its person's Claude plan; a
+   * round is over; what it made is back; or it was stopped there. False when
+   * nothing waits for that.
+   */
+  macHeard(who: string, build: string, r: MacReport, now = Date.now()): Promise<boolean> {
     return this.inTurn(async () => {
-      const j = await this.stillRunning(id);
-      if (!j?.mac || j.mac.done || (build === null ? !!j.mac.sent : j.mac.sent?.id !== build)) return false;
-      await this.save(macHeard(j, { ...done, at: now }, now));
+      const j = await this.macPending(who, build);
+      const w = j?.mac;
+      if (!j || !w) return false;
+      if (r.state === "working" || r.state === "paused") {
+        const { until: _u, ...rest } = w;
+        void _u;
+        const next: MacWait = { ...rest, heard: now, ...(r.state === "paused" && r.until ? { until: r.until } : {}) };
+        await this.save({ ...j, mac: next, nextAt: macUntil(next) });
+        return true;
+      }
+      if (r.state === "said") {
+        if (w.phase !== "round" || r.round !== w.round) return false;
+        await this.save(macHeard(j, { ...w, phase: "turn", said: { text: r.said.slice(0, MAX_SAID), how: r.how } }, now));
+        return true;
+      }
+      if (r.state === "done") {
+        if (w.phase !== "finish") return false;
+        await this.save(macHeard(j, { ...w, phase: "over", end: { at: now, files: r.files, left: r.left, path: r.path } }, now));
+        return true;
+      }
+      await this.save(macEnded(j, "its person stopped it on the Mac", now));
       return true;
     });
+  }
+
+  /** Its card declined, or tapped but not run (state.ts): it goes on now, told why. False when it no longer waits on that card. */
+  macEnd(id: string, why: string, now = Date.now()): Promise<boolean> {
+    return this.inTurn(async () => {
+      const j = await this.stillRunning(id);
+      if (j?.mac?.phase !== "card") return false;
+      await this.save(macEnded(j, why, now));
+      return true;
+    });
+  }
+
+  /** A session still open on its Mac when the job ends: stopped there, best effort. Its folder stays. */
+  private async macStop(j: Job, deps: JobDeps): Promise<void> {
+    const w = j.mac;
+    if (!w?.sent || !macOpen(w) || !deps.mac) return;
+    await deps.mac(personOfWho(j.createdBy), w.sent.who, { op: "build", folder: w.folder, session: w.session, name: j.title, stop: true }, w.sent.id).catch(() => false);
   }
 
   /** The jobs of a person's that have asked them something and not had it. */
@@ -1268,13 +1367,15 @@ export class Jobs {
       j = unheard(j, now);
       await this.save(j);
     }
-    if (j.mac && !j.mac.done) {
-      // The same for its Mac: until its card is tapped and the build is over, or its time for that is up.
+    if (j.mac && macWaits(j.mac)) {
+      // The same for its Mac: until its card is tapped, its round is over or its files are back; or its card's time is up, or the Mac has stopped answering.
       if (now < macUntil(j.mac)) return this.save({ ...j, nextAt: macUntil(j.mac) });
-      j = macHeard(j, { ok: false, files: false, at: now, said: j.mac.sent ? "Claude Code did not report back in time" : "nobody tapped its card in time" }, now);
+      const silent = j.mac.phase !== "card";
+      if (silent) await this.macStop(j, deps);
+      j = macEnded(j, silent ? `${j.mac.name} stopped answering for half an hour` : "nobody tapped its card in time", now);
       await this.save(j);
     }
-    const limits = limitsOf(j.engine);
+    const limits = limitsOf(j.engine, j.mac?.round);
     // One chain, still working: out of its budget it can write what it has. A team's merge, or a report's check, is that already.
     const wraps = !j.team && !j.draft;
     const maxMs = limits.maxMs + (j.draft ? RESEARCH_CHECK_MS : wraps ? WRAP_MS : 0);
@@ -1359,6 +1460,8 @@ export class Jobs {
     if (step.kind === "asks") return this.waitFor({ ...j, counted: polled }, now);
     if (step.kind === "helps") return this.save({ ...j, counted: polled, help: newHelpers(j, step.call, step.tasks, now), nextAt: now });
     if (step.kind === "mac") {
+      // Its card, to be filed with the job; else what it sent the Mac, which the Mac may have answered already (Jobs.macSend).
+      if (step.wait.phase !== "card") return this.save({ ...j, counted: polled, nextAt: j.mac && macWaits(j.mac) ? macUntil(j.mac) : now });
       await this.save({ ...j, counted: polled, mac: step.wait, macs: (j.macs ?? 0) + 1, nextAt: macUntil(step.wait) });
       await deps.deliver(macAlert(j, step.wait, now)).catch(() => {});
       return;
@@ -1552,6 +1655,8 @@ export class Jobs {
   private async finish(j: Job, deps: JobDeps, now: number, out: { text: string; cited?: readonly Cited[] } | { error: string; late?: boolean }): Promise<void> {
     const cur = await this.get(j.id);
     if (!cur || cur.status !== "running") return; // cancelled or removed while it ran
+    // Claude Code's session on its Mac, if it ended without bringing back what it made.
+    await this.macStop(cur, deps);
     const done = { ...cur, ...j, ...live(cur), finishedAt: now, updatedAt: now };
     delete done.nextAt;
     delete done.parked;

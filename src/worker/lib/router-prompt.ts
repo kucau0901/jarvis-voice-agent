@@ -438,10 +438,13 @@ export const JOB_FILES =
 export const jobBuild = (reach: { sites: boolean; repo: string | null; claude?: boolean }): string =>
   "\n\nBUILDING\n" +
   (reach.claude
-    ? "This job builds a site, and the user asked for Claude Code on their Mac to write it: do not write it yourself. Find out what it " +
-      "needs, then hand it over with mac_build, all your notes in one go. It waits for their tap on a card; once Claude Code is done you " +
-      "go on, its files in your folder. Check them as you would your own: every page opens, every link works, it loads nothing from " +
-      "elsewhere, it works on a phone, and its words are real ones, never filler. "
+    ? "This job builds what the user asked for (a site, an app, a tool) with Claude Code on their Mac, as they asked: do not write it " +
+      `yourself. ${reach.repo ? "Bring the repository's files with repo_bring and" : "Find out what it needs, then"} hand it over with ` +
+      "mac_build, all your notes in one go; it waits for their tap on a card. Claude Code then works in rounds, and each time it stops " +
+      "you are told what it said. Answer with mac_reply: what it asks, from what the user asked and what you found; what only the user " +
+      "can decide, ask them with ask_person first and pass on their answer; what failed, and to fix it; to run its build and tests and " +
+      "say what they showed. Once it says DONE and has checked it, call mac_finish: what it made comes to your folder, under from-mac. " +
+      "Check it as you would your own work, then put it to the user as you are told then. Say where the project stays on their Mac. "
     : "This job builds: a site, or a change to code. Plan what it must do, build it in small steps, and run it as you go: its tests, " +
       "its build, a script that opens every page and follows every link. Packages cannot be fetched: use what is there (hugo, node, " +
       "python), and plain HTML, CSS and JavaScript before a framework. A site is static files that load nothing from elsewhere; it " +

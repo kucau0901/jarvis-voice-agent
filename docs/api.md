@@ -479,7 +479,7 @@ and connects to `/api/v1/events?ticket=…`. A ticket works once.
 | → | `{"type":"ack","id":…,"visible":true}` on each alert, if someone can see it |
 | ← | `{"type":"computer.do","id","op","act","element","text","picture","ms"}` to one of a person's Macs (a device holding `computer`, the desktop app): `op` is `look` (`text`: an app's name, or null for the one in front), `do` (`act`: `press`, `type`, `key`, `scroll`, `open` or `front`, in the app last looked at) or `run`; `ms`, how long it has |
 | → | From that Mac: `{"type":"computer.got","id"}` at once, then `{"type":"computer.answer","id","ok","text","image"}` (`image` a `data:image/jpeg;base64,` screenshot or null; at most 512 KB in all). Sent with `type` first. Not answered within 5 s it counts as offline; only the Mac it went to can answer it |
-| ← | `{"type":"computer.do","id","op":"build","task","notes","name","ms"}`: a build job's coding for Claude Code on that Mac, started by its person's tap ([DESIGN.md](DESIGN.md#claude-code-on-the-mac)). `task` is what they asked (4,000 characters at most), `notes` what the job found, as reference (3,500 at most), `name` the job's title, `ms` how long it has (30 minutes). The Mac says `computer.got` at once and nothing more on the socket: what came of it is its POST to `/api/v1/computer/build` |
+| ← | `{"type":"computer.do","id","op":"build","folder","session","name", …}`: a Claude Code session on that Mac for a build job, begun by its person's tap ([DESIGN.md](DESIGN.md#claude-code-on-the-mac)). `id` is the build's, `folder` its folder's name (letters, digits and dashes), `session` Claude Code's session id (a UUID), `name` the job's title; and one of: `start: {task, notes, repo}` to begin (`task` what they asked, 4,000 characters at most; `notes` what the job found, as reference, 3,500 at most; `repo` whether it starts from a repository's files, from `GET /api/v1/computer/build/source`); `round, reply` to go on with the job's answer (4,000 at most); `finish: true` to send back what it made; `stop: true` to stop. The Mac says `computer.got` at once and nothing more on the socket: the rest is by its requests to `/api/v1/computer/build` |
 | → / ← | `ping` / `pong`, every 25 seconds or so, to keep proxies from closing it |
 
 An alert counts as delivered live only when a **visible** screen acknowledges
@@ -616,12 +616,21 @@ bytes, down?, before?}]}`, `sites` null where there is no sites folder.
 
 A build job its person asked, in their own words, to have Claude Code write is handed
 to one of their Macs with their tap on a card ([DESIGN.md](DESIGN.md#claude-code-on-the-mac));
-it is not asked for here. That Mac sends what came of it with `POST /api/v1/computer/build`
-(needs `computer`; a person's own session gets 403): `{id, ok, said, zip}`, `id` the
-build's from its `computer.do`, `said` Claude Code's own words (2,000 characters are
-kept), `zip` base64url of the site's files (10 MB at most, 413 past it) or null. 404
-when no job waits on that build from this Mac. `{ok: true, files}`: whether the files
-were put in the job's folder.
+it is not asked for here. That Mac takes part in it with these (each needs `computer`; a
+person's own session gets 403; 404 when no job waits on that from this Mac):
+
+- `POST /api/v1/computer/build` `{id, state, …}`, what it says of it: `working` (every ten
+  minutes while it works; half an hour of nothing and the job stops waiting), `paused`
+  with `until` (ms, when its person's Claude plan resets), `said` with `round`, `said`
+  (Claude Code's last words, 6,000 characters are kept) and `how` (`turn`, `error`,
+  `stuck`, `limit` or `busy`), `done` with `files` (the names it sent), `left`
+  (`[{name, why}]`, what stayed on the Mac) and `path` (its folder there), or `stopped`
+  (by its person on the Mac). `{ok: true}`.
+- `POST /api/v1/computer/build/file?id=&name=`, the file's bytes as the body (20 MB at
+  most, 413 past it), only between `finish` and `done`: `name` is `site.zip`,
+  `source.zip` or `out/<name>`. It goes to the job's folder under `from-mac/`.
+- `GET /api/v1/computer/build/source?id=`, for a job on a repository, before its first
+  round is over: the repository's files (`.tar.gz`) at the commit the job was given them.
 
 `"helpers": true` (needs `routines`: it costs several times as much) lets an
 ordinary job of any mode give its work out once, in two or three parts, to helpers

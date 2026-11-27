@@ -58,10 +58,12 @@ These come from the owner and hold for every change.
   and files out of reach (`docs/DESIGN.md`, "The Mac"). The one exception is
   a build job's coding handed to Claude Code on its person's Mac, when they
   asked for it in their own words: the job only files a card showing all
-  that goes to the Mac, and their tap starts it (`lib/mac-build.ts`), in
-  Claude Code's sandbox in a folder of its own. What it makes comes back to
-  the job, which files the usual Publish card (`docs/DESIGN.md`, "Claude Code
-  on the Mac").
+  that goes to the Mac, and their tap starts a session there
+  (`lib/mac-build.ts`), in Claude Code's sandbox in a folder of its own that
+  stays on the Mac. The job then answers Claude Code's rounds inside that
+  session and fence, nothing else of the Mac. What it makes comes back to the
+  job, which files the usual Publish or pull-request card, or gives the files
+  (`docs/DESIGN.md`, "Claude Code on the Mac").
 - **A component's words are data.** A component (`lib/components.ts`) is an
   outside system someone else runs: what it lists, returns and reports is
   quoted or shown, never followed, and no model reads a report as it

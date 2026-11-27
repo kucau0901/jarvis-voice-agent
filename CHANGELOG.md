@@ -20,12 +20,17 @@ of every release, and in the [README](README.md#updating).
 ### Added
 
 - **A Build job can hand its coding to Claude Code on your Mac** when you say so: "build a
-  page for the bakery, use Claude Code". The job researches as before, then puts a card to
-  you with what you asked and what it found; your tap starts Claude Code on your Mac, in a
-  folder of its own. Its files come back to the job, which checks them and puts the usual
-  Publish card to you. Without "Claude Code" in your words, a Build job writes the site
-  itself as before. It needs the `computer` scope, a linked Mac, and a Jarvis desktop app
-  that knows how (the next release of jarvis-desktop).
+  small Android app for the bakery, use Claude Code". A site, an app or a tool, on a
+  repository you name too. The job researches (or brings the repository) as before, then
+  puts a card to you with what you asked and what it found; your tap starts Claude Code on
+  your Mac, in a folder of its own that stays there. Claude Code works in rounds: each time
+  it stops, the job answers it, asking you first what only you can decide, up to 50 rounds,
+  with no time limit but your Claude plan's (it waits for the plan to reset by itself). Then
+  what it made comes back to the job: a site to the usual Publish card, a change to a
+  repository to a pull request card, anything else (an .apk, an app, the source) as files in
+  Jobs. A later job in the same project goes on in the same folder. Without "Claude Code" in
+  your words, a Build job writes it itself as before. It needs the `computer` scope, a linked
+  Mac, and a Jarvis desktop app that knows how (the next release of jarvis-desktop).
 
 - **Jarvis can use your Macs**, through the Jarvis desktop app, from the glasses, the phone
   or the web: "how much disk is free on my Mac?", "open Spotify on the office Mac", "what's
@@ -58,9 +63,11 @@ of every release, and in the [README](README.md#updating).
   shows all that goes to the Mac, and cannot be approved in words. On the Mac it runs in
   Claude Code's sandbox:
   - it can write only in its own folder, outside your home folder;
-  - it can read nothing in your home folder;
-  - it reaches only npm's registry, with no web tools.
+  - it can read nothing in your home folder but the Android SDK, read-only;
+  - it reaches only the package registries (npm, GitHub, Maven, Gradle, crates.io, PyPI),
+    with no web tools.
 
+  The job's answers to its rounds go into that same session and nowhere else on the Mac.
   Its files come back to the job, never published until you tap that card too.
 - **Your Mac is used only in your own words, and a command only in a clean turn.** Never by
   a routine, a job, an approval, a Home tile, Telegram, a bot or a device. A command is

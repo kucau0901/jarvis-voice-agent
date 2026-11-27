@@ -42,7 +42,7 @@ export const SCOPES = [
    * commands run there as them, and other apps are used. Like Hermes, its own
    * scope, in no role but an admin's, and nothing that runs with nobody asking
    * has it. On a device it only marks one of their Macs, which uses it for
-   * nothing but to send what came of a build their tap started (routes/computer.ts).
+   * nothing but a Claude Code build their tap started (routes/computer.ts).
    */
   "computer",
   "media",
@@ -275,8 +275,10 @@ export function requiredScope(pathname: string, method: string): RouteRequiremen
     // What jobs built and a tap published (routes/sites.ts): for whoever may have one built.
     case "/api/v1/sites":
       return "workshop";
-    // What a Mac's build for a job came to (routes/computer.ts): sent by that Mac, whose device holds `computer`.
+    // A Mac's build for a job (routes/computer.ts): what it says of it, what it made, and a repository's files to start from; by that Mac, whose device holds `computer`.
     case "/api/v1/computer/build":
+    case "/api/v1/computer/build/file":
+    case "/api/v1/computer/build/source":
       return "computer";
 
     // Jarvis's component in Home Assistant: what to watch, and what changed. The route

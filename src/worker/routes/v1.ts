@@ -509,7 +509,7 @@ export async function handleV1(
   const jobs = await handleJobs(req, env, url, principal);
   if (jobs) return jobs;
 
-  // What a Mac's build for a job came to (lib/mac-build.ts).
+  // A Mac's build for a job: what it says of it, what it made, a repository's files (lib/mac-build.ts).
   const built = await handleComputer(req, env, url, principal);
   if (built) return built;
 
