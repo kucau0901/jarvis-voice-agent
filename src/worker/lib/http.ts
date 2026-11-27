@@ -76,6 +76,32 @@ export async function readText(req: Request, max: number): Promise<string | null
   }
 }
 
+/** A request's body as bytes, or null past `max` bytes: as readText, read no further than that. */
+export async function readBytes(req: Request, max: number): Promise<Uint8Array | null> {
+  if (Number(req.headers.get("content-length")) > max) return null;
+  if (!req.body) return new Uint8Array(0);
+  const reader = req.body.getReader();
+  const parts: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > max) {
+      await reader.cancel().catch(() => {});
+      return null;
+    }
+    parts.push(value);
+  }
+  const out = new Uint8Array(size);
+  let at = 0;
+  for (const p of parts) {
+    out.set(p, at);
+    at += p.byteLength;
+  }
+  return out;
+}
+
 /** The most readObjectOrEmpty() reads: its bodies are a few fields of text. */
 const OBJECT_MAX = 64 * 1024;
 

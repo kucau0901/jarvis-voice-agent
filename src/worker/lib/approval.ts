@@ -8,6 +8,7 @@ import { routineMake } from "../tools/routines.ts";
 import { houseDo } from "../tools/house.ts";
 import { specialtyKeep } from "../tools/specialties.ts";
 import { PUBLISHING, repoPull, sitePublishTool, sitePutBack } from "../tools/publish.ts";
+import { macBuildStart } from "./mac-build.ts";
 import { WILDCARD, covers, type Grant } from "./scopes.ts";
 import { baseTools, outputText } from "../tools/registry.ts";
 
@@ -19,14 +20,15 @@ import { baseTools, outputText } from "../tools/registry.ts";
  */
 
 /** What only an approval runs: never offered to the router, nor to a job (the router may approve a card, as its person says, never make its call). */
-export const APPROVED_ONLY = [mailDraftSend, calendarRsvp, mailArchiveMany, mailInboxMany, routineMake, houseDo, specialtyKeep, ...PUBLISHING];
+export const APPROVED_ONLY = [mailDraftSend, calendarRsvp, mailArchiveMany, mailInboxMany, routineMake, houseDo, specialtyKeep, ...PUBLISHING, macBuildStart];
 
 /**
  * What a tap's person, and whoever taps, must still have for a call that
- * carries none of it (an approval's grants never hold `workshop`, lib/proposals.ts
- * runGrants): a card outlives the role it was filed under.
+ * carries none of it (an approval's grants never hold `workshop` or `computer`,
+ * lib/proposals.ts runGrants): a card outlives the role it was filed under.
+ * A build on their Mac is the one thing an approval does there (lib/mac-build.ts).
  */
-const NEEDS: ReadonlyMap<string, Grant> = new Map<string, Grant>([[sitePublishTool.name, "workshop"], [sitePutBack.name, "workshop"], [repoPull.name, WILDCARD]]);
+const NEEDS: ReadonlyMap<string, Grant> = new Map<string, Grant>([[sitePublishTool.name, "workshop"], [sitePutBack.name, "workshop"], [repoPull.name, WILDCARD], [macBuildStart.name, "computer"]]);
 /** Whether any of them no longer has it. */
 export function lacks(tool: string, ...have: (readonly Grant[] | null | undefined)[]): boolean {
   const need = NEEDS.get(tool);

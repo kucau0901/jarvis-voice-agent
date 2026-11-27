@@ -39,7 +39,8 @@ import type { Alert, Delivery, LiveResult, PushTarget } from "./alerts.ts";
 import type { LiveClient } from "./live.ts";
 import type { ComputerRequest, ComputerResult } from "./computer.ts";
 import type { Routine, RoutineInput, RunEntry } from "./routines.ts";
-import type { Job } from "./jobs.ts";
+import type { Job, MacReport } from "./jobs.ts";
+import type { MacWait } from "./mac-build.ts";
 import type { Relay, RelayKind } from "./relays.ts";
 import type { ChatMessage } from "./chat.ts";
 import type { Panel, PanelItem, Reading } from "./panels.ts";
@@ -579,7 +580,7 @@ interface RoutineApi {
 interface JobApi {
   listJobs(): Promise<Job[]>;
   getJob(id: string): Promise<Job | undefined>;
-  createJob(input: { title?: unknown; task?: unknown; engine?: unknown; reach?: unknown; mode?: unknown; repo?: unknown; team?: unknown; from?: unknown; table?: unknown; helpers?: unknown; specialty?: unknown; project?: unknown }, by: { who: string; grants: readonly Grant[] }): Promise<Job | string>;
+  createJob(input: { title?: unknown; task?: unknown; engine?: unknown; reach?: unknown; mode?: unknown; repo?: unknown; team?: unknown; from?: unknown; table?: unknown; helpers?: unknown; specialty?: unknown; project?: unknown; coder?: unknown }, by: { who: string; grants: readonly Grant[] }): Promise<Job | string>;
   projectsOf(person: string): Promise<Project[]>;
   projectSave(person: string, input: { id?: unknown; name?: unknown; rules?: unknown }, now: number): Promise<Project | string>;
   projectForget(person: string, id: string): Promise<boolean>;
@@ -805,6 +806,11 @@ interface LiveApi {
   computersOnline(whos: string[]): Promise<string[]>;
   /** Ask one of `person`'s Macs to look, act or run a command, and wait for its answer. */
   computerAsk(person: string, who: string, req: ComputerRequest): Promise<ComputerResult>;
+  /** A Claude Code session on a person's Mac for a job of theirs (lib/mac-build.ts): begun by their tap; a round answered, or its files asked for, by the job; and what the Mac says of it. */
+  macBuildStart(person: string, job: string, mac: string, sum: string): Promise<true | string>;
+  macBuildSend(job: string, call: string, what: { reply: string } | { finish: true }): Promise<MacWait | string>;
+  macBuildPending(who: string, build: string): Promise<{ job: string; phase: MacWait["phase"]; round: number; repo: string | null; base: string | null } | null>;
+  macBuildHeard(who: string, build: string, report: MacReport): Promise<boolean>;
   /** Close a device's open screens and drop its notifications, when it is revoked or narrowed. */
   forgetDevice(who: string): Promise<void>;
   /**

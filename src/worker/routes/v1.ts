@@ -16,6 +16,7 @@ import { handleVoice } from "./voice.ts";
 import { handleJobs } from "./jobs.ts";
 import { handleProjects } from "./projects.ts";
 import { handleSites } from "./sites.ts";
+import { handleComputer } from "./computer.ts";
 import { handleHouse } from "./house.ts";
 import { handleSpots } from "./spots.ts";
 
@@ -507,6 +508,10 @@ export async function handleV1(
 
   const jobs = await handleJobs(req, env, url, principal);
   if (jobs) return jobs;
+
+  // A Mac's build for a job: what it says of it, what it made, a repository's files (lib/mac-build.ts).
+  const built = await handleComputer(req, env, url, principal);
+  if (built) return built;
 
   // The house: what Jarvis's component in Home Assistant watches, and what changed.
   const house = await handleHouse(req, env, url, principal);

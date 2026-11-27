@@ -25,7 +25,7 @@ type Give = (path: string) => Promise<JobFile | string>;
 const text = (v: unknown, max: number): string => (typeof v === "string" ? v.trim().slice(0, max) : "");
 const strict = { additionalProperties: false } as const;
 /** The commit its repository's files were as of, when the job was first given them: what its change is made on. */
-const baseKey = (job: string) => `${jobRows(job)}base`;
+export const baseKey = (job: string) => `${jobRows(job)}base`;
 
 /** `give`: a file of the job's folder kept as it is now (lib/workshop-tools.ts). `sites`: whether there is a sites folder; `repo`, the one it was started on. */
 export function buildTools(
